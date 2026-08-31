@@ -21,6 +21,11 @@ test-util = [
 ]
 
 [dependencies]
+afd_webhook.workspace = true
+afd_ingress.workspace = true
+afd_crypto.workspace = true
+afd_cron.workspace = true
+afd_connector.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
 afd_billing.workspace = true

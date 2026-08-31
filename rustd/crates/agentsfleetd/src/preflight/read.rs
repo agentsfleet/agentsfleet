@@ -16,7 +16,8 @@ use afd_identity::ProviderSecret;
 use super::{
     BundleStoreConfig, ENCRYPTION_MASTER_KEY_KNOB, Fault, IdentityConfig, OIDC_AUDIENCE_KNOB,
     OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS,
-    WHY_API_BASE, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK, WHY_R2, WHY_SECRET,
+    SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
+    WHY_R2, WHY_SECRET, WHY_SSE_MAX_STREAMS,
 };
 
 /// Resolves the snapshot store, which a boot may legitimately not have.
@@ -180,4 +181,29 @@ pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) 
         WHY_KEK,
         Kek::from_hex(&hex),
     )
+}
+
+/// How many concurrent event streams one deployment will hold open.
+///
+/// Unset is the default rather than a fault — a deployment that never tuned
+/// this is the ordinary case. Set-but-unusable IS a fault, because an operator
+/// who wrote a number meant it, and silently serving the default would leave a
+/// ceiling they believe they raised exactly where it was.
+pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> usize {
+    env.get(SSE_MAX_STREAMS_KNOB)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty())
+        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
+            classify(
+                faults,
+                true,
+                SSE_MAX_STREAMS_KNOB,
+                WHY_SSE_MAX_STREAMS,
+                raw.parse::<usize>()
+                    .ok()
+                    .filter(|streams| *streams > 0)
+                    .ok_or(WHY_SSE_MAX_STREAMS),
+            )
+        })
+        .unwrap_or(SSE_MAX_STREAMS_DEFAULT)
 }

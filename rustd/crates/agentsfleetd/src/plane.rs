@@ -60,6 +60,10 @@ use afd_tenant::workspace::Workspaces;
 // workspace-admin surface that seals, lists without a key, and deletes under
 // the model-registry lock. Two things called `Vault` in one file is how a
 // reader ends up believing one of them can do the other's job.
+use afd_api::SchedulePlane;
+use afd_core::id::Uuid7;
+use afd_cron::{Fire, QStash, ScheduleService, Schedules, SigningKeys};
+use afd_ingress::Ingress;
 use afd_vault::Vault as SecretVault;
 
 use crate::bundles::Stores;
@@ -100,9 +104,20 @@ pub struct ServingPlane {
     grants: IntegrationGrants,
     events: History,
     steering: afd_events::Steer,
+    ingress: Ingress,
+    schedules: SchedulePlane,
+    connectors: afd_connector::Connectors,
+    schedule_keys: Option<SigningKeys>,
+    schedule_destination: String,
+    /// What a signup event from the identity provider is verified against.
+    identity_webhook_secret: Option<SecretBytes>,
+    /// Opening a personal account from a verified signup event.
+    signups: afd_tenant::signup::Signups,
+    platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
     api_url: Box<str>,
+    app_url: String,
 }
 
 impl ServingPlane {
@@ -135,16 +150,27 @@ impl ServingPlane {
     pub fn new(parts: PlaneParts) -> Self {
         let PlaneParts {
             database,
+            identity_webhook_secret,
             queue,
             kek,
             capabilities,
             sessions,
             stores,
             broker,
+            platform_admin_workspace,
             live,
             analytics,
             login,
+            schedule,
         } = parts;
+        // One object-store owner, split into the half that READS a snapshot and
+        // the half that WRITES one. A deployment with no upload handle still
+        // serves the catalogue; `LibraryImports::without_store` carries that
+        // absence as a value, the way `Bundles::unconfigured` does.
+        // The exchange dials the vendor and the Jira site listing dials it
+        // again, so both take the same handle: one pool for everything this
+        // family sends outbound — see `crate::credentials`.
+        let vendor_client = crate::credentials::vendor_exchange_client();
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store),
@@ -153,6 +179,7 @@ impl ServingPlane {
         Self {
             bundles,
             library_imports,
+            platform_admin_workspace,
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
@@ -169,6 +196,40 @@ impl ServingPlane {
             grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
             steering: afd_events::Steer::new(queue.clone()),
+            // The SAME key every other sealing store takes, so the signing
+            // secret a webhook is checked against opens under the key the
+            // workspace surface sealed it with. A second `SecretVault` value
+            // rather than a share of the `secrets` field above because the two
+            // are different surfaces over one table — that one seals and never
+            // opens, this one opens exactly one name and never lists.
+            ingress: Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                queue.clone(),
+            ),
+            // The destination is derived from the API url this deployment
+            // already knows, so a schedule registered upstream calls back to
+            // the daemon that registered it. A url carrying a query or a
+            // fragment is refused at construction rather than silently
+            // truncating the callback — see `qstash::destination_url`.
+            schedule_destination: schedule.destination.clone(),
+            identity_webhook_secret,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
+            schedule_keys: schedule.keys,
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    Schedules::new(database.clone(), Entropy::new()),
+                    QStash::new(
+                        schedule.client,
+                        schedule.token,
+                        schedule.destination,
+                        schedule.api_base,
+                    ),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
+            ),
+            connectors: connect_flow(&database, &kek, &queue, vendor_client),
             live,
             analytics,
             api_url: login.api_url,
@@ -178,6 +239,10 @@ impl ServingPlane {
                 Entropy::new(),
                 &login.app_url,
             ),
+            // After `logins` above, which BORROWS it: a struct literal
+            // evaluates its fields in order, so moving it first would leave
+            // nothing for the device-flow surface to read.
+            app_url: login.app_url,
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -193,6 +258,44 @@ impl ServingPlane {
             },
         }
     }
+}
+
+/// The connect flow, over this deployment's own vault and a tenant's.
+///
+/// Lifted out of the constructor because it is the largest thing there that
+/// stands alone, and because the paragraph below wants somewhere to live that
+/// is not the middle of a struct literal.
+///
+/// The SAME key every other sealing store takes, twice over and deliberately:
+/// the platform half opens this deployment's own `<provider>-app` bags in the
+/// admin workspace, and the grant half seals a tenant's handle in theirs. Two
+/// `Vault` values over one table, for the reason the ingress beside them is
+/// two — a reader of the deployment's credentials and a writer of a
+/// workspace's are different surfaces, and one value serving both would let a
+/// connector route reach the wrong workspace's secrets by holding the wrong
+/// handle.
+fn connect_flow(
+    database: &Db,
+    kek: &Arc<Kek>,
+    queue: &Redis,
+    vendor_client: reqwest::Client,
+) -> afd_connector::Connectors {
+    afd_connector::Connectors::new(
+        afd_connector::PlatformApp::new(SecretVault::new(
+            database.clone(),
+            Arc::clone(kek),
+            Entropy::new(),
+        )),
+        afd_connector::Grants::new(
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        afd_connector::Exchange::new(vendor_client.clone()),
+        vendor_client,
+        queue.clone(),
+        Entropy::new(),
+    )
 }
 
 /// Everything [`ServingPlane::new`] is assembled from.
@@ -247,6 +350,48 @@ pub struct PlaneParts {
     pub live: Live,
     /// What the device-flow login surface needs from configuration.
     pub login: LoginConfig,
+    /// The workspace holding this deployment's own platform secrets.
+    ///
+    /// `None` for a deployment that configured none. Threaded through rather
+    /// than re-read, because `preflight` has already parsed and validated it
+    /// and a second reader could disagree with the first.
+    pub platform_admin_workspace: Option<Uuid7>,
+    /// What a signup event from the identity provider is verified against.
+    ///
+    /// Threaded through rather than re-read, for the reason
+    /// [`PlaneParts::platform_admin_workspace`] is: `preflight` has already
+    /// resolved it and a second reader could disagree with the first. `None`
+    /// refuses every delivery — see `preflight::IDENTITY_WEBHOOK_SECRET_KNOB`.
+    pub identity_webhook_secret: Option<SecretBytes>,
+    /// What the schedules surface and the fire ingress need from configuration.
+    pub schedule: ScheduleConfig,
+}
+
+/// What the schedules surface needs from configuration.
+///
+/// A struct rather than four more positional parameters, and for a sharper
+/// reason than length: `token` and the two signing keys are all opaque strings,
+/// so two of them transposed would compile and fail only as a 401 from the
+/// vendor that reads like a wrong credential.
+#[derive(Debug, Clone)]
+pub struct ScheduleConfig {
+    /// The client the management calls go out on.
+    pub client: reqwest::Client,
+    /// This deployment's bearer for the external scheduler.
+    pub token: String,
+    /// Where a fire is expected to arrive — see [`qstash::destination_url`].
+    pub destination: String,
+    /// Which scheduler deployment the management calls go to.
+    ///
+    /// Resolved at boot rather than defaulted in the client, so a deployment
+    /// falling back to the vendor's US region is a visible decision in one
+    /// place — see [`crate::preflight::QSTASH_URL_KNOB`].
+    pub api_base: String,
+    /// The scheduler's signing keys, when this deployment configured them.
+    ///
+    /// `None` is fail-closed: every fire is refused, because a daemon that
+    /// cannot verify a callback must not act on one.
+    pub keys: Option<SigningKeys>,
 }
 
 mod services;

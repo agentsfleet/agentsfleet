@@ -15,9 +15,10 @@
 
 use std::time::Duration;
 
+use afd_redis::SubscriptionHub;
 use afd_redis::hub::Received;
 use afd_redis::streams::FleetStreams;
-use afd_redis::{Backoff, SubscriptionHub};
+use backon::ExponentialBuilder;
 use tokio::sync::Mutex;
 
 use crate::support::RedisHarness;
@@ -116,7 +117,9 @@ async fn test_hub_reconnect_resubscribes() {
     // fifth of a second per attempt for no extra proof.
     let hub = SubscriptionHub::start_with_backoff(
         RedisHarness::config(),
-        Backoff::new(Duration::from_millis(20), Duration::from_millis(100)),
+        ExponentialBuilder::new()
+            .with_min_delay(Duration::from_millis(20))
+            .with_max_delay(Duration::from_millis(100)),
     )
     .await
     .expect("hub starts");

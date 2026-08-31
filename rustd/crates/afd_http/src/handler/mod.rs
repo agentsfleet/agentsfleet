@@ -89,3 +89,53 @@ const fn hex_value(byte: u8) -> Option<u8> {
         _ => None,
     }
 }
+
+/// The refusal a path segment naming no shipped connector earns.
+///
+/// `registry.zig`'s `UNKNOWN_PROVIDER_DETAIL_FALLBACK`.
+const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown connector";
+
+/// The provider a path segment names.
+///
+/// Substrate rather than plane: the tenant plane parses this segment on the
+/// connect and status surfaces, and the ingress plane parses the same segment
+/// on the events route. One parse, so the two planes agree on what a provider
+/// segment means without depending on each other.
+///
+/// # Errors
+/// `UZ-CONN-004` for a segment this daemon ships no connector for. A refusal
+/// rather than a 404 with no code, because the caller is a dashboard rendering
+/// a card and the code is what tells it the card is stale.
+pub fn provider_of(segment: &str) -> Result<afd_connector::Provider, Refusal> {
+    afd_connector::Provider::parse(segment).ok_or_else(|| {
+        Refusal::coded(
+            afd_core::error_code::CONNECTOR_UNKNOWN,
+            DETAIL_UNKNOWN_PROVIDER,
+        )
+    })
+}
+
+/// The fleet named in a path, still text.
+///
+/// Substrate rather than plane: the tenant plane extracts it on every
+/// fleet-scoped route and the ingress plane extracts the same segment on every
+/// per-fleet webhook, so one extractor keeps the two planes agreeing without
+/// depending on each other.
+#[derive(Debug, serde::Deserialize)]
+pub struct FleetPath {
+    /// The fleet named in the path, still text.
+    pub fleet_id: String,
+}
+
+/// The refusal a path segment that is not an identifier earns.
+pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
+
+/// The fleet a path segment names.
+///
+/// # Errors
+/// A malformed refusal for a segment that is not a `UUIDv7`, so the `::uuid`
+/// cast in the statements below is never the thing that fails.
+pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
+    afd_core::id::Uuid7::parse(raw)
+        .map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
+}

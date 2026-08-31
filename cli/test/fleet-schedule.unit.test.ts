@@ -202,6 +202,6 @@ describe("schedule add/list/update/rm/sync effects", () => {
     );
     expect(Exit.isSuccess(syncExit)).toBe(true);
     expect(syncCalls[0]?.method).toBe("POST");
-    expect(syncCalls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}:sync`);
+    expect(syncCalls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}/sync`);
   });
 });

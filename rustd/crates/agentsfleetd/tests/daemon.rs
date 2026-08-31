@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use agentsfleetd::daemon::{Daemon, StopCause};
-use agentsfleetd::inventory::{ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
+use agentsfleetd::inventory::{
+    ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT, OUTBOUND_WORKER,
+};
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::support::install_subscriber;
@@ -156,9 +158,9 @@ async fn test_an_unclean_teardown_is_reported_not_swallowed() {
 fn test_the_daemon_supervises_what_it_claims() {
     assert_eq!(
         BACKGROUND_TASKS,
-        &[HUB_PUMP, OTLP_EXPORT, ANALYTICS_FLUSH],
-        "this build supervises the pub/sub pump, the span exporter and the \
-         analytics flush, and nothing else"
+        &[HUB_PUMP, OUTBOUND_WORKER, OTLP_EXPORT, ANALYTICS_FLUSH],
+        "this build supervises the pub/sub pump, the connector answer-delivery \
+         worker, the span exporter and the analytics flush, and nothing else"
     );
 }
 
@@ -166,11 +168,9 @@ fn test_the_daemon_supervises_what_it_claims() {
 #[tokio::test]
 async fn test_a_daemon_reports_its_inventory_before_running() {
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(HUB_PUMP, |token| async move { token.cancelled().await });
-    supervisor.spawn(OTLP_EXPORT, |token| async move { token.cancelled().await });
-    supervisor.spawn(ANALYTICS_FLUSH, |token| async move {
-        token.cancelled().await;
-    });
+    for task in BACKGROUND_TASKS {
+        supervisor.spawn(task, |token| async move { token.cancelled().await });
+    }
 
     let daemon = Daemon::new(supervisor);
     assert_eq!(

@@ -1,0 +1,76 @@
+[package]
+name = "afd_cron"
+description = "Fleet schedules: the stored intent, the external scheduler it is reconciled against, and the signed fire that wakes a fleet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the direct `Schedule` constructor the sibling crate's
+# route suites drive their cases through; the production door stays the row
+# reader, which is the one that VALIDATES. It also unlocks `one_of_each_kind`,
+# which needs the same seam in the crates whose errors this one wraps — most of
+# these kinds cannot be provoked on demand, and a pool does not exhaust itself
+# politely.
+test-util = ["afd_db/test-util", "afd_redis/test-util"]
+
+[dependencies]
+# Identifiers, the instant a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# Where a new schedule's identifier comes from — see `store::Schedules::mint`.
+afd_crypto.workspace = true
+# The signed fire's at-most-once claim and its append. `OnceScope::ScheduleFire`
+# carries both the key prefix and the retention, so this crate names neither.
+afd_redis.workspace = true
+# The event type and stream field names a fire is appended under.
+afd_wire.workspace = true
+# Resolving a zone name against the system timezone database, so a schedule
+# carrying one the scheduler would reject is refused here instead.
+jiff.workspace = true
+# The constant-time comparison a body claim is checked with — the same
+# primitive `afd_crypto::mac` compares a tag through (RULE CTM).
+subtle.workspace = true
+# Parsing the deployment url a callback destination is built from, so a query
+# or fragment is found by a parser rather than by a substring search.
+url.workspace = true
+# The digest a fire token binds its body with, and the base64url rendering the
+# scheduler emits it in. Compared as text against the claim — see `verifier`.
+base64.workspace = true
+sha2.workspace = true
+# The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
+# on why every default this crate does not want is turned off by name.
+jsonwebtoken.workspace = true
+# The QStash management calls. Both published SDK crates are unmaintained and
+# force older transitive versions; a typed outcome classification is the
+# deliverable and this is the client the rest of the workspace already uses.
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# The cron grammar. Zero dependencies, std-only. This crate PARSES; `validate`
+# adds only the three refusals recorded in the spec's Prior-Art table for
+# expressions it accepts and the external scheduler will not honour as written.
+philiprehberger-cron-parser = "0.3.0"
+
+[dev-dependencies]
+# The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
+# string could only ever assert one shape, and every negative case here is a
+# token that differs from a good one in exactly one claim.
+base64.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
