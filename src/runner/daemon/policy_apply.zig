@@ -138,7 +138,7 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     // in this graph, so the structural proof is the honest one.
     //
     // `dev_none` keeps the expected outcome build-mode dependent, because
-    // Invariant 7 refuses dev_none in a release build. The memleak lane pins
+    // Invariant 7 refuses dev_none in a release build. The retired leak lane pinned
     // ReleaseSafe on Linux (valgrind needs an optimised binary), so each mode
     // asserts its own arm instead of the Debug one twice; both arms run the
     // function, which is what the leak gate needs.

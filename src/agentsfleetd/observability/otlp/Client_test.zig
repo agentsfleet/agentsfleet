@@ -10,7 +10,7 @@ const test_port = @import("../../http/test_port.zig");
 // to lose Zig 0.16's futex wake-after-return race (std.Io.Threaded: the worker
 // publishes the wake condition, then hands a futex word on the awaiter's
 // already-popped stack frame to futex(2); Threaded.zig:760-762). The valgrind
-// memleak lane flags that race, and `make/bench.mk` deliberately carries no
+// the testing allocator flags that race, and `make/bench.mk` deliberately carries no
 // suppression for it because the finding is genuine. No test needs io
 // concurrency: the fail-fast paths never reach the network, and the 200-path's
 // loopback peer runs on its own std.Thread.
@@ -189,7 +189,7 @@ test "integration: test_post_returns_accepted_on_200" {
     // Runs under valgrind: on globalIo() the fetch spawns no std.Io.Threaded
     // worker (io.async runs inline), so no glibc pthread TLS/dtv block exists
     // to read as "possibly lost" — the success path is leak-audited under the
-    // memleak lane like every other test here.
+    // testing allocator like every other test here.
     const io = common.globalIo();
     var loopback = test_port.listenLoopback(io) catch return error.SkipZigTest;
     defer loopback.server.deinit(io);
