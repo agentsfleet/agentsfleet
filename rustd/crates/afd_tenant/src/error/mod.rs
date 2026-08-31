@@ -44,13 +44,6 @@ mod kind;
 
 use self::kind::ErrorKind;
 
-// A stored selection that will not read back is a malformed ROW, so it lifts
-// into the same kind a malformed row anywhere else does. The lift is what
-// `RUST_ERROR_STANDARD` asks of the finer-grained-type carve-out: a caller
-// that DISCRIMINATES matches `StoredPosture` directly, and one that only
-// propagates keeps writing `Result<T>` with no conversion at the call site.
-afd_core::error_lifts!(Error, ErrorKind: crate::provider::StoredPosture => SelectionMalformed);
-
 /// Which device-flow field a refusal names.
 ///
 /// One kind with a field rather than five kinds, because the five differ in
@@ -147,9 +140,9 @@ impl Error {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => {
                 error_code::INTERNAL_DB_UNAVAILABLE
             }
-            ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::SelectionMalformed { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
+                error_code::INTERNAL_DB_QUERY
+            }
             // One internal code for four failures the caller shares an
             // inability to correct. Two are this instance's own — a mint that
             // failed, a host that cannot draw entropy. A missing wallet is
@@ -226,7 +219,6 @@ impl Error {
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::SelectionMalformed { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,

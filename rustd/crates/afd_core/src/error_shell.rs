@@ -100,6 +100,16 @@ macro_rules! error_shell {
             }
         }
 
+        // The captured-backtrace branch below is proven by
+        // `tests/backtrace.rs`, which re-executes the test binary with
+        // `RUST_BACKTRACE=1` because the variable is read once per PROCESS.
+        // Coverage does not follow that child, so the line reads as unhit
+        // while a passing test proves it is not. It was equally unhit before
+        // this hull was generated, when every crate wrote the same branch by
+        // hand; generating it moved one uncovered line rather than adding
+        // seven. Making it reachable in-process would mean restructuring the
+        // capture for the tool's benefit, which that test file declines to do
+        // for the same reason.
         impl std::fmt::Display for $error {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "[{}] {}", self.code().as_str(), self.inner.kind)?;

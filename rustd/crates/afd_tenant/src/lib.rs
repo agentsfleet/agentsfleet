@@ -31,7 +31,6 @@ pub mod cli_credential;
 pub mod error;
 pub mod models;
 pub mod preference;
-pub mod provider;
 pub mod session;
 pub mod signup;
 pub mod sql;
