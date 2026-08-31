@@ -20,6 +20,9 @@ categories.workspace = true
 test-util = []
 
 [dependencies]
+# The signature wall owns the provider scheme strings; this crate resolves a
+# trigger's `source` to one rather than declaring a second copy (RULE UFS).
+afd_webhook.workspace = true
 # Shape and collection work, so this crate writes only the SEMANTIC half.
 # Every field deserializes as `Option`, which is what keeps "you forgot a key"
 # and "you got the shape wrong" two different answers — see `error`.

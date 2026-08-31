@@ -32,18 +32,6 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@cd cli && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
 
-# Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
-# inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus
-# the fixture-driven self-tests that prove each check bites in/out of the roster.
-# Every checker's self-test, not a hand-listed prefix: a narrow pattern meant a
-# new gate's tests sat on disk unrun, which is the same 'enforcement in
-# appearance only' defect this repository deletes dead checkers for.
-# `*_test.py`, not `check_*_test.py`: the narrower pattern silently skipped any
-# script whose name did not start with `check_`, so a self-test could be written,
-# committed and never run — which is worse than not having it. Every existing
-# file matches both spellings; the widening only stops the next one being lost.
-SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
-
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
 # rather than compile correctness. Grouped under one target so `lint-zig` names a
 # policy set instead of a growing list, and so a new rule extends this line
@@ -56,8 +44,6 @@ _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
 	@python3 scripts/check_model_allowlist.py
 
-
-ROUTE_COVERAGE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_openapi_route_coverage*_test.py'
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
 	@python3 scripts/check_route_registration_doc_test.py

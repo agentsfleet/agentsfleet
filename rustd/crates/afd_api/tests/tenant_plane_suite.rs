@@ -2,6 +2,16 @@
 
 mod harness;
 
+#[path = "integration_fleet_schedules.rs"]
+mod integration_fleet_schedules;
+
+#[path = "connector_callback_route.rs"]
+mod connector_callback_route;
+#[path = "integration_connector_callback.rs"]
+mod integration_connector_callback;
+#[path = "integration_connector_status.rs"]
+mod integration_connector_status;
+
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
 #[path = "fleet_grants.rs"]

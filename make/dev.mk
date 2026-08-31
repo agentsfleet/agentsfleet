@@ -4,7 +4,6 @@
 
 .PHONY: up down seed-models _clean _ensure-local-daemon
 
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 LOCAL_UNAME_M := $(shell uname -m)
 ifeq ($(LOCAL_UNAME_M),arm64)
 LOCAL_DOCKER_ARCH := arm64

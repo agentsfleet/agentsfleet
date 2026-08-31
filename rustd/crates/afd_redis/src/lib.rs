@@ -38,9 +38,11 @@
 
 pub mod client;
 pub mod config;
+pub mod dedicated;
 pub mod error;
 pub mod hub;
 pub mod kv;
+pub mod outbound;
 pub mod ready;
 pub mod session;
 pub mod streams;
@@ -51,8 +53,13 @@ pub use afd_core::env::EnvSource;
 
 pub use crate::client::Redis;
 pub use crate::config::{RedisConfig, RedisRole};
+pub use crate::dedicated::Dedicated;
 pub use crate::error::Error;
-pub use crate::hub::{Backoff, Message, Subscription, SubscriptionHub};
+pub use crate::hub::{Message, Subscription, SubscriptionHub, production_backoff};
+pub use crate::outbound::{
+    OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundDelivery, OutboundJob, OutboundQueue,
+    OutboundReader, outbound_consumer,
+};
 pub use crate::ready::{Ready, ReadyIndex, ReadyToken};
 pub use crate::session::{
     AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionState, SessionStatus, SessionStore,

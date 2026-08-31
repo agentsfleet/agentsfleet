@@ -141,10 +141,28 @@ export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TE
 # choose — and nothing it authenticates to holds real data. Derived here from its
 # two plain parts so no credential-shaped blob is stored in the repo.
 # The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-QSTASH_DEV_URL_LOCAL ?= http://localhost:$(COMPOSE_QSTASH_PORT)
+# The API BASE, `/v2` included. `QStash::upsert` composes
+# `{api_base}/schedules/{destination}`, matching the vendor's own
+# `https://qstash.upstash.io/v2`, so a base without the version segment 404s
+# every push — and a 404 is a refusal, so the row lands `Failed` with "not yet
+# registered" and reads exactly like a scheduler outage.
+#
+# `127.0.0.1` rather than `localhost` for the reason the datastore URLs above
+# give: measured here at 13 ms against 140 ms for the name.
+QSTASH_DEV_URL_LOCAL ?= http://127.0.0.1:$(COMPOSE_QSTASH_PORT)/v2
 QSTASH_DEV_IDENTITY ?= defaultUser
 QSTASH_DEV_SECRET ?= defaultPassword
 QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
+
+# The names the live-scheduler tests read. Exported here beside the datastore
+# URLs for their reason: the suites read these names directly rather than a lane
+# resolving them into a fourth spelling. `make/test-integration.mk` exported the
+# same two before M175 §6 deleted it with the Zig gating, and nothing re-exported
+# them afterwards -- which is why the Rust port's schedule sync had "no QStash
+# fake" recorded against it while the compose service was up the whole time.
+AGENTSFLEET_QSTASH_LIVE_URL ?= $(QSTASH_DEV_URL_LOCAL)
+AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(QSTASH_DEV_TOKEN_LOCAL)
+export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 
 # Bring postgres + redis up via docker compose and wait for healthchecks to pass.
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call

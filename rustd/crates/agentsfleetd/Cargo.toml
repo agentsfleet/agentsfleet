@@ -41,6 +41,9 @@ afd_admin.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.
+# The schedules plane the composition root assembles: the store, the scheduler
+# client, and the verifier the fire ingress crosses.
+afd_cron.workspace = true
 reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
@@ -58,12 +61,20 @@ afd_auth.workspace = true
 # The live-stream surface the plane hands the router: the pub/sub hub and the
 # instance's concurrent-stream ceiling, composed once at boot.
 # The product events this daemon reports, and the client behind them.
+# The connector answer-delivery worker this process supervises — see
+# `crate::outbound`.
+afd_outbound.workspace = true
 afd_observability.workspace = true
 afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
 afd_gate.workspace = true
+# The signed-ingress plane the webhook and App ingress routes resolve through.
+afd_ingress.workspace = true
+# The connect flow the connector routes act through, assembled here because its
+# two vault halves read different workspaces — see `plane.rs`.
+afd_connector.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
 # Read-only operator projections are kept off the runner execution crate.

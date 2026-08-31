@@ -20,6 +20,8 @@ use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
 
+use sqlx::{Acquire as _, Transaction};
+
 use crate::error::{ErrorKind, Result, query};
 use crate::secret::{SecretBody, SecretName};
 use crate::{Vault, sql};
@@ -46,11 +48,38 @@ impl Vault {
         body: &SecretBody,
         now: UnixMillis,
     ) -> Result<()> {
+        let mut connection = self.directory.database.acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
+        self.create_in(&mut transaction, workspace, name, body, now)
+            .await?;
+        transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
+        Ok(())
+    }
+
+    /// [`Self::create`], inside a transaction the CALLER owns.
+    ///
+    /// The seam exists because a connect writes two rows that must agree — the
+    /// sealed grant and the routing row naming the account it belongs to — and
+    /// they live in different crates over the same Postgres. Committed
+    /// separately, a failure between them leaves routing describing one
+    /// installation while the vault holds another's credential, which reads as
+    /// connected and is not. See `afd_connector::grant`.
+    ///
+    /// # Errors
+    /// As [`Self::create`]. The transaction is the caller's to commit; dropping
+    /// it rolls back, which is the property this seam is for.
+    pub async fn create_in(
+        &self,
+        transaction: &mut Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+        now: UnixMillis,
+    ) -> Result<()> {
         let envelope = self.seal(workspace, name, body)?;
         let id = self.mint_id(now)?;
         let projection = body.projection();
 
-        let mut connection = self.directory.database.acquire().await?;
         let written = sqlx::query(sql::INSERT_SECRET_IF_ABSENT)
             .bind(id.as_str())
             .bind(workspace.as_str())
@@ -67,7 +96,7 @@ impl Vault {
             .bind(projection.provider.as_deref())
             .bind(projection.base_url.as_deref())
             .bind(projection.has_key)
-            .execute(connection.as_mut())
+            .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_CREATE))?;
 
@@ -106,10 +135,34 @@ impl Vault {
         body: &SecretBody,
         now: UnixMillis,
     ) -> Result<()> {
+        let mut connection = self.directory.database.acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_REPLACE))?;
+        self.replace_in(&mut transaction, workspace, name, body, now)
+            .await?;
+        transaction.commit().await.map_err(query(CONTEXT_REPLACE))?;
+        Ok(())
+    }
+
+    /// [`Self::replace`], inside a transaction the CALLER owns.
+    ///
+    /// Same seam and same reason as [`Self::create_in`]: a reconnect replaces
+    /// the stored grant AND moves the routing row, and the two have to land or
+    /// fail together. A replace that committed alone would leave the newer
+    /// credential under the older routing.
+    ///
+    /// # Errors
+    /// As [`Self::replace`].
+    pub async fn replace_in(
+        &self,
+        transaction: &mut Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+        now: UnixMillis,
+    ) -> Result<()> {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
 
-        let mut connection = self.directory.database.acquire().await?;
         let written = sqlx::query(sql::UPDATE_SECRET)
             .bind(workspace.as_str())
             .bind(name.as_str())
@@ -125,7 +178,7 @@ impl Vault {
             .bind(projection.provider.as_deref())
             .bind(projection.base_url.as_deref())
             .bind(projection.has_key)
-            .execute(connection.as_mut())
+            .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_REPLACE))?;
 

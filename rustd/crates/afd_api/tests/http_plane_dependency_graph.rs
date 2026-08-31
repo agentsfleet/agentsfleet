@@ -11,7 +11,20 @@ use std::path::{Path, PathBuf};
 
 const HTTP_CRATE: &str = "afd_http";
 const COMPOSITION_CRATE: &str = "afd_api";
-const PLANES: [&str; 3] = ["afd_api_tenant", "afd_api_runner", "afd_api_operator"];
+/// Every plane under the substrate.
+///
+/// `afd_api_ingress` joined in M180 and this roster did not follow it, so the
+/// one guard that would have caught the cycle that split exposed was not
+/// grading the plane that caused it: tenant needed `APPROVAL_IDENTITY` and
+/// ingress needed `provider_of`, which is a sibling edge in both directions.
+/// Both symbols moved down into the substrate — that is the fix this asserts
+/// stayed fixed.
+const PLANES: [&str; 4] = [
+    "afd_api_tenant",
+    "afd_api_runner",
+    "afd_api_operator",
+    "afd_api_ingress",
+];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

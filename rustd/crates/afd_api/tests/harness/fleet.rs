@@ -1,5 +1,9 @@
 //! Construction and fluent configuration for the HTTP test fleet.
 
+use afd_connector::{Connectors, Exchange, Grants, PlatformApp};
+use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
+use afd_ingress::Ingress;
+
 use super::*;
 
 impl Fleet {
@@ -52,7 +56,62 @@ impl Fleet {
                 FIXTURE_APP_URL,
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            // The production connect flow, over stores that are not there and a
+            // vendor nothing resolves. Same rule as every other seam: the
+            // refusal a route gives is the one `afd_connector` raises, so the
+            // whole matrix in front of these routes is reachable with no
+            // datastore — which is the entire reason the seam is a trait.
+            connectors: Connectors::new(
+                PlatformApp::new(SecretVault::new(
+                    database.clone(),
+                    Arc::clone(&kek),
+                    Entropy::new(),
+                )),
+                Grants::new(
+                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                    database.clone(),
+                    Entropy::new(),
+                ),
+                Exchange::new(reqwest::Client::new()),
+                reqwest::Client::new(),
+                queue.clone(),
+                Entropy::new(),
+            ),
+            // The production ingress, over stores that are not there. A suite
+            // proving what happens PAST the first acquire swaps this arm out
+            // with `Fleet::with_ingress`.
+            ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), kek, Entropy::new()),
+                queue.clone(),
+            ))),
+            // The production schedules plane, over stores that are not there
+            // and a scheduler nothing resolves. Same rule as every other seam:
+            // the refusal a route gives is the one its own crate raises.
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    CronSchedules::new(database.clone(), Entropy::new()),
+                    QStash::new(
+                        reqwest::Client::new(),
+                        String::new(),
+                        SCHEDULE_DESTINATION.to_owned(),
+                        SCHEDULE_API_BASE.to_owned(),
+                    ),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
+            ),
+            // Fail-closed by default — a suite that proves a verified fire
+            // arranges keys with `Fleet::with_schedule_keys`.
+            schedule_keys: None,
+            // No admin workspace, which is the fail-closed App-ingress state.
+            platform_admin: None,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
+            // Unconfigured by default, so a suite that says nothing about the
+            // identity provider proves the fail-closed refusal a deployment
+            // with no CLERK_WEBHOOK_SECRET gives.
+            identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
@@ -69,6 +128,7 @@ impl Fleet {
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
+            dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -115,7 +175,62 @@ impl Fleet {
                 FIXTURE_APP_URL,
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            // The production connect flow, over stores that are not there and a
+            // vendor nothing resolves. Same rule as every other seam: the
+            // refusal a route gives is the one `afd_connector` raises, so the
+            // whole matrix in front of these routes is reachable with no
+            // datastore — which is the entire reason the seam is a trait.
+            connectors: Connectors::new(
+                PlatformApp::new(SecretVault::new(
+                    database.clone(),
+                    Arc::clone(&kek),
+                    Entropy::new(),
+                )),
+                Grants::new(
+                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                    database.clone(),
+                    Entropy::new(),
+                ),
+                Exchange::new(reqwest::Client::new()),
+                reqwest::Client::new(),
+                queue.clone(),
+                Entropy::new(),
+            ),
+            // The production ingress, over stores that are not there. A suite
+            // proving what happens PAST the first acquire swaps this arm out
+            // with `Fleet::with_ingress`.
+            ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), kek, Entropy::new()),
+                queue.clone(),
+            ))),
+            // The production schedules plane, over stores that are not there
+            // and a scheduler nothing resolves. Same rule as every other seam:
+            // the refusal a route gives is the one its own crate raises.
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    CronSchedules::new(database.clone(), Entropy::new()),
+                    QStash::new(
+                        reqwest::Client::new(),
+                        String::new(),
+                        SCHEDULE_DESTINATION.to_owned(),
+                        SCHEDULE_API_BASE.to_owned(),
+                    ),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
+            ),
+            // Fail-closed by default — a suite that proves a verified fire
+            // arranges keys with `Fleet::with_schedule_keys`.
+            schedule_keys: None,
+            // No admin workspace, which is the fail-closed App-ingress state.
+            platform_admin: None,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
+            // Unconfigured by default, so a suite that says nothing about the
+            // identity provider proves the fail-closed refusal a deployment
+            // with no CLERK_WEBHOOK_SECRET gives.
+            identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
@@ -131,6 +246,7 @@ impl Fleet {
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
             library_imports: LibraryImports::without_store(database),
+            dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -168,9 +284,63 @@ impl Fleet {
         self
     }
 
+    /// Runs the connect flow over live stores and a vendor a test can answer.
+    ///
+    /// Three seams move together and none of them is optional. The nonce slot
+    /// lives in the QUEUE, so a spend against an unreachable one proves nothing
+    /// about single use. The grant is sealed in the VAULT, so its landing is
+    /// only observable over a live pool. And the token exchange posts to the
+    /// provider's own endpoint, which no test may reach — `Exchange::pointed_at`
+    /// is the seam the crate already carries for exactly this, and pointing it
+    /// at a loopback server is what makes a completed connect reachable at all.
+    pub(crate) fn with_live_connectors(
+        mut self,
+        database: Db,
+        queue: Redis,
+        vendor: String,
+    ) -> Self {
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        self.connectors = Connectors::new(
+            PlatformApp::new(SecretVault::new(
+                database.clone(),
+                Arc::clone(&kek),
+                Entropy::new(),
+            )),
+            Grants::new(
+                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                database,
+                Entropy::new(),
+            ),
+            Exchange::new(reqwest::Client::new()).pointed_at(vendor),
+            reqwest::Client::new(),
+            queue,
+            Entropy::new(),
+        );
+        self
+    }
+
     /// Runs fleet installation and purge over a live queue and database.
     pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Redis) -> Self {
         self.fleets = Fleets::new(database, queue, Entropy::new());
+        self
+    }
+
+    /// Runs the signed-ingress routes over a live database and queue.
+    ///
+    /// The production [`Ingress`] with both stores actually there, where
+    /// [`Self::live`] leaves the queue unreachable and [`Self::with_ingress`]
+    /// replaces the store entirely. That makes this the only arm on which the
+    /// whole resolve → open → append order runs as the daemon runs it: the
+    /// binding comes out of `core.fleets`, the secret out of `vault.secrets`,
+    /// and the claim lands in Redis. A suite on `Scripted` proves what the
+    /// HANDLER decided; this one proves the store underneath it answers.
+    pub(crate) fn with_live_ingress(mut self, database: Db, queue: Redis) -> Self {
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
+            database.clone(),
+            SecretVault::new(database, kek, Entropy::new()),
+            queue,
+        )));
         self
     }
 
@@ -312,5 +482,65 @@ impl Fleet {
     pub(crate) fn router(self) -> Router {
         let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
         build(Arc::new(self), &admission)
+    }
+
+    /// An instance whose ingress ANSWERS, rather than refusing at an acquire.
+    ///
+    /// The one seam a signed-ingress suite has to arrange: every store in this
+    /// harness is the production one over a datastore that is not there, which
+    /// proves what these routes refuse and nothing about what they do once a
+    /// delivery is believed. See [`stubs_ingress`] on why that arm exists and
+    /// what it deliberately does not stand in for.
+    pub(crate) fn with_ingress(mut self, scripted: &Arc<Scripted>) -> Self {
+        self.ingress = HarnessIngress::Scripted(Arc::clone(scripted));
+        self
+    }
+
+    /// An instance holding the scheduler's signing keys.
+    ///
+    /// Absent by default, which is the fail-closed state a fire is refused in.
+    pub(crate) fn with_schedule_keys(mut self, current: &str, next: &str) -> Self {
+        self.schedule_keys = Some(afd_cron::SigningKeys {
+            current: current.to_owned(),
+            next: next.to_owned(),
+        });
+        self
+    }
+
+    /// An instance that configured a platform admin workspace.
+    ///
+    /// `None` is the default and it is a real deployment state rather than an
+    /// unset fixture: an App signs every installation's deliveries with ONE
+    /// secret belonging to the deployment, so a daemon that was given no admin
+    /// workspace has nowhere to read it from and fails closed. Leaving the
+    /// default alone is how a suite reaches that branch.
+    /// Points this fixture's connect relay at `base`.
+    ///
+    /// Exists for the one case that needs an UNUSABLE base: `relay_uri` refuses
+    /// a dashboard base that is not a URL, and answers it as unconfigured
+    /// because a boot-time misconfiguration is what it is. Sending somebody to
+    /// a page that cannot exist would be the alternative.
+    pub(crate) fn with_dashboard_base(mut self, base: &str) -> Self {
+        base.clone_into(&mut self.dashboard_base);
+        self
+    }
+
+    pub(crate) fn with_platform_admin(mut self, workspace: Uuid7) -> Self {
+        self.platform_admin = Some(workspace);
+        self
+    }
+
+    /// Configures the secret a signup event is verified against.
+    ///
+    /// `None` is the default and it is a real deployment state rather than an
+    /// unset fixture: a daemon given no secret refuses every delivery, because
+    /// accepting an unverified one on a route that CREATES ACCOUNTS is worse
+    /// than serving none. Leaving the default alone is how a suite reaches
+    /// that branch.
+    pub(crate) fn with_identity_secret(mut self, secret: &str) -> Self {
+        self.identity_webhook_secret = Some(afd_crypto::secret::SecretBytes::new(
+            secret.as_bytes().to_vec(),
+        ));
+        self
     }
 }

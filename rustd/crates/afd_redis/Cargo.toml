@@ -21,7 +21,13 @@ test-util = ["afd_core/test-util"]
 
 [dependencies]
 afd_core.workspace = true
+# The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
+# hand-rolled `Backoff` beside a jitter source of its own.
+backon.workspace = true
 futures-util.workspace = true
+# The outbound consumer name, which has to survive a restart — see
+# `outbound::outbound_consumer`.
+hostname.workspace = true
 redis.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -30,6 +36,9 @@ tokio = { workspace = true, features = ["sync", "rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# The reconnect schedule the suites configure and assert on; the library half
+# is a regular dependency.
+backon.workspace = true
 # Installed by the test harness so event macros evaluate their fields; see the
 # workspace manifest for why that is a correctness concern and not a coverage one.
 tracing-subscriber.workspace = true

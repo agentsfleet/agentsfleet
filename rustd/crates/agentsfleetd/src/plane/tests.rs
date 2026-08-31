@@ -50,6 +50,18 @@ fn plane() -> ServingPlane {
             Arc::new(vendors),
         )),
         live: Live::detached(Ceiling::new(4)),
+        // No admin workspace and no scheduler credentials: the fail-closed
+        // deployment state, which is what this fixture is for — the plane must
+        // map every service to its own store whether or not either is present.
+        platform_admin_workspace: None,
+        identity_webhook_secret: None,
+        schedule: crate::plane::ScheduleConfig {
+            client: reqwest::Client::new(),
+            token: String::new(),
+            destination: String::new(),
+            api_base: String::new(),
+            keys: None,
+        },
         analytics: Analytics::silent(),
         login: LoginConfig {
             code_pepper: SecretBytes::new(b"plane-test-pepper".to_vec()),

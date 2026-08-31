@@ -14,7 +14,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::secret::{Kek, SecretBytes};
 
 /// Bytes in an HMAC-SHA256 output.
-pub const MAC_LEN: usize = 32;
+pub const HMAC_SHA256_TAG_LEN: usize = 32;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -29,11 +29,11 @@ const KEY_LENGTH_IS_UNCONSTRAINED: &str = "HMAC accepts a key of any length";
 ///
 /// `PartialEq` is deliberately NOT derived. Deriving it would give callers a
 /// `==` that short-circuits, which is the timing leak this type exists to
-/// prevent; [`Mac256::verify`] is the only way to compare two of these.
+/// prevent; [`HmacSha256Tag::verify`] is the only way to compare two of these.
 #[derive(Clone)]
-pub struct Mac256([u8; MAC_LEN]);
+pub struct HmacSha256Tag([u8; HMAC_SHA256_TAG_LEN]);
 
-impl Mac256 {
+impl HmacSha256Tag {
     /// Computes the code over `message` under `key`.
     ///
     /// Infallible, and deliberately so. `new_from_slice` is typed as fallible
@@ -71,7 +71,7 @@ impl Mac256 {
     /// The device-flow pepper is an operator-supplied string rather than a
     /// key-encryption key, so it has no fixed width. HMAC is defined for a key
     /// of any length — the construction pads or hashes it down itself — which
-    /// is why [`Mac256::compute`] can take a fixed array and this can take a
+    /// is why [`HmacSha256Tag::compute`] can take a fixed array and this can take a
     /// slice with no second implementation between them.
     ///
     /// `parts` are fed in order with no separator, matching what the Zig
@@ -81,7 +81,7 @@ impl Mac256 {
     /// other binary approved.
     ///
     /// # Panics
-    /// Cannot, for the reason [`Mac256::compute`] cannot: HMAC forbids no key
+    /// Cannot, for the reason [`HmacSha256Tag::compute`] cannot: HMAC forbids no key
     /// length, so `new_from_slice`'s error arm is unconstructible.
     #[must_use]
     pub fn compute_peppered(pepper: &SecretBytes, parts: &[&[u8]]) -> Self {
@@ -101,12 +101,12 @@ impl Mac256 {
     /// Rebuilds a code from stored bytes, rejecting a wrong length.
     ///
     /// # Errors
-    /// Returns a malformed-envelope error when the slice is not `MAC_LEN` bytes.
+    /// Returns a malformed-envelope error when the slice is not `HMAC_SHA256_TAG_LEN` bytes.
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
-        let sized: [u8; MAC_LEN] = bytes.try_into().map_err(|_err| {
+        let sized: [u8; HMAC_SHA256_TAG_LEN] = bytes.try_into().map_err(|_err| {
             Error::new(ErrorKind::ComponentLength {
                 component: "message authentication code",
-                expected: MAC_LEN,
+                expected: HMAC_SHA256_TAG_LEN,
                 actual: bytes.len(),
             })
         })?;
@@ -130,14 +130,14 @@ impl Mac256 {
     /// A code is not secret — it is what gets stored so the secret does not
     /// have to be — so this returns the bytes rather than redacting them.
     #[must_use]
-    pub const fn as_bytes(&self) -> &[u8; MAC_LEN] {
+    pub const fn as_bytes(&self) -> &[u8; HMAC_SHA256_TAG_LEN] {
         &self.0
     }
 
     /// The code as lowercase hexadecimal, the form the daemon stores.
     #[must_use]
     pub fn to_hex(&self) -> String {
-        let mut out = String::with_capacity(MAC_LEN * 2);
+        let mut out = String::with_capacity(HMAC_SHA256_TAG_LEN * 2);
         for byte in self.0 {
             // A two-digit lowercase hex write cannot fail into a `String`.
             use std::fmt::Write as _;
@@ -148,8 +148,8 @@ impl Mac256 {
 }
 
 /// Renders the code, which is a digest rather than the secret behind it.
-impl std::fmt::Debug for Mac256 {
+impl std::fmt::Debug for HmacSha256Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Mac256({})", self.to_hex())
+        write!(f, "HmacSha256Tag({})", self.to_hex())
     }
 }

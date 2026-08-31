@@ -12,7 +12,7 @@ pub use handler::{fleet, secret, tenant};
 use std::sync::Arc;
 
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
-use route::{AuthRoute, FleetRoute, TenantRoute, WorkspaceRoute};
+use route::{AuthRoute, ConnectorRoute, FleetRoute, TenantRoute, WorkspaceRoute};
 use services::Services;
 
 /// Selects the device-flow handler for an authentication route.
@@ -91,6 +91,50 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
             get(handler::fleet::message::thread::<D>).post(handler::fleet::message::steer::<D>),
         ),
         FleetRoute::EventsStream => Some(get(handler::stream::fleet::<D>)),
-        FleetRoute::Schedules | FleetRoute::Schedule | FleetRoute::ScheduleSync => None,
+        // No PUT beside the PATCH: a schedule is edited field by field, and a
+        // whole-row replace would let a caller silently drop the upstream
+        // handle the sync reconciles against.
+        FleetRoute::Schedules => {
+            Some(get(handler::schedule::list::<D>).post(handler::schedule::create::<D>))
+        }
+        FleetRoute::Schedule => Some(
+            get(handler::schedule::one::<D>)
+                .patch(handler::schedule::patch::<D>)
+                .delete(handler::schedule::purge::<D>),
+        ),
+        FleetRoute::ScheduleSync => Some(post(handler::schedule::sync::<D>)),
+    }
+}
+
+/// Selects the handler for a connector route the caller proves with a bearer.
+///
+/// `Events` is `None` here on purpose: it is the one route in this family
+/// proven by a signature over its body rather than by a credential of ours,
+/// and it belongs to the ingress plane. Splitting the family this way is what
+/// keeps "every handler in that crate is signature-walled" a fact about a
+/// compilation unit rather than a per-route claim.
+///
+/// # Two routes on one template, and why the guards do not merge
+///
+/// [`ConnectorRoute::Callback`] and [`ConnectorRoute::Complete`] share
+/// `/v1/connectors/{provider}/callback` and differ in GUARD — the provider's
+/// redirect carries no credential of ours, the dashboard's completion carries
+/// a bearer. The router layers each route with its OWN metadata before merging
+/// the two method routers, which is the only reason a same-template pair may
+/// disagree about its guard at all.
+pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        ConnectorRoute::Catalog => Some(get(handler::connector::catalogue::list::<D>)),
+        // GET reads and DELETE forgets, on one template: two verbs on one
+        // resource, and there is no PUT beside them because a connection is
+        // produced by a consent round-trip and cannot be asserted.
+        ConnectorRoute::Status => Some(
+            get(handler::connector::status::read::<D>)
+                .delete(handler::connector::status::disconnect::<D>),
+        ),
+        ConnectorRoute::Connect => Some(post(handler::connector::connect::start::<D>)),
+        ConnectorRoute::Callback => Some(get(handler::connector::callback::relay::<D>)),
+        ConnectorRoute::Complete => Some(post(handler::connector::callback::complete::<D>)),
+        ConnectorRoute::Events => None,
     }
 }

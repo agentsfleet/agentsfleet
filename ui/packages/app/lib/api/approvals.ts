@@ -91,7 +91,7 @@ export async function getApproval(
   );
 }
 
-// Wire-protocol values the API understands for the `:approve` / `:deny` POST
+// Wire-protocol values the API understands for the `/approve` / `/deny` POST
 // paths. Single source of truth — dashboard components import these so the
 // decision flow has one place that pins the literal.
 export const APPROVAL_DECISION = {
@@ -112,7 +112,11 @@ async function resolveAction(
   reason?: string,
 ): Promise<ResolveOutcome> {
   const body = JSON.stringify(reason ? { reason } : {});
-  const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}:${decision}`;
+  // `/decision` as its own segment, not `:decision`. The daemon's router binds
+  // one parameter per path segment and refuses a literal after it, so the
+  // custom verb cannot ride the gate identifier — see `WorkspaceRoute::
+  // ApprovalResolve` in `rustd/crates/afd_api`, which is the served spelling.
+  const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}/${decision}`;
   // Bypass `request()` so a 409 returns a body instead of throwing.
   const base = typeof window === "undefined" ? requireApiOrigin() : "/backend";
   const res = await fetch(`${base}${url}`, {

@@ -31,6 +31,7 @@ mod row;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
+use afd_redis::streams::OnceScope;
 use afd_redis::{FleetStreams, Redis};
 use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
@@ -242,6 +243,7 @@ impl Inbox {
         let kind = afd_wire::event::EventType::Continuation.as_str();
         let appended = FleetStreams::new(self.queue.clone())
             .append_once(
+                OnceScope::FleetIntent,
                 &resolved.action_id,
                 &resolved.fleet_id,
                 &[

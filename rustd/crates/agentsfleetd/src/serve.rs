@@ -33,6 +33,8 @@ use std::time::Duration;
 
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
+use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_observability::{Analytics, Telemetry};
 use afd_redis::Redis;
@@ -138,7 +140,15 @@ async fn open(
 ) -> Result<Booted, BootFailure> {
     let runtime = open_runtime(&config, &analytics).await?;
     let router = afd_api::router::build(runtime.plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
-    spawn_background(supervisor, &runtime.database, &runtime.queue, runtime.hub);
+    spawn_background(
+        supervisor,
+        &config,
+        &runtime.database,
+        &runtime.queue,
+        &runtime.kek,
+        runtime.hub,
+    )
+    .await;
     report_workers(supervisor, &analytics);
     let address = listen(port, router, supervisor).await?;
     analytics.report(&Telemetry::ServerStarted {
@@ -161,6 +171,10 @@ struct Runtime {
     queue: Redis,
     plane: Shared,
     hub: Option<afd_redis::SubscriptionHub>,
+    /// The same key the plane seals with. The outbound worker opens its own
+    /// grant store over it, so boot hands one key to both rather than reading
+    /// the knob twice.
+    kek: Arc<Kek>,
 }
 
 async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runtime, BootFailure> {
@@ -185,13 +199,38 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
     let plane = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
         database: database.clone(),
         queue: queue.clone(),
-        kek,
+        // Cloned rather than moved: the outbound worker below opens its own
+        // grant store over the same key, for the reason `crate::outbound`
+        // gives — it runs beside the plane, not through it.
+        kek: Arc::clone(&kek),
         capabilities,
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
+        platform_admin_workspace: config.platform_admin_workspace().cloned(),
+        // Fail-closed: a deployment that named no secret refuses every signup
+        // delivery rather than trusting an unverified one to open an account.
+        identity_webhook_secret: config
+            .identity_webhook_secret()
+            .map(|secret| afd_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec())),
         broker,
         live,
         analytics: analytics.clone(),
+        // A destination that will not build is a deployment that cannot
+        // register schedules, and it fails CLOSED rather than registering a
+        // truncated callback: the empty string matches no token's subject, so
+        // every fire is refused until the api url is corrected.
+        schedule: crate::plane::ScheduleConfig {
+            client: reqwest::Client::new(),
+            token: config.qstash_token().unwrap_or_default().to_owned(),
+            destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
+            // The one place the vendor's US region is chosen, and only when this
+            // deployment named no scheduler of its own.
+            api_base: config
+                .qstash_url()
+                .unwrap_or(afd_cron::qstash::API_BASE)
+                .to_owned(),
+            keys: config.qstash_signing_keys().cloned(),
+        },
         login: crate::plane::LoginConfig {
             code_pepper: config.session_code_pepper().clone(),
             app_url: config.app_url().to_owned(),
@@ -203,13 +242,16 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
         queue,
         plane,
         hub,
+        kek,
     })
 }
 
-fn spawn_background(
+async fn spawn_background(
     supervisor: &mut Supervisor,
+    config: &BootConfig,
     database: &Db,
     queue: &Redis,
+    kek: &Arc<Kek>,
     hub: Option<afd_redis::SubscriptionHub>,
 ) {
     if let Some(hub) = hub {
@@ -218,7 +260,28 @@ fn spawn_background(
             hub.shutdown();
         });
     }
+    // The sweepers read through pools that are open by now. Starting them
+    // after the socket would leave a window where the plane serves while
+    // nothing is noticing dead runners.
     crate::sweepers::spawn(supervisor, database, queue);
+    // The connector answer-delivery worker, beside them and for the same
+    // reason. Its own Redis connection, because it blocks on the stream — see
+    // `crate::outbound`. It opens its own grant store over the SAME key the
+    // plane seals with, which is why the KEK arrives shared rather than
+    // rebuilt here.
+    crate::outbound::spawn(
+        supervisor,
+        config.redis(),
+        database,
+        queue,
+        afd_connector::Grants::new(
+            afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        crate::credentials::vendor_exchange_client(),
+    )
+    .await;
 }
 
 fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {

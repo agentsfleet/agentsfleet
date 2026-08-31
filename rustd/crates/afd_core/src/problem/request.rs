@@ -86,6 +86,104 @@ pub(super) const REQUEST: &[Problem] = &[
             "A secret with that name already exists. Rename this one, or open the existing secret and replace its value.",
         ),
     },
+    // The webhook family carries no dashboard sentence, and that is a fact
+    // about who reads it rather than an omission: every one of these is
+    // rendered in a PROVIDER's delivery log — GitHub's, Slack's, Svix's — to an
+    // operator debugging an integration, and never in this product's console.
+    // `error_entries.zig` marks every one of them `reachable: no` for the same
+    // reason, and `test_entries_match_the_zig_registry` pins the absence both
+    // ways. The last three are narrower still: they are never rendered as a
+    // problem at all, because the App ingress names them as the REASON in a
+    // 200 rather than raising them. They are declared here so that the two
+    // registries stay each other's mirror — a code with no entry resolves to
+    // UNKNOWN and would answer 500 if one ever were raised.
+    Problem {
+        code: error_code::WEBHOOK_FLEET_NOT_FOUND,
+        status: 404,
+        title: "Fleet not found for webhook",
+        hint: "No fleet is registered for this webhook endpoint.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_MALFORMED,
+        status: 400,
+        title: "Malformed webhook",
+        hint: "Webhook payload could not be parsed. Check Content-Type and body.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_SIGNATURE_INVALID,
+        status: 401,
+        title: "Invalid webhook signature",
+        hint: "The webhook signature did not verify. The stored signing secret must match the one configured upstream.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_TIMESTAMP_STALE,
+        status: 401,
+        title: "Stale webhook timestamp",
+        hint: "The webhook timestamp is more than 5 minutes off. That means a replay or clock skew.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED,
+        status: 401,
+        title: "Webhook credential not configured",
+        hint: "The trigger's source is not a recognized webhook provider (github, slack, linear), or the workspace holds no secret for it. Set a recognized source. Then store a random value of at least 32 bytes in that secret's webhook_secret field, set the same upstream, and resend.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_INSTALL_NOT_MAPPED,
+        status: 404,
+        title: "Connector installation is not mapped",
+        hint: "Reconnect the provider App to the intended workspace, then redeliver the event.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND,
+        status: 404,
+        title: "No fleet subscription matched",
+        hint: "Bind the repository and event to an active fleet with an approved integration grant.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
+        status: 413,
+        title: "Webhook payload too large",
+        hint: "The webhook body exceeds the 1 MiB limit. Reduce the payload size.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::SCHEDULE_NOT_FOUND,
+        status: 404,
+        title: "Schedule not found",
+        hint: "No schedule matches this identifier for the selected Fleet.",
+        user_message: None,
+    },
+    Problem {
+        // 409, not 400: the Zig answers `conflict` and a status is a property
+        // of the CODE — the two binaries disagreeing about it is what sends a
+        // client down a branch the other daemon never produces.
+        code: error_code::SCHEDULE_LIMIT_REACHED,
+        status: 409,
+        title: "Schedule limit reached",
+        hint: "A Fleet can hold at most 32 schedules. Remove one before creating another.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::SCHEDULE_KEY_TAKEN,
+        status: 409,
+        title: "Schedule source already exists",
+        hint: "A schedule already uses this source key for the selected Fleet. Pick a different source or update the existing schedule.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::SCHEDULE_SYNCING,
+        status: 409,
+        title: "Schedule update busy",
+        hint: "Another schedule mutation holds the synchronization lease. Retry after the reported delay.",
+        user_message: None,
+    },
     Problem {
         code: error_code::APPROVAL_NOT_FOUND,
         status: 404,
