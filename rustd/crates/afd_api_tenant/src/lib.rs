@@ -7,7 +7,7 @@
 pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
 
 mod handler;
-pub use handler::{fleet, secret, tenant};
+pub use handler::{fleet, secret, tenant, workspace_library};
 
 use std::sync::Arc;
 
@@ -81,7 +81,10 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::<D>)),
         WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
         WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::FleetLibrary => None,
+        WorkspaceRoute::FleetLibrary => Some(
+            get(handler::workspace_library::list::<D>)
+                .post(handler::workspace_library::onboard::<D>),
+        ),
     }
 }
 

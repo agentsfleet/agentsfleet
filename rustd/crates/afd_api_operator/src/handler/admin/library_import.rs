@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_library::{Destination, ImportBody, InvalidBundle, Onboarded, SourceKind, valid_revision};
-use afd_wire::admin::{AdminLibraryCreated, AdminLibraryImport, AdminLibraryRequirements};
+use afd_library::{Destination, Onboarded};
+use afd_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -15,20 +15,11 @@ use http::StatusCode;
 
 use crate::auth::PersonIdentity;
 use crate::envelope::ProblemResponse;
-use crate::handler::{refuse, reject};
+use crate::handler::{library_onboard, refuse, reject};
 use crate::request_id::RequestId;
 use crate::services::Services;
 
 const VISIBILITY_PLATFORM: &str = "platform";
-const DETAIL_BODY_REQUIRED: &str = "A request body is required";
-const DETAIL_MALFORMED_JSON: &str = "The request body is not valid JSON";
-const DETAIL_SOURCE_KIND: &str = "source_kind must be template, upload, or github";
-const DETAIL_MISSING_SKILL: &str = "missing_skill";
-const DETAIL_UPLOAD_ATTACHMENTS: &str =
-    "upload sources cannot carry support files; use a github or template source";
-const DETAIL_UPLOAD_REVISION: &str = "upload sources cannot carry a repository ref";
-const DETAIL_TEMPLATE_REVISION: &str = "template sources cannot carry a repository ref";
-const DETAIL_SOURCE_REF: &str = "source_ref must be 'owner/repo' for a github source";
 const DETAIL_COLLISION: &str = "That bundle's name is already taken by a different repository. Rename the bundle, or retry with replace to overwrite it.";
 
 /// Fetches or accepts one bundle, validates it, and stages its row as draft.
@@ -37,62 +28,32 @@ pub(crate) async fn create<D: Services>(
     identity: PersonIdentity,
     body: Bytes,
 ) -> Response {
-    let (kind, request) = match request(&body) {
+    let parsed = match library_onboard::parse(&body) {
         Ok(parsed) => parsed,
         Err((code, detail)) => return reject(code, detail),
     };
-    let result = import(&*services, kind, request, services.now()).await;
+    let result = import(
+        &*services,
+        parsed.onboarding,
+        services.now(),
+        parsed.replace_requested,
+    )
+    .await;
     respond(result, &identity)
 }
 
 async fn import<D: Services>(
     services: &D,
-    kind: SourceKind,
-    request: AdminLibraryImport<'_>,
+    onboarding: library_onboard::Onboarding<'_>,
     now: UnixMillis,
+    replace: bool,
 ) -> afd_library::Result<Onboarded> {
     // The operator-curated catalogue, and the only tier that takes a `replace`:
     // it is keyed by the bundle's own name, so a second source claiming an
     // existing one is a collision somebody may choose to force past. A
     // workspace's library is keyed by its content hash and has nothing to force.
-    let into = Destination::Platform {
-        replace: request.replace,
-    };
-    match kind {
-        SourceKind::Upload => {
-            let Some(skill) = request.skill_markdown else {
-                return Err(afd_library::Error::Invalid(InvalidBundle::MissingSkill));
-            };
-            let input = ImportBody {
-                source_kind: SourceKind::Upload,
-                source_ref: request.source_ref.into_owned(),
-                source_revision: None,
-                skill_markdown: skill.into_owned().into_bytes(),
-                trigger_markdown: request
-                    .trigger_markdown
-                    .map(|markdown| markdown.into_owned().into_bytes()),
-                support_files: Vec::new(),
-            };
-            services.library_imports().upload(&input, into, now).await
-        }
-        SourceKind::Github => {
-            services
-                .library_imports()
-                .github(
-                    request.source_ref.as_ref(),
-                    request.revision.as_deref(),
-                    into,
-                    now,
-                )
-                .await
-        }
-        SourceKind::Template => {
-            services
-                .library_imports()
-                .template(request.source_ref.as_ref(), into, now)
-                .await
-        }
-    }
+    let into = Destination::Platform { replace };
+    library_onboard::run(services.library_imports(), onboarding, into, now).await
 }
 
 fn respond(result: afd_library::Result<Onboarded>, identity: &PersonIdentity) -> Response {
@@ -115,48 +76,6 @@ fn respond(result: afd_library::Result<Onboarded>, identity: &PersonIdentity) ->
             .into_response(),
             None => refuse(&error, "admin_library_import_failed"),
         },
-    }
-}
-
-/// The request, with its source kind PARSED rather than checked.
-///
-/// The kind comes back as a [`SourceKind`] and not a string, so the dispatch
-/// below is exhaustive over the three this daemon serves and carries no
-/// unreachable arm — the spelling is `SourceKind`'s own, which is also what
-/// stops this file and the store from drifting onto different ones (RULE UFS).
-fn request(
-    body: &[u8],
-) -> Result<(SourceKind, AdminLibraryImport<'_>), (error_code::ErrorCode, &'static str)> {
-    if body.is_empty() {
-        return Err((error_code::INVALID_REQUEST, DETAIL_BODY_REQUIRED));
-    }
-    let request = afd_core::json::object_from_slice::<AdminLibraryImport<'_>>(body)
-        .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
-    let kind = SourceKind::parse(request.source_kind.as_ref())
-        .ok_or((error_code::FLEET_BUNDLE_INVALID, DETAIL_SOURCE_KIND))?;
-
-    let refusal = match kind {
-        SourceKind::Upload if request.skill_markdown.is_none() => Some(DETAIL_MISSING_SKILL),
-        SourceKind::Upload if !request.support_files.is_empty() => Some(DETAIL_UPLOAD_ATTACHMENTS),
-        SourceKind::Upload if request.revision.is_some() => Some(DETAIL_UPLOAD_REVISION),
-        SourceKind::Template if request.revision.is_some() => Some(DETAIL_TEMPLATE_REVISION),
-        SourceKind::Template if !valid_revision(request.source_ref.as_ref()) => {
-            Some(DETAIL_SOURCE_REF)
-        }
-        SourceKind::Github
-            if afd_library::Repository::parse(request.source_ref.as_ref()).is_err()
-                || request
-                    .revision
-                    .as_deref()
-                    .is_some_and(|revision| !valid_revision(revision)) =>
-        {
-            Some(DETAIL_SOURCE_REF)
-        }
-        SourceKind::Upload | SourceKind::Github | SourceKind::Template => None,
-    };
-    match refusal {
-        Some(detail) => Err((error_code::FLEET_BUNDLE_INVALID, detail)),
-        None => Ok((kind, request)),
     }
 }
 
@@ -193,64 +112,7 @@ mod tests {
     )]
 
     use super::*;
-
-    #[test]
-    fn import_request_rejects_source_mismatches_before_io() {
-        // The kind comes back PARSED, so a caller downstream matches on a
-        // closed set rather than on a string it has to re-check.
-        assert_eq!(
-            request(br#"{"source_kind":"upload","skill_markdown":"---"}"#).map(|(kind, _)| kind),
-            Ok(SourceKind::Upload)
-        );
-        assert_eq!(
-            request(br#"{"source_kind":"upload","skill_markdown":"---","ref":"main"}"#)
-                .map(|_parsed| ()),
-            Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_UPLOAD_REVISION))
-        );
-        assert_eq!(
-            request(br#"{"source_kind":"github","source_ref":"owner/repo/extra"}"#)
-                .map(|_parsed| ()),
-            Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_SOURCE_REF))
-        );
-
-        for (body, expected) in [
-            (b"".as_slice(), DETAIL_BODY_REQUIRED),
-            (b"[]".as_slice(), DETAIL_MALFORMED_JSON),
-            (br#"{"source_kind":"upload"}"#, DETAIL_MISSING_SKILL),
-            // Carries the skill so the missing-skill guard above passes and the
-            // attachment arm is the one that answers. Without it this case
-            // silently graded the wrong refusal.
-            (
-                br#"{"source_kind":"upload","skill_markdown":"---","support_files":[{}]}"#,
-                DETAIL_UPLOAD_ATTACHMENTS,
-            ),
-            (
-                br#"{"source_kind":"template","source_ref":"reviewer","ref":"main"}"#,
-                DETAIL_TEMPLATE_REVISION,
-            ),
-            (
-                br#"{"source_kind":"template","source_ref":"bad/ref"}"#,
-                DETAIL_SOURCE_REF,
-            ),
-            (
-                br#"{"source_kind":"github","source_ref":"owner/repo","ref":"bad/ref"}"#,
-                DETAIL_SOURCE_REF,
-            ),
-            (br#"{"source_kind":"unknown"}"#, DETAIL_SOURCE_KIND),
-        ] {
-            assert_eq!(
-                request(body).map(|_parsed| ()),
-                Err((
-                    if expected == DETAIL_BODY_REQUIRED || expected == DETAIL_MALFORMED_JSON {
-                        error_code::INVALID_REQUEST
-                    } else {
-                        error_code::FLEET_BUNDLE_INVALID
-                    },
-                    expected,
-                ))
-            );
-        }
-    }
+    use afd_library::{ImportBody, SourceKind};
 
     #[test]
     fn a_prepared_bundle_maps_every_requirement_to_the_created_wire_shape() {
