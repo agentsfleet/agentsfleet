@@ -217,6 +217,13 @@ pub(crate) struct Fleet {
     signups: afd_tenant::signup::Signups,
     /// What a signup event is verified against — `None` refuses every one.
     identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
+    /// The dashboard base a connect relays through.
+    ///
+    /// A field rather than the constant so ONE case can make it unusable. Every
+    /// other fixture keeps `FIXTURE_APP_URL`, because a base that is not a URL
+    /// makes every connect refuse for a reason that test was not about — which
+    /// is exactly why the refusal needs its own case rather than a shared one.
+    dashboard_base: String,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,

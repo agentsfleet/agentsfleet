@@ -35,6 +35,7 @@ use crate::harness;
 use self::harness::Fleet;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code::{self, ErrorCode};
+use serde_json::Value;
 use http::{Method, StatusCode, header};
 
 /// A person holding the connector-write scope `Complete` demands.
@@ -238,5 +239,52 @@ async fn a_person_without_the_connector_write_scope_cannot_complete() {
         StatusCode::FORBIDDEN,
         "reading which connectors exist and redeeming a grant into the vault \
          are different capabilities"
+    );
+}
+
+/// A dashboard base that is not a URL refuses instead of relaying somewhere.
+///
+/// The browser leg exists to hand a provider's redirect on to the dashboard, so
+/// it is the one place a bad `APP_URL` shows up — and it shows up as a person
+/// mid-connect, not as a failing boot. Answering `CONNECTOR_NOT_CONFIGURED`
+/// says the true thing: this deployment cannot connect the provider, because
+/// its own configuration is wrong.
+///
+/// The alternative is worse than a refusal. A base that will not parse and is
+/// relayed anyway sends the browser to a location assembled from a broken
+/// string — a page that cannot exist, carrying the authorization code in its
+/// query, with no way back and nothing logged where an operator would look.
+#[tokio::test]
+async fn a_dashboard_base_that_is_not_a_url_is_refused_rather_than_relayed_to() {
+    let router = Fleet::new()
+        .with_dashboard_base("not a url at all")
+        .router();
+    let target = format!("{}?code={CODE}&state={FORGED_STATE}", path(SHIPPED));
+    let response = harness::send(&router, Method::GET, &target, None, "").await;
+
+    assert!(
+        response.headers().get(header::LOCATION).is_none(),
+        "a refusal must not also redirect — the browser has to stop here"
+    );
+
+    // A 5xx, and deliberately not the 4xx every other refusal in this file
+    // carries: nothing the caller sent is wrong, and there is no request they
+    // could retry differently. The operator is the one who can fix it, so the
+    // status has to say the server is the problem — which is why this case
+    // asserts directly rather than through `refusal`, whose whole contract is
+    // that a refusal is the caller's to fix.
+    let status = response.status();
+    let document = harness::json_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "a deployment that cannot connect the provider is unavailable, not a \
+         caller sending something wrong: {document}"
+    );
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::CONNECTOR_NOT_CONFIGURED.as_str()),
+        "an unusable dashboard base is this deployment's misconfiguration, and \
+         is answered as one"
     );
 }
