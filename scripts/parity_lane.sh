@@ -122,7 +122,7 @@ roster() {
 declared_divergences() {
   [ -f "$PARITY_REGISTER" ] || return 0
   sed -n '/^| *D[0-9]/p' "$PARITY_REGISTER" \
-    | grep -oE '`(GET|POST|PUT|PATCH|DELETE|HEAD) [^`]+`' \
+    | grep -oE "\`(GET|POST|PUT|PATCH|DELETE|HEAD) [^\`]+\`" \
     | tr -d '`' | sort -u
 }
 
@@ -133,8 +133,7 @@ concrete_path() {
 
 WORK_DIR="$(mktemp -d)"
 readonly WORK_DIR
-cleanup() { rm -rf "$WORK_DIR"; }
-trap cleanup EXIT
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 # One probe, printed in an HTTP-shaped envelope every responder agrees on:
 # the status on line one, the response headers, a blank line, then the body.
@@ -224,6 +223,23 @@ snapshot() {
 # introduces and the one thing a black-box probe can prove without credentials.
 readonly ROUTE_ABSENT_STATUS="404"
 
+# The register permits only the missing-route status. `000` means the daemon
+# never answered, so it is never an absence divergence. Removing the status
+# line must leave equal snapshots; otherwise a header or body drift would be
+# hidden merely because the other response happened to be a 404.
+declared_absence_only() {
+  local status_a="$1" status_b="$2" snap_a="$3" snap_b="$4"
+  [ "$status_a" != "$NO_ANSWER_STATUS" ] && [ "$status_b" != "$NO_ANSWER_STATUS" ] || return 1
+  if [ "$status_a" = "$ROUTE_ABSENT_STATUS" ]; then
+    [ "$status_b" != "$ROUTE_ABSENT_STATUS" ] || return 1
+  elif [ "$status_b" = "$ROUTE_ABSENT_STATUS" ]; then
+    [ "$status_a" != "$ROUTE_ABSENT_STATUS" ] || return 1
+  else
+    return 1
+  fi
+  cmp -s <(sed '1d' "$snap_a") <(sed '1d' "$snap_b")
+}
+
 # RECORD mode — one daemon, no second to compare against.
 #
 # Two claims, both provable black-box with no credentials: every route the
@@ -278,18 +294,12 @@ compare_mode() {
     probed=$((probed + 1))
     diff -u "$snap_a" "$snap_b" >"$WORK_DIR/delta" 2>&1 && continue
 
-    # They differ. A declared route is still PROBED, never skipped: the register
-    # names ONE difference — that a daemon does not serve the route — and a
-    # skip would accept every other difference on it too, which is the register
-    # working as a mute button rather than a contract. So the declared case is
-    # allowed only when the difference IS that absence: exactly one side
-    # answers ROUTE_ABSENT. Status, header or body drift on the side that DOES
-    # serve it still fails, as it would on any other route.
+    # A declared route is still probed. Only its status line may differ; the
+    # predicate also rejects a no-answer response and checks the full envelope.
     status_a="$(sed -n 's/^status: //p' "$snap_a")"
     status_b="$(sed -n 's/^status: //p' "$snap_b")"
     if [ "$is_declared" -eq 1 ] \
-      && { [ "$status_a" = "$ROUTE_ABSENT_STATUS" ] || [ "$status_b" = "$ROUTE_ABSENT_STATUS" ]; } \
-      && [ "$status_a" != "$status_b" ]; then
+      && declared_absence_only "$status_a" "$status_b" "$snap_a" "$snap_b"; then
       declared_count=$((declared_count + 1))
       printf '  declared: %s %s — %s on one side, %s on the other, per the divergence register\n' \
         "$method" "$path" "$status_a" "$status_b"
