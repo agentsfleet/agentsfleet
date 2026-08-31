@@ -122,7 +122,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Reference:** `rustd/crates/afd_observability/src/export.rs` — the bounded-buffer + drop-counter export wrapper M176 shipped for spans. §3's metrics exporter takes the same shape rather than inventing a second one; the property it states ("export that cannot slow a request down, and says so when it loses spans") is the property the metrics half must also hold.
 - **Reference:** `docs/RUST_ERROR_STANDARD.md` §Conformance — `afd_core`, `afd_crypto`, `afd_db`, `afd_redis` already carry the `struct Error` + private `ErrorKind` shape. `afd_observability` copies it rather than inventing a third.
-- **Reference:** `.github/workflows/release.yml` `binaries-linux-x86` + `verify-runtime-compat` — the existing static-ELF assertion and multi-distribution runtime check. §2 mirrors that shape for the Rust binary rather than trusting a successful compile.
+- **Reference:** `.github/workflows/release.yml` `compile-runner-amd64` + `verify-runtime-compat` — the existing static-ELF assertion and multi-distribution runtime check. §2 mirrors that shape for the Rust binary rather than trusting a successful compile.
 - **Reference:** `make/test-integration-rustd.mk` — the lane shape (tally file, labelled progress wrapper, explicit verdict) §4's parity lane mirrors.
 
 ## Sections (implementation slices)
