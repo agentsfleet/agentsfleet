@@ -515,3 +515,41 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
         "the job queued behind the poisoned entry must still be delivered"
     );
 }
+
+/// A queue that answers and refuses is this daemon's fault, not an outage.
+///
+/// `Error::code` splits one variant two ways, and the split is what an operator
+/// acts on: an unreachable queue is `INTERNAL_DB_UNAVAILABLE`, a thing to retry
+/// and to page the infrastructure about, while a queue that answered and said
+/// no is `INTERNAL_OPERATION_FAILED` — a bug here. Collapsing them would send
+/// somebody to check a healthy Redis over a defect in this crate.
+///
+/// The refusal is provoked with a key of the wrong type because `afd_redis`
+/// constructs its error kinds crate-privately: the non-outage case cannot be
+/// built by hand from this crate, only caused.
+#[tokio::test]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = OutboundHarness::reset().await;
+    harness.clobber_with_a_string().await;
+
+    let refused = harness
+        .queue
+        .enqueue(OutboundJob {
+            provider: PROVIDER,
+            workspace_id: WORKSPACE_ID,
+            fleet_id: FLEET_ID,
+            event_id: "1700000000000-0",
+            answer: "Aurora is healthy.",
+        })
+        .await
+        .expect_err("a stream key holding a string cannot take an entry");
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        "the queue answered — that is a defect here, not the outage an \
+         operator retries against"
+    );
+}
