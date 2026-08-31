@@ -22,8 +22,8 @@ mod source;
 mod validate;
 
 pub use catalogue::{
-    DeleteLibrary, Libraries, LibraryImports, LibraryItem, LibraryPatch, LibraryRequirements,
-    PatchLibrary, PublicLibraryItem,
+    DeleteLibrary, GalleryPage, Libraries, LibraryImports, LibraryItem, LibraryPatch,
+    LibraryRequirements, PatchLibrary, Position, PublicLibraryItem, SummaryEntry, Tier,
 };
 pub use error::{Error, InvalidBundle, Result};
 pub use github::{GithubSource, Repository, valid_revision};
