@@ -3,7 +3,7 @@
 use afd_core::error_code::{
     CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
-    PAYLOAD_TOO_LARGE,
+    INTERNAL_OPERATION_FAILED, PAYLOAD_TOO_LARGE,
 };
 
 use crate::source::SourceFailure;
@@ -128,6 +128,23 @@ pub enum Error {
     /// A tar entry path is not UTF-8.
     #[error("Fleet Bundle archive contains a non-UTF-8 path")]
     ArchivePath(#[source] std::str::Utf8Error),
+    /// The host could not draw the entropy an onboarded entry is minted from.
+    ///
+    /// Only the workspace tier mints: the platform catalogue is keyed by the
+    /// bundle's own name, so it draws nothing.
+    #[error("could not draw the entropy a Fleet Bundle entry is minted from")]
+    Entropy {
+        /// The entropy source's refusal.
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+    /// A minted entry identifier was not well-formed.
+    #[error("a minted Fleet Bundle entry identifier was not well-formed")]
+    Mint {
+        /// The identifier's own refusal.
+        #[source]
+        source: afd_core::error::Error,
+    },
     /// A catalogue query failed with its statement context retained.
     #[error("Fleet Bundle catalogue query failed during {context}")]
     Database {
@@ -164,6 +181,11 @@ impl Error {
             }
             Self::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
             Self::Pool(_) => INTERNAL_DB_UNAVAILABLE,
+            // Neither is the caller's to correct: a host that cannot draw
+            // entropy and a mint that produced something `Uuid7` refuses are
+            // both this instance's failure, and both answer the same internal
+            // code the credential plane gives them.
+            Self::Entropy { .. } | Self::Mint { .. } => INTERNAL_OPERATION_FAILED,
             Self::CatalogueJson(_) | Self::Database { .. } => INTERNAL_DB_QUERY,
             Self::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
                 FLEET_BUNDLE_INVALID
@@ -197,6 +219,10 @@ impl Error {
         match self {
             Self::Pool(_) => "Database unavailable",
             Self::CatalogueJson(_) | Self::Database { .. } => "Database error",
+            // Nothing a caller can act on, and nothing about the bundle they
+            // sent: this instance could not mint an identifier for the row it
+            // was about to write.
+            Self::Entropy { .. } | Self::Mint { .. } => "Onboarding could not be completed",
             Self::Invalid(
                 InvalidBundle::SkillTooLarge
                 | InvalidBundle::TriggerTooLarge

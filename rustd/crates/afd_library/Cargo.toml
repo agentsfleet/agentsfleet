@@ -16,6 +16,11 @@ test-util = ["afd_core/test-util", "afd_db/test-util"]
 
 [dependencies]
 afd_core.workspace = true
+# The entropy a workspace entry's identifier is minted from. A dependency
+# rather than a `getrandom` call because `Entropy` is this workspace's
+# mockable-syscall source: a test that could not pin the identifier could not
+# assert the row an onboarding wrote.
+afd_crypto.workspace = true
 afd_db.workspace = true
 afd_fleet_runtime.workspace = true
 bytes.workspace = true

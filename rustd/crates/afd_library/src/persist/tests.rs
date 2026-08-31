@@ -25,12 +25,13 @@ impl BundleCatalog for MemoryCatalog {
         &self,
         _body: &ImportBody,
         bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = crate::Result<()>> + Send {
+    ) -> impl std::future::Future<Output = crate::Result<String>> + Send {
+        let id = bundle.name.clone();
         self.0
             .lock()
             .expect("catalog mutex is healthy")
             .push(bundle.clone());
-        std::future::ready(Ok(()))
+        std::future::ready(Ok(id))
     }
 }
 
@@ -42,7 +43,7 @@ impl BundleCatalog for FailingCatalog {
         &self,
         _body: &ImportBody,
         _bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = crate::Result<()>> + Send {
+    ) -> impl std::future::Future<Output = crate::Result<String>> + Send {
         std::future::ready(Err(crate::Error::StorageUnavailable))
     }
 }
@@ -151,7 +152,8 @@ async fn test_bundle_import_roundtrip() {
         .import(&bundle())
         .await
         .expect("the import succeeds");
-    let hash = ContentHash::parse(&prepared.content_hash).expect("the importer emits a digest");
+    let hash =
+        ContentHash::parse(&prepared.bundle.content_hash).expect("the importer emits a digest");
     let served = serving
         .fetch(hash)
         .await
@@ -160,11 +162,14 @@ async fn test_bundle_import_roundtrip() {
     assert_eq!(
         served,
         importer
-            .snapshot(&prepared.snapshot_key)
+            .snapshot(&prepared.bundle.snapshot_key)
             .await
             .expect("the writer reads identical bytes")
     );
-    assert_eq!(prepared.requirements.support_files, ["docs/guide.md"]);
+    assert_eq!(
+        prepared.bundle.requirements.support_files,
+        ["docs/guide.md"]
+    );
     assert_eq!(
         importer
             .catalog
@@ -260,7 +265,7 @@ async fn catalogue_failure_preserves_shared_snapshot() {
 
     assert_eq!(
         successful
-            .snapshot(&prepared.snapshot_key)
+            .snapshot(&prepared.bundle.snapshot_key)
             .await
             .expect("shared content remains available"),
         canonical_snapshot(&bundle()).expect("the fixture snapshot is valid")

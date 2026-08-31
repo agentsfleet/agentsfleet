@@ -1,6 +1,6 @@
 //! Vendor-source seam and orchestration that keeps fetches ahead of writes.
 
-use crate::{ImportBody, ImportService, PreparedBundle, Result};
+use crate::{ImportBody, ImportService, Onboarded, Result};
 
 /// Caller-actionable source failures that need no lower-level cause.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,7 +68,7 @@ where
     ///
     /// # Errors
     /// Returns the typed source class or a validation/persistence failure.
-    pub async fn import(&self, reference: &str) -> Result<PreparedBundle> {
+    pub async fn import(&self, reference: &str) -> Result<Onboarded> {
         tracing::info!(
             event = "library_source_import_started",
             source_ref = reference
@@ -82,8 +82,8 @@ where
             Ok(bundle) => tracing::info!(
                 event = "library_source_import_completed",
                 source_ref = reference,
-                bundle_name = %bundle.name,
-                content_hash = %bundle.content_hash
+                bundle_name = %bundle.bundle.name,
+                content_hash = %bundle.bundle.content_hash
             ),
             Err(error) => tracing::warn!(
                 event = "library_source_import_failed",
