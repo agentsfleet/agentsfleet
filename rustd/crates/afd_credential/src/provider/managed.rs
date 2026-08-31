@@ -57,12 +57,13 @@ struct Credential {
     /// for every provider but the compatible one.
     #[serde(default)]
     api_key: Option<SecretString>,
-    /// The credential's own model — parsed so a non-string is caught, and
-    /// unread on this path. See the module note.
-    #[expect(
-        dead_code,
-        reason = "parsed for its shape, not its value: a non-string `model` is a malformed                   credential, while a valid one is M178's legacy fallback and not this path's"
-    )]
+    /// The credential's own model.
+    ///
+    /// Unread on the RESOLUTION path — the model lives on the tenant's
+    /// registry entry, so reading it here would resolve whatever a stale
+    /// secret happened to carry. Activation reads it as the fallback for a
+    /// bare `PUT /provider` that names no model, which is the one caller the
+    /// module note said would earn it.
     #[serde(default)]
     model: Option<Box<str>>,
     /// A custom endpoint, validated against `provider` before anything is
@@ -116,42 +117,79 @@ impl Resolution for SelfManaged {
     }
 
     fn interpret(&self, body: &[u8]) -> Result<Resolved> {
-        let credential: Credential = super::credential(body, FIELD_PROVIDER)?;
-        if credential.provider.is_empty() {
-            return Err(provider_malformed(FIELD_PROVIDER));
-        }
-
-        // Endpoint first, BEFORE the key is looked at: a hostile or mismatched
-        // endpoint fails the resolution while the credential is still just
-        // bytes, which is the ordering `probeSelfManagedSecret` chose and the
-        // reason it gave — nothing owned is built around a URL that will be
-        // refused.
-        // The host travels with the URL from here, because `resolve` already
-        // derived it to make its SSRF ruling — see [`Dialled`].
-        let dialled: Option<Dialled> =
-            endpoint::resolve(&credential.provider, credential.base_url.as_deref())
-                .map_err(|rejection| provider_endpoint(rejection.as_str()))?
-                .map(|endpoint| Dialled {
-                    base_url: endpoint.url.into(),
-                    inference_host: endpoint.host,
-                });
+        let vetted = vet(body)?;
 
         // A resolved endpoint IS the compatible provider — `endpoint::resolve`
         // has already refused every other pairing — so the optional-key rule
         // reads off the outcome rather than re-comparing the provider string.
         // The Zig computes an `is_compatible` flag and consults it twice, which
         // is two places for the two rules to come apart.
-        let api_key = bearer(credential.api_key, dialled.is_some())?;
+        let api_key = bearer(vetted.api_key, vetted.dialled.is_some())?;
 
         Ok(Resolved::new(
             Posture::SelfManaged,
-            credential.provider,
+            vetted.provider,
             self.selection.model.clone(),
             self.selection.context_cap_tokens,
-            dialled,
+            vetted.dialled,
             api_key,
         ))
     }
+}
+
+/// One stored credential, parsed and with its endpoint ruled on.
+///
+/// What resolution and ACTIVATION agree about a credential, extracted so there
+/// is one parser and one endpoint ruling rather than two that could come to
+/// disagree about the same bytes. What they do with it differs: resolution
+/// applies the key rule and dials; activation reads the provider and the
+/// fallback model, and never looks at the key at all.
+pub(super) struct Vetted {
+    /// The provider this credential is for. Never empty.
+    pub(super) provider: Box<str>,
+    /// The credential's own model, for a caller with no better source.
+    pub(super) model: Option<Box<str>>,
+    /// The validated custom endpoint, present only for the compatible
+    /// provider. `Some` IS the compatible provider — the guard has refused
+    /// every other pairing by this point.
+    pub(super) dialled: Option<Dialled>,
+    /// The bearer key, still unjudged: whether absence is permitted is the
+    /// caller's rule, not the parse's.
+    pub(super) api_key: Option<SecretString>,
+}
+
+/// Parses one credential body and rules on its endpoint.
+///
+/// Endpoint first, BEFORE the key is looked at: a hostile or mismatched
+/// endpoint fails while the credential is still just bytes, which is the
+/// ordering `probeSelfManagedSecret` chose and the reason it gave — nothing
+/// owned is built around a URL that will be refused.
+///
+/// # Errors
+/// Reports a body that is not a credential object, a blank or missing
+/// provider, and an endpoint the guard refused.
+pub(super) fn vet(body: &[u8]) -> Result<Vetted> {
+    let credential: Credential = super::credential(body, FIELD_PROVIDER)?;
+    if credential.provider.is_empty() {
+        return Err(provider_malformed(FIELD_PROVIDER));
+    }
+
+    // The host travels with the URL from here, because `resolve` already
+    // derived it to make its SSRF ruling — see [`Dialled`].
+    let dialled: Option<Dialled> =
+        endpoint::resolve(&credential.provider, credential.base_url.as_deref())
+            .map_err(|rejection| provider_endpoint(rejection.as_str()))?
+            .map(|endpoint| Dialled {
+                base_url: endpoint.url.into(),
+                inference_host: endpoint.host,
+            });
+
+    Ok(Vetted {
+        provider: credential.provider,
+        model: credential.model,
+        dialled,
+        api_key: credential.api_key,
+    })
 }
 
 /// The key this credential resolves with, given whether one is optional.

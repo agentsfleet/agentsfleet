@@ -22,8 +22,14 @@ pub use self::models::{
     DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH,
     DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE,
 };
-pub use self::provider::DETAIL_PLATFORM_KEY_MISSING;
-pub(crate) use self::provider::{reset as provider_reset, view as provider_view};
+pub use self::provider::{
+    DETAIL_MALFORMED_BODY, DETAIL_MODEL_NOT_IN_CATALOGUE, DETAIL_NO_PRIMARY_WORKSPACE,
+    DETAIL_PLATFORM_KEY_MISSING, DETAIL_SECRET_DATA_MALFORMED, DETAIL_SECRET_NOT_FOUND,
+    DETAIL_SECRET_REF_REQUIRED,
+};
+pub(crate) use self::provider::{
+    apply as provider_apply, reset as provider_reset, view as provider_view,
+};
 pub use self::workspace::{
     DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT,
     DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,

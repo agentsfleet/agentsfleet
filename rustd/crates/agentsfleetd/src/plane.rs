@@ -178,7 +178,7 @@ impl ServingPlane {
         // process key, so the clone shares one connection set and one key —
         // building a second would mean two values that could be pointed at
         // different keys by a later edit.
-        let providers = Providers::new(database.clone(), Arc::clone(&kek));
+        let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store),

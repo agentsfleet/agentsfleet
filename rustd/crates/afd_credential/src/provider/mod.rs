@@ -47,6 +47,7 @@
 //! lands, this module moves down to `afd_state` and both callers import it.
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
+mod activate;
 mod cap;
 mod endpoint;
 mod managed;
@@ -69,6 +70,7 @@ use crate::error::{Result, provider_malformed, provider_no_workspace, provider_s
 use crate::vault::KeyRef;
 use afd_billing::Posture;
 
+pub use self::activate::Activation;
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 // Re-exported crate-wide for the credential broker, which asks the SAME
 // question of a vault handle's `accounts_base` that this module asks of a

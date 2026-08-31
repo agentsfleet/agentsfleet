@@ -147,10 +147,23 @@ Two consequences. The committed OpenAPI document now has nothing generating or g
 
 **Sizing, measured while the split was authored:** 97 route variants across 11 enums, 46 mounted, 72 handler functions, 147 public wire types of which 115 carry a lifetime, 97 documented failure codes, against a current document of 70 paths and 45 schemas from 30 hand-written source files. The annotation pass is the bulk; reconciling hand-written prose against generated output is the part that is judgment rather than typing. The wire crate's manifest states it deliberately depends on nothing but its serializer — adding a derive macro there is a decision to take explicitly, not by default.
 
+**Amendment — §1 is a PORT before it is an annotation pass.** The sizing above
+counts 46 mounted routes against 97 variants and calls the annotation pass the
+bulk. That is true of the routes that HAVE handlers. Nine route × method pairs
+have none, and they are not annotations: they are three feature ports totalling
+1,391 lines of Zig production code — the tenant provider triple, the model-entries
+quad, and the workspace fleet-libraries pair. Dimension 1.1 grades whether the
+route dump matches, which those ports must land for; it does not grade whether
+they behave. Dimensions 1.5–1.7 below grade the behaviour, so a feature port
+cannot pass this section by mounting a route that answers wrongly.
+
 - **Dimension 1.1** — the route dump equals the Zig daemon's served set exactly, with the difference empty in both directions → Test `test_route_dump_matches_zig_set`
 - **Dimension 1.2** — the daemon-emitted document covers every served route × method, and a seeded removal fails the check naming the route → Test `test_coverage_gate_rust_source`
 - **Dimension 1.3** — the `openapi` subcommand emits the document the checker grades, and the committed artifact equals what it emits → Test `test_openapi_subcommand_is_the_source`
 - **Dimension 1.4** — `doctor` and `backfill` produce parity outcomes on seeded states → Test `test_ops_subcommand_parity`
+- **Dimension 1.5** — the tenant provider surface serves all three methods: the view composes the tenant's own selection with the live platform default and never 404s, the reset writes an explicit platform row from the live default, and the activation's ladder answers each of its five refusals with the registry code the Zig answers — every refusal a client can provoke decided from a value rather than raised as an error → Test `test_tenant_provider_ladder` — **IN_PROGRESS.** All three methods are served and mounted (`afd_api_tenant/src/handler/tenant/provider.rs`). The refusal matrix in front of the verbs and the ladder's FIRST rung are green at router tier: `cargo test -p afd_api --test tenant_plane` → 208 passed, 8 of them `tenant_provider_route.rs`. Rungs two through five answer from real rows, so they are graded by `integration_rotation/activation.rs` — written, `#[ignore]`d, and NOT YET RUN: the lane needs live Postgres and Redis.
+- **Dimension 1.6** — the activation is one transaction that decrypts once, and never at all on the refusals a client provokes: a credential absent or not a provider key is decided from `vault.secrets` metadata on the already-locked row, and the catalogue gate and the selection write are ONE statement, so no model can be deleted between checking it and storing its ceiling → Test `test_activation_is_atomic_and_decrypts_once` — **IN_PROGRESS.** The shape is built: one transaction, one decrypt, the gate and the write as one `INSERT … SELECT … RETURNING`. Both properties are datastore-observable only, so the evidence is the six `#[ignore]`d cases in `integration_rotation/activation.rs`, which have compiled but not run.
+- **Dimension 1.7** — the model-entries quad and the workspace fleet-libraries pair serve their route × method set, each refusal answering its registry code → Test `test_model_entries_and_libraries_ported` — **NOT STARTED.** The two remaining feature ports of §1.
 
 ### §2 — OTLP export: the transport the crate was shaped to receive
 
@@ -265,6 +278,9 @@ Runbook                           playbooks/operations/cutover/001_playbook.md �
 | Older binary meets a newer ledger | a rollback or a stale image starts a binary whose migration set predates the database's | the daemon REFUSES, naming the version it does not know, and changes nothing. It does not reap and proceed. A rollback that trips this has crossed a migration boundary and is not one-move |
 | State-handoff regression | the Zig daemon cannot read or resume Rust-written state, or the reverse | the handoff lane goes red and cutover is blocked; serialization is fixed before any swap |
 | Dashboard discontinuity | a renamed or dropped series | blocked at §4; series names are parity surface, fixed before the swap |
+| Orphaned credential reference | a `DELETE /workspaces/{ws}/secrets/{name}` committing between an activation's credential check and its write | impossible by lock order, not by retry: both paths take the `vault.secrets` row lock FIRST. Producer first, the delete observes the new entry and refuses; delete first, the activation finds no row and answers `UZ-PROVIDER-002` having written nothing. The treaty exists only because `secret_ref` is TEXT rather than a foreign key — `docs/architecture/tenant_provider_v2.md` §V2-1 deletes it |
+| Ceiling stored for a model that is gone | an admin catalogue delete between an activation's gate check and its write | impossible by statement shape: the gate and the write are one `INSERT … SELECT … RETURNING`, so `rows_affected() == 0` IS the refusal. A separate `SELECT` first would be the race |
+| Activation refused after a decrypt | a refusal path that opens an envelope to answer | the two credential rungs read `meta_provider`/`meta_has_key` on the locked row, so a plaintext key never enters the process on the way to a 400 — graded by Dimension 1.6 |
 
 ## Invariants
 
@@ -295,6 +311,9 @@ No product-analytics changes.
 | 1.2 | integration (negative) | `test_coverage_gate_rust_source` | the full set passes; a seeded removal fails naming route and method |
 | 1.3 | integration | `test_openapi_subcommand_is_the_source` | the committed artifact equals the subcommand's output byte for byte |
 | 1.4 | integration | `test_ops_subcommand_parity` | doctor and backfill outcomes equal the Zig daemon's on seeded states |
+| 1.5 | integration (negative) | `test_tenant_provider_ladder` | a body naming no `secret_ref` under `self_managed` → `UZ-PROVIDER-001` before any pool is touched; a name the vault does not hold → `UZ-PROVIDER-002`; a row whose metadata is not a provider key, and a body that will not read as a credential → `UZ-PROVIDER-003`; an uncatalogued or blank/padded model → `UZ-PROVIDER-004`; a refused endpoint → `UZ-PROVIDER-005`; no primary workspace → `UZ-PROVIDER-010`; a reset with no active default → `UZ-PROVIDER-009` |
+| 1.6 | integration | `test_activation_is_atomic_and_decrypts_once` | a concurrent credential DELETE racing an activation leaves no selection row naming a deleted credential, in either arrival order; an uncatalogued model writes NEITHER a registry entry nor a selection row; a refused activation performs zero decrypts |
+| 1.7 | integration (negative) | `test_model_entries_and_libraries_ported` | each route × method answers its Zig counterpart's status and registry code on the same seeded state |
 | 2.1 | integration | `test_boot_supervises_otlp_export` | a booted daemon's supervisor inventory equals the declared set, export included, and the task joins on termination |
 | 2.2 | unit | `test_otlp_endpoint_knob_precedence` | the standard knob resolves; the vendor spelling alone resolves as an alias; with both set the standard name wins |
 | 2.3 | integration (negative) | `test_export_absent_and_unreachable` | no endpoint → boots and serves, exports nothing; unreachable endpoint → request latency unchanged and the drop counter climbs |

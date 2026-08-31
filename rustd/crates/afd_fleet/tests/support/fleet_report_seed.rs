@@ -208,7 +208,7 @@ impl Fixtures {
             gates: self.gates(),
             accounts: Accounts::new(self.database.clone(), Entropy::new()),
             memories: Memories::new(self.database.clone(), Entropy::new()),
-            providers: Providers::new(self.database.clone(), Arc::clone(&kek)),
+            providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),
             vault: Vault::new(self.database.clone(), kek),
             // `Registry::default()`, not a literal: the type is `#[non_exhaustive]`
             // so only the crate that owns it may name its fields — which is the

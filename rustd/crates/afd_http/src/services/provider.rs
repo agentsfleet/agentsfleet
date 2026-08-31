@@ -22,14 +22,14 @@
 //! # Why there is no credential-probe verb here
 //!
 //! The write ladder's credential checks run under the reference lock, inside
-//! ONE transaction — a seam of separate pool-acquiring verbs cannot form one.
-//! Activation is therefore a single store verb (landing with the PUT handler),
-//! and this seam carries only the verbs whose statements stand alone.
+//! ONE transaction — a seam of separate pool-acquiring verbs could not form
+//! one. So activation is a single verb, [`TenantProviders::activate`], and the
+//! ladder's refusals come back as outcome VALUES rather than as errors.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
-use afd_credential::provider::{PlatformDefault, Providers, Selection};
+use afd_credential::provider::{Activation, PlatformDefault, Providers, Selection};
 
 /// Everything the tenant provider routes act through.
 ///
@@ -83,6 +83,27 @@ pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
         selection: &Selection,
         now: UnixMillis,
     ) -> impl Future<Output = CredentialResult<()>> + Send;
+
+    /// Activates a stored credential as this tenant's provider.
+    ///
+    /// One transaction: the credential's reference lock, the metadata gate,
+    /// one decrypt, the registry entry, and the catalogue-gated write. Every
+    /// refusal a client can provoke comes back as an [`Activation`] variant
+    /// rather than an error, because each is a decision made from a value —
+    /// which is what keeps this plane's handler off matching a datastore
+    /// failure's neighbours to pick a registry code.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, a stored envelope that will
+    /// not open, and a host that cannot draw the entropy an entry is minted
+    /// from.
+    fn activate(
+        &self,
+        tenant: &Uuid7,
+        secret_ref: &str,
+        model: Option<&str>,
+        now: UnixMillis,
+    ) -> impl Future<Output = CredentialResult<Activation>> + Send;
 }
 
 /// The production store answers it directly.
@@ -107,5 +128,15 @@ impl TenantProviders for Providers {
         now: UnixMillis,
     ) -> impl Future<Output = CredentialResult<()>> + Send {
         Self::upsert(self, tenant, selection, now)
+    }
+
+    fn activate(
+        &self,
+        tenant: &Uuid7,
+        secret_ref: &str,
+        model: Option<&str>,
+        now: UnixMillis,
+    ) -> impl Future<Output = CredentialResult<Activation>> + Send {
+        Self::activate(self, tenant, secret_ref, model, now)
     }
 }
