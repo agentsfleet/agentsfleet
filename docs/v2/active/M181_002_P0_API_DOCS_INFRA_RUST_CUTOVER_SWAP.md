@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 002
 **Date:** Aug 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the family's payoff; everything before it is preparation
 **Categories:** API | DOCS | INFRA
 **Batch:** B6 — family closer, second half; serial after M180_001 merges
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m181-002-cutover-swap`
+**Test Baseline:** `unit=4190 integration=not-run` — `make test-unit-all` on 2026-08-31: cargo workspace 2041 passed, `ui/packages/app` 1637, `ui/packages/design-system` 512. `verify.integration` is not run at CHORE(open): the stage table (`dispatch/lifecycle.md` line 21) declares `verify.unit` once, and the slow suites run only when the branch carries code.
 **Depends on:** M180_001 **merged** (the full route surface — an in-flight branch is not enough, because §1 annotates the handlers it is still adding); M181_001 (the shipping binary, the metrics pipeline, the lanes, the probe runner); M178_001, M179_001, M177_001, M176_001
 **Provenance:** split from the single M181_001 cutover spec (LLM-drafted, Claude Fable 5, Aug 23, 2026) on the axis "needs the full route surface or does not"; this half does
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths + `docs/architecture/runner_fleet.md` §Multi-replica + `docs/architecture/scaling.md`
