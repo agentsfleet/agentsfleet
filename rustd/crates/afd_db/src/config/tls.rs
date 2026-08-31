@@ -33,6 +33,27 @@ const POSTGRES_SCHEMES: [&str; 2] = ["postgres://", "postgresql://"];
 /// the parser rather than against a reading of its source.
 const SSLMODE_QUERY_KEYS: [&str; 2] = ["sslmode", "ssl-mode"];
 
+/// The connection parameters sqlx reads as TLS certificate inputs, spelled
+/// the ways its parser accepts them, canonical spelling first — the one an
+/// error names regardless of the alias an operator wrote.
+const SSL_ROOT_CERT_PARAM: &str = "sslrootcert";
+const SSL_CERT_PARAM: &str = "sslcert";
+const SSL_KEY_PARAM: &str = "sslkey";
+const CERT_FILE_PARAMS: [(&str, &[&str]); 3] = [
+    (
+        SSL_ROOT_CERT_PARAM,
+        &[SSL_ROOT_CERT_PARAM, "ssl-root-cert", "ssl-ca"],
+    ),
+    (SSL_CERT_PARAM, &[SSL_CERT_PARAM, "ssl-cert"]),
+    (SSL_KEY_PARAM, &[SSL_KEY_PARAM, "ssl-key"]),
+];
+
+/// How sqlx tells inline PEM data from a file path (`From<String> for
+/// CertificateInput`): trim, then both markers.
+const PEM_MARKER_START: &str = "-----BEGIN";
+const PEM_MARKER_END: &str = "-----";
+const REDACTED_CERT_INPUT: &str = "<redacted certificate input>";
+
 /// The boot event carrying one role's resolved TLS posture.
 const SSL_MODE_RESOLVED_EVENT: &str = "db_ssl_mode_resolved";
 
@@ -80,15 +101,27 @@ pub(super) fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOption
         })
     })?;
 
-    // `sqlx_core::Url` IS this crate, so the question asked here and the answer
-    // sqlx acted on come from one parse of one grammar — which is the whole
-    // point, since a second grammar is a second set of inputs to disagree on.
+    // `sqlx_core::Url` IS this crate, so the questions asked here and the
+    // answers sqlx acted on come from one parse of one grammar — which is the
+    // whole point, since a second grammar is a second set of inputs to
+    // disagree on.
     //
     // Fallible rather than an `expect`, though a string sqlx already accepted
-    // cannot fail here: the safe answer to "the query could not be read" is the
-    // same as the answer to "the query said nothing", and trading a boot that
-    // encrypts for a boot that panics is not an improvement.
-    let declared = Url::parse(url).is_ok_and(|parsed| declares_ssl_mode(&parsed));
+    // cannot fail here: the safe answer to "the query could not be read" is
+    // the same as the answer to "the query said nothing", and trading a boot
+    // that encrypts for a boot that panics is not an improvement.
+    let parsed = Url::parse(url).ok();
+
+    // Before anything dials: a declared certificate file this process cannot
+    // read must fail here, named. sqlx opens it deep in the handshake, where
+    // the io error reaches an operator as "error communicating with database:
+    // No such file or directory" — no knob, no parameter, no path, and only
+    // after a TCP connection already answered.
+    if let Some(parsed) = parsed.as_ref() {
+        reject_unreadable_cert_files(knob, parsed)?;
+    }
+
+    let declared = parsed.as_ref().is_some_and(declares_ssl_mode);
     let options = if declared {
         options
     } else {
@@ -119,6 +152,52 @@ pub(super) fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOption
 fn declares_ssl_mode(url: &Url) -> bool {
     url.query_pairs()
         .any(|(key, _mode)| SSLMODE_QUERY_KEYS.iter().any(|known| key == *known))
+}
+
+/// Fails a declared certificate file this process cannot read, naming the
+/// knob, the parameter, and the path.
+///
+/// The inline-PEM carve-out mirrors sqlx's own classification: a value that
+/// reads as PEM is data, not a path. sqlx's `PGSSLROOTCERT`-style environment
+/// surface is deliberately not read — this daemon's knobs are the role URLs,
+/// and a variable nothing here documents is not a knob to honour.
+fn reject_unreadable_cert_files(knob: &'static str, url: &Url) -> Result<()> {
+    for (canonical, aliases) in CERT_FILE_PARAMS {
+        // Last declaration wins, matching sqlx's overwrite-on-repeat parse;
+        // checking an earlier one could fail a file the driver never opens.
+        let Some((_, value)) = url
+            .query_pairs()
+            .filter(|(key, _)| aliases.contains(&key.as_ref()))
+            .last()
+        else {
+            continue;
+        };
+
+        let trimmed = value.trim();
+        if trimmed.starts_with(PEM_MARKER_START) && trimmed.ends_with(PEM_MARKER_END) {
+            continue;
+        }
+
+        std::fs::read(value.as_ref()).map_err(|source| {
+            Error::new(ErrorKind::TlsCertFileUnreadable {
+                knob,
+                param: canonical,
+                path: cert_input_for_error(value.as_ref()),
+                source,
+            })
+        })?;
+    }
+    Ok(())
+}
+
+/// Names a path safely without copying malformed inline certificate material
+/// or terminal control characters into the fatal error.
+fn cert_input_for_error(value: &str) -> String {
+    if value.contains(PEM_MARKER_START) {
+        REDACTED_CERT_INPUT.to_owned()
+    } else {
+        value.escape_debug().collect()
+    }
 }
 
 /// The lower-case spelling of a resolved SSL mode.
