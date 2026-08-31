@@ -129,7 +129,7 @@ impl Sealer {
         // to preserve here, and `_err` records that rather than hiding one.
         let tag = cipher
             .encrypt_inout_detached(&nonce, aad.as_bytes(), InOutBuf::from(&mut *buffer))
-            .map_err(|_err| Error::new(ErrorKind::OpenFailed))?;
+            .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
 
         Ok(Encrypted {
             ciphertext: buffer,
@@ -166,7 +166,7 @@ impl Envelope {
         kek_version: i32,
     ) -> Result<Self> {
         if kek_version != crate::KEK_VERSION {
-            return Err(Error::new(ErrorKind::UnsupportedVersion {
+            return Err(Error::from(ErrorKind::UnsupportedVersion {
                 found: kek_version,
                 supported: crate::KEK_VERSION,
             }));
@@ -176,7 +176,7 @@ impl Envelope {
         // always a `KEY_LEN` key. Checking it here keeps the column honest at
         // the boundary instead of surfacing as an unopenable envelope later.
         if wrapped_dek.len() != KEY_LEN {
-            return Err(Error::new(ErrorKind::ComponentLength {
+            return Err(Error::from(ErrorKind::ComponentLength {
                 component: "wrapped dek",
                 expected: KEY_LEN,
                 actual: wrapped_dek.len(),
@@ -276,14 +276,14 @@ fn decrypt(
     // collapsing a tag failure and a wrong key into one outcome is the point.
     cipher
         .decrypt_inout_detached(&nonce, aad.as_bytes(), InOutBuf::from(&mut *buffer), &tag)
-        .map_err(|_err| Error::new(ErrorKind::OpenFailed))?;
+        .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
     Ok(SecretBytes::new(buffer))
 }
 
 /// Narrows a stored slice to a fixed-width component, naming it on failure.
 fn fixed<const N: usize>(bytes: &[u8], component: &'static str) -> Result<[u8; N]> {
     bytes.try_into().map_err(|_err| {
-        Error::new(ErrorKind::ComponentLength {
+        Error::from(ErrorKind::ComponentLength {
             component,
             expected: N,
             actual: bytes.len(),

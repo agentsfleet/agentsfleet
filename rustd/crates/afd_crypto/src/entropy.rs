@@ -44,7 +44,7 @@ impl Source {
             // The operating system's reason is not actionable by a caller and
             // not something to surface — a host that cannot produce entropy
             // cannot seal, and that is the whole of what the caller can act on.
-            Self::Native => getrandom::fill(buf).map_err(|_err| Error::new(ErrorKind::Entropy)),
+            Self::Native => getrandom::fill(buf).map_err(|_err| Error::from(ErrorKind::Entropy)),
             #[cfg(feature = "test-util")]
             Self::Mocked(ctrl) => ctrl.fill(buf),
         }
@@ -174,7 +174,7 @@ pub(crate) mod mock {
             let mut inner = self.locked();
             if inner.fail_next {
                 inner.fail_next = false;
-                return Err(Error::new(ErrorKind::Entropy));
+                return Err(Error::from(ErrorKind::Entropy));
             }
             // An exhausted queue is a test that did not say what it wanted, so
             // it fills deterministically rather than silently going random.
@@ -186,7 +186,7 @@ pub(crate) mod mock {
             }
             let next = inner.queued.remove(0);
             if next.len() != buf.len() {
-                return Err(Error::new(ErrorKind::ComponentLength {
+                return Err(Error::from(ErrorKind::ComponentLength {
                     component: "mocked entropy",
                     expected: buf.len(),
                     actual: next.len(),

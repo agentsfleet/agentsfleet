@@ -38,7 +38,7 @@ impl WorkerCount {
         if (MIN_WORKERS..=MAX_WORKERS).contains(&workers) {
             Ok(Self(workers))
         } else {
-            Err(Error::new(ErrorKind::OutOfRange {
+            Err(Error::from(ErrorKind::OutOfRange {
                 name: "worker_count",
                 value: workers,
                 min: MIN_WORKERS,

@@ -77,7 +77,7 @@ impl Dek {
     /// Returns a malformed-envelope error when the slice is not `KEY_LEN` bytes.
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
         let sized: [u8; KEY_LEN] = bytes.try_into().map_err(|_err| {
-            Error::new(ErrorKind::ComponentLength {
+            Error::from(ErrorKind::ComponentLength {
                 component: "data encryption key",
                 expected: KEY_LEN,
                 actual: bytes.len(),
@@ -136,12 +136,12 @@ impl SecretBytes {
 fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<()> {
     let expected = out.len() * 2;
     if hex.len() != expected {
-        return Err(Error::new(ErrorKind::KeyHexLength {
+        return Err(Error::from(ErrorKind::KeyHexLength {
             expected,
             actual: hex.len(),
         }));
     }
-    hex::decode_to_slice(hex, out).map_err(|_digit| Error::new(ErrorKind::KeyHexDigit))
+    hex::decode_to_slice(hex, out).map_err(|_digit| Error::from(ErrorKind::KeyHexDigit))
 }
 
 /// Renders a redacted placeholder, never the bytes.
