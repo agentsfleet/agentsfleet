@@ -102,6 +102,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Full-route parity gate
 
+**Inherited from M181_001 — Dimension 2.3.** `test_runtime_on_production_base`:
+the daemon serves from the distroless image, proven by the parity lane's
+single-target mode against a container-hosted daemon. M181_001 built the lane
+and ran it; the DISTROLESS half is already evidenced there — the image built for
+`linux/arm64`, the container booted, `/healthz` answered. What it could not do
+is pass the lane: 31 declared routes returned 404 because the webhook, connector
+and ingress surface belongs to M180, unmerged at the time. This section lands
+that surface, so grading 2.3 becomes a re-run rather than new work.
+
+> Indy (2026-08-31): "2.3 fine defer"
+
+
 The Rust daemon dumps its served route × method set from the route enum, emits an OpenAPI document generated from its own handlers, and a checker compares the two in both directions. The operations subcommands reach behaviour parity so tooling does not fork.
 
 **Correction — the gate this work was written to extend is gone.** The served-versus-documented checker was deleted along with the whole OpenAPI checking family: the error checker, the URL-shape checker, the bundler, the split YAML sources, the make target and its Continuous Integration job. The reason was structural rather than incidental — the checker read the Zig daemon's route table as its source of truth for what is SERVED, and that daemon is being retired, with no Rust generator to repoint it at.
