@@ -13,16 +13,18 @@ The three images this playbook publishes are:
 | Image                                         | Arch              | Replaces in CI                                                                                       |
 | --------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job), `make/test-integration.mk` (`RUNNER_CI_IMAGE`, the local macOS kernel lane) |
-| `ghcr.io/agentsfleet/ci-zig-debian-trixie`      | amd64             | `memleak.yml`                                                                                        |
 | `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
 
-**Current revision: `r4`** — alpine and ubuntu carry `bubblewrap`; debian-trixie
-is deliberately still `0.16.0` (no revision). The runner spawns every sandboxed
-lease through `bwrap`, so an image without it makes each real-sandbox proof
-resolve `error.BwrapUnavailable` and `SkipZigTest` — silently, on every run.
-That is how a sandbox missing `/run/systemd/resolve` shipped and broke every
-lease for a week (M167). debian-trixie stays lean because the memleak lane runs
-valgrind and never spawns a sandbox.
+**Current revision: `r4`** — both images carry `bubblewrap`. The runner spawns
+every sandboxed lease through `bwrap`, so an image without it makes each
+real-sandbox proof resolve `error.BwrapUnavailable` and `SkipZigTest` —
+silently, on every run. That is how a sandbox missing `/run/systemd/resolve`
+shipped and broke every lease for a week (M167).
+
+A third image, `ci-zig-debian-trixie`, was retired in M181_001: it existed for
+`memleak.yml`, which `b9163ed32` deleted with the rest of the Zig lanes. Its
+Dockerfile and build arm are gone; the published package outlived its only
+caller and is the operator's to delete.
 
 `bwrap` needs to create namespaces, which Docker's default seccomp profile
 refuses. Lanes that execute a sandbox therefore need `--privileged` (the
@@ -98,7 +100,6 @@ Tags produced:
 
 ```
 ghcr.io/agentsfleet/ci-zig-alpine:0.16.0          (linux/amd64 + linux/arm64 manifest)
-ghcr.io/agentsfleet/ci-zig-debian-trixie:0.16.0   (linux/amd64)
 ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0          (linux/amd64)
 ```
 
@@ -126,7 +127,6 @@ tag — never `latest` — so a bad image rebuild can never silently break CI.
 
 ```bash
 ./build_and_push.sh build --image alpine
-./build_and_push.sh build --image debian-trixie
 ./build_and_push.sh build --image ubuntu
 ```
 
@@ -164,11 +164,6 @@ docker run --rm --platform linux/amd64 \
 docker run --rm --platform linux/arm64 \
   ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION" \
   sh -c 'zig version && ls -l /usr/lib/aarch64-linux-gnu/libssl.a'
-
-# debian-trixie — confirm zig + valgrind
-docker run --rm \
-  ghcr.io/agentsfleet/ci-zig-debian-trixie:"$ZIG_VERSION" \
-  sh -c 'zig version && valgrind --version'
 
 # ubuntu — confirm zig + kcov + python3 + make + docker-cli + compose
 docker run --rm --platform linux/amd64 \

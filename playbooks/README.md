@@ -88,7 +88,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 <!-- playbook-inventory:start -->
 - `operations/admin_bootstrap` — provision the platform administrator.
 - `operations/cutover` — the Rust daemon cutover runbook, its declared-divergence register, and the probe runner that asserts rubric-row coverage.
-- `operations/ci_rust_images` — build the pinned Rust musl base image for the static daemon build.
+- `operations/ci_rust_images` — build the one pinned Rust base image for Continuous Integration (CI): the musl toolchain for the static daemon build, and the components the lint and unit lanes need.
 - `operations/ci_zig_images` — build pinned Zig images for Continuous Integration (CI).
 - `operations/credential_rotation` — rotate an exposed development credential.
 - `operations/github_app_registration` — register the platform GitHub App.

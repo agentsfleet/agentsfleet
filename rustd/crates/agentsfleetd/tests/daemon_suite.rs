@@ -62,6 +62,8 @@ mod integration_runner_shapes;
 mod integration_serve;
 #[path = "migrate.rs"]
 mod migrate;
+#[path = "nameplate.rs"]
+mod nameplate;
 #[path = "preflight.rs"]
 mod preflight;
 #[path = "preflight_optional.rs"]
