@@ -24,7 +24,7 @@ impl Fleet {
         // Bound here rather than in the literal below: the fixture key is
         // MOVED into the last vault this constructor builds, and a store
         // declared after that point could not borrow it.
-        let providers = Providers::new(database.clone(), Arc::clone(&kek));
+        let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -156,7 +156,7 @@ impl Fleet {
         // Bound here rather than in the literal below: the fixture key is
         // MOVED into the last vault this constructor builds, and a store
         // declared after that point could not borrow it.
-        let providers = Providers::new(database.clone(), Arc::clone(&kek));
+        let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         Self {
             ready: ReadyInputs {
                 database: true,

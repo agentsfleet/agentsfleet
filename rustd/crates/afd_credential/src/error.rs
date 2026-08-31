@@ -72,6 +72,18 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
+
+    #[error("could not draw the entropy a registry entry is minted from")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    #[error("a minted registry-entry identifier was not well-formed")]
+    Mint {
+        #[source]
+        source: afd_core::error::Error,
+    },
 }
 
 impl Error {
@@ -111,6 +123,13 @@ impl Error {
             // shape is wrong answers this one — the shape is a fact the
             // operator who stored it can act on.
             ErrorKind::VaultDataInvalid => (error_code::VAULT_DATA_INVALID, DETAIL_VAULT_INVALID),
+            // Two failures of this instance rather than of its input: a host
+            // that cannot draw entropy, and a mint that produced something
+            // `Uuid7` refuses. Neither is the caller's to correct, and both
+            // answer the same internal code `afd_tenant` gives them.
+            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
+                (error_code::INTERNAL_OPERATION_FAILED, DETAIL_DATABASE_ERROR)
+            }
             // The one provider-family failure an operator can ACT on: the
             // fleet named a credential and nobody stored it.
             ErrorKind::CredentialMissing => (
@@ -166,6 +185,20 @@ impl Error {
                 | ErrorKind::VaultDataInvalid
                 | ErrorKind::CredentialMissing
         )
+    }
+
+    /// The guard's word for a refused endpoint, when that is what failed.
+    ///
+    /// Activation renders this refusal as an outcome a client is told, where
+    /// every other provider-family failure is an internal fault. The word is
+    /// the guard's own — never the URL and never the host, which sit beside an
+    /// `api_key` in the same credential.
+    #[must_use]
+    pub const fn endpoint_rejection(&self) -> Option<&'static str> {
+        match self.kind() {
+            ErrorKind::ProviderEndpoint { reason } => Some(reason),
+            _not_an_endpoint => None,
+        }
     }
 
     /// Whether a declared credential simply has no vault row.
@@ -251,6 +284,22 @@ pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
 /// Reports a stored credential body that is not an addressable object.
 pub(crate) fn vault_data_invalid() -> Error {
     ErrorKind::VaultDataInvalid.into()
+}
+
+/// Reports a host that could not draw entropy for a minted identifier.
+///
+/// A `map_err` that ADDS what the call site alone knows — WHICH mint drained —
+/// with the cause riding through as `#[source]`, per `RUST_ERROR_STANDARD`
+/// rule 3. Not an `error_lifts!` entry: `afd_crypto::error::Error` already
+/// means "an envelope would not open" on this crate's vault path, and one
+/// `From` cannot mean both.
+pub(crate) fn entropy_drained(source: afd_crypto::error::Error) -> Error {
+    ErrorKind::Entropy { source }.into()
+}
+
+/// Reports a minted identifier the domain type refused.
+pub(crate) fn mint_failed(source: afd_core::error::Error) -> Error {
+    ErrorKind::Mint { source }.into()
 }
 
 /// Reports a declared credential with no vault row.

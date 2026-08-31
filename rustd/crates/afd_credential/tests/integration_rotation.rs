@@ -2,6 +2,7 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
+    clippy::panic,
     reason = "integration preconditions should fail the test loudly"
 )]
 
@@ -21,6 +22,8 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use serde_json::Value;
 
+#[path = "integration_rotation/activation.rs"]
+mod activation;
 #[path = "integration_rotation/provider_resolution.rs"]
 mod provider_resolution;
 
@@ -174,6 +177,34 @@ impl Fixture {
             )
             .expect("the fixture envelope seals");
         self.insert(name, &envelope).await;
+    }
+
+    /// Seeds a credential WITH the non-secret projection columns.
+    ///
+    /// `seed` leaves `meta_provider` and `meta_has_key` NULL, which is what a
+    /// row storing something other than a provider credential looks like. The
+    /// activation gate reads exactly those two, so a test about the gate has to
+    /// be able to set them.
+    async fn seed_with_shape(
+        &self,
+        name: &str,
+        plaintext: &[u8],
+        meta_provider: Option<&str>,
+        meta_has_key: Option<bool>,
+    ) {
+        self.seed(name, plaintext).await;
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "UPDATE vault.secrets SET meta_provider = $3, meta_has_key = $4 \
+             WHERE workspace_id = $1::uuid AND key_name = $2",
+        )
+        .bind(self.workspace.as_str())
+        .bind(name)
+        .bind(meta_provider)
+        .bind(meta_has_key)
+        .execute(&mut *connection)
+        .await
+        .expect("the projection columns seed");
     }
 
     async fn insert(&self, name: &str, envelope: &Envelope) {

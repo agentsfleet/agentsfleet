@@ -155,7 +155,7 @@ impl Providers {
 /// answer `sqlx::Error`, which this crate reports as a datastore failure and
 /// therefore retries. The classification is the point, so the conversion is
 /// written where it can produce the right kind.
-fn read_selection(row: &PgRow) -> Result<Selection> {
+pub(crate) fn read_selection(row: &PgRow) -> Result<Selection> {
     let stored: String = row.try_get(0).map_err(query(CONTEXT_SELECTION))?;
     let posture = Posture::parse(&stored).ok_or_else(|| provider_malformed(FIELD_MODE))?;
     Ok(Selection {

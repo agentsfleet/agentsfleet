@@ -46,7 +46,9 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
         TenantRoute::ModelLibrary => Some(get(handler::tenant::catalogue::<D>)),
         TenantRoute::FleetBundles => Some(get(handler::fleet_bundles::list::<D>)),
         TenantRoute::Provider => Some(
-            get(handler::tenant::provider_view::<D>).delete(handler::tenant::provider_reset::<D>),
+            get(handler::tenant::provider_view::<D>)
+                .put(handler::tenant::provider_apply::<D>)
+                .delete(handler::tenant::provider_reset::<D>),
         ),
         TenantRoute::ModelEntries | TenantRoute::ModelEntry => None,
     }

@@ -1,8 +1,9 @@
 //! The provider view and reset's refusal matrix — everything in FRONT of the
 //! verbs, plus the one refusal only the reset itself can answer.
 //!
-//! The activation (`PUT`) joins this file when its verb lands; the guard and
-//! scope rungs proven here are the same layers it will sit behind.
+//! The activation's first ladder rung is proven here too — it refuses BEFORE
+//! any pool is touched, which is the whole reason `secret_ref` is optional on
+//! the wire rather than required by serde.
 //!
 //! # Why the datastore's refusal is the success signal
 //!
@@ -49,10 +50,30 @@ async fn send(
     method: Method,
     credential: Option<&str>,
 ) -> axum::response::Response {
+    send_body(scopes, method, credential, "").await
+}
+
+/// The same, carrying a body.
+async fn send_body(
+    scopes: ScopeSet,
+    method: Method,
+    credential: Option<&str>,
+    body: &str,
+) -> axum::response::Response {
     let router = Fleet::new()
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
-    harness::send(&router, method, PROVIDER, credential, "").await
+    harness::send(&router, method, PROVIDER, credential, body).await
+}
+
+/// Reads a problem document's registry code back.
+async fn code_of(response: axum::response::Response) -> String {
+    let document = harness::json_body(response).await;
+    document
+        .get("error_code")
+        .and_then(Value::as_str)
+        .expect("every refusal names its registry code")
+        .to_owned()
 }
 
 /// Reads a problem document's `detail` back.
@@ -120,10 +141,70 @@ async fn test_both_verbs_reach_their_service_over_the_dead_pool() {
 }
 
 #[tokio::test]
-async fn test_the_activation_method_is_tabled_but_not_yet_served() {
-    // PUT mounts with the activation verb. Until then the method router
-    // answers 405 — the path exists, the method is not yet served — and this
-    // test flips to a service assertion the day it lands.
-    let put = send(PROVIDER_WRITE, Method::PUT, Some(TENANT_KEY)).await;
-    assert_eq!(put.status(), StatusCode::METHOD_NOT_ALLOWED);
+async fn test_a_body_this_daemon_cannot_read_never_reaches_a_pool() {
+    let refused = send_body(PROVIDER_WRITE, Method::PUT, Some(TENANT_KEY), "{").await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_self_managed_naming_no_credential_is_the_ladder_s_first_rung() {
+    // Rung one, and it is the reason `secret_ref` is optional on the wire: a
+    // serde-required field would answer a shape error naming no registry code,
+    // where this answers UZ-PROVIDER-001 with a sentence a client can act on.
+    // It refuses before the pool is touched, which the dead harness proves —
+    // anything reaching the store would answer 503 instead.
+    let refused = send_body(
+        PROVIDER_WRITE,
+        Method::PUT,
+        Some(TENANT_KEY),
+        r#"{"mode":"self_managed"}"#,
+    )
+    .await;
+
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(refused).await, "UZ-PROVIDER-001");
+}
+
+#[tokio::test]
+async fn test_the_platform_arm_of_a_put_is_the_reset() {
+    // Byte-equivalent to DELETE by construction — one function serves both —
+    // so it reaches the same service and answers the same outage.
+    let reached = send_body(
+        PROVIDER_WRITE,
+        Method::PUT,
+        Some(TENANT_KEY),
+        r#"{"mode":"platform"}"#,
+    )
+    .await;
+
+    assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(detail_of(reached).await, "Database unavailable");
+}
+
+#[tokio::test]
+async fn test_a_self_managed_activation_reaches_its_transaction() {
+    // Past rung one, so the next thing it meets is the pool that answers
+    // nothing — proving the ladder's remaining rungs are the store's, not the
+    // handler's.
+    let reached = send_body(
+        PROVIDER_WRITE,
+        Method::PUT,
+        Some(TENANT_KEY),
+        r#"{"mode":"self_managed","secret_ref":"my-key"}"#,
+    )
+    .await;
+
+    assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn test_the_write_scope_gates_the_activation() {
+    let read_only = send_body(
+        PROVIDER_READ,
+        Method::PUT,
+        Some(TENANT_KEY),
+        r#"{"mode":"platform"}"#,
+    )
+    .await;
+    assert_eq!(read_only.status(), StatusCode::FORBIDDEN);
 }
