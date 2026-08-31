@@ -62,6 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_observability/**` | EDIT | §2: the OTLP transport the crate was shaped to receive, and the log signal |
 | `rustd/Cargo.toml` | EDIT | §2: the OTLP exporter dependency and its transport features |
 | `make/test-parity.mk` | EDIT | §3: the soak's route corpus, once every route serves |
+| `scripts/parity_lane.sh` · `scripts/parity_lane_test.sh` | EDIT | §1: the reviewer finding on the declared-divergence branch, inherited with the merged fix — the absent side is graded against its own daemon's unmatched-route shape rather than against the other daemon. The lane is §1's oracle, so it lands here rather than waiting for a lane fix nobody owns |
 | `deploy/**` | EDIT | §4: drain-swap steps for the 3-machine shape; collector configuration |
 | `playbooks/operations/cutover/001_playbook.md` | EDIT | §4: the runbook's swap rows, verification probes and abort criteria |
 | `playbooks/operations/cutover/probes.sh` | EDIT | §4: probes for this milestone's rubric rows |
