@@ -7,49 +7,115 @@ name: deploy-dev / build
 
 on:
   workflow_call:
+    outputs:
+      runner:
+        description: compile-runner job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.runner }}
+      daemon:
+        description: compile-daemon job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.daemon }}
+      ghcr:
+        description: push-ghcr job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.ghcr }}
 
 jobs:
   # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
   # Build inside Alpine so static OpenSSL archives are musl-compatible.
   # Produces fully static binaries that run on bookworm (Fly.io) and Trixie (bare-metal).
-  compile-dev:
+  compile-runner:
     runs-on: ubuntu-latest
     container:
       # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
       image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - name: Build linux/amd64 binaries
+      - name: Build the runner (linux/amd64)
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
           zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
           mkdir -p dist
-          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-amd64
           cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
-          name: dev-binaries
-          path: |
-            dist/agentsfleetd-linux-amd64
-            dist/agentsfleet-runner-linux-amd64
+          name: runner-binary
+          path: dist/agentsfleet-runner-linux-amd64
           retention-days: 3
 
   # ── 1b. Build Docker image and push dev-latest to GHCR ───────────────────
   # Runs on the Ubuntu runner (Docker daemon required; not available inside a
-  # container job).  Downloads compiled binaries from compile-dev.
-  push-dev:
-    needs: compile-dev
+  # container job).  Downloads compiled binaries from compile-runner.
+  # The daemon the dev image serves. Runs beside compile-runner rather than after
+  # it: the runner and the daemon share no build input, so serialising them
+  # would add the slower one's time to the faster one's for nothing.
+  compile-daemon:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          # Exact match or a cold build: no prefix fallback. The deploy-dev
+          # family is guarded against partial cache restores
+          # (ui/packages/app/tests/release-gate-workflow.test.ts) because a
+          # softened miss on the Playwright cache serves a browser binary that
+          # is not the version asked for and reports nothing. Cargo would be
+          # safe under a partial restore — it re-fingerprints every artifact
+          # against source, lockfile and compiler — but the guard reads the
+          # family as one blob, and a single exempt cache is not worth teaching
+          # a browser rule about compilers. A lockfile bump therefore pays a
+          # cold dependency build here.
+          key: cargo-dist-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+
+      # Same shape as the release build — docker run rather than a container
+      # job, so the JS actions above and below stay on the host.
+      - name: Build the daemon in Alpine (musl-native)
+        run: |
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target dist
+          # DERIVED, never spelled twice. `make/build.mk` computes BUILDER_IMAGE
+          # from this same file with this same sed, so a versions.env bump moves
+          # CI and the local build together. A literal tag here would let them
+          # drift into "a second compiler nobody chose".
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          echo "→ building in $BUILDER"
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -w /w/rustd \
+            "$BUILDER" \
+            sh -c '
+              set -e
+              cargo build --profile dist --bin agentsfleetd
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-amd64
+          chmod +x dist/agentsfleetd-rs-linux-amd64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: daemon-binary
+          path: dist/agentsfleetd-rs-linux-amd64
+          retention-days: 3
+
+  push-ghcr:
+    needs: [compile-runner, compile-daemon]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
-          name: dev-binaries
+          pattern: '*-binary'
           path: dist
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@v4
 
@@ -59,3 +125,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           PLATFORMS: linux/amd64
+
+  # Report each stage's result as a workflow output. `if: always()` so a FAILED
+  # stage still reports: without it the caller sees an empty output and cannot
+  # tell "the image never pushed" from "the whole stage was skipped".
+  result:
+    runs-on: ubuntu-latest
+    needs: [compile-runner, compile-daemon, push-ghcr]
+    if: always()
+    outputs:
+      runner: ${{ needs.compile-runner.result }}
+      daemon: ${{ needs.compile-daemon.result }}
+      ghcr: ${{ needs.push-ghcr.result }}
+    steps:
+      - name: Record build results
+        run: |
+          echo "compile-runner = ${{ needs.compile-runner.result }}"
+          echo "compile-daemon = ${{ needs.compile-daemon.result }}"
+          echo "push-ghcr      = ${{ needs.push-ghcr.result }}"

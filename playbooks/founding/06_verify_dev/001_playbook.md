@@ -3,7 +3,7 @@
 **Owner:** Human
 **Executors:** Agent aggregates evidence and applies approved operations;
 Pipeline produced the deployment evidence
-**Prerequisites:** step 05 completed; `DEV_WORKER_READY=true`;
+**Prerequisites:** step 05 completed; `DEV_RUNNER_READY=true`;
 `DEV_VERIFY_RUN_ID` is green
 
 Do not start another deployment. This step verifies and records the workflow

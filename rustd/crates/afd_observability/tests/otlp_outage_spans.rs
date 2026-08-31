@@ -1,15 +1,5 @@
 //! Dimension 6.2 — a collector that is down costs spans, never requests.
-//!
-//! No network here, and that is deliberate rather than a shortcut. From this
-//! process's point of view "the collector is down" IS "export returns an
-//! error", and an exporter that fails on demand makes the assertion
-//! deterministic where a real unreachable endpoint would make it a timing
-//! question.
-//!
-//! What IS real is everything between the caller and that exporter: a genuine
-//! `SdkTracerProvider` and a genuine batch processor, because those are the
-//! pieces doing the work of keeping one off the other. Hand-built `SpanData`
-//! would have tested the counter and nothing else.
+
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

@@ -156,7 +156,7 @@ const EXIT_GPA_LEAK: u8 = 70;
 /// Debug keeps the leak-checking DebugAllocator; a release build uses the fast
 /// thread-safe `smp_allocator` so the long-running daemon never pays the
 /// DebugAllocator's per-allocation bookkeeping + locking cost in production. Leak
-/// detection lives in the memleak gates (testing-allocator test graphs + the
+/// detection lives in the testing-allocator test graphs (the
 /// boot→drain lifecycle test); the Prometheus endpoint exposes current resident
 /// memory as the production signal. Pure so the choice is unit-testable.
 const AllocatorKind = enum { debug_leak_checked, release_smp };

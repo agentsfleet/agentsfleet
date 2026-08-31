@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
+.PHONY: check-cutover-probes lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -84,6 +84,17 @@ lint-scripts:  ## Run every scripts/*_test.py self-test
 	@$(SCRIPT_SELF_TESTS)
 	@echo "✓ [scripts] Script self-tests passed"
 
+# The cutover probe runner's own tests, plus its three asserts run for real
+# against this repository. Hermetic — fixtures for the negatives, no daemon —
+# so the row-coverage claim is graded at every `lint-all` rather than only on
+# swap day, which is the one day nobody wants to discover it.
+check-cutover-probes:  ## Assert cutover probe row-coverage + run the probe runner's self-tests
+	@echo "→ [cutover] Probe runner self-tests..."
+	@bash playbooks/operations/cutover/probes_test.sh
+	@echo "→ [cutover] Row-coverage, rollback and architecture asserts..."
+	@bash playbooks/operations/cutover/probes.sh --coverage
+	@echo "✓ [cutover] Probe runner green"
+
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -104,13 +115,25 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test check-cutover-probes  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
-check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
+check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
 	@echo "→ [gh-actions] Running actionlint on workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
+	@# actionlint validates the YAML and the `run:` shell; it has no opinion on
+	@# whether a pin's runtime still exists or whether its ref can move. That is
+	@# this script's half, and it rides the same target because both answer one
+	@# question: will these workflows still work tomorrow.
+	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
+	@bash audits/gh-actions-runtime.sh
+	@# The builder pin lives in its own script so it can have its own tests —
+	@# the shape check-architecture-doc uses. A gate with no self-test can pass
+	@# vacuously: a broken grep reports a clean tree and reads like success.
+	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
+	@bash scripts/check_builder_pin_test.sh
+	@bash scripts/check_builder_pin.sh
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
@@ -156,7 +179,7 @@ check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-s
 # invokes this target with none of them set (.github/workflows/lint.yml), so the
 # scrub changes nothing there; it makes a developer's run match it.
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
-  -u VAULT -u VAULT_DEV -u VAULT_PROD -u WORKER_ITEM -u AGENTSFLEET_API_URL
+  -u VAULT -u VAULT_DEV -u VAULT_PROD -u RUNNER_ITEM -u AGENTSFLEET_API_URL
 
 # Split by what a change can actually break. The reference-integrity and
 # README-parity halves are cheap greps over the tree and are the ONLY things a

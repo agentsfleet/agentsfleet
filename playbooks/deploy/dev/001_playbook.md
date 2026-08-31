@@ -51,13 +51,13 @@ gh run watch "$run_id" \
 | Pipeline job | What it proves |
 |---|---|
 | `check-credentials` | Current development deployment inputs exist. |
-| `compile-dev` and `push-dev` | The exact commit built and its image was published. |
-| `deploy-fly-dev` | The API and Cloudflare tunnel deployed. |
-| `deploy-worker-dev` | The enabled development runner deployed and passed its host gate. |
-| `verify-dev` | Public API health and readiness passed. |
-| `qa-dev` | Dashboard smoke passed. |
-| `acceptance-e2e-dev` | Browser acceptance passed. |
-| `cli-acceptance-dev` | The worktree command-line client passed live acceptance. |
+| `compile-runner` and `push-ghcr` | The exact commit built and its image was published. |
+| `deploy-fly` | The API and Cloudflare tunnel deployed. |
+| `deploy-metal` | The enabled development runner deployed and passed its host gate. |
+| `verify` | Public API health and readiness passed. |
+| `qa` | Dashboard smoke passed. |
+| `acceptance-e2e` | Browser acceptance passed. |
+| `acceptance-cli` | The worktree command-line client passed live acceptance. |
 
 The Agent records the workflow URL, commit, each job result, and any intentionally
 skipped runner job. A skipped enabled job is a failure.
@@ -67,3 +67,10 @@ skipped runner job. A skipped enabled job is a failure.
 The Agent diagnoses a red job from its logs. A live host mutation, provider
 write, or restart of work in flight requires Human approval. The Agent does not
 replace a failed Pipeline deployment with an unrecorded workstation deployment.
+
+**There is no shell in the API container.** The image is distroless — the
+daemon, a certificate bundle, a clock, and nothing else. `flyctl ssh console`
+into an API machine gives no prompt, and that is the image working as intended.
+Diagnose from `flyctl logs`, from `/readyz` and `/healthz`, and from the metrics
+families; the same rule holds here as in production, and development is where an
+operator should discover it.

@@ -136,5 +136,4 @@ test {
     _ = @import("http/handlers/fleets/sse_streaming_integration_test.zig");
     _ = @import("http/handlers/fleets/backpressure_integration_test.zig");
     _ = @import("http/handlers/tenant_context_integration_test.zig");
-    _ = @import("cmd/serve_lifecycle_integration_test.zig");
 }

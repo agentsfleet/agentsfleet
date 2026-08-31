@@ -1,4 +1,4 @@
-name: deploy-dev / worker
+name: deploy-dev / metal
 
 # Called by deploy-dev.yml after build. Deploys the bare-metal development
 # runner over Tailscale Secure Shell (SSH), gated both directions: the host
@@ -7,32 +7,32 @@ name: deploy-dev / worker
 # job's result as an output so the
 # caller's release verdict can distinguish success / skipped / failure — a
 # reusable workflow whose only job skipped reads as success at the caller,
-# which would erase the documented DEV_WORKER_READY skip from the verdict.
+# which would erase the documented DEV_RUNNER_READY skip from the verdict.
 
 on:
   workflow_call:
     outputs:
       result:
-        description: deploy-worker-dev job result (success | failure | cancelled | skipped)
+        description: deploy-metal job result (success | failure | cancelled | skipped)
         value: ${{ jobs.result.outputs.result }}
 
 jobs:
-  # ── 3. Deploy development worker to bare-metal via Tailscale SSH ─────────
+  # ── 3. Deploy the development runner to bare metal via Tailscale SSH ─────
   # Enable after agentsfleet-dev-runner-ant is prepared and registered.
-  deploy-worker-dev:
+  deploy-metal:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: vars.DEV_WORKER_READY == 'true'
+    if: vars.DEV_RUNNER_READY == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
-          name: dev-binaries
+          name: runner-binary
           path: dist
 
       - name: Load Tailscale credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -68,30 +68,30 @@ jobs:
   # deploy job skipped or failed, so the verdict never loses the distinction.
   result:
     runs-on: ubuntu-latest
-    needs: deploy-worker-dev
+    needs: deploy-metal
     if: always()
     outputs:
-      result: ${{ needs.deploy-worker-dev.result }}
+      result: ${{ needs.deploy-metal.result }}
     steps:
-      - name: Record worker result
-        run: echo "deploy-worker-dev result = ${{ needs.deploy-worker-dev.result }}"
+      - name: Record metal result
+        run: echo "deploy-metal result = ${{ needs.deploy-metal.result }}"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The runner deploy used to announce itself from the target host, via a
       # webhook file the workflow wrote there. A merge dropped the step that
       # wrote it and the host-side notifier failed silent, so this went quiet
-      # for weeks. Notifying from here keeps the webhook off the worker box.
-      # A skipped deploy still reports, because DEV_WORKER_READY=false looking
+      # for weeks. Notifying from here keeps the webhook off the runner box.
+      # A skipped deploy still reports, because DEV_RUNNER_READY=false looking
       # identical to a broken deploy is what makes silence dangerous.
       - name: Notify Discord
         if: always()
         uses: ./.github/actions/notify-discord
         with:
-          status: ${{ needs.deploy-worker-dev.result }}
+          status: ${{ needs.deploy-metal.result }}
           message: >-
-            ${{ needs.deploy-worker-dev.result == 'success'
+            ${{ needs.deploy-metal.result == 'success'
             && format('✅ DEV agentsfleet-runner deployed — `dev-{0}`', github.sha)
-            || format('❌ DEV agentsfleet-runner deploy {0} — `dev-{1}`\nCheck: {2}/{3}/actions/runs/{4}', needs.deploy-worker-dev.result, github.sha, github.server_url, github.repository, github.run_id) }}
+            || format('❌ DEV agentsfleet-runner deploy {0} — `dev-{1}`\nCheck: {2}/{3}/actions/runs/{4}', needs.deploy-metal.result, github.sha, github.server_url, github.repository, github.run_id) }}
           op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           vault: ${{ vars.VAULT_PROD }}

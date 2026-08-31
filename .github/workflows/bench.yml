@@ -10,7 +10,7 @@ jobs:
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install nodejs (bench fixture only)
         # bench.yml is workflow_dispatch only; ci-zig-ubuntu is kept lean
         # without nodejs since no other lane needs it.

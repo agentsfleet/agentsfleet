@@ -629,7 +629,7 @@ The split inverts the binding constraint. The pre-cutover runtime needed N Redis
 
 The fleet is observed **without any inbound reach into runners.** A runner may sit behind Network Address Translation (NAT), on an untrusted host, or on a customer host. A scraper cannot reliably reach those machines.
 
-Bounded per-runner facts therefore ride outbound on verbs the runner already calls: `report`, `heartbeat`, and lease grant/release. `agentsfleetd` accumulates those facts and exposes them on its own `/metrics`. `agentsfleetd` is the only application scrape target; the per-runner drill-down is a `runner_id` label.
+Bounded per-runner facts therefore ride outbound on verbs the runner already calls: `report`, `heartbeat`, and lease grant/release. `agentsfleetd` accumulates those facts and **pushes** them, with everything else it measures, over OpenTelemetry Protocol (OTLP) to one configured endpoint. There is no scrape target and no pull endpoint: the daemon exports, nothing collects from it. The per-runner drill-down is a `runner_id` label.
 
 Raw runner logs do not ride those verbs. The runner writes structured stderr to the host supervisor. An operator may attach a standard journald collector that sends logs directly to Loki, but the path bypasses `agentsfleetd`. Activity frames remain user-visible run output and are never reused as a log stream.
 
@@ -641,13 +641,13 @@ Three routes serve three different volume shapes:
  heartbeat/report/lease ──► agentsfleetd   stderr ──► journald
                               │                         └─ optional collector ──► Loki
                               ▼                            (never via agentsfleetd)
-                     :9091 /metrics
-                              ▲
-                              └── Fly.io managed Prometheus scrapes
+                     bounded OTLP push
+                              │
+                              └──► collector ──► whichever backend it fans out to
 
  CONTROL-PLANE LOGS / TRACES
  ───────────────────────────
- agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► Loki / Tempo
+ agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► the same collector
 ```
 
 `agentsfleet-runner` creates no spans today. Its NullClaw observer returns no trace identifier, so adding a trace field to the runner protocol would move bytes without joining any runner span. The current trace is control-plane-owned: one selected `fleet.delivery` span after accepted settlement.
@@ -658,7 +658,22 @@ Successful heartbeat, lease, renew, activity, and report requests are high-rate 
 
 PostHog remains `agentsfleetd` product analytics. It receives selected business events only. It never receives runner logs, heartbeats, renewals, activity frames, or scheduler mechanics. `FleetCompleted` is production-wired and fires after durable report settlement — the fenced claim that authorizes settlement authorizes the capture, so a replayed or superseded report captures nothing.
 
-The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[metrics]]` block in `deploy/fly/agentsfleetd-prod/fly.toml` is the entire scrape config; there is no Grafana Fleet / Alloy / Vector / OTel-collector for metrics. Fly pulls `:9091/metrics` off each machine over the private 6PN network; the endpoint is not publicly routable (no `[http_service]`; inbound is Cloudflare-Tunnel-only). Grafana reads Fly's Prometheus as a datasource — it scrapes nothing itself.
+**Nothing scrapes this daemon, and the configuration is where that is settled.**
+The string `metrics` appears in neither `deploy/fly/agentsfleetd-dev/fly.toml`
+nor `deploy/fly/agentsfleetd-prod/fly.toml`, and no port 9091 is declared
+anywhere under `deploy/`. An earlier revision of this section described a
+four-line Fly metrics block and a platform Prometheus pulling a metrics endpoint
+on port 9091 over the private 6PN network. No such block has existed in either
+environment, so that passage described an architecture the deployment never ran —
+`playbooks/operations/cutover/probes.sh` now asserts the agreement mechanically rather than
+leaving it to a reader to notice.
+
+The daemon is a **pure OTLP pusher to one configured endpoint**, addressed by
+the OpenTelemetry specification's own environment names. Which backend the
+signal reaches is the collector's configuration, not the daemon's: moving from
+one vendor to another is a collector change and never a daemon redeploy. A pull
+endpoint would be a second export path to keep true, exporting the same
+measurements by a different mechanism with a different failure mode.
 
 ### The four per-runner families
 
@@ -689,7 +704,7 @@ The four per-runner families live in a fixed-capacity (4096-series) table keyed 
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
-Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency. A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
+Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency. A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Each replica exports its own series, identified by the OpenTelemetry resource attribute that carries the machine identity rather than by a scrape target's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
 
 | Series | Cross-replica query | Exact under N>1? |
 |--------|---------------------|------------------|

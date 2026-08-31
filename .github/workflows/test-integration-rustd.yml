@@ -15,15 +15,9 @@ name: test-integration-rustd
 # `services:` block would be a second definition of the environment that drifts
 # from the first one silently.
 
+# No push-to-main trigger, by owner decision (Indy, Aug 2026): merges are not
+# squashed, so the merged tree is what the pull request already proved.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'rustd/**'
-      - 'schema/**'
-      - 'make/**'
-      - 'docker-compose.yml'
-      - '.github/workflows/test-integration-rustd.yml'
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -50,7 +44,7 @@ jobs:
     # covers a cold instrumented workspace build on an uncached runner.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # No toolchain input: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # here would be a second source of truth that silently disagrees.
@@ -58,7 +52,7 @@ jobs:
         run: rustup show && cargo --version
         working-directory: rustd
       - name: Cache cargo registry
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -75,7 +69,13 @@ jobs:
       # compose up, waits for healthchecks, drops schemas and flushes Redis.
       # KEEP_TEST_STATE is never set here: a green run under it would prove
       # nothing about a clean checkout, which is the whole point of this tier.
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      # Versioned pin plus a `tool:` input, not the `@cargo-llvm-cov` tag alias.
+      # Both install the same binary, but the alias is a moving ref: it resolves
+      # to whatever that tag points at when the job starts, so a third party can
+      # change what executes here with no commit in this repository.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       # One invocation, both tiers, instrumented. `test-integration-rustd` is
       # what a developer runs (no cargo-llvm-cov needed); this is the same
       # suite plus the unit tier under measurement, which is where the
@@ -86,7 +86,7 @@ jobs:
         run: make test-coverage-rustd
       - name: Upload Rust coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: rustd/lcov.info

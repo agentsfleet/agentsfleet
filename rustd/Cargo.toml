@@ -126,6 +126,11 @@ afd_wire = { path = "crates/afd_wire" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+# The metric census is a tab-separated contract, and this is the crate that
+# reads one: delimiter, `#` comment lines, header-to-field mapping, unequal-row
+# detection and serde-typed deserialization are all its job rather than ours,
+# and every error it raises already carries the record and line it failed on.
+csv = "1.4.0"
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # `raw_value` carries `RawValue`, which is how the activity verb splices a
 # runner's already-JSON tool arguments into a published frame WITHOUT parsing
@@ -579,7 +584,20 @@ octocrab = { version = "0.54.1", default-features = false, features = [
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
 opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
-opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
+    "trace",
+    "rt-tokio",
+    "metrics",
+    # Bound instruments resolve a family's attributes ONCE at bind time, so a
+    # hot recording call does no per-call attribute lookup. Experimental on a
+    # pinned SDK, taken deliberately: the alternative is an attribute hash on
+    # every request. Bound gauges do not exist in 0.32 and nothing is designed
+    # against them. Checked before adopting: `with_cardinality_limit` is NOT
+    # behind this or any feature, while `with_allowed_attribute_keys` IS
+    # (`spec_unstable_metrics_views`) — which is why the typed layer, not a
+    # View, is what constrains attribute keys here.
+    "experimental_metrics_bound_instruments",
+] }
 
 # `CancellationToken`, which is what a supervised task is cancelled BY. Chosen
 # over a shared `AtomicBool` for one reason that matters: a token is
@@ -762,6 +780,13 @@ debug = 1
 inherits = "release"
 lto = "fat"
 codegen-units = 1
+# Debug info goes; the symbol table stays. DWARF is most of the size on disk
+# and none of the production value, while a panicking daemon's last backtrace
+# still names its functions through the symbol table -- and that name is what
+# an operator greps the runbook for. `symbols` would shrink further and turn
+# that backtrace into bare addresses; the difference is kilobytes bought with
+# the one artifact you need mid-incident.
+strip = "debuginfo"
 
 # Iterating on an OPTIMIZED build without paying the LTO tail each time.
 #

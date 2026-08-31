@@ -170,7 +170,7 @@ pub fn deinit(self: *Watcher) void {
 - `defer` runs on every exit from the scope (success or error).
 - `errdefer` runs only when the scope exits via an `error` return.
 
-**The most common bug** is `errdefer` left where `defer` belonged — produces a leak on the success path, because the cleanup never runs. Symptom: memleak gate flags it; trace shows a successful return path.
+**The most common bug** is `errdefer` left where `defer` belonged — produces a leak on the success path, because the cleanup never runs. Symptom: the allocator reports a leak on a passing test; trace shows a successful return path.
 
 **The mirror bug** is `defer` left where `errdefer` belonged — produces a use-after-free, because the cleanup runs on success and frees memory the caller now owns.
 

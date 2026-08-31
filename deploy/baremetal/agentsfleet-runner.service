@@ -42,7 +42,7 @@ KillMode=mixed
 #                          control plane cannot know); defaults sanely when unset
 # Bootstrap order (chicken-and-egg): the updated agentsfleetd (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
-# `agt_r` for this host. Until that's done, DEV_WORKER_READY stays `false`.
+# `agt_r` for this host. Until that's done, DEV_RUNNER_READY stays `false`.
 EnvironmentFile=-/etc/default/agentsfleet-runner
 
 # Ensure the sandbox runtime directory exists.
