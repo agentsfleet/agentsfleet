@@ -1,5 +1,6 @@
 //! Shared request parsing and refusal rendering for every API plane.
 
+pub mod library_onboard;
 mod refusable;
 mod refusal;
 

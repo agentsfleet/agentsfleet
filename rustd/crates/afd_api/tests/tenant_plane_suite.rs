@@ -66,6 +66,8 @@ mod workspace_approvals;
 mod workspace_events;
 #[path = "workspace_events_input.rs"]
 mod workspace_events_input;
+#[path = "workspace_fleet_libraries.rs"]
+mod workspace_fleet_libraries;
 #[path = "workspace_fleets.rs"]
 mod workspace_fleets;
 #[path = "workspace_fleets_input.rs"]
