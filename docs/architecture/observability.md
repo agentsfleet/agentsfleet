@@ -41,7 +41,7 @@ The control plane's telemetry surfaces live in `afd_observability`.
 
 **One process, one registry.** Every runtime family carries the `agentsfleet_`
 prefix; the evented cost families use dotted OpenTelemetry
-semantic-convention names (§Metrics stay semantic explains each divergence;
+semantic-convention names (each divergence is explained in §Metrics stay semantic;
 `docs/metrics.census.tsv` carries the full contract).
 The metric-family registry declares every exported name, and the namespace
 guard fails on any family outside it. `fleet_id`, log event names,

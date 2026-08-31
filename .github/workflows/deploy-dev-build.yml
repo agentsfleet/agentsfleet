@@ -50,9 +50,17 @@ jobs:
             .cargo-cache/registry
             .cargo-cache/git
             rustd/target
+          # Exact match or a cold build: no prefix fallback. The deploy-dev
+          # family is guarded against partial cache restores
+          # (ui/packages/app/tests/release-gate-workflow.test.ts) because a
+          # softened miss on the Playwright cache serves a browser binary that
+          # is not the version asked for and reports nothing. Cargo would be
+          # safe under a partial restore — it re-fingerprints every artifact
+          # against source, lockfile and compiler — but the guard reads the
+          # family as one blob, and a single exempt cache is not worth teaching
+          # a browser rule about compilers. A lockfile bump therefore pays a
+          # cold dependency build here.
           key: cargo-dist-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-dist-amd64-
 
       # Same shape as the release build — docker run rather than a container
       # job, so the JS actions above and below stay on the host.
