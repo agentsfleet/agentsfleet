@@ -123,6 +123,37 @@ describe("browser cache and evidence in the deployment workflow", () => {
   });
 });
 
+describe("artifacts uploaded are the artifacts downloaded", () => {
+  it("should download every artifact the build jobs upload", () => {
+    // The bug this pins: the jobs were renamed and their artifacts with them
+    // (`dev-binaries`/`dev-daemon` → `runner-binary`/`daemon-binary`), but the
+    // download glob stayed `dev-*`. Nothing fails at rename time — the pattern
+    // is still valid, it just matches nothing — so `push-ghcr` would have
+    // downloaded zero binaries and the image COPY would have died on the first
+    // merge to main. A stale glob is silent in a way a stale job name is not:
+    // a bad `needs:` is a parse error, a bad `pattern:` is an empty directory.
+    const workflow = deployDevFamily();
+    const uploaded = [...workflow.matchAll(/^\s+name: ([a-z0-9-]+-binary)$/gm)]
+      .map((m) => m[1])
+      .filter((v): v is string => v !== undefined);
+    expect(uploaded.length).toBeGreaterThan(0);
+
+    const patterns = [...workflow.matchAll(/^\s+pattern: '?([^'\n]+)'?$/gm)]
+      .map((m) => m[1])
+      .filter((v): v is string => v !== undefined)
+      .map((v) => v.trim());
+    expect(patterns.length).toBeGreaterThan(0);
+
+    for (const artifact of uploaded) {
+      const matched = patterns.some((p) => {
+        const re = new RegExp(`^${p.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+        return re.test(artifact);
+      });
+      expect(matched, `no download pattern matches uploaded artifact '${artifact}'`).toBe(true);
+    }
+  });
+});
+
 describe("the release verdict reports every job", () => {
   it("should emit one summary event per release-critical job", () => {
     const workflow = deployDevYaml();
