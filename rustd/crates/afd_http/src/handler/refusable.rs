@@ -142,6 +142,28 @@ impl Refusable for afd_fleet_lifecycle::Error {
     }
 }
 
+/// The credential plane: the provider a run dials, and the vault it opens.
+///
+/// Answers ONE code for the whole provider family by design — which credential
+/// check failed is an oracle a caller does not get. The tenant surface's finer
+/// `UZ-PROVIDER-*` refusals are not raised here at all: they are decisions the
+/// handler makes from values it already holds, so they never become errors and
+/// never need a variant.
+impl Refusable for afd_credential::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl Refusable for afd_vault::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)

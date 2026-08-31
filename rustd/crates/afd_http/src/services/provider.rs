@@ -19,18 +19,17 @@
 //! them. Keeping them separate here means the composition is visible where it
 //! is decided, and a suite can pin either half without the other.
 //!
-//! # Why the credential probe reads metadata and never a key
+//! # Why there is no credential-probe verb here
 //!
-//! [`TenantProviders::secret_kind`] answers what KIND of credential a name
-//! holds off the vault's non-secret columns. The write path's refusals are the
-//! most-walked path on this surface — a client naming a credential it has not
-//! stored — and answering them without a decrypt means a plaintext key never
-//! enters the process on the way to a 400.
+//! The write ladder's credential checks run under the reference lock, inside
+//! ONE transaction — a seam of separate pool-acquiring verbs cannot form one.
+//! Activation is therefore a single store verb (landing with the PUT handler),
+//! and this seam carries only the verbs whose statements stand alone.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
-use afd_credential::provider::{PlatformDefault, Providers, SecretKind, Selection};
+use afd_credential::provider::{PlatformDefault, Providers, Selection};
 
 /// Everything the tenant provider routes act through.
 ///
@@ -68,33 +67,6 @@ pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
         &self,
     ) -> impl Future<Output = CredentialResult<Option<PlatformDefault>>> + Send;
 
-    /// The workspace this tenant's self-managed credentials are held in.
-    ///
-    /// `Ok(None)` is a tenant with no workspace at all — a violated bootstrap
-    /// invariant, since signup creates the primary workspace, and one no retry
-    /// repairs.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and an identifier column this
-    /// daemon cannot read.
-    fn primary_workspace(
-        &self,
-        tenant: &Uuid7,
-    ) -> impl Future<Output = CredentialResult<Option<Uuid7>>> + Send;
-
-    /// What kind of credential `workspace` holds under `name`.
-    ///
-    /// Decides both of the write ladder's credential rungs in one round trip
-    /// and decrypts nothing — see the module note.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    fn secret_kind(
-        &self,
-        workspace: &Uuid7,
-        name: &str,
-    ) -> impl Future<Output = CredentialResult<SecretKind>> + Send;
-
     /// Writes this tenant's selection, last-write-wins on its single row.
     ///
     /// Takes the coherent pair it is given. Platform mode naming a credential,
@@ -126,21 +98,6 @@ impl TenantProviders for Providers {
         &self,
     ) -> impl Future<Output = CredentialResult<Option<PlatformDefault>>> + Send {
         Self::platform_default(self)
-    }
-
-    fn primary_workspace(
-        &self,
-        tenant: &Uuid7,
-    ) -> impl Future<Output = CredentialResult<Option<Uuid7>>> + Send {
-        Self::primary_workspace(self, tenant)
-    }
-
-    fn secret_kind(
-        &self,
-        workspace: &Uuid7,
-        name: &str,
-    ) -> impl Future<Output = CredentialResult<SecretKind>> + Send {
-        Self::secret_kind(self, workspace, name)
     }
 
     fn upsert(
