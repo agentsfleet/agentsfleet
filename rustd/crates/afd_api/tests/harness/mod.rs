@@ -58,6 +58,7 @@ use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
+use afd_credential::provider::Providers;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
@@ -234,6 +235,9 @@ pub(crate) struct Fleet {
     memories: Memories,
     billing: Billing,
     catalogue: Models,
+    /// The tenant provider store: the same production value, over a pool that
+    /// answers nothing and a fixture key that opens nothing.
+    providers: Providers,
     runner_lease_history: RunnerLeaseHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,

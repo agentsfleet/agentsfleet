@@ -47,6 +47,7 @@
 //! lands, this module moves down to `afd_state` and both callers import it.
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
+mod cap;
 mod endpoint;
 mod managed;
 mod platform;

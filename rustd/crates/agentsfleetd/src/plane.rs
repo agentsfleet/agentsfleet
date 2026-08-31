@@ -93,6 +93,7 @@ pub struct ServingPlane {
     cli_credentials: CliCredentials,
     billing: Billing,
     models: Models,
+    providers: Providers,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
     libraries: Libraries,
@@ -171,6 +172,13 @@ impl ServingPlane {
         // again, so both take the same handle: one pool for everything this
         // family sends outbound — see `crate::credentials`.
         let vendor_client = crate::credentials::vendor_exchange_client();
+        // One provider store, read by two planes. The lease verb resolves which
+        // key a run dials with; the tenant surface reads and writes the row
+        // that decides it. A `Providers` is a pool handle and an `Arc` over the
+        // process key, so the clone shares one connection set and one key —
+        // building a second would mean two values that could be pointed at
+        // different keys by a later edit.
+        let providers = Providers::new(database.clone(), Arc::clone(&kek));
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store),
@@ -190,6 +198,7 @@ impl ServingPlane {
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
+            providers: providers.clone(),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
@@ -251,7 +260,7 @@ impl ServingPlane {
                 gates: Gates::new(database.clone(), queue, Entropy::new()),
                 accounts: Accounts::new(database.clone(), Entropy::new()),
                 memories: Memories::new(database.clone(), Entropy::new()),
-                providers: Providers::new(database.clone(), Arc::clone(&kek)),
+                providers,
                 vault: Vault::new(database, kek),
                 broker,
                 connectors: Registry::default(),
