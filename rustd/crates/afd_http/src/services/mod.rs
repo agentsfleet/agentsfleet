@@ -44,6 +44,7 @@ mod ingress;
 mod leasing;
 mod memory;
 mod preference;
+mod provider;
 mod schedule;
 mod signup;
 mod tenant;
@@ -61,6 +62,7 @@ pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
+pub use self::provider::TenantProviders;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
     Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
@@ -392,6 +394,23 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The catalogue the `/v1/models` read acts through.
     fn catalogue(&self) -> &Self::Catalogue;
+
+    /// The tenant's own provider selection, read and written.
+    ///
+    /// An associated type where the store beside it is concrete, and the
+    /// difference is what it holds: a `Providers` carries the process key
+    /// every sealed row opens under, so a suite proving this surface's
+    /// refusals would otherwise have to mint one to say that a pool answers
+    /// nothing.
+    type TenantProviders: TenantProviders;
+
+    /// The store `/v1/tenants/me/provider` acts through.
+    ///
+    /// Separate from [`Services::catalogue`] though both are read on the same
+    /// page: the catalogue answers what models EXIST, this answers which one
+    /// this tenant activated and whose key pays for it. One accessor returning
+    /// both would put the credential surface behind every catalogue browse.
+    fn tenant_providers(&self) -> &Self::TenantProviders;
 
     /// Read-only cross-table projections for fleet operators.
     ///

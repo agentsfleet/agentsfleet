@@ -21,6 +21,10 @@ impl Fleet {
         let queue = Redis::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        // Bound here rather than in the literal below: the fixture key is
+        // MOVED into the last vault this constructor builds, and a store
+        // declared after that point could not borrow it.
+        let providers = Providers::new(database.clone(), Arc::clone(&kek));
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -127,6 +131,7 @@ impl Fleet {
             steering: Steer::new(queue.clone()),
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
+            providers,
             catalogue: Models::new(database),
             dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
@@ -148,6 +153,10 @@ impl Fleet {
         let queue = Redis::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        // Bound here rather than in the literal below: the fixture key is
+        // MOVED into the last vault this constructor builds, and a store
+        // declared after that point could not borrow it.
+        let providers = Providers::new(database.clone(), Arc::clone(&kek));
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -240,6 +249,7 @@ impl Fleet {
             steering: Steer::new(queue),
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
+            providers,
             catalogue: Models::new(database.clone()),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),

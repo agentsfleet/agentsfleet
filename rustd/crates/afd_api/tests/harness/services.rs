@@ -18,6 +18,7 @@ use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_credential::provider::Providers;
 use afd_events::{History, Steer};
 use afd_fleet::bundle::Bundles;
 use afd_fleet::memory::Memories;
@@ -60,6 +61,7 @@ impl Services for Fleet {
     type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
+    type TenantProviders = Providers;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -201,6 +203,10 @@ impl Services for Fleet {
 
     fn billing(&self) -> &Billing {
         &self.billing
+    }
+
+    fn tenant_providers(&self) -> &Providers {
+        &self.providers
     }
 
     fn catalogue(&self) -> &Models {

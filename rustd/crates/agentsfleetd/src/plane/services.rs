@@ -18,6 +18,7 @@ use afd_api::Services;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
+use afd_credential::provider::Providers;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::Plane;
@@ -59,6 +60,7 @@ impl Services for ServingPlane {
     type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
+    type TenantProviders = Providers;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -183,6 +185,10 @@ impl Services for ServingPlane {
 
     fn billing(&self) -> &Billing {
         &self.billing
+    }
+
+    fn tenant_providers(&self) -> &Providers {
+        &self.providers
     }
 
     fn catalogue(&self) -> &Models {
