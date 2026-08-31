@@ -145,7 +145,7 @@ impl Services for Fleet {
     /// from this, and a base that is not a URL would make every connect refuse
     /// for a reason no test was about.
     fn dashboard(&self) -> &str {
-        FIXTURE_APP_URL
+        &self.dashboard_base
     }
 
     /// No signing keys, which is the fail-closed default.

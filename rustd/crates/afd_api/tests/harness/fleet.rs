@@ -128,6 +128,7 @@ impl Fleet {
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
+            dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -245,6 +246,7 @@ impl Fleet {
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
             library_imports: LibraryImports::without_store(database),
+            dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -512,6 +514,17 @@ impl Fleet {
     /// secret belonging to the deployment, so a daemon that was given no admin
     /// workspace has nowhere to read it from and fails closed. Leaving the
     /// default alone is how a suite reaches that branch.
+    /// Points this fixture's connect relay at `base`.
+    ///
+    /// Exists for the one case that needs an UNUSABLE base: `relay_uri` refuses
+    /// a dashboard base that is not a URL, and answers it as unconfigured
+    /// because a boot-time misconfiguration is what it is. Sending somebody to
+    /// a page that cannot exist would be the alternative.
+    pub(crate) fn with_dashboard_base(mut self, base: &str) -> Self {
+        self.dashboard_base = base.to_owned();
+        self
+    }
+
     pub(crate) fn with_platform_admin(mut self, workspace: Uuid7) -> Self {
         self.platform_admin = Some(workspace);
         self
