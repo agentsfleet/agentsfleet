@@ -32,6 +32,12 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
+    #[error("the tenant's stored provider selection cannot be read back")]
+    SelectionMalformed {
+        #[source]
+        source: crate::provider::StoredPosture,
+    },
+
     #[error("an identifier could not be minted from the current instant")]
     Mint {
         #[from]

@@ -203,7 +203,7 @@ The whole-system proof on staging: the black-box HTTP parity suite, the runner p
 - **Dimension 3.2** — per-route-class latency is within the budget the lane embeds → Test `test_latency_budget`
 - **Dimension 3.3** — resident memory stays within the named ceiling across the soak window under sustained load, with a flat growth trend → Test `test_memory_ceiling_soak`
 - **Dimension 3.4** — chaos probes hold mid-soak: replay suppressed, leases fenced, streams reconnect → Test `test_soak_chaos_invariants`
-- **Dimension 3.5** — cross-implementation state handoff in both directions: the Rust daemon serves and writes production-shaped state, the Zig daemon then boots on the same stores and resumes serving correctly, and the reverse. Rollback safety is demonstrated, not inferred from "same schema" → Test `test_state_handoff_bidirectional`
+- **Dimension 3.5** — cross-implementation state handoff in both directions: the Rust daemon serves and writes production-shaped state, the Zig daemon then boots on the same stores and resumes serving correctly, and the reverse. Rollback safety is demonstrated, not inferred from "same schema". Graded by the parity lane in COMPARE mode across a swap — `make test-parity BASE_URL=<zig> COMPARE_URL=<rust>` after each direction — rather than by a `make test-handoff` target. The rubric named that target and nothing defines it; inventing a lane whose only caller is one rubric row is the near-duplicate wrapper the make-target rule refuses, and COMPARE mode already probes both daemons against one contract over shared stores, which is the assertion → Test `state_handoff_is_bidirectional`
 
 ### §4 — Collectors, swap, rollback rehearsal, runbook
 
@@ -301,7 +301,7 @@ No product-analytics changes.
 | 3.2 | e2e | `test_latency_budget` | per-class latency within the embedded budget; the lane refuses to run with it unset |
 | 3.3 | e2e (negative-sensitive) | `test_memory_ceiling_soak` | resident memory within the ceiling over the window; growth trend flat |
 | 3.4 | e2e (chaos) | `test_soak_chaos_invariants` | replay, fencing and reconnect probes hold under load |
-| 3.5 | e2e (negative-sensitive) | `test_state_handoff_bidirectional` | Rust-written live state is served correctly by the Zig daemon after a swap, and the reverse |
+| 3.5 | e2e (negative-sensitive) | `state_handoff_is_bidirectional` | Rust-written live state is served correctly by the Zig daemon after a swap, and the reverse — the parity lane in COMPARE mode, run once per direction |
 | 4.1 | e2e | `test_collector_path_under_zig` | the Zig daemon exports through the collector and every dashboard family still resolves |
 | 4.2 | e2e | `test_rollback_rehearsal` | a staged swap back is verified by the probe runner exiting 0 |
 | 4.3 | e2e (negative) | `test_rollback_carries_no_migrate_and_refuses` | the rollback section invokes no migration; a binary seeded with a shortened migration set, pointed at the full ledger, refuses and leaves the ledger unchanged |
@@ -314,7 +314,7 @@ No product-analytics changes.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Full-route parity (§1) | `agentsfleetd routes --json > /tmp/served.json && agentsfleetd openapi > /tmp/spec.json && python3 scripts/check_route_coverage.py --served /tmp/served.json --spec /tmp/spec.json` | exit 0 | P0 | |
 | R2 | All three signals leave the daemon (§2) | `cd rustd && cargo test --package agentsfleetd otlp_` | exit 0 | P0 | |
-| R3 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
+| R3 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app-rustd` | exit 0 each | P0 | |
 | R4 | Budgets hold (§3) | `make bench-cutover` | exit 0 | P0 | |
 | R5 | Rollback rehearsed and probes green (§4) | `bash playbooks/operations/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
