@@ -239,3 +239,48 @@ async fn both_doors_leave_the_same_row() {
 
     fixture.cleanup().await;
 }
+
+/// A body that verified and still says nothing this daemon can act on.
+///
+/// These refusals sit AFTER the signature check, which is what makes them worth
+/// separating from the wall cases: the sender is proven, so the refusal is
+/// about content rather than authenticity. Every case here is correctly signed
+/// and would be accepted by every check before the parse.
+///
+/// The unknown-decision arm is the one with teeth. `TimedOut` is deliberately
+/// unreachable from this door — expiring a gate belongs to the sweeper — so a
+/// sender able to spell it would be writing a resolution no person made. The
+/// arm must refuse anything it does not recognise rather than mapping the
+/// unknown onto a default, and a `_ => Decision::Denied` would read as
+/// conservative while silently letting a typo deny somebody's run.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let router = fixture.router().await;
+
+    for (label, body) in [
+        ("not a document at all", "this is not json".to_owned()),
+        ("no action named", payload("", "approve")),
+        ("a decision nobody can make", payload(&fixture.action, "timed_out")),
+        ("a decision that is not one", payload(&fixture.action, "maybe")),
+    ] {
+        let answered = callback(&router, &fixture.fleet, &body).await;
+        assert_eq!(
+            answered.status(),
+            StatusCode::BAD_REQUEST,
+            "{label}: a verified sender saying something unreadable is a \
+             refusal, not a resolution"
+        );
+    }
+
+    assert_eq!(
+        fixture.gate_state(&fixture.gate).await.0,
+        "pending",
+        "no unreadable body moved the gate — a refusal that resolved it anyway \
+         would answer for a person who never did"
+    );
+
+    fixture.cleanup().await;
+}

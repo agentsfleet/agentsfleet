@@ -152,3 +152,42 @@ mod tests {
         assert!(!is_fresh_at("1700000000", i64::MIN, MAX_DRIFT_SECONDS));
     }
 }
+
+#[cfg(test)]
+mod wall_clock_tests {
+    use super::is_fresh;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// The wall-clock wrapper agrees with the windowed function it delegates to.
+    ///
+    /// [`is_fresh_at`] carries the window logic and is tested exhaustively
+    /// against a frozen `now`. What is left here is the wrapper: that it reads
+    /// the real clock, in SECONDS, and hands the timestamp through unparsed.
+    ///
+    /// A unit slip is the failure worth catching. Passing milliseconds where
+    /// seconds are meant puts every honest delivery ~53,000 years in the future
+    /// and refuses all of them — an outage that looks like every sender
+    /// simultaneously breaking their signing.
+    #[test]
+    fn a_timestamp_from_the_real_clock_is_fresh_and_the_epoch_is_not() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the host clock is not before the epoch")
+            .as_secs();
+
+        assert!(
+            is_fresh(&now.to_string()),
+            "a delivery signed at this instant must be fresh — a false here is \
+             the seconds/millis slip that refuses every honest sender"
+        );
+        assert!(
+            !is_fresh("0"),
+            "the epoch is fifty-odd years stale, and is refused before the \
+             window arithmetic rather than by accident of it"
+        );
+        assert!(
+            !is_fresh("not a timestamp"),
+            "a header that will not parse is not fresh"
+        );
+    }
+}

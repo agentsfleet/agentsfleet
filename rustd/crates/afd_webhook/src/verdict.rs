@@ -141,3 +141,41 @@ impl Verdict {
         matches!(self, Self::Verified)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Refusal;
+
+    /// Every refusal counts under its own label, and the labels are stable.
+    ///
+    /// `as_str` feeds the ingress counters, so two refusals sharing a label
+    /// would silently merge two different operator situations into one series —
+    /// an unconfigured deployment and a forged signature are answered
+    /// differently and investigated differently, and a counter that cannot tell
+    /// them apart is worse than no counter.
+    ///
+    /// The labels are asserted verbatim rather than round-tripped because they
+    /// are a WIRE fact: a dashboard or alert keyed on `stale_timestamp` breaks
+    /// silently if this is renamed, and nothing else in the build would notice.
+    #[test]
+    fn every_refusal_counts_under_its_own_stable_label() {
+        let all = [
+            (Refusal::Unconfigured, "unconfigured"),
+            (Refusal::Signature, "signature"),
+            (Refusal::StaleTimestamp, "stale_timestamp"),
+        ];
+
+        for (refusal, label) in all {
+            assert_eq!(refusal.as_str(), label);
+        }
+
+        let labels: std::collections::BTreeSet<&str> =
+            all.iter().map(|(refusal, _)| refusal.as_str()).collect();
+        assert_eq!(
+            labels.len(),
+            all.len(),
+            "two refusals share a counter label, which merges two different \
+             operator situations into one series"
+        );
+    }
+}
