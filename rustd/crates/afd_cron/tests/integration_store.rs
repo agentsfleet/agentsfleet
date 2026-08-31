@@ -314,3 +314,83 @@ async fn a_fire_for_a_schedule_this_daemon_no_longer_has_resolves_to_nothing() {
             .is_none()
     );
 }
+
+/// A stored word this build cannot read fails the read rather than vanishing.
+///
+/// Three of this table's columns hold a closed vocabulary — `source`,
+/// `desired_status`, `sync_status`. A row carrying anything else is one written
+/// by a build that knew a word this one does not: an older or newer daemon, or
+/// an operator editing by hand.
+///
+/// The read has to FAIL there rather than skip the row. A list that quietly
+/// dropped what it could not parse would answer "this fleet has no schedules"
+/// for a fleet with one firing every night, and the operator would go on to
+/// create a second. Failing loud makes that a visible incident instead.
+///
+/// Planted with a statement rather than through the store, because the store's
+/// own writer cannot produce this state — every word it writes is one this
+/// build parses, which is exactly the property being relied on.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_row_carrying_a_word_this_build_cannot_read_fails_the_read() {
+    let lane = CronLane::open().await;
+    let readable = lane.create("decode-readable", NIGHTLY).await;
+
+    // One statement per column rather than a built string: sqlx requires a
+    // `&'static str`, and that restriction is a SQL-injection guard worth
+    // keeping even where the value is a literal in a test.
+    for (column, statement, unreadable) in [
+        (
+            "source",
+            "UPDATE core.fleet_schedules SET source = $2 WHERE id = $1::uuid",
+            "carrier-pigeon",
+        ),
+        (
+            "desired_status",
+            "UPDATE core.fleet_schedules SET desired_status = $2 WHERE id = $1::uuid",
+            "hibernating",
+        ),
+        (
+            "sync_status",
+            "UPDATE core.fleet_schedules SET sync_status = $2 WHERE id = $1::uuid",
+            "pending",
+        ),
+    ] {
+        {
+            let mut connection = lane.connection().await;
+            sqlx::query(statement)
+                .bind(readable.schedule_id.as_str())
+                .bind(unreadable)
+                .execute(&mut *connection)
+                .await
+                .expect("planting an unreadable word");
+        }
+
+        assert!(
+            lane.store.list(&lane.fleet_id()).await.is_err(),
+            "`{column} = {unreadable}` must fail the read — a list that dropped \
+             the row it could not parse answers \"no schedules\" for a fleet \
+             that has one firing every night"
+        );
+
+        {
+            let mut connection = lane.connection().await;
+            sqlx::query(
+                "UPDATE core.fleet_schedules \
+                 SET source = 'api', desired_status = 'active', sync_status = 'syncing' \
+                 WHERE id = $1::uuid",
+            )
+            .bind(readable.schedule_id.as_str())
+            .execute(&mut *connection)
+            .await
+            .expect("restoring the row between cases");
+        }
+    }
+
+    // Each case restored its row, so the lane reads normally again: the
+    // failures above belong to the planted word, not to a lane left broken.
+    assert!(
+        lane.store.list(&lane.fleet_id()).await.is_ok(),
+        "a table holding only words this build knows reads normally"
+    );
+}
