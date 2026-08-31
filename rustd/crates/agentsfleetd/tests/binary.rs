@@ -85,10 +85,24 @@ fn test_boot_refuses_bad_kek() {
             stderr.contains("We flunked!"),
             "the fatal renderer is the one that speaks on the way out, got: {stderr}"
         );
-        assert!(
-            output.stdout.is_empty(),
-            "nothing is announced on stdout by a process that refused to boot"
+        // Narrowed, not dropped. The nameplate now prints before anything is
+        // resolved, so a refusing process DOES write its own identity to
+        // stdout — but the thing this guarded is still guarded: no boot
+        // RESULT reaches stdout. The refusal, the address and the resolved
+        // roles all remain stderr's alone, and stdout carries the nameplate
+        // and nothing besides.
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            stdout.trim(),
+            format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
+            "a refusing process announces its identity and no more"
         );
+        for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
+            assert!(
+                !stdout.contains(leaked),
+                "a boot result must not reach stdout: {leaked} in {stdout}"
+            );
+        }
     }
 }
 
@@ -149,4 +163,38 @@ fn test_boot_announces_itself_when_the_environment_is_complete() {
         !stdout.contains("We flunked!"),
         "the bomb is for the exit path only"
     );
+}
+
+/// `--help` carries the nameplate above the usage text.
+///
+/// The help path never reaches `main`'s own print: clap renders help and exits
+/// inside its parse. So this is served by `before_help`, and the test is at the
+/// process boundary because that is the only place the two writes can be seen
+/// as one page.
+#[test]
+fn test_help_carries_the_nameplate_above_the_usage() {
+    for flag in ["-h", "--help"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_agentsfleetd"))
+            .arg(flag)
+            .output()
+            .expect("the daemon binary runs");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let nameplate = format!("agentsfleetd {}", env!("CARGO_PKG_VERSION"));
+
+        assert!(
+            output.status.success(),
+            "{flag} is not an error: {:?}",
+            output.status.code()
+        );
+        assert!(stdout.contains(&nameplate), "{flag}: {stdout}");
+        assert!(stdout.contains("Usage:"), "{flag}: {stdout}");
+        assert!(
+            stdout.find(&nameplate) < stdout.find("Usage:"),
+            "the nameplate comes first: {stdout}"
+        );
+        // The help page announces the flags that control it.
+        assert!(stdout.contains("--no-banner"), "{flag}: {stdout}");
+        assert!(stdout.contains("--quiet"), "{flag}: {stdout}");
+    }
 }

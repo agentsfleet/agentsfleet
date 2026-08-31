@@ -79,6 +79,18 @@ pub(crate) const TRIGGER_MD: &str = "---\nname: daily-digest\nx-agentsfleet:\n  
 /// name has to match or the cross-file check refuses it.
 pub(crate) const TRIGGER_MD_EDITED: &str = "---\nname: daily-digest\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: 5.0\n---\n";
 
+/// A THIRD `TRIGGER.md`, for the two-writer race.
+///
+/// The race needs both writers to carry a document that differs from what the
+/// row holds. The `If-Match` predicate is content-addressed — it hashes
+/// `source_markdown` and `trigger_markdown` — so a writer that resends the
+/// STORED bytes changes nothing, leaves the hash where it was, and the other
+/// writer's guard still matches. Both then report success, and the assertion
+/// that exactly one wins fails, intermittently, on whichever future finished
+/// first. That is the fixture being wrong about the race, not the predicate
+/// being wrong about the write: an idempotent write is not a version moving.
+pub(crate) const TRIGGER_MD_RIVAL: &str = "---\nname: daily-digest\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: 9.0\n---\n";
+
 /// A migrated database, a queue, and the store over both.
 pub(crate) struct Lane {
     database: TestDatabase,

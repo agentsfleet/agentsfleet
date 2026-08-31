@@ -17,6 +17,30 @@ Baking them into a published image makes them layers: pulled once, reused by
 every build after. The same move `ci_zig_images` made for the Zig lanes, for the
 same reason.
 
+## One image, not two
+
+| Image | Arch | Consumers |
+|---|---|---|
+| `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`), `deploy-dev-build.yml`, `release.yml` |
+
+A second image, `ci-rust-slim` (bookworm), was built here on Aug 29 for the lint
+and unit lanes and **never published** — its own inventory named `test.yml` as
+the consumer while that workflow ran on the host runner with rustup and
+referenced no container at all. Rather than publish a second base with a second
+Rust pin, this image absorbed what those lanes need: `git`, `pkgconf`,
+`ca-certificates`, and the three components `rustd/rust-toolchain.toml` names.
+
+That keeps ONE place the Rust version is written. Two images meant two pins that
+nothing checked against each other, which is the same "second compiler nobody
+chose" that `versions.env` exists to prevent — one level up.
+
+**The tag is DERIVED, never pasted.** `make/build.mk` computes it from
+`versions.env`, and both workflows compute it with the same `sed`.
+`check-gh-actions-valid` fails on a literal, and asserts the reachable property:
+not "does the pasted tag match" but "is there a pasted tag at all". A stale
+literal still runs — it just compiles on a toolchain the repository has moved
+off.
+
 | Image | Arch | Consumed by |
 | --- | --- | --- |
 | `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`, and therefore `build`, `build-dev` and `make up`); the release lane's musl job |

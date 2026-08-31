@@ -34,10 +34,47 @@ RUN apk add --no-cache \
     go \
     linux-headers
 
+# What the LANES need beyond linking, so one image serves both consumers:
+#   git          — cargo and the make targets both shell out to it
+#   pkgconf      — `-sys` crates probe with it. Alpine's name for what Debian
+#                  calls `pkg-config`; the Debian spelling is "no such package"
+#                  here, which is the one translation this port actually needs.
+#   ca-certificates — cargo fetching over TLS
+# `make` arrives with build-base, and `cmake` is already above for the crypto
+# backend, so neither is repeated.
+RUN apk add --no-cache \
+    ca-certificates \
+    git \
+    pkgconf
+
 # `readelf`, for the static assertions the build lane makes on its own output:
 # zero NEEDED entries and no INTERP section. binutils ships it, and asserting
 # inside the image is what keeps "static" a fact rather than a claim.
 RUN apk add --no-cache binutils
+
+# The base installs the `minimal` profile — rustc, cargo, rust-std, nothing
+# else. `rustd/rust-toolchain.toml` names three components beyond it, and
+# rustup honours that file by DOWNLOADING what is missing the first time cargo
+# runs in `rustd/`. Baking them in does not save the bytes; it moves them out
+# of every job and into the image. `rustfmt` and `clippy` are what the lint
+# lane runs, and a toolchain missing either must fail loudly rather than skip
+# the check.
+#
+# World-readable and cargo-writable: a GitHub Actions job may run the container
+# as an arbitrary uid, and a toolchain only root can read surfaces as
+# "cargo: not found" on a machine that plainly has cargo.
+RUN set -eux; \
+    rustup component add rustfmt clippy llvm-tools; \
+    rm -rf "$RUSTUP_HOME/toolchains"/*/share/doc; \
+    chmod -R a+rX,a+w "$CARGO_HOME" "$RUSTUP_HOME"; \
+    rustc --version; \
+    cargo fmt --version; \
+    cargo clippy --version
+
+# No CARGO_TARGET_DIR: an empty value is rejected by cargo outright, and left
+# unset it uses the workspace's own `target/`, which the lanes and the cache
+# both expect.
+WORKDIR /work
 
 LABEL org.opencontainers.image.title="agentsfleet ci-rust-alpine" \
       org.opencontainers.image.description="Alpine + Rust with the musl build toolchain baked, for agentsfleet static daemon builds" \
