@@ -386,7 +386,14 @@ describe("InstallSourceSelector — paging and list position", () => {
 
     // A failed page never blanks the gallery.
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
-    expect(screen.getByRole("alert")).toBeTruthy();
+    // `findByRole`, not `getByRole`: the banner appears only after the failed
+    // page settles and React re-renders, which is a tick later than the click
+    // promise resolves. The synchronous query asserted on the instant before
+    // that render and won the race whenever the file ran alone — and lost it
+    // under the full suite, which is what made this test flaky rather than
+    // wrong. Awaiting the FIRST element of the banner is enough; `Retry`
+    // arrives in the same render, so it stays a synchronous sibling assertion.
+    expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     // And it is a failure, not an empty library.
     expect(screen.queryByText("No prebuilt fleet library found")).toBeNull();
