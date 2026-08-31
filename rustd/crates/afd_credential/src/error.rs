@@ -84,6 +84,12 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_core::error::Error,
     },
+
+    #[error("the credential directory would not describe a registry page's rows")]
+    Directory {
+        #[source]
+        source: afd_vault::Error,
+    },
 }
 
 impl Error {
@@ -97,9 +103,13 @@ impl Error {
             ErrorKind::Datastore { .. } => {
                 (error_code::INTERNAL_DB_UNAVAILABLE, DETAIL_UNAVAILABLE)
             }
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR)
-            }
+            // `Directory` joins them because it can only BE one of them: the
+            // describe read fails on a datastore that would not answer or a
+            // row whose columns are not the types this build reads, and it
+            // decrypts nothing that could fail differently.
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Directory { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
             // The provider family answers one code, matching what
             // `service_billing.zig` logs for the whole of it. The finer
             // `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
@@ -157,7 +167,15 @@ impl Error {
     /// problem and answers 503, where everything else here is a 500.
     #[must_use]
     pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Datastore { .. })
+        match self.kind() {
+            ErrorKind::Datastore { .. } => true,
+            // An outage reached through the credential directory is the same
+            // outage. Answering 500 here and 503 one statement earlier would
+            // make the status depend on which read noticed first, which is not
+            // a distinction an operator or a retrying client can use.
+            ErrorKind::Directory { source } => source.is_datastore_unavailable(),
+            _otherwise => false,
+        }
     }
 
     /// Whether this failure is a stored-configuration fault a human must fix.
@@ -207,6 +225,7 @@ const DETAIL_CREDENTIAL_MISSING: &str =
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
+    afd_vault::Error => Directory,
 );
 
 /// Reports a statement that would not run, naming what it was doing.

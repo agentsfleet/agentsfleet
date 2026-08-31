@@ -292,6 +292,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_vault",
  "afd_wire",
  "http",
  "jsonwebtoken",
