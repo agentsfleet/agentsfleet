@@ -11,6 +11,11 @@
 #[path = "support/events_lane.rs"]
 mod support;
 
+// No datastore: a source scan over the workspace, so it carries no `#[ignore]`
+// and runs in the unit lane (`docs/architecture/testing.md`, filename rule).
+#[path = "fleet_event_writers.rs"]
+mod fleet_event_writers;
+
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
 #[path = "integration_steer.rs"]

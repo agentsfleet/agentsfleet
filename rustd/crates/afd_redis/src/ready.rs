@@ -38,6 +38,15 @@ end
 return 0
 ";
 
+/// [`CLEAR_IF_TOKEN_MATCHES`], prepared once for the life of the process.
+///
+/// `EVAL` ships the body on every call, and this one runs on the lease-poll
+/// path — once per fleet per poll, for every fleet a deployment holds. The
+/// digest goes over the wire instead, via `EVALSHA`, with the body loaded only
+/// when the server has never seen it.
+static CLEAR_IF_TOKEN_MATCHES_SCRIPT: std::sync::LazyLock<redis::Script> =
+    std::sync::LazyLock::new(|| redis::Script::new(CLEAR_IF_TOKEN_MATCHES));
+
 /// The commands this index issues. Named once each (RULE UFS): a verb
 /// spelled twice is a verb that can be spelled two ways.
 const CMD_HSET: &str = "HSET";
@@ -179,13 +188,15 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the evaluation fails.
     pub async fn clear_if_unchanged(&self, fleet_id: &str, token: &ReadyToken) -> Result<bool> {
-        let mut cmd = redis::cmd(CMD_EVAL);
-        cmd.arg(CLEAR_IF_TOKEN_MATCHES)
-            .arg(1)
-            .arg(READY_INDEX_KEY)
+        let mut invocation = CLEAR_IF_TOKEN_MATCHES_SCRIPT.prepare_invoke();
+        invocation
+            .key(READY_INDEX_KEY)
             .arg(fleet_id)
             .arg(token.as_str());
-        let removed: i64 = self.redis.command(CMD_EVAL, READY_INDEX_KEY, &cmd).await?;
+        let removed: i64 = self
+            .redis
+            .script(CMD_EVAL, READY_INDEX_KEY, &invocation)
+            .await?;
         Ok(removed > 0)
     }
 }

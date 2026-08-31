@@ -35,31 +35,42 @@
 mod approval;
 mod billing;
 mod catalogue;
+mod connector;
 mod device_flow;
 mod event;
 mod fleets;
 mod grant;
+mod ingress;
 mod leasing;
 mod memory;
 mod preference;
+mod schedule;
+mod signup;
 mod tenant;
 mod vault;
 
 pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
+pub use self::connector::WorkspaceConnectors;
 pub use self::device_flow::DeviceFlow;
 pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
+pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
+pub use self::schedule::{FleetSchedules, SchedulePlane};
+pub use self::signup::{
+    Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
+};
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_fleet::bundle::Bundles;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
@@ -229,6 +240,95 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// A fleet's durable memory: the page, and the forget.
     fn memories(&self) -> &Self::Memories;
+
+    /// What the schedules surface and the fire ingress act through.
+    ///
+    /// An associated type for the reason [`Services::Ingress`] is one: the
+    /// concrete plane holds a Redis connection and an outbound HTTP client, so
+    /// a suite proving the refusal matrix in front of these routes cannot build
+    /// one and must not need to.
+    type Schedules: FleetSchedules;
+
+    /// What a schedule is read, written and fired through.
+    fn schedules(&self) -> &Self::Schedules;
+
+    /// The scheduler's signing keys, when this deployment configured them.
+    ///
+    /// `None` is fail-closed: a daemon that cannot verify a fire refuses every
+    /// one, because acting on an unverified callback would let anyone who found
+    /// the URL wake every fleet behind it.
+    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys>;
+
+    /// Where a fire is expected to arrive, as the token's `sub` claim spells it.
+    ///
+    /// Half of what makes a fire token this deployment's: a token minted for
+    /// another daemon's destination fails the subject check rather than waking
+    /// a fleet here.
+    fn schedule_destination(&self) -> &str;
+
+    /// What the signed-ingress routes act through.
+    ///
+    /// An associated type for the reason [`Services::Fleets`] is one: the
+    /// concrete store holds a Redis connection opened by CONNECTING — the
+    /// delivery's at-most-once claim and its append are one Lua script on it —
+    /// so a suite proving the refusal matrix in front of these routes cannot
+    /// build one and must not need to.
+    type Ingress: WebhookIngress;
+
+    /// What a signed delivery is resolved, verified and appended through.
+    fn ingress(&self) -> &Self::Ingress;
+
+    /// The workspace whose vault holds this deployment's own platform secrets.
+    ///
+    /// `None` for a deployment that configured none, which is a supported
+    /// state: every surface that needs one fails closed rather than guessing,
+    /// and the rest of the daemon runs without it.
+    ///
+    /// The App ingress is the reason this crosses the seam. Its signing secret
+    /// belongs to the DEPLOYMENT rather than to any fleet or workspace — one
+    /// App, one secret, configured once — so it is the one ingress secret that
+    /// cannot be reached through a [`afd_ingress::Binding`], because it has to
+    /// be verified before there is a binding to reach it through.
+    fn platform_admin_workspace(&self) -> Option<&Uuid7>;
+
+    /// Opening a personal account from a verified signup event.
+    ///
+    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// suites drive the refusal cases through a stub that reaches no store, and
+    /// the daemon's own is a Postgres pool.
+    type Signups: Signups;
+
+    /// The account-opening plane.
+    fn signups(&self) -> &Self::Signups;
+
+    /// What a signup event's signature is checked against.
+    ///
+    /// `None` refuses every delivery — see [`IdentityWebhookSecret`] on why
+    /// fail-closed is the only safe answer for a route that creates accounts.
+    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes>;
+
+    /// What the connector routes act through.
+    ///
+    /// An associated type for the reason [`Services::Ingress`] is one: the
+    /// concrete flow holds a Redis connection opened by CONNECTING — a
+    /// round-trip's single-use slot lives there — so a suite proving the
+    /// refusal matrix in front of these routes cannot build one and must not
+    /// need to.
+    type Connectors: WorkspaceConnectors;
+
+    /// What a connect is started, finished, read and forgotten through.
+    fn connectors(&self) -> &Self::Connectors;
+
+    /// Where a PERSON goes, as distinct from where this daemon answers.
+    ///
+    /// Beside [`Services::deployment`] and never the same string. Every
+    /// connector redirect is built from this one: the `redirect_uri` a provider
+    /// mints its code against, the relay the browser is sent back through, and
+    /// the page a completed connect lands on. Reading it from a request's
+    /// `Host` would let a provider's registered callback and this daemon's idea
+    /// of it disagree, which fails as `redirect_uri_mismatch` at the vendor and
+    /// reads like a rotated credential.
+    fn dashboard(&self) -> &str;
 
     /// What the steer verb acts through.
     type Steering: FleetSteering;

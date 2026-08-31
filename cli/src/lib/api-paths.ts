@@ -85,11 +85,14 @@ export const wsFleetSchedulePath = (
   scheduleId: string,
 ): string => `${wsFleetSchedulesPath(wsId, fleetId)}/${enc(scheduleId)}`;
 
+// `/sync` as its own segment. The daemon's router binds one parameter per path
+// segment and refuses a literal after it, so the custom verb cannot ride the
+// identifier — see `FleetRoute::ScheduleSync` in `rustd/crates/afd_api`.
 export const wsFleetScheduleSyncPath = (
   wsId: string,
   fleetId: string,
   scheduleId: string,
-): string => `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}:sync`;
+): string => `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}/sync`;
 
 // Workspace-aggregate event history.
 export const wsEventsPath = (wsId: string): string =>

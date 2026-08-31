@@ -13,7 +13,24 @@ use afd_core::env::MapEnv;
 use afd_db::{DbRole, PoolConfig};
 use afd_redis::{RedisConfig, RedisRole};
 
-use super::{ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS, Fleet, NOWHERE, NOWHERE_QUEUE};
+use super::Fleet;
+
+/// A Postgres nobody is listening on.
+///
+/// Port 1 is reserved and unbound on every platform this builds for, so an
+/// acquire fails on connection refusal rather than waiting out a timeout — the
+/// difference between a suite that runs in milliseconds and one that runs in
+/// acquire budgets.
+const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
+
+/// A Redis nobody is listening on, for the same reason and on the same port.
+const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
+
+/// The pool knob naming how long an acquire may spend before it reports.
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+
+/// What this harness sets it to — see [`unreachable_pool`].
+const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 impl Dependencies for Fleet {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {

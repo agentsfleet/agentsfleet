@@ -120,7 +120,7 @@ describe("schedule commands", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
           () => jsonResponse(200, row),
-        [`POST /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}:sync`]:
+        [`POST /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}/sync`]:
           () => jsonResponse(200, { ...row, generation: 2 }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -139,7 +139,7 @@ describe("schedule commands", () => {
         expect(syncCode).toBe(0);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           `GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`,
-          `POST /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}:sync`,
+          `POST /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}/sync`,
         ]);
       });
     });

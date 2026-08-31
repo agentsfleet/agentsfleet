@@ -13,6 +13,7 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_runner::view::DEFAULT_PAGE_LIMIT;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -51,6 +52,18 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     // first among every runner every concurrent test has seeded, which is not
     // this one: `enrol` has already added another. Asking a one-item page to
     // contain a specific id is a race, and it lost.
+    //
+    // Dropping `limit` does not settle that race, it only raises its threshold.
+    // The unqualified list answers at most `DEFAULT_PAGE_LIMIT` rows ordered
+    // `created_at DESC, id DESC` (`afd_runner/src/sql/runner_view.rs:18`), and
+    // the harness clock is frozen — a full lane leaves 89 rows across 10
+    // distinct `created_at` values, so the sort collapses onto `id DESC` and
+    // which rows reach page one is decided by uuid. Asking that page to hold a
+    // specific id is the same coin flip with a bigger coin.
+    //
+    // So the page proves what a page can: the list answers, it is bounded, and
+    // its `total` counts rows the page itself does not carry. This runner's
+    // identity is proved by the detail read below, which names it in the path.
     let page = send(
         router,
         Method::GET,
@@ -77,7 +90,25 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     .await;
     assert_eq!(listed.status(), StatusCode::OK);
     let listed = json_body(listed).await;
-    assert!(contains_id(&listed, "items", &fixture.runner));
+    let items = listed
+        .get("items")
+        .and_then(Value::as_array)
+        .expect("the platform list answers an items array");
+    assert!(
+        !items.is_empty(),
+        "the platform list carries rows while this fixture's runner exists"
+    );
+    assert!(
+        u32::try_from(items.len()).is_ok_and(|len| len <= DEFAULT_PAGE_LIMIT),
+        "an unqualified page is bounded by the default limit"
+    );
+    assert!(
+        listed
+            .get("total")
+            .and_then(Value::as_i64)
+            .is_some_and(|total| usize::try_from(total).is_ok_and(|total| total >= items.len())),
+        "total counts every runner, not only the ones on this page"
+    );
 
     let detail = send(router, Method::GET, runner_path, Some(&fixture.token), "").await;
     assert_eq!(detail.status(), StatusCode::OK);
@@ -209,17 +240,6 @@ async fn patch(
     body: &str,
 ) -> axum::response::Response {
     send(router, Method::PATCH, path, Some(token), body).await
-}
-
-fn contains_id(document: &Value, collection: &str, expected: &str) -> bool {
-    document
-        .get(collection)
-        .and_then(Value::as_array)
-        .is_some_and(|items| {
-            items
-                .iter()
-                .any(|item| item.get("id").and_then(Value::as_str) == Some(expected))
-        })
 }
 
 fn text<'value>(document: &'value Value, field: &str) -> &'value str {

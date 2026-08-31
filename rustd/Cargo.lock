@@ -60,14 +60,17 @@ name = "afd_api"
 version = "0.27.0"
 dependencies = [
  "afd_admin",
+ "afd_api_ingress",
  "afd_api_operator",
  "afd_api_runner",
  "afd_api_tenant",
  "afd_approval",
  "afd_auth",
  "afd_billing",
+ "afd_connector",
  "afd_core",
  "afd_credential",
+ "afd_cron",
  "afd_crypto",
  "afd_db",
  "afd_events",
@@ -75,6 +78,8 @@ dependencies = [
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
  "afd_http",
+ "afd_identity",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
  "afd_redis",
@@ -83,21 +88,56 @@ dependencies = [
  "afd_state",
  "afd_tenant",
  "afd_vault",
+ "afd_webhook",
  "afd_wire",
  "axum",
+ "base64 0.23.1",
  "bytes",
  "futures-util",
  "http",
  "hyper",
  "hyper-util",
+ "jsonwebtoken",
  "object_store",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tokio",
  "tower",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "afd_api_ingress"
+version = "0.27.0"
+dependencies = [
+ "afd_approval",
+ "afd_connector",
+ "afd_core",
+ "afd_cron",
+ "afd_crypto",
+ "afd_db",
+ "afd_events",
+ "afd_fleet",
+ "afd_fleet_lifecycle",
+ "afd_gate",
+ "afd_http",
+ "afd_identity",
+ "afd_ingress",
+ "afd_observability",
+ "afd_vault",
+ "afd_webhook",
+ "afd_wire",
+ "axum",
+ "http",
+ "jiff",
+ "octocrab",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -140,17 +180,22 @@ dependencies = [
  "afd_approval",
  "afd_auth",
  "afd_billing",
+ "afd_connector",
  "afd_core",
+ "afd_cron",
+ "afd_crypto",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
  "afd_http",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
  "afd_sse",
  "afd_tenant",
  "afd_vault",
+ "afd_webhook",
  "afd_wire",
  "axum",
  "futures-util",
@@ -206,6 +251,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_connector"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_vault",
+ "base64 0.23.1",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "subtle",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "afd_core"
 version = "0.27.0"
 dependencies = [
@@ -242,6 +307,31 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "afd_cron"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_wire",
+ "base64 0.23.1",
+ "jiff",
+ "jsonwebtoken",
+ "philiprehberger-cron-parser",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "subtle",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -359,6 +449,7 @@ dependencies = [
 name = "afd_fleet_runtime"
 version = "0.27.0"
 dependencies = [
+ "afd_webhook",
  "garde",
  "serde",
  "serde_json",
@@ -397,16 +488,20 @@ dependencies = [
  "afd_approval",
  "afd_auth",
  "afd_billing",
+ "afd_connector",
  "afd_core",
  "afd_credential",
+ "afd_cron",
  "afd_crypto",
  "afd_db",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
+ "afd_redis",
  "afd_runner",
  "afd_sse",
  "afd_tenant",
@@ -414,6 +509,7 @@ dependencies = [
  "afd_wire",
  "axum",
  "http",
+ "serde",
  "serde_json",
  "tokio",
  "tower",
@@ -437,6 +533,28 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zeroize",
+]
+
+[[package]]
+name = "afd_ingress"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_fleet_lifecycle",
+ "afd_fleet_runtime",
+ "afd_redis",
+ "afd_vault",
+ "afd_webhook",
+ "afd_wire",
+ "hex",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -484,11 +602,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_outbound"
+version = "0.27.0"
+dependencies = [
+ "afd_connector",
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_vault",
+ "backon",
+ "http",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "afd_redis"
 version = "0.27.0"
 dependencies = [
  "afd_core",
+ "backon",
  "futures-util",
+ "hostname",
  "redis",
  "serde",
  "serde_json",
@@ -585,6 +729,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_webhook"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "base64 0.23.1",
+ "hex",
+]
+
+[[package]]
 name = "afd_wire"
 version = "0.27.0"
 dependencies = [
@@ -601,8 +755,10 @@ dependencies = [
  "afd_approval",
  "afd_auth",
  "afd_billing",
+ "afd_connector",
  "afd_core",
  "afd_credential",
+ "afd_cron",
  "afd_crypto",
  "afd_db",
  "afd_events",
@@ -611,8 +767,10 @@ dependencies = [
  "afd_fleet_ops",
  "afd_gate",
  "afd_identity",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
+ "afd_outbound",
  "afd_redis",
  "afd_runner",
  "afd_sse",
@@ -1784,6 +1942,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
+
+[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2759,6 +2928,12 @@ dependencies = [
  "quote",
  "syn 3.0.4",
 ]
+
+[[package]]
+name = "philiprehberger-cron-parser"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f24172c25a14410e8c431eabdc15841dd4449de3acba40cf9bb8ccc60206528a"
 
 [[package]]
 name = "pin-project"

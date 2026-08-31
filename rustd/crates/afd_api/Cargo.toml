@@ -15,10 +15,12 @@ autotests = false
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
 test-util = [
+  "afd_api_ingress/test-util",
   "afd_api_operator/test-util",
   "afd_api_runner/test-util",
   "afd_api_tenant/test-util",
   "afd_auth/test-util",
+  "afd_webhook/test-util",
   "afd_core/test-util",
 ]
 
@@ -28,6 +30,7 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
+afd_api_ingress.workspace = true
 afd_api_operator.workspace = true
 afd_api_runner.workspace = true
 afd_api_tenant.workspace = true
@@ -56,6 +59,27 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The signup fixture signs a Svix delivery, whose tag is base64 over the
+# HMAC. Encoding it is the only way the suite can present a signature the
+# vendored verifier accepts, which is what makes a passing case a round trip.
+base64.workspace = true
+afd_identity.workspace = true
+afd_webhook.workspace = true
+afd_ingress = { workspace = true, features = ["test-util"] }
+afd_cron.workspace = true
+# The schedule-fire suite mints its own scheduler tokens. A pasted fixture
+# string can assert one shape; the cases that matter all differ from a good
+# token in exactly ONE claim — right signature over the wrong body, right body
+# under the wrong key — so each has to be signed here. `afd_cron`'s own
+# verifier suite carries these two for the same reason.
+jsonwebtoken.workspace = true
+# The `body` claim a scheduler token carries is a SHA-256 of the delivery,
+# base64url-unpadded. Minting one means computing it.
+sha2.workspace = true
+afd_connector.workspace = true
+# The harness assembles the production schedules plane over stores that are not
+# there, which needs the client type its constructor takes.
+reqwest.workspace = true
 afd_admin = { workspace = true, features = ["test-util"] }
 afd_approval.workspace = true
 afd_billing.workspace = true
@@ -131,3 +155,7 @@ path = "tests/runner_plane_suite.rs"
 [[test]]
 name = "operator_plane"
 path = "tests/operator_plane_suite.rs"
+
+[[test]]
+name = "ingress_plane"
+path = "tests/ingress_plane_suite.rs"

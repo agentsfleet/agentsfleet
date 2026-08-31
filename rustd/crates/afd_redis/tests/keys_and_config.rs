@@ -16,10 +16,16 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use afd_core::env::MapEnv;
-use afd_redis::Backoff;
+use afd_redis::production_backoff;
+use backon::BackoffBuilder as _;
 
-/// The ceiling the exponential backoff must never exceed.
-const BACKOFF_CAP: Duration = Duration::from_millis(1_000);
+/// The ceiling the reconnect schedule must never exceed.
+///
+/// Five seconds, the value `production_backoff` sets. Spelled here as the
+/// PROMISE rather than read from the source, so a change to the schedule has to
+/// change this line too and be seen: how long an outage takes to recover from
+/// is an operational number, not an implementation detail.
+const BACKOFF_CAP: Duration = Duration::from_secs(5);
 use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use afd_redis::ready::READY_INDEX_KEY;
 use afd_redis::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
@@ -151,9 +157,29 @@ fn test_each_role_resolves_only_its_own_knob() {
 }
 
 /// Unset, blank, and not-a-Redis-URL are all refused at resolve.
+///
+/// The last two cases are the ones a scheme-prefix check let through: each
+/// starts with the seven characters that check looked for and neither is a URL,
+/// so they used to reach `Client::open` and come back as UNREACHABLE — a
+/// network-shaped error for an environment-shaped fault. Validating through the
+/// client's own parser is what moved them here, where the message names the
+/// knob to go and fix.
+///
+/// Not every typo is reachable this way, and the ones that are not are left
+/// out rather than asserted loosely: `url` accepts invalid percent-encoding in
+/// userinfo, so `redis://%zz@host` parses and is still a connect-time failure.
+/// A case list that claimed otherwise would be documenting a guarantee this
+/// check does not make.
 #[test]
 fn test_malformed_urls_are_refused() {
-    for bad in ["", "   ", "http://localhost:6379", "localhost:6379"] {
+    for bad in [
+        "",
+        "   ",
+        "http://localhost:6379",
+        "localhost:6379",
+        "redis://[::1",
+        "redis://localhost:not-a-port",
+    ] {
         let env = env_with(&[("REDIS_URL", bad)]);
         let error =
             RedisConfig::resolve(&env, RedisRole::Default).expect_err("not a Redis URL: {bad:?}");
@@ -258,38 +284,53 @@ fn test_ca_cert_file_comes_from_the_documented_knob() {
 
 /// The reconnect schedule grows, stops growing, and never waits forever.
 ///
-/// The property that matters is the ceiling: a backoff that keeps doubling
-/// turns a ten-minute Redis outage into an hour-long one, because the last
-/// sleep started before Redis came back.
+/// `backon` owns the arithmetic, so what is asserted here is our CONFIGURATION
+/// of it — the two knobs an operator feels. The ceiling is the one that matters:
+/// a backoff that keeps doubling turns a ten-minute Redis outage into an
+/// hour-long one, because the last sleep started before Redis came back.
+///
+/// Jitter is on in production, so each delay is a random offset inside its
+/// step rather than a fixed number. The assertions are therefore bounds, which
+/// is what the property actually is — an equality here would be asserting that
+/// the spread is absent.
 #[test]
-fn test_backoff_grows_then_caps() {
-    let backoff = Backoff::new(Duration::from_millis(100), Duration::from_millis(800));
-    let delays: Vec<Duration> = (0..8).map(|attempt| backoff.delay(attempt, 0)).collect();
+fn test_the_reconnect_schedule_grows_then_settles_at_its_ceiling() {
+    let delays: Vec<Duration> = production_backoff().build().take(12).collect();
 
-    assert_eq!(delays[0], Duration::from_millis(100));
-    assert_eq!(delays[1], Duration::from_millis(200));
-    assert_eq!(delays[2], Duration::from_millis(400));
+    // Jitter ADDS inside the step, so the first delay lands in [200, 400) —
+    // asserting equality with the floor would be asserting the spread away.
+    assert!(
+        delays[0] >= Duration::from_millis(200) && delays[0] < Duration::from_millis(400),
+        "the first redial waits one step plus its spread: {:?}",
+        delays[0]
+    );
     for delay in &delays {
-        assert!(*delay <= BACKOFF_CAP, "{delay:?} past the cap");
+        // The cap bounds the STEP and the jitter is added to it, so the wait
+        // itself tops out at twice the ceiling.
+        assert!(*delay < BACKOFF_CAP * 2, "{delay:?} past the cap");
     }
-    assert_eq!(
-        delays[7],
-        Duration::from_millis(800),
-        "the schedule must settle at its ceiling, not keep climbing"
+    let settled = delays
+        .last()
+        .copied()
+        .expect("a schedule with no attempt limit yields twelve delays");
+    assert!(
+        settled > Duration::from_secs(1),
+        "the schedule must climb to its ceiling rather than staying at the \
+         floor: {settled:?}"
     );
 }
 
-/// Jitter spreads the delay without letting it collapse or overshoot.
+/// Jitter spreads the delay, so two processes that lost the same Redis do not
+/// redial in the same millisecond.
+///
+/// The reconnect storm is what keeps a struggling Redis down, and a schedule
+/// that produced one sequence for everybody would cause it.
 #[test]
-fn test_backoff_jitter_stays_inside_its_quarter() {
-    let backoff = Backoff::new(Duration::from_millis(400), Duration::from_millis(400));
-    for jitter in [0, 1, 37, u64::MAX] {
-        let delay = backoff.delay(3, jitter);
-        assert!(
-            delay >= Duration::from_millis(400) && delay < Duration::from_millis(500),
-            "{jitter} produced {delay:?}"
-        );
-    }
+fn test_the_reconnect_schedule_is_spread() {
+    let one: Vec<Duration> = production_backoff().build().take(8).collect();
+    let other: Vec<Duration> = production_backoff().build().take(8).collect();
+
+    assert_ne!(one, other);
 }
 
 /// Every role reports a distinct lower-case tag.
@@ -318,7 +359,7 @@ fn test_every_role_tags_itself_distinctly() {
 #[test]
 fn test_every_stream_field_reply_shape_renders() {
     let samples = afd_redis::streams::rendered_field_samples();
-    assert_eq!(samples.len(), 4, "a reply shape was added without a sample");
+    assert_eq!(samples.len(), 5, "a reply shape was added without a sample");
 
     for (label, rendered) in &samples {
         assert!(!rendered.is_empty(), "{label} rendered as nothing");
@@ -337,5 +378,11 @@ fn test_every_stream_field_reply_shape_renders() {
         by_label("anything else"),
         "nil",
         "an unrecognised value keeps its shape visible through Debug"
+    );
+    assert_eq!(
+        by_label("invalid utf-8"),
+        "binary-data([255, 254])",
+        "a field this daemon did not write shows its bytes rather than a \
+         sentence with replacement characters punched through it"
     );
 }

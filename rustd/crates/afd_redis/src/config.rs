@@ -11,9 +11,6 @@ use afd_core::env::EnvSource;
 
 use crate::error::{Error, ErrorKind, Result};
 
-/// The two spellings a Redis URL may carry. `rediss://` is the TLS one.
-const REDIS_SCHEMES: [&str; 2] = ["redis://", "rediss://"];
-
 const REQUEST_TIMEOUT_KNOB: &str = "REDIS_REQUEST_TIMEOUT_MS";
 const REQUEST_TIMEOUT_MS_DEFAULT: u64 = 5_000;
 const CONNECT_TIMEOUT_KNOB: &str = "REDIS_CONNECT_TIMEOUT_MS";
@@ -82,7 +79,20 @@ impl RedisConfig {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| Error::new(ErrorKind::MissingRedisUrl { knob }))?;
 
-        if !REDIS_SCHEMES.iter().any(|scheme| url.starts_with(scheme)) {
+        // Through the client's own parser rather than a scheme prefix. A
+        // prefix test is not a parse: `redis://[::1` and `redis://h:notaport`
+        // both start with the right seven characters and neither is a URL, so
+        // the hand-written check passed them to `Client::open` and the operator
+        // met a typo as an UNREACHABLE at connect time — a message pointing at
+        // the network for a fault in the environment. `parse_redis_url` is what
+        // `build_client` will run on this string anyway, so validating with
+        // anything else is a second, disagreeing opinion about the same value.
+        //
+        // It also accepts what the client accepts — `valkey://`, `unix://`,
+        // `redis+unix://` — which the pair of literals did not. That widening is
+        // the point rather than a side effect: this check exists to catch a
+        // typo, not to be a stricter policy than the connection it guards.
+        if redis::parse_redis_url(&url).is_none() {
             return Err(Error::new(ErrorKind::InvalidRedisUrl { knob }));
         }
 

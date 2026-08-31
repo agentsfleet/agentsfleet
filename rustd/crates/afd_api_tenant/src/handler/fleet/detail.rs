@@ -23,11 +23,11 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderValue, StatusCode, header};
-use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceFleets as _};
+pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 
 use super::triggers;
 
@@ -35,22 +35,6 @@ use super::triggers;
 const EVENT_READ: &str = "fleet_read_failed";
 const EVENT_PATCH: &str = "fleet_patch_failed";
 const EVENT_PURGE: &str = "fleet_purge_failed";
-
-/// The segments this family's template carries.
-///
-/// A named struct rather than `Path<String>`, and that is a correctness fix
-/// rather than documentation: the template carries TWO parameters, and
-/// `Path<String>` deserializes a single one — on this route it fails the
-/// extractor and answers a 500 before the handler ever runs. Naming the segment
-/// takes it by key, so the workspace half being there is not a problem.
-#[derive(Debug, Deserialize)]
-pub struct FleetPath {
-    /// The fleet named in the path, still text.
-    pub fleet_id: String,
-}
-
-/// The refusal a path segment that is not an identifier earns.
-pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 
 /// The refusal a PATCH body this daemon cannot read earns.
 pub const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
@@ -158,14 +142,6 @@ pub(crate) async fn purge<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_PURGE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// The fleet named in the path, refused before a connection is drawn.
-///
-/// Which is what keeps the `::uuid` cast in the statements from ever being the
-/// thing that fails, leaving every error from below a genuine datastore fault.
-pub(crate) fn parse_fleet_id(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
 }
 
 /// The PATCH the body asks for, or the refusal it earns.

@@ -1,0 +1,74 @@
+[package]
+name = "afd_outbound"
+description = "The connector answer-delivery worker: reads the outbound queue, routes each job to its provider's poster, and retries a transient failure on a jittered schedule."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# The registry codes a failed delivery is logged under, and the identifiers a
+# job names.
+afd_core.workspace = true
+# Where the poster reads the originating event's routing fields from.
+afd_db.workspace = true
+# The wrapper the bot token stays inside on its way to the one header it
+# builds, so it zeroes on drop rather than becoming an ordinary `String`.
+afd_crypto.workspace = true
+# The queue itself: the stream, the dedicated reader, the consumer name.
+afd_redis.workspace = true
+# THE dependency that makes this crate the boundary it is: `Provider` is
+# resolved here and nowhere else on the delivery path (Invariant 9).
+afd_connector.workspace = true
+# The retry LOOP. The counter and the terminal rule are what the Zig
+# hand-rolled beside its schedule, and where its install shipped the bug that
+# left the last delay unreachable.
+backon.workspace = true
+# The vendor call. The same client the rest of the workspace dials with.
+reqwest.workspace = true
+# The header name a JSON body is sent under, from the crate that owns the
+# constant rather than as a literal string.
+http.workspace = true
+# Both wire shapes are derived types rather than field lookups — see `slack`.
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+# `select!` over the blocking read and the cancellation token, and the deadline
+# on a vendor post.
+tokio = { workspace = true, features = ["macros", "time"] }
+# The supervisor's token, which is how this worker is stopped.
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# `SlackPoster` is the one poster this build ships and none of it was covered:
+# the worker suite drives a stub `Deliver`, so the real reads never run. Proving
+# it needs the two stores it actually holds — the pool the destination is read
+# from, and the vault the bot token is opened out of.
+afd_db = { workspace = true, features = ["test-util"] }
+afd_vault.workspace = true
+afd_core.workspace = true
+# `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
+# spells a Redis command itself — `afd_redis` owns every one it issues — but the
+# integration suite has to ask Redis what the worker LEFT BEHIND, and an
+# unacknowledged entry is a question only the server can answer.
+redis.workspace = true
+# `rt-multi-thread` because the worker is a spawned task raced against a
+# cancellation token, and a current-thread runtime interleaving the two politely
+# would prove nothing about a shutdown.
+# `net` and `io-util` on top of the worker suite's set: the poster is graded
+# against a loopback Slack, and a stand-in for an HTTP round trip would prove
+# nothing about the request this actually builds.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util", "net", "io-util"] }
+# Installed by the integration harness so event macros evaluate their fields;
+# see `install_subscriber` for why that is a correctness concern.
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

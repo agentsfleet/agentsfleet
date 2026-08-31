@@ -24,11 +24,13 @@
 // everything else.
 #[cfg(test)]
 use {
-    afd_admin as _, afd_approval as _, afd_billing as _, afd_credential as _, afd_crypto as _,
-    afd_db as _, afd_events as _, afd_fleet as _, afd_fleet_lifecycle as _, afd_fleet_ops as _,
+    afd_admin as _, afd_approval as _, afd_billing as _, afd_connector as _, afd_credential as _,
+    afd_cron as _, afd_crypto as _, afd_db as _, afd_events as _, afd_fleet as _,
+    afd_fleet_lifecycle as _, afd_fleet_ops as _, afd_identity as _, afd_ingress as _,
     afd_library as _, afd_redis as _, afd_runner as _, afd_sse as _, afd_state as _,
-    afd_tenant as _, afd_vault as _, afd_wire as _, bytes as _, futures_util as _, hyper as _,
-    hyper_util as _, object_store as _, serde as _, sqlx as _, tokio as _, tower as _,
+    afd_tenant as _, afd_vault as _, afd_webhook as _, afd_wire as _, base64 as _, bytes as _,
+    futures_util as _, hyper as _, hyper_util as _, jsonwebtoken as _, object_store as _,
+    reqwest as _, serde as _, sha2 as _, sqlx as _, tokio as _, tower as _,
     tracing_subscriber as _,
 };
 
@@ -52,4 +54,4 @@ pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
 pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
-pub use self::services::Services;
+pub use self::services::{SchedulePlane, Services};

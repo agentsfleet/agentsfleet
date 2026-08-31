@@ -7,6 +7,7 @@
 //! on — nothing downstream re-validates, and nothing downstream can.
 
 use afd_core::id::Uuid7;
+use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::PoolConfig;
 use afd_identity::ProviderSecret;
@@ -45,6 +46,10 @@ pub struct BootConfig {
     pub(super) identity: IdentityConfig,
     pub(super) bundles: Option<BundleStoreConfig>,
     pub(super) platform_admin_workspace: Option<Uuid7>,
+    pub(super) qstash_token: Option<Box<str>>,
+    pub(super) qstash_url: Option<Box<str>>,
+    pub(super) identity_webhook_secret: Option<Box<str>>,
+    pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
     pub(super) posthog: Option<PostHogConfig>,
 }
@@ -174,6 +179,37 @@ impl BootConfig {
     #[must_use]
     pub const fn platform_admin_workspace(&self) -> Option<&Uuid7> {
         self.platform_admin_workspace.as_ref()
+    }
+
+    /// This deployment's bearer for the external scheduler, when it has one.
+    #[must_use]
+    pub fn qstash_token(&self) -> Option<&str> {
+        self.qstash_token.as_deref()
+    }
+
+    /// Which scheduler deployment the management calls go to.
+    ///
+    /// `None` means this deployment named none and the boot path resolves
+    /// [`afd_cron::qstash::API_BASE`] — see [`super::QSTASH_URL_KNOB`].
+    #[must_use]
+    pub fn qstash_url(&self) -> Option<&str> {
+        self.qstash_url.as_deref()
+    }
+
+    /// What a signup event from the identity provider is verified against.
+    ///
+    /// `None` refuses every delivery — see [`super::IDENTITY_WEBHOOK_SECRET_KNOB`].
+    #[must_use]
+    pub fn identity_webhook_secret(&self) -> Option<&str> {
+        self.identity_webhook_secret.as_deref()
+    }
+
+    /// The scheduler's signing keys, when this deployment configured them.
+    ///
+    /// `None` refuses every fire — see [`super::QSTASH_CURRENT_KEY_KNOB`].
+    #[must_use]
+    pub const fn qstash_signing_keys(&self) -> Option<&SigningKeys> {
+        self.qstash_keys.as_ref()
     }
 
     /// The Fleet Bundle snapshot store, when this deployment has one.
