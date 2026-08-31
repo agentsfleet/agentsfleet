@@ -67,3 +67,34 @@ impl IdentityWebhookSecret for Option<SecretBytes> {
         self.as_ref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{IdentityWebhookSecret as _, SecretBytes};
+
+    /// `Option` IS the implementation, and both of its states are meaningful.
+    ///
+    /// The trait exists so a deployment with no configured secret is a value
+    /// rather than a special case, and the module note says why `None` must
+    /// stay reachable: it is fail-closed on a public endpoint that CREATES
+    /// ACCOUNTS. An impl that answered `Some` for an unconfigured deployment —
+    /// a default, a placeholder — would verify every delivery against a secret
+    /// nobody set, which is the one outcome this seam is shaped to prevent.
+    #[test]
+    fn an_unconfigured_deployment_answers_no_secret_rather_than_a_stand_in() {
+        let configured = Some(SecretBytes::new(b"whsec_fixture".to_vec()));
+        assert_eq!(
+            configured
+                .identity_webhook_secret()
+                .map(super::SecretBytes::expose),
+            Some(b"whsec_fixture".as_slice()),
+            "a configured deployment hands back the bytes it was given"
+        );
+
+        let unconfigured: Option<SecretBytes> = None;
+        assert!(
+            unconfigured.identity_webhook_secret().is_none(),
+            "an unconfigured deployment has no secret, and must not invent one"
+        );
+    }
+}
