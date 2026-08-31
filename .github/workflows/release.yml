@@ -55,7 +55,7 @@ jobs:
   # recorded as the one dependency whose static musl link was unproven. It is
   # proven here on every release, and the static-ELF assertion below is what
   # says so — the apk list is exactly its build dependencies.
-  daemon-linux:
+  compile-daemon:
     needs: verify-tag
     strategy:
       fail-fast: false
@@ -148,7 +148,7 @@ jobs:
           path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}
           retention-days: 1
 
-  binaries-linux-x86:
+  compile-runner-amd64:
     needs: verify-tag
     runs-on: ubuntu-latest
     container:
@@ -204,7 +204,7 @@ jobs:
   # at deploy.
   verify-runtime-compat:
     runs-on: ubuntu-latest
-    needs: daemon-linux
+    needs: compile-daemon
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -233,7 +233,7 @@ jobs:
   # JS actions cannot run inside Alpine containers on ARM64 runners.
   # Solution: use the bare ubuntu-24.04-arm runner and invoke docker run
   # to execute the Zig build inside Alpine.
-  binaries-linux-aarch64:
+  compile-runner-arm64:
     needs: verify-tag
     runs-on: ubuntu-24.04-arm
     steps:
@@ -288,7 +288,7 @@ jobs:
   # The macOS daemon is a download, not a deployment: production is linux, and
   # nothing in this workflow consumes this artifact except the GitHub release.
   # It is built natively — no cross target, no musl — and it gates nothing.
-  binaries-macos:
+  compile-daemon-macos:
     needs: verify-tag
     runs-on: macos-latest
     steps:
@@ -320,12 +320,12 @@ jobs:
           path: dist/agentsfleetd-darwin-arm64.tar.gz
 
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
-  push-prod:
+  push-ghcr:
     runs-on: ubuntu-latest
     # The image carries the daemon and nothing else, so it waits on the daemon
     # and its runtime check — not on the runner or the macOS binary, which ship
     # in the GitHub release and never enter this image.
-    needs: [verify-tag, daemon-linux, verify-runtime-compat]
+    needs: [verify-tag, compile-daemon, verify-runtime-compat]
     permissions:
       packages: write
     steps:
@@ -437,7 +437,7 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: [daemon-linux, binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
+    needs: [compile-daemon, compile-runner-amd64, compile-runner-arm64, compile-daemon-macos]
     permissions:
       contents: write
     steps:
@@ -468,11 +468,11 @@ jobs:
   # This used to wait on `create-release`, which waits on the macOS and runner
   # builds — so a slow native macOS compile sat between a pushed image and a
   # production rollout, gating a deploy on an artifact the deploy never reads.
-  # Production needs the image, and the image is `push-prod`. The release still
+  # Production needs the image, and the image is `push-ghcr`. The release still
   # publishes on its own path from the same tag.
   verify-dev-gate:
     runs-on: ubuntu-latest
-    needs: push-prod
+    needs: push-ghcr
     steps:
       - name: Verify DEV readiness gate
         run: |
@@ -553,11 +553,11 @@ jobs:
         id: digest
         # Deploy the IMMUTABLE digest, never the mutable :latest tag — Fly caches
         # the tag -> image-id mapping and can otherwise redeploy a stale image
-        # even after push-prod publishes a new one. push-prod (a needs: ancestor)
+        # even after push-ghcr publishes a new one. push-ghcr (a needs: ancestor)
         # has already pushed, so :latest in GHCR points at this release's image.
         run: |
           # Bounded retry: GHCR's package-versions API can lag a few seconds
-          # behind push-prod moving the tag, so a single lookup may transiently
+          # behind push-ghcr moving the tag, so a single lookup may transiently
           # return empty for an image that pushed fine. Retry before failing.
           DIGEST=""
           for attempt in 1 2 3 4 5 6; do
