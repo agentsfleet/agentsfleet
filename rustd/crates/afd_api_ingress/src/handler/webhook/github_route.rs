@@ -50,9 +50,16 @@ pub(crate) async fn receive<D: Services>(
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     webhook::within_cap(&body)?;
+    // The claim key, and the fallback is the BODY's digest rather than the
+    // fleet's id. `x-github-delivery` is not covered by the signature — GitHub
+    // signs the body alone — so an absent header is a real state a sender can
+    // produce, and keying it on the fleet would give every unidentified
+    // delivery to that fleet one shared slot: the first would claim it and
+    // every later one would answer `replayed` without ever running. The digest
+    // IS covered by the signature, so it is both attributable and distinct per
+    // payload. `app_route` keys on the same digest for the same reason.
     let delivery_id = text(&headers, HEADER_DELIVERY)
-        .unwrap_or(&fleet_id)
-        .to_owned();
+        .map_or_else(|| afd_ingress::replay_id(&body), str::to_owned);
     let event = text(&headers, HEADER_EVENT)
         .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?
         .to_owned();

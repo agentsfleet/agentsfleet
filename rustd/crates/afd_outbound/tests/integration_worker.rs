@@ -462,3 +462,56 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
         "the worker healed the missing group and delivered through it"
     );
 }
+
+/// An entry nothing can decode is dropped, not re-offered forever.
+///
+/// The failure this exists to stop is a queue-wide stall. `decode` answers
+/// `None` for an entry short of a field it requires, and answering the caller
+/// "nothing pending" would leave that entry PENDING under this consumer — so
+/// every later [`OutboundReader::read_pending`] hands back the same row, and
+/// every answer queued behind it waits on one row nothing can deliver. A
+/// single write by operator tooling or by the Zig sharing this key would stop
+/// outbound answers for the whole deployment.
+///
+/// The first read is the BLOCKING one deliberately. `read_pending` reads what
+/// this consumer has already been handed, and a freshly written entry has been
+/// handed to nobody — so opening on `read_pending` would assert against an
+/// empty pending list and pass whether or not the fix is present. The `>` read
+/// is what assigns the entry to this consumer, and assignment is what makes it
+/// pending; only then is there something for the acknowledgement to drain.
+#[tokio::test]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = OutboundHarness::reset().await;
+    harness.poison().await;
+
+    let mut reader = harness.reader().await;
+    let read = reader
+        .read_blocking(500)
+        .await
+        .expect("a reachable queue answers the read");
+    assert!(
+        read.is_none(),
+        "an entry short of a required field is not a delivery"
+    );
+    assert_eq!(
+        harness.pending_count().await,
+        0,
+        "the undeliverable entry must leave the pending list — left there, a \
+         pending-first read hands it back every turn and every job behind it \
+         waits forever"
+    );
+
+    // And the queue still works behind it: the next real job is deliverable.
+    enqueue(&harness, "Aurora is healthy.").await;
+    let next = reader
+        .read_blocking(500)
+        .await
+        .expect("a reachable queue answers the read");
+    assert_eq!(
+        next.map(|delivery| delivery.answer),
+        Some("Aurora is healthy.".to_owned()),
+        "the job queued behind the poisoned entry must still be delivered"
+    );
+}

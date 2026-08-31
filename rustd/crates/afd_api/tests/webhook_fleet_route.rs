@@ -300,13 +300,17 @@ async fn a_green_run_is_dropped_with_its_reason_rather_than_waking_the_fleet() {
 }
 
 #[tokio::test]
-async fn a_delivery_with_no_identifier_falls_back_to_the_fleet_it_addressed() {
+async fn a_delivery_with_no_identifier_still_gets_a_claim_key() {
     let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Active.as_str());
     let router = Fleet::new().with_ingress(&ingress).router();
     let proof = signed::signature(Scheme::BodyHex, signed::SECRET, RUN_FAILURE.as_bytes());
 
     // No `x-github-delivery`. GitHub always sends one; a sender that does not
-    // still gets a claim key rather than an unclaimed append.
+    // still gets a claim key rather than an unclaimed append — which is the
+    // invariant this has always held. What the key IS changed: the fleet's id
+    // gave every unidentified delivery one shared slot, so the second onward
+    // answered `replayed` and never ran. The body's digest keeps the claim and
+    // drops the collision, and it is inside what the signature covers.
     let headers = vec![
         (signed::name(signed::HEADER_EVENT), EVENT_WORKFLOW_RUN),
         (
@@ -324,8 +328,97 @@ async fn a_delivery_with_no_identifier_falls_back_to_the_fleet_it_addressed() {
             .first()
             .expect("the delivery was appended")
             .event_id,
-        signed::FLEET,
-        "with no sender identifier the fleet id is the key, so two such \
-         deliveries collapse rather than running the fleet twice"
+        afd_ingress::replay_id(RUN_FAILURE.as_bytes()),
+        "an unidentified delivery is claimed under the digest of the body the \
+         signature covered, never under the fleet it addressed"
     );
+}
+
+/// Two unidentified deliveries with different bodies are two deliveries.
+///
+/// `x-github-delivery` is NOT covered by the signature — GitHub signs the body
+/// alone — so an absent header is a state a sender can produce, and the route
+/// has to key the at-most-once claim on something else. Keying it on the fleet
+/// would give every unidentified delivery to that fleet ONE shared slot: the
+/// first claims it, and every later one answers `replayed` without ever
+/// running. A fleet would go quiet and nothing would say why.
+///
+/// The digest is the answer because it is inside what the signature covers, so
+/// it is both attributable and distinct per payload. `app_route` keys on the
+/// same digest for the same reason.
+#[tokio::test]
+async fn unidentified_deliveries_are_told_apart_by_the_body_the_signature_covered() {
+    let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Active.as_str());
+
+    let first = deliver_unidentified(&ingress, EVENT_WORKFLOW_RUN, RUN_FAILURE).await;
+    assert_eq!(first.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        *field(&json_body(first).await, "replayed"),
+        Value::Bool(false)
+    );
+
+    let second = deliver_unidentified(&ingress, EVENT_WORKFLOW_RUN, &other_failure()).await;
+    assert_eq!(second.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        *field(&json_body(second).await, "replayed"),
+        Value::Bool(false),
+        "a different payload is a different delivery, however the header reads"
+    );
+
+    let appended = ingress.deliveries();
+    assert_eq!(appended.len(), 2, "both bodies reached the store");
+    let first_id = appended.first().expect("the first append").event_id.clone();
+    let second_id = appended.get(1).expect("the second append").event_id.clone();
+    assert_ne!(
+        first_id, second_id,
+        "two bodies must not share one claim key"
+    );
+    assert!(
+        first_id != signed::FLEET && second_id != signed::FLEET,
+        "the fleet id must never become a claim key: it is one slot for every \
+         unidentified delivery, and the second one onward would be suppressed"
+    );
+}
+
+/// The same unidentified body twice is still one delivery.
+#[tokio::test]
+async fn an_unidentified_delivery_repeated_is_still_a_replay() {
+    let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Active.as_str());
+
+    let first = deliver_unidentified(&ingress, EVENT_WORKFLOW_RUN, RUN_FAILURE).await;
+    assert_eq!(
+        *field(&json_body(first).await, "replayed"),
+        Value::Bool(false)
+    );
+
+    let again = deliver_unidentified(&ingress, EVENT_WORKFLOW_RUN, RUN_FAILURE).await;
+    assert_eq!(
+        *field(&json_body(again).await, "replayed"),
+        Value::Bool(true),
+        "keying on the digest still suppresses a genuine resend"
+    );
+}
+
+/// The same failed run, as a different payload.
+///
+/// A marker key at the top level rather than an edited field: it keeps the
+/// document a `workflow_run` failure — so `classify` still accepts it and the
+/// two cases differ in exactly one thing, the bytes — while making the digest
+/// unmistakably different.
+fn other_failure() -> String {
+    RUN_FAILURE.replacen('{', r#"{"fixture_marker":"second","#, 1)
+}
+
+/// One signed delivery carrying no `x-github-delivery` header at all.
+async fn deliver_unidentified(ingress: &Arc<Scripted>, event: &str, body: &str) -> Response {
+    let router = Fleet::new().with_ingress(ingress).router();
+    let proof = signed::signature(Scheme::BodyHex, signed::SECRET, body.as_bytes());
+    let headers = vec![
+        (
+            signed::name(Scheme::BodyHex.signature_header()),
+            proof.as_str(),
+        ),
+        (signed::name(signed::HEADER_EVENT), event),
+    ];
+    send_with_headers(&router, Method::POST, &path(), None, body, &headers).await
 }
