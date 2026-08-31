@@ -113,7 +113,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: dev-*
+          pattern: '*-binary'
           path: dist
           merge-multiple: true
 

@@ -47,6 +47,8 @@ readonly RETIRED_PINS=(
 )
 
 fail_count=0
+sha_pinned=0
+tag_pinned=0
 
 note_failure() {
   printf '✗ %s\n' "$1" >&2
@@ -76,15 +78,26 @@ check_retired() {
   done
 }
 
-# A pin is immutable when its ref is a version tag (`@v4`, `@v2.3.9`) or a full
-# commit SHA. Anything else — a branch, a moving tag, no ref at all — is a
-# third party's mutable pointer, and `@master` in a deploy path is the shape
-# this catches.
+# A pin must be a version tag (`@v4`, `@v2.3.9`) or a full commit SHA. Anything
+# else — a branch, no ref at all — is a third party's pointer that moves with
+# no commit here, and `@master` in a deploy path is the shape this catches.
+#
+# A VERSION TAG IS NOT IMMUTABLE, and this check does not pretend otherwise.
+# A publisher can retarget `v4` at any commit, so a tag-pinned action can change
+# what it runs without a commit in this repository. Only a full SHA is fixed.
+# The gate accepts tags because seventeen of nineteen pins are tags and moving
+# them all is a policy decision with real upkeep, not a script change — so the
+# script REPORTS the split instead of claiming a property it has not verified.
+# A summary that overstates is worse than none: it retires the question.
 check_mutable() {
   local pin="$1" ref="${1##*@}"
   if [ "$pin" = "$ref" ]; then
     note_failure "unpinned action (no ref): $pin"
-  elif ! printf '%s' "$ref" | grep -qE '^(v[0-9]+([.][0-9]+)*|[0-9a-f]{40})$'; then
+  elif printf '%s' "$ref" | grep -qE '^[0-9a-f]{40}$'; then
+    sha_pinned=$((sha_pinned + 1))
+  elif printf '%s' "$ref" | grep -qE '^v[0-9]+([.][0-9]+)*$'; then
+    tag_pinned=$((tag_pinned + 1))
+  else
     note_failure "mutable ref: $pin — pin a version tag or a commit SHA"
   fi
 }
@@ -107,7 +120,8 @@ main() {
     printf '✗ [gh-actions] %d pin problem(s) across %d distinct pins\n' "$fail_count" "$count" >&2
     exit 1
   fi
-  printf '✓ [gh-actions] %d distinct pins — all immutable, none on a retired runtime\n' "$count"
+  printf '✓ [gh-actions] %d distinct pins (%d by SHA, %d by version tag) — none unpinned, none on a retired runtime\n' \
+    "$count" "$sha_pinned" "$tag_pinned"
 }
 
 main "$@"

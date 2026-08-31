@@ -258,10 +258,22 @@ record_mode() {
 
 # COMPARE mode — the same roster against both, diffed per route×method.
 compare_mode() {
-  local base_a="$1" base_b="$2" probed=0 differed=0 method path concrete
+  local base_a="$1" base_b="$2" probed=0 differed=0 declared_count=0
+  local method path concrete declared
   local snap_a="$WORK_DIR/a.snapshot" snap_b="$WORK_DIR/b.snapshot"
+  # The register binds BOTH modes. RECORD reads it to allow a declared 404;
+  # COMPARE has to read it for the same reason one level up — a route the
+  # register says one daemon deliberately does not serve will differ from one
+  # that does, and calling that difference a regression is the register
+  # failing to mean anything in the mode that diffs two daemons.
+  declared="$(declared_divergences)"
   while IFS=$'\t' read -r method path; do
     [ -n "$method" ] || continue
+    if printf '%s\n' "$declared" | grep -qxF "$method $path"; then
+      declared_count=$((declared_count + 1))
+      printf '  declared: %s %s may differ, per the divergence register\n' "$method" "$path"
+      continue
+    fi
     concrete="$(concrete_path "$path")"
     snapshot "$base_a" "$method" "$concrete" >"$snap_a"
     snapshot "$base_b" "$method" "$concrete" >"$snap_b"
@@ -272,6 +284,7 @@ compare_mode() {
       sed -n '3,$p' "$WORK_DIR/delta" | sed 's/^/      /' >&2
     fi
   done < <(roster)
+  [ "$declared_count" -eq 0 ] || ok "$declared_count declared divergence(s) honoured"
   guard_probed "$probed"
   [ "$differed" -eq 0 ] && [ "$FAIL" -eq 0 ] \
     && ok "$probed route/method pairs identical across $base_a and $base_b"
