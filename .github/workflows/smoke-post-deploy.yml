@@ -89,7 +89,7 @@ jobs:
           retention-days: 7
 
   # Acceptance suite — only fires when the dashboard app deploys to PROD.
-  # Mirrors acceptance-e2e-dev (in deploy-dev.yml) but targets the production
+  # Mirrors acceptance-e2e (in deploy-dev.yml) but targets the production
   # app URL + clerk-prod credentials. The smoke job above stays unauth so it
   # remains valid for the marketing/agents projects too.
   acceptance-e2e-prod:
@@ -120,7 +120,7 @@ jobs:
 
       - name: Build the CLI once for browser CLI journeys
         # The release preflight and the CLI-driven journeys consume
-        # cli/dist/bin/agentsfleet.js — mirrors acceptance-e2e-dev.
+        # cli/dist/bin/agentsfleet.js — mirrors acceptance-e2e.
         run: |
           bun install --frozen-lockfile
           bun run build
@@ -179,7 +179,7 @@ jobs:
         uses: actions/upload-artifact@v7
         # Raw per-test artifacts are written DURING the run — a canceled or
         # hard-failed job still uploads diagnosable evidence even when the
-        # HTML report was never rendered. Mirrors acceptance-e2e-dev.
+        # HTML report was never rendered. Mirrors acceptance-e2e.
         if: always()
         with:
           name: acceptance-e2e-prod-results

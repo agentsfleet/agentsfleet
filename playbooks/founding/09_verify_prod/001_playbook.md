@@ -2,7 +2,7 @@
 
 **Owner:** Human
 **Executors:** Agent starts and monitors the run; Pipeline deploys and verifies
-**Prerequisites:** steps 07 and 08 completed; `PROD_WORKER_READY=true`
+**Prerequisites:** steps 07 and 08 completed; `PROD_RUNNER_READY=true`
 
 Rerun the original tag workflow. Publishing and release creation are
 idempotent; the rerun now executes the canary and approved fleet rollout.

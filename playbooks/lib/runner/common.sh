@@ -25,12 +25,12 @@ runner_select_environment() {
   case "${ENV:-}" in
     dev)
       RUNNER_VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
-      RUNNER_ITEM="${WORKER_ITEM:-agentsfleet-dev-runner-ant}"
+      RUNNER_ITEM="${RUNNER_ITEM:-agentsfleet-dev-runner-ant}"
       expected_api_url="https://api-dev.agentsfleet.net"
       ;;
     prod)
       RUNNER_VAULT="${VAULT_PROD:-ZMB_CD_PROD}"
-      RUNNER_ITEM="${WORKER_ITEM:?WORKER_ITEM is required for production}"
+      RUNNER_ITEM="${RUNNER_ITEM:?RUNNER_ITEM is required for production}"
       expected_api_url="https://api.agentsfleet.net"
       ;;
     *)

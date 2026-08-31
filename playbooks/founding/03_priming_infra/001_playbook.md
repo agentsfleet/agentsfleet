@@ -146,8 +146,8 @@ gh variable set VAULT_DEV --body ZMB_CD_DEV --repo agentsfleet/agentsfleet
 gh variable set VAULT_PROD --body ZMB_CD_PROD --repo agentsfleet/agentsfleet
 gh variable set FLY_APP_DEV --body agentsfleetd-dev --repo agentsfleet/agentsfleet
 gh variable set FLY_APP_PROD --body agentsfleetd-prod --repo agentsfleet/agentsfleet
-gh variable set DEV_WORKER_READY --body false --repo agentsfleet/agentsfleet
-gh variable set PROD_WORKER_READY --body false --repo agentsfleet/agentsfleet
+gh variable set DEV_RUNNER_READY --body false --repo agentsfleet/agentsfleet
+gh variable set PROD_RUNNER_READY --body false --repo agentsfleet/agentsfleet
 ```
 
 Keep both runner switches false until their bootstrap gates pass. This is what
@@ -160,7 +160,7 @@ allows the first control-plane deployment to run before either runner exists.
 - Both Cloudflare tunnels exist and hold the intended API route.
 - Clerk claim audiences match the workflow literals.
 - Both environments have a recent static IPv4 egress inventory.
-- `DEV_WORKER_READY` and `PROD_WORKER_READY` are false.
+- `DEV_RUNNER_READY` and `PROD_RUNNER_READY` are false.
 - `ENV=all STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`
   exits zero.
 

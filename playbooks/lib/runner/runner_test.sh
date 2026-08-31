@@ -114,14 +114,14 @@ test_should_deploy_development_without_secret_arguments() {
     ok "$name"
   fi
 }
-test_should_select_production_worker() {
-  local name="test_should_select_production_worker"
+test_should_select_production_runner() {
+  local name="test_should_select_production_runner"
   local output status=0
-  output="$(run_script ENV=prod WORKER_ITEM=prod-worker bash "$DEPLOY")" || status=$?
+  output="$(run_script ENV=prod RUNNER_ITEM=prod-runner bash "$DEPLOY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! grep -q 'ZMB_CD_PROD/prod-worker/runner-token' "$calls"; then
-    bad "$name" "production worker item was not used"
+  elif ! grep -q 'ZMB_CD_PROD/prod-runner/runner-token' "$calls"; then
+    bad "$name" "production runner item was not used"
   else
     ok "$name"
   fi
@@ -236,7 +236,7 @@ test_should_declare_workflow_vault_read_approval() {
   local name="test_should_declare_workflow_vault_read_approval"
   local workflow
   local -a workflows=(
-    "$REPO_ROOT/.github/workflows/deploy-dev-worker.yml"
+    "$REPO_ROOT/.github/workflows/deploy-dev-metal.yml"
     "$REPO_ROOT/.github/workflows/release.yml"
   )
   for workflow in "${workflows[@]}"; do
@@ -251,7 +251,7 @@ test_should_prepare_host_without_reading_runner_token
 test_should_require_host_prepare_approval
 test_should_refuse_host_without_required_cgroup_support
 test_should_deploy_development_without_secret_arguments
-test_should_select_production_worker
+test_should_select_production_runner
 test_should_not_install_packages_during_deploy
 test_should_include_sbin_when_checking_host_tools
 test_should_reject_placeholder_token

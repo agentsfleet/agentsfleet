@@ -84,7 +84,7 @@ test_should_reject_unsafe_vault_and_item_names() {
   assert_rejected_before_connection \
     "test_should_reject_unsafe_item_name" \
     "invalid runner item" \
-    WORKER_ITEM='bad/item'
+    RUNNER_ITEM='bad/item'
 }
 
 test_should_reject_unsafe_target_components() {

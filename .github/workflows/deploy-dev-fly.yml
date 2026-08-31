@@ -5,10 +5,14 @@ name: deploy-dev / fly
 
 on:
   workflow_call:
+    outputs:
+      result:
+        description: deploy-fly job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.result }}
 
 jobs:
   # ── 2. Deploy to Fly.io DEV ─────────────────────────────────────────────
-  deploy-fly-dev:
+  deploy-fly:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -67,12 +71,12 @@ jobs:
         id: digest
         # Deploy the IMMUTABLE digest, never the mutable :dev-latest tag. Fly
         # caches the tag -> image-id mapping on its side and can redeploy a stale
-        # (old) image even after push-dev publishes a new one — the exact failure
+        # (old) image even after push-ghcr publishes a new one — the exact failure
         # that crash-looped agentsfleetd-dev on an old binary. The caller's build
         # stage has already pushed, so dev-latest in GHCR points at this run's image.
         run: |
           # Bounded retry: GHCR's package-versions API can lag a few seconds
-          # behind push-dev moving the tag, so a single lookup may transiently
+          # behind push-ghcr moving the tag, so a single lookup may transiently
           # return empty for an image that pushed fine. Retry before failing.
           DIGEST=""
           for attempt in 1 2 3 4 5 6; do
@@ -120,3 +124,15 @@ jobs:
             || format('❌ DEV agentsfleetd deploy {0} — `{1}` @ `{2}`\nCheck: {3}/{4}/actions/runs/{5}', job.status, vars.FLY_APP_DEV, github.sha, github.server_url, github.repository, github.run_id) }}
           op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           vault: ${{ vars.VAULT_PROD }}
+
+  # Same shape as build and metal: the caller's verdict reads this rather than
+  # inferring a Fly failure from a downstream stage that never ran.
+  result:
+    runs-on: ubuntu-latest
+    needs: deploy-fly
+    if: always()
+    outputs:
+      result: ${{ needs.deploy-fly.result }}
+    steps:
+      - name: Record fly result
+        run: echo "deploy-fly result = ${{ needs.deploy-fly.result }}"

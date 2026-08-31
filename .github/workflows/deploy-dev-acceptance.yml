@@ -14,18 +14,18 @@ on:
   workflow_call:
     outputs:
       qa:
-        description: qa-dev result
+        description: qa result
         value: ${{ jobs.results.outputs.qa }}
       acceptance:
-        description: acceptance-e2e-dev result
+        description: acceptance-e2e result
         value: ${{ jobs.results.outputs.acceptance }}
       cli:
-        description: cli-acceptance-dev result
+        description: acceptance-cli result
         value: ${{ jobs.results.outputs.cli }}
 
 jobs:
   # ── QA smoke tests against DEV ──────────────────────────────────────────
-  qa-dev:
+  qa:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -57,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: qa-dev-${{ github.sha }}
+          name: qa-${{ github.sha }}
           path: ui/packages/app/playwright-report/
           retention-days: 7
 
@@ -69,13 +69,13 @@ jobs:
   # `agentsfleet` Vercel project's Production env has
   # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
   # production-customer dashboard lives behind the `app.agentsfleet.net`
-  # custom domain via a separate project). Same URL that `qa-dev` above
+  # custom domain via a separate project). Same URL that `qa` above
   # uses for the unauthenticated smoke. The harness-side
   # `NEXT_PUBLIC_API_URL` env below feeds the direct fixture-seeding
   # fetch() calls (clerk-admin, bootstrap, api-client) — Next.js bakes
   # `NEXT_PUBLIC_*` at build time, so this var doesn't steer the
   # dashboard's API calls.
-  acceptance-e2e-dev:
+  acceptance-e2e:
     runs-on: ubuntu-latest
     # Hard release budget: the suite fails fast on a dead prerequisite (the
     # preflight project) and never retries deterministic failures, so a run
@@ -129,7 +129,7 @@ jobs:
         # rendered.
         if: always()
         with:
-          name: acceptance-e2e-dev-results
+          name: acceptance-e2e-results
           # Immutable-artifact model: a job re-run re-uploads under the same
           # stable name the release rubric downloads by.
           overwrite: true
@@ -145,7 +145,7 @@ jobs:
   # lifecycle-after-login spec uses Playwright Chromium to drive the
   # dashboard's /cli-auth/{session_id} handoff page; skips automatically
   # when AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL is unset.
-  cli-acceptance-dev:
+  acceptance-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -198,7 +198,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: cli-acceptance-dev-${{ github.sha }}
+          name: acceptance-cli-${{ github.sha }}
           path: cli/playwright-cli-report/
           retention-days: 7
 
@@ -206,15 +206,15 @@ jobs:
   # (if: always()) so a failed or cancelled gate still reaches the verdict.
   results:
     runs-on: ubuntu-latest
-    needs: [qa-dev, acceptance-e2e-dev, cli-acceptance-dev]
+    needs: [qa, acceptance-e2e, acceptance-cli]
     if: always()
     outputs:
-      qa: ${{ needs.qa-dev.result }}
-      acceptance: ${{ needs.acceptance-e2e-dev.result }}
-      cli: ${{ needs.cli-acceptance-dev.result }}
+      qa: ${{ needs.qa.result }}
+      acceptance: ${{ needs.acceptance-e2e.result }}
+      cli: ${{ needs.acceptance-cli.result }}
     steps:
       - name: Record gate results
         run: |
-          echo "qa-dev=${{ needs.qa-dev.result }}"
-          echo "acceptance-e2e-dev=${{ needs.acceptance-e2e-dev.result }}"
-          echo "cli-acceptance-dev=${{ needs.cli-acceptance-dev.result }}"
+          echo "qa=${{ needs.qa.result }}"
+          echo "acceptance-e2e=${{ needs.acceptance-e2e.result }}"
+          echo "acceptance-cli=${{ needs.acceptance-cli.result }}"

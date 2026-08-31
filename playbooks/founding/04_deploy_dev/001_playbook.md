@@ -11,7 +11,7 @@ dashboard while runner-dependent acceptance stays closed.
 
 | Order | Executor | Action | Verifier | Required evidence |
 |---|---|---|---|---|
-| 1 | Agent | Keep runner deployment disabled. | GitHub variable query | `DEV_WORKER_READY=false`. |
+| 1 | Agent | Keep runner deployment disabled. | GitHub variable query | `DEV_RUNNER_READY=false`. |
 | 2 | Agent | Start and watch the development deployment. | Pipeline | Green workflow URL. |
 | 3 | Human | Repair Vercel or DNS ownership if the dashboard domain is absent. | Agent | Dashboard URL resolves to the intended Vercel project. |
 | 4 | Agent | Record the successful workflow run identifier. | Agent | Identifier and URL retained for the next step. |
@@ -19,7 +19,7 @@ dashboard while runner-dependent acceptance stays closed.
 ## Run
 
 ```bash
-gh variable set DEV_WORKER_READY \
+gh variable set DEV_RUNNER_READY \
   --body "false" \
   --repo agentsfleet/agentsfleet
 
@@ -57,8 +57,8 @@ Keep `DEV_DEPLOY_RUN_ID`; step 05 downloads its runner artifact.
   ACTION=apply ENV=dev ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
     ./playbooks/operations/model_catalogue/00_gate.sh
   ```
-- `deploy-worker-dev`, browser acceptance, and Command-Line Interface (CLI)
-  acceptance skip because `DEV_WORKER_READY=false`.
+- `deploy-metal`, browser acceptance, and Command-Line Interface (CLI)
+  acceptance skip because `DEV_RUNNER_READY=false`.
 - `https://api-dev.agentsfleet.net/readyz` responds successfully through the
   Cloudflare tunnel. Fly.io also checks `/readyz` privately on the
   `agentsfleetd` machine.
