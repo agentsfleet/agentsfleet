@@ -135,12 +135,23 @@ fn test_declared_commands_survive_retirement() {
     }
 }
 
-/// Catches the daemon deploy coming back by accident. The workflow file is kept
-/// so the frozen revision can be redeployed by hand — that is now the rollback
-/// path — but it must not fire on a merge to main.
+/// Binds the dev deploy's TRIGGER to the daemon it ships.
+///
+/// The original rule was flatly "no push trigger", because the daemon this lane
+/// deployed was the frozen Zig revision and auto-deploying a codebase being
+/// replaced bought nothing. M181 spent that premise: `daemon-dev` now compiles
+/// the Rust daemon. So the guard is no longer a ban on the trigger — it is the
+/// pairing, which is the thing that was ever actually true: an automatic deploy
+/// is safe exactly while the binary it publishes is the Rust one.
+///
+/// Written as an implication rather than two independent assertions on purpose.
+/// Reverting the build to the Zig daemon while the merge trigger stays live is
+/// the regression worth catching, and only a test that reads both files
+/// together can see it.
 #[test]
-fn test_daemon_deploy_retired() {
-    let deploy = std::fs::read_to_string(repo_root().join(".github/workflows/deploy-dev.yml"))
+fn test_daemon_deploy_ships_the_rust_daemon() {
+    let root = repo_root();
+    let deploy = std::fs::read_to_string(root.join(".github/workflows/deploy-dev.yml"))
         .expect("deploy-dev.yml must still exist for manual dispatch");
 
     let triggers: String = deploy
@@ -150,14 +161,37 @@ fn test_daemon_deploy_retired() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(
-        !triggers.contains("push:"),
-        "deploy-dev.yml fires on push again; the Zig daemon is frozen and must not auto-deploy:\n{triggers}"
-    );
+    // Never conditional: hand-redeploying an older digest is the rollback path,
+    // and the cutover playbook's one-move rollback is written against it.
     assert!(
         triggers.contains("workflow_dispatch:"),
-        "manual dispatch must stay reachable — redeploying the frozen revision is the rollback path"
+        "manual dispatch must stay reachable — redeploying an older digest is the rollback path"
     );
+
+    if !triggers.contains("push:") {
+        return;
+    }
+
+    let build = std::fs::read_to_string(root.join(".github/workflows/deploy-dev-build.yml"))
+        .expect("deploy-dev-build.yml must exist — deploy-dev.yml calls it");
+
+    assert!(
+        build.contains("cargo build --profile dist --bin agentsfleetd"),
+        "deploy-dev.yml fires on merge but deploy-dev-build.yml no longer compiles the Rust daemon"
+    );
+    // `agentsfleetd-rs-linux-*` is the Rust daemon; the Zig one was
+    // `agentsfleetd-linux-*`. The `-rs` infix is the whole distinction, so the
+    // absence of the bare spelling is what says the frozen binary is not back.
+    assert!(
+        build.contains("agentsfleetd-rs-linux-"),
+        "deploy-dev.yml fires on merge but the published daemon artifact is not the Rust one"
+    );
+    for line in build.lines() {
+        assert!(
+            !line.contains("dist/agentsfleetd-linux-"),
+            "deploy-dev.yml fires on merge and the Zig daemon artifact is back: {line}"
+        );
+    }
 }
 
 /// Whether `line` invokes exactly `needle`, rather than a target whose name

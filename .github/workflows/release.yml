@@ -91,15 +91,22 @@ jobs:
       - name: Build the daemon in Alpine (musl-native)
         run: |
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
+          # DERIVED, never spelled twice. `make/build.mk` computes BUILDER_IMAGE
+          # from this same file with this same sed, so a versions.env bump moves
+          # CI and the local build together. A literal tag here would let them
+          # drift into "a second compiler nobody chose".
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          echo "→ building in $BUILDER"
           docker run --rm \
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
             -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
             -w /w/rustd \
-            rust:1.98-alpine \
+            "$BUILDER" \
             sh -c '
               set -e
-              apk add --no-cache build-base perl cmake go linux-headers
               cargo build --profile dist --bin agentsfleetd
             '
           # The container writes as root; the cache action and later steps read

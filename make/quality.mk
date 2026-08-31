@@ -142,6 +142,20 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# question: will these workflows still work tomorrow.
 	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
 	@bash audits/gh-actions-runtime.sh
+	@# versions.env is the ONLY place the musl builder's version is written.
+	@# make/build.mk derives BUILDER_IMAGE from it; the workflows derive the same
+	@# string with the same sed. A literal tag pasted into a workflow would still
+	@# RUN — it would just quietly compile on a toolchain the repository has moved
+	@# off, which is the "second compiler nobody chose" versions.env exists to
+	@# prevent. So the check is not "does the literal match" but "is there a
+	@# literal at all": the drift is unreachable when nothing can spell it twice.
+	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
+	@if grep -rnE 'ghcr\.io/agentsfleet/ci-rust-alpine:[0-9]' .github/workflows/; then \
+	  echo "✗ [gh-actions] a workflow hardcodes the builder tag; derive it from"; \
+	  echo "  playbooks/operations/ci_rust_images/versions.env instead, as make/build.mk does."; \
+	  exit 1; \
+	fi
+	@echo "✓ [gh-actions] no workflow pins a literal builder tag"
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
