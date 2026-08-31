@@ -21,10 +21,19 @@ real-sandbox proof resolve `error.BwrapUnavailable` and `SkipZigTest` —
 silently, on every run. That is how a sandbox missing `/run/systemd/resolve`
 shipped and broke every lease for a week (M167).
 
-A third image, `ci-zig-debian-trixie`, was retired in M181_001: it existed for
-`memleak.yml`, which `b9163ed32` deleted with the rest of the Zig lanes. Its
-Dockerfile and build arm are gone; the published package outlived its only
-caller and is the operator's to delete.
+A third image, `ci-zig-debian-trixie`, stopped being built in M181_001: it
+existed for `memleak.yml`, which `b9163ed32` deleted with the rest of the Zig
+lanes. Its Dockerfile and its `--image` arm are gone from this playbook, so
+nothing here rebuilds it.
+
+**The published package STAYS. Do not delete it** (Indy, 2026-08-31). Eleven
+versions sit under `ghcr.io/agentsfleet/ci-zig-debian-trixie`, last pushed
+2026-07-12, and deleting a published package is irreversible: a digest someone
+pinned elsewhere, or a workflow on an old branch, resolves to nothing
+afterwards and there is no undo. An orphaned image costs storage; a deleted one
+can break a checkout nobody thought to check. Retiring the build path is the
+reversible half and is all that was done. The Dockerfile is in git history if
+the lane ever returns.
 
 `bwrap` needs to create namespaces, which Docker's default seccomp profile
 refuses. Lanes that execute a sandbox therefore need `--privileged` (the
