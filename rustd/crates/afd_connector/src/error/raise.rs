@@ -52,24 +52,6 @@ pub(crate) fn exchange_unreadable() -> Error {
 /// could not catch an `Error` that repeated its own message.
 ///
 /// # Panics
-/// One `afd_redis` sample, by the label that crate gives it.
-///
-/// By label because the two this builder needs sit on opposite sides of
-/// `is_unavailable`, and picking either by index makes this sample set depend
-/// on the order a different crate lists its kinds in.
-#[cfg(feature = "test-util")]
-#[expect(
-    clippy::expect_used,
-    reason = "a sample builder whose own preconditions fail should stop the suite"
-)]
-fn redis_sample(label: &str) -> afd_redis::Error {
-    afd_redis::error::one_of_each_kind()
-        .into_iter()
-        .find(|(named, _)| *named == label)
-        .map(|(_, error)| error)
-        .expect("afd_redis declares this kind")
-}
-
 /// When a sibling crate stops refusing an input this builder relies on being
 /// refused — an empty vault name, a non-hex key, an identifier that is not one,
 /// an unparseable URL. That is a change in that crate's contract rather than a
@@ -129,4 +111,22 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("exchange unreadable", exchange_unreadable()),
         ("grant unreadable", ErrorKind::GrantUnreadable.into()),
     ]
+}
+
+/// One `afd_redis` sample, by the label that crate gives it.
+///
+/// By label because the two this builder needs sit on opposite sides of
+/// `is_unavailable`, and picking either by index makes this sample set depend
+/// on the order a different crate lists its kinds in.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+fn redis_sample(label: &str) -> afd_redis::Error {
+    afd_redis::error::one_of_each_kind()
+        .into_iter()
+        .find(|(named, _)| *named == label)
+        .map(|(_, error)| error)
+        .expect("afd_redis declares this kind")
 }

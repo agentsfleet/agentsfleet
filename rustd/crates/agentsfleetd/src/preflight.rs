@@ -365,6 +365,10 @@ fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; an unmet precondition should stop it"
+)]
 mod knob_tests {
     use super::{QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys};
     use afd_core::env::MapEnv;

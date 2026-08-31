@@ -154,6 +154,10 @@ mod tests {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; an unmet precondition should stop it"
+)]
 mod wall_clock_tests {
     use super::is_fresh;
     use std::time::{SystemTime, UNIX_EPOCH};
