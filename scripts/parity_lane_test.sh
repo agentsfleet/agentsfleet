@@ -286,6 +286,22 @@ else
   bad "COMPARE still fails an undeclared difference" "exit $status: $(lane_output)"
 fi
 
+# A declared route is PROBED, not skipped. The first cut of the COMPARE fix
+# used `continue`, which accepted every difference on a declared route rather
+# than the one the register names — the register working as a mute button, the
+# exact failure its own RECORD-mode test above exists to prevent. Here the two
+# daemons BOTH serve the declared route and disagree on status: no side is
+# absent, so the declared allowance does not apply and the lane must fail.
+status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
+  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
+  SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" SEED_STATUS="500" \
+  BASE_URL="$BASE_A" COMPARE_URL="$BASE_B" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
+if [ "$status" != "0" ] && lane_output | grep -qF "disagree"; then
+  ok "a declared route still fails on drift that is NOT the declared absence"
+else
+  bad "declared route drift fails" "exit $status: $(lane_output)"
+fi
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] || exit 1
 [ "$passed" -gt 0 ] || { printf 'FAIL the self-test suite ran nothing\n' >&2; exit 1; }
