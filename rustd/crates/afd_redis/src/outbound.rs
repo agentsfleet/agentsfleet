@@ -375,13 +375,49 @@ impl OutboundReader {
             .connection
             .command(CMD_XREADGROUP, OUTBOUND_STREAM_KEY, &cmd)
             .await?;
-        Ok(reply
-            .keys
-            .into_iter()
-            .flat_map(|stream| stream.ids)
-            .next()
-            .as_ref()
-            .and_then(decode))
+        let Some(entry) = reply.keys.into_iter().flat_map(|stream| stream.ids).next() else {
+            return Ok(None);
+        };
+
+        let Some(delivery) = decode(&entry) else {
+            // Dropped here rather than answered as "nothing pending", which is
+            // what [`decode`]'s note has always said the sane response is — and
+            // what this could not do while `None` was the only way to say it.
+            //
+            // The two are the same answer to a caller and opposite facts to the
+            // queue. An entry that will not decode stays PENDING under this
+            // consumer, so a pending-first read hands back the same entry every
+            // turn, forever, and every job queued behind it waits on one row
+            // nothing can deliver. One poisoned write by operator tooling or a
+            // foreign writer stops outbound answers for the whole deployment.
+            self.drop_undeliverable(&entry.id).await;
+            return Ok(None);
+        };
+        Ok(Some(delivery))
+    }
+
+    /// Acknowledges an entry nothing can deliver, so the pending list drains.
+    ///
+    /// Logged at `warn` because it is a write this daemon did not make and
+    /// cannot act on: the entry is gone after this, and the line naming its id
+    /// is the only record it existed. A failed acknowledgement is not raised —
+    /// the caller is mid-read on a queue that is already misbehaving, and the
+    /// next turn tries again.
+    async fn drop_undeliverable(&mut self, id: &str) {
+        let mut cmd = redis::cmd(CMD_XACK);
+        cmd.arg(OUTBOUND_STREAM_KEY)
+            .arg(OUTBOUND_CONSUMER_GROUP)
+            .arg(id);
+        let acknowledged: Result<i64> = self
+            .connection
+            .command(CMD_XACK, OUTBOUND_STREAM_KEY, &cmd)
+            .await;
+        let event = if acknowledged.is_ok() {
+            "outbound_entry_undecodable_dropped"
+        } else {
+            "outbound_entry_undecodable_drop_failed"
+        };
+        tracing::warn!(entry_id = id, event);
     }
 }
 

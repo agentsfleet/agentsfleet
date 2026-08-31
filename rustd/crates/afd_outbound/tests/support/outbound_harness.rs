@@ -86,6 +86,28 @@ impl OutboundHarness {
         Self { redis, queue }
     }
 
+    /// Writes an entry no reader can decode, as a foreign writer would.
+    ///
+    /// Deliberately NOT through `enqueue`, which cannot produce this: every
+    /// field it writes is one `decode` requires. The states worth covering are
+    /// the ones `enqueue` is not the author of — operator tooling, another
+    /// daemon, a format that drifted — and the queue is a shared key the Zig
+    /// writes to as well, so a foreign writer is a real deployment, not a
+    /// contrivance.
+    pub(crate) async fn poison(&self) -> String {
+        let mut cmd = redis::cmd("XADD");
+        cmd.arg(OUTBOUND_STREAM_KEY)
+            .arg("*")
+            .arg("provider")
+            .arg("slack");
+        let id: String = self
+            .redis
+            .command("XADD", OUTBOUND_STREAM_KEY, &cmd)
+            .await
+            .expect("the fixture entry is writable");
+        id
+    }
+
     /// Opens the shared handle, installing the subscriber on the way.
     async fn connect() -> Redis {
         install_subscriber();

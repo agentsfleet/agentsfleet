@@ -156,16 +156,30 @@ impl Grants {
             serde_json::value::to_raw_value(&grant.handle).expect(HANDLE_IS_ALWAYS_SERIALIZABLE);
         let body = SecretBody::parse(&raw)?;
 
+        // Routing BEFORE the vault, and the order is the whole failure story.
+        // These are two writes with no transaction between them, so one of them
+        // can land alone — and which one decides what a person sees.
+        //
+        // Vault first would leave the grant sealed and the account unrouted:
+        // connector status reads CONNECTED, inbound deliveries resolve no
+        // workspace, and the callback state is already spent, so there is no
+        // signal to reconnect and no way to retry the half that failed.
+        //
+        // This way round the survivor is a routing row with no grant. Status
+        // reads NOT connected — which is true, nothing can be spent — and
+        // reconnecting re-runs both writes over an upsert that arbitrates on
+        // `(provider, external_account_id)`. The visible state is the
+        // pessimistic one, and the fix is the button the person already has.
+        if let Some(install) = grant.install.as_ref() {
+            self.route(workspace, provider, install, now).await?;
+        }
+
         match self.vault.create(workspace, &name, &body, now).await {
             Ok(()) => {}
             Err(refused) if refused.code() == error_code::SECRET_NAME_TAKEN => {
                 self.vault.replace(workspace, &name, &body, now).await?;
             }
             Err(other) => return Err(other.into()),
-        }
-
-        if let Some(install) = grant.install.as_ref() {
-            self.route(workspace, provider, install, now).await?;
         }
 
         tracing::info!(
