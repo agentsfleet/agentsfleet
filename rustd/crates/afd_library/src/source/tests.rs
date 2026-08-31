@@ -37,12 +37,13 @@ impl BundleCatalog for Catalog {
         &self,
         _body: &ImportBody,
         bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
+    ) -> impl std::future::Future<Output = Result<String>> + Send {
+        let id = bundle.name.clone();
         self.0
             .lock()
             .expect("catalog mutex is healthy")
             .push(bundle.clone());
-        std::future::ready(Ok(()))
+        std::future::ready(Ok(id))
     }
 }
 
@@ -71,19 +72,25 @@ async fn test_library_import_parity() {
         .await
         .expect("fixture import succeeds");
 
-    assert_eq!(imported.name, "reviewer");
-    assert_eq!(imported.description, "Reviews code");
-    assert_eq!(imported.requirements.credentials, ["github"]);
-    assert_eq!(imported.requirements.tools, ["http_request"]);
-    assert_eq!(imported.requirements.network_hosts, ["api.github.com"]);
-    assert_eq!(imported.requirements.support_files, ["docs/guide.md"]);
+    assert_eq!(imported.bundle.name, "reviewer");
+    assert_eq!(imported.bundle.description, "Reviews code");
+    assert_eq!(imported.bundle.requirements.credentials, ["github"]);
+    assert_eq!(imported.bundle.requirements.tools, ["http_request"]);
+    assert_eq!(
+        imported.bundle.requirements.network_hosts,
+        ["api.github.com"]
+    );
+    assert_eq!(
+        imported.bundle.requirements.support_files,
+        ["docs/guide.md"]
+    );
     assert_eq!(
         catalog
             .0
             .lock()
             .expect("catalog mutex is healthy")
             .as_slice(),
-        [imported]
+        [imported.bundle]
     );
 }
 

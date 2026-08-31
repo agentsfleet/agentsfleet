@@ -22,7 +22,7 @@ mod source;
 mod validate;
 
 pub use catalogue::{
-    DeleteLibrary, GalleryPage, Libraries, LibraryImports, LibraryItem, LibraryPatch,
+    DeleteLibrary, Destination, GalleryPage, Libraries, LibraryImports, LibraryItem, LibraryPatch,
     LibraryRequirements, PatchLibrary, Position, PublicLibraryItem, SummaryEntry, Tier,
 };
 pub use error::{Error, InvalidBundle, Result};
@@ -30,7 +30,7 @@ pub use github::{GithubSource, Repository, valid_revision};
 pub use model::{
     ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest,
 };
-pub use persist::{BundleCatalog, ImportService};
+pub use persist::{BundleCatalog, ImportService, Onboarded};
 pub use prepare::prepare;
 pub use preview::{Preview, Previewer};
 pub use snapshot::canonical_snapshot;

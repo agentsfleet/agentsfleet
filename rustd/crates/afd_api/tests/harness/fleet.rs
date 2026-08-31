@@ -43,7 +43,7 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database.clone()),
+            library_imports: LibraryImports::without_store(database.clone(), Entropy::new()),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
@@ -255,7 +255,7 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database),
+            library_imports: LibraryImports::without_store(database, Entropy::new()),
             dashboard_base: FIXTURE_APP_URL.to_owned(),
             now: UnixMillis::from_millis(FROZEN),
         }

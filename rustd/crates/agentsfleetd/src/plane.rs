@@ -181,8 +181,8 @@ impl ServingPlane {
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
-            Some(store) => LibraryImports::new(database.clone(), store),
-            None => LibraryImports::without_store(database.clone()),
+            Some(store) => LibraryImports::new(database.clone(), store, Entropy::new()),
+            None => LibraryImports::without_store(database.clone(), Entropy::new()),
         };
         Self {
             bundles,

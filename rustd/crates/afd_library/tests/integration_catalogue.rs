@@ -7,10 +7,11 @@
 )]
 
 use afd_core::clock::UnixMillis;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_library::{DeleteLibrary, Libraries, LibraryPatch, PatchLibrary};
+use afd_library::{DeleteLibrary, Destination, Libraries, LibraryPatch, PatchLibrary};
 use std::sync::Arc;
 
 use afd_library::{ImportBody, LibraryImports, SourceKind, SupportFile};
@@ -157,7 +158,7 @@ async fn assert_deletion_outcomes(libraries: &Libraries, fixtures: &Fixtures) {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn platform_upload_stages_draft_and_guards_source_ownership() {
     let fixtures = Fixtures::create().await;
-    let imports = LibraryImports::without_store(fixtures.database.clone());
+    let imports = LibraryImports::without_store(fixtures.database.clone(), Entropy::new());
     let libraries = Libraries::new(fixtures.database.clone());
 
     let first_source = upload_initial_draft(&imports, &libraries, &fixtures).await;
@@ -176,10 +177,10 @@ async fn upload_initial_draft(
     let first_source = format!("unit/{}/first", fixtures.suffix);
     let first = upload(&fixtures.upload_id, &first_source, "First body");
     let imported = imports
-        .upload(&first, false, NOW)
+        .upload(&first, Destination::Platform { replace: false }, NOW)
         .await
         .expect("a skill-only upload needs no R2");
-    assert_eq!(imported.name, fixtures.upload_id);
+    assert_eq!(imported.bundle.name, fixtures.upload_id);
     assert!(
         libraries
             .published()
@@ -204,12 +205,12 @@ async fn replace_foreign_source(imports: &LibraryImports, fixtures: &Fixtures, f
     let second_source = format!("unit/{}/second", fixtures.suffix);
     let second = upload(&fixtures.upload_id, &second_source, "Second body");
     let collision = imports
-        .upload(&second, false, NOW)
+        .upload(&second, Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("a foreign source cannot take the slug silently");
     assert_eq!(collision.collision_incumbent(), Some(first_source));
     imports
-        .upload(&second, true, NOW)
+        .upload(&second, Destination::Platform { replace: true }, NOW)
         .await
         .expect("explicit replacement changes the source");
 }
@@ -244,11 +245,15 @@ async fn store_support_snapshot(fixtures: &Fixtures) {
         path: "notes/context.txt".to_owned(),
         content: b"context".to_vec(),
     });
-    let stored = LibraryImports::new(fixtures.database.clone(), Arc::new(InMemory::new()))
-        .upload(&stored, false, NOW)
-        .await
-        .expect("a configured store accepts the canonical snapshot");
-    assert_eq!(stored.support_manifest.len(), 1);
+    let stored = LibraryImports::new(
+        fixtures.database.clone(),
+        Arc::new(InMemory::new()),
+        Entropy::new(),
+    )
+    .upload(&stored, Destination::Platform { replace: false }, NOW)
+    .await
+    .expect("a configured store accepts the canonical snapshot");
+    assert_eq!(stored.bundle.support_manifest.len(), 1);
 }
 
 async fn assert_invalid_imports(imports: &LibraryImports, fixtures: &Fixtures) {
@@ -259,19 +264,24 @@ async fn assert_invalid_imports(imports: &LibraryImports, fixtures: &Fixtures) {
     );
     invalid_utf8.skill_markdown = vec![0xff];
     let error = imports
-        .upload(&invalid_utf8, false, NOW)
+        .upload(&invalid_utf8, Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("non-UTF-8 root documents are refused before persistence");
     assert!(error.to_string().contains("SKILL.md is not UTF-8"));
 
     let unsafe_revision = imports
-        .github("agentsfleet/reviewer", Some("bad/ref"), false, NOW)
+        .github(
+            "agentsfleet/reviewer",
+            Some("bad/ref"),
+            Destination::Platform { replace: false },
+            NOW,
+        )
         .await
         .expect_err("an unsafe revision is refused before a network request");
     assert!(unsafe_revision.to_string().contains("repository reference"));
 
     let unsafe_template = imports
-        .template("nested/name", false, NOW)
+        .template("nested/name", Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("a template cannot escape the fixed first-party owner");
     assert!(unsafe_template.to_string().contains("repository reference"));

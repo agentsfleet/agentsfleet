@@ -4,9 +4,10 @@ use std::io::{Read as _, Write as _};
 use std::net::TcpListener;
 
 use afd_core::clock::UnixMillis;
+use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_library::{Libraries, LibraryImports};
+use afd_library::{Destination, Libraries, LibraryImports};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 
@@ -18,22 +19,27 @@ async fn github_and_template_imports_use_the_mockable_transport_boundary() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
     let github_name = format!("github-{}", mint_id().replace('-', ""));
-    let github = LibraryImports::without_store(database.clone())
+    let github = LibraryImports::without_store(database.clone(), Entropy::new())
         .with_github_api_base(serve(&archive(&github_name)));
     let imported = github
-        .github("agentsfleet/reviewer", Some("main"), false, NOW)
+        .github(
+            "agentsfleet/reviewer",
+            Some("main"),
+            Destination::Platform { replace: false },
+            NOW,
+        )
         .await
         .expect("the GitHub source imports through the local transport");
-    assert_eq!(imported.name, github_name);
+    assert_eq!(imported.bundle.name, github_name);
 
     let template_name = format!("template-{}", mint_id().replace('-', ""));
-    let templates = LibraryImports::without_store(database.clone())
+    let templates = LibraryImports::without_store(database.clone(), Entropy::new())
         .with_github_api_base(serve(&archive(&template_name)));
     let imported = templates
-        .template("reviewer", false, NOW)
+        .template("reviewer", Destination::Platform { replace: false }, NOW)
         .await
         .expect("the first-party template imports through the same seam");
-    assert_eq!(imported.name, template_name);
+    assert_eq!(imported.bundle.name, template_name);
     let row = Libraries::new(database.clone())
         .list()
         .await

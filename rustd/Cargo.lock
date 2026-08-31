@@ -564,6 +564,7 @@ name = "afd_library"
 version = "0.27.0"
 dependencies = [
  "afd_core",
+ "afd_crypto",
  "afd_db",
  "afd_fleet",
  "afd_fleet_runtime",
