@@ -66,11 +66,12 @@ async fn test_head_is_refused_on_a_route_that_serves_get() {
 /// not true.
 #[tokio::test]
 async fn test_head_at_an_unserved_path_is_not_found() {
-    // The provider row is still tabled-and-unserved; `/v1/workspaces` held
-    // this role until the create was mounted, and each milestone that lands a
-    // handler group will keep pushing this example down the table until
-    // nothing qualifies and the test retires.
-    let missing = send(Method::HEAD, "/v1/tenants/me/provider", ALL_HEALTHY).await;
+    // The model-entries list is the tabled-and-unserved example now; the
+    // provider row held this role until its handlers were mounted, and
+    // `/v1/workspaces` before that. Each milestone that lands a handler group
+    // keeps pushing this example down the table until nothing qualifies and
+    // the test retires.
+    let missing = send(Method::HEAD, "/v1/tenants/me/models", ALL_HEALTHY).await;
 
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
@@ -318,6 +319,7 @@ const fn is_mounted(route: Route) -> bool {
                     | TenantRoute::CreateWorkspace
                     | TenantRoute::ModelLibrary
                     | TenantRoute::FleetBundles
+                    | TenantRoute::Provider
             )
     )
 }

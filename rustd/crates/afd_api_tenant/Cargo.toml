@@ -29,6 +29,8 @@ afd_connector.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
 afd_billing.workspace = true
+# The tenant's provider selection: the row the Models page reads and writes.
+afd_credential.workspace = true
 afd_core.workspace = true
 afd_events.workspace = true
 afd_fleet.workspace = true
