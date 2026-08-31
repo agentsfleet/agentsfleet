@@ -111,6 +111,28 @@ SELECT key_name, created_at, meta_kind, meta_provider, meta_base_url
  WHERE workspace_id = $1::uuid
  ORDER BY key_name ASC";
 
+/// The descriptors for a NAMED SET of credentials, in one read.
+///
+/// `$1` workspace · `$2` the names.
+///
+/// The same never-decrypt property as [`SELECT_SECRET_PROJECTIONS`] and none of
+/// its shape: that statement walks a workspace, this one answers exactly the
+/// names a caller already holds. The tenant model registry renders at most a
+/// page of entries and would otherwise read every credential the tenant owns to
+/// do it.
+///
+/// `meta_has_key` appears here and on no other read. Key PRESENCE is the
+/// registry page's question — a credential holding no key renders differently —
+/// and the secrets list has never displayed it, so the column is projected by
+/// the one statement whose caller shows it.
+///
+/// No ORDER BY: the caller matches rows back by name, so an order would be a
+/// guarantee nothing consumes.
+pub(crate) const SELECT_SECRET_DESCRIPTORS: &str = "\
+SELECT key_name, meta_kind, meta_provider, meta_base_url, meta_has_key
+  FROM vault.secrets
+ WHERE workspace_id = $1::uuid AND key_name = ANY($2::text[])";
+
 /// The sealed envelope of one secret, for the daemon's own use.
 ///
 /// `$1` workspace · `$2` name.
@@ -209,8 +231,12 @@ DELETE FROM vault.secrets
 mod tests {
     use super::{
         DELETE_SECRET, INSERT_SECRET_IF_ABSENT, LOCK_ENTRIES, LOCK_SECRET, LOCK_SELECTION,
-        SELECT_SECRET_ENVELOPE, SELECT_SECRET_PROJECTIONS, UPDATE_SECRET,
+        SELECT_SECRET_DESCRIPTORS, SELECT_SECRET_ENVELOPE, SELECT_SECRET_PROJECTIONS,
+        UPDATE_SECRET,
     };
+
+    /// The two reads that must never carry ciphertext.
+    const KEYLESS_READS: [&str; 2] = [SELECT_SECRET_PROJECTIONS, SELECT_SECRET_DESCRIPTORS];
 
     /// The six ciphertext columns, plus the version that binds them.
     const CIPHERTEXT_COLUMNS: [&str; 7] = [
@@ -232,18 +258,37 @@ mod tests {
     ];
 
     #[test]
-    fn the_list_statement_reads_no_ciphertext_column() {
-        // Spec Invariant 3 as a pin on the statement itself. The list cannot
-        // decrypt because `Directory` holds no key, and it has nothing to
-        // decrypt because this projection carries none of the six components —
+    fn no_key_less_read_projects_a_ciphertext_column() {
+        // Spec Invariant 3 as a pin on the statements themselves. Neither can
+        // decrypt because `Directory` holds no key, and neither has anything to
+        // decrypt because these projections carry none of the six components —
         // two independent guarantees, and this is the one a reviewer can see
         // without following a type.
-        for column in CIPHERTEXT_COLUMNS {
-            assert!(
-                !SELECT_SECRET_PROJECTIONS.contains(column),
-                "the list projects {column}, which is ciphertext"
-            );
+        for statement in KEYLESS_READS {
+            for column in CIPHERTEXT_COLUMNS {
+                assert!(
+                    !statement.contains(column),
+                    "a key-less read projects {column}, which is ciphertext: {statement}"
+                );
+            }
         }
+    }
+
+    #[test]
+    fn only_the_registry_read_asks_whether_a_key_is_set() {
+        // Key presence is the model registry's question and the secrets list
+        // has never displayed it. A column added to the list would be a wire
+        // change on a route whose shape is fixed by parity.
+        assert!(SELECT_SECRET_DESCRIPTORS.contains("meta_has_key"));
+        assert!(!SELECT_SECRET_PROJECTIONS.contains("meta_has_key"));
+    }
+
+    #[test]
+    fn the_registry_read_is_bounded_by_the_names_it_was_given() {
+        // The difference between this and the list: one answers a named set,
+        // the other walks a workspace. Losing the name predicate would turn a
+        // page render into a read of every credential the tenant owns.
+        assert!(SELECT_SECRET_DESCRIPTORS.contains("key_name = ANY($2::text[])"));
     }
 
     #[test]
@@ -295,6 +340,7 @@ mod tests {
             INSERT_SECRET_IF_ABSENT,
             UPDATE_SECRET,
             SELECT_SECRET_PROJECTIONS,
+            SELECT_SECRET_DESCRIPTORS,
             SELECT_SECRET_ENVELOPE,
             LOCK_SECRET,
             DELETE_SECRET,
@@ -351,19 +397,6 @@ mod tests {
             assert!(
                 SELECT_SECRET_ENVELOPE.contains(column),
                 "the envelope read omits {column}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_envelope_read_is_the_only_statement_projecting_ciphertext() {
-        // Spec Invariant 3 restated precisely now that a decrypting read
-        // exists: the LIST performs zero decrypts, and it stays that way
-        // because it still projects none of the six components.
-        for column in CIPHERTEXT_COLUMNS {
-            assert!(
-                !SELECT_SECRET_PROJECTIONS.contains(column),
-                "the list projects {column}, which is ciphertext"
             );
         }
     }

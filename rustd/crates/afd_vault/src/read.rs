@@ -97,42 +97,90 @@ fn read_row(row: &PgRow) -> Result<SecretSummary> {
     let provider: Option<String> = row.try_get(3).map_err(&unreadable)?;
     let base_url: Option<String> = row.try_get(4).map_err(&unreadable)?;
 
-    // A kind this build does not know, and a row that has none, both become an
-    // opaque credential — and both shed their descriptors with it. A
-    // `custom_secret` that still carried a provider label would contradict the
-    // union the dashboard narrows on, where that kind has no such field; and a
-    // label this build cannot place is one it should not be presenting.
-    match stored_kind.as_deref().map(Kind::parse) {
-        Some(Some(kind)) => Ok(SecretSummary {
+    match labelled(stored_kind.as_deref(), &name) {
+        Some(kind) => Ok(SecretSummary {
             name,
             created_at_ms,
             kind,
             provider,
             base_url,
         }),
-        unknown => {
-            // `debug`, not `warn`: an un-backfilled row is expected on a
-            // database older than the projection columns, and a page of them
-            // would otherwise be a wall of warnings for a condition one
-            // operator command fixes. The stored spelling is carried so a
-            // NEWER daemon's vocabulary is visible when it does appear.
-            let stored = stored_kind.as_deref().unwrap_or_default();
-            let backfilled = unknown.is_some();
-            let name_field = name.as_str();
-            tracing::debug!(
-                column = COLUMN_KIND,
-                stored,
-                backfilled,
-                name = name_field,
-                event = "secret_kind_degraded",
-            );
-            Ok(SecretSummary {
-                name,
-                created_at_ms,
-                kind: Kind::CustomSecret,
-                provider: None,
-                base_url: None,
-            })
+        None => Ok(SecretSummary {
+            name,
+            created_at_ms,
+            kind: Kind::CustomSecret,
+            provider: None,
+            base_url: None,
+        }),
+    }
+}
+
+/// The kind `stored` names, or nothing when this build cannot place it.
+///
+/// A kind this build does not know, and a row that has none, both answer
+/// `None` — and every caller sheds the row's descriptors with it. A
+/// `custom_secret` that still carried a provider label would contradict the
+/// union the dashboard narrows on, where that kind has no such field; and a
+/// label this build cannot place is one it should not be presenting.
+///
+/// One decision, two readers: the list here and the registry page's batch in
+/// [`crate::describe`]. Both degrade identically because there is one function,
+/// rather than because two of them were written to agree.
+pub(crate) fn labelled(stored: Option<&str>, name: &str) -> Option<Kind> {
+    if let Some(kind) = stored.and_then(Kind::parse) {
+        return Some(kind);
+    }
+    // `debug`, not `warn`: an un-backfilled row is expected on a database older
+    // than the projection columns, and a page of them would otherwise be a wall
+    // of warnings for a condition one operator command fixes. The stored
+    // spelling is carried so a NEWER daemon's vocabulary is visible when it
+    // does appear, and `backfilled` tells the two apart — a row that HAS a
+    // spelling this build cannot place is not the same incident as one that
+    // never got a spelling at all.
+    let spelling = stored.unwrap_or_default();
+    let backfilled = stored.is_some();
+    tracing::debug!(
+        column = COLUMN_KIND,
+        stored = spelling,
+        backfilled,
+        name,
+        event = "secret_kind_degraded",
+    );
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::labelled;
+    use crate::projection::Kind;
+
+    /// The name a degraded row is reported under. Fixture text, with no
+    /// production counterpart.
+    const NAME: &str = "anthropic-prod";
+
+    #[test]
+    fn every_spelling_this_build_writes_reads_back_as_itself() {
+        // The round trip that keeps a row written by this daemon from
+        // degrading on the next read — which would silently drop the
+        // descriptors the write went to the trouble of projecting.
+        for kind in [Kind::ProviderKey, Kind::CustomEndpoint, Kind::CustomSecret] {
+            assert_eq!(labelled(Some(kind.as_str()), NAME), Some(kind));
+        }
+    }
+
+    #[test]
+    fn a_row_this_build_cannot_place_degrades_rather_than_failing() {
+        // Two different histories, one answer. `None` is a row written before
+        // the projection columns existed; the unknown spelling is a row a NEWER
+        // daemon wrote with a vocabulary this build has not learned. A page of
+        // twenty credentials must not fail over either.
+        for stored in [
+            None,
+            Some("provider_key_v2"),
+            Some(""),
+            Some("PROVIDER_KEY"),
+        ] {
+            assert_eq!(labelled(stored, NAME), None, "stored {stored:?}");
         }
     }
 }
