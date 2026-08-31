@@ -116,6 +116,26 @@ ON CONFLICT (tenant_id) DO UPDATE SET
 // schema change that deletes this machinery; until it lands, this comment and
 // the one at the delete are the whole contract.
 
+/// The bridge-and-lock both credential locks share.
+///
+/// A macro expanding to a LITERAL rather than a `const`, because `concat!`
+/// takes literals only and two hand-kept copies of the workspace bridge would
+/// drift the moment the primary-workspace rule changed — leaving one verb
+/// locking a row in a workspace the other would not have reached (RULE UFS).
+///
+/// `$1` tenant · `$2` key name.
+macro_rules! bridge_and_lock {
+    () => {
+        "\nFROM vault.secrets s
+JOIN (SELECT id FROM core.workspaces
+       WHERE tenant_id = $1::uuid
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1) w ON s.workspace_id = w.id
+WHERE s.key_name = $2
+FOR UPDATE OF s"
+    };
+}
+
 /// The credential's shape and envelope, locked, in one statement.
 ///
 /// Four jobs that were four round trips in `tenant_provider.zig`: bridge the
@@ -143,16 +163,25 @@ ON CONFLICT (tenant_id) DO UPDATE SET
 /// where the extra round trip costs nothing anyone is waiting on.
 ///
 /// `$1` tenant · `$2` key name.
-pub const LOCK_CREDENTIAL_FOR_ACTIVATION: &str = "\
-SELECT s.meta_provider, s.meta_has_key,
-       s.encrypted_dek, s.dek_nonce, s.dek_tag, s.nonce, s.ciphertext, s.tag, s.kek_version
-FROM vault.secrets s
-JOIN (SELECT id FROM core.workspaces
-       WHERE tenant_id = $1::uuid
-       ORDER BY created_at ASC, id ASC
-       LIMIT 1) w ON s.workspace_id = w.id
-WHERE s.key_name = $2
-FOR UPDATE OF s";
+pub const LOCK_CREDENTIAL_FOR_ACTIVATION: &str = concat!(
+    "SELECT s.meta_provider, s.meta_has_key,
+       s.encrypted_dek, s.dek_nonce, s.dek_tag, s.nonce, s.ciphertext, s.tag, s.kek_version",
+    bridge_and_lock!()
+);
+
+/// The same lock, for a verb that reads nothing off the row.
+///
+/// Adding a registry entry is a reference PRODUCER exactly as activation is,
+/// and takes the identical serialization point — the credential's row lock,
+/// first — for the identical reason. What it does NOT need is the metadata or
+/// the envelope: it stores a reference and never opens one, so it projects a
+/// constant and the row never leaves Postgres.
+///
+/// Zero rows means the tenant has no workspace OR holds no such credential,
+/// told apart by a second read on the miss path only.
+///
+/// `$1` tenant · `$2` key name.
+pub const LOCK_CREDENTIAL_FOR_REFERENCE: &str = concat!("SELECT 1", bridge_and_lock!());
 
 /// The registry entry an activation guarantees exists for its pair.
 ///

@@ -138,7 +138,13 @@ impl Providers {
         else {
             // Zero rows is two different facts. Telling them apart costs a
             // second read, spent only here — on a path nobody is waiting on.
-            return self.diagnose_missing(&mut transaction, tenant_id).await;
+            return Ok(
+                if self.holds_a_workspace(&mut transaction, tenant_id).await? {
+                    Activation::CredentialMissing
+                } else {
+                    Activation::NoWorkspace
+                },
+            );
         };
 
         let meta_provider: Option<String> = row.try_get(0).map_err(query(CONTEXT_ACTIVATE))?;
@@ -216,23 +222,27 @@ fn open_envelope(
 }
 
 impl Providers {
-    /// Whether zero rows meant no workspace or no credential.
-    async fn diagnose_missing(
+    /// Whether `tenant_id` has a primary workspace at all, read in-transaction.
+    ///
+    /// The second half of telling two facts apart: a credential lock that
+    /// matched nothing means the tenant has no workspace OR holds no such
+    /// credential, and only this distinguishes them. Spent on the MISS path
+    /// only, where the extra round trip costs nothing anyone is waiting on.
+    ///
+    /// Shared with the registry's create verb, which reaches the same fork off
+    /// the same lock and owes its caller the same two refusals.
+    pub(crate) async fn holds_a_workspace(
         &self,
         transaction: &mut Transaction<'_, sqlx::Postgres>,
         tenant_id: &Uuid7,
-    ) -> Result<Activation> {
+    ) -> Result<bool> {
         let held: Option<String> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
             .bind(tenant_id.as_str())
             .fetch_optional(&mut **transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
 
-        Ok(if held.is_some() {
-            Activation::CredentialMissing
-        } else {
-            Activation::NoWorkspace
-        })
+        Ok(held.is_some())
     }
 
     /// The registry entry and the gated selection write, then commit.
@@ -283,7 +293,7 @@ impl Providers {
     }
 
     /// A fresh identifier for a registry entry.
-    fn mint_entry_id(&self, now: UnixMillis) -> Result<Uuid7> {
+    pub(crate) fn mint_entry_id(&self, now: UnixMillis) -> Result<Uuid7> {
         let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy().fill(&mut bytes).map_err(entropy_drained)?;
         Uuid7::encode(now, bytes).map_err(mint_failed)
