@@ -518,15 +518,22 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 
 /// A queue that answers and refuses is this daemon's fault, not an outage.
 ///
-/// `Error::code` splits one variant two ways, and the split is what an operator
-/// acts on: an unreachable queue is `INTERNAL_DB_UNAVAILABLE`, a thing to retry
-/// and to page the infrastructure about, while a queue that answered and said
-/// no is `INTERNAL_OPERATION_FAILED` — a bug here. Collapsing them would send
-/// somebody to check a healthy Redis over a defect in this crate.
+/// `afd_outbound::Error::code` splits its one variant two ways, and the split
+/// is what an operator acts on: a queue that is GONE is
+/// `INTERNAL_DB_UNAVAILABLE` — retry it, page the infrastructure — while a
+/// queue that answered and said no is `INTERNAL_OPERATION_FAILED`, a defect
+/// here. Collapsing them sends somebody to check a healthy Redis over a bug in
+/// this crate. `worker.rs` reads that code onto every failure it reports, so
+/// the mapping is what an incident is triaged from.
 ///
-/// The refusal is provoked with a key of the wrong type because `afd_redis`
-/// constructs its error kinds crate-privately: the non-outage case cannot be
-/// built by hand from this crate, only caused.
+/// # Why the error is provoked and then LIFTED
+///
+/// `afd_redis` builds its kinds crate-privately, so the non-outage case cannot
+/// be constructed by hand — only caused, which is what the wrong-typed key
+/// does. But the queue's own methods return `afd_redis::Result`, so asserting
+/// on what `enqueue` hands back grades THAT crate's mapping and never reaches
+/// this one's. The lift is the step that crosses the boundary, and it is the
+/// same `From` the worker's `?` uses on the same value.
 #[tokio::test]
 #[ignore = "needs live Redis: make test-integration-rustd"]
 async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
@@ -540,14 +547,21 @@ async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
             provider: PROVIDER,
             workspace_id: WORKSPACE_ID,
             fleet_id: FLEET_ID,
-            event_id: "1700000000000-0",
+            event_id: "1700000000-0",
             answer: "Aurora is healthy.",
         })
         .await
         .expect_err("a stream key holding a string cannot take an entry");
 
+    assert!(
+        !refused.is_unavailable(),
+        "a server that answered WRONGTYPE is reachable — treating it as an \
+         outage is what puts this on the wrong side of the split"
+    );
+
+    let reported: afd_outbound::Error = refused.into();
     assert_eq!(
-        refused.code(),
+        reported.code(),
         afd_core::error_code::INTERNAL_OPERATION_FAILED,
         "the queue answered — that is a defect here, not the outage an \
          operator retries against"
