@@ -80,11 +80,12 @@ pub(crate) fn upstream_refused(status: u16) -> Error {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    let queue = afd_redis::error::one_of_each_kind()
-        .into_iter()
-        .next()
-        .expect("afd_redis declares at least one kind")
-        .1;
+    // By label, not by position — see `redis_sample`. Taking `.next()` here
+    // tied this sample set to the order `afd_redis` lists its kinds in, and
+    // that order leads with a configuration error, so no sample reached the
+    // arm that answers the outage code for a queue that is gone.
+    let queue = redis_sample("command");
+    let queue_gone = redis_sample("unreachable");
     let identifier =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     let shape =
@@ -115,6 +116,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("queue", ErrorKind::Queue { source: queue }.into()),
         (
+            "queue gone",
+            ErrorKind::Queue { source: queue_gone }.into(),
+        ),
+        (
             "upstream unreachable",
             ErrorKind::UpstreamUnreachable {
                 source: unreachable,
@@ -128,4 +133,22 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_unreadable(super::COLUMN_DESIRED_STATUS),
         ),
     ]
+}
+
+/// One `afd_redis` sample, by the label that crate gives it.
+///
+/// By label because the two this builder needs sit on opposite sides of
+/// `is_unavailable`, and picking either by index makes this sample set depend
+/// on the order a different crate lists its kinds in.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+fn redis_sample(label: &str) -> afd_redis::Error {
+    afd_redis::error::one_of_each_kind()
+        .into_iter()
+        .find(|(named, _)| *named == label)
+        .map(|(_, error)| error)
+        .expect("afd_redis declares this kind")
 }

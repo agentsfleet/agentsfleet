@@ -108,6 +108,23 @@ impl OutboundHarness {
         id
     }
 
+    /// Points the stream key at a plain string, so commands answer WRONGTYPE.
+    ///
+    /// The one way to get a Redis error that is NOT an outage without taking
+    /// the server down. `afd_redis` builds its error kinds crate-privately, so
+    /// a "the queue answered and refused" case cannot be constructed by hand
+    /// from here — it has to be provoked, and a key holding the wrong type is
+    /// the cheapest real provocation there is.
+    pub(crate) async fn clobber_with_a_string(&self) {
+        let mut cmd = redis::cmd("SET");
+        cmd.arg(OUTBOUND_STREAM_KEY).arg("not a stream");
+        let _set: String = self
+            .redis
+            .command("SET", OUTBOUND_STREAM_KEY, &cmd)
+            .await
+            .expect("the fixture value is writable");
+    }
+
     /// Opens the shared handle, installing the subscriber on the way.
     async fn connect() -> Redis {
         install_subscriber();
