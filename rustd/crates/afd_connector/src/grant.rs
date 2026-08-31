@@ -34,6 +34,8 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::{SecretBody, SecretName, Vault};
 
+use sqlx::Acquire as _;
+
 use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
@@ -156,31 +158,60 @@ impl Grants {
             serde_json::value::to_raw_value(&grant.handle).expect(HANDLE_IS_ALWAYS_SERIALIZABLE);
         let body = SecretBody::parse(&raw)?;
 
-        // Routing BEFORE the vault, and the order is the whole failure story.
-        // These are two writes with no transaction between them, so one of them
-        // can land alone — and which one decides what a person sees.
+        // ONE transaction over both writes, because neither ordering is safe.
         //
-        // Vault first would leave the grant sealed and the account unrouted:
-        // connector status reads CONNECTED, inbound deliveries resolve no
-        // workspace, and the callback state is already spent, so there is no
-        // signal to reconnect and no way to retry the half that failed.
+        // The routing row says which workspace an account's inbound events
+        // belong to; the vaulted grant is the credential outbound spends. They
+        // describe the same installation and a reader that saw one without the
+        // other would be wrong in a way nothing surfaces.
         //
-        // This way round the survivor is a routing row with no grant. Status
-        // reads NOT connected — which is true, nothing can be spent — and
-        // reconnecting re-runs both writes over an upsert that arbitrates on
-        // `(provider, external_account_id)`. The visible state is the
-        // pessimistic one, and the fix is the button the person already has.
+        // Vault first leaves a sealed grant nothing routes: status reads
+        // CONNECTED, inbound resolves no workspace, and the callback state is
+        // already spent — no signal, no retry.
+        //
+        // Routing first is worse on the path that matters more. On a FIRST
+        // connect the survivor is a routing row with no grant, which reads as
+        // not connected and is true. On a RECONNECT there is already a grant,
+        // so a failed replace leaves routing naming the new installation while
+        // the vault still holds the old account's credential: status reads
+        // connected, and inbound and outbound then speak to different accounts
+        // under one workspace. That state is silent, which is what makes it
+        // worse than either loud half.
+        //
+        // So they commit together or not at all. `sqlx::Transaction` rolls back
+        // when it is DROPPED, so every `?` below unwinds both writes without a
+        // rollback path of its own — the argument `crate::delete`'s note makes
+        // about compensating rollbacks being decoration.
+        let mut connection = self.database.acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
+
         if let Some(install) = grant.install.as_ref() {
-            self.route(workspace, provider, install, now).await?;
+            Self::route_in(
+                &mut transaction,
+                workspace,
+                provider,
+                install,
+                now,
+                &self.entropy,
+            )
+            .await?;
         }
 
-        match self.vault.create(workspace, &name, &body, now).await {
+        match self
+            .vault
+            .create_in(&mut transaction, workspace, &name, &body, now)
+            .await
+        {
             Ok(()) => {}
             Err(refused) if refused.code() == error_code::SECRET_NAME_TAKEN => {
-                self.vault.replace(workspace, &name, &body, now).await?;
+                self.vault
+                    .replace_in(&mut transaction, workspace, &name, &body, now)
+                    .await?;
             }
             Err(other) => return Err(other.into()),
         }
+
+        transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;
 
         tracing::info!(
             workspace_id = workspace.as_str(),
@@ -191,18 +222,24 @@ impl Grants {
     }
 
     /// Points this provider account's inbound events at `workspace`.
-    async fn route(
-        &self,
+    ///
+    /// Takes the caller's transaction rather than acquiring its own, because
+    /// this row and the vaulted grant have to land together — see [`Self::seal`]
+    /// on why either ordering alone leaves a state a reader cannot detect.
+    /// Associated rather than a method so the borrow of `self.vault` in `seal`
+    /// does not collide with a `&self` held across this call.
+    async fn route_in(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         workspace: &Uuid7,
         provider: Provider,
         install: &Install,
         now: UnixMillis,
+        entropy: &Entropy,
     ) -> Result<()> {
         let mut bytes = [0_u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
+        entropy.fill(&mut bytes)?;
         let id = Uuid7::encode(now, bytes)?;
 
-        let mut connection = self.database.acquire().await?;
         sqlx::query(sql::UPSERT_INSTALL)
             .bind(id.as_str())
             .bind(provider.id())
@@ -211,7 +248,7 @@ impl Grants {
             .bind(&install.installed_by)
             .bind(&install.scopes)
             .bind(now.as_millis())
-            .execute(connection.as_mut())
+            .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_INSTALL))?;
         Ok(())

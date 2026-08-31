@@ -91,14 +91,6 @@ pub(crate) fn within_cap(body: &Bytes) -> Result<(), Refusal> {
 /// name is the shape that lets one surface be fixed and the other left.
 pub(crate) const HEADER_EVENT: &str = "x-github-event";
 
-/// The header GitHub carries its own delivery identifier in.
-///
-/// The value a redelivery REPEATS, which is what makes it the idempotency key
-/// on the per-fleet route — see [`afd_ingress::Delivery::event_id`]. The App
-/// ingress deliberately does NOT key on it; that route's reason is in
-/// [`afd_ingress::replay_id`].
-pub(crate) const HEADER_DELIVERY: &str = "x-github-delivery";
-
 /// The refusal a delivery this daemon cannot read as its own claimed event
 /// earns.
 ///

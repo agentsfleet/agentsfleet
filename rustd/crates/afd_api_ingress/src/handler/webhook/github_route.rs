@@ -30,7 +30,7 @@ use http::{HeaderMap, StatusCode};
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
-use webhook::{DETAIL_EVENT_HEADER, HEADER_DELIVERY, HEADER_EVENT, text};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{Ingest, Policy, classify};
 
@@ -50,16 +50,22 @@ pub(crate) async fn receive<D: Services>(
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     webhook::within_cap(&body)?;
-    // The claim key, and the fallback is the BODY's digest rather than the
-    // fleet's id. `x-github-delivery` is not covered by the signature — GitHub
-    // signs the body alone — so an absent header is a real state a sender can
-    // produce, and keying it on the fleet would give every unidentified
-    // delivery to that fleet one shared slot: the first would claim it and
-    // every later one would answer `replayed` without ever running. The digest
-    // IS covered by the signature, so it is both attributable and distinct per
-    // payload. `app_route` keys on the same digest for the same reason.
-    let delivery_id = text(&headers, HEADER_DELIVERY)
-        .map_or_else(|| afd_ingress::replay_id(&body), str::to_owned);
+    // The claim key is the BODY's digest, and never the delivery header.
+    //
+    // GitHub signs the body alone, so `x-github-delivery` is unauthenticated:
+    // anyone able to resend a captured signed payload can vary that header
+    // freely, and keying on it would mint a fresh claim per variation — the
+    // same event running the fleet again for every value the resender picks,
+    // which is precisely what replay suppression exists to prevent. Preferring
+    // it "when present" does not help, because present is the attacker's
+    // choice to make.
+    //
+    // The digest is inside what the signature covers, so it is distinct per
+    // payload and cannot be moved without breaking verification. GitHub's own
+    // redelivery resends the identical body, so a genuine retry still lands on
+    // the identical key and is still suppressed. `app_route` keys on this same
+    // digest, unconditionally, for the same reason.
+    let delivery_id = afd_ingress::replay_id(&body);
     let event = text(&headers, HEADER_EVENT)
         .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?
         .to_owned();

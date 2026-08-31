@@ -154,8 +154,10 @@ async fn a_signed_failed_run_wakes_the_fleet_and_answers_the_events_id() {
     assert_eq!(fleet, signed::FLEET);
     assert_eq!(
         event_id,
-        signed::DELIVERY_ID,
-        "the claim key is the value GitHub REPEATS on a retry, never one minted here"
+        &afd_ingress::replay_id(RUN_FAILURE.as_bytes()),
+        "the claim key is the digest of the body the SIGNATURE covered, never \
+         the delivery header — GitHub signs the body alone, so a header key is \
+         one the resender chooses"
     );
     assert_eq!(
         actor, ACTOR_GITHUB,
@@ -212,7 +214,10 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
         .collect();
     assert_eq!(
         keys,
-        [signed::DELIVERY_ID, signed::DELIVERY_ID],
+        [
+            afd_ingress::replay_id(RUN_FAILURE.as_bytes()),
+            afd_ingress::replay_id(RUN_FAILURE.as_bytes())
+        ],
         "both attempts claim under the SAME key; a key that varied per attempt \
          would make every retry a fresh event and run the fleet twice"
     );
@@ -421,4 +426,64 @@ async fn deliver_unidentified(ingress: &Arc<Scripted>, event: &str, body: &str) 
         (signed::name(signed::HEADER_EVENT), event),
     ];
     send_with_headers(&router, Method::POST, &path(), None, body, &headers).await
+}
+
+/// The delivery header cannot buy a second run of a body already processed.
+///
+/// GitHub signs the BODY and not the headers, so `x-github-delivery` is
+/// unauthenticated: anyone able to resend a captured signed payload can put a
+/// fresh value there. Keying the claim on it therefore hands the resender the
+/// suppression key itself — a new value per attempt, a new claim per value, and
+/// the fleet runs again for each one. That is the whole failure replay
+/// suppression exists to prevent, and it needs no forged signature to reach.
+///
+/// The digest is inside what the signature covers, so it cannot be varied
+/// without breaking verification. A genuine GitHub redelivery resends the same
+/// body and still lands on the same key, which the redelivery case above
+/// asserts; this one asserts the other half.
+#[tokio::test]
+async fn a_resend_under_a_fresh_delivery_header_is_still_the_same_claim() {
+    let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Active.as_str());
+
+    let first = deliver(
+        &ingress,
+        EVENT_WORKFLOW_RUN,
+        signed::DELIVERY_ID,
+        RUN_FAILURE,
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::ACCEPTED);
+
+    // Same signed body, a delivery id the resender picked.
+    let second = deliver(
+        &ingress,
+        EVENT_WORKFLOW_RUN,
+        "00000000-0000-4000-8000-000000000000",
+        RUN_FAILURE,
+    )
+    .await;
+    assert_eq!(second.status(), StatusCode::ACCEPTED);
+
+    let document = json_body(second).await;
+    assert_eq!(
+        *field(&document, "replayed"),
+        Value::Bool(true),
+        "a body already claimed is a replay however the header is spelled — \
+         answering false here means the resender chose the suppression key"
+    );
+
+    let keys: Vec<_> = ingress
+        .deliveries()
+        .iter()
+        .map(|recorded| recorded.event_id.clone())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            afd_ingress::replay_id(RUN_FAILURE.as_bytes()),
+            afd_ingress::replay_id(RUN_FAILURE.as_bytes())
+        ],
+        "both attempts claim under the signed body's digest, so the second \
+         finds the first's claim and runs nothing"
+    );
 }
