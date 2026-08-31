@@ -3,9 +3,15 @@
 //!
 //! Every refusal below is an [`Activation`] VALUE rather than an error, so the
 //! assertions read as a truth table over one verb rather than as a matrix of
-//! error kinds. The two properties only a live datastore can show are the last
-//! two: that an uncatalogued model writes NEITHER row, and that a credential
-//! deleted mid-flight cannot leave a selection naming it.
+//! error kinds.
+//!
+//! # What these do NOT cover
+//!
+//! Every case here drives ONE connection, so none of them exercises the lock
+//! treaty. The vault-row serialization that orders an activation against a
+//! concurrent credential delete needs two connections held open against each
+//! other, and proving it is a separate piece of work — the last test below
+//! covers only the sequential half and is named for it.
 
 use std::sync::Arc;
 
@@ -174,6 +180,40 @@ async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_negative_catalogue_ceiling_is_clamped_the_way_the_zig_clamps_it() {
+    // core.model_library.context_cap_tokens is INTEGER NOT NULL with no
+    // nonnegative CHECK — bounds live in the application (RULE STS) — so a
+    // negative ceiling is a row the schema permits. model_rate_cache.zig
+    // clamps it with @max(cap, 0) at every read; without the same clamp in the
+    // activation statement this daemon would STORE -1 where the Zig stores 0,
+    // and the two implementations' rows would differ over one database.
+    let fixture = Fixture::create().await;
+    catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, -1).await;
+    fixture
+        .seed_with_shape(
+            "tenant-key",
+            br#"{"provider":"openai","api_key":"sk-live"}"#,
+            Some(NAMED_PROVIDER),
+            Some(true),
+        )
+        .await;
+
+    let outcome = providers(&fixture)
+        .activate(&fixture.tenant, "tenant-key", Some(CATALOGUED), NOW)
+        .await
+        .expect("a catalogued model activates whatever its ceiling reads");
+
+    let Activation::Applied(stored) = outcome else {
+        panic!("the row is catalogued, so the gate passes: {outcome:?}");
+    };
+    assert_eq!(
+        stored.context_cap_tokens, 0,
+        "a negative catalogue ceiling stores as the sentinel, not as itself"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
     // The one asymmetry: a user-hosted endpoint's model is absent from the
     // platform catalogue by design, so the gate passes and the ceiling is the
@@ -206,11 +246,13 @@ async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_credential_deleted_first_leaves_no_selection_naming_it() {
-    // The orphan the lock treaty exists to prevent, in the arrival order that
-    // makes it reachable: the delete commits, then the activation runs. It
-    // must find no row and write nothing — never a selection naming a
-    // credential that is gone.
+async fn an_activation_after_a_committed_delete_writes_nothing() {
+    // NOT a race test, and named so it cannot be mistaken for one: the delete
+    // COMMITS before the activation begins, so this proves the sequential
+    // half — a credential that is already gone produces no selection row
+    // naming it. The concurrent half, where the two overlap and the vault-row
+    // lock is what orders them, needs two connections driven against each
+    // other and is not covered here.
     let fixture = Fixture::create().await;
     catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, 200_000).await;
     fixture

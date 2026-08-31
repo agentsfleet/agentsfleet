@@ -67,9 +67,12 @@ The write-time catalogue check survives as a UX courtesy (`SELECT EXISTS`),
 but nothing is persisted from the catalogue, so there is nothing to race over
 and nothing to go stale. An admin raising a model's cap takes effect on the
 tenant's next lease with no re-activation — the same live-read philosophy the
-platform default already has. The cutover's registered divergence ("an
-explicit platform row shows the snapshot, not the live default") retires here
-rather than standing forever.
+platform default already has. That also retires a quirk this port carried
+across deliberately: an explicit platform row shows the SNAPSHOT taken when the
+tenant reset, not the live default. It is not a cutover divergence — both
+daemons behave identically, which is why the parity register has no row for it
+— it is a product behaviour both implementations share, and V2-2 is where it
+stops being one.
 
 ## V2-3 · Make the metadata a contract — deletes the decrypt
 

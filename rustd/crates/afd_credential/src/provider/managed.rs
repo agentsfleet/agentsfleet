@@ -27,7 +27,7 @@ use serde::Deserialize;
 
 use super::resolved::Dialled;
 use crate::error::{Result, provider_endpoint, provider_malformed};
-use crate::provider::endpoint;
+use crate::provider::endpoint::{self, Rejection};
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::Selection;
 use crate::provider::{Resolution, Strategy};
@@ -158,6 +158,32 @@ pub(super) struct Vetted {
     pub(super) api_key: Option<SecretString>,
 }
 
+/// Why a credential body did not vet.
+///
+/// TYPED rather than folded into [`crate::Error`], because activation
+/// DISCRIMINATES on it to pick a registry code — the carve-out
+/// `RUST_ERROR_STANDARD` names. Keeping the guard's [`Rejection`] as itself
+/// rather than as the string it renders to means a refusal added to the guard
+/// later cannot be silently absorbed into the malformed arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Refused {
+    /// The body is not a credential this daemon can read.
+    Malformed,
+    /// The endpoint guard refused the provider/base-url pairing.
+    Endpoint(Rejection),
+}
+
+impl From<Refused> for crate::Error {
+    /// So the RESOLUTION path keeps writing `?` and answering the crate error,
+    /// while activation matches the typed value.
+    fn from(refused: Refused) -> Self {
+        match refused {
+            Refused::Malformed => provider_malformed(FIELD_PROVIDER),
+            Refused::Endpoint(rejection) => provider_endpoint(rejection.as_str()),
+        }
+    }
+}
+
 /// Parses one credential body and rules on its endpoint.
 ///
 /// Endpoint first, BEFORE the key is looked at: a hostile or mismatched
@@ -167,18 +193,20 @@ pub(super) struct Vetted {
 ///
 /// # Errors
 /// Reports a body that is not a credential object, a blank or missing
-/// provider, and an endpoint the guard refused.
-pub(super) fn vet(body: &[u8]) -> Result<Vetted> {
-    let credential: Credential = super::credential(body, FIELD_PROVIDER)?;
+/// provider, and an endpoint the guard refused — each as a [`Refused`] the
+/// caller may discriminate on.
+pub(super) fn vet(body: &[u8]) -> Result<Vetted, Refused> {
+    let credential: Credential =
+        super::credential(body, FIELD_PROVIDER).map_err(|_unreadable| Refused::Malformed)?;
     if credential.provider.is_empty() {
-        return Err(provider_malformed(FIELD_PROVIDER));
+        return Err(Refused::Malformed);
     }
 
     // The host travels with the URL from here, because `resolve` already
     // derived it to make its SSRF ruling — see [`Dialled`].
     let dialled: Option<Dialled> =
         endpoint::resolve(&credential.provider, credential.base_url.as_deref())
-            .map_err(|rejection| provider_endpoint(rejection.as_str()))?
+            .map_err(Refused::Endpoint)?
             .map(|endpoint| Dialled {
                 base_url: endpoint.url.into(),
                 inference_host: endpoint.host,

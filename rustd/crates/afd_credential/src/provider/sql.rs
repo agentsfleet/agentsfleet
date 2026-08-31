@@ -104,9 +104,11 @@ ON CONFLICT (tenant_id) DO UPDATE SET
 // The lock order these participate in is the one `afd_vault`'s delete path
 // spells at `afd_vault/src/sql.rs`: the credential row, then the entries that
 // name it, then the tenant's selection. Activation is the PRODUCER side of
-// that treaty and the delete is the destroyer; both take the credential lock
-// FIRST, which is the serialization point, and reach the other two tables by
-// WRITING them — a write is a lock, in the same order.
+// that treaty and the delete is the destroyer. Both take the credential lock
+// FIRST, and THAT is the serialization point — not the later writes, whose
+// lock behaviour differs by `ON CONFLICT` arm and is not the guarantee. With
+// the credential row held, the remaining tables are reached in the treaty's
+// order and no second participant is inside them.
 //
 // The treaty exists only because `secret_ref` is TEXT rather than a foreign
 // key to `vault.secrets(id)`, so the database cannot refuse an orphaning
@@ -122,11 +124,14 @@ ON CONFLICT (tenant_id) DO UPDATE SET
 /// envelope columns to open. The join is the same earliest-named-workspace
 /// bridge `signup_bootstrap_store` uses.
 ///
-/// `FOR UPDATE OF s` locks the credential and NOT the workspace row: a
-/// concurrent workspace rename must not block an activation, and a workspace
-/// cannot be deleted out from under one — the credential's own foreign key
-/// cascades from it, so the credential row is gone first and the lock covers
-/// it.
+/// `FOR UPDATE OF s` locks the returned `vault.secrets` row and NOTHING else:
+/// not `core.workspaces`, and — when the workspace subquery yields no row —
+/// nothing at all, since the join then returns no row to lock. Both are
+/// wanted. A concurrent workspace rename must not block an activation, and a
+/// workspace cannot be deleted from under one: the credential's foreign key
+/// cascades from it, so the credential row goes first and this lock covers it.
+/// The empty-join case is no gap either — there is no reference to produce,
+/// and the caller refuses having written nothing.
 ///
 /// The envelope block keeps the exact column order
 /// [`crate::vault::sql::SELECT_SECRET`] uses, because that order is
@@ -157,6 +162,14 @@ FOR UPDATE OF s";
 /// synthesising one. `DO NOTHING` because re-activating an unchanged pair is
 /// not an error and must not bump anything.
 ///
+/// The table carries TWO unique indexes — the `id` primary key and the
+/// `(tenant_id, model_id, secret_ref)` domain key — and `ON CONFLICT` across
+/// several unique indexes is where Postgres's unprincipled deadlocks live.
+/// This is safe from that class for a reason worth stating rather than
+/// leaving to luck: `id` is a freshly minted uuidv7 on every call, so the
+/// primary key can never be the arbiter that conflicts. One index is ever in
+/// play, and the hazard needs two.
+///
 /// `$1` id · `$2` tenant · `$3` model · `$4` secret ref · `$5` now.
 pub const INSERT_MODEL_ENTRY_IF_ABSENT: &str = "\
 INSERT INTO core.tenant_model_entries
@@ -184,6 +197,19 @@ ON CONFLICT (tenant_id, model_id, secret_ref) DO NOTHING";
 ///   host serving it. `COALESCE` supplies the unknown/auto sentinel when the
 ///   catalogue knows the model under no provider at all.
 ///
+/// `GREATEST(…, 0)` is the catalogue's own clamp, and it is load-bearing rather
+/// than defensive. `core.model_library.context_cap_tokens` is `INTEGER NOT
+/// NULL` with NO nonnegative constraint — RULE STS keeps bounds in the
+/// application, not in a SQL `CHECK` — so a negative ceiling is a row the
+/// schema permits. `model_rate_cache.zig` clamps it with `@max(cap, 0)` at
+/// every read, and without the same clamp here a `-1` catalogue row would be
+/// STORED as `-1` by this daemon and as `0` by the Zig one: a divergence in
+/// the rows themselves, which the state-handoff lane compares.
+///
+/// It cannot be delegated to [`super::cap`] the way the reset's write is:
+/// that ceiling arrives as a `u32` the caller already narrowed, while this one
+/// is computed inside the statement and never passes through Rust at all.
+///
 /// `RETURNING` is what lets the response echo the write instead of re-reading
 /// it, which is stricter: a re-read can observe a racing writer's row.
 ///
@@ -193,9 +219,9 @@ pub const ACTIVATE_SELF_MANAGED: &str = "\
 INSERT INTO core.tenant_model_selection
     (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
 SELECT $1::uuid, $2, $3, $4,
-       COALESCE((SELECT MIN(context_cap_tokens)::int
-                   FROM core.model_library
-                  WHERE model_id = $4 AND ($7 OR provider = $3)), 0),
+       GREATEST(COALESCE((SELECT MIN(context_cap_tokens)::int
+                            FROM core.model_library
+                           WHERE model_id = $4 AND ($7 OR provider = $3)), 0), 0),
        $5, $6, $6
  WHERE $7 OR EXISTS (SELECT 1 FROM core.model_library
                       WHERE provider = $3 AND model_id = $4)
