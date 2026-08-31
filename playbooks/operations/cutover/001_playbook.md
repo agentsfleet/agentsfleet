@@ -58,6 +58,24 @@ The move itself is: drain, serve the previous image digest, wait for `/readyz`,
 return to the balancer. The registry retains the digest, so rollback is a
 deploy of something that already exists rather than a build.
 
+## Swap-day environment preconditions
+
+**Set these BEFORE the image flips, or the swap aborts at `/readyz`.** Both are
+knobs the Zig daemon tolerated and the Rust daemon does not, which is why
+neither shows up as a route difference and neither can live in the register
+below: `scripts/parity_lane.sh` reads that table as `METHOD /path` rows, so an
+environment knob has no row shape there. Both were found by booting the Rust
+daemon from `docker-compose.yml` for the first time (M181_001 §4.3).
+
+| Knob | What breaks | Why nobody noticed |
+|---|---|---|
+| `CLERK_API_BASE` | Preflight refuses boot. `rustd/crates/agentsfleetd/src/preflight/read.rs` reads it with `required`, and no Fly configuration sets it — not `deploy/fly/agentsfleetd-dev/fly.toml`, not `deploy/fly/agentsfleetd-prod/fly.toml`, and not the `flyctl secrets set` block in `.github/workflows/deploy-dev-fly.yml`. | `src/agentsfleetd/auth/clerk_backend_config.zig` carries the vendor root as a compiled-in `API_BASE` and returns it when the override is absent, so the Zig daemon has never needed the knob. Set it to that same vendor root. |
+| `REDIS_URL_API` | Preflight refuses boot with `Invalid database number` if the URL carries any path segment. The Rust client reads the segment after the host as a database INDEX. | `src/agentsfleetd/queue/redis_config.zig` slices the URL at the first `/` and never reads past it, so a segment selected nothing and the Zig daemon always used db 0. Confirm the vault's Upstash entry has no path before the swap. |
+
+Verify both against a machine's live configuration rather than against this
+table — a knob added since it was written is exactly the case the table cannot
+see.
+
 ## Declared-divergence register
 
 A parity differ means one of two things, and the register is what separates
