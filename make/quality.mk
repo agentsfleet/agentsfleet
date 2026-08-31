@@ -193,7 +193,7 @@ check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-s
 # invokes this target with none of them set (.github/workflows/lint.yml), so the
 # scrub changes nothing there; it makes a developer's run match it.
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
-  -u VAULT -u VAULT_DEV -u VAULT_PROD -u WORKER_ITEM -u AGENTSFLEET_API_URL
+  -u VAULT -u VAULT_DEV -u VAULT_PROD -u RUNNER_ITEM -u AGENTSFLEET_API_URL
 
 # Split by what a change can actually break. The reference-integrity and
 # README-parity halves are cheap greps over the tree and are the ONLY things a
