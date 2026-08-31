@@ -104,7 +104,7 @@ impl HmacSha256Tag {
     /// Returns a malformed-envelope error when the slice is not `HMAC_SHA256_TAG_LEN` bytes.
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
         let sized: [u8; HMAC_SHA256_TAG_LEN] = bytes.try_into().map_err(|_err| {
-            Error::new(ErrorKind::ComponentLength {
+            Error::from(ErrorKind::ComponentLength {
                 component: "message authentication code",
                 expected: HMAC_SHA256_TAG_LEN,
                 actual: bytes.len(),
@@ -121,7 +121,7 @@ impl HmacSha256Tag {
         if self.0.ct_eq(&other.0).into() {
             Ok(())
         } else {
-            Err(Error::new(ErrorKind::MacMismatch))
+            Err(Error::from(ErrorKind::MacMismatch))
         }
     }
 

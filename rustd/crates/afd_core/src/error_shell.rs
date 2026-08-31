@@ -77,7 +77,11 @@ macro_rules! error_shell {
             /// Where this failure was raised — populated only when the
             /// environment asked for one (`RUST_BACKTRACE`), so the common
             /// path stays cheap.
-            #[must_use]
+            ///
+            /// No `#[must_use]`: `Backtrace` already carries one, and the
+            /// doubled attribute is only VISIBLE from inside this crate —
+            /// clippy suppresses external-macro lints, so every other
+            /// expansion hid it.
             pub fn backtrace(&self) -> &std::backtrace::Backtrace {
                 &self.inner.backtrace
             }

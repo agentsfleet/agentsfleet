@@ -115,6 +115,29 @@ BEFORE                              AFTER
                                             (os error 61)
 ```
 
+## The shared hull: `error_shell!` and `error_lifts!`
+
+Rules 1, 2 and 4 describe scaffolding every crate-level error repeats — the
+boxed `struct Error` with its captured backtrace, the `From<ErrorKind>` that is
+the one place a kind becomes an error, the `Display` rendering `[CODE]
+message`, and the `source()` that skips the kind. None of it depends on what
+went wrong, so `afd_core::error_shell!` generates it and
+`afd_core::error_lifts!` generates the per-source `From` impls rule 2 asks for.
+
+**Applies to a crate whose error is a boxed struct over a private kind.** A
+crate whose `Error` is a plain `thiserror` enum (`afd_auth`, `afd_sse`,
+`afd_identity`, and nine others) has no hull to share and calls neither macro —
+that is conformance, not a gap.
+
+**The `Result` alias stays hand-written**, in every crate, including those
+calling the macro. An alias that only appears after macro expansion is one a
+reader cannot see, which is the thing rule 1 exists to prevent.
+
+**A finer-grained type still lifts.** The carve-out below lets a crate keep a
+second type where a caller DISCRIMINATES on it — and that type still composes
+into the crate's `Error`, through `error_lifts!` or a hand-written `From`, so a
+caller that only propagates keeps writing `Result<T>`.
+
 ## Conformance, crate by crate
 
 Every crate under `rustd/` is accounted for. The three items this section used
@@ -133,6 +156,8 @@ to list as open are closed.
 | `afd_api` | n/a | n/a | no fallible function |
 | `afd_observability` | n/a | n/a | no fallible function |
 | `afd_wire` | n/a | n/a | no fallible function. `FailureClass` is a serde field on the wire `Failure` payload, not a Rust error |
+| `afd_webhook` | n/a | n/a | no fallible function |
+| `afd_api_tenant`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner` | n/a | n/a | no fallible function. The plane crates the fleet decomposition split out of `afd_api`; each answers with `Refusal`, which is an HTTP response and not an error type |
 
 ### Where rule 1 is deliberately not met, and why
 
