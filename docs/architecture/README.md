@@ -48,6 +48,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §6 |
 | What free usage does a new tenant get? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §2.3 |
 | Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 |
+| Why does provider activation lock three tables, and what deletes that? | [`tenant_provider_v2.md`](./tenant_provider_v2.md) |
 | How does a per-fleet budget cap work? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §5.1 |
 | Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10 |
 | How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §8.0 + §8.2.1 |

@@ -52,6 +52,8 @@ mod tenant_billing;
 mod tenant_cli_credential;
 #[path = "tenant_models.rs"]
 mod tenant_models;
+#[path = "tenant_provider_route.rs"]
+mod tenant_provider_route;
 #[path = "tenant_shape_parity.rs"]
 mod tenant_shape_parity;
 #[path = "tenant_workspaces.rs"]

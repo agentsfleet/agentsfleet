@@ -10,6 +10,7 @@ mod api_key;
 mod billing;
 mod cli_credential;
 mod models;
+mod provider;
 mod workspace;
 
 pub(crate) use self::api_key::{delete, list, mint, revoke};
@@ -21,6 +22,8 @@ pub use self::models::{
     DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH,
     DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE,
 };
+pub use self::provider::DETAIL_PLATFORM_KEY_MISSING;
+pub(crate) use self::provider::{reset as provider_reset, view as provider_view};
 pub use self::workspace::{
     DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT,
     DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
