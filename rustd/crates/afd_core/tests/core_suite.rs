@@ -21,7 +21,5 @@ mod id;
 mod limits;
 #[path = "problem.rs"]
 mod problem;
-#[path = "retirement.rs"]
-mod retirement;
 #[path = "workspace.rs"]
 mod workspace;

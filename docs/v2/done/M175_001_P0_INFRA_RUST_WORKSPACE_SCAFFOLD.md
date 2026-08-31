@@ -178,6 +178,15 @@ Deleted, not disabled — a lane commented out is a lane someone re-enables by a
 - **Dimension 6.2 — DONE** — `make lint-all`, `make test-unit-all` and `make harness-verify` still resolve and pass with the Zig lanes gone → Test `test_declared_commands_survive_retirement`
 - **Dimension 6.3 — DONE** — the deploy path no longer ships `agentsfleetd` or `agentsfleet-runner` → Test `test_daemon_deploy_retired`
 
+> **Retirement note (M181_001, 2026-08-31).** The three tests above lived in
+> `rustd/crates/afd_core/tests/retirement.rs`, which has been deleted on Indy's
+> direction. Their premise was spent rather than disproved: §6 froze the Zig
+> daemon and forbade its automatic deploy, and M181 replaced the deployed daemon
+> with the Rust one, so `deploy-dev.yml` fires on merge to `main` again and the
+> ban these tests enforced no longer describes the repository. The dimensions
+> stay DONE as graded — they were true when this milestone shipped. What is gone
+> is the standing guard against regression, not the work.
+
 ### §5 — Governance record
 
 `.oracle/orly.json` stays untouched: its `commands` block already routes through the make targets this milestone extends, which satisfies `dispatch/write_rust.md`'s "repository owns the commands" assertion without a config edit. `orly doctor` must stay green.
