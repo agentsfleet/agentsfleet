@@ -61,11 +61,17 @@ set -uo pipefail
 base="$1"; method="$2"; path="$3"
 seed_base="${SEED_BASE:-}"; seed_route="${SEED_ROUTE:-}"
 status="401"; extra_header="cache-control: no-store"; detail="Credentials required"
-if [ "$base" = "$seed_base" ] && [ "$seed_route" = "$method $path" ]; then
-  [ -n "${SEED_STATUS:-}" ] && status="$SEED_STATUS"
-  [ -n "${SEED_HEADER:-}" ] && extra_header="$SEED_HEADER"
-  [ -n "${SEED_DETAIL:-}" ] && detail="$SEED_DETAIL"
-fi
+apply_seed() {
+  local target_base="$1" seeded_status="$2" seeded_header="$3" seeded_detail="$4"
+  [ -n "$target_base" ] && [ "$base" = "$target_base" ] \
+    && [ "$seed_route" = "$method $path" ] || return
+  [ -n "$seeded_status" ] && status="$seeded_status"
+  [ -n "$seeded_header" ] && extra_header="$seeded_header"
+  [ -n "$seeded_detail" ] && detail="$seeded_detail"
+}
+apply_seed "$seed_base" "${SEED_STATUS:-}" "${SEED_HEADER:-}" "${SEED_DETAIL:-}"
+apply_seed "${SECOND_SEED_BASE:-}" "${SECOND_SEED_STATUS:-}" \
+  "${SECOND_SEED_HEADER:-}" "${SECOND_SEED_DETAIL:-}"
 printf '%s\n' "$status"
 printf 'content-type: application/problem+json\n'
 printf '%s\n' "$extra_header"
@@ -236,6 +242,24 @@ cat >"$REGISTER" <<REG
 | D1 | \`GET $FIXTURE_ROUTE_PLAIN\` is declared and NOT served. | a fixture | because the test says so |
 REG
 
+declared_compare_case() {
+  local label="$1" expectation="$2" diagnostic="$3"
+  shift 3
+  local exit_status
+  exit_status="$(run_lane "$CONTRACT" PARITY_REGISTER="$REGISTER" \
+    SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" BASE_URL="$BASE_A" \
+    COMPARE_URL="$BASE_B" "$@")"
+  if [ "$expectation" = "pass" ] \
+    && [ "$exit_status" = "0" ] && lane_output | grep -qF "declared:"; then
+    ok "$label"
+  elif [ "$expectation" = "fail" ] \
+    && [ "$exit_status" != "0" ] && lane_output | grep -qF "$diagnostic"; then
+    ok "$label"
+  else
+    bad "$label" "expected $expectation with '$diagnostic', exit $exit_status: $(lane_output)"
+  fi
+}
+
 status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
   PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
   SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" SEED_STATUS="404" \
@@ -264,15 +288,26 @@ fi
 # other does — failed the lane as a regression. A reviewer caught it; the
 # RECORD-mode tests above passed throughout, which is exactly why a mode
 # without its own test is a mode without a guarantee.
-status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
-  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
-  SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" SEED_STATUS="404" \
-  BASE_URL="$BASE_A" COMPARE_URL="$BASE_B" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
-if [ "$status" = "0" ] && lane_output | grep -qF "declared:"; then
-  ok "COMPARE honours the register — a declared difference is not a regression"
-else
-  bad "COMPARE honours the register" "exit $status: $(lane_output)"
-fi
+declared_compare_case \
+  "COMPARE honours a clean declared route absence" pass "declared:" \
+  SEED_BASE="$BASE_A" SEED_STATUS="404"
+
+# A refusal or timeout is not a route-absence response. Status-only checking
+# used to accept this pairing because one side happened to say 404.
+declared_compare_case \
+  "a declared 404 does not hide a daemon that never answered" fail "disagree" \
+  SEED_BASE="$BASE_A" SEED_STATUS="404" \
+  SECOND_SEED_BASE="$BASE_B" SECOND_SEED_STATUS="000"
+
+# Only the absence status is declared. The serving response and the 404
+# response must otherwise carry the same canonical snapshot.
+declared_compare_case \
+  "a declared 404 does not hide serving-side header drift" fail "disagree" \
+  SEED_BASE="$BASE_B" SEED_STATUS="404" \
+  SECOND_SEED_BASE="$BASE_A" SECOND_SEED_HEADER="cache-control: max-age=60"
+declared_compare_case \
+  "a declared 404 does not hide an arbitrary absence body" fail "disagree" \
+  SEED_BASE="$BASE_A" SEED_STATUS="404" SEED_DETAIL="Not a route absence"
 
 # And the register is no more a mute button here than in RECORD mode: a route
 # it does NOT name still fails when the two daemons disagree.
@@ -292,15 +327,9 @@ fi
 # exact failure its own RECORD-mode test above exists to prevent. Here the two
 # daemons BOTH serve the declared route and disagree on status: no side is
 # absent, so the declared allowance does not apply and the lane must fail.
-status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
-  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
-  SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" SEED_STATUS="500" \
-  BASE_URL="$BASE_A" COMPARE_URL="$BASE_B" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
-if [ "$status" != "0" ] && lane_output | grep -qF "disagree"; then
-  ok "a declared route still fails on drift that is NOT the declared absence"
-else
-  bad "declared route drift fails" "exit $status: $(lane_output)"
-fi
+declared_compare_case \
+  "a declared route still fails on drift that is NOT the declared absence" fail "disagree" \
+  SEED_BASE="$BASE_A" SEED_STATUS="500"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] || exit 1
