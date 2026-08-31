@@ -25,6 +25,8 @@
 mod config;
 #[path = "config_tls.rs"]
 mod config_tls;
+#[path = "config_tls_cert_files.rs"]
+mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "integration_migrate.rs"]
