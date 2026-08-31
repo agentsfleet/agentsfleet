@@ -115,10 +115,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             ErrorKind::IdentifierShape { source: shape }.into(),
         ),
         ("queue", ErrorKind::Queue { source: queue }.into()),
-        (
-            "queue gone",
-            ErrorKind::Queue { source: queue_gone }.into(),
-        ),
+        ("queue gone", ErrorKind::Queue { source: queue_gone }.into()),
         (
             "upstream unreachable",
             ErrorKind::UpstreamUnreachable {
