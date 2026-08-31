@@ -294,6 +294,23 @@ else
   bad "a 404 not in the register still fails" "exit $status: $(lane_output)"
 fi
 
+# A mounted route may legitimately answer 404, and reading the status alone
+# called three of them missing. An OPEN route has no auth to refuse, so its
+# handler runs against the placeholder segment, finds nothing, and answers a
+# correct not-found with its own envelope. That is a mounted route, and RECORD
+# mode must say so. The router's own unmatched-route answer is what absence
+# looks like, and the seeded envelope here is deliberately not it.
+status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
+  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
+  SEED_ROUTE="POST $(concrete "$FIXTURE_ROUTE_PARAM")" SEED_STATUS="404" \
+  SEED_DETAIL="No such session" \
+  BASE_URL="$BASE_A" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
+if [ "$status" = "0" ] && ! lane_output | grep -qF "not mounted"; then
+  ok "a handler's own 404 is a mounted route, not a missing one"
+else
+  bad "a handler's own 404 is a mounted route" "exit $status: $(lane_output)"
+fi
+
 # COMPARE mode must read the register too. It did not: RECORD consulted it and
 # COMPARE diffed every route blind, so a difference the register DECLARES — the
 # case the register exists for, one daemon deliberately not serving what the
