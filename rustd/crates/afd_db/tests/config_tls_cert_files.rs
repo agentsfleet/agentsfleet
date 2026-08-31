@@ -117,6 +117,19 @@ fn test_a_missing_cert_file_fails_at_resolve_naming_knob_param_and_path() {
     assert_eq!(io.kind(), std::io::ErrorKind::NotFound);
 }
 
+/// `SQLx` returns the plain socket before it constructs TLS for these modes, so
+/// certificate parameters are inert and must not make a non-TLS URL fail.
+#[test]
+fn test_non_tls_modes_do_not_preflight_unused_certificate_files() {
+    for mode in ["disable", "allow"] {
+        let url = format!("{BASE}?sslmode={mode}&sslrootcert={}", missing_path());
+        let config = PoolConfig::resolve(&migrator_env(&url), DbRole::Migrator)
+            .expect("non-TLS modes ignore certificate files");
+
+        assert_eq!(config.ssl_mode(), mode);
+    }
+}
+
 /// Every certificate-file spelling sqlx accepts is checked, while the error
 /// names the canonical spelling an operator can look up.
 #[test]
@@ -180,6 +193,28 @@ fn test_malformed_inline_certificate_material_is_not_echoed_as_a_path() {
     assert!(
         !shown.contains("super-secret"),
         "certificate material reached the fatal error: {shown}"
+    );
+}
+
+#[test]
+fn test_a_path_containing_the_pem_marker_is_not_redacted() {
+    let path = std::env::temp_dir().join(format!(
+        "agentsfleetd-cert------BEGIN-backup-{}.pem",
+        std::process::id()
+    ));
+    assert!(
+        !path.exists(),
+        "test premise broken: {} exists",
+        path.display()
+    );
+    let path = path.to_string_lossy();
+    let url = format!("{BASE}?sslmode=verify-full&sslrootcert={path}");
+    let error = PoolConfig::resolve(&migrator_env(&url), DbRole::Migrator).unwrap_err();
+    let shown = error.to_string();
+
+    assert!(
+        shown.contains(path.as_ref()),
+        "path marker was redacted: {shown}"
     );
 }
 
