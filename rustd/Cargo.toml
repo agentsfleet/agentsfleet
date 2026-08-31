@@ -18,7 +18,7 @@ resolver = "3"
 members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.27.0"
+version = "0.27.1"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
