@@ -66,21 +66,26 @@ pub async fn resolve(vault: &Vault, admin_workspace: Option<&Uuid7>) -> Arc<Brok
 fn broker(platform: Platform) -> Arc<Broker> {
     Arc::new(Broker::new(
         Arc::new(Registry::default()),
-        Arc::new(Vendors::new(platform, client())),
+        Arc::new(Vendors::new(platform, vendor_exchange_client())),
     ))
 }
 
 /// The client every refresh exchange is posted through.
 ///
-/// ONE client for the process, because that is what a connection pool is: a
-/// client per mint would open a TLS session per mint, on a path whose whole
+/// One client per outbound SURFACE, because that is what a connection pool is:
+/// a client per mint would open a TLS session per mint, on a path whose whole
 /// design is to avoid the round trip.
+///
+/// The connector token exchange takes one of these too — the same kind of call,
+/// against the same vendors, under the same bound — and takes its OWN, because
+/// the broker holds this one privately and a shared pool would let a slow
+/// connect exchange consume the slots a credential mint needs.
 ///
 /// A builder that will not build cannot happen here — no TLS backend is
 /// selected at runtime in this workspace — but it is not worth a panic to say
 /// so, so the default client stands in and the broker's own refusals cover a
 /// client that cannot reach a vendor.
-fn client() -> reqwest::Client {
+pub(crate) fn vendor_exchange_client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(EXCHANGE_TIMEOUT)
         // The vendor is reached directly. An environment proxy silently

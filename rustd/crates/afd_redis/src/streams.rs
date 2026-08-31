@@ -36,46 +36,7 @@ const CMD_XACK: &str = "XACK";
 const CMD_PUBLISH: &str = "PUBLISH";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
 const CMD_XINFO: &str = "XINFO";
-const CMD_EVAL: &str = "EVAL";
 const CMD_DEL: &str = "DEL";
-
-/// Where an append-once key lives.
-const ONCE_KEY_PREFIX: &str = "fleet:repair-verification:";
-
-/// What the script says when the event was already there.
-const OUTCOME_REPLAYED: &str = "replayed";
-
-/// Appends one event and remembers that it did, atomically.
-///
-/// Lua because the two operations must not be separable: a `SET NX` and an
-/// `XADD` as two round trips leave a crash-shaped hole between them, and the
-/// caller retrying through that hole is exactly the case this exists for.
-///
-/// The type check is not defensive padding — a key that is not a stream means
-/// something else in this deployment is using the name, and appending to it
-/// would corrupt whatever that is.
-static APPEND_ONCE: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
-    redis::Script::new(
-        r"local existing = redis.call('GET', KEYS[1])
-if existing then return {existing, 'replayed'} end
-local kind = redis.call('TYPE', KEYS[2]).ok
-if kind ~= 'none' and kind ~= 'stream' then
-  return redis.error_reply('append-once target is not a stream')
-end
-local event_id = redis.call('XADD', KEYS[2], 'MAXLEN', '~', ARGV[1], '*', unpack(ARGV, 2))
-redis.call('SET', KEYS[1], event_id)
-return {event_id, 'emitted'}",
-    )
-});
-
-/// What an append-once call did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Appended {
-    /// The event's identifier — this call's, or the earlier call's.
-    pub id: EventId,
-    /// Whether an earlier call already wrote it.
-    pub replayed: bool,
-}
 
 /// Consumer group every fleet stream is read under.
 pub const FLEET_CONSUMER_GROUP: &str = "fleet_lease";
@@ -192,6 +153,8 @@ pub struct FleetStreams {
 
 mod consume;
 mod once;
+
+pub use self::once::{Appended, OnceScope};
 
 impl FleetStreams {
     /// Binds stream operations to a connection.
@@ -315,6 +278,10 @@ pub fn rendered_field_samples() -> Vec<(&'static str, String)> {
         ),
         ("integer", stringify(&redis::Value::Int(42))),
         ("anything else", stringify(&redis::Value::Nil)),
+        (
+            "invalid utf-8",
+            stringify(&redis::Value::BulkString(vec![0xff, 0xfe])),
+        ),
     ]
 }
 
@@ -323,11 +290,28 @@ pub fn rendered_field_samples() -> Vec<(&'static str, String)> {
 /// Stream fields are byte strings on the wire. Anything else is a value this
 /// producer did not write, and rendering it through `Debug` keeps a surprising
 /// entry readable instead of failing the whole read.
+///
+/// # The crate's own conversion, with the fallback this caller needs
+///
+/// `String::from_redis_value_ref` is the redis crate's answer to "render this
+/// reply as text", and it knows more shapes than a hand-written match will keep
+/// up with: `Okay`, `VerbatimString` and `Double` on top of the three below,
+/// and it unwraps an attribute-wrapped value before looking. Re-deciding that
+/// here is a second copy of the crate's knowledge that drifts every release.
+///
+/// What it does NOT do is stay infallible: it errors on a value that is not
+/// string-compatible, and on a bulk string that is not UTF-8. This caller
+/// cannot use an error — a single surprising field would fail an entire stream
+/// read — so the conversion is composed with the `Debug` fallback rather than
+/// replaced by it.
+///
+/// One behaviour changed with this: a bulk string carrying invalid UTF-8 used
+/// to render lossily, with replacement characters, and now renders as
+/// `binary-data([..])`. That is the better answer of the two. A field this
+/// daemon wrote is always valid UTF-8, so invalid bytes mean a foreign
+/// producer, and a reader chasing that wants the bytes rather than a sentence
+/// with question marks punched through it.
 fn stringify(value: &redis::Value) -> String {
-    match value {
-        redis::Value::BulkString(bytes) => String::from_utf8_lossy(bytes).into_owned(),
-        redis::Value::SimpleString(text) => text.clone(),
-        redis::Value::Int(number) => number.to_string(),
-        other => format!("{other:?}"),
-    }
+    redis::FromRedisValue::from_redis_value_ref(value)
+        .unwrap_or_else(|_not_text| format!("{value:?}"))
 }

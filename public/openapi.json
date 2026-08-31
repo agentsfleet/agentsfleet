@@ -2129,7 +2129,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:sync": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}/sync": {
       "post": {
         "operationId": "sync_fleet_schedule",
         "summary": "Sync a hosted schedule",
@@ -6672,7 +6672,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/approvals/{gate_id}:approve": {
+    "/v1/workspaces/{workspace_id}/approvals/{gate_id}/approve": {
       "post": {
         "operationId": "approve_workspace_approval",
         "summary": "Approve a pending request",
@@ -6743,7 +6743,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/approvals/{gate_id}:deny": {
+    "/v1/workspaces/{workspace_id}/approvals/{gate_id}/deny": {
       "post": {
         "operationId": "deny_workspace_approval",
         "summary": "Deny a pending request",

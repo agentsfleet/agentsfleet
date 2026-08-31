@@ -30,7 +30,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** a runner assigned isolation class `kernel` and reporting `{substrate, isolation_class, guarantees, mechanisms}` reconciles to the same verdicts, in the same refusal order, as today's Linux-mechanism wire — while a mechanism-vocabulary grep over `rustd/crates/afd_fleet/src` and `rustd/crates/afd_wire/src` returns zero lines.
+**Goal (testable):** a runner assigned isolation class `kernel` and reporting `{substrate, isolation_class, guarantees, mechanisms}` reconciles to the same verdicts, in the same refusal order, as today's Linux-mechanism wire — while a mechanism-vocabulary grep over `rustd/crates/afd_runner/src`, `rustd/crates/afd_fleet/src`, and `rustd/crates/afd_wire/src` returns zero lines.
 **Problem:** only a bubblewrap-shaped Linux host can join the fleet. The control plane interrogates every runner about Landlock, seccomp, cgroup controllers, and a bubblewrap binary by name, so a Firecracker microVM host or a whole-Virtual-Machine (VM) host delivering identical isolation reconciles as permanently degraded and is issued no work.
 **Solution summary:** the assignment vocabulary becomes an **isolation class** (`none | kernel | machine` — what the tenant's lease is promised, never how a host builds it), and the capability report becomes `{substrate, isolation_class, guarantees, mechanisms}` — the runner maps its own mechanisms onto the five `Guarantee` outcomes at the probe, so `Guarantee::proven_by` (the one substrate-aware function left in `afd_fleet`) is deleted and the verdict is `required_guarantees ⊆ reported_guarantees` plus a class floor. One rename rides the whole surface (`sandbox_tier` → `isolation_class`: wire, columns, API fields, dashboard) with a value migration and no compatibility aliases. The lease model — fencing, lease expiry, debits, the twelve EXECUTE hot-path writes — is untouched; serverless substrates are parked by owner directive (Discovery).
 
@@ -42,7 +42,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/afd_fleet/src/runner/reconcile.rs` — the module documentation is the design brief; its evidence table and `proven_by` are exactly what this milestone deletes.
+1. `rustd/crates/afd_runner/src/reconcile.rs` — the module documentation is the design brief; its evidence table and `proven_by` are exactly what this milestone deletes. **Path note:** this spec was drafted against `afd_fleet::runner`; `cf3f75199` ("the event log, the money and the host each get the crate they always were") moved the whole runner surface — `reconcile.rs`, `policy.rs`, `bounds.rs`, `spelling.rs`, `heartbeat.rs`, `record.rs`, `store.rs`, `sql/` — into its own `afd_runner` crate, while the runner INTEGRATION tests stayed in `afd_fleet/tests/`. Both crates are in the blast radius; every path and grep below is corrected to the post-split tree.
 2. `docs/architecture/runner_fleet.md` §Assigned policy and reconciliation + §Sandbox tiers — the assign-down / report-up model this spec preserves, and the tier table it rewrites.
 3. `rustd/crates/afd_wire/src/runner.rs` — the wire being changed; every struct doc carries the reason for its shape.
 4. `src/lib/contract/protocol_policy.zig` + `src/lib/contract/fixture_export.zig` — Zig is the wire's source of truth; `make wire-fixtures` regenerates `samples/fixtures/wire-v2/`, which `afd_wire`'s roundtrip/strictness tests consume.
@@ -55,9 +55,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/contract/**` | EDIT | `IsolationClass` + `Guarantee` vocabulary, capability-report reshape, selftest echo rename, fixture export |
 | `samples/fixtures/wire-v2/**` | EDIT | regenerated via `make wire-fixtures` (Zig is the source of truth) |
 | `rustd/crates/afd_wire/**` | EDIT | Rust mirror of the wire; roundtrip / strictness / redaction tests re-pinned |
-| `rustd/crates/afd_fleet/src/runner/**` | EDIT | verdict on guarantees + class floor; decode, spelling, bounds, heartbeat, record, store follow the vocabulary |
-| `rustd/crates/afd_fleet/src/sql/**` | EDIT | statements name the renamed columns |
-| `rustd/crates/afd_fleet/tests/**` | EDIT | verdict matrix and runner-row integration re-pinned in class vocabulary |
+| `rustd/crates/afd_runner/src/**` | EDIT | verdict on guarantees + class floor (`reconcile.rs`); `policy.rs`, `bounds.rs`, `spelling.rs`, `heartbeat.rs`, `record.rs`, `store.rs`, `view/decode.rs` follow the vocabulary |
+| `rustd/crates/afd_runner/src/sql/**` | EDIT | statements name the renamed columns (`runner.rs`, `runner_view.rs`) |
+| `rustd/crates/afd_fleet/tests/**` | EDIT | `verdict_matrix.rs` and the runner-row / beat / admin integration lanes re-pinned in class vocabulary |
+| `rustd/crates/afd_runner/tests/**` | EDIT | `runner_suite.rs` and the sweep lanes re-pinned in class vocabulary |
 | `rustd/crates/afd_api/src/handler/runner/**` | EDIT | enrolment / self / heartbeat surfaces carry `isolation_class` |
 | `rustd/crates/afd_state/tests/support/**` | EDIT | fixtures speak class vocabulary |
 | `src/runner/**` | EDIT | probe asserts substrate + guarantees (`engine/capability_probe.zig`); `AppliedPolicy` decode, release-build refusal of `none`, sandbox gate reads (`child_supervisor.zig`, `sandbox_args.zig`), selftest echo, `cmd/status.zig` render |
@@ -92,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `rustd/crates/afd_fleet/src/runner/reconcile.rs` — the `Guarantee` seam M177 landed at zero wire cost; this spec is its second half, and the module doc names the deletion contract for `proven_by`.
+- **Reference:** `rustd/crates/afd_runner/src/reconcile.rs` — the `Guarantee` seam M177 landed at zero wire cost; this spec is its second half, and the module doc names the deletion contract for `proven_by`.
 - **Reference:** `docs/architecture/runner_fleet.md` §Assigned policy and reconciliation — assigned and achievable stay separate columns; policy flows down, capability flows up; the report stays unauthenticated self-assertion.
 - **Reference:** `src/lib/contract/fixture_export.zig` + `make wire-fixtures` — the established wire-evolution mechanism: edit the Zig vocabulary, regenerate `samples/fixtures/wire-v2/`, mirror in `afd_wire` until roundtrip and strictness are green.
 
@@ -135,6 +136,16 @@ The mechanism→guarantee mapping moves to the party that knows the substrate: `
 
 The dashboard's Add-Runner and Edit-Policy pickers offer exactly the class vocabulary; the runner detail renders substrate, guarantees, and the mechanisms prose as reported facts (prose secondary, no controls promising class-aware placement — none exists). `docs/architecture/runner_fleet.md` rewrites §Sandbox tiers into isolation classes and re-words the reconciliation story; the docs-repo branch updates the public field rename and maps each guarantee reason to a runbook repair step. The end-to-end (e2e) proof is the existing stock-runner lane green under the new vocabulary.
 
+**The class-selection table ships with the vocabulary, not after it.** `kernel` and `machine` demand an IDENTICAL guarantee set (§2, Interfaces) — the class floor is the only thing between them — so an operator choosing between them is choosing a threat model, not a capability. A vocabulary that does not say so is three words with no decision rule behind them, which is how a fleet ends up uniformly on one class. `docs/architecture/runner_fleet.md` replaces its tier table with this one, and the docs-repo runbook carries it verbatim:
+
+| Class | What the tenant's lease is promised | Assign it when |
+|---|---|---|
+| `none` | nothing — no cage is built | own-tenant development work only. A release build refuses it at boot (Invariant 6), so it is never a production answer. |
+| `kernel` | a compromised workload cannot reach the host's filesystem, syscalls, processes, or resource pool. Tenants still SHARE a kernel, so a kernel-level escape crosses the boundary. | every ordinary production host — including a runner that is itself inside a container or a VM and forks sandboxed children. Both of today's cage tiers migrate here (§3). |
+| `machine` | a compromised workload does not share a kernel with any other tenant's workload; the boundary is the machine. | hostile multi-tenancy, or a compliance regime that forbids a shared kernel. **No substrate reports `machine` until the driver milestone lands (Out of Scope)** — assigning it before then is a deliberate degrade, which is the correct and intended behaviour. |
+
+**The per-lease boundary decides the class — not how the host itself is packaged.** "The runner is a VM" is not `machine`. A runner running *inside* a VM and forking sandboxed children gives every lease on that runner the same kernel: the VM is a boundary against the host, not between two tenants sharing the runner. That is `kernel`, and it is exactly what today's `container_nested` migrates to. `machine` is honest only where the substrate builds a machine boundary PER LEASE — a Firecracker driver spawning a microVM per lease. This is the likeliest mis-assignment the class floor exists to catch, so the runbook names it as the first thing to check on a class-floor degrade, and the architecture doc states the per-lease rule where it used to state the tier table.
+
 - **Dimension 5.1** — the pickers offer exactly `none | kernel | machine` and submit the renamed field → Test `test_policy_picker_class_vocabulary`
 - **Dimension 5.2** — the runner detail renders substrate, guarantees, and mechanisms; a degraded row shows its guarantee-vocabulary reason → Test `test_runner_detail_renders_substrate`
 - **Dimension 5.3** — a stock runner enrols under class `kernel`, beats, reports capability, leases, and reports against real Postgres and Redis → Test `test_e2e_runner_class_vocabulary`
@@ -153,10 +164,17 @@ Zig is the fixture source of truth — make wire-fixtures):
                        mechanisms: string }        (replaces five Linux booleans)
   SelftestReport   = { checks[], all_ok, isolation_class, network_policy }
   SelfResponse     = { …, isolation_class, achievable: CapabilityReport }
-Verdict rule (afd_fleet::runner::reconcile — pure, signature takes only the
+Verdict rule (afd_runner::reconcile — pure, signature takes only the
 assignment and the report's class + guarantees):
+  required(none)   = {}          a class that builds no cage demands nothing
+  required(kernel) = required(machine)
+                   = the four cage guarantees, + egress_control when the
+                     assigned network posture is isolating
   degraded unless required(class, network_policy) ⊆ reported guarantees
   AND reported class ≥ assigned class; first unmet guarantee names the reason.
+  The class FLOOR is therefore the only thing separating kernel from machine.
+  They demand an identical guarantee set, so the operator choosing between
+  them is choosing a threat model, not a capability (§5 selection table).
 HTTP: POST /v1/runners · PATCH /v1/fleets/runners/{id} · GET /v1/runners/me ·
   GET /v1/fleets/runners[/{id}] — assigned_policy.sandbox_tier → isolation_class;
   no route, verb, auth, or error-code change.
@@ -176,11 +194,12 @@ Untouched: every lease verb body, fencing_seq, LEASE_TTL_MS / MAX_RUNTIME_MS,
 | Report exceeds bounds | buggy or hostile host | refused, stored value kept reconciling, beat succeeds — a runner token cannot fail its own liveness (preserved) |
 | Migration meets an unexpected tier value | out-of-band row | migration aborts loudly; no partial vocabulary ever lands |
 | Class over-assignment | operator assigns `machine` to a bubblewrap host | degraded with the class-floor reason; lease gate closed; recovery is reassignment or a substrate upgrade |
+| Class read off host packaging, not the per-lease boundary | operator reads "this runner is a VM / a container" as `machine`, though every lease on it shares one kernel | degraded with the class-floor reason — the same path as over-assignment, and deliberately so: the floor is what makes an honest-looking mistake visible instead of silently promising tenants a boundary that is not there. The runner detail's `mechanisms` prose and §5's selection table name the per-lease rule; recovery is reassignment to `kernel` |
 | Isolating egress posture, unproven egress | `allow_list_egress` assigned anywhere today | degraded — `egress_control` is reported only when enforcement is wired (today's behaviour, preserved) |
 
 ## Invariants
 
-1. The daemon names no execution mechanism — `git grep -inwE 'landlock|seccomp|cgroup|bubblewrap|bwrap' rustd/crates/afd_fleet/src rustd/crates/afd_wire/src` returns zero lines, code and doc-prose alike; mechanisms belong to the runner and the architecture doc.
+1. The daemon names no execution mechanism — `git grep -inwE 'landlock|seccomp|cgroup|bubblewrap|bwrap' rustd/crates/afd_runner/src rustd/crates/afd_fleet/src rustd/crates/afd_wire/src` returns zero lines, code and doc-prose alike; mechanisms belong to the runner and the architecture doc.
 2. The verdict is a pure function of the assignment and the report's class + guarantee set — signature-enforced: `substrate` and `mechanisms` are not parameters to `reconcile`, so a diagnostic string cannot reach a verdict by construction.
 3. Unknown vocabulary fails closed on both sides — daemon-side decode voids the assignment or reads the report absent; runner-side decode holds nothing and refuses to lease (Dimensions 1.2, 4.4).
 4. Assigned and achievable never overwrite each other — separate columns, no code path from self-report to assignment (M148 model, unchanged and re-pinned by 3.3).
@@ -222,7 +241,7 @@ Untouched: every lease verb body, fencing_seq, LEASE_TTL_MS / MAX_RUNTIME_MS,
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Verdict parity in class vocabulary (§2) | `cd rustd && cargo test verdict` | exit 0 | P0 | |
-| R2 | The daemon names no mechanism (§1, §2) | `git grep -inwE 'landlock\|seccomp\|cgroup\|bubblewrap\|bwrap' rustd/crates/afd_fleet/src rustd/crates/afd_wire/src \| wc -l` | `0` | P0 | |
+| R2 | The daemon names no mechanism (§1, §2) | `git grep -inwE 'landlock\|seccomp\|cgroup\|bubblewrap\|bwrap' rustd/crates/afd_runner/src rustd/crates/afd_fleet/src rustd/crates/afd_wire/src \| wc -l` | `0` | P0 | |
 | R3 | Retired vocabulary swept (§1–§5) | `git grep -rnw 'SandboxTier' ; git grep -rnw 'proven_by'` | 0 matches each | P0 | |
 | R4 | Stock runner green under the class wire (§5) | `make test-integration-rustd` | exit 0 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -251,6 +270,7 @@ N/A — no file is deleted; symbols and spellings are.
 | `sandbox_tier` | `git grep -rnw 'sandbox_tier'` | matches only in the value-migration slot, changelog history, and `docs/v*/done/` |
 | `landlock_full` / `container_nested` / `dev_none` | `git grep -rnw '<spelling>'` each | migration slot, changelog history, and `docs/v*/done/` only |
 | `proven_by` | `git grep -rnw 'proven_by'` | 0 matches |
+| mechanism-named reason constants (`REASON_LANDLOCK_UNAVAILABLE`, `REASON_SECCOMP_UNAVAILABLE`, `REASON_CGROUP_CONTROLLERS_MISSING`, `REASON_BUBBLEWRAP_MISSING`) | `git grep -rnwE 'REASON_(LANDLOCK_UNAVAILABLE\|SECCOMP_UNAVAILABLE\|CGROUP_CONTROLLERS_MISSING\|BUBBLEWRAP_MISSING)'` | 0 matches — §2 replaces them with guarantee-vocabulary reasons; they are imported by `afd_fleet/tests/verdict_matrix.rs` today, so the test re-pin is what removes the last use |
 | `tier_wire` | `git grep -rnw 'tier_wire'` | 0 matches |
 | `selftest_sandbox_tier` | `git grep -rnw 'selftest_sandbox_tier'` | migration slot only |
 
@@ -293,6 +313,7 @@ N/A — no file is deleted; symbols and spellings are.
   4. *Placement input or reported fact?* Authoring resolution: the **class** is the operator's assignment; the **substrate** is a reported diagnostic nothing branches on (Invariant 2). Flagged for Indy's ratification at spec review.
   5. *How much of the runner side is owned here?* Authoring resolution: the probe-side guarantee mapping and vocabulary only; substrate drivers are a named follow-up (Out of Scope). Flagged for Indy's ratification at spec review.
   The schema rename sits outside the additive default an agent may author alone (`docs/SCHEMA_CONVENTIONS.md` §Migration Model); Indy's approval of this spec is the owner decision that migration cites.
+- **Spec amended before CHORE(open) — post-split paths, and the class-selection table that was missing.** Two corrections, both found by reading the tree this spec grades rather than the tree it was drafted against. (1) **Paths.** The spec named `afd_fleet/src/runner/{reconcile,policy,bounds}.rs`, which were correct on the authoring date — `afd_fleet/src/runner/` was created the same day by `5f7beed8b` — and were invalidated three days later by `cf3f75199`, an unrelated crate split that moved the runner surface to `afd_runner`. The consequence was not cosmetic: Invariant 1 and rubric R2 grep `afd_fleet/src` + `afd_wire/src`, which today return 4 hits, all in `afd_wire`, while the 3 files actually holding the mechanism vocabulary (`afd_runner/src/{reconcile,bounds,view/decode}.rs`) were outside the grep. Cleaning `afd_wire` alone would have turned R2 green over untouched code — a rubric row grading a boundary the milestone does not own. `dispatch/write_spec.md` §Authoring discipline — "the spec's invariant/rubric greps must use the same pattern as the discovery grep" — so every path and both greps are corrected to the post-split tree, and `afd_runner/tests/**` joins Files Changed beside `afd_fleet/tests/**`. (2) **Selection guidance.** The spec defined three classes and gave an operator no rule for choosing between them, while §2 makes `required(kernel)` and `required(machine)` identical sets — so the choice is a threat-model decision that nothing in the spec stated. §5 now carries the selection table and the per-lease-boundary rule, Interfaces states the required-set algebra explicitly, and Failure Modes carries the nested-VM mis-assignment as its own row. No Dimension, test, or rubric row was added: the table is a docs deliverable inside §5's existing scope, and the behaviour it describes is already pinned by 2.1 and 2.2.
 - **Metrics review** — no analytics or funnel change; no playbook update required (the Metrics table's no-signal row carries the reason).
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — > Indy (2026-08-25 ~19:20): "I would like to skip scoping out the cloudflare durable boxes scoped out." — context: authoring-prompt open question 1; serverless (Cloudflare Workers / Durable Objects) is parked from this milestone entirely, including the broker-vs-push decision; the follow-up serverless milestone picks it up against the class/guarantee seam this spec lands.

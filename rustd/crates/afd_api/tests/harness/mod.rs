@@ -46,7 +46,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, SchedulePlane, Services};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
 use afd_auth::error::Unavailable;
@@ -91,14 +91,36 @@ use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
 mod readiness;
+mod stubs_ingress;
 
 use self::readiness::{unreachable_pool, unreachable_queue};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
 
+/// Signed deliveries, as a provider would present them.
+pub(crate) mod webhook;
+
+pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
+/// Where this fixture deployment's schedule fires would arrive.
+///
+/// A real destination shape, because it is half of what a fire token's subject
+/// is checked against — a blank one would make every token fail the subject
+/// check for a reason no test was about.
+pub(crate) const SCHEDULE_DESTINATION: &str =
+    "https://api.fixture.test/v1/ingress/qstash/schedules";
+
+/// Which scheduler these fixtures talk to.
+///
+/// A `.test` host, deliberately: `.test` is reserved and resolves nowhere, so a
+/// harness suite that reaches the network by accident fails as a connection
+/// error naming this constant. The alternative — letting the client fall back to
+/// [`afd_cron::qstash::API_BASE`] — would point a test suite at the
+/// vendor's real US deployment.
+pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
+
 pub(crate) use self::support::{
     connect_redis, file_runner, json_body, presented, redis_config, runner_id, send,
     send_with_headers, tenant,
@@ -124,13 +146,43 @@ const ACQUIRE_TIMEOUT_MS: &str = "50";
 /// A fixed instant, so every row a verb writes is stamped predictably.
 const FROZEN: i64 = 1_760_000_000_000;
 
+/// Milliseconds in a second, named because two units meet here.
+const MILLIS_PER_SECOND: i64 = 1_000;
+
+/// [`FROZEN`] as whole seconds — the unit a signed timestamp header carries.
+///
+/// A signature scheme that binds a timestamp is checked against
+/// `services.now()`, which is this frozen instant and not the wall clock. A
+/// test that built its timestamps from `SystemTime::now` would be sixty-odd
+/// million seconds adrift and read every delivery as stale, whatever it was
+/// actually testing.
+pub(crate) const fn frozen_unix_seconds() -> i64 {
+    FROZEN / MILLIS_PER_SECOND
+}
+
 /// The process key the secret store seals under.
 ///
-/// Never used to seal anything here — every write refuses at the pool, before
-/// an envelope is built — but a `Vault` cannot be CONSTRUCTED without one, which
-/// is the invariant that type exists to carry. Supplying a fixture key is how a
-/// suite honours it rather than working around it.
+/// Every router built by [`Fleet::new`] refuses at the pool before an envelope
+/// is built, so for those this is only the key a `Vault` cannot be CONSTRUCTED
+/// without — the invariant that type exists to carry. [`Fleet::live`] does
+/// reach a vault, and a suite there seals through [`vault`] under this same
+/// key, which is what makes a secret it stores openable by the router.
 const FIXTURE_KEK: [u8; 32] = [0x11; 32];
+
+/// A vault over `database`, sealing under the key the live routers open with.
+///
+/// A suite proving what a route does with a secret has to PUT one somewhere
+/// first, and the only writer that produces a row the router can open is one
+/// holding [`FIXTURE_KEK`]. Handing that key out instead would let a suite
+/// build a vault under a different one and watch every read answer `None` —
+/// which reads as "the route refuses unconfigured" and proves nothing.
+pub(crate) fn vault(database: Db) -> SecretVault {
+    SecretVault::new(
+        database,
+        Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+        Entropy::new(),
+    )
+}
 
 /// The pepper the device-flow code digest is computed under, for the same reason.
 const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
@@ -156,6 +208,22 @@ pub(crate) struct Fleet {
     logins: Logins,
     fleets: Fleets,
     secrets: SecretVault,
+    ingress: HarnessIngress,
+    schedules: SchedulePlane,
+    connectors: afd_connector::Connectors,
+    schedule_keys: Option<afd_cron::SigningKeys>,
+    platform_admin: Option<Uuid7>,
+    /// Opening a personal account, over whatever pool this fixture holds.
+    signups: afd_tenant::signup::Signups,
+    /// What a signup event is verified against — `None` refuses every one.
+    identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
+    /// The dashboard base a connect relays through.
+    ///
+    /// A field rather than the constant so ONE case can make it unusable. Every
+    /// other fixture keeps `FIXTURE_APP_URL`, because a base that is not a URL
+    /// makes every connect refuse for a reason that test was not about — which
+    /// is exactly why the refusal needs its own case rather than a shared one.
+    dashboard_base: String,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,

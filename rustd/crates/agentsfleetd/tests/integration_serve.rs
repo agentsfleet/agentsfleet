@@ -130,11 +130,12 @@ async fn test_boot_to_ready_on_compose() {
             agentsfleetd::sweepers::RECLAIM,
             agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::REPAIR,
+            agentsfleetd::inventory::OUTBOUND_WORKER,
             agentsfleetd::serve::ACCEPT_LOOP,
             agentsfleetd::inventory::ANALYTICS_FLUSH,
         ],
-        "a booted daemon supervises its pump, its sweepers, its accept loop \
-         and its analytics flush"
+        "a booted daemon supervises its pump, its sweepers, its connector \
+         answer worker, its accept loop and its analytics flush"
     );
     assert_ne!(
         booted.address.port(),

@@ -1,0 +1,27 @@
+{
+  "action": "__ACTION__",
+  "number": 7,
+  "repository": { "id": 1, "node_id": "R_1", "name": "platform", "full_name": "example/platform",
+    "private": false, "fork": false, "url": "https://api.github.com/repos/example/platform" },
+  "pull_request": {
+    "url": "https://api.github.com/repos/example/platform/pulls/7",
+    "id": 100, "node_id": "PR_100", "number": 7, "state": "open", "title": "Add a thing",
+    "html_url": "https://github.com/example/platform/pull/7", "draft": false,
+    "user": { "login": "octocat", "id": 3, "node_id": "U_3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/3?v=4",
+      "gravatar_id": "", "url": "https://api.github.com/users/octocat",
+      "html_url": "https://github.com/octocat",
+      "followers_url": "https://api.github.com/users/octocat/followers",
+      "following_url": "https://api.github.com/users/octocat/following{/other_user}",
+      "gists_url": "https://api.github.com/users/octocat/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/octocat/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/octocat/subscriptions",
+      "organizations_url": "https://api.github.com/users/octocat/orgs",
+      "repos_url": "https://api.github.com/users/octocat/repos",
+      "events_url": "https://api.github.com/users/octocat/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/octocat/received_events",
+      "type": "User", "site_admin": false },
+    "head": { "ref": "feature", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "label": "example:feature" },
+    "base": { "ref": "main", "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "label": "example:main" }
+  }
+}

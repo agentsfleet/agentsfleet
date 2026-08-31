@@ -29,6 +29,7 @@ use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
 use afd_core::env::EnvSource;
 use afd_core::id::Uuid7;
+use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -73,6 +74,46 @@ pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 /// become a queue somebody can log in from. `runtime_validate.zig` refuses boot
 /// on the same knob for the same reason.
 pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
+
+/// This deployment's bearer for the external scheduler.
+///
+/// Optional, for [`PLATFORM_ADMIN_WORKSPACE_KNOB`]'s reason: a deployment that
+/// registers no schedules still serves everything else, and refusing to boot
+/// would take the product down for a surface nobody called.
+pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
+
+/// Which scheduler deployment the management calls go to.
+///
+/// Optional, and its absence resolves to [`afd_cron::qstash::API_BASE`].
+/// It exists because the vendor is regional: `qstash_client.zig` took this as a
+/// parameter and its "outbound url uses the configured api base, not a hardcoded
+/// host" test names `qstash-eu-central-1.upstash.io` as the case a hardcoded US
+/// host breaks. The operational half already carries it — `platform_secret_sync.sh`
+/// syncs `url|qstash/url` beside the token — so a deployment that set the URL and
+/// found it ignored was configuring something the daemon never read.
+pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
+
+/// What a signup event from the identity provider is verified against.
+///
+/// Optional, and its absence is FAIL-CLOSED rather than a degradation: the
+/// route refuses every delivery, because accepting an unverified one on a
+/// public endpoint that creates accounts would be strictly worse than serving
+/// none. The same posture `QSTASH_CURRENT_KEY_KNOB` takes, for the same reason.
+pub const IDENTITY_WEBHOOK_SECRET_KNOB: &str = "CLERK_WEBHOOK_SECRET";
+
+/// The key the scheduler is signing fire callbacks with now.
+///
+/// Optional AND fail-closed, which is not a contradiction: a deployment without
+/// it boots and serves, and refuses every fire — because a daemon that cannot
+/// verify a callback must not act on one.
+pub const QSTASH_CURRENT_KEY_KNOB: &str = "QSTASH_CURRENT_SIGNING_KEY";
+
+/// The key it will sign with next.
+///
+/// Both are read because the scheduler rotates by promoting the second, and a
+/// daemon that knew one would refuse every delivery between the vendor's
+/// rotation and its own redeploy.
+pub const QSTASH_NEXT_KEY_KNOB: &str = "QSTASH_NEXT_SIGNING_KEY";
 
 /// Where a person goes to approve a command-line login.
 ///
@@ -225,23 +266,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // Set and unparseable is a typo, and a typo here would otherwise surface as
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
-    let sse_max_streams = env
-        .get(SSE_MAX_STREAMS_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
-        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
-            classify(
-                &mut faults,
-                true,
-                SSE_MAX_STREAMS_KNOB,
-                WHY_SSE_MAX_STREAMS,
-                raw.parse::<usize>()
-                    .ok()
-                    .filter(|streams| *streams > 0)
-                    .ok_or(WHY_SSE_MAX_STREAMS),
-            )
-        })
-        .unwrap_or(SSE_MAX_STREAMS_DEFAULT);
+    let sse_max_streams = read::sse_max_streams(env, &mut faults);
     // Absent is analytics off, and it is not a fault: a deployment that reports
     // nothing is the normal case, and refusing to boot over an unset key would
     // make every developer configure a product-analytics project to run the
@@ -296,6 +321,10 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 identity,
                 bundles,
                 platform_admin_workspace,
+                qstash_token: optional(env, QSTASH_TOKEN_KNOB),
+                qstash_url: optional(env, QSTASH_URL_KNOB),
+                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
+                qstash_keys: signing_keys(env),
                 sse_max_streams,
                 posthog,
             })
@@ -304,5 +333,121 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         // provider included. Every one of them has already pushed its own
         // fault, so the refusal names them all rather than the first.
         _refused => Err(Refusal::new(faults)),
+    }
+}
+
+/// One optional knob, absent when it is unset or blank.
+///
+/// Blank is treated as absent rather than as a value, because an environment
+/// that exports a variable to the empty string is an environment that meant to
+/// unset it — and an empty bearer would be sent upstream as `Bearer `.
+fn optional<E: EnvSource + ?Sized>(source: &E, knob: &str) -> Option<Box<str>> {
+    let value = source.get(knob)?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.into())
+}
+
+/// The scheduler's signing keys, when BOTH are configured.
+///
+/// Both or neither, deliberately. One key configured is a rotation half-done,
+/// and a verifier holding the current key alone refuses every delivery the
+/// vendor has already moved to the next one — which is the outage the two-key
+/// check exists to prevent. Treating a half-configuration as no configuration
+/// makes that a loud refusal at the first fire rather than a silent one at the
+/// vendor's next rotation.
+fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
+    let current = optional(source, QSTASH_CURRENT_KEY_KNOB)?;
+    let next = optional(source, QSTASH_NEXT_KEY_KNOB)?;
+    Some(SigningKeys {
+        current: current.into_string(),
+        next: next.into_string(),
+    })
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; an unmet precondition should stop it"
+)]
+mod knob_tests {
+    use super::{QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys};
+    use afd_core::env::MapEnv;
+
+    /// A key this fixture configures; the value is never parsed, only carried.
+    const CURRENT: &str = "sig_current_fixture";
+
+    /// The key a rotation moves to.
+    const NEXT: &str = "sig_next_fixture";
+
+    /// An exported-but-blank knob is unset, not a value.
+    ///
+    /// The distinction is not cosmetic: a blank that read as configured would
+    /// be sent upstream as a bare `Bearer `, which the vendor refuses with a
+    /// sentence naming nothing an operator can act on. Whitespace is trimmed
+    /// for the same reason — a knob set from a shell heredoc arrives with a
+    /// newline attached.
+    #[test]
+    fn a_blank_or_whitespace_knob_is_absent_rather_than_empty() {
+        let source = MapEnv::from_pairs([
+            ("SET", "value"),
+            ("BLANK", ""),
+            ("SPACES", "   "),
+            ("PADDED", "  value  "),
+        ]);
+
+        assert_eq!(optional(&source, "SET").as_deref(), Some("value"));
+        assert_eq!(
+            optional(&source, "BLANK"),
+            None,
+            "an exported empty string meant unset"
+        );
+        assert_eq!(
+            optional(&source, "SPACES"),
+            None,
+            "whitespace is not a value"
+        );
+        assert_eq!(
+            optional(&source, "PADDED").as_deref(),
+            Some("value"),
+            "a knob set from a heredoc arrives padded and is still that value"
+        );
+        assert_eq!(optional(&source, "ABSENT"), None);
+    }
+
+    /// Both keys or neither — a half-rotation is no configuration.
+    ///
+    /// The failure this prevents is delayed and total. A verifier holding only
+    /// the current key works right up until the vendor rotates to the next one,
+    /// and then refuses EVERY delivery — an outage that begins on the vendor's
+    /// schedule rather than on any deploy of ours. Treating half as none makes
+    /// it a loud refusal at the first fire instead.
+    #[test]
+    fn one_signing_key_is_no_configuration_rather_than_half_of_one() {
+        let neither = MapEnv::from_pairs([]);
+        assert!(
+            signing_keys(&neither).is_none(),
+            "neither key is unconfigured"
+        );
+
+        let current_only = MapEnv::from_pairs([(QSTASH_CURRENT_KEY_KNOB, CURRENT)]);
+        assert!(
+            signing_keys(&current_only).is_none(),
+            "the current key alone is a rotation half-done — it verifies until \
+             the vendor rotates and then refuses everything"
+        );
+
+        let next_only = MapEnv::from_pairs([(QSTASH_NEXT_KEY_KNOB, NEXT)]);
+        assert!(
+            signing_keys(&next_only).is_none(),
+            "the next key alone is the same half"
+        );
+
+        let both = MapEnv::from_pairs([
+            (QSTASH_CURRENT_KEY_KNOB, CURRENT),
+            (QSTASH_NEXT_KEY_KNOB, NEXT),
+        ]);
+        let keys = signing_keys(&both).expect("both keys configured is a configuration");
+        assert_eq!(keys.current, CURRENT);
+        assert_eq!(keys.next, NEXT);
     }
 }

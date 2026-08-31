@@ -42,8 +42,18 @@
 //! (0.9.0) covers Zoho Projects, not the webhook surfaces here. They stay
 //! declared below, and when one of them grows a maintained client it
 //! implements this trait rather than editing a table.
+//!
+//! # The strings themselves live in `afd_webhook`
+//!
+//! [`Scheme`] states the header, the prefix and the timestamp header once, for
+//! the verifier that reads them. This module resolves a `source` to one of
+//! those values rather than declaring a second copy: a registry whose header
+//! disagreed with the wall's would complete a trigger the wall then refuses,
+//! and the refusal reads as a wrong secret rather than a wrong header.
 
 use std::fmt::Debug;
+
+use afd_webhook::Scheme;
 
 /// What a provider knows about its own webhook signature scheme.
 ///
@@ -82,109 +92,6 @@ pub trait ProviderRegistry: Debug + Send + Sync {
     fn resolve(&self, source: &str) -> Option<&dyn WebhookProvider>;
 }
 
-/// One provider's scheme, as declared data.
-///
-/// The shape a crate-backed implementation converges on: `slack-morphism`'s
-/// verifier and `octocrab`'s webhook types both ultimately answer these same
-/// three strings, so an adapter over either constructs one of these rather
-/// than re-implementing the trait from scratch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Scheme {
-    /// See [`WebhookProvider::source`].
-    source: &'static str,
-    /// See [`WebhookProvider::signature_header`].
-    signature_header: &'static str,
-    /// See [`WebhookProvider::signature_prefix`].
-    signature_prefix: &'static str,
-    /// See [`WebhookProvider::timestamp_header`].
-    timestamp_header: Option<&'static str>,
-}
-
-impl WebhookProvider for Scheme {
-    fn source(&self) -> &str {
-        self.source
-    }
-
-    fn signature_header(&self) -> &str {
-        self.signature_header
-    }
-
-    fn signature_prefix(&self) -> &str {
-        self.signature_prefix
-    }
-
-    fn timestamp_header(&self) -> Option<&str> {
-        self.timestamp_header
-    }
-}
-
-impl Scheme {
-    /// A scheme whose header carries a prefixed digest over the raw body.
-    ///
-    /// `const`, private, and one of three: [`DECLARED`] stays a compile-time
-    /// table, the shipped set is this module's to state, and a caller wanting a
-    /// provider of its own implements [`WebhookProvider`] — which is the seam
-    /// that exists for it.
-    const fn prefixed(source: &'static str, header: &'static str, prefix: &'static str) -> Self {
-        Self {
-            source,
-            signature_header: header,
-            signature_prefix: prefix,
-            timestamp_header: None,
-        }
-    }
-
-    /// A scheme whose header carries the digest bare.
-    ///
-    /// Its own constructor rather than `prefixed(source, header, "")`, because
-    /// "no prefix" is a PROPERTY of the scheme and an empty string is a value
-    /// someone can copy into a row that needed one.
-    const fn bare(source: &'static str, header: &'static str) -> Self {
-        Self::prefixed(source, header, "")
-    }
-
-    /// A prefixed scheme that also binds a timestamp against replay.
-    const fn timestamped(
-        source: &'static str,
-        header: &'static str,
-        prefix: &'static str,
-        timestamp: &'static str,
-    ) -> Self {
-        Self {
-            timestamp_header: Some(timestamp),
-            ..Self::prefixed(source, header, prefix)
-        }
-    }
-}
-
-/// Every provider this daemon can complete a signature block from.
-///
-/// **Adding one is ONE line here, and that is the point of the table.** The
-/// shape this replaced spelled each provider FOUR times — three or four header
-/// constants, a public `Scheme` constant, a row in the list, and a fixed-length
-/// array whose length had to be widened in step. That is precisely the
-/// per-provider edit count `secrets::connector` records as its reason for
-/// existing, arrived at from the other direction. A slice has no length to keep
-/// current, and a row that carries its own strings has no constants to define
-/// away from it.
-///
-/// The header values are written HERE rather than behind names because the row
-/// is the only place they appear: a constant read once, three lines above its
-/// single use, is a second place for a header to be wrong.
-const DECLARED: &[Scheme] = &[
-    // Slack: a versioned digest over a timestamped basestring.
-    Scheme::timestamped(
-        "slack",
-        "x-slack-signature",
-        "v0=",
-        "x-slack-request-timestamp",
-    ),
-    // GitHub: a prefixed SHA-256 digest over the raw body.
-    Scheme::prefixed("github", "x-hub-signature-256", "sha256="),
-    // Linear: a bare digest over the raw body.
-    Scheme::bare("linear", "linear-signature"),
-];
-
 /// The providers this daemon can complete a signature block from.
 ///
 /// Resolution is by `source` and nothing else — a linear scan over three
@@ -194,11 +101,35 @@ const DECLARED: &[Scheme] = &[
 #[non_exhaustive]
 pub struct StaticRegistry;
 
+/// The signature wall's own enum answers this trait directly.
+///
+/// No adapter struct in between, because there is nothing to adapt: the four
+/// strings this trait asks for are the four `Scheme` already states, and a
+/// second declaration of them is the drift this impl exists to make
+/// impossible.
+impl WebhookProvider for Scheme {
+    fn source(&self) -> &str {
+        Self::source(*self)
+    }
+
+    fn signature_header(&self) -> &str {
+        Self::signature_header(*self)
+    }
+
+    fn signature_prefix(&self) -> &str {
+        Self::prefix(*self)
+    }
+
+    fn timestamp_header(&self) -> Option<&str> {
+        Self::timestamp_header(*self)
+    }
+}
+
 impl ProviderRegistry for StaticRegistry {
     fn resolve(&self, source: &str) -> Option<&dyn WebhookProvider> {
-        DECLARED
+        Scheme::ALL
             .iter()
-            .find(|scheme| scheme.source == source)
+            .find(|scheme| scheme.source() == source)
             .map(|scheme| scheme as &dyn WebhookProvider)
     }
 }
@@ -209,7 +140,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{DECLARED, ProviderRegistry as _, Scheme, StaticRegistry, WebhookProvider as _};
+    use super::{ProviderRegistry as _, Scheme, StaticRegistry, WebhookProvider as _};
 
     #[test]
     fn a_declared_source_resolves_to_its_scheme() {
@@ -237,6 +168,21 @@ mod tests {
     }
 
     #[test]
+    fn the_bare_arm_resolves_with_no_prefix_and_no_timestamp() {
+        let resolved = StaticRegistry
+            .resolve("linear")
+            .expect("linear is declared");
+
+        assert_eq!(resolved.signature_header(), "linear-signature");
+        assert_eq!(
+            resolved.signature_prefix(),
+            "",
+            "carrying no prefix is a property of the scheme, not an empty value in a row"
+        );
+        assert_eq!(resolved.timestamp_header(), None);
+    }
+
+    #[test]
     fn an_undeclared_source_resolves_to_nothing() {
         assert!(
             StaticRegistry.resolve("jira").is_none(),
@@ -246,58 +192,41 @@ mod tests {
 
     #[test]
     fn every_source_is_declared_once() {
-        for (index, scheme) in DECLARED.iter().enumerate() {
-            let duplicate = DECLARED
+        for (index, scheme) in Scheme::ALL.iter().enumerate() {
+            let duplicate = Scheme::ALL
                 .iter()
                 .skip(index + 1)
-                .any(|other| other.source == scheme.source);
+                .any(|other| other.source() == scheme.source());
 
-            assert!(!duplicate, "`{}` is declared twice", scheme.source);
+            assert!(!duplicate, "`{}` is declared twice", scheme.source());
         }
     }
 
     #[test]
     fn every_signature_header_is_unique() {
-        for (index, scheme) in DECLARED.iter().enumerate() {
-            let duplicate = DECLARED
+        for (index, scheme) in Scheme::ALL.iter().enumerate() {
+            let duplicate = Scheme::ALL
                 .iter()
                 .skip(index + 1)
-                .any(|other| other.signature_header == scheme.signature_header);
+                .any(|other| other.signature_header() == scheme.signature_header());
 
             assert!(
                 !duplicate,
                 "`{}` shares a signature header, making detection ambiguous",
-                scheme.source
+                scheme.source()
             );
         }
     }
 
     #[test]
     fn no_scheme_is_declared_with_an_empty_source_or_header() {
-        for scheme in DECLARED {
-            assert!(!scheme.source.is_empty(), "a scheme needs a source");
+        for scheme in Scheme::ALL {
+            assert!(!scheme.source().is_empty(), "a scheme needs a source");
             assert!(
-                !scheme.signature_header.is_empty(),
+                !scheme.signature_header().is_empty(),
                 "`{}` needs a signature header",
-                scheme.source
+                scheme.source()
             );
         }
-    }
-
-    #[test]
-    fn scheme_constructors_preserve_every_declared_field_at_runtime() {
-        let prefixed = Scheme::prefixed("github", "x-signature", "sha256=");
-        assert_eq!(prefixed.source(), "github");
-        assert_eq!(prefixed.signature_header(), "x-signature");
-        assert_eq!(prefixed.signature_prefix(), "sha256=");
-        assert_eq!(prefixed.timestamp_header(), None);
-
-        let bare = Scheme::bare("linear", "linear-signature");
-        assert_eq!(bare.source(), "linear");
-        assert_eq!(bare.signature_prefix(), "");
-
-        let timestamped = Scheme::timestamped("slack", "x-signature", "v0=", "x-timestamp");
-        assert_eq!(timestamped.source(), "slack");
-        assert_eq!(timestamped.timestamp_header(), Some("x-timestamp"));
     }
 }

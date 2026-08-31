@@ -52,6 +52,9 @@ impl Services for ServingPlane {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Ingress = afd_ingress::Ingress;
+    type Schedules = afd_api::SchedulePlane;
+    type Connectors = afd_connector::Connectors;
     type Steering = afd_events::Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -75,6 +78,46 @@ impl Services for ServingPlane {
 
     fn sessions(&self) -> &Logins {
         &self.logins
+    }
+
+    fn ingress(&self) -> &afd_ingress::Ingress {
+        &self.ingress
+    }
+
+    fn schedules(&self) -> &afd_api::SchedulePlane {
+        &self.schedules
+    }
+
+    fn connectors(&self) -> &afd_connector::Connectors {
+        &self.connectors
+    }
+
+    /// Where a PERSON goes, which is a different deployment fact from
+    /// [`Services::deployment`] below and never the same string.
+    fn dashboard(&self) -> &str {
+        &self.app_url
+    }
+
+    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
+        self.schedule_keys.as_ref()
+    }
+
+    fn schedule_destination(&self) -> &str {
+        &self.schedule_destination
+    }
+
+    fn platform_admin_workspace(&self) -> Option<&afd_core::id::Uuid7> {
+        self.platform_admin_workspace.as_ref()
+    }
+
+    type Signups = afd_tenant::signup::Signups;
+
+    fn signups(&self) -> &Self::Signups {
+        &self.signups
+    }
+
+    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
+        self.identity_webhook_secret.as_ref()
     }
 
     fn workspaces(&self) -> &Workspaces {

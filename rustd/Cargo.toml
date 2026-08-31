@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -40,6 +40,7 @@ categories = ["network-programming"]
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
 afd_api = { path = "crates/afd_api" }
+afd_api_ingress = { path = "crates/afd_api_ingress" }
 afd_api_operator = { path = "crates/afd_api_operator" }
 afd_api_runner = { path = "crates/afd_api_runner" }
 afd_api_tenant = { path = "crates/afd_api_tenant" }
@@ -49,6 +50,12 @@ afd_auth = { path = "crates/afd_auth" }
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
 afd_billing = { path = "crates/afd_billing" }
+# Connecting a workspace to a third party: the signed install state, the
+# code-for-token exchange, and the grant that lands in the vault. Its own crate
+# rather than a module in `afd_api` for the reason `afd_ingress` is one — the
+# state machine and the vendor conversation are decided with no router in
+# sight, and `afd_api` is already the workspace's largest crate.
+afd_connector = { path = "crates/afd_connector" }
 afd_core = { path = "crates/afd_core" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
@@ -80,8 +87,16 @@ afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
 afd_fleet_ops = { path = "crates/afd_fleet_ops" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
+# What a signed delivery is resolved against. Not folded into `afd_events`,
+# which owns the same table's reads: this needs the vault and the config
+# parser, and adding them there would put AES-GCM and a YAML-shaped document
+# reader behind every history page the dashboard asks for. The same argument
+# `afd_vault` makes for not living in `afd_fleet`.
+afd_cron = { path = "crates/afd_cron" }
+afd_ingress = { path = "crates/afd_ingress" }
 afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
+afd_outbound = { path = "crates/afd_outbound" }
 afd_redis = { path = "crates/afd_redis" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
@@ -100,6 +115,12 @@ afd_tenant = { path = "crates/afd_tenant" }
 # which is the credential directory the authentication path cannot start
 # without and would then rebuild every login when a projection column moved.
 afd_vault = { path = "crates/afd_vault" }
+# The signature wall: what an unauthenticated delivery must prove before
+# anything reads its body. Its own crate rather than a module in `afd_auth`,
+# which answers a different question — who a CALLER is and what they may do.
+# A signed delivery has no principal, and the wall must be provable with no
+# datastore, no runtime and no router.
+afd_webhook = { path = "crates/afd_webhook" }
 afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member
@@ -247,7 +268,15 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 # The rolling DAY window is NOT a calendar question and does not use this:
 # `authoring.mdx` documents it as "rolling 24-hour", not "since midnight", so it
 # stays plain millisecond subtraction in `money::window` where that is legible.
-jiff = { version = "0.2.35", default-features = false, features = ["std"] }
+# `tzdb-zoneinfo` reads the system timezone database rather than bundling one:
+# zero extra crates, zero binary growth, and the deploy image already ships
+# `/usr/share/zoneinfo` (debian:bookworm-slim, verified). It is what lets a zone
+# name be VALIDATED against the real database instead of pattern-matched — see
+# `afd_cron::validate::timezone`.
+jiff = { version = "0.2.35", default-features = false, features = [
+  "std",
+  "tzdb-zoneinfo",
+] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -432,7 +461,16 @@ axum = { version = "0.8.9", default-features = false, features = [
 # precisely where the Zig install shipped its bug, leaving the last delay
 # unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
 # where tokio-retry is still 0.3.
-backon = { version = "1.6.0", default-features = false, features = ["tokio-sleep"] }
+#
+# `std` is NOT optional here, however much it looks like a default worth
+# dropping. `std = ["fastrand/std"]`, and without it `ExponentialBackoff` takes
+# its `#[cfg(not(feature = "std"))]` branch — `Rng::with_seed(RANDOM_SEED)`,
+# where `RANDOM_SEED` is the compile-time constant `0x6261636b6f6e`
+# (`backon-1.6.0/src/backoff/mod.rs:18`). Every process then draws the SAME
+# "jittered" sequence, which is the reconnect storm the jitter exists to
+# prevent, silently. `keys_and_config.rs`'s spread assertion is what catches a
+# future edit that drops it again.
+backon = { version = "1.6.0", default-features = false, features = ["std", "tokio-sleep"] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
 # ready-made layers. The admission ceiling is ours (it counts in-flight
 # requests per route CLASS, which no off-the-shelf layer knows about), but the
@@ -548,6 +586,15 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
 # edge-triggered — `cancelled().await` wakes the instant it fires — where the
 # Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
 tokio-util = { version = "0.7.19", default-features = false }
+
+# `gethostname`, which `std` does not expose. The outbound worker's consumer
+# name must be the same string across restarts of one instance, or every
+# unacknowledged answer strands in a pending list nothing reads again — and
+# `HOSTNAME` is a shell variable, not an exported one, so a systemd unit sees
+# no value at all. `redis_client.zig` calls the syscall for the same reason.
+# A safe wrapper over the one call, rather than `libc` and an `unsafe` block
+# of our own.
+hostname = { version = "0.4.1", default-features = false }
 
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.

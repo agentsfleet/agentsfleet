@@ -39,7 +39,6 @@ use crate::error::{self, Result};
 const CMD_SET: &str = "SET";
 const CMD_GET: &str = "GET";
 const CMD_EVAL: &str = "EVAL";
-const CMD_SCAN: &str = "SCAN";
 /// The script tag a first redemption answers with.
 const TAG_SUCCESS: &str = "success";
 /// The script tag every successful transition answers with.
@@ -54,15 +53,28 @@ const TAG_NOT_OWNER: &str = "not_owner";
 const TAG_CONSUMED: &str = "consumed";
 /// The script tag a second approval answers with.
 const TAG_CONFLICT: &str = "conflict";
+/// The script tag a redemption inside the replay window answers with.
+const TAG_REPLAY: &str = "replay";
+/// The script tag a session past its TTL answers with.
+const TAG_EXPIRED: &str = "expired";
+/// The script tag an aborted session answers with, carrying the reason.
+const TAG_ABORTED: &str = "aborted";
+/// The script tag a session whose approval never came answers with.
+const TAG_NOT_APPROVED: &str = "not_approved";
+/// The script tag a session over its attempt budget answers with.
+const TAG_RATE_LIMITED: &str = "rate_limited";
+/// The script tag a wrong code answers with, carrying attempts remaining.
+const TAG_INVALID_CODE: &str = "invalid_code";
 
 /// The `SCAN` glob that matches every session key.
 const SESSION_KEY_GLOB: &str = "auth:session:*";
 
 /// How many keys one `SCAN` page asks for.
 ///
-/// A hint rather than a bound — Redis may answer with more, and the cursor
-/// loop below takes whatever comes rather than sizing a buffer for it, which
-/// is the one place the Zig scan can fail on a page it did not expect.
+/// A hint rather than a bound — Redis may answer with more, and
+/// [`Redis::scan_keys`] takes whatever comes rather than sizing a buffer for
+/// it, which is the one place the Zig scan can fail on a page it did not
+/// expect.
 const SCAN_PAGE_HINT: usize = 100;
 
 /// Where a session lives, keyed by its id.
@@ -90,6 +102,30 @@ const APPROVE_LUA: &str = include_str!("session/approve.lua");
 
 /// The owner-checked abort, for both the single delete and the bulk sweep.
 const ABORT_LUA: &str = include_str!("session/abort.lua");
+
+/// The three scripts above, each prepared once for the life of the process.
+///
+/// # Why a `Script` rather than `EVAL` with the body
+///
+/// `EVAL` ships the whole program on every call. These three are the device
+/// flow's hot path — an approval gate and a code redemption run one each, per
+/// attempt, per user — so the body of `verify_consume.lua` travelled the socket
+/// once for every six digits anybody ever typed. `redis::Script` sends the
+/// 40-byte digest with `EVALSHA` and falls back to loading the body only when
+/// the server has never seen it, which after the first call of a deployment is
+/// never. Same script, same atomicity, a fraction of the bytes.
+///
+/// `streams/once.rs`'s `APPEND_ONCE` has done it this way since M176; these are
+/// the sites that had not caught up. The `LazyLock` is what makes the digest
+/// computed once instead of per call.
+static VERIFY_AND_CONSUME: std::sync::LazyLock<redis::Script> =
+    std::sync::LazyLock::new(|| redis::Script::new(VERIFY_AND_CONSUME_LUA));
+/// See [`VERIFY_AND_CONSUME`].
+static APPROVE: std::sync::LazyLock<redis::Script> =
+    std::sync::LazyLock::new(|| redis::Script::new(APPROVE_LUA));
+/// See [`VERIFY_AND_CONSUME`].
+static ABORT: std::sync::LazyLock<redis::Script> =
+    std::sync::LazyLock::new(|| redis::Script::new(ABORT_LUA));
 
 /// How long a consumed session still answers a repeat of the same request.
 const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
@@ -285,18 +321,17 @@ impl SessionStore {
         request_fingerprint_hex: &str,
     ) -> Result<VerifyOutcome> {
         let key = session_key(session_id);
-        let mut cmd = redis::cmd(CMD_EVAL);
-        cmd.arg(VERIFY_AND_CONSUME_LUA)
-            .arg(1)
-            .arg(&key)
+        let mut invocation = VERIFY_AND_CONSUME.prepare_invoke();
+        invocation
+            .key(&key)
             .arg(submitted_hmac_hex)
-            .arg(now_ms.to_string())
+            .arg(now_ms)
             .arg(request_fingerprint_hex)
-            .arg(CONSUME_REPLAY_WINDOW.as_millis().to_string())
-            .arg(MAX_VERIFY_ATTEMPTS.to_string())
-            .arg(SESSION_TTL.as_secs().to_string());
+            .arg(CONSUME_REPLAY_WINDOW.as_millis())
+            .arg(MAX_VERIFY_ATTEMPTS)
+            .arg(SESSION_TTL.as_secs());
 
-        let reply: Vec<String> = self.redis.command(CMD_EVAL, &key, &cmd).await?;
+        let reply: Vec<String> = self.redis.script(CMD_EVAL, &key, &invocation).await?;
         parse_outcome(&reply)
     }
 
@@ -314,19 +349,18 @@ impl SessionStore {
     /// does not know.
     pub async fn approve(&self, approval: &Approval<'_>, now_ms: i64) -> Result<ApproveOutcome> {
         let key = session_key(approval.session_id);
-        let mut cmd = redis::cmd(CMD_EVAL);
-        cmd.arg(APPROVE_LUA)
-            .arg(1)
-            .arg(&key)
+        let mut invocation = APPROVE.prepare_invoke();
+        invocation
+            .key(&key)
             .arg(approval.dashboard_public_key)
             .arg(approval.ciphertext)
             .arg(approval.nonce)
             .arg(approval.code_hmac_hex)
             .arg(approval.approver)
-            .arg(now_ms.to_string())
-            .arg(SESSION_TTL.as_secs().to_string());
+            .arg(now_ms)
+            .arg(SESSION_TTL.as_secs());
 
-        let reply: Vec<String> = self.redis.command(CMD_EVAL, &key, &cmd).await?;
+        let reply: Vec<String> = self.redis.script(CMD_EVAL, &key, &invocation).await?;
         match reply.first().map(String::as_str) {
             Some(TAG_OK) => Ok(ApproveOutcome::Approved),
             Some(TAG_MISSING) => Ok(ApproveOutcome::Missing),
@@ -374,39 +408,34 @@ impl SessionStore {
         owner: &str,
         reason: AbortReason,
     ) -> Result<Vec<String>> {
+        let keys = self
+            .redis
+            .scan_keys(SESSION_KEY_GLOB, SCAN_PAGE_HINT)
+            .await?;
+
         let mut aborted = Vec::new();
-        let mut cursor = String::from("0");
-        loop {
-            let (next, keys) = self.scan_page(&cursor).await?;
-            for key in &keys {
-                if self.abort_key(key, owner, reason).await? == AbortOutcome::Aborted {
-                    // The id, not the key: every caller above this one talks in
-                    // session ids, and the prefix is this module's business.
-                    if let Some(id) = key.strip_prefix(SESSION_KEY_PREFIX) {
-                        aborted.push(id.to_owned());
-                    }
+        for key in &keys {
+            if self.abort_key(key, owner, reason).await? == AbortOutcome::Aborted {
+                // The id, not the key: every caller above this one talks in
+                // session ids, and the prefix is this module's business.
+                if let Some(id) = key.strip_prefix(SESSION_KEY_PREFIX) {
+                    aborted.push(id.to_owned());
                 }
             }
-            // Redis signals the end of a full pass by handing back the cursor it
-            // started from; anything else is another page.
-            if next == "0" {
-                return Ok(aborted);
-            }
-            cursor = next;
         }
+        Ok(aborted)
     }
 
     /// Aborts the session at one already-built key.
     async fn abort_key(&self, key: &str, owner: &str, reason: AbortReason) -> Result<AbortOutcome> {
-        let mut cmd = redis::cmd(CMD_EVAL);
-        cmd.arg(ABORT_LUA)
-            .arg(1)
-            .arg(key)
+        let mut invocation = ABORT.prepare_invoke();
+        invocation
+            .key(key)
             .arg(owner)
             .arg(reason.as_str())
-            .arg(SESSION_TTL.as_secs().to_string());
+            .arg(SESSION_TTL.as_secs());
 
-        let reply: Vec<String> = self.redis.command(CMD_EVAL, key, &cmd).await?;
+        let reply: Vec<String> = self.redis.script(CMD_EVAL, key, &invocation).await?;
         match reply.first().map(String::as_str) {
             Some(TAG_OK) => Ok(AbortOutcome::Aborted),
             Some(TAG_ALREADY_ABORTED) => Ok(AbortOutcome::AlreadyAborted),
@@ -415,20 +444,6 @@ impl SessionStore {
             Some(TAG_CONSUMED) => Ok(AbortOutcome::Consumed),
             _ => Err(error::unexpected_reply("abort")),
         }
-    }
-
-    /// One `SCAN` page: the cursor to continue from, and the keys it found.
-    async fn scan_page(&self, cursor: &str) -> Result<(String, Vec<String>)> {
-        let mut cmd = redis::cmd(CMD_SCAN);
-        cmd.arg(cursor)
-            .arg("MATCH")
-            .arg(SESSION_KEY_GLOB)
-            .arg("COUNT")
-            .arg(SCAN_PAGE_HINT);
-        // `redis` decodes the two-element reply into the tuple directly, so
-        // there is no reply-shape parser here to get wrong — the Zig one is
-        // forty lines and can refuse a page larger than its fixed buffer.
-        self.redis.command(CMD_SCAN, SESSION_KEY_GLOB, &cmd).await
     }
 }
 
@@ -532,7 +547,7 @@ fn parse_outcome(reply: &[String]) -> Result<VerifyOutcome> {
     let field = |index: usize| reply.get(index).cloned().ok_or_else(unexpected);
 
     match tag {
-        TAG_SUCCESS | "replay" => {
+        TAG_SUCCESS | TAG_REPLAY => {
             let payload = VerifyPayload {
                 dashboard_public_key: field(1)?,
                 ciphertext: field(2)?,
@@ -544,13 +559,13 @@ fn parse_outcome(reply: &[String]) -> Result<VerifyOutcome> {
                 VerifyOutcome::Replay(payload)
             })
         }
-        "missing" => Ok(VerifyOutcome::Missing),
-        "expired" => Ok(VerifyOutcome::Expired),
-        "aborted" => Ok(VerifyOutcome::Aborted(field(1)?)),
-        "consumed" => Ok(VerifyOutcome::Consumed),
-        "not_approved" => Ok(VerifyOutcome::NotApproved),
-        "rate_limited" => Ok(VerifyOutcome::RateLimited),
-        "invalid_code" => Ok(VerifyOutcome::InvalidCode(
+        TAG_MISSING => Ok(VerifyOutcome::Missing),
+        TAG_EXPIRED => Ok(VerifyOutcome::Expired),
+        TAG_ABORTED => Ok(VerifyOutcome::Aborted(field(1)?)),
+        TAG_CONSUMED => Ok(VerifyOutcome::Consumed),
+        TAG_NOT_APPROVED => Ok(VerifyOutcome::NotApproved),
+        TAG_RATE_LIMITED => Ok(VerifyOutcome::RateLimited),
+        TAG_INVALID_CODE => Ok(VerifyOutcome::InvalidCode(
             field(1)?.parse().map_err(|_parse| unexpected())?,
         )),
         _ => Err(unexpected()),

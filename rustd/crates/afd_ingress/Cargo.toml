@@ -1,0 +1,74 @@
+[package]
+name = "afd_ingress"
+description = "What a signed delivery is resolved against: the fleet's binding, its signing secret, and the at-most-once append."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the reader below for a sibling crate's suite. It exposes
+# the VALIDATING door rather than a bypass of it, which is the opposite of the
+# `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
+# `Binding::stored` for why a shortcut would have nothing to shorten.
+# Forwarded rather than bare: `error::one_of_each_kind` samples a queue
+# failure through `afd_redis`'s own sample builder, which lives behind that
+# crate's `test-util`. Building the sample by hand instead would let this
+# crate's idea of a Redis outage drift from Redis's.
+test-util = ["afd_redis/test-util"]
+
+[dependencies]
+# Identifiers, the instant a delivery is stamped with, and the registry codes.
+afd_core.workspace = true
+# The plaintext wrapper a signing secret comes back in. This crate computes no
+# tag of its own — the wall does, in `afd_webhook`.
+afd_crypto.workspace = true
+# The Postgres pool the fleet row is read on.
+afd_db.workspace = true
+# The typed reader for a stored `config_json`. Its `Trigger::Webhook` is what
+# replaces the Zig lookup's two jsonb sub-selects — see `binding`.
+afd_fleet_runtime.workspace = true
+# `FleetStatus`, so "will this fleet take work" is asked of a type rather than
+# of a string compare this crate would own a second copy of.
+afd_fleet_lifecycle.workspace = true
+# The at-most-once append. `OnceScope::WebhookDelivery` carries both the key
+# prefix and the retention, so this crate names neither.
+afd_redis.workspace = true
+# Opening the one secret a signature is checked against.
+afd_vault.workspace = true
+# `Scheme`, so a binding resolves its provider to the SAME value the wall then
+# verifies with. A second table here would let a fleet be configured under one
+# header and checked against another, and the resulting failure reads as a wrong
+# secret rather than a wrong header. Nothing in this crate computes a tag.
+afd_webhook.workspace = true
+# The event type and stream field names a delivery is appended under.
+afd_wire.workspace = true
+# A stored credential is a JSON object and the shared secret is one field of
+# it; nothing here serializes.
+serde_json.workspace = true
+# The App ingress keys its at-most-once claim on the body's digest rather than
+# on the provider's unsigned delivery header — see `app::replay_id`.
+sha2.workspace = true
+# That digest is rendered lowercase hex, as the Zig renders it, so a claim
+# written by either daemon mid-cutover is the same key.
+hex.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The suites build a vault with a key of their own and a pool that answers
+# nothing, which is what puts the resolution matrix in a test with no
+# datastore in it.
+afd_crypto.workspace = true
+afd_db.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
