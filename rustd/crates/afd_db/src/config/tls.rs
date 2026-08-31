@@ -112,21 +112,24 @@ pub(super) fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOption
     // that encrypts for a boot that panics is not an improvement.
     let parsed = Url::parse(url).ok();
 
-    // Before anything dials: a declared certificate file this process cannot
-    // read must fail here, named. sqlx opens it deep in the handshake, where
-    // the io error reaches an operator as "error communicating with database:
-    // No such file or directory" — no knob, no parameter, no path, and only
-    // after a TCP connection already answered.
-    if let Some(parsed) = parsed.as_ref() {
-        reject_unreadable_cert_files(knob, parsed)?;
-    }
-
     let declared = parsed.as_ref().is_some_and(declares_ssl_mode);
     let options = if declared {
         options
     } else {
         options.ssl_mode(PgSslMode::Require)
     };
+
+    // Before anything dials: a certificate file sqlx will consume must be
+    // readable here, where the failure can name the knob, parameter, and path.
+    // Its connection path returns the plain socket immediately for `disable`
+    // and `allow`, before constructing TLS or opening any certificate input.
+    if !matches!(
+        options.get_ssl_mode(),
+        PgSslMode::Disable | PgSslMode::Allow
+    ) && let Some(parsed) = parsed.as_ref()
+    {
+        reject_unreadable_cert_files(knob, parsed)?;
+    }
 
     // Hoisted: see the `tracing` note in the workspace Cargo.toml. The URL
     // itself is never a field here — `knob` is the variable's NAME, and every
@@ -193,7 +196,7 @@ fn reject_unreadable_cert_files(knob: &'static str, url: &Url) -> Result<()> {
 /// Names a path safely without copying malformed inline certificate material
 /// or terminal control characters into the fatal error.
 fn cert_input_for_error(value: &str) -> String {
-    if value.contains(PEM_MARKER_START) {
+    if value.trim().starts_with(PEM_MARKER_START) {
         REDACTED_CERT_INPUT.to_owned()
     } else {
         value.escape_debug().collect()
