@@ -41,7 +41,7 @@ const SECRETS_MAP_JSON =
 /// tier is incidental to the arms below, but it cannot be `dev_none`:
 /// `policy_apply.devNoneForbidden` refuses that tier in every build mode except
 /// Debug, so the holder would clear instead of applying under the Valgrind lane
-/// (`scripts/run-zig-memleak-lane.sh` pins `-Doptimize=ReleaseSafe`).
+/// (the retired leak lane pinned `-Doptimize=ReleaseSafe`; the script is gone).
 const POLICY_JSON =
     \\{"sandbox_tier":"landlock_full","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
 ;

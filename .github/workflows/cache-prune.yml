@@ -3,8 +3,8 @@ name: cache-prune
 # Reclaims Actions cache space so the Zig jobs stop evicting each other.
 #
 # GitHub gives a repository 10 GB of cache and evicts Least Recently Used (LRU)
-# once that fills. This repository runs eleven distinct Zig cache families
-# (unit, integration, kernel, coverage, memleak, three cross-compile targets),
+# once that fills. This repository runs several distinct Zig cache families
+# (unit, integration, kernel, coverage, cross-compile targets),
 # each 130-370 MB, each retained under both `refs/heads/main` and every open
 # Pull Request (PR) ref, and each keeping older key generations alive for their
 # `restore-keys` prefix fallback. Left alone that sits at the ceiling, so a
@@ -47,7 +47,7 @@ jobs:
       APPLY: ${{ github.event_name == 'schedule' && 'true' || inputs.apply }}
       RETAIN_PER_FAMILY: '2'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: List caches and resolve pull-request states
         run: |

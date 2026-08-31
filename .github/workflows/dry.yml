@@ -15,7 +15,7 @@ jobs:
   dry-website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -24,7 +24,7 @@ jobs:
         working-directory: ui/packages/website
       - name: Restore Playwright browser cache
         id: playwright-cache-website
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-website-${{ hashFiles('ui/packages/website/bun.lock') }}
@@ -44,7 +44,7 @@ jobs:
   dry-app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -53,7 +53,7 @@ jobs:
         working-directory: ui/packages/app
       - name: Restore Playwright browser cache
         id: playwright-cache-app
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}
@@ -68,7 +68,7 @@ jobs:
           fi
         working-directory: ui/packages/app
       - name: Load Clerk dev keys from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:

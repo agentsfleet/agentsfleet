@@ -11,7 +11,7 @@
 #   --revision <r>      tag suffix for iterating without breaking pinned consumers
 #                       (e.g. --revision r3 → :0.16.0-r3). Empty by default.
 #   --registry <r>      default: ghcr.io/agentsfleet
-#   --image <name>      alpine | debian-trixie | ubuntu | all (default: all)
+#   --image <name>      alpine | ubuntu | all (default: all)
 #   --no-push           docker buildx --load instead of --push (single-arch only)
 
 set -euo pipefail
@@ -101,14 +101,12 @@ build_one() {
 build_selected() {
   case "$IMAGE" in
     alpine)         build_one alpine         Dockerfile.alpine         "linux/amd64,linux/arm64" ;;
-    debian-trixie)  build_one debian-trixie  Dockerfile.debian-trixie  "linux/amd64" ;;
     ubuntu)         build_one ubuntu         Dockerfile.ubuntu         "linux/amd64" ;;
     all)
       build_one alpine         Dockerfile.alpine         "linux/amd64,linux/arm64"
-      build_one debian-trixie  Dockerfile.debian-trixie  "linux/amd64"
       build_one ubuntu         Dockerfile.ubuntu         "linux/amd64"
       ;;
-    *) fatal "unknown --image: $IMAGE (expected alpine|debian-trixie|ubuntu|all)" ;;
+    *) fatal "unknown --image: $IMAGE (expected alpine|ubuntu|all)" ;;
   esac
 }
 

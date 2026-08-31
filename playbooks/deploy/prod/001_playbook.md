@@ -72,8 +72,8 @@ approval.
 | Release build and publication jobs | Binaries, image, npm `next`, and the GitHub release use the approved version. |
 | `verify-dev-gate` | Development remains ready before production changes. |
 | `deploy-fly-prod` | Production API, tunnel, health, and readiness passed. |
-| `deploy-worker-canary-prod` | The first runner deployed and passed its host gate. |
-| `deploy-worker-fleet-prod` | The Human-approved remaining fleet deployed sequentially. |
+| `deploy-metal-canary-prod` | The first runner deployed and passed its host gate. |
+| `deploy-metal-fleet-prod` | The Human-approved remaining fleet deployed sequentially. |
 | Post-release verification | Exact-version installs and live command-line acceptance passed before npm `latest` moved. |
 
 After the Pipeline is green, the Agent runs each configured provider's read-only
@@ -85,3 +85,13 @@ green. A skipped check is not evidence.
 
 The Agent diagnoses a red job from its logs. A provider write, live host change,
 release replacement, or restart of work in flight requires new Human approval.
+
+**There is no shell in the API container.** The image is distroless: it carries
+the daemon, a certificate bundle and a clock, and nothing else — no shell, no
+package manager, no `wget`. `flyctl ssh console` into an API machine will not
+give a prompt, and that is the image working as intended rather than a broken
+deploy. Diagnose from what the daemon publishes instead: `flyctl logs` for the
+logfmt stream, `/readyz` and `/healthz` over the tunnel for liveness, and the
+metrics families for behaviour. A question none of those can answer is a
+question the daemon should be reporting and currently is not — the fix is an
+emit, not a shell.

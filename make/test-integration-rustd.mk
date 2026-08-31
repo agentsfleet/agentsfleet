@@ -75,20 +75,48 @@ _migrate-test-db:
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
 
+# ONE guard, both lanes — $(call _rust_lane,<tally-name>,<label>,<command...>)
+#
+# Two ways a Rust lane reports success it did not earn, and this closes both:
+#
+#   1. The child failed and the pipe swallowed it. `tee` is the last command in
+#      the pipeline, so `$$?` is tee's status, not cargo's. `bash -o pipefail`
+#      is what makes the pipeline carry the child's failure instead — and it is
+#      spelled `bash` explicitly because make runs recipes under `/bin/sh`,
+#      which is dash on the Continuous Integration image and has no pipefail.
+#   2. Nothing ran. A `--ignored` selection matching nothing exits 0 and prints
+#      `0 passed`, which reads exactly like a pass. So the passing counts are
+#      summed across every `test result:` line and a zero total is a failure,
+#      whatever the exit status said.
+#
+# The tally file is a diagnostic convenience. Losing it may cost a developer an
+# artifact; it can never cost the exit status, which is read from the pipeline
+# rather than from anything written to disk.
+define _rust_lane
+mkdir -p "$(CURDIR)/.tmp"; \
+tally="$(CURDIR)/.tmp/$(1)"; \
+rm -f "$$tally"; \
+bash -o pipefail -c 'cd "$(RUSTD_DIR)" && { $(WITH_PROGRESS) "$(2)" -- $(3) ; } 2>&1 | tee "$$0"' "$$tally"; \
+status=$$?; \
+ran=$$(sed -n 's/.* \([0-9][0-9]*\) passed.*/\1/p' "$$tally" 2>/dev/null | awk '{ t += $$1 } END { print t + 0 }'); \
+if [ "$$status" -ne 0 ]; then \
+  echo "✗ $(2) failed (exit $$status)"; \
+  exit "$$status"; \
+elif [ "$$ran" -eq 0 ]; then \
+  echo "✗ $(2) ran no tests — a selection matching nothing is not a pass"; \
+  exit 1; \
+else \
+  echo "✓ $(2) — $$ran passed"; \
+fi
+endef
+
 # The wrapper merges the command's stderr into stdout itself. Its diagnostic log
 # is best-effort: losing that file may lose a convenience artifact, never the
-# child's exit status or the passing-test count held in memory.
+# child's exit status or the passing-test count.
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	mkdir -p "$(CURDIR)/.tmp"; \
-	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
-	rm -f "$$tally"; \
-	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
-	  --tally "$$tally" --cwd "$(RUSTD_DIR)" \
-	  --label "[rustd] Integration suite" -- \
-	  $(WITH_PROGRESS) "[rustd] integration suite" -- \
-	  cargo test --workspace --all-features --test '*' -- --ignored
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --all-features --test "*" -- --ignored)
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
@@ -138,15 +166,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
-	mkdir -p "$(CURDIR)/.tmp"; \
-	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \
-	rm -f "$$tally"; \
-	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
-	  --tally "$$tally" --cwd "$(RUSTD_DIR)" \
-	  --label "[rustd] Coverage run" -- \
-	  $(WITH_PROGRESS) "[rustd] coverage run" -- \
-	  cargo llvm-cov --workspace --all-features --no-clean \
-	    --lcov --output-path lcov.info --fail-under-lines $(RUSTD_COVERAGE_FLOOR) \
-	    -- --include-ignored; verdict=$$?; \
+	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-clean --lcov --output-path lcov.info --fail-under-lines $(RUSTD_COVERAGE_FLOOR) -- --include-ignored); \
+	verdict=$$?; \
 	echo "  report at $(RUSTD_DIR)/lcov.info"; \
 	exit $$verdict

@@ -26,10 +26,13 @@
 #[cfg(test)]
 use {opentelemetry as _, tokio as _};
 
+pub mod error;
 pub mod export;
+pub mod metrics;
 pub mod product;
 pub mod runner;
 pub mod semconv;
 
+pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, SpanDrops};
 pub use self::product::{Analytics, Telemetry};

@@ -9,10 +9,10 @@ on:
 
 jobs:
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
-  verify-dev:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: 1password/load-secrets-action@v4
+      - uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -20,11 +20,11 @@ jobs:
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
           TUNNEL_TOKEN: op://${{ vars.VAULT_DEV }}/cloudflare-tunnel-dev/credential
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
 
       # deploy/fly/cloudflared-dev is the tunnel app's build context, so the
       # from-scratch deploy branch needs the repo checked out.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Ensure cloudflared-dev tunnel is running
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to

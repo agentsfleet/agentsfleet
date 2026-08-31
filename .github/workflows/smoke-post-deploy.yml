@@ -16,7 +16,7 @@ jobs:
       startsWith(github.event.deployment.environment, 'Production')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -66,7 +66,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -89,7 +89,7 @@ jobs:
           retention-days: 7
 
   # Acceptance suite — only fires when the dashboard app deploys to PROD.
-  # Mirrors acceptance-e2e-dev (in deploy-dev.yml) but targets the production
+  # Mirrors acceptance-e2e (in deploy-dev.yml) but targets the production
   # app URL + clerk-prod credentials. The smoke job above stays unauth so it
   # remains valid for the marketing/agents projects too.
   acceptance-e2e-prod:
@@ -106,7 +106,7 @@ jobs:
       group: acceptance-e2e-prod
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -120,7 +120,7 @@ jobs:
 
       - name: Build the CLI once for browser CLI journeys
         # The release preflight and the CLI-driven journeys consume
-        # cli/dist/bin/agentsfleet.js — mirrors acceptance-e2e-dev.
+        # cli/dist/bin/agentsfleet.js — mirrors acceptance-e2e.
         run: |
           bun install --frozen-lockfile
           bun run build
@@ -136,7 +136,7 @@ jobs:
 
       - name: Restore Playwright browser cache
         id: playwright-cache-acceptance
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           # Real inputs only: the repo-root lock (ui/packages/app has no lock
@@ -154,7 +154,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Load Clerk PROD credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -179,7 +179,7 @@ jobs:
         uses: actions/upload-artifact@v7
         # Raw per-test artifacts are written DURING the run — a canceled or
         # hard-failed job still uploads diagnosable evidence even when the
-        # HTML report was never rendered. Mirrors acceptance-e2e-dev.
+        # HTML report was never rendered. Mirrors acceptance-e2e.
         if: always()
         with:
           name: acceptance-e2e-prod-results

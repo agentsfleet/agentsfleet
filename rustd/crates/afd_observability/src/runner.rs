@@ -18,13 +18,25 @@
 //! that per-runner attribution would not help with, and the failure totals stay
 //! correct either way.
 //!
-//! # What this is NOT
+//! # The overflow spelling, settled (M181 §3)
 //!
-//! The overflow series' NAME. The OpenTelemetry specification marks an
-//! overflowing attribute set with `otel.metric.overflow`, the Zig uses an
-//! `_other` label value, and choosing between them belongs with the milestone
-//! that configures the metrics pipeline and owns the dashboards that read it.
-//! What is settled here is the BOUND and the constant memory.
+//! This module used to defer the overflow series' NAME to the milestone that
+//! configures the metrics pipeline. That milestone is M181, and the answer is
+//! that the two candidate spellings are not alternatives — they mean different
+//! things and both exist.
+//!
+//! [`OVERFLOW_RUNNER`] (`_other`) is OURS. It is a domain decision made in
+//! front of the instrument: past [`MAX_SERIES`] admitted runners, the rest are
+//! attributed together on purpose, and the total stays correct. An operator
+//! seeing it is seeing a deployment larger than the slot table, which is
+//! information, not a fault.
+//!
+//! `otel.metric.overflow` is the SDK's, spec-fixed, and set when the SDK's own
+//! per-stream cardinality cap is hit. It is a BACKSTOP behind our admission and
+//! it must never fire — if it does, something wrote an attribute the typed
+//! layer was supposed to make unwritable. Spelling that as `_other` would
+//! disguise a bug as a capacity notice, which is why the two stay distinct and
+//! why a negative test asserts zero data points ever carry the SDK's marker.
 //!
 //! # Why a map behind a lock, and not a lock-free slot table
 //!
@@ -44,6 +56,23 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use afd_wire::report::{FailureClass, Outcome};
+
+/// The `runner_id` value every runner past the slot table is attributed under.
+///
+/// The Zig daemon's spelling, kept byte-exact: every dashboard and alert that
+/// reads this label reads it on both sides of the swap, and a renamed overflow
+/// bucket is a panel that silently stops matching.
+///
+/// Deliberately NOT `otel.metric.overflow` — see the module note. This is a
+/// bounded-attribution decision; that is a bug indicator.
+pub const OVERFLOW_RUNNER: &str = "_other";
+
+/// The attribute key the SDK sets when its OWN cardinality cap is hit.
+///
+/// Named here so a test can assert it never appears. Nothing in this crate
+/// writes it; the SDK does, and only when admission upstream has already
+/// failed to do its job.
+pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 
 /// How many distinct runners get their own series.
 ///
@@ -190,6 +219,33 @@ impl RunnerMetrics {
     #[must_use]
     pub fn series_count(&self) -> usize {
         self.series.read().map_or(0, |series| series.len())
+    }
+
+    /// The `runner_id` label value this runner's measurements are recorded
+    /// under: its own identifier, or [`OVERFLOW_RUNNER`] once the table is full.
+    ///
+    /// This is the admission decision made READABLE. The bound already existed
+    /// — `with` silently routes an unadmitted runner to the overflow counters —
+    /// but the label that decision produces was never exposed, so the export
+    /// layer had no way to ask what a measurement should be attributed to
+    /// without duplicating the rule.
+    ///
+    /// Answering the identifier is not a promise it is admitted YET: a runner
+    /// with room is admitted by its first record, not by being asked about.
+    /// What is promised is the label a record made now would carry.
+    #[must_use]
+    pub fn label_for<'id>(&self, runner_id: &'id str) -> &'id str {
+        if self.existing(runner_id).is_some() || self.has_room() {
+            return runner_id;
+        }
+        OVERFLOW_RUNNER
+    }
+
+    /// Whether the table could still admit a runner it has not seen.
+    fn has_room(&self) -> bool {
+        self.series
+            .read()
+            .is_ok_and(|series| series.len() < MAX_SERIES)
     }
 
     /// How many records the overflow series absorbed.

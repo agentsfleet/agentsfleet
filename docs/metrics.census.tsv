@@ -1,0 +1,119 @@
+# The executable metric-family contract. Tab-separated; lines starting with #
+# are comments. One row per family the daemon exports over OTLP — the Rust
+# registry test include_str!s this file and grades the registry against it in
+# both directions. This file is the SINGLE source of truth for the export —
+# docs/architecture/observability.md points here and repeats none of it.
+# Transcribed from the Zig registry declarations
+# (src/agentsfleetd/observability/otel_metrics_families.zig + otel_metrics_dims.zig);
+# histogram bounds are in the family's declared unit (the Zig ms bounds are
+# already converted to seconds here, because the Rust side records f64 seconds
+# and deletes the scale concept).
+#
+# Columns:
+#   name         wire family name, byte-exact
+#   kind         counter | histogram | gauge
+#   number       u64 | f64
+#   unit         UCUM unit string, byte-exact
+#   temporality  delta | cumulative | -   (gauges carry no temporality)
+#   labels       comma-joined label keys, or -   (cost families additionally
+#                carry the evented attribute keys listed in the trailing
+#                # evented-attrs comment; runner families carry runner_id)
+#   bounds       comma-joined histogram bucket bounds in `unit`, or -
+#   policy       fixed:<max_series> | runner:<slots> | shared:cost
+#   live_read    yes | no   (yes → observable instrument fed by a snapshot)
+#   category     latency | traffic | errors | saturation | health (operator legend
+#                in docs/architecture/observability.md §Metric family census)
+#   watch_for    one line of operator guidance — what a change in this family means
+#
+name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
+gen_ai.invoke_agent.duration	histogram	f64	s	delta	gen_ai.request.model	0.1,0.2,0.4,0.8,1.6,3.2,6.4,12.8,25.6,51.2,102.4,204.8,409.6	shared:cost	no	latency	runner wall time per invocation
+agentsfleet.invoke_agent.token.usage	histogram	f64	{token}	delta	gen_ai.request.model	1,4,16,64,256,1024,4096,16384,65536,262144,1048576,4194304,16777216,67108864	shared:cost	no	traffic	token spend per invocation, by `gen_ai.token.type`
+agentsfleet.invoke_agent.cache_read.token.usage	histogram	f64	{token}	delta	gen_ai.request.model	1,4,16,64,256,1024,4096,16384,65536,262144,1048576,4194304,16777216,67108864	shared:cost	no	traffic	cache-read subset of input tokens
+agentsfleet.billing.credit.consumed	counter	u64	{nanocredit}	delta	gen_ai.request.model	-	shared:cost	no	traffic	nanocredit spend by charge class
+agentsfleet.telemetry.samples_dropped	counter	u64	1	delta	-	-	shared:cost	no	health	exporter self-observability: ring + aggregation loss
+agentsfleet_repair_production_to_queue_seconds	histogram	f64	s	delta	-	1,5,30,300,900,960,1800,3600	fixed:1	no	latency	provider completion to proof-qualified verifier queueing
+agentsfleet_repair_queue_to_completion_seconds	histogram	f64	s	delta	-	1,5,30,300,900,960,1800,3600	fixed:1	no	latency	proof-qualified verifier queueing to completed Fleet report
+agentsfleet_api_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	any growth: requests shed at the cap
+agentsfleet_api_in_flight_requests	gauge	u64	{request}	-	-	-	fixed:1	no	saturation	approaching `api_max_in_flight_requests`
+agentsfleet_sse_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	streams refused at the cap
+agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation	approaching the stream cap
+agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
+agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	pub/sub redials; spikes mean Redis instability
+agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
+agentsfleet_fleet_triggered_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	trigger volume
+agentsfleet_http_trace_suppressed_total	counter	u64	1	cumulative	reason	-	fixed:4	no	health	span budget shedding; storms stay visible
+agentsfleet_otlp_queue_depth	gauge	u64	{entry}	-	signal	-	fixed:3	no	saturation	exporter ring fill per signal
+agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:9	no	errors	telemetry loss counted at the source
+agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)
+agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
+agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
+agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:4	no	errors	rejected signups per cause
+agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
+agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
+agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
+agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	readiness backlog (not summable across replicas)
+agentsfleet_fleet_ready_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	Redis index writes failing
+agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
+agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing
+agentsfleet_account_teardown_unregister_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	teardown purges failing to unregister
+agentsfleet_repair_provider_results_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, or refused production evidence
+agentsfleet_repair_correlations_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	errors	exact, missed, and ambiguous repair correlations
+agentsfleet_repair_verification_intents_created_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable verifier intents created after exact correlation
+agentsfleet_repair_dispatch_retried_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	failed verifier dispatch attempts awaiting retry
+agentsfleet_repair_synthetic_events_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	emitted and idempotently replayed proof-qualified events
+agentsfleet_repair_verifier_runs_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	queued and completed verifier Fleet runs
+agentsfleet_repair_dispatch_due_batch	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	due verifier sample capped at the dispatcher batch limit
+agentsfleet_repair_dispatch_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest due verifier intent
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:24	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:24	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_pool_result_total	counter	u64	1	cumulative	pool_result	-	fixed:4	no	saturation	`timeout` = pool starved; `error` = datastore down
+agentsfleet_library_cache_outcome_total	counter	u64	1	cumulative	cache	-	fixed:4	no	latency	hit ratio of the global catalogue cache
+agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
+agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface
+agentsfleet_redis_pool_active	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (leased)
+agentsfleet_redis_pool_idle	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (ready)
+agentsfleet_redis_pool_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	dial volume
+agentsfleet_redis_pool_overflow_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	burst dialing past `max_idle`
+agentsfleet_redis_pool_poisoned_connections_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: in-flight transport errors
+agentsfleet_redis_pool_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: retry-layer redials
+agentsfleet_redis_pool_forced_closes_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: over-cap releases
+agentsfleet_redis_pool_acquire_timeouts_total	counter	u64	1	cumulative	-	-	fixed:1	yes	errors	currently always 0; acquires never block
+agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
+agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
+agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill
+agentsfleet_memory_hydration_dropped_entries_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	hydration overflow (entries)
+agentsfleet_memory_hydration_dropped_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	errors	hydration overflow (bytes)
+agentsfleet_memory_cap_evictions_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	cap pressure on stored memory
+agentsfleet_memory_capture_truncated_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures clipped at the push byte budget
+agentsfleet_memory_capture_skipped_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures lost to validation
+agentsfleet_memory_search_zero_hits_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	searches finding nothing
+agentsfleet_process_resident_memory_bytes	gauge	u64	By	-	-	-	fixed:1	yes	saturation	process RSS
+agentsfleet_sensitive_request_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
+agentsfleet_sensitive_response_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
+agentsfleet_sensitive_response_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	sensitive writes failing
+agentsfleet_runner_failures_total	counter	u64	1	cumulative	runner_id,reason	-	runner:4096	no	errors	failure rate per reason
+agentsfleet_runner_failures_overflow_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	increments only past 4096 runner slots
+agentsfleet_runner_executions_total	counter	u64	1	cumulative	runner_id,outcome	-	runner:4096	no	traffic	run volume per runner
+agentsfleet_runner_last_seen_seconds	gauge	u64	s	-	runner_id	-	runner:4096	no	health	a runner going quiet
+agentsfleet_runner_active_leases	gauge	u64	{lease}	-	runner_id	-	runner:4096	no	saturation	best-effort; self-heals on restart
+#
+# evented-attrs: the cost families' record API may additionally attach these
+# keys, bounded by the evented admission layer (never free-form):
+#   gen_ai.operation.name, gen_ai.provider.name, gen_ai.token.type,
+#   error.type, agentsfleet.execution.posture, agentsfleet.billing.charge.type
+#
+# shared:cost declares no series ceiling, and that is deliberate. Every label a
+# cost family carries is closed by construction: the evented attrs above are
+# enums, and gen_ai.request.model is a vendor-published list. The Zig daemon's
+# COST_SERIES_BUDGET = 256 sized a static array in an aggregator hand-rolled
+# because Zig has no OpenTelemetry SDK; it was never derived from these rows
+# (otel_metrics_families.zig:246 excludes cost families from that arithmetic
+# outright). The Rust SDK allocates per stream, so the constraint is gone, and
+# a cap here could only fire by folding a real model's spend into an overflow
+# bucket — losing the per-model cost attribution these families exist to give.
+# The SDK's own 2000-per-stream default remains as a backstop that Dimension
+# 3.2 requires never to fire.
+#
+# runner:<n> is the exception, and the only one: runner_id is supplied by the
+# customer spinning up runners, so it is bounded by admission or not at all.

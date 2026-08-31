@@ -91,6 +91,16 @@ services:
           # verifying would also show.
           openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/foreign-ca.key -out /tls/foreign-ca.crt -days 3650 -subj "/CN=agentsfleet-foreign-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
         fi &&
+        # CERTIFICATES are public material, KEYS are not. openssl writes the
+        # whole directory 0600 root, and the daemon image runs as uid 65532
+        # (distroless nonroot), so it could not read the trust anchor it is
+        # handed: `[UZ-STARTUP-004] the TLS certificate authority file
+        # /tls/ca.crt could not be read` / `Permission denied (os error 13)`.
+        # A trust anchor is offered TO clients and a leaf is presented in every
+        # handshake, so neither is secret; `.key` stays 0600. Outside the
+        # generation branch on purpose — an already-populated volume skips that
+        # branch entirely and would otherwise keep the unreadable modes forever.
+        chmod 0644 /tls/ca.crt /tls/server.crt /tls/foreign-ca.crt &&
         redis-server --tls-port 6379 --port 6380 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/ca.crt --tls-auth-clients no --requirepass agentsfleet
     ports:
       # Per-worktree but fixed -- see the postgres service above.
@@ -178,7 +188,15 @@ services:
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key
       # Override DB/Redis to use compose service names instead of localhost.
       DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
-      REDIS_URL_API: rediss://:agentsfleet@redis:6379/api
+      # No path segment. `redis_config.zig:109` takes `hostpath[0..slash_pos]`
+      # and never reads what follows, so the `/api` this line carried since
+      # M92 selected nothing — the Zig daemon has always used db 0. redis-rs
+      # parses that same segment as a database INDEX and refuses `api` with
+      # `Invalid database number`, so the suffix booted one daemon by being
+      # ignored and blocked the other by being read. Dropped rather than
+      # spelled `/0`: db 0 is the default, and a segment nothing selects is
+      # the thing that made this ambiguous.
+      REDIS_URL_API: rediss://:agentsfleet@redis:6379
       REDIS_TLS_CA_CERT_FILE: /tls/ca.crt
       MIGRATE_ON_START: "1"
     depends_on:
@@ -188,11 +206,11 @@ services:
         condition: service_healthy
     volumes:
       - redis-tls:/tls:ro
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # No healthcheck. The image is distroless — no shell, no wget, no HTTP
+    # client — so a compose healthcheck has nothing to run and the container
+    # would sit unhealthy forever. Readiness is declared where it is acted on:
+    # deploy/fly/agentsfleetd-{dev,prod}/fly.toml's `[checks.readiness]` polls
+    # /readyz. Nothing here depends on this service being healthy.
 
 volumes:
   postgres-data:
