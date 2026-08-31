@@ -18,13 +18,26 @@
 //! refuses. Delete first, and the producer blocks, then finds no credential and
 //! answers [`Activation::CredentialMissing`] having written nothing.
 //!
-//! The other two tables are reached by WRITING them, in the treaty's order —
-//! credential, entries, selection — because a write is a lock. The delete
-//! spells all three as explicit `FOR UPDATE` reads because it needs to COUNT
-//! references before deciding; this side does not read them to decide, so a
-//! pre-lock here would be ceremony. Notably `SELECT … FOR UPDATE` on a tenant
-//! with no selection row locks nothing at all — Postgres has no gap locks — so
-//! a pre-lock would be an illusion on exactly the first-activation path.
+//! The correctness does NOT rest on "a write is a lock", which is too loose to
+//! rely on: `ON CONFLICT DO NOTHING` waits on a unique conflict without
+//! retaining a row lock on the tuple it lost to, and `DO UPDATE` takes `FOR NO
+//! KEY UPDATE` on the row it finds. The arms behave differently, and neither
+//! is the guarantee.
+//!
+//! It rests on the vault row alone. Every operation that can conflict over one
+//! credential — this activation, the credential delete, the registry-entry
+//! delete — locks that same `vault.secrets` tuple FIRST, so no two of them are
+//! ever inside the entries or selection writes at once. Each then acquires
+//! strictly forward in the treaty's order and never reaches back for something
+//! it skipped, which is the no-deadlock condition however each lock is taken.
+//!
+//! The other two participants spell all three locks as explicit `FOR UPDATE`
+//! reads because they READ to decide — the credential delete counts
+//! references, the entry delete asks whether it is removing the active
+//! selection. This side reads neither table to decide anything, so a pre-lock
+//! would add ceremony without adding a guarantee: `SELECT … FOR UPDATE` on a
+//! tenant with no selection row locks nothing at all, Postgres having no gap
+//! locks, which is precisely the first-activation path.
 //!
 //! The treaty exists only because `secret_ref` is TEXT rather than a foreign
 //! key. `docs/architecture/tenant_provider_v2.md` §V2-1 is the schema change
@@ -49,7 +62,7 @@ use sqlx::{Acquire as _, Row as _, Transaction};
 use crate::error::{
     Result, entropy_drained, mint_failed, provider_no_workspace, query, vault_open,
 };
-use crate::provider::endpoint::OPENAI_COMPATIBLE;
+use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
 use crate::provider::selection::Selection;
 use crate::provider::store::Providers;
 use crate::provider::{SecretKind, managed, sql};
@@ -86,8 +99,8 @@ pub enum Activation {
     NotAProviderKey,
     /// The credential is held and will not read as a provider credential.
     Malformed,
-    /// The credential's endpoint was refused, with the guard's own word.
-    EndpointRefused(&'static str),
+    /// The credential's endpoint was refused, as the guard classified it.
+    EndpointRefused(Rejection),
     /// No usable model: none named, or none the catalogue carries.
     ModelUnknown,
 }
@@ -141,7 +154,10 @@ impl Providers {
         let opened = open_envelope(&row, &workspace, secret_ref, self.vault_key())?;
         let vetted = match managed::vet(opened.expose()) {
             Ok(vetted) => vetted,
-            Err(refused) => return Ok(refusal_of(&refused)),
+            Err(managed::Refused::Malformed) => return Ok(Activation::Malformed),
+            Err(managed::Refused::Endpoint(rejection)) => {
+                return Ok(Activation::EndpointRefused(rejection));
+            }
         };
 
         let Some(effective) = effective_model(model, vetted.model.as_deref()) else {
@@ -167,16 +183,6 @@ impl Providers {
 fn effective_model<'a>(override_: Option<&'a str>, credential: Option<&'a str>) -> Option<&'a str> {
     let named = override_.or(credential)?;
     (!named.is_empty() && named.trim() == named).then_some(named)
-}
-
-/// Which outcome a vetting refusal renders as.
-///
-/// The guard's own word travels for an endpoint; everything else a credential
-/// body can be wrong about is one answer to a caller.
-fn refusal_of(refused: &crate::Error) -> Activation {
-    refused
-        .endpoint_rejection()
-        .map_or(Activation::Malformed, Activation::EndpointRefused)
 }
 
 /// One row's envelope, rebuilt from its columns and opened.

@@ -187,20 +187,6 @@ impl Error {
         )
     }
 
-    /// The guard's word for a refused endpoint, when that is what failed.
-    ///
-    /// Activation renders this refusal as an outcome a client is told, where
-    /// every other provider-family failure is an internal fault. The word is
-    /// the guard's own — never the URL and never the host, which sit beside an
-    /// `api_key` in the same credential.
-    #[must_use]
-    pub const fn endpoint_rejection(&self) -> Option<&'static str> {
-        match self.kind() {
-            ErrorKind::ProviderEndpoint { reason } => Some(reason),
-            _not_an_endpoint => None,
-        }
-    }
-
     /// Whether a declared credential simply has no vault row.
     ///
     /// Answered separately because the remedy is the operator's and not this

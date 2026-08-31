@@ -239,12 +239,13 @@ pub(crate) async fn apply<D: Services>(
                 DETAIL_SECRET_DATA_MALFORMED,
             ));
         }
-        // The guard's own word for what it refused — never the URL and never
-        // the host, which sit beside an `api_key` in the same credential.
-        Activation::EndpointRefused(reason) => {
+        // The guard's own classification, rendered to its stable word — never
+        // the URL and never the host, which sit beside an `api_key` in the
+        // same credential.
+        Activation::EndpointRefused(rejection) => {
             return Err(Refusal::coded(
                 error_code::PROVIDER_BASE_URL_INVALID,
-                reason,
+                rejection.as_str(),
             ));
         }
         Activation::ModelUnknown => {
