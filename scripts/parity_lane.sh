@@ -267,22 +267,38 @@ compare_mode() {
   # that does, and calling that difference a regression is the register
   # failing to mean anything in the mode that diffs two daemons.
   declared="$(declared_divergences)"
+  local is_declared status_a status_b
   while IFS=$'\t' read -r method path; do
     [ -n "$method" ] || continue
-    if printf '%s\n' "$declared" | grep -qxF "$method $path"; then
-      declared_count=$((declared_count + 1))
-      printf '  declared: %s %s may differ, per the divergence register\n' "$method" "$path"
-      continue
-    fi
+    is_declared=0
+    printf '%s\n' "$declared" | grep -qxF "$method $path" && is_declared=1
     concrete="$(concrete_path "$path")"
     snapshot "$base_a" "$method" "$concrete" >"$snap_a"
     snapshot "$base_b" "$method" "$concrete" >"$snap_b"
     probed=$((probed + 1))
-    if ! diff -u "$snap_a" "$snap_b" >"$WORK_DIR/delta" 2>&1; then
-      differed=$((differed + 1))
-      err "$method $path — $base_a and $base_b disagree"
-      sed -n '3,$p' "$WORK_DIR/delta" | sed 's/^/      /' >&2
+    diff -u "$snap_a" "$snap_b" >"$WORK_DIR/delta" 2>&1 && continue
+
+    # They differ. A declared route is still PROBED, never skipped: the register
+    # names ONE difference — that a daemon does not serve the route — and a
+    # skip would accept every other difference on it too, which is the register
+    # working as a mute button rather than a contract. So the declared case is
+    # allowed only when the difference IS that absence: exactly one side
+    # answers ROUTE_ABSENT. Status, header or body drift on the side that DOES
+    # serve it still fails, as it would on any other route.
+    status_a="$(sed -n 's/^status: //p' "$snap_a")"
+    status_b="$(sed -n 's/^status: //p' "$snap_b")"
+    if [ "$is_declared" -eq 1 ] \
+      && { [ "$status_a" = "$ROUTE_ABSENT_STATUS" ] || [ "$status_b" = "$ROUTE_ABSENT_STATUS" ]; } \
+      && [ "$status_a" != "$status_b" ]; then
+      declared_count=$((declared_count + 1))
+      printf '  declared: %s %s — %s on one side, %s on the other, per the divergence register\n' \
+        "$method" "$path" "$status_a" "$status_b"
+      continue
     fi
+
+    differed=$((differed + 1))
+    err "$method $path — $base_a and $base_b disagree"
+    sed -n '3,$p' "$WORK_DIR/delta" | sed 's/^/      /' >&2
   done < <(roster)
   [ "$declared_count" -eq 0 ] || ok "$declared_count declared divergence(s) honoured"
   guard_probed "$probed"
