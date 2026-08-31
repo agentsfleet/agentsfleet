@@ -35,6 +35,7 @@ use crate::harness;
 use self::harness::Fleet;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code::{self, ErrorCode};
+use afd_core::id::Uuid7;
 use serde_json::Value;
 use http::{Method, StatusCode, header};
 
@@ -286,5 +287,52 @@ async fn a_dashboard_base_that_is_not_a_url_is_refused_rather_than_relayed_to() 
         Some(error_code::CONNECTOR_NOT_CONFIGURED.as_str()),
         "an unusable dashboard base is this deployment's misconfiguration, and \
          is answered as one"
+    );
+}
+
+/// A deployment with no admin workspace cannot connect anything, and says so.
+///
+/// The admin workspace is where this deployment's own platform credentials
+/// live, so without one there is no app bag to start a connect from, no secret
+/// to sign the state with, and nothing for the rest of the handler to do. The
+/// check sits FIRST for that reason — ahead of the secret read and the nonce —
+/// and it is the cheapest of the three refusals that answer `UZ-CONN-001`.
+///
+/// Reaching this needs a caller who is otherwise entirely in order: a real
+/// bearer, the write scope, and a workspace they own. That is the point. The
+/// refusal is not about them, which is why it is a 503 and not a 4xx, and why
+/// getting it wrong would tell an operator's user that their own request was
+/// malformed when the deployment is simply not set up.
+#[tokio::test]
+async fn a_deployment_with_no_admin_workspace_cannot_start_a_connect() {
+    let workspace = Uuid7::parse("0199a0b0-0000-7000-8000-0000000000c1")
+        .expect("the fixture workspace is canonical");
+    let router = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            SUBJECT,
+            ScopeSet::from_scopes(&[Scope::ConnectorWrite]),
+        )
+        .with_owned_workspace(workspace.clone())
+        .router();
+
+    let target = format!(
+        "/v1/workspaces/{}/connectors/{SHIPPED}/connect",
+        workspace.as_str()
+    );
+    let response = harness::send(&router, Method::POST, &target, Some(TENANT_KEY), "").await;
+
+    let status = response.status();
+    let document = harness::json_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the caller is in order; the deployment is not: {document}"
+    );
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::CONNECTOR_NOT_CONFIGURED.as_str()),
+        "a deployment holding no admin workspace can configure no app, and \
+         answers that rather than a refusal about the caller"
     );
 }
