@@ -151,18 +151,25 @@ impl Providers {
 
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_WRITE))?;
-        // A credential already gone leaves no reference race to lose: this
-        // entry is an orphan and removing it is exactly the right cleanup.
-        sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
+        let held = sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
             .bind(tenant.as_str())
             .bind(&*entry.secret_ref)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
 
-        if self
-            .selection_holds(&mut transaction, tenant, &entry)
-            .await?
+        // The active check is SKIPPED when the credential is already gone, and
+        // that is deliberate rather than an omission. What the check protects is
+        // "the active selection always has a matching entry" — and a selection
+        // naming a credential nobody holds has already lost the guarantee the
+        // entry was carrying. Refusing here would stand on a broken invariant to
+        // strand a row the tenant cannot remove and cannot activate: the entry
+        // is an orphan, and removing it is the cleanup. There is no reference
+        // race left to lose either, which is why nothing is held over it.
+        if held.is_some()
+            && self
+                .selection_holds(&mut transaction, tenant, &entry)
+                .await?
         {
             return Ok(Removed::Active);
         }

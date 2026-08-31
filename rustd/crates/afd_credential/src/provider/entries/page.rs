@@ -129,13 +129,14 @@ impl Providers {
             .map_err(query(CONTEXT_PAGE))?;
 
         let has_more = rows.len() > limit as usize;
-        let mut entries: Vec<Entry> = rows
+        let entries: Vec<Entry> = rows
             .iter()
             .take(limit as usize)
             .map(read_entry)
             .collect::<Result<_>>()?;
-        entries.shrink_to_fit();
 
+        // From the last SERVED row, never the extra one: the seek is exclusive,
+        // so the next page has to resume after what the caller already saw.
         let next = has_more.then(|| entries.last().map(boundary_of)).flatten();
         Ok((entries, next))
     }
@@ -155,7 +156,17 @@ impl Providers {
         let Some(workspace) = self.primary_workspace(tenant).await? else {
             return Ok(HashMap::new());
         };
-        let names: Vec<&str> = entries.iter().map(|entry| &*entry.secret_ref).collect();
+        // Deduplicated for the same reason the rate pairs are: one credential
+        // legitimately backs several model rows, and the array is a question
+        // asked once per distinct name rather than once per row that asks it.
+        let mut names: Vec<&str> = entries.iter().map(|entry| &*entry.secret_ref).collect();
+        names.sort_unstable();
+        names.dedup();
+
+        // Constructed here rather than held as a field: `Db` is a handle over an
+        // `Arc`-backed pool, so this is one refcount bump, and a `Directory` has
+        // no key to carry. What matters is WHICH type reads — one that cannot
+        // decrypt — not how long it lives.
         Directory::new(self.pool().clone())
             .describe(&workspace, &names)
             .await
@@ -219,6 +230,14 @@ fn wanted_pairs<'a>(
 }
 
 /// The rate for one row's pair, or nothing when either half is unknown.
+///
+/// The two `to_owned`s are the price of an owned map key, and they were weighed
+/// rather than missed. `HashMap` has no way to look a tuple key up by a pair of
+/// borrows — `Borrow` cannot span two fields, and `raw_entry` is unstable — so
+/// the alternatives are this, a map borrowing from the rows the query returned
+/// (which would leak `PgRow` into the page's composition), or the positional
+/// slots this design exists to delete. Two short allocations per row, at most a
+/// hundred rows, against six network round trips already spent.
 fn rate_for(
     rates: &HashMap<(String, String), CatalogueRate>,
     credential: Option<&Descriptor>,

@@ -9,6 +9,7 @@
 mod api_key;
 mod billing;
 mod cli_credential;
+mod model_entry;
 mod models;
 mod provider;
 mod workspace;
@@ -17,6 +18,16 @@ pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
 // The refusal sentences, for the router suite to assert by identity.
 pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE};
+pub use self::model_entry::{
+    DETAIL_CURSOR_MISMATCH as DETAIL_ENTRY_CURSOR_MISMATCH, DETAIL_DELETE_ACTIVE,
+    DETAIL_DUPLICATE_ENTRY, DETAIL_ENTRY_ID, DETAIL_ENTRY_NOT_FOUND, DETAIL_MODEL_ID_REQUIRED,
+    DETAIL_MODEL_ID_TOO_LONG, DETAIL_SECRET_REF_REQUIRED as DETAIL_ENTRY_SECRET_REF_REQUIRED,
+    DETAIL_SECRET_REF_UNKNOWN,
+};
+pub(crate) use self::model_entry::{
+    create as create_model_entry, list as list_model_entries, remove as remove_model_entry,
+    update as update_model_entry,
+};
 pub(crate) use self::models::catalogue;
 pub use self::models::{
     DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH,

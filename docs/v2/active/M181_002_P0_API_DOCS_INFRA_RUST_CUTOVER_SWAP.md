@@ -163,7 +163,7 @@ cannot pass this section by mounting a route that answers wrongly.
 - **Dimension 1.4** — `doctor` and `backfill` produce parity outcomes on seeded states → Test `test_ops_subcommand_parity`
 - **Dimension 1.5** — the tenant provider surface serves all three methods: the view composes the tenant's own selection with the live platform default and never 404s, the reset writes an explicit platform row from the live default, and the activation's ladder answers each of its five refusals with the registry code the Zig answers — every refusal a client can provoke decided from a value rather than raised as an error → Test `test_tenant_provider_ladder` — **IN_PROGRESS.** All three methods are served and mounted (`afd_api_tenant/src/handler/tenant/provider.rs`). The refusal matrix in front of the verbs and the ladder's FIRST rung are green at router tier: `cargo test -p afd_api --test tenant_plane` → 208 passed, 8 of them `tenant_provider_route.rs`. Rungs two through five answer from real rows, so they are graded by `integration_rotation/activation.rs` — written, `#[ignore]`d, and NOT YET RUN: the lane needs live Postgres and Redis.
 - **Dimension 1.6** — the activation is one transaction that decrypts once, and never at all on the refusals a client provokes: a credential absent or not a provider key is decided from `vault.secrets` metadata on the already-locked row, and the catalogue gate and the selection write are ONE statement, so no model can be deleted between checking it and storing its ceiling → Test `test_activation_is_atomic_and_decrypts_once` — **IN_PROGRESS.** The shape is built: one transaction, one decrypt, the gate and the write as one `INSERT … SELECT … RETURNING`. Both properties are datastore-observable only, so the evidence is the six `#[ignore]`d cases in `integration_rotation/activation.rs`, which have compiled but not run.
-- **Dimension 1.7** — the model-entries quad and the workspace fleet-libraries pair serve their route × method set, each refusal answering its registry code → Test `test_model_entries_and_libraries_ported` — **NOT STARTED.** The two remaining feature ports of §1.
+- **Dimension 1.7** — the model-entries quad and the workspace fleet-libraries pair serve their route × method set, each refusal answering its registry code → Test `test_model_entries_and_libraries_ported` — **IN_PROGRESS.** The QUAD is served and mounted (`afd_api_tenant/src/handler/tenant/model_entry.rs`, four verbs on `afd_credential::provider::entries`); the pair is not started. Everything in front of the verbs is green at router tier: `cargo test -p afd_api --all-features --test tenant_plane` → 221 passed, 13 of them `tenant_model_entry_route.rs`. The outcomes decided from rows — a duplicate pair, an id that resolves to nothing, an entry that is the active selection — are datastore-observable only and are NOT YET GRADED: they need the integration lane.
 
 ### §2 — OTLP export: the transport the crate was shaped to receive
 
@@ -385,6 +385,30 @@ N/A — no files deleted. The Zig daemon's retirement is a separate post-cutover
 - **Patch-vs-refactor verdict:** this is a **patch** to the operational layer — pipelines, lanes, runbook — plus one genuinely new surface, the generated OpenAPI document. The refactor was M176–M180; this milestone proves it and moves the traffic.
 
 ## Discovery (consult log)
+
+**Declared divergence — the registry page emits no metric families yet.** The
+Zig list handler opens a read window and a stage scope, and between them they
+emit seven declared families for `surface=tenant_models`
+(`agentsfleet_library_stage_duration_seconds_total` and its observation
+denominator, `_read_outcome_total`, `_pool_result_total`, `_payload_bytes_total`,
+`_results_total`, `_cache_outcome_total`). The Rust port emits none of them, and
+the port did NOT hand-roll a `ReadScope` equivalent to do so.
+
+Both halves of that are deliberate. `afd_observability` already carries the
+typed, census-backed registry those families are declared in
+(`docs/metrics.census.tsv` lines 67-73) over `opentelemetry_sdk`, and what it
+does not carry is a Meter — because §2 is the section that builds the OTLP
+transport, and the Rust daemon exports nothing at all until it lands. Emitting
+into a meter that does not exist is dead code (RULE NDC), and re-implementing
+the Zig's stage timers by hand to feed it later is the transliteration RULE PORT
+forbids.
+
+So the gap is named here rather than closed twice: §2 constructs the meter, and
+the surface label these families are keyed by is what the registry page will
+report under. Until then the page's observability is `tracing` alone. This is a
+divergence for the register, not a defect — but it IS a divergence, and the
+parity differ must read it as declared.
+
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.

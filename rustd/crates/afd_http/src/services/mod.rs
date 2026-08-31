@@ -43,6 +43,7 @@ mod grant;
 mod ingress;
 mod leasing;
 mod memory;
+mod model_entry;
 mod preference;
 mod provider;
 mod schedule;
@@ -61,6 +62,7 @@ pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
+pub use self::model_entry::TenantModelEntries;
 pub use self::preference::WorkspacePreferences;
 pub use self::provider::TenantProviders;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
@@ -402,7 +404,12 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// every sealed row opens under, so a suite proving this surface's
     /// refusals would otherwise have to mint one to say that a pool answers
     /// nothing.
-    type TenantProviders: TenantProviders;
+    /// Bound by BOTH surfaces the store answers rather than split into two
+    /// associated types: the registry's `active` flag is computed against the
+    /// selection, and its page carries the platform default, so a handler
+    /// holding one and not the other could not render a row. Two narrow traits
+    /// reached through one accessor is `M-DI-HIERARCHY`'s own shape.
+    type TenantProviders: TenantProviders + TenantModelEntries;
 
     /// The store `/v1/tenants/me/provider` acts through.
     ///

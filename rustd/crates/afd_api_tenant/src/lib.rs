@@ -50,7 +50,14 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
                 .put(handler::tenant::provider_apply::<D>)
                 .delete(handler::tenant::provider_reset::<D>),
         ),
-        TenantRoute::ModelEntries | TenantRoute::ModelEntry => None,
+        TenantRoute::ModelEntries => Some(
+            get(handler::tenant::list_model_entries::<D>)
+                .post(handler::tenant::create_model_entry::<D>),
+        ),
+        TenantRoute::ModelEntry => Some(
+            patch(handler::tenant::update_model_entry::<D>)
+                .delete(handler::tenant::remove_model_entry::<D>),
+        ),
     }
 }
 

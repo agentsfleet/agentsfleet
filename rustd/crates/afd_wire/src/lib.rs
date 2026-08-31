@@ -70,5 +70,6 @@ pub mod runner;
 pub mod schedule;
 pub mod secret;
 pub mod tenant;
+pub mod tenant_model_entry;
 pub mod tenant_provider;
 pub mod workspace;
