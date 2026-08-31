@@ -363,8 +363,8 @@ async fn a_row_carrying_a_word_this_build_cannot_read_fails_the_read() {
                 .bind(unreadable)
                 .execute(&mut *connection)
                 .await
-                .expect("planting an unreadable word");
-        }
+                .expect("planting an unreadable word")
+        };
 
         assert!(
             lane.store.list(&lane.fleet_id()).await.is_err(),
@@ -383,8 +383,8 @@ async fn a_row_carrying_a_word_this_build_cannot_read_fails_the_read() {
             .bind(readable.schedule_id.as_str())
             .execute(&mut *connection)
             .await
-            .expect("restoring the row between cases");
-        }
+            .expect("restoring the row between cases")
+        };
     }
 
     // Each case restored its row, so the lane reads normally again: the

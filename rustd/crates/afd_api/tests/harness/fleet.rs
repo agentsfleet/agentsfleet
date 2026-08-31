@@ -521,7 +521,7 @@ impl Fleet {
     /// because a boot-time misconfiguration is what it is. Sending somebody to
     /// a page that cannot exist would be the alternative.
     pub(crate) fn with_dashboard_base(mut self, base: &str) -> Self {
-        self.dashboard_base = base.to_owned();
+        base.clone_into(&mut self.dashboard_base);
         self
     }
 
