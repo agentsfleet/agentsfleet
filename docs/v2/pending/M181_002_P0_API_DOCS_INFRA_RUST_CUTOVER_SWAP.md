@@ -102,14 +102,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Full-route parity gate
 
+**`make test-parity LOCAL=1` is MANDATORY for this section.** It exists, it runs,
+and it is red — this section is not done until it is green, and a green run is
+the evidence, not a claim that the routes were added.
+
 **Inherited from M181_001 — Dimension 2.3.** `test_runtime_on_production_base`:
 the daemon serves from the distroless image, proven by the parity lane's
 single-target mode against a container-hosted daemon. M181_001 built the lane
 and ran it; the DISTROLESS half is already evidenced there — the image built for
-`linux/arm64`, the container booted, `/healthz` answered. What it could not do
-is pass the lane: 31 declared routes returned 404 because the webhook, connector
-and ingress surface belongs to M180, unmerged at the time. This section lands
-that surface, so grading 2.3 becomes a re-run rather than new work.
+`linux/arm64`, the container booted, `/healthz` answered, and the declared
+`GET /metrics` divergence was honoured. What it could not do is pass the lane.
+
+**Re-measured after M180 merged (2026-08-31): 31 unmounted routes fell to 13.**
+M180 mounted 18 of them, which corrects the earlier reading that the missing
+surface was M180's — that was true of 18 and not of the rest. The 13 that
+remain, by family:
+
+| Family | Routes |
+|---|---|
+| `tenants` (7) | `GET/POST /v1/tenants/me/models`, `PATCH/DELETE /v1/tenants/me/models/{id}`, `GET/PUT/DELETE /v1/tenants/me/provider` |
+| `workspaces` (2) | `GET/POST /v1/workspaces/{workspace_id}/fleet-libraries` |
+| `ingress` (1) | `POST /v1/ingress/{provider}` |
+| `connectors` (1) | `GET /v1/connectors/{provider}/callback` |
+| `webhooks` (1) | `POST /v1/webhooks/{fleet_id}/grant-approval` |
+| `auth` (1) | `GET /v1/auth/sessions/{session_id}` |
+
+Ten of those were never M180's; three are stragglers in families M180 otherwise
+landed. Whatever mounts them, the acceptance test is the same command, and 2.3
+is graded by re-running it rather than by inspecting a route table.
 
 > Indy (2026-08-31): "2.3 fine defer"
 
