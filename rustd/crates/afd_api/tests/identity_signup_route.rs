@@ -351,9 +351,13 @@ async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
 async fn a_verified_signup_opens_one_account_and_a_replay_answers_with_it() {
     let lane = TestDatabase::shared();
     let database: Db = lane.open(DbRole::Api, &[]).await;
-    let router = Fleet::live(database, "user_identity_signup_live", ScopeSet::from_scopes(&[]))
-        .with_identity_secret(SECRET)
-        .router();
+    let router = Fleet::live(
+        database,
+        "user_identity_signup_live",
+        ScopeSet::from_scopes(&[]),
+    )
+    .with_identity_secret(SECRET)
+    .router();
 
     // Minted per run so the case does not depend on the schema being reset
     // between them — `KEEP_TEST_STATE=1` is a supported inner loop, and a fixed
@@ -399,10 +403,7 @@ async fn a_verified_signup_opens_one_account_and_a_replay_answers_with_it() {
 /// Separate from [`signed`], which builds its own unreachable-pool fixture:
 /// the live case needs the router to outlive the request so the same one takes
 /// the replay.
-async fn deliver(
-    router: &axum::Router,
-    body: &str,
-) -> http::Response<axum::body::Body> {
+async fn deliver(router: &axum::Router, body: &str) -> http::Response<axum::body::Body> {
     let signature = sign(DELIVERY, now(), body);
     send_with_headers(
         router,
@@ -485,15 +486,18 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
         );
 
         let answer = deliver(&router, &body).await;
-        assert_eq!(answer.status(), StatusCode::OK, "given={given:?} family={family:?}");
+        assert_eq!(
+            answer.status(),
+            StatusCode::OK,
+            "given={given:?} family={family:?}"
+        );
 
-        let stored: Option<String> = sqlx::query_scalar(
-            "SELECT display_name FROM core.users WHERE oidc_subject = $1",
-        )
-        .bind(&subject)
-        .fetch_one(&mut *database.acquire().await.expect("a read connection"))
-        .await
-        .expect("the opened account is readable");
+        let stored: Option<String> =
+            sqlx::query_scalar("SELECT display_name FROM core.users WHERE oidc_subject = $1")
+                .bind(&subject)
+                .fetch_one(&mut *database.acquire().await.expect("a read connection"))
+                .await
+                .expect("the opened account is readable");
 
         assert_eq!(
             stored.as_deref(),

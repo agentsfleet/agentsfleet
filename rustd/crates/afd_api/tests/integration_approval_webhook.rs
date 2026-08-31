@@ -263,8 +263,14 @@ async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies(
     for (label, body) in [
         ("not a document at all", "this is not json".to_owned()),
         ("no action named", payload("", "approve")),
-        ("a decision nobody can make", payload(&fixture.action, "timed_out")),
-        ("a decision that is not one", payload(&fixture.action, "maybe")),
+        (
+            "a decision nobody can make",
+            payload(&fixture.action, "timed_out"),
+        ),
+        (
+            "a decision that is not one",
+            payload(&fixture.action, "maybe"),
+        ),
     ] {
         let answered = callback(&router, &fixture.fleet, &body).await;
         assert_eq!(

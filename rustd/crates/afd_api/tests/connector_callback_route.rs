@@ -36,8 +36,8 @@ use self::harness::Fleet;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
-use serde_json::Value;
 use http::{Method, StatusCode, header};
+use serde_json::Value;
 
 /// A person holding the connector-write scope `Complete` demands.
 const TENANT_KEY: &str = "agt_tdecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbad";

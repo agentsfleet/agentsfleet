@@ -366,9 +366,7 @@ fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
 
 #[cfg(test)]
 mod knob_tests {
-    use super::{
-        QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys,
-    };
+    use super::{QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys};
     use afd_core::env::MapEnv;
 
     /// A key this fixture configures; the value is never parsed, only carried.
@@ -394,8 +392,16 @@ mod knob_tests {
         ]);
 
         assert_eq!(optional(&source, "SET").as_deref(), Some("value"));
-        assert_eq!(optional(&source, "BLANK"), None, "an exported empty string meant unset");
-        assert_eq!(optional(&source, "SPACES"), None, "whitespace is not a value");
+        assert_eq!(
+            optional(&source, "BLANK"),
+            None,
+            "an exported empty string meant unset"
+        );
+        assert_eq!(
+            optional(&source, "SPACES"),
+            None,
+            "whitespace is not a value"
+        );
         assert_eq!(
             optional(&source, "PADDED").as_deref(),
             Some("value"),
@@ -414,7 +420,10 @@ mod knob_tests {
     #[test]
     fn one_signing_key_is_no_configuration_rather_than_half_of_one() {
         let neither = MapEnv::from_pairs([]);
-        assert!(signing_keys(&neither).is_none(), "neither key is unconfigured");
+        assert!(
+            signing_keys(&neither).is_none(),
+            "neither key is unconfigured"
+        );
 
         let current_only = MapEnv::from_pairs([(QSTASH_CURRENT_KEY_KNOB, CURRENT)]);
         assert!(
@@ -424,7 +433,10 @@ mod knob_tests {
         );
 
         let next_only = MapEnv::from_pairs([(QSTASH_NEXT_KEY_KNOB, NEXT)]);
-        assert!(signing_keys(&next_only).is_none(), "the next key alone is the same half");
+        assert!(
+            signing_keys(&next_only).is_none(),
+            "the next key alone is the same half"
+        );
 
         let both = MapEnv::from_pairs([
             (QSTASH_CURRENT_KEY_KNOB, CURRENT),
