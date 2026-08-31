@@ -16,18 +16,11 @@
 //! without holding it. `tenant_provider.zig` decrypts to answer this; reading
 //! the metadata instead means the refusal path never has a plaintext key in
 //! memory at all — one fewer place a key exists, on the path most likely to be
-//! walked by a client getting it wrong.
+//! walked by a client getting it wrong. The activation transaction asks this
+//! of the meta columns on the vault row it has already locked, so the answer
+//! costs no extra statement.
 
-use afd_core::id::Uuid7;
-use sqlx::Row as _;
-
-use crate::error::{Result, query};
 use crate::provider::endpoint::OPENAI_COMPATIBLE;
-use crate::provider::sql;
-use crate::provider::store::Providers;
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_SECRET_SHAPE: &str = "vault credential shape";
 
 /// What the vault holds under a name, as far as the metadata can say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,35 +55,6 @@ impl SecretKind {
             // the row is there and it is not a provider key.
             _not_dialable => Self::NotAProviderKey,
         }
-    }
-}
-
-impl Providers {
-    /// What kind of credential `workspace` holds under `name`.
-    ///
-    /// One round trip decides both of the write ladder's rungs, off the
-    /// non-secret metadata — see
-    /// [`SELECT_SECRET_SHAPE`](crate::provider::sql::SELECT_SECRET_SHAPE).
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn secret_kind(&self, workspace: &Uuid7, name: &str) -> Result<SecretKind> {
-        let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::SELECT_SECRET_SHAPE)
-            .bind(workspace.as_str())
-            .bind(name)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_SECRET_SHAPE))?;
-
-        let Some(row) = found else {
-            return Ok(SecretKind::Absent);
-        };
-        let unreadable = query(CONTEXT_SECRET_SHAPE);
-        let provider: Option<String> = row.try_get(0).map_err(&unreadable)?;
-        let has_key: Option<bool> = row.try_get(1).map_err(&unreadable)?;
-
-        Ok(SecretKind::of(provider.as_deref(), has_key))
     }
 }
 

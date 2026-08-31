@@ -134,7 +134,7 @@ impl Providers {
     /// # Errors
     /// Reports a datastore that would not answer, and an `id` column that is
     /// not an identifier.
-    pub async fn primary_workspace(&self, tenant_id: &Uuid7) -> Result<Option<Uuid7>> {
+    pub(crate) async fn primary_workspace(&self, tenant_id: &Uuid7) -> Result<Option<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
         let found: Option<String> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
             .bind(tenant_id.as_str())
