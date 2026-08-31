@@ -12,6 +12,5 @@ pub mod apikey;
 pub mod cli_credential;
 pub mod models;
 pub mod preference;
-pub mod provider;
 pub mod signup;
 pub mod workspace;

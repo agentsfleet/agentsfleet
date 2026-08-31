@@ -59,7 +59,9 @@ coverage:
         # A ratchet only moves UP. Both numbers move together, in one change,
         # with the measurement that justifies them — lowering either to turn a
         # red lane green is the thing this comment exists to prevent.
-        target: 96%
+        # Raised 96 -> 97 with `RUSTD_COVERAGE_FLOOR` on Indy's call
+        # (2026-08-31). Both numbers move together, as the note above requires.
+        target: 97%
         threshold: 0%
         informational: false
 

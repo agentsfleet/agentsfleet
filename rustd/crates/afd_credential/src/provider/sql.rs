@@ -68,3 +68,46 @@ LIMIT 1";
 /// column and the ledger's `posture` column hold the same vocabulary, and two
 /// spellings would mean a run billed under one word and selected under another.
 pub use afd_billing::sql::posture;
+
+/// Writes the tenant's selection, last-write-wins on its single row.
+///
+/// The write half of [`SELECT_TENANT_MODEL_SELECTION`], which until now had
+/// only a reader: resolution reads this row on every lease, and the tenant's
+/// own Models page is what puts it there.
+///
+/// `created_at` is preserved on conflict and `updated_at` is not, so the read
+/// can answer "configured since" rather than "last touched". `EXCLUDED`
+/// carries the incoming row, so the preserved value is the stored one by
+/// omission rather than by a second read.
+///
+/// `$1` tenant · `$2` mode · `$3` provider · `$4` model ·
+/// `$5` context cap · `$6` secret ref, NULL under the platform posture ·
+/// `$7` now.
+pub const UPSERT_TENANT_MODEL_SELECTION: &str = "\
+INSERT INTO core.tenant_model_selection
+    (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
+VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7)
+ON CONFLICT (tenant_id) DO UPDATE SET
+    mode = EXCLUDED.mode,
+    provider = EXCLUDED.provider,
+    model = EXCLUDED.model,
+    context_cap_tokens = EXCLUDED.context_cap_tokens,
+    secret_ref = EXCLUDED.secret_ref,
+    updated_at = EXCLUDED.updated_at";
+
+/// The non-secret shape of the credential a selection names.
+///
+/// The write ladder's second and third rungs in one read, and it opens
+/// nothing. `vault.secrets` carries `meta_provider` and `meta_has_key` beside
+/// the ciphertext precisely so a caller can ask what KIND of credential a row
+/// holds without holding it: no row is rung two, a row whose metadata does not
+/// describe a provider key is rung three.
+///
+/// `tenant_provider.zig` decrypts to answer this. Reading the metadata instead
+/// means the refusal path never has a plaintext key in memory at all.
+///
+/// `$1` workspace · `$2` key name.
+pub const SELECT_SECRET_SHAPE: &str = "\
+SELECT meta_provider, meta_has_key
+FROM vault.secrets
+WHERE workspace_id = $1::uuid AND key_name = $2";

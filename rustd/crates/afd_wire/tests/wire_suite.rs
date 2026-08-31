@@ -21,3 +21,5 @@ mod redaction;
 mod roundtrip;
 #[path = "strictness.rs"]
 mod strictness;
+#[path = "tenant_provider_shapes.rs"]
+mod tenant_provider_shapes;

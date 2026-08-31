@@ -138,7 +138,12 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # A ratchet only moves UP. Lowering this number to make a red lane green is
 # the thing it exists to prevent: raise it whenever a run beats it, and never
 # reduce it without recording why, here.
-RUSTD_COVERAGE_FLOOR ?= 96
+# Raised 96 -> 97 on Indy's call (2026-08-31): the last Pull Request measured
+# 97, so the ratchet moves up to meet it. Not re-measured here — the coverage
+# lane needs the live datastores, and the same provenance rule the 96 was set
+# under applies: the number is the user's reading, recorded rather than
+# re-derived.
+RUSTD_COVERAGE_FLOOR ?= 97
 
 # `cargo llvm-cov` reports only what actually ran. The integration tests are
 # `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
