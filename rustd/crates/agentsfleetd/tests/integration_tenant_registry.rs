@@ -26,6 +26,9 @@ use serde_json::{Value, json};
 
 use crate::e2e::{MODEL, PROVIDER, scenario_with_provider};
 
+/// The second catalogued model the retargeting half of the walk points at.
+const SECOND_MODEL: &str = "claude-fixture-walk-b";
+
 /// The vault name the walk's own credential is sealed under.
 ///
 /// Its own name rather than the scenario's `PROVIDER` key: that fixture's body
@@ -115,6 +118,163 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         .expect("a stored entry names itself")
         .to_owned();
 
+    // The registry's row-decided refusals, each answering its own code. The
+    // router harness proves who may ASK; only real rows prove these answers.
+    let (_status, duplicate) = send_json(
+        &http,
+        &token,
+        reqwest::Method::POST,
+        &run.base,
+        "/v1/tenants/me/models",
+        &json!({ "model_id": MODEL, "secret_ref": WALK_KEY }),
+    )
+    .await;
+    assert_eq!(
+        duplicate["error_code"], "UZ-MODELS-003",
+        "same pair, second time: {duplicate}"
+    );
+    let (_status, unknown_ref) = send_json(
+        &http,
+        &token,
+        reqwest::Method::POST,
+        &run.base,
+        "/v1/tenants/me/models",
+        &json!({ "model_id": MODEL, "secret_ref": "never-stored" }),
+    )
+    .await;
+    assert_eq!(unknown_ref["error_code"], "UZ-MODELS-002", "{unknown_ref}");
+
+    // A second catalogued model, a second entry, and a keyset walk across the
+    // pair — the daemon-served twin of the store suite's boundary claim.
+    seed_second_model(&run).await;
+    let (status, second) = send_json(
+        &http,
+        &token,
+        reqwest::Method::POST,
+        &run.base,
+        "/v1/tenants/me/models",
+        &json!({ "model_id": SECOND_MODEL, "secret_ref": WALK_KEY }),
+    )
+    .await;
+    assert_eq!(
+        status, 201,
+        "a second model on the same credential: {second}"
+    );
+    let second_id = second["id"]
+        .as_str()
+        .expect("the second entry names itself")
+        .to_owned();
+
+    let first_page = get_json(&http, &token, &run.base, "/v1/tenants/me/models?limit=1").await;
+    assert_eq!(first_page["models"].as_array().expect("one row").len(), 1);
+    let cursor = first_page["next_cursor"]
+        .as_str()
+        .expect("a second row exists, so a cursor is issued")
+        .to_owned();
+    let second_page = get_json(
+        &http,
+        &token,
+        &run.base,
+        &format!("/v1/tenants/me/models?limit=1&starting_after={cursor}"),
+    )
+    .await;
+    assert_eq!(second_page["models"].as_array().expect("one row").len(), 1);
+    assert_ne!(
+        first_page["models"][0]["id"], second_page["models"][0]["id"],
+        "the walk resumes strictly after what was served"
+    );
+
+    // Retargeting: onto an occupied pair, onto nothing, and then for real.
+    let (_status, retarget_duplicate) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PATCH,
+        &run.base,
+        &format!("/v1/tenants/me/models/{entry_id}"),
+        &json!({ "model_id": SECOND_MODEL }),
+    )
+    .await;
+    assert_eq!(
+        retarget_duplicate["error_code"], "UZ-MODELS-003",
+        "the second entry holds that pair: {retarget_duplicate}"
+    );
+    let (_status, retarget_nothing) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PATCH,
+        &run.base,
+        "/v1/tenants/me/models/019329c5-0000-7000-8000-00000000dead",
+        &json!({ "model_id": SECOND_MODEL }),
+    )
+    .await;
+    assert_eq!(
+        retarget_nothing["error_code"], "UZ-MODELS-004",
+        "{retarget_nothing}"
+    );
+
+    let (status, _removed_second) = send_json(
+        &http,
+        &token,
+        reqwest::Method::DELETE,
+        &run.base,
+        &format!("/v1/tenants/me/models/{second_id}"),
+        &Value::Null,
+    )
+    .await;
+    assert_eq!(status, 204, "the freed pair unblocks the retarget");
+    let (status, retargeted) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PATCH,
+        &run.base,
+        &format!("/v1/tenants/me/models/{entry_id}"),
+        &json!({ "model_id": SECOND_MODEL }),
+    )
+    .await;
+    assert_eq!(status, 200, "the retarget lands: {retargeted}");
+    assert_eq!(retargeted["model_id"], SECOND_MODEL);
+    assert_eq!(
+        retargeted["secret_ref"], WALK_KEY,
+        "a retarget keeps its credential"
+    );
+
+    // The activation ladder's own refusals, before the one that lands.
+    let (_status, missing) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PUT,
+        &run.base,
+        "/v1/tenants/me/provider",
+        &json!({ "mode": "self_managed", "secret_ref": "never-stored", "model": SECOND_MODEL }),
+    )
+    .await;
+    assert_eq!(missing["error_code"], "UZ-PROVIDER-002", "{missing}");
+    // The scenario's own key: sealed, but projected as nothing — the metadata
+    // gate refuses it before any decrypt, and the runner suites rely on that.
+    let (_status, unlabelled) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PUT,
+        &run.base,
+        "/v1/tenants/me/provider",
+        &json!({ "mode": "self_managed", "secret_ref": PROVIDER, "model": SECOND_MODEL }),
+    )
+    .await;
+    assert_eq!(unlabelled["error_code"], "UZ-PROVIDER-003", "{unlabelled}");
+    let (_status, uncatalogued) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PUT,
+        &run.base,
+        "/v1/tenants/me/provider",
+        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": "not-in-catalogue" }),
+    )
+    .await;
+    assert_eq!(
+        uncatalogued["error_code"], "UZ-PROVIDER-004",
+        "{uncatalogued}"
+    );
+
     // ACTIVATE the credential as the tenant's own provider — the one seam verb
     // that runs the whole ladder in one transaction (`activate`).
     let (status, activated) = send_json(
@@ -123,7 +283,7 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": MODEL }),
+        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(
@@ -132,6 +292,12 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     );
     assert_eq!(activated["mode"], "self_managed");
     assert_eq!(activated["secret_ref"], WALK_KEY);
+    let own_view = get_json(&http, &token, &run.base, "/v1/tenants/me/provider").await;
+    assert_eq!(
+        own_view["mode"], "self_managed",
+        "a stored row outranks the live default in the composed view"
+    );
+    assert_eq!(own_view["model"], SECOND_MODEL);
 
     // The registry page now composes all three reads — the entry, the vault's
     // projection, the catalogue rate — and flags the entry ACTIVE, because the
@@ -206,6 +372,29 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
 
     supervisor.shutdown().await;
     run.cleanup().await;
+}
+
+/// Publishes the second model beside the scenario's own catalogue row.
+async fn seed_second_model(run: &crate::e2e::Scenario) {
+    let mut connection = run
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO core.model_library
+           (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+            cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, 1)
+         ON CONFLICT (provider, model_id) DO NOTHING",
+    )
+    .bind(afd_db::test_util::mint_id())
+    .bind(SECOND_MODEL)
+    .bind(PROVIDER)
+    .execute(&mut *connection)
+    .await
+    .expect("the second catalogue row seeds");
 }
 
 /// One authenticated GET, answered as JSON.
