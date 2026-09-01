@@ -218,7 +218,7 @@ fn wanted_pairs<'a>(
     default: Option<&'a super::PlatformDefault>,
 ) -> Vec<(&'a str, &'a str)> {
     let from_entries = entries.iter().filter_map(|entry| {
-        let provider = credentials.get(&entry.secret_ref)?.provider.as_deref()?;
+        let provider = credentials.get(&entry.secret_ref)?.provider()?;
         Some((provider, &*entry.model_id))
     });
     let from_default = default.map(|default| (&*default.provider, &*default.model));
@@ -243,7 +243,7 @@ fn rate_for(
     credential: Option<&Descriptor>,
     model: &str,
 ) -> Option<CatalogueRate> {
-    let provider = credential?.provider.as_deref()?;
+    let provider = credential?.provider()?;
     rates.get(&(provider.to_owned(), model.to_owned())).copied()
 }
 

@@ -8,6 +8,7 @@
 use afd_core::id::Uuid7;
 use afd_core::paging::struct_cursor;
 use afd_credential::provider::{PricedDefault, RegistryPage, RegistryRow};
+use afd_vault::Descriptor;
 use afd_wire::tenant_model_entry::{
     ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow, StoredModelEntry,
 };
@@ -61,20 +62,14 @@ fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
         id: entry.entry.id.as_str(),
         model_id: &entry.entry.model_id,
         secret_ref: &entry.entry.secret_ref,
-        provider: entry
-            .credential
-            .as_ref()
-            .and_then(|held| held.provider.as_deref()),
+        provider: entry.credential.as_ref().and_then(Descriptor::provider),
         kind: entry
             .credential
             .as_ref()
             .map_or(afd_vault::Kind::CustomSecret.as_str(), |held| {
-                held.kind.as_str()
+                held.kind().as_str()
             }),
-        base_url: entry
-            .credential
-            .as_ref()
-            .and_then(|held| held.base_url.as_deref()),
+        base_url: entry.credential.as_ref().and_then(Descriptor::base_url),
         has_key: entry.credential.as_ref().is_some_and(|held| held.has_key),
         context_cap_tokens: rate.map(|rate| rate.context_cap_tokens),
         input_nanos_per_mtok: rate.map(|rate| rate.input_nanos_per_mtok),
@@ -100,10 +95,13 @@ fn default_row(priced: &PricedDefault) -> PlatformDefaultRow<'_> {
 
 #[cfg(test)]
 mod tests {
-    use afd_credential::provider::{Boundary, CatalogueRate, Entry, PlatformDefault};
-    use afd_vault::Descriptor;
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking on an unmet precondition"
+    )]
 
     use super::*;
+    use afd_credential::provider::{Boundary, CatalogueRate, Entry, PlatformDefault};
 
     /// The context ceiling the fixture's platform default carries.
     ///
@@ -113,7 +111,8 @@ mod tests {
 
     /// The tenant every fixture row belongs to.
     fn tenant() -> Uuid7 {
-        Uuid7::parse("019329c5-0000-7000-8000-000000000001").expect("the fixture tenant is canonical")
+        Uuid7::parse("019329c5-0000-7000-8000-000000000001")
+            .expect("the fixture tenant is canonical")
     }
 
     /// A stored row, priced and credentialled unless a test says otherwise.
@@ -137,9 +136,10 @@ mod tests {
 
     fn descriptor() -> Descriptor {
         Descriptor {
-            kind: afd_vault::Kind::ProviderKey,
-            provider: Some("openai".into()),
-            base_url: Some("https://api.openai.com".into()),
+            classified: afd_vault::Classified::CustomEndpoint {
+                provider: "openai".into(),
+                base_url: Some("https://api.openai.com".into()),
+            },
             has_key: true,
         }
     }
@@ -171,10 +171,13 @@ mod tests {
         };
 
         let response = rendered(&page, &tenant(), 25);
-        let row = response.models.first().expect("the page carries its one row");
+        let row = response
+            .models
+            .first()
+            .expect("the page carries its one row");
 
         assert_eq!(row.provider, Some("openai"));
-        assert_eq!(row.kind, afd_vault::Kind::ProviderKey.as_str());
+        assert_eq!(row.kind, afd_vault::Kind::CustomEndpoint.as_str());
         assert_eq!(row.base_url, Some("https://api.openai.com"));
         assert!(row.has_key);
         assert_eq!(row.context_cap_tokens, Some(200_000));
@@ -204,7 +207,10 @@ mod tests {
         };
 
         let response = rendered(&page, &tenant(), 25);
-        let row = response.models.first().expect("the page carries its one row");
+        let row = response
+            .models
+            .first()
+            .expect("the page carries its one row");
 
         assert_eq!(row.provider, None);
         assert_eq!(row.kind, afd_vault::Kind::CustomSecret.as_str());
@@ -257,8 +263,11 @@ mod tests {
         };
 
         let response = rendered(&page, &tenant(), 25);
-        let token = response.next_cursor.expect("a page with a next boundary issues a cursor");
-        let decoded: Cursor = struct_cursor::parse(&token).expect("the page issues a parseable token");
+        let token = response
+            .next_cursor
+            .expect("a page with a next boundary issues a cursor");
+        let decoded: Cursor =
+            struct_cursor::parse(&token).expect("the page issues a parseable token");
 
         assert_eq!(decoded.v, struct_cursor::VERSION);
         assert_eq!(decoded.created_at, boundary.created_at_ms);
@@ -290,7 +299,9 @@ mod tests {
         let response = rendered(&page, &tenant(), 25);
 
         assert!(response.platform_default_available);
-        let default = response.platform_default.expect("the flag and the row agree");
+        let default = response
+            .platform_default
+            .expect("the flag and the row agree");
         assert_eq!(default.provider, "anthropic");
         assert_eq!(default.model, "claude-sonnet-5");
         assert_eq!(default.context_cap_tokens, DEFAULT_CAP_TOKENS);
@@ -319,7 +330,9 @@ mod tests {
         };
 
         let response = rendered(&page, &tenant(), 25);
-        let default = response.platform_default.expect("an unpriced default still renders");
+        let default = response
+            .platform_default
+            .expect("an unpriced default still renders");
 
         assert_eq!(default.model, "claude-haiku-4-5");
         assert_eq!(default.input_nanos_per_mtok, None);

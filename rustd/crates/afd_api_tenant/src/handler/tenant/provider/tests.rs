@@ -16,6 +16,11 @@
 //! One test per rung, so a rung that started rendering as another is a named
 //! failure rather than a diff in a larger assertion.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
 use afd_core::id::Uuid7;
 
 use super::*;

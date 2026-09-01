@@ -55,30 +55,31 @@ async fn should_describe_each_named_credential_from_its_projection() {
 
     let described = lane
         .keyless_directory()
-        .describe(
-            &lane.workspace,
-            &["anthropic-key", "gateway", "a-note"],
-        )
+        .describe(&lane.workspace, &["anthropic-key", "gateway", "a-note"])
         .await
         .expect("the describe answers");
 
     assert_eq!(described.len(), 3, "every named row is described");
 
-    let key = described.get("anthropic-key").expect("the provider key is described");
-    assert_eq!(key.kind, Kind::ProviderKey);
-    assert_eq!(key.provider.as_deref(), Some("anthropic"));
+    let key = described
+        .get("anthropic-key")
+        .expect("the provider key is described");
+    assert_eq!(key.kind(), Kind::ProviderKey);
+    assert_eq!(key.provider(), Some("anthropic"));
     assert!(key.has_key, "a provider key holds one");
 
     let gateway = described.get("gateway").expect("the endpoint is described");
-    assert_eq!(gateway.kind, Kind::CustomEndpoint);
+    assert_eq!(gateway.kind(), Kind::CustomEndpoint);
     assert_eq!(
-        gateway.base_url.as_deref(),
+        gateway.base_url(),
         Some("https://gw.example.com/v1"),
         "the endpoint is the field this kind exists to display"
     );
 
-    let note = described.get("a-note").expect("the opaque secret is described");
-    assert_eq!(note.kind, Kind::CustomSecret);
+    let note = described
+        .get("a-note")
+        .expect("the opaque secret is described");
+    assert_eq!(note.kind(), Kind::CustomSecret);
     assert!(
         !note.has_key,
         "a body with no key must not report one — this is the column the page \
@@ -166,12 +167,13 @@ async fn should_degrade_a_row_this_build_cannot_label_and_shed_its_descriptors()
         .expect("an un-labelled row lists rather than failing");
 
     let row = described.get("unlabelled").expect("the row is described");
-    assert_eq!(row.kind, Kind::CustomSecret);
+    assert_eq!(row.kind(), Kind::CustomSecret);
     assert_eq!(
-        row.provider, None,
+        row.provider(),
+        None,
         "a row this build cannot classify is not described as a provider's"
     );
-    assert_eq!(row.base_url, None);
+    assert_eq!(row.base_url(), None);
     assert!(
         row.has_key,
         "key PRESENCE survives the degrade — it is a column, not a classification"
