@@ -43,6 +43,25 @@ const EVENT: &str = "runner_bundle_fetch_failed";
 const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static("application/x-tar");
 
 /// Serves one bundle's canonical tar by content hash.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/runners/me/bundles/{content_hash}",
+    tag = afd_http::openapi::tag::FLEET_BUNDLES,
+    operation_id = "runner_fetch_bundle",
+    summary = "Fetch a fleet's support-file bundle",
+    description = concat!(
+        "The canonical tar a runner materialises support files from, ",
+        "addressed by content hash. The daemon proxies it because the runner ",
+        "holds no object-store keys. A hash is not a name anybody can guess, ",
+        "so the snapshot is not scoped to a runner, a fleet or a tenant. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     // Bound and immediately dropped. The extractor is what PROVES a runner is

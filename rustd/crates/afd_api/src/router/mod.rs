@@ -49,7 +49,7 @@
 //! times. It is one fact about the daemon, so it is one layer.
 
 mod mount;
-mod probes;
+pub(crate) mod probes;
 mod trace;
 
 use std::sync::Arc;

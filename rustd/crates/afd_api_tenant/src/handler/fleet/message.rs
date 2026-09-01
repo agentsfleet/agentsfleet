@@ -116,6 +116,28 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages`.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "list_fleet_messages",
+    summary = "List a fleet's chat thread with bodies",
+    description = concat!(
+        "Returns the newest chat events first. Each item carries the trigger ",
+        "payload (`request_json`) and the agent's full answer ",
+        "(`response_text`). One request replaces reading the event list and ",
+        "then each event's detail. A page holds at most `limit` items and at ",
+        "most 512 KiB of encoded items. The newest item always ships, even ",
+        "alone. Follow `next_cursor` to read the rest. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ThreadResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn thread<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -138,6 +160,26 @@ pub(crate) async fn thread<D: Services>(
 }
 
 /// `POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages`.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "post_fleet_message",
+    summary = "Post a chat message to a fleet",
+    description = concat!(
+        "Starts a fleet run with a chat event. Returns an event identifier ",
+        "for tracking in the activity stream. ",
+    ),
+    responses(
+        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn steer<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

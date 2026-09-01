@@ -72,6 +72,28 @@ const MAX_MARKDOWN_LEN: usize = 200 * 1024;
 /// Carries an `ETag` over the editable surface, which the source editor sends
 /// back as `If-Match`. A read that could not attach one would leave that editor
 /// unable to save safely, so there is no tagless success here.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "get_fleet",
+    summary = "Get a fleet",
+    description = concat!(
+        "Returns one fleet's editable source, trigger markdown, bundle pin, ",
+        "trigger list, status, and lifetime counters. The response carries an ",
+        "`ETag` header over `source_markdown` and `trigger_markdown`. Send ",
+        "that value as `If-Match` when saving source changes to avoid ",
+        "overwriting another operator's edit. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = FleetDetailResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -91,6 +113,32 @@ pub(crate) async fn read<D: Services>(
 }
 
 /// `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — a partial update.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "patch_fleet",
+    summary = "Update a fleet",
+    description = concat!(
+        "Updates fleet files or status. Every request field is optional. ",
+        "`config_json` and `trigger_markdown` cannot be used together. A ",
+        "killed fleet cannot be changed. Source editors can send `If-Match` ",
+        "with the `ETag` from GET. A stale tag returns 412 with the current ",
+        "tag in the problem body; omitting the header preserves last-write- ",
+        "wins behavior. Status changes require an operator role. Config ",
+        "changes require workspace membership. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PatchedFleetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -130,6 +178,27 @@ pub(crate) async fn patch<D: Services>(
 }
 
 /// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — purge a killed fleet.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "delete_fleet",
+    summary = "Permanently delete a fleet",
+    description = concat!(
+        "Permanently deletes the fleet, events, runs, approvals, grants, ",
+        "keys, and memory. This cannot be undone. Set the fleet status to ",
+        "`killed` first. Otherwise the request returns 409. Requires an ",
+        "operator role. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn purge<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

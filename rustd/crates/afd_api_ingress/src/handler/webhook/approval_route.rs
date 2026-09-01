@@ -90,6 +90,25 @@ struct Answer {
 /// # Errors
 /// The wall's refusals, `UZ-WH-002` for a body this route cannot read as an
 /// answer, and `UZ-APPROVAL-002` for a payload naming no gate of this fleet's.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/webhooks/{fleet_id}/approval",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "approval_webhook",
+    summary = "Resolve a fleet approval gate",
+    description = concat!(
+        "Called by a human (via email link or Slack action) to approve or ",
+        "reject a paused fleet. Body is HMAC-signed by the issuer; the ",
+        "signature is verified against the fleet's webhook secret. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

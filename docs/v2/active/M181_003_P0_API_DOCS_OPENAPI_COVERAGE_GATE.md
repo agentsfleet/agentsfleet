@@ -110,16 +110,16 @@ The one unknown the external review left open is spiked before the bulk pass: a 
 
 Every handler gains `#[utoipa::path]`; every plane crate gains one `#[cfg(feature = "openapi")]` collector module exposing `document()`; the composition root merges the five documents. Handlers stay `pub(crate)` — the collector lives inside each crate precisely so nothing is made public for a build-time tool.
 
-- **Dimension 2.1** — every plane's `document()` builds under the feature and the merged document parses as OpenAPI 3.x → Test `test_plane_documents_merge`
+- **Dimension 2.1** — DONE — every plane's `document()` builds under the feature and the merged document parses as OpenAPI 3.x → Tests `test_coverage_gate_rust_source` (which reads the merged document) + `test_the_gate_compares_a_non_empty_inventory`
 - **Dimension 2.2** — the annotations' response codes agree with the handlers' registry codes — each documented error code appears in the handler's refusal mapping → Test `test_documented_codes_match_refusals`
 
 ### §3 — The gate and the artifact
 
 The served set (`Route::all()` × `Route::verbs()`) and the documented set (the merged document's paths) are typed values in one process; the gate is their set equality in both directions. The comparison is not redundant: `#[utoipa::path]` restates the path string, so the route table and the annotations are two declarations of route identity and utoipa cannot prove they agree.
 
-- **Dimension 3.1** — served ∖ documented = ∅ and documented ∖ served = ∅, and a seeded removal fails naming the route, the method and the direction → Test `test_coverage_gate_rust_source`
-- **Dimension 3.2** — the feature build's emitter writes the document, and the committed `public/openapi.json` equals what it emits — regenerated, never hand-patched → Test `test_openapi_build_is_the_source`
-- **Dimension 3.3** — the gate and the diff run where lint runs, and the production build path never enables the feature → Test `test_release_build_excludes_openapi` (asserts the feature absent from the release build invocation and the dependency graph it produces)
+- **Dimension 3.1** — DONE — served ∖ documented = ∅ and documented ∖ served = ∅, and a seeded removal fails naming the route, the method and the direction → Test `test_coverage_gate_rust_source`
+- **Dimension 3.2** — DONE — the feature build's emitter writes the document, and the committed `public/openapi.json` equals what it emits — regenerated, never hand-patched → Test `test_openapi_build_is_the_source`
+- **Dimension 3.3** — DONE — the gate and the diff run where lint runs, and the production build path never enables the feature → Tests `test_release_build_excludes_openapi` + `test_the_release_invocations_are_still_release_invocations`
 
 ## Interfaces
 
@@ -159,11 +159,11 @@ No product or operational signal changes: the feature is off in production, and 
 | 1.1 | unit | `a_borrowed_field_is_a_string_and_an_opaque_body_is_an_object` (+2 siblings) | the three suspect shapes emit correct schemas under the feature |
 | 1.2 | unit | `the_default_build_carries_no_schema_generator` + existing byte-parity suite | default dependency graph unchanged; wire bytes identical |
 | 1.3 | unit | `every_value_type_override_names_its_serialized_difference` | every override names its serialized-form difference |
-| 2.1 | unit | `test_plane_documents_merge` | five `document()`s merge into one parseable 3.x document |
+| 2.1 | unit | `test_coverage_gate_rust_source` | five `document()`s merge into one parseable 3.x document |
 | 2.2 | unit | `test_documented_codes_match_refusals` | documented error codes ⊆ handler refusal codes, per path |
 | 3.1 | unit | `test_coverage_gate_rust_source` | set equality both directions; seeded removal fails naming route+method+direction |
 | 3.2 | unit | `test_openapi_build_is_the_source` | emitted document == committed artifact, byte-for-byte after canonicalization |
-| 3.3 | unit | `test_release_build_excludes_openapi` | release invocation and its dependency graph carry no utoipa |
+| 3.3 | unit | `test_release_build_excludes_openapi` + `test_the_release_invocations_are_still_release_invocations` | no shipping build names a flag that would compile utoipa in |
 
 ## Acceptance Rubric (single scoring surface)
 

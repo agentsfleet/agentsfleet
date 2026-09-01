@@ -91,6 +91,14 @@ pub enum Command {
     },
     /// Apply every migration this binary carries, report what moved, exit.
     Migrate,
+    /// Print the `OpenAPI` document this binary's routes generate, and exit.
+    ///
+    /// Only compiled under `--features openapi`, which the release build never
+    /// names — so this is a CI build's verb, not an operator's. It opens
+    /// nothing: the document is a function of the route table and the
+    /// annotations, so it needs no datastore and no runtime.
+    #[cfg(feature = "openapi")]
+    Openapi,
 }
 
 /// How the runtime is built, as a parameter rather than a call.
@@ -113,6 +121,8 @@ where
     match cli.command.as_ref() {
         Some(&Command::Serve { port }) => on_runtime(runtime, serve(env, port, signal)),
         Some(&Command::Migrate) => on_runtime(runtime, migrate(env)),
+        #[cfg(feature = "openapi")]
+        Some(&Command::Openapi) => openapi(),
         // No subcommand: preflight only. Useful as a container healthcheck and
         // as the thing an operator runs to find out what is missing before
         // taking the trouble to start anything.
@@ -192,6 +202,27 @@ pub async fn migrate<E: EnvSource + ?Sized>(env: &E) -> u8 {
         }
         Err(failure) => {
             crate::fatal::die(&failure);
+            FAILURE
+        }
+    }
+}
+
+/// Writes the generated `OpenAPI` document to stdout.
+///
+/// The one subcommand that is command OUTPUT rather than a log: what a caller
+/// asked for IS the document, so it goes to stdout and the exit status says
+/// whether it could be written. `public/openapi.json` is this, redirected.
+#[cfg(feature = "openapi")]
+#[must_use]
+pub fn openapi() -> u8 {
+    match afd_api::openapi::document().to_pretty_json() {
+        Ok(document) => {
+            // logging: the document IS this subcommand's output, not a log record
+            println!("{document}");
+            SUCCESS
+        }
+        Err(error) => {
+            crate::fatal::die(&error);
             FAILURE
         }
     }

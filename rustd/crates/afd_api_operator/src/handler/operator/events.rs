@@ -15,6 +15,25 @@ use crate::services::Services;
 
 const EVENT: &str = "runner_events_failed";
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/fleets/runners/{runner_id}/events",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "list_fleet_runner_events",
+    summary = "List fleet runner events",
+    description = concat!(
+        "Platform-admin read of a single runner's append-only history, newest ",
+        "first over the composite (occurred_at, id) key. The retired page and ",
+        "page_size parameters are refused. Optionally filtered by event type ",
+        "and an occurred-at millisecond window. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = RunnerEventsResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,

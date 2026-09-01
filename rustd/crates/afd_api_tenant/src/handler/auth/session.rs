@@ -45,6 +45,24 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
 /// Unauthenticated, and it has to be: the caller is a terminal that holds no
 /// credential yet, which is the whole reason the flow exists. What bounds it is
 /// the session's five-minute life and the ceilings on every field it may store.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/auth/sessions",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "create_auth_session",
+    summary = "Start a command-line login session",
+    description = concat!(
+        "Starts a command-line sign-in session that lasts 5 minutes. The ",
+        "response includes a URL for approval in a browser. No access token ",
+        "is required. Rate limits may return 429. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = DeleteAllSessionsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
     let Ok(request) = afd_core::json::object_from_slice::<OpenSessionRequest<'_>>(&body) else {
         return malformed(DETAIL_OPEN_BODY);
@@ -76,6 +94,24 @@ pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Byte
 /// Never returns ciphertext. The id is the only thing presented, so everything
 /// this answers is readable by whoever holds it; the sealed credential is
 /// released by `/verify` alone, against a code that travelled a second channel.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/auth/sessions/{session_id}",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "poll_auth_session",
+    summary = "Read a sign-in session",
+    description = concat!(
+        "Returns the current sign-in status. No access token is required. ",
+        "Expired, used, or cancelled sessions return 410 with a stable error ",
+        "code. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PollSessionResponse),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 410, description = afd_http::openapi::GONE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn poll<D: Services>(
     State(services): State<Arc<D>>,
     Path(session_id): Path<String>,
@@ -99,6 +135,27 @@ pub(crate) async fn poll<D: Services>(
 /// device login, because the flow's entire guarantee is that somebody looked at
 /// a screen. The narrowing is in the signature, so there is no arm here to
 /// forget it in.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/auth/sessions/{session_id}/approve",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "approve_auth_session",
+    summary = "Approve a sign-in session",
+    description = concat!(
+        "Approves a pending command-line sign-in session. The dashboard sends ",
+        "encrypted sign-in data and a six-digit verification code. A second ",
+        "approval for the same session returns 409 `UZ-AUTH-015`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ApproveSessionResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 410, description = afd_http::openapi::GONE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn approve<D: Services>(
     State(services): State<Arc<D>>,
     dashboard: DashboardIdentity,
@@ -148,6 +205,30 @@ pub(crate) async fn approve<D: Services>(
 /// Unauthenticated, and the code IS the credential. The origin is digested into
 /// a fingerprint so a dropped reply can be asked for again by whoever asked
 /// first — and by nobody else.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/auth/sessions/{session_id}/verify",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "verify_auth_session",
+    summary = "Verify a sign-in session",
+    description = concat!(
+        "Checks the six-digit code and returns encrypted sign-in data. The ",
+        "code can be used once. A retry from the same client within 60 ",
+        "seconds returns the same response. Later retries return 410 `UZ- ",
+        "AUTH-012`. `UZ-AUTH-011` means the code did not match. The fifth ",
+        "failed attempt ends the session. `UZ-AUTH-018` means the code was ",
+        "not six digits. `UZ-AUTH-013` means the session ended. `UZ-AUTH-014` ",
+        "means approval is pending. `UZ-AUTH-006` means the session expired ",
+        "after 5 minutes. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = VerifySessionResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 410, description = afd_http::openapi::GONE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn verify<D: Services>(
     State(services): State<Arc<D>>,
     origin: Origin,
@@ -189,6 +270,26 @@ pub(crate) async fn verify<D: Services>(
 }
 
 /// `DELETE /v1/auth/sessions/{session_id}` — a person cancels their own login.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/auth/sessions/{session_id}",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "delete_auth_session",
+    summary = "Explicit cancel of a single login session",
+    description = concat!(
+        "Used by the dashboard's \"cancel this login\" button and by the future ",
+        "sessions surface. Transitions the named session to `aborted` with ",
+        "`reason=\"explicit_cancel\"`. The Clerk JWT MUST match the session's ",
+        "`clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`); ",
+        "otherwise 403. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn delete_one<D: Services>(
     State(services): State<Arc<D>>,
     dashboard: DashboardIdentity,
@@ -213,6 +314,27 @@ pub(crate) async fn delete_one<D: Services>(
 }
 
 /// `DELETE /v1/auth/sessions/all` — abort every login this person holds.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/auth/sessions/all",
+    tag = afd_http::openapi::tag::AUTHENTICATION,
+    operation_id = "delete_all_auth_sessions",
+    summary = "Bulk-abort every in-flight login session for the caller",
+    description = concat!(
+        "Caller-scoped bulk delete. Enumerates every session with the ",
+        "caller's `clerk_user_id` whose status is `pending` or ",
+        "`verification_pending` and transitions each to `aborted` with ",
+        "`reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs — ",
+        "Clerk revocation is a separate problem; an active CLI continues to ",
+        "work until its short-lived JWT expires. This endpoint clears in- ",
+        "flight login sessions only. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn delete_all<D: Services>(
     State(services): State<Arc<D>>,
     dashboard: DashboardIdentity,

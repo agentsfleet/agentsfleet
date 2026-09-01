@@ -149,6 +149,33 @@ impl StructCursor for Cursor {
 }
 
 /// `GET /v1/tenants/me/models` — one page of the registry.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/tenants/me/models",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "list_tenant_model_entries",
+    summary = "List the tenant's model registry",
+    description = concat!(
+        "One entry per configured model; two entries can share a ",
+        "`secret_ref`. Each entry is joined to its secret's non-secret ",
+        "metadata (provider, kind, base_url, has_key) — `api_key` is never ",
+        "serialised. `active` is computed against the tenant's current ",
+        "provider selection (`GET /v1/tenants/me/provider`). The response is ",
+        "a bounded page ordered by `created_at` descending, then `id` ",
+        "descending. Page forward by sending the response's `next_cursor` ",
+        "back as `starting_after`; a `null` `next_cursor` is the last page. ",
+        "Cursors are bound to the tenant and the `limit` that produced them, ",
+        "so changing `limit` mid-pagination requires starting from the first ",
+        "page again. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -175,6 +202,28 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// `POST /v1/tenants/me/models` — register a model on a stored credential.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/tenants/me/models",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "create_tenant_model_entry",
+    summary = "Register a model entry",
+    description = concat!(
+        "Creates one `(model_id, secret_ref)` row. `secret_ref` must already ",
+        "name a vault secret in the tenant's primary workspace — store or ",
+        "reuse one via `/v1/workspaces/{workspace_id}/secrets` first. Does ",
+        "not activate the entry; activate via `PUT /v1/tenants/me/provider`. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -219,6 +268,26 @@ pub(crate) async fn create<D: Services>(
 }
 
 /// `PATCH /v1/tenants/me/models/{id}` — point an entry at another model.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/tenants/me/models/{id}",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "update_tenant_model_entry",
+    summary = "Change a model entry's model_id",
+    description = concat!(
+        "Model-only change; `secret_ref` is immutable on this endpoint — ",
+        "create a new entry to point at a different secret. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn update<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -258,6 +327,25 @@ pub(crate) async fn update<D: Services>(
 }
 
 /// `DELETE /v1/tenants/me/models/{id}` — remove an entry.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/tenants/me/models/{id}",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "delete_tenant_model_entry",
+    summary = "Remove a model entry",
+    description = concat!(
+        "Idempotent — deleting an id that doesn't exist (already removed, or ",
+        "never existed) still returns 204. The referenced vault secret is ",
+        "never touched; sibling entries sharing it survive. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

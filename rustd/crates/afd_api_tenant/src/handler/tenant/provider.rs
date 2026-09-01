@@ -93,6 +93,23 @@ pub const DETAIL_MALFORMED_BODY: &str = "Malformed JSON";
 const NOT_CONFIGURED: &str = "";
 
 /// `GET /v1/tenants/me/provider` — the persisted selection, never a key.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/tenants/me/provider",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "get_tenant_provider",
+    summary = "Read tenant model provider settings",
+    description = concat!(
+        "Returns the tenant's provider mode, provider name, model, context ",
+        "limit, and credential reference. Secret values are never returned. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn view<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -131,6 +148,24 @@ pub(crate) async fn view<D: Services>(
 /// provider/model/cap are copied from the live default at reset time, which is
 /// the Zig's behavior kept for parity — the divergence register carries the
 /// consequence (a later repointed default is not reflected by this row's view).
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/tenants/me/provider",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "delete_tenant_provider",
+    summary = "Reset tenant LLM provider to platform default",
+    description = concat!(
+        "Equivalent to `PUT {mode: \"platform\"}`. Writes the explicit ",
+        "mode=platform row so the dashboard can distinguish \"never ",
+        "configured\" from \"explicitly reset\". ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn reset<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -176,6 +211,24 @@ pub(crate) async fn reset<D: Services>(
 /// `PUT /v1/tenants/me/provider` — choose the platform default or your own key.
 ///
 /// The platform arm is the reset: same write, same response, one function.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/v1/tenants/me/provider",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "put_tenant_provider",
+    summary = "Set tenant model provider",
+    description = concat!(
+        "Sets the provider mode and model. Self-managed mode requires a ",
+        "`credential_ref` that names an existing secret. If the model entry ",
+        "does not exist, this request creates it. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn apply<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

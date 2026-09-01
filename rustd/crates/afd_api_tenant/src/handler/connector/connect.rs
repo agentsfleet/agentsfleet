@@ -35,6 +35,26 @@ use crate::services::{Services, WorkspaceConnectors as _};
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-CONN-001` for
 /// one this deployment has configured no app for, and the store refusals a
 /// nonce mint can raise.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/connectors/{provider}/connect",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_connect",
+    summary = "Get a provider connection URL",
+    description = concat!(
+        "Returns a URL for connecting the workspace to the provider. Open the ",
+        "URL in a browser. An unknown provider returns 404 `UZ-CONN-004`. An ",
+        "unavailable provider returns 503 `UZ-CONN-001`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn start<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

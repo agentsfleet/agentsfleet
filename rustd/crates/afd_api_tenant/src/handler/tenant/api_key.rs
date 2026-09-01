@@ -50,6 +50,25 @@ const DETAIL_NO_TENANT: &str =
     "Tenant context required; bootstrap principals cannot manage tenant API keys";
 
 /// `POST /v1/api-keys` — mint one, revealing it exactly once.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/api-keys",
+    tag = afd_http::openapi::tag::API_KEYS,
+    operation_id = "create_api_key",
+    summary = "Mint a tenant API key",
+    description = concat!(
+        "Creates a tenant admin key with the `agt_t` prefix. The raw key is ",
+        "returned once. Only its SHA-256 hash is saved. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = RevokedApiKeyResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -82,6 +101,27 @@ pub(crate) async fn mint<D: Services>(
 }
 
 /// `GET /v1/api-keys` — the tenant's keys, as metadata.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/api-keys",
+    tag = afd_http::openapi::tag::API_KEYS,
+    operation_id = "list_api_keys",
+    summary = "List tenant API keys",
+    description = concat!(
+        "Returns metadata for every tenant API key visible to the caller, ",
+        "under Stripe-style keyset pagination. The cursor carries the ",
+        "boundary sort value, so every allowlisted sort pages without loss. ",
+        "The retired page and page_size parameters are refused. Results are ",
+        "always scoped to the caller's tenant; `key_hash` is never returned. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -103,6 +143,27 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// `PATCH /v1/api-keys/{id}` — revoke one.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/api-keys/{id}",
+    tag = afd_http::openapi::tag::API_KEYS,
+    operation_id = "revoke_api_key",
+    summary = "Revoke a tenant API key",
+    description = concat!(
+        "Partial lifecycle update. Body must be `{\"active\": false}` — re- ",
+        "activation is not supported; mint a new key instead. Sets ",
+        "`revoked_at` and `updated_at`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -128,6 +189,26 @@ pub(crate) async fn revoke<D: Services>(
 }
 
 /// `DELETE /v1/api-keys/{id}` — remove one that is already revoked.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/api-keys/{id}",
+    tag = afd_http::openapi::tag::API_KEYS,
+    operation_id = "delete_api_key",
+    summary = "Delete a revoked tenant API key",
+    description = concat!(
+        "Deletes a revoked tenant API key. An active key returns 409 `UZ- ",
+        "APIKEY-008`. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

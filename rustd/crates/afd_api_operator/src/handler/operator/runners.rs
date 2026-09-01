@@ -17,6 +17,27 @@ use crate::services::Services;
 const EVENT_LIST: &str = "runner_list_failed";
 const EVENT_DETAIL: &str = "runner_detail_failed";
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/fleets/runners",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "list_fleet_runners",
+    summary = "List fleet runners",
+    description = concat!(
+        "Platform-admin operator-plane read of the whole fleet, newest first ",
+        "over the composite (created_at, id) key. Under keyset pagination a ",
+        "runner enrolled mid-traversal never repeats or hides a row. The ",
+        "retired page, page_size and sort parameters are refused. Each row ",
+        "carries a derived `liveness` — never the stored auth state, never ",
+        "the token hash. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = RunnersResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
@@ -42,6 +63,26 @@ pub(crate) async fn list<D: Services>(
     }
 }
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/fleets/runners/{runner_id}",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "get_fleet_runner",
+    summary = "Get a fleet runner",
+    description = concat!(
+        "Platform-admin read of a single runner. Carries the summary fields, ",
+        "a live-work snapshot, and lifetime counters from durable lease and ",
+        "event rows — never from in-memory metrics. The runner detail page ",
+        "loads from this read. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,

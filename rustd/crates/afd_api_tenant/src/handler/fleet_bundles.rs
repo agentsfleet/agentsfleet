@@ -13,6 +13,25 @@ use crate::handler::refuse;
 use crate::services::Services;
 
 /// Lists published platform entries carrying current bundle content.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/fleets/bundles",
+    tag = afd_http::openapi::tag::FLEET_BUNDLES,
+    operation_id = "list_fleet_bundles",
+    summary = "List the platform Fleet library catalog",
+    description = concat!(
+        "Returns the first-party (platform) Fleet library catalog. Rows ",
+        "contain only metadata and requirement hints; they carry no ",
+        "credential values or object-store keys. The workspace gallery union ",
+        "lives at GET /v1/workspaces/{workspace_id}/fleet-libraries. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = FleetBundlesResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
     match services.libraries().published().await {
         Ok(entries) => Json(FleetBundlesResponse {

@@ -54,6 +54,27 @@ const EVENT_APPEND: &str = "webhook_append_failed";
 /// # Errors
 /// The wall's refusals, and `UZ-WH-002` for a verified body that is not the
 /// JSON document a fleet's prose can reason over.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/webhooks/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "receive_webhook",
+    summary = "Send a signed event to a fleet",
+    description = concat!(
+        "Sends a signed event to one fleet. Every request requires a valid ",
+        "provider signature. A new event returns 202. A duplicate within 24 ",
+        "hours returns `status: duplicate`. A paused fleet returns `ignored: ",
+        "fleet_paused`. Send the event again after resuming the fleet. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

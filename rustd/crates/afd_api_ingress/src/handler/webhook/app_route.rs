@@ -99,6 +99,31 @@ const ACTOR_APP_GITHUB: &str = "github-app";
 /// a body past the cap, the wall's own refusals, `UZ-WH-002` for a verified
 /// body that is not the event its header claims, and `UZ-WH-022` for a delivery
 /// matching more fleets than one event may wake.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/ingress/{provider}",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "ingest_connector_webhook",
+    summary = "Receive a provider event",
+    description = concat!(
+        "Receives signed events from a connected provider. GitHub is the ",
+        "supported provider. A matching event starts runs for subscribed ",
+        "fleets. Duplicate events do not start another run. Repair pull ",
+        "requests and workflow results update repair evidence without ",
+        "starting another run. A terminal production `deployment_status` ",
+        "records the deployed commit and schedules eligible verification ",
+        "fleets. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(provider): Path<String>,

@@ -100,6 +100,31 @@ impl StructCursor for Cursor {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleet-libraries` — one page of the gallery.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "list_workspace_fleet_library",
+    summary = "List the workspace Fleet library gallery",
+    description = concat!(
+        "Returns the union of the platform Fleet library catalog and this ",
+        "workspace's own tenant entries — and nothing from another workspace. ",
+        "Each entry carries identity, source, requirements and per-credential ",
+        "reason copy; never an object-store key. A bounded keyset page ",
+        "ordered by `created_at DESC, tier ASC, id DESC` across BOTH ",
+        "catalogs. Follow `next_cursor` to read the whole gallery; a client ",
+        "that reads only the first page silently loses every entry past it. ",
+        "The support-file manifest is stored on import but served by no ",
+        "endpoint. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = GalleryResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -123,6 +148,28 @@ pub(crate) async fn list<D: Services>(
 /// The same body, the same refusals and the same pipeline as the operator's
 /// catalogue — see [`library_onboard`], which both planes parse through. What
 /// this verb chooses is the destination.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "onboard_tenant_fleet_library",
+    summary = "Onboard a tenant Fleet library entry",
+    description = concat!(
+        "Onboards a Fleet library entry into the caller's workspace catalog ",
+        "from a GitHub source reference. Requires the `library:write` scope ",
+        "plus ownership of the target workspace. Re-onboarding identical ",
+        "bytes converges on one `(workspace_id, content_hash)` row. The ",
+        "response carries metadata only. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn onboard<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

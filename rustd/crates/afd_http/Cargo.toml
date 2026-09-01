@@ -11,6 +11,11 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# The published document's shared vocabulary — descriptions and tags the plane
+# crates' annotations name. No dependency: these are strings.
+openapi = []
+
 [dependencies]
 afd_admin.workspace = true
 afd_approval.workspace = true

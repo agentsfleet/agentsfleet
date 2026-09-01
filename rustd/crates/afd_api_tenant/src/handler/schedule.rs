@@ -119,6 +119,23 @@ fn view_of(schedule: &Schedule) -> View<'_> {
 ///
 /// # Errors
 /// Reports a datastore that would not answer.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "list_fleet_schedules",
+    summary = "List hosted schedules",
+    description = concat!(
+        "Lists the hosted schedules for a Fleet. The result is bounded by the ",
+        "per-Fleet schedule cap. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Path((_workspace, fleet_id)): Path<(String, String)>,
@@ -154,6 +171,20 @@ pub(crate) async fn list<D: Services>(
 /// # Errors
 /// Reports a datastore that would not answer, and `UZ-SCHED-002` for a schedule
 /// this fleet does not hold.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "get_fleet_schedule",
+    summary = "Get a hosted schedule",
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,
     Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
@@ -183,6 +214,23 @@ pub(crate) async fn one<D: Services>(
 /// # Errors
 /// `UZ-REQ-002` for a body or a field this daemon will not register, and the
 /// ceiling and duplicate refusals the store answers.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "create_fleet_schedule",
+    summary = "Create a hosted schedule",
+    description = "Creates a schedule and synchronously registers it in Upstash QStash. ",
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 422, description = afd_http::openapi::UNPROCESSABLE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
     Path((workspace_id, fleet_id)): Path<(String, String)>,
@@ -246,6 +294,27 @@ pub(crate) async fn create<D: Services>(
 ///
 /// # Errors
 /// As [`create`], plus `UZ-REQ-004` for a schedule this fleet does not hold.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "update_fleet_schedule",
+    summary = "Update a hosted schedule",
+    description = concat!(
+        "Updates schedule fields and synchronously overwrites the QStash ",
+        "registration. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 422, description = afd_http::openapi::UNPROCESSABLE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
     Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
@@ -296,6 +365,25 @@ pub(crate) async fn patch<D: Services>(
 ///
 /// # Errors
 /// As [`patch`].
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "delete_fleet_schedule",
+    summary = "Delete a hosted schedule",
+    description = concat!(
+        "Deletes the QStash registration before removing the local schedule ",
+        "row. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn purge<D: Services>(
     State(services): State<Arc<D>>,
     Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
@@ -327,6 +415,25 @@ pub(crate) async fn purge<D: Services>(
 ///
 /// # Errors
 /// As [`patch`].
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}/sync",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "sync_fleet_schedule",
+    summary = "Sync a hosted schedule",
+    description = concat!(
+        "Idempotently overwrites the QStash registration from the latest ",
+        "local generation. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn sync<D: Services>(
     State(services): State<Arc<D>>,
     Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,

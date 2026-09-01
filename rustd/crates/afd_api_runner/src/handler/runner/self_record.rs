@@ -24,6 +24,25 @@ use crate::services::Services;
 const EVENT: &str = "runner_self_read_failed";
 
 /// Answers the runner's own registration row.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/runners/me",
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "get_runner_self",
+    summary = "Read this runner's own row",
+    description = concat!(
+        "Answers the row this host enrolled as: its status, its assigned ",
+        "policy, and what its kernel can actually enforce. Reading it does ",
+        "NOT bump liveness — the heartbeat writes that and nothing else does, ",
+        "so inspecting a host can never mask a dead runner. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = SelfResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

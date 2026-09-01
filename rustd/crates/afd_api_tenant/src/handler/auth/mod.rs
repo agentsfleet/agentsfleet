@@ -15,6 +15,6 @@
 //! and the user agent are an [`Origin`](crate::client::Origin) extractor, so a
 //! verb that does not name one does not compute one.
 
-mod session;
+pub(crate) mod session;
 
 pub(crate) use self::session::{approve, delete_all, delete_one, open, poll, verify};

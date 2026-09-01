@@ -74,6 +74,26 @@ pub(crate) struct PreferencePath {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/preferences` — this person's whole bag.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/preferences",
+    tag = afd_http::openapi::tag::WORKSPACES,
+    operation_id = "get_workspace_preferences",
+    summary = "Read the caller's dashboard preferences for a workspace",
+    description = concat!(
+        "Returns every dashboard preference the calling user has set in this ",
+        "workspace, as an object keyed by preference key. A user who has set ",
+        "nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no ",
+        "preferences\" from \"preferences unavailable\" without branching. ",
+        "Preferences are per user AND per workspace: a second workspace ",
+        "starts its onboarding checklist fresh. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = OnboardingResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -96,6 +116,28 @@ pub(crate) async fn read<D: Services>(
 /// preference", `UZ-PREFS-002` says "that is too much of one".
 ///
 /// Answers with the whole bag, not the written key — see the module note.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
+    tag = afd_http::openapi::tag::WORKSPACES,
+    operation_id = "put_workspace_preference",
+    summary = "Write one dashboard preference",
+    description = concat!(
+        "Upserts a single preference for the calling user in this workspace ",
+        "and returns the full updated bag. The request body IS the value - ",
+        "any well-formed JavaScript Object Notation (JSON) value up to 1 KiB, ",
+        "stored verbatim and never interpreted by the server. `pref_key` must ",
+        "be one the dashboard declares; anything else is refused with `UZ- ",
+        "PREFS-001` and no row is written. Concurrent writes to one key are ",
+        "last-write-wins by design: a preference is a single toggle, so a ",
+        "lost write costs one click. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn write<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -128,6 +170,26 @@ pub(crate) async fn write<D: Services>(
 /// Five derivable signals from one round trip, folded with three preference
 /// keys read on the same store. One HTTP call, one authorization, where the
 /// dashboard used to make six.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/onboarding",
+    tag = afd_http::openapi::tag::WORKSPACES,
+    operation_id = "get_workspace_onboarding",
+    summary = "Read the workspace's onboarding checklist state",
+    description = concat!(
+        "Returns every signal the Getting Started checklist needs in one ",
+        "call. Five signals are derived server-side in a single query. A ",
+        "model is configured, a fleet exists, a credential exists, an event ",
+        "has been processed, and a steer event exists. Three more are the ",
+        "caller's stored UI preferences: dismissed, collapsed, and CLI ",
+        "ticked. This replaces six separate requests with one. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn onboarding<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
