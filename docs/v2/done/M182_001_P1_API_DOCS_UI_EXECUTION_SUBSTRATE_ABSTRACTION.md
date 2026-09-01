@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M182
 **Workstream:** 001
 **Date:** Aug 25, 2026
-**Status:** PENDING
+**Status:** PARKED — never started; parked in `docs/v2/done/` with no branch and no code. Re-activates once Indy has done the further analysis the park was called for (see Parked below)
 **Priority:** P1 — operator-facing platform capability; nothing blocks on it, but every non-bubblewrap substrate blocks on it
 **Categories:** API | DOCS | UI
 **Batch:** B7 — serial after M181; the first wire change taken with one daemon left
@@ -25,6 +25,46 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Depends on:** M181_001 (cutover retires the Zig daemon — a wire change before it costs two daemons plus the runner), M177_001 (the `Guarantee` seam in `reconcile.rs` this spec widens onto the wire)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 25, 2026)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Assigned policy and reconciliation
+
+---
+
+## Parked (Aug 31, 2026) — read this before reactivating
+
+**Nothing here was ever started.** No branch, no worktree, no code, no `DONE`
+marks — the file's only two commits are `6469d2b3c` (add spec) and `0789832ec`
+(the `afd_runner` path correction). It went from `pending/` to `done/` as a
+design record. Read every Section below as a proposal, not as a claim about the
+repository.
+
+> Indy (2026-08-31): "Welll i parked the full spec since its need more analysis
+> is what i did M182_001" — context: the whole milestone, not the Cloudflare
+> deferral already recorded below. The park had not been written down anywhere,
+> so the spec still read as live; this section is that correction.
+
+**The problem it describes is still true on `main`.** `Guarantee::proven_by` is
+still the one substrate-aware function in the runner crate
+(`rustd/crates/afd_runner/src/reconcile.rs:118`, and its module doc at line 18
+still says so), `sandbox_tier` still has 255 matches across `rustd/` and `src/`,
+and the mechanism vocabulary still has 38 matches across `afd_runner/src`,
+`afd_fleet/src` and `afd_wire/src`. A Firecracker or whole-VM host still cannot
+join the fleet. That cost is accepted for as long as this stays parked.
+
+**What is undecided is the scope of the vocabulary, not the need.** The spec
+carries three authoring resolutions explicitly "flagged for Indy's ratification
+at spec review, before CHORE(open)" — whether the isolation class is
+tenant-visible, whether the substrate is a placement input or a reported fact,
+and how much of the runner side this milestone owns (Discovery, consults 3–5).
+Each one changes the wire this spec asks to be committed to. Beside them sits
+the owner decision the schema rename cites: `sandbox_tier` → `isolation_class`
+is outside the additive default an agent may author alone
+(`docs/SCHEMA_CONVENTIONS.md` §Migration Model). Those four are the analysis the
+park is waiting on.
+
+**The sequencing dependency is unchanged and independent of the park.** Zig
+remains the wire's source of truth (`src/lib/contract/`), so a wire change
+before the M181 cutover still costs two daemons plus the runner. Reactivating
+this before M181_002 swaps production would reintroduce exactly the cost the
+Depends-on line was written to avoid.
 
 ---
 
@@ -316,4 +356,5 @@ N/A — no file is deleted; symbols and spellings are.
 - **Spec amended before CHORE(open) — post-split paths, and the class-selection table that was missing.** Two corrections, both found by reading the tree this spec grades rather than the tree it was drafted against. (1) **Paths.** The spec named `afd_fleet/src/runner/{reconcile,policy,bounds}.rs`, which were correct on the authoring date — `afd_fleet/src/runner/` was created the same day by `5f7beed8b` — and were invalidated three days later by `cf3f75199`, an unrelated crate split that moved the runner surface to `afd_runner`. The consequence was not cosmetic: Invariant 1 and rubric R2 grep `afd_fleet/src` + `afd_wire/src`, which today return 4 hits, all in `afd_wire`, while the 3 files actually holding the mechanism vocabulary (`afd_runner/src/{reconcile,bounds,view/decode}.rs`) were outside the grep. Cleaning `afd_wire` alone would have turned R2 green over untouched code — a rubric row grading a boundary the milestone does not own. `dispatch/write_spec.md` §Authoring discipline — "the spec's invariant/rubric greps must use the same pattern as the discovery grep" — so every path and both greps are corrected to the post-split tree, and `afd_runner/tests/**` joins Files Changed beside `afd_fleet/tests/**`. (2) **Selection guidance.** The spec defined three classes and gave an operator no rule for choosing between them, while §2 makes `required(kernel)` and `required(machine)` identical sets — so the choice is a threat-model decision that nothing in the spec stated. §5 now carries the selection table and the per-lease-boundary rule, Interfaces states the required-set algebra explicitly, and Failure Modes carries the nested-VM mis-assignment as its own row. No Dimension, test, or rubric row was added: the table is a docs deliverable inside §5's existing scope, and the behaviour it describes is already pinned by 2.1 and 2.2.
 - **Metrics review** — no analytics or funnel change; no playbook update required (the Metrics table's no-signal row carries the reason).
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
+- **Deferrals** — > Indy (2026-08-31): "Welll i parked the full spec since its need more analysis is what i did M182_001" — context: the ENTIRE milestone is parked, not a section of it; recorded retroactively on Aug 31, 2026 after the park was found to be unwritten. See **Parked** at the top of this file for the four undecided inputs.
 - **Deferrals** — > Indy (2026-08-25 ~19:20): "I would like to skip scoping out the cloudflare durable boxes scoped out." — context: authoring-prompt open question 1; serverless (Cloudflare Workers / Durable Objects) is parked from this milestone entirely, including the broker-vs-push decision; the follow-up serverless milestone picks it up against the class/guarantee seam this spec lands.
