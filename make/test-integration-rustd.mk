@@ -145,6 +145,56 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # re-derived.
 RUSTD_COVERAGE_FLOOR ?= 97
 
+# The floor's verdict, carrying the number that decided it.
+#
+# This lane used to grade itself with `cargo llvm-cov --lcov --output-path
+# lcov.info --fail-under-lines N`, and that combination reports a failure the
+# reader cannot act on: cargo-llvm-cov 0.9.0 writes the lcov file, flips its
+# internal error flag, and exits 1 WITHOUT printing a percentage — the lcov
+# exporter has no summary to print one in. The Continuous Integration log for a
+# red run therefore ended:
+#
+#     Finished report saved to lcov.info
+#     ✗ [rustd] coverage run failed (exit 1)
+#
+# which names neither the measurement nor the floor it missed, and leaves
+# "coverage fell" indistinguishable from "the exporter broke". Answering "by how
+# much, and where" then costs a second full instrumented run.
+#
+# So the grading moves to a `--summary-only` report over the SAME profile: that
+# form does print the per-file table and the TOTAL row, and it still carries the
+# `--fail-under-lines` verdict in its exit status, so the tool remains the judge.
+# The percentage in the ✗/✓ line is summed from `lcov.info` rather than from a
+# third `report` invocation — LCOV's `LF:`/`LH:` records ARE llvm-cov's line
+# denominator and numerator (verified equal on a probe crate: 2/5 = 40.00% by
+# both routes), so the file already on disk answers it for free.
+#
+# The per-crate rollup fires only on a red run. A floor miss is spread across
+# crates, and the first question after "by how much" is always "where" — that is
+# the list, sorted by the lines each crate is missing.
+define _rustd_coverage_verdict
+mkdir -p "$(CURDIR)/.tmp"; \
+summary="$(CURDIR)/.tmp/rustd-coverage-summary.txt"; \
+lcov="$(CURDIR)/$(RUSTD_DIR)/lcov.info"; \
+cd "$(RUSTD_DIR)" && cargo llvm-cov report --workspace --all-features \
+  --summary-only --fail-under-lines $(RUSTD_COVERAGE_FLOOR) > "$$summary" 2>&1; \
+verdict=$$?; \
+cat "$$summary"; \
+set -- $$(awk -F: '/^LF:/ { f += $$2 } /^LH:/ { h += $$2 } END { if (f == 0) print "0 0 0.0000"; else printf "%d %d %.4f\n", h, f, h * 100 / f }' "$$lcov" 2>/dev/null); \
+covered=$${1:-0}; total=$${2:-0}; pct=$${3:-0.0000}; missed=$$((total - covered)); \
+if [ "$$verdict" -ne 0 ]; then \
+  echo "✗ [rustd] line coverage $$pct% is below the $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
+  echo "  the floor is a ratchet: write the tests. Lowering RUSTD_COVERAGE_FLOOR is the thing it exists to prevent."; \
+  echo "  missed lines by crate:"; \
+  awk -F: '/^SF:/ { file = $$2 } /^LF:/ { f = $$2 } /^LH:/ { m = f - $$2; if (m > 0) { crate = file; sub(/.*\/crates\//, "", crate); sub(/\/.*/, "", crate); if (crate == file) crate = "(workspace root)"; miss[crate] += m } } END { for (c in miss) printf "%d\t%s\n", miss[c], c }' "$$lcov" 2>/dev/null \
+    | sort -rn | head -12 | awk -F'\t' '{ printf "    %6d  %s\n", $$1, $$2 }'; \
+else \
+  echo "✓ [rustd] line coverage $$pct% meets the $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
+fi; \
+echo "  report at $$lcov"; \
+exit $$verdict
+endef
+
 # `cargo llvm-cov` reports only what actually ran. The integration tests are
 # `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
 # line as uncovered — the code is exercised, just not by the run holding the
@@ -171,7 +221,8 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-clean --lcov --output-path lcov.info --fail-under-lines $(RUSTD_COVERAGE_FLOOR) -- --include-ignored); \
-	verdict=$$?; \
-	echo "  report at $(RUSTD_DIR)/lcov.info"; \
-	exit $$verdict
+	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-clean --no-report -- --include-ignored)
+	@echo "→ [rustd] Rendering lcov.info from the run's profile..."; \
+	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace --all-features --lcov --output-path lcov.info \
+	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
+	@$(_rustd_coverage_verdict)
