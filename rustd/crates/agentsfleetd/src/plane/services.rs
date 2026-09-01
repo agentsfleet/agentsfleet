@@ -14,10 +14,11 @@
 //! has to disentangle it from the boot sequence.
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_api::Services;
+use afd_api::{Services, TenantSurface};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
+use afd_credential::provider::Providers;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::Plane;
@@ -43,9 +44,6 @@ impl Services for ServingPlane {
     type Leases = Plane;
     type Sessions = Logins;
     type Workspaces = Workspaces;
-    type WorkspaceDirectory = Workspaces;
-    type ApiKeys = ApiKeys;
-    type CliCredentials = CliCredentials;
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
@@ -57,8 +55,6 @@ impl Services for ServingPlane {
     type Connectors = afd_connector::Connectors;
     type Steering = afd_events::Steer;
     type Memories = Memories;
-    type Billing = Billing;
-    type Catalogue = Models;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -110,12 +106,6 @@ impl Services for ServingPlane {
         self.platform_admin_workspace.as_ref()
     }
 
-    type Signups = afd_tenant::signup::Signups;
-
-    fn signups(&self) -> &Self::Signups {
-        &self.signups
-    }
-
     fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
         self.identity_webhook_secret.as_ref()
     }
@@ -127,18 +117,6 @@ impl Services for ServingPlane {
     /// The same value as [`Services::workspaces`], deliberately: production
     /// holds one directory that answers both seams, and the split exists for
     /// the suites — see the trait's own note.
-    fn workspace_directory(&self) -> &Workspaces {
-        &self.workspaces
-    }
-
-    fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
-    }
-
-    fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
-    }
-
     fn fleets(&self) -> &Fleets {
         &self.fleets
     }
@@ -181,14 +159,6 @@ impl Services for ServingPlane {
         &self.secrets
     }
 
-    fn billing(&self) -> &Billing {
-        &self.billing
-    }
-
-    fn catalogue(&self) -> &Models {
-        &self.models
-    }
-
     fn runner_lease_history(&self) -> &RunnerLeaseHistory {
         &self.runner_lease_history
     }
@@ -227,5 +197,46 @@ impl Services for ServingPlane {
     /// seam a fixed clock would provide already exists one level up.
     fn now(&self) -> UnixMillis {
         afd_core::clock::now()
+    }
+}
+
+// The tenant-scoped half, which the seam declares as a supertrait. Every field
+// read here is the same field the block above would have read; the split is the
+// seam's, not this plane's.
+impl TenantSurface for ServingPlane {
+    type WorkspaceDirectory = Workspaces;
+    type ApiKeys = ApiKeys;
+    type CliCredentials = CliCredentials;
+    type Billing = Billing;
+    type Catalogue = Models;
+    type TenantProviders = Providers;
+    type Signups = afd_tenant::signup::Signups;
+
+    fn signups(&self) -> &Self::Signups {
+        &self.signups
+    }
+
+    fn workspace_directory(&self) -> &Workspaces {
+        &self.workspaces
+    }
+
+    fn api_keys(&self) -> &ApiKeys {
+        &self.api_keys
+    }
+
+    fn cli_credentials(&self) -> &CliCredentials {
+        &self.cli_credentials
+    }
+
+    fn billing(&self) -> &Billing {
+        &self.billing
+    }
+
+    fn tenant_providers(&self) -> &Providers {
+        &self.providers
+    }
+
+    fn catalogue(&self) -> &Models {
+        &self.models
     }
 }

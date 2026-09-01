@@ -20,6 +20,8 @@ mod request_id;
 mod route_inventory;
 #[path = "route_meta_total.rs"]
 mod route_meta_total;
+#[path = "route_verbs.rs"]
+mod route_verbs;
 #[path = "router.rs"]
 mod router;
 #[path = "span_route_template.rs"]

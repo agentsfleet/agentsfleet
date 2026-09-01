@@ -20,6 +20,8 @@ mod integration_approval_webhook;
 mod integration_connector_events;
 #[path = "integration_ingress_live.rs"]
 mod integration_ingress_live;
+#[path = "integration_qstash_fire.rs"]
+mod integration_qstash_fire;
 #[path = "webhook_approval_wall.rs"]
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]

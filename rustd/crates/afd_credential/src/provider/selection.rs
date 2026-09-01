@@ -10,6 +10,7 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use crate::error::{Result, provider_malformed, query, row_malformed};
+use crate::provider::cap;
 use crate::provider::sql;
 use crate::provider::store::Providers;
 use afd_billing::Posture;
@@ -27,13 +28,17 @@ const CONTEXT_WORKSPACE: &str = "tenant primary workspace";
 const TABLE_PLATFORM_DEFAULTS: &str = "core.platform_provider_defaults";
 
 /// The table a malformed identifier is reported against.
-const TABLE_WORKSPACES: &str = "core.workspaces";
+///
+/// `pub(crate)` because the activation reads the same bridge row off its own
+/// locking statement and must report a malformed id against the same table
+/// (RULE UFS: one spelling, not two).
+pub(crate) const TABLE_WORKSPACES: &str = "core.workspaces";
 
 /// The column a malformed identifier is reported against.
 const COLUMN_SOURCE_WORKSPACE: &str = "source_workspace_id";
 
 /// The column a malformed identifier is reported against.
-const COLUMN_ID: &str = "id";
+pub(crate) const COLUMN_ID: &str = "id";
 
 /// The `mode` column held a word neither posture spells.
 const FIELD_MODE: &str = "mode";
@@ -95,7 +100,7 @@ impl Providers {
     /// Reports a datastore that would not answer, and a `mode` column holding
     /// a word neither posture spells — which is a data-integrity fault to
     /// surface rather than a value to guess at.
-    pub(crate) async fn selection(&self, tenant_id: &Uuid7) -> Result<Option<Selection>> {
+    pub async fn selection(&self, tenant_id: &Uuid7) -> Result<Option<Selection>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::SELECT_TENANT_MODEL_SELECTION)
             .bind(tenant_id.as_str())
@@ -114,7 +119,7 @@ impl Providers {
     /// is not an identifier, and an active row carrying no model — which is a
     /// row that predates a proper default-set and must be re-set through the
     /// dashboard rather than resolved to an unpriced model.
-    pub(crate) async fn platform_default(&self) -> Result<Option<PlatformDefault>> {
+    pub async fn platform_default(&self) -> Result<Option<PlatformDefault>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::SELECT_ACTIVE_PLATFORM_DEFAULT)
             .fetch_optional(&mut *connection)
@@ -154,14 +159,14 @@ impl Providers {
 /// answer `sqlx::Error`, which this crate reports as a datastore failure and
 /// therefore retries. The classification is the point, so the conversion is
 /// written where it can produce the right kind.
-fn read_selection(row: &PgRow) -> Result<Selection> {
+pub(crate) fn read_selection(row: &PgRow) -> Result<Selection> {
     let stored: String = row.try_get(0).map_err(query(CONTEXT_SELECTION))?;
     let posture = Posture::parse(&stored).ok_or_else(|| provider_malformed(FIELD_MODE))?;
     Ok(Selection {
         posture,
         provider: text(row, 1, CONTEXT_SELECTION)?,
         model: text(row, 2, CONTEXT_SELECTION)?,
-        context_cap_tokens: cap(row.try_get(3).map_err(query(CONTEXT_SELECTION))?),
+        context_cap_tokens: cap::stored(row.try_get(3).map_err(query(CONTEXT_SELECTION))?),
         secret_ref: optional_text(row, 4, CONTEXT_SELECTION)?,
     })
 }
@@ -184,7 +189,7 @@ fn read_platform_default(row: &PgRow) -> Result<PlatformDefault> {
         ))?,
         model,
         base_url: optional_text(row, 3, CONTEXT_PLATFORM)?,
-        context_cap_tokens: cap(stored_cap.unwrap_or_default()),
+        context_cap_tokens: cap::stored(stored_cap.unwrap_or_default()),
     })
 }
 
@@ -200,28 +205,4 @@ fn optional_text(row: &PgRow, index: usize, context: &'static str) -> Result<Opt
     row.try_get::<Option<String>, _>(index)
         .map(|held| held.map(String::into_boxed_str))
         .map_err(query(context))
-}
-
-/// A stored context ceiling, clamped at zero.
-///
-/// The column is `int4` and the ceiling is a count, so a negative is a value
-/// the schema permits and the domain does not. Clamping matches
-/// `@intCast(@max(cap_i32, 0))` and, more to the point, keeps a corrupt row
-/// from becoming a four-billion-token ceiling by wrapping.
-fn cap(stored: i32) -> u32 {
-    u32::try_from(stored).unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cap;
-
-    #[test]
-    fn a_negative_context_ceiling_clamps_to_zero_rather_than_wrapping() {
-        assert_eq!(cap(0), 0);
-        assert_eq!(cap(200_000), 200_000);
-        assert_eq!(cap(-1), 0);
-        assert_eq!(cap(i32::MIN), 0);
-        assert_eq!(cap(i32::MAX), 2_147_483_647);
-    }
 }

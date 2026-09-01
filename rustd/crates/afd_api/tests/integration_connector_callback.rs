@@ -36,9 +36,9 @@ use serde_json::Value;
 
 use self::harness::{json_body, send};
 #[path = "support/fake_provider.rs"]
-mod fake_provider;
+pub(crate) mod fake_provider;
 #[path = "connector_callback_live/fixture.rs"]
-mod fixture;
+pub(crate) mod fixture;
 
 use self::fake_provider::FakeProvider;
 use self::fixture::Fixture;
@@ -60,7 +60,7 @@ const REPLACEMENT_TOKEN: &str = "xoxb-fixture-rotated-token";
 const TEAM_ID: &str = "T0FIXTURE01";
 
 /// The authorization code the provider hands back.
-const CODE: &str = "vendor-authorization-code";
+pub(crate) const CODE: &str = "vendor-authorization-code";
 
 /// The handle field a runner opens the bot token from.
 const HANDLE_BOT_TOKEN: &str = "bot_token";
@@ -84,11 +84,15 @@ fn slack_answer(token: &str) -> String {
 /// Taken from the daemon's own URL rather than signed here: the state is what
 /// binds workspace, person, nonce and instant together, and a fixture that
 /// built one would be asserting the verifier against itself.
-async fn start_connect(router: &axum::Router, fixture: &Fixture) -> String {
+pub(crate) async fn start_connect(
+    router: &axum::Router,
+    fixture: &Fixture,
+    provider: Provider,
+) -> String {
     let path = format!(
         "/v1/workspaces/{}/connectors/{}/connect",
         fixture.workspace.as_str(),
-        PROVIDER.id()
+        provider.id()
     );
     let started = send(router, Method::POST, &path, Some(&fixture.token), "").await;
     let status = started.status();
@@ -107,7 +111,7 @@ async fn start_connect(router: &axum::Router, fixture: &Fixture) -> String {
 /// substring is already in the query alphabet, and a provider hands back the
 /// same bytes it was given — decoding here only to re-encode differently would
 /// be the fixture inventing a spelling no provider sends.
-fn state_of(consent: &str) -> String {
+pub(crate) fn state_of(consent: &str) -> String {
     let query = consent
         .split_once('?')
         .expect("a consent URL carries a query")
@@ -120,14 +124,15 @@ fn state_of(consent: &str) -> String {
 }
 
 /// The dashboard returning with the person's bearer and the provider's code.
-async fn complete(
+pub(crate) async fn complete(
     router: &axum::Router,
     fixture: &Fixture,
+    provider: Provider,
     state: &str,
 ) -> axum::response::Response {
     let target = format!(
         "/v1/connectors/{}/callback?code={CODE}&state={state}",
-        PROVIDER.id()
+        provider.id()
     );
     send(router, Method::POST, &target, Some(&fixture.token), "").await
 }
@@ -140,8 +145,8 @@ async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
 
-    let state = start_connect(&router, &fixture).await;
-    let landed = complete(&router, &fixture, &state).await;
+    let state = start_connect(&router, &fixture, PROVIDER).await;
+    let landed = complete(&router, &fixture, PROVIDER, &state).await;
     assert_eq!(
         landed.status(),
         StatusCode::FOUND,
@@ -185,13 +190,13 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
     let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
 
-    let state = start_connect(&router, &fixture).await;
+    let state = start_connect(&router, &fixture, PROVIDER).await;
     assert_eq!(
-        complete(&router, &fixture, &state).await.status(),
+        complete(&router, &fixture, PROVIDER, &state).await.status(),
         StatusCode::FOUND
     );
 
-    let replayed = complete(&router, &fixture, &state).await;
+    let replayed = complete(&router, &fixture, PROVIDER, &state).await;
     let status = replayed.status();
     let document = json_body(replayed).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{document}");
@@ -229,15 +234,15 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
             .await;
     let router = fixture.router(&provider);
 
-    let first = start_connect(&router, &fixture).await;
+    let first = start_connect(&router, &fixture, PROVIDER).await;
     assert_eq!(
-        complete(&router, &fixture, &first).await.status(),
+        complete(&router, &fixture, PROVIDER, &first).await.status(),
         StatusCode::FOUND
     );
 
-    let again = start_connect(&router, &fixture).await;
+    let again = start_connect(&router, &fixture, PROVIDER).await;
     assert_eq!(
-        complete(&router, &fixture, &again).await.status(),
+        complete(&router, &fixture, PROVIDER, &again).await.status(),
         StatusCode::FOUND,
         "a reconnect is the same action as a connect, not a conflict"
     );

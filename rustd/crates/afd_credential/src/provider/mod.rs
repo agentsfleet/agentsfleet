@@ -47,14 +47,20 @@
 //! lands, this module moves down to `afd_state` and both callers import it.
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
+mod activate;
+mod cap;
 mod endpoint;
+pub mod entries;
 mod managed;
 mod platform;
 mod resolved;
+mod secret_kind;
 mod selection;
 pub mod sql;
 mod ssrf;
 mod store;
+mod upsert;
+mod vetted;
 mod wire;
 
 use std::fmt::Debug;
@@ -66,7 +72,12 @@ use crate::error::{Result, provider_malformed, provider_no_workspace, provider_s
 use crate::vault::KeyRef;
 use afd_billing::Posture;
 
+pub use self::activate::Activation;
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
+pub use self::entries::{
+    Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,
+    Retargeted,
+};
 // Re-exported crate-wide for the credential broker, which asks the SAME
 // question of a vault handle's `accounts_base` that this module asks of a
 // tenant's `base_url`: is this URL one the daemon will dial. One guard with two
@@ -74,6 +85,7 @@ pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 // disagree with this one about the same host.
 pub(crate) use self::endpoint::validate as validate_endpoint;
 pub use self::resolved::{Dialled, Resolved, SecretString};
+pub use self::secret_kind::SecretKind;
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;
 pub use self::wire::Wire;

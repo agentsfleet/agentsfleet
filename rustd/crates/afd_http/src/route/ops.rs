@@ -1,6 +1,6 @@
 //! Liveness and readiness routes.
 
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 /// The operational probes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -14,6 +14,15 @@ pub enum OpsRoute {
 impl OpsRoute {
     /// Every ops route.
     pub const ALL: &'static [Self] = &[Self::Healthz, Self::Readyz];
+
+    /// The verbs this route identity serves.
+    ///
+    /// A probe answers `GET` and nothing else. An orchestrator asks a
+    /// question; it never asserts anything here.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        &[Verb::Get]
+    }
 
     /// Both probes are unauthenticated and never shed. An orchestrator that
     /// cannot reach `/readyz` because the instance is busy learns nothing it

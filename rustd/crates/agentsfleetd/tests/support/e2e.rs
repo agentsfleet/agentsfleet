@@ -135,7 +135,7 @@ fn lane(knob: &str) -> String {
 /// the daemon against a database it created, so the two cannot be the same
 /// value and passing the knob would silently restore the shared-state bug the
 /// module documentation describes.
-fn daemon_environment(database: &str) -> MapEnv {
+fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
@@ -147,7 +147,13 @@ fn daemon_environment(database: &str) -> MapEnv {
         // Required at boot, and resolved rather than used: this lane boots the
         // daemon for real, so it has to satisfy preflight in full.
         .chain(SESSION_PEPPER)
-        .chain(IDENTITY),
+        .chain(IDENTITY)
+        // LAST, so a caller's live provider wins over the fixture base above.
+        // The runner scenarios keep the non-resolving fixture — their plane
+        // never dials it — while the tenant-plane walk points the daemon at a
+        // listener it stood up, which is the only way a capability read over
+        // the booted daemon can answer instead of timing out.
+        .chain(provider_base.map(|base| ("CLERK_API_BASE", base))),
     )
 }
 
@@ -214,6 +220,18 @@ pub(crate) struct Scenario {
 /// through `core.fleets` and a mark with no row makes a correct refusal look
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
+    scenario_with_provider(supervisor, None).await
+}
+
+/// [`scenario`], with the identity provider pointed at a caller's listener.
+///
+/// The tenant plane resolves a person's capabilities through `CLERK_API_BASE`,
+/// so a suite driving `/v1/tenants/me/*` has to answer that read itself; every
+/// other suite keeps the fixture base nothing dials.
+pub(crate) async fn scenario_with_provider(
+    supervisor: &mut Supervisor,
+    provider_base: Option<&str>,
+) -> Scenario {
     install_subscriber();
     // Before the daemon boots, because booting one is joining the consumer
     // group this guards.
@@ -223,9 +241,13 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
-    let booted = boot(&daemon_environment(&database_url), EPHEMERAL, supervisor)
-        .await
-        .expect("the lane's Postgres and Redis are up");
+    let booted = boot(
+        &daemon_environment(&database_url, provider_base),
+        EPHEMERAL,
+        supervisor,
+    )
+    .await
+    .expect("the lane's Postgres and Redis are up");
     let base = format!("http://{}", booted.address);
     let now = afd_core::clock::now();
 

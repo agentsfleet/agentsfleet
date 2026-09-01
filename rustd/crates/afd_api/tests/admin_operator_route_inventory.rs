@@ -39,13 +39,16 @@ fn actual() -> BTreeSet<Endpoint> {
             .copied()
             .map(|verb| (route.meta().template, verb))
     });
-    let bundles = TenantRoute::ALL.iter().flat_map(|route| {
+    // One route from the tenant family, named rather than filtered for: M179's
+    // interface covers the public gallery and nothing else there, and
+    // `TenantRoute::verbs` now answers for all thirteen tenant routes rather
+    // than only this one.
+    let bundles = std::iter::once(TenantRoute::FleetBundles).flat_map(|route| {
         route
-            .fleet_bundle_verbs()
-            .into_iter()
-            .flatten()
+            .verbs()
+            .iter()
             .copied()
-            .map(|verb| (route.meta().template, verb))
+            .map(move |verb| (route.meta().template, verb))
     });
     let operator = RunnerOpsRoute::ALL
         .iter()

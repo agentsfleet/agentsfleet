@@ -44,6 +44,7 @@ mod path;
 mod runner;
 mod runner_ops;
 mod tenant;
+mod verb;
 mod webhook;
 mod workspace;
 
@@ -59,28 +60,9 @@ pub use self::ops::OpsRoute;
 pub use self::runner::RunnerRoute;
 pub use self::runner_ops::RunnerOpsRoute;
 pub use self::tenant::TenantRoute;
+pub use self::verb::Verb;
 pub use self::webhook::WebhookRoute;
 pub use self::workspace::WorkspaceRoute;
-
-/// An HTTP verb a route identity serves.
-///
-/// Kept as a small copyable enum rather than storing [`http::Method`] values in
-/// static slices. The inventory is compile-time data, and converting at the
-/// router edge is cheaper and clearer than cloning an owned method throughout
-/// tests and route metadata.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Verb {
-    /// Read a resource or collection.
-    Get,
-    /// Create beneath a collection.
-    Post,
-    /// Replace the addressed setting.
-    Put,
-    /// Partially update the addressed resource.
-    Patch,
-    /// Remove the addressed resource.
-    Delete,
-}
 
 /// The five facts that used to live in four files and 165 handler bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -30,6 +30,7 @@
 
 use std::sync::Arc;
 
+use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 
@@ -40,23 +41,45 @@ use crate::vault::Vault;
 /// Cheap to clone: `Db` is a handle over an `Arc`-backed pool and the key is
 /// behind an `Arc`, so every clone shares one connection set and one key.
 ///
-/// No queue and no entropy. Resolution is Postgres and arithmetic — it mints
-/// no identifier and publishes nothing — which is what lets the whole
-/// interpretation half be proven with neither datastore in the picture.
+/// No queue. RESOLUTION is Postgres and arithmetic — it mints no identifier
+/// and publishes nothing — which is what lets the whole interpretation half be
+/// proven with neither datastore in the picture. Activation is the one verb
+/// here that mints, and it carries the entropy for exactly that.
 #[derive(Debug, Clone)]
 pub struct Providers {
     database: Db,
     vault: Vault,
+    kek: Arc<Kek>,
+    entropy: Entropy,
 }
 
 impl Providers {
     /// A store reading through `database`, opening envelopes under `kek`.
+    ///
+    /// Entropy because activation MINTS: the registry entry it guarantees
+    /// carries a fresh identifier, and it is drawn here rather than by the
+    /// database so the id is a uuidv7 the schema's own check accepts.
     #[must_use]
-    pub fn new(database: Db, kek: Arc<Kek>) -> Self {
+    pub fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
-            vault: Vault::new(database.clone(), kek),
+            vault: Vault::new(database.clone(), Arc::clone(&kek)),
             database,
+            kek,
+            entropy,
         }
+    }
+
+    /// The key an envelope this store opens is sealed under.
+    ///
+    /// Activation opens the row it has already locked, rather than handing the
+    /// name back to the vault for a second read of the same row.
+    pub(crate) fn vault_key(&self) -> &Kek {
+        &self.kek
+    }
+
+    /// The source a minted registry-entry identifier is drawn from.
+    pub(crate) const fn entropy(&self) -> &Entropy {
+        &self.entropy
     }
 
     /// The pool these reads run through, for the sibling modules that add

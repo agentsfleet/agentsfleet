@@ -82,7 +82,7 @@ impl Uuid7 {
     pub fn parse(text: &str) -> Result<Self> {
         let reason = first_violation(text);
         match reason {
-            Some(reason) => Err(Error::new(ErrorKind::IdShape { reason })),
+            Some(reason) => Err(Error::from(ErrorKind::IdShape { reason })),
             None => Ok(Self(Box::from(text))),
         }
     }
@@ -162,12 +162,12 @@ impl Uuid7 {
     /// instead of minting an identifier that sorts wrongly forever.
     pub fn encode(at: UnixMillis, entropy: [u8; ENTROPY_LEN]) -> Result<Self> {
         let Ok(millis) = u64::try_from(at.as_millis()) else {
-            return Err(Error::new(ErrorKind::IdShape {
+            return Err(Error::from(ErrorKind::IdShape {
                 reason: "instant precedes the Unix epoch",
             }));
         };
         if millis > MAX_TIMESTAMP_MILLIS {
-            return Err(Error::new(ErrorKind::IdShape {
+            return Err(Error::from(ErrorKind::IdShape {
                 reason: "instant exceeds the 48-bit millisecond field",
             }));
         }

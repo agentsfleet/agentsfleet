@@ -7,7 +7,7 @@
 use afd_auth::Scope;
 
 use super::path::workspace_path;
-use super::{Guard, NONE, RouteClass, RouteMeta, Scopes};
+use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 
 const FLEET_READ: &[Scope] = &[Scope::FleetRead];
 const FLEET_WRITE: &[Scope] = &[Scope::FleetWrite];
@@ -62,6 +62,29 @@ impl WorkspaceRoute {
         Self::Approval,
         Self::ApprovalResolve,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// A secret is replaced whole rather than patched — a field-wise edit on a
+    /// credential would let a caller move the projection out from under the
+    /// ciphertext beside it — so `Secret` carries `PUT` and no `PATCH`. A
+    /// preference is the same shape for the same reason: one document, written
+    /// whole.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Events
+            | Self::EventsStream
+            | Self::Onboarding
+            | Self::Preferences
+            | Self::Approvals
+            | Self::Approval => &[Verb::Get],
+            Self::Preference => &[Verb::Put],
+            Self::ApprovalResolve => &[Verb::Post],
+            Self::FleetLibrary | Self::Fleets | Self::Secrets => &[Verb::Get, Verb::Post],
+            Self::Secret => &[Verb::Put, Verb::Delete],
+        }
+    }
 
     /// Viewing the inbox and deciding a gate are separate capabilities on
     /// purpose: reading what is waiting is not the authority to resolve it.

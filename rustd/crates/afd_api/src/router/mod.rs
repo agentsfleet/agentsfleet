@@ -142,13 +142,38 @@ fn mounted_routes<D: Serving>(
             // preserves those per-method services without making an open GET
             // and a bearer DELETE share an authenticator.
             Some((_, existing)) => {
-                let combined = std::mem::replace(existing, axum::routing::any(unreachable_stub));
+                // `MethodRouter::merge` consumes both sides and a `&mut` cannot
+                // be moved out of, so something has to stand in its place for
+                // the instant between the take and the put back. An EMPTY
+                // router rather than one wrapping a stub handler: the stub's
+                // body was unreachable by construction, which is a body no test
+                // can ever execute and no reader can ever check.
+                let combined = std::mem::replace(existing, MethodRouter::new());
                 *existing = combined.merge(handler);
             }
             None => merged.push((template, handler)),
         }
     }
     (mounted, merged)
+}
+
+/// The mount for `route` with none of its layers, or `None` if it is unserved.
+///
+/// Exposed to bind [`crate::route::Route::verbs`] — a DECLARATION — to what is
+/// actually mounted, which nothing in the type system does: a `MethodRouter` is
+/// opaque once built, so the methods a handler was mounted under cannot be read
+/// back out of it. A suite discovers them by probing instead.
+///
+/// It has to be the UN-layered router, and that is a measurement rather than a
+/// preference. [`MethodRouter::layer`] wraps the 405 fallback as well as the
+/// handlers, so on a guarded route an unserved method meets the authenticator
+/// before it reaches that fallback and is refused 401 — which is
+/// indistinguishable from a served method to a probe. Against the built router
+/// every `Guard::Bearer` template reports all five verbs.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn unlayered_mount<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
+    self::mount::handler_for::<D>(route)
 }
 
 /// Wraps `handler` in exactly the layers its route's row calls for.
@@ -185,16 +210,6 @@ fn layered<D: Serving>(
     } else {
         guarded
     }
-}
-
-/// Never routed to — a placeholder swapped in for one expression.
-///
-/// `MethodRouter::merge` consumes both sides, and a `&mut` cannot be moved out
-/// of. This stands in its place for the instant between the take and the put
-/// back, and no request can reach it because the value is replaced on the very
-/// next line.
-async fn unreachable_stub() -> Response {
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
 /// Refuses HEAD before it can be answered by a GET handler.

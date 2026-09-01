@@ -40,7 +40,9 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
         | crate::Error::Archive(_)
         | crate::Error::ArchiveTask(_)
         | crate::Error::Redirect(_)
-        | crate::Error::ArchivePath(_) => {
+        | crate::Error::ArchivePath(_)
+        | crate::Error::Entropy { .. }
+        | crate::Error::Mint { .. } => {
             panic!("validation cannot reach an I/O boundary")
         }
     }

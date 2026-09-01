@@ -111,6 +111,28 @@ SELECT key_name, created_at, meta_kind, meta_provider, meta_base_url
  WHERE workspace_id = $1::uuid
  ORDER BY key_name ASC";
 
+/// The descriptors for a NAMED SET of credentials, in one read.
+///
+/// `$1` workspace · `$2` the names.
+///
+/// The same never-decrypt property as [`SELECT_SECRET_PROJECTIONS`] and none of
+/// its shape: that statement walks a workspace, this one answers exactly the
+/// names a caller already holds. The tenant model registry renders at most a
+/// page of entries and would otherwise read every credential the tenant owns to
+/// do it.
+///
+/// `meta_has_key` appears here and on no other read. Key PRESENCE is the
+/// registry page's question — a credential holding no key renders differently —
+/// and the secrets list has never displayed it, so the column is projected by
+/// the one statement whose caller shows it.
+///
+/// No ORDER BY: the caller matches rows back by name, so an order would be a
+/// guarantee nothing consumes.
+pub(crate) const SELECT_SECRET_DESCRIPTORS: &str = "\
+SELECT key_name, meta_kind, meta_provider, meta_base_url, meta_has_key
+  FROM vault.secrets
+ WHERE workspace_id = $1::uuid AND key_name = ANY($2::text[])";
+
 /// The sealed envelope of one secret, for the daemon's own use.
 ///
 /// `$1` workspace · `$2` name.
@@ -206,165 +228,4 @@ DELETE FROM vault.secrets
  WHERE workspace_id = $1::uuid AND key_name = $2";
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        DELETE_SECRET, INSERT_SECRET_IF_ABSENT, LOCK_ENTRIES, LOCK_SECRET, LOCK_SELECTION,
-        SELECT_SECRET_ENVELOPE, SELECT_SECRET_PROJECTIONS, UPDATE_SECRET,
-    };
-
-    /// The six ciphertext columns, plus the version that binds them.
-    const CIPHERTEXT_COLUMNS: [&str; 7] = [
-        "encrypted_dek",
-        "dek_nonce",
-        "dek_tag",
-        "nonce",
-        "ciphertext",
-        "tag",
-        "kek_version",
-    ];
-
-    /// The four columns the promotion moved out of the envelope.
-    const PROJECTION_COLUMNS: [&str; 4] = [
-        "meta_kind",
-        "meta_provider",
-        "meta_base_url",
-        "meta_has_key",
-    ];
-
-    #[test]
-    fn the_list_statement_reads_no_ciphertext_column() {
-        // Spec Invariant 3 as a pin on the statement itself. The list cannot
-        // decrypt because `Directory` holds no key, and it has nothing to
-        // decrypt because this projection carries none of the six components —
-        // two independent guarantees, and this is the one a reviewer can see
-        // without following a type.
-        for column in CIPHERTEXT_COLUMNS {
-            assert!(
-                !SELECT_SECRET_PROJECTIONS.contains(column),
-                "the list projects {column}, which is ciphertext"
-            );
-        }
-    }
-
-    #[test]
-    fn both_write_arms_carry_every_projection_column() {
-        // The drift this design exists to make impossible: an arm that wrote
-        // the ciphertext and left a `meta_*` column describing the previous
-        // body would still compile and would still return 201.
-        for column in PROJECTION_COLUMNS {
-            assert!(
-                INSERT_SECRET_IF_ABSENT.contains(column),
-                "the create arm does not write {column}"
-            );
-            assert!(
-                UPDATE_SECRET.contains(column),
-                "the replace arm does not write {column}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_create_arm_claims_a_name_and_never_overwrites_one() {
-        assert!(
-            INSERT_SECRET_IF_ABSENT.contains("ON CONFLICT (workspace_id, key_name) DO NOTHING")
-        );
-        assert!(
-            !INSERT_SECRET_IF_ABSENT.contains("DO UPDATE"),
-            "a create that finds the name taken must not become a replace"
-        );
-    }
-
-    #[test]
-    fn the_replace_arm_is_an_update_and_creates_nothing() {
-        // An upsert here would resurrect a credential a concurrent delete just
-        // removed, and would make claiming a name something other than create's
-        // sole job.
-        assert!(
-            UPDATE_SECRET
-                .trim_start()
-                .starts_with("UPDATE vault.secrets")
-        );
-        assert!(!UPDATE_SECRET.contains("INSERT"));
-    }
-
-    #[test]
-    fn every_statement_is_scoped_to_one_workspace_or_one_tenant() {
-        // Tenancy is enforced in SQL and not by trusting the handler: a name
-        // belonging to somebody else resolves no row rather than the wrong row.
-        for statement in [
-            INSERT_SECRET_IF_ABSENT,
-            UPDATE_SECRET,
-            SELECT_SECRET_PROJECTIONS,
-            SELECT_SECRET_ENVELOPE,
-            LOCK_SECRET,
-            DELETE_SECRET,
-        ] {
-            assert!(
-                statement.contains("workspace_id"),
-                "unscoped statement: {statement}"
-            );
-        }
-        for statement in [LOCK_ENTRIES, LOCK_SELECTION] {
-            assert!(
-                statement.contains("tenant_id"),
-                "unscoped statement: {statement}"
-            );
-        }
-    }
-
-    #[test]
-    fn every_lock_statement_actually_takes_a_row_lock() {
-        // `FOR UPDATE` is the load-bearing clause. Without it these are plain
-        // reads and the protocol degrades to the check-then-act it replaced,
-        // while still looking correct at every call site.
-        for statement in [LOCK_SECRET, LOCK_ENTRIES, LOCK_SELECTION] {
-            assert!(statement.contains("FOR UPDATE"), "not a lock: {statement}");
-        }
-    }
-
-    #[test]
-    fn the_entry_lock_is_ordered_so_two_writers_cannot_deadlock_on_one_set() {
-        // Locking the same rows in different orders is the classic deadlock,
-        // and the only defence is that every participant sorts identically.
-        assert!(LOCK_ENTRIES.contains("ORDER BY id"));
-    }
-
-    #[test]
-    fn the_envelope_read_can_only_ever_return_one_secret() {
-        // The guarantee that keeps this from becoming a bulk decrypt: it is
-        // predicated on a single `key_name`, so there is no shape of it that
-        // walks a workspace. A future edit widening the predicate would be
-        // turning one decrypt into a page of them.
-        assert!(SELECT_SECRET_ENVELOPE.contains("key_name = $2"));
-        assert!(
-            !SELECT_SECRET_ENVELOPE.contains("ORDER BY"),
-            "a single-row read has nothing to order"
-        );
-    }
-
-    #[test]
-    fn the_envelope_read_projects_every_component_an_open_needs() {
-        // A missing column here is an envelope that cannot be rebuilt, and the
-        // failure would surface as an unopenable secret rather than as a bad
-        // projection.
-        for column in CIPHERTEXT_COLUMNS {
-            assert!(
-                SELECT_SECRET_ENVELOPE.contains(column),
-                "the envelope read omits {column}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_envelope_read_is_the_only_statement_projecting_ciphertext() {
-        // Spec Invariant 3 restated precisely now that a decrypting read
-        // exists: the LIST performs zero decrypts, and it stays that way
-        // because it still projects none of the six components.
-        for column in CIPHERTEXT_COLUMNS {
-            assert!(
-                !SELECT_SECRET_PROJECTIONS.contains(column),
-                "the list projects {column}, which is ciphertext"
-            );
-        }
-    }
-}
+mod tests;

@@ -25,18 +25,17 @@
 
 use serde::Deserialize;
 
-use super::resolved::Dialled;
-use crate::error::{Result, provider_endpoint, provider_malformed};
-use crate::provider::endpoint;
+use crate::error::{Result, provider_malformed};
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::Selection;
+use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
 use afd_billing::Posture;
 use afd_core::id::Uuid7;
 
 /// The credential field a self-managed resolution cannot proceed without.
-const FIELD_PROVIDER: &str = "provider";
+pub(super) const FIELD_PROVIDER: &str = "provider";
 
 /// The credential field a named provider cannot proceed without.
 const FIELD_API_KEY: &str = "api_key";
@@ -50,25 +49,26 @@ const FIELD_SECRET_REF: &str = "secret_ref";
 /// may address other fields of it as `${secrets.<name>.<field>}` at the tool
 /// bridge. Refusing them would make one shared credential unusable for both.
 #[derive(Debug, Deserialize)]
-struct Credential {
+pub(super) struct Credential {
     /// Which provider this credential is for. Always required.
-    provider: Box<str>,
+    pub(super) provider: Box<str>,
     /// The bearer key. Optional in the JSON, and required by the rule below
     /// for every provider but the compatible one.
     #[serde(default)]
-    api_key: Option<SecretString>,
-    /// The credential's own model — parsed so a non-string is caught, and
-    /// unread on this path. See the module note.
-    #[expect(
-        dead_code,
-        reason = "parsed for its shape, not its value: a non-string `model` is a malformed                   credential, while a valid one is M178's legacy fallback and not this path's"
-    )]
+    pub(super) api_key: Option<SecretString>,
+    /// The credential's own model.
+    ///
+    /// Unread on the RESOLUTION path — the model lives on the tenant's
+    /// registry entry, so reading it here would resolve whatever a stale
+    /// secret happened to carry. Activation reads it as the fallback for a
+    /// bare `PUT /provider` that names no model, which is the one caller the
+    /// module note said would earn it.
     #[serde(default)]
-    model: Option<Box<str>>,
+    pub(super) model: Option<Box<str>>,
     /// A custom endpoint, validated against `provider` before anything is
     /// resolved.
     #[serde(default)]
-    base_url: Option<Box<str>>,
+    pub(super) base_url: Option<Box<str>>,
 }
 
 /// Resolution through a tenant's own stored credential.
@@ -116,39 +116,21 @@ impl Resolution for SelfManaged {
     }
 
     fn interpret(&self, body: &[u8]) -> Result<Resolved> {
-        let credential: Credential = super::credential(body, FIELD_PROVIDER)?;
-        if credential.provider.is_empty() {
-            return Err(provider_malformed(FIELD_PROVIDER));
-        }
-
-        // Endpoint first, BEFORE the key is looked at: a hostile or mismatched
-        // endpoint fails the resolution while the credential is still just
-        // bytes, which is the ordering `probeSelfManagedSecret` chose and the
-        // reason it gave — nothing owned is built around a URL that will be
-        // refused.
-        // The host travels with the URL from here, because `resolve` already
-        // derived it to make its SSRF ruling — see [`Dialled`].
-        let dialled: Option<Dialled> =
-            endpoint::resolve(&credential.provider, credential.base_url.as_deref())
-                .map_err(|rejection| provider_endpoint(rejection.as_str()))?
-                .map(|endpoint| Dialled {
-                    base_url: endpoint.url.into(),
-                    inference_host: endpoint.host,
-                });
+        let vetted = vet(body)?;
 
         // A resolved endpoint IS the compatible provider — `endpoint::resolve`
         // has already refused every other pairing — so the optional-key rule
         // reads off the outcome rather than re-comparing the provider string.
         // The Zig computes an `is_compatible` flag and consults it twice, which
         // is two places for the two rules to come apart.
-        let api_key = bearer(credential.api_key, dialled.is_some())?;
+        let api_key = bearer(vetted.api_key, vetted.dialled.is_some())?;
 
         Ok(Resolved::new(
             Posture::SelfManaged,
-            credential.provider,
+            vetted.provider,
             self.selection.model.clone(),
             self.selection.context_cap_tokens,
-            dialled,
+            vetted.dialled,
             api_key,
         ))
     }

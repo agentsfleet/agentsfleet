@@ -197,9 +197,9 @@ fn summary(held: &SecretSummary) -> afd_wire::secret::SecretSummary<'_> {
     afd_wire::secret::SecretSummary {
         name: Cow::Borrowed(&held.name),
         created_at: held.created_at_ms,
-        kind: held.kind.as_str(),
-        provider: held.provider.as_deref().map(Cow::Borrowed),
-        base_url: held.base_url.as_deref().map(Cow::Borrowed),
+        kind: held.kind().as_str(),
+        provider: held.provider().map(Cow::Borrowed),
+        base_url: held.base_url().map(Cow::Borrowed),
     }
 }
 

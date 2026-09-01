@@ -26,15 +26,13 @@ use afd_core::id::Uuid7;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
+use crate::classified::Classified;
 use crate::error::{Result, query};
 use crate::projection::Kind;
 use crate::{Directory, sql};
 
 /// The context a failed list reports under.
 const CONTEXT_LIST: &str = "list workspace secrets";
-
-/// The column an unrecognised kind is reported against.
-const COLUMN_KIND: &str = "meta_kind";
 
 /// One credential as the list shows it — every field non-secret by construction.
 ///
@@ -53,11 +51,32 @@ pub struct SecretSummary {
     /// When it was first stored, in epoch milliseconds.
     pub created_at_ms: i64,
     /// What it is, as the server classified it at write time.
-    pub kind: Kind,
+    ///
+    /// A sum type, not a kind beside two options: the dashboard narrows on a
+    /// tagged union where a `custom_secret` has no provider field, and this is
+    /// that union — a degraded row sheds its descriptors by construction. See
+    /// [`Classified`]'s module note.
+    pub classified: Classified,
+}
+
+impl SecretSummary {
+    /// The kind this row answers on the wire.
+    #[must_use]
+    pub const fn kind(&self) -> Kind {
+        self.classified.kind()
+    }
+
     /// The provider label, for the kinds that carry one.
-    pub provider: Option<String>,
+    #[must_use]
+    pub fn provider(&self) -> Option<&str> {
+        self.classified.provider()
+    }
+
     /// The custom endpoint, where one may be displayed.
-    pub base_url: Option<String>,
+    #[must_use]
+    pub fn base_url(&self) -> Option<&str> {
+        self.classified.base_url()
+    }
 }
 
 impl Directory {
@@ -97,42 +116,10 @@ fn read_row(row: &PgRow) -> Result<SecretSummary> {
     let provider: Option<String> = row.try_get(3).map_err(&unreadable)?;
     let base_url: Option<String> = row.try_get(4).map_err(&unreadable)?;
 
-    // A kind this build does not know, and a row that has none, both become an
-    // opaque credential — and both shed their descriptors with it. A
-    // `custom_secret` that still carried a provider label would contradict the
-    // union the dashboard narrows on, where that kind has no such field; and a
-    // label this build cannot place is one it should not be presenting.
-    match stored_kind.as_deref().map(Kind::parse) {
-        Some(Some(kind)) => Ok(SecretSummary {
-            name,
-            created_at_ms,
-            kind,
-            provider,
-            base_url,
-        }),
-        unknown => {
-            // `debug`, not `warn`: an un-backfilled row is expected on a
-            // database older than the projection columns, and a page of them
-            // would otherwise be a wall of warnings for a condition one
-            // operator command fixes. The stored spelling is carried so a
-            // NEWER daemon's vocabulary is visible when it does appear.
-            let stored = stored_kind.as_deref().unwrap_or_default();
-            let backfilled = unknown.is_some();
-            let name_field = name.as_str();
-            tracing::debug!(
-                column = COLUMN_KIND,
-                stored,
-                backfilled,
-                name = name_field,
-                event = "secret_kind_degraded",
-            );
-            Ok(SecretSummary {
-                name,
-                created_at_ms,
-                kind: Kind::CustomSecret,
-                provider: None,
-                base_url: None,
-            })
-        }
-    }
+    let classified = Classified::classify(stored_kind.as_deref(), &name, provider, base_url);
+    Ok(SecretSummary {
+        name,
+        created_at_ms,
+        classified,
+    })
 }

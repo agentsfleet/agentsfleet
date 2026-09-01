@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use afd_api::Services as _;
+use afd_api::{Services as _, TenantSurface as _};
 use afd_auth::{NoCapabilitySource, NoVerifier};
 use afd_core::env::MapEnv;
 use afd_credential::credential::platform::Platform;

@@ -1,6 +1,6 @@
 //! The device-flow login surface and the identity events that follow it.
 
-use super::{Guard, NONE, RouteClass, RouteMeta, Scopes};
+use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 
 /// Login sessions and identity webhooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,6 +35,22 @@ impl AuthRoute {
         Self::DeleteAllSessions,
         Self::IdentityEventClerk,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// `PollSession` and `DeleteSession` share a template and are told apart
+    /// by method alone — reading a login's state and cancelling it are one
+    /// path and two operations, which is the same split
+    /// [`super::RunnerRoute::MemoryHydrate`] carries.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::CreateSession | Self::VerifySession | Self::IdentityEventClerk => &[Verb::Post],
+            Self::PollSession => &[Verb::Get],
+            Self::ApproveSession => &[Verb::Patch],
+            Self::DeleteSession | Self::DeleteAllSessions => &[Verb::Delete],
+        }
+    }
 
     /// Open where the payload is the credential, bearer where a person is
     /// acting on their own session. No capability scope reaches this family:

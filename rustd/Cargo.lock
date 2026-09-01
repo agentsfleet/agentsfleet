@@ -182,6 +182,7 @@ dependencies = [
  "afd_billing",
  "afd_connector",
  "afd_core",
+ "afd_credential",
  "afd_cron",
  "afd_crypto",
  "afd_events",
@@ -291,6 +292,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_vault",
  "afd_wire",
  "http",
  "jsonwebtoken",
@@ -562,6 +564,7 @@ name = "afd_library"
 version = "0.27.1"
 dependencies = [
  "afd_core",
+ "afd_crypto",
  "afd_db",
  "afd_fleet",
  "afd_fleet_runtime",

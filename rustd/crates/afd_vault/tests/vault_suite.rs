@@ -11,6 +11,8 @@
 #[path = "support/lane.rs"]
 mod support;
 
+#[path = "integration_describe_named.rs"]
+mod integration_describe_named;
 #[path = "integration_list_no_decrypt.rs"]
 mod integration_list_no_decrypt;
 #[path = "integration_projection_parity.rs"]

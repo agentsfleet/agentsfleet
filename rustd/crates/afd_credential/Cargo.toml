@@ -23,6 +23,11 @@ afd_billing.workspace = true
 afd_core.workspace = true
 # Opening a sealed handle.
 afd_crypto.workspace = true
+# The key-less half of the secret store. The registry page renders provider,
+# kind, endpoint and key PRESENCE for a page of entries, and reads them through
+# `Directory` — a type with no key field — so "a registry page decrypts nothing"
+# is a property of the reader rather than of the path.
+afd_vault.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # A fleet's declared credentials and provider selection, as its config spells

@@ -1,16 +1,20 @@
 //! Platform onboarding over validated bundle inputs.
 
+mod tenant;
+
 use std::sync::Arc;
 
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use object_store::ObjectStore;
 use sqlx::Row as _;
 
 use super::VISIBILITY_DRAFT;
 use crate::{
-    BundleCatalog, BundleSource, Error, GithubSource, ImportBody, ImportService, PreparedBundle,
-    Result, SourceImporter, SourceKind,
+    BundleCatalog, BundleSource, Error, GithubSource, ImportBody, ImportService, Onboarded,
+    PreparedBundle, Result, SourceImporter, SourceKind,
 };
 
 const CONTEXT_IMPORT: &str = "import platform Fleet Bundle";
@@ -18,11 +22,38 @@ const CONTEXT_COLLISION: &str = "read Fleet Bundle collision owner";
 const DEFAULT_REVISION: &str = "main";
 const TEMPLATE_OWNER: &str = "agentsfleet";
 
+/// Which library an onboarded bundle lands in.
+///
+/// A value rather than a pair of flags, because the two tiers do not take the
+/// same arguments and never could. `replace` is the platform arm's alone: that
+/// catalogue is keyed by the bundle's own name, so a second source claiming an
+/// existing name is a collision an operator may choose to force past. A
+/// workspace's library is keyed by `(workspace_id, content_hash)`, where the
+/// same bytes onboarded twice are ONE entry the upsert refreshes — there is
+/// nothing to force. Making that an enum rather than an ignored parameter is
+/// `M-STRONG-TYPES` applied to an asymmetry a comment would otherwise carry.
+#[derive(Debug, Clone, Copy)]
+pub enum Destination<'a> {
+    /// The operator-curated catalogue, staged as a draft.
+    Platform {
+        /// Whether to overwrite a name a different source already owns.
+        replace: bool,
+    },
+    /// One workspace's own library, visible as soon as it lands.
+    Workspace(&'a Uuid7),
+}
+
 /// Platform importer sharing the daemon's one snapshot-store handle.
 #[derive(Debug, Clone)]
 pub struct LibraryImports {
     database: Db,
     store: Option<Arc<dyn ObjectStore>>,
+    /// Draws the identifier a workspace entry is minted with.
+    ///
+    /// Injected rather than constructed where it is used, because `Entropy` is
+    /// this workspace's `M-MOCKABLE-SYSCALLS` source: a test that could not
+    /// pin the identifier could not assert the row an onboarding wrote.
+    entropy: Entropy,
     #[cfg(feature = "test-util")]
     github_api_base: Option<Box<str>>,
 }
@@ -30,10 +61,11 @@ pub struct LibraryImports {
 impl LibraryImports {
     /// Uses a configured snapshot store for bundles carrying support files.
     #[must_use]
-    pub fn new(database: Db, store: Arc<dyn ObjectStore>) -> Self {
+    pub fn new(database: Db, store: Arc<dyn ObjectStore>, entropy: Entropy) -> Self {
         Self {
             database,
             store: Some(store),
+            entropy,
             #[cfg(feature = "test-util")]
             github_api_base: None,
         }
@@ -41,10 +73,11 @@ impl LibraryImports {
 
     /// Keeps skill-only onboarding available when snapshot storage is absent.
     #[must_use]
-    pub const fn without_store(database: Db) -> Self {
+    pub const fn without_store(database: Db, entropy: Entropy) -> Self {
         Self {
             database,
             store: None,
+            entropy,
             #[cfg(feature = "test-util")]
             github_api_base: None,
         }
@@ -65,10 +98,10 @@ impl LibraryImports {
     pub async fn upload(
         &self,
         body: &ImportBody,
-        replace: bool,
+        into: Destination<'_>,
         now: UnixMillis,
-    ) -> Result<PreparedBundle> {
-        self.persist(body, replace, now).await
+    ) -> Result<Onboarded> {
+        self.persist(body, into, now).await
     }
 
     /// Fetches a public GitHub repository, then validates and persists it.
@@ -79,13 +112,26 @@ impl LibraryImports {
         &self,
         repository: &str,
         revision: Option<&str>,
-        replace: bool,
+        into: Destination<'_>,
         now: UnixMillis,
-    ) -> Result<PreparedBundle> {
+    ) -> Result<Onboarded> {
         let source = self.github_source(revision.unwrap_or(DEFAULT_REVISION))?;
-        SourceImporter::new(source, self.service(replace, now))
-            .import(repository)
-            .await
+        // Awaited inside each arm rather than after the match: the two are
+        // different concrete futures, and only the value they resolve to is
+        // shared. Boxing them to share one type would allocate per import to
+        // save two `.await`s.
+        match self.service(into, now) {
+            Service::Platform(service) => {
+                SourceImporter::new(source, service)
+                    .import(repository)
+                    .await
+            }
+            Service::Workspace(service) => {
+                SourceImporter::new(source, service)
+                    .import(repository)
+                    .await
+            }
+        }
     }
 
     /// Fetches one first-party template from its fixed GitHub repository.
@@ -95,25 +141,28 @@ impl LibraryImports {
     pub async fn template(
         &self,
         template: &str,
-        replace: bool,
+        into: Destination<'_>,
         now: UnixMillis,
-    ) -> Result<PreparedBundle> {
+    ) -> Result<Onboarded> {
         let repository = format!("{TEMPLATE_OWNER}/{template}");
         let source = self.github_source(DEFAULT_REVISION)?;
         let mut body = source.fetch(&repository).await?;
         body.source_kind = SourceKind::Template;
         body.source_ref = template.to_owned();
         body.source_revision = None;
-        self.persist(&body, replace, now).await
+        self.persist(&body, into, now).await
     }
 
     async fn persist(
         &self,
         body: &ImportBody,
-        replace: bool,
+        into: Destination<'_>,
         now: UnixMillis,
-    ) -> Result<PreparedBundle> {
-        self.service(replace, now).import(body).await
+    ) -> Result<Onboarded> {
+        match self.service(into, now) {
+            Service::Platform(service) => service.import(body).await,
+            Service::Workspace(service) => service.import(body).await,
+        }
     }
 
     fn github_source(&self, revision: &str) -> Result<GithubSource> {
@@ -125,17 +174,46 @@ impl LibraryImports {
         Ok(source)
     }
 
-    fn service(&self, replace: bool, now: UnixMillis) -> ImportService<PlatformCatalog> {
-        let catalog = PlatformCatalog {
-            database: self.database.clone(),
-            replace,
-            now,
-        };
+    /// The pipeline, bound to the catalogue its destination names.
+    ///
+    /// Two concrete services rather than a `Box<dyn BundleCatalog>`: the
+    /// implementations are this crate's own and closed, which is the enum arm
+    /// of `M-DI-HIERARCHY` rather than the `dyn` one — no allocation, and each
+    /// catalogue keeps its own fields instead of both carrying the other's.
+    fn service(&self, into: Destination<'_>, now: UnixMillis) -> Service {
+        match into {
+            Destination::Platform { replace } => Service::Platform(self.staged(PlatformCatalog {
+                database: self.database.clone(),
+                replace,
+                now,
+            })),
+            Destination::Workspace(workspace) => {
+                Service::Workspace(self.staged(tenant::TenantCatalog {
+                    database: self.database.clone(),
+                    workspace: workspace.clone(),
+                    entropy: self.entropy.clone(),
+                    now,
+                }))
+            }
+        }
+    }
+
+    /// One pipeline over `catalog`, with the snapshot store when there is one.
+    fn staged<C: BundleCatalog>(&self, catalog: C) -> ImportService<C> {
         match &self.store {
             Some(store) => ImportService::new(Arc::clone(store), catalog),
             None => ImportService::without_store(catalog),
         }
     }
+}
+
+/// Which pipeline a destination resolved to.
+#[derive(Debug)]
+enum Service {
+    /// Landing in the operator-curated catalogue.
+    Platform(ImportService<PlatformCatalog>),
+    /// Landing in one workspace's own library.
+    Workspace(ImportService<tenant::TenantCatalog>),
 }
 
 #[derive(Debug)]
@@ -146,7 +224,7 @@ struct PlatformCatalog {
 }
 
 impl BundleCatalog for PlatformCatalog {
-    async fn insert(&self, body: &ImportBody, bundle: &PreparedBundle) -> Result<()> {
+    async fn insert(&self, body: &ImportBody, bundle: &PreparedBundle) -> Result<String> {
         let requirements = serde_json::to_string(&bundle.requirements)?;
         let support_files = serde_json::to_string(&bundle.support_manifest)?;
         let skill = markdown("SKILL.md", &body.skill_markdown)?;
@@ -173,8 +251,11 @@ impl BundleCatalog for PlatformCatalog {
             .fetch_optional(&mut *connection)
             .await
             .map_err(Error::database(CONTEXT_IMPORT))?;
-        if inserted.is_some() {
-            return Ok(());
+        // The slug this catalogue is keyed by, echoed from the statement rather
+        // than re-derived from the bundle: the two agree here and do not on the
+        // tenant tier, and a caller should not have to know which.
+        if let Some(id) = inserted {
+            return Ok(id);
         }
         let incumbent = sqlx::query(COLLISION_OWNER)
             .bind(&bundle.name)
@@ -187,7 +268,7 @@ impl BundleCatalog for PlatformCatalog {
     }
 }
 
-fn markdown<'a>(document: &'static str, value: &'a [u8]) -> Result<&'a str> {
+pub(super) fn markdown<'a>(document: &'static str, value: &'a [u8]) -> Result<&'a str> {
     core::str::from_utf8(value).map_err(|source| Error::FrontmatterUtf8 { document, source })
 }
 

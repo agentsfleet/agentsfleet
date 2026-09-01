@@ -1,5 +1,6 @@
 //! Self-managed provider resolution through its real selection and vault rows.
 
+use afd_crypto::entropy::Entropy;
 use std::sync::Arc;
 
 use afd_billing::Posture;
@@ -39,10 +40,14 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
     .expect("the self-managed selection seeds");
     drop(connection);
 
-    let resolved = Providers::new(fixture.database.clone(), Arc::clone(&fixture.kek))
-        .resolve(&fixture.tenant)
-        .await
-        .expect("the selection resolves through the tenant workspace");
+    let resolved = Providers::new(
+        fixture.database.clone(),
+        Arc::clone(&fixture.kek),
+        Entropy::new(),
+    )
+    .resolve(&fixture.tenant)
+    .await
+    .expect("the selection resolves through the tenant workspace");
 
     assert_eq!(resolved.posture, Posture::SelfManaged);
     assert_eq!(&*resolved.provider, "openai");
