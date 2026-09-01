@@ -788,6 +788,7 @@ dependencies = [
  "object_store",
  "reqwest",
  "serde_json",
+ "socket2",
  "sqlx",
  "thiserror",
  "tokio",
