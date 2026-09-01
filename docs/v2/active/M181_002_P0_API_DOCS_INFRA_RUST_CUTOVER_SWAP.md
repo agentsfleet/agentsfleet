@@ -430,6 +430,19 @@ four `meta_*` columns are positional parameters in it; `UPDATE_SECRET`
 those two statements. Adding an `Unknown` rung to `SecretKind::of` would be a
 branch nothing can reach (RULE NDC), and it is not added.
 
+**Finding — the contract published a route neither daemon serves.** R1's first
+real probe failed exactly one path: `POST /v1/webhooks/{fleet_id}/grant-approval`.
+It is a phantom: the Zig router routes only `approval` and `github` actions
+(`router.zig:182-183`), its own matcher test says "'grant-approval' is no
+longer one of them", and the invoke alias in `route_table_invoke.zig:219`
+points at a function that does not exist — dead scaffolding that compiles only
+because nothing references it. Precedent: `37c38b4ab` removed a sibling route
+for the same reason and missed this one. The path is removed from
+`public/openapi.json` (90 lines, no orphaned components); the Zig-side dead
+alias retires with that daemon. The spec's original "13 unmounted routes"
+table counted this as a Rust gap; it was a contract defect, and the count of
+real ports was nine.
+
 **Finding — the verb declaration must be graded against the UN-LAYERED mount.**
 `Route::verbs()` is a declaration; the mount is a separate expression; nothing
 in the type system binds them, because `axum`'s `MethodRouter` is opaque once
