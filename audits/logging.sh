@@ -144,7 +144,7 @@ done
 if [[ ${#rust_nontest[@]} -gt 0 ]]; then
   rust_candidates=()
   while IFS= read -r p; do rust_candidates+=("$p"); done \
-    < <(grep -lE '(^|[^[:alnum:]_])(println|eprintln|dbg)!|tracing::(error|warn|info|debug|trace)!' "${rust_nontest[@]}" 2>/dev/null || true)
+    < <(grep -lE '(^|[^[:alnum:]_])(println|eprintln|dbg)!|tracing::(error|warn|info|debug|trace)!' ${rust_nontest[@]+"${rust_nontest[@]}"} 2>/dev/null || true)
 fi
 
 # ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ if [[ ${#zig_nontest[@]} -gt 0 ]]; then
         printf "%s:%d\n", FILENAME, FNR
       previous_annotation = has_logging_reason($0)
     }
-  ' "${zig_nontest[@]}")
+  ' ${zig_nontest[@]+"${zig_nontest[@]}"})
 fi
 
 # ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ if [[ ${#rust_candidates[@]} -gt 0 ]]; then
       depth += opens - closes
       previous_annotation = current_annotation
     }
-  ' "${rust_candidates[@]}")
+  ' ${rust_candidates[@]+"${rust_candidates[@]}"})
 fi
 
 # ---------------------------------------------------------------------------
@@ -382,7 +382,7 @@ if [[ ${#js_nontest[@]} -gt 0 ]]; then
     ln="${rest%%:*}"
     fail "$f:$ln — \`console.*\` in non-test source (write_ts_adhere_bun.md §10, LOGGING_STANDARD §8)"
     console_hits=$((console_hits + 1))
-  done < <(grep -nHE '\bconsole\.(log|debug|info|warn|error)\(' "${js_nontest[@]}" 2>/dev/null || true)
+  done < <(grep -nHE '\bconsole\.(log|debug|info|warn|error)\(' ${js_nontest[@]+"${js_nontest[@]}"} 2>/dev/null || true)
 fi
 
 # ---------------------------------------------------------------------------
@@ -393,7 +393,7 @@ fi
 # ---------------------------------------------------------------------------
 scoped_hits=0
 scoped_eligible=()
-for f in "${zig_nontest[@]}"; do
+for f in ${zig_nontest[@]+"${zig_nontest[@]}"}; do
   case "$f" in
     src/logging/*) continue ;;
   esac
@@ -406,7 +406,7 @@ if [[ ${#scoped_eligible[@]} -gt 0 ]]; then
     f="${line#* }"
     note "$f — $count call(s) to \`std.log.scoped\` (migrate to \`logging.scoped\` per LOGGING_STANDARD §7)"
     scoped_hits=$((scoped_hits + count))
-  done < <(grep -cHE '\bstd\.log\.scoped\(' "${scoped_eligible[@]}" 2>/dev/null \
+  done < <(grep -cHE '\bstd\.log\.scoped\(' ${scoped_eligible[@]+"${scoped_eligible[@]}"} 2>/dev/null \
     | awk -F: '$2 > 0 { print $2, $1 }')
 fi
 
@@ -425,7 +425,7 @@ if [[ ${#zig_nontest[@]} -gt 0 ]]; then
     ln="${rest%%:*}"
     note "$f:$ln — \`std.log.{err,warn}\` without \`error_code=\` (LOGGING_STANDARD §5)"
     missing_code_hits=$((missing_code_hits + 1))
-  done < <(grep -nHE '\bstd\.log\.(err|warn)\b' "${zig_nontest[@]}" 2>/dev/null || true)
+  done < <(grep -nHE '\bstd\.log\.(err|warn)\b' ${zig_nontest[@]+"${zig_nontest[@]}"} 2>/dev/null || true)
 fi
 
 # ---------------------------------------------------------------------------

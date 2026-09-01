@@ -96,7 +96,12 @@ async fn written(fixture: &Fixture) -> (i64, i64) {
 async fn a_name_the_vault_does_not_hold_is_refused_without_writing() {
     let fixture = Fixture::create().await;
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "nobody-stored-this", Some(UNCATALOGUED), NOW)
+        .activate(
+            &fixture.tenant,
+            "nobody-stored-this",
+            Some(UNCATALOGUED),
+            NOW,
+        )
         .await
         .expect("a missing credential is an outcome, not a failure");
 

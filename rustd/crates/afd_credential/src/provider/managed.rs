@@ -25,18 +25,17 @@
 
 use serde::Deserialize;
 
-use super::resolved::Dialled;
-use crate::error::{Result, provider_endpoint, provider_malformed};
-use crate::provider::endpoint::{self, Rejection};
+use crate::error::{Result, provider_malformed};
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::Selection;
+use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
 use afd_billing::Posture;
 use afd_core::id::Uuid7;
 
 /// The credential field a self-managed resolution cannot proceed without.
-const FIELD_PROVIDER: &str = "provider";
+pub(super) const FIELD_PROVIDER: &str = "provider";
 
 /// The credential field a named provider cannot proceed without.
 const FIELD_API_KEY: &str = "api_key";
@@ -50,13 +49,13 @@ const FIELD_SECRET_REF: &str = "secret_ref";
 /// may address other fields of it as `${secrets.<name>.<field>}` at the tool
 /// bridge. Refusing them would make one shared credential unusable for both.
 #[derive(Debug, Deserialize)]
-struct Credential {
+pub(super) struct Credential {
     /// Which provider this credential is for. Always required.
-    provider: Box<str>,
+    pub(super) provider: Box<str>,
     /// The bearer key. Optional in the JSON, and required by the rule below
     /// for every provider but the compatible one.
     #[serde(default)]
-    api_key: Option<SecretString>,
+    pub(super) api_key: Option<SecretString>,
     /// The credential's own model.
     ///
     /// Unread on the RESOLUTION path — the model lives on the tenant's
@@ -65,11 +64,11 @@ struct Credential {
     /// bare `PUT /provider` that names no model, which is the one caller the
     /// module note said would earn it.
     #[serde(default)]
-    model: Option<Box<str>>,
+    pub(super) model: Option<Box<str>>,
     /// A custom endpoint, validated against `provider` before anything is
     /// resolved.
     #[serde(default)]
-    base_url: Option<Box<str>>,
+    pub(super) base_url: Option<Box<str>>,
 }
 
 /// Resolution through a tenant's own stored credential.
@@ -135,89 +134,6 @@ impl Resolution for SelfManaged {
             api_key,
         ))
     }
-}
-
-/// One stored credential, parsed and with its endpoint ruled on.
-///
-/// What resolution and ACTIVATION agree about a credential, extracted so there
-/// is one parser and one endpoint ruling rather than two that could come to
-/// disagree about the same bytes. What they do with it differs: resolution
-/// applies the key rule and dials; activation reads the provider and the
-/// fallback model, and never looks at the key at all.
-pub(super) struct Vetted {
-    /// The provider this credential is for. Never empty.
-    pub(super) provider: Box<str>,
-    /// The credential's own model, for a caller with no better source.
-    pub(super) model: Option<Box<str>>,
-    /// The validated custom endpoint, present only for the compatible
-    /// provider. `Some` IS the compatible provider — the guard has refused
-    /// every other pairing by this point.
-    pub(super) dialled: Option<Dialled>,
-    /// The bearer key, still unjudged: whether absence is permitted is the
-    /// caller's rule, not the parse's.
-    pub(super) api_key: Option<SecretString>,
-}
-
-/// Why a credential body did not vet.
-///
-/// TYPED rather than folded into [`crate::Error`], because activation
-/// DISCRIMINATES on it to pick a registry code — the carve-out
-/// `RUST_ERROR_STANDARD` names. Keeping the guard's [`Rejection`] as itself
-/// rather than as the string it renders to means a refusal added to the guard
-/// later cannot be silently absorbed into the malformed arm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Refused {
-    /// The body is not a credential this daemon can read.
-    Malformed,
-    /// The endpoint guard refused the provider/base-url pairing.
-    Endpoint(Rejection),
-}
-
-impl From<Refused> for crate::Error {
-    /// So the RESOLUTION path keeps writing `?` and answering the crate error,
-    /// while activation matches the typed value.
-    fn from(refused: Refused) -> Self {
-        match refused {
-            Refused::Malformed => provider_malformed(FIELD_PROVIDER),
-            Refused::Endpoint(rejection) => provider_endpoint(rejection.as_str()),
-        }
-    }
-}
-
-/// Parses one credential body and rules on its endpoint.
-///
-/// Endpoint first, BEFORE the key is looked at: a hostile or mismatched
-/// endpoint fails while the credential is still just bytes, which is the
-/// ordering `probeSelfManagedSecret` chose and the reason it gave — nothing
-/// owned is built around a URL that will be refused.
-///
-/// # Errors
-/// Reports a body that is not a credential object, a blank or missing
-/// provider, and an endpoint the guard refused — each as a [`Refused`] the
-/// caller may discriminate on.
-pub(super) fn vet(body: &[u8]) -> Result<Vetted, Refused> {
-    let credential: Credential =
-        super::credential(body, FIELD_PROVIDER).map_err(|_unreadable| Refused::Malformed)?;
-    if credential.provider.is_empty() {
-        return Err(Refused::Malformed);
-    }
-
-    // The host travels with the URL from here, because `resolve` already
-    // derived it to make its SSRF ruling — see [`Dialled`].
-    let dialled: Option<Dialled> =
-        endpoint::resolve(&credential.provider, credential.base_url.as_deref())
-            .map_err(Refused::Endpoint)?
-            .map(|endpoint| Dialled {
-                base_url: endpoint.url.into(),
-                inference_host: endpoint.host,
-            });
-
-    Ok(Vetted {
-        provider: credential.provider,
-        model: credential.model,
-        dialled,
-        api_key: credential.api_key,
-    })
 }
 
 /// The key this credential resolves with, given whether one is optional.

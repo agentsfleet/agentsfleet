@@ -60,6 +60,7 @@ pub mod sql;
 mod ssrf;
 mod store;
 mod upsert;
+mod vetted;
 mod wire;
 
 use std::fmt::Debug;

@@ -28,13 +28,17 @@ const CONTEXT_WORKSPACE: &str = "tenant primary workspace";
 const TABLE_PLATFORM_DEFAULTS: &str = "core.platform_provider_defaults";
 
 /// The table a malformed identifier is reported against.
-const TABLE_WORKSPACES: &str = "core.workspaces";
+///
+/// `pub(crate)` because the activation reads the same bridge row off its own
+/// locking statement and must report a malformed id against the same table
+/// (RULE UFS: one spelling, not two).
+pub(crate) const TABLE_WORKSPACES: &str = "core.workspaces";
 
 /// The column a malformed identifier is reported against.
 const COLUMN_SOURCE_WORKSPACE: &str = "source_workspace_id";
 
 /// The column a malformed identifier is reported against.
-const COLUMN_ID: &str = "id";
+pub(crate) const COLUMN_ID: &str = "id";
 
 /// The `mode` column held a word neither posture spells.
 const FIELD_MODE: &str = "mode";

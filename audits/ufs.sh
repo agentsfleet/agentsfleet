@@ -408,7 +408,7 @@ if [ "$FAIL" -eq 0 ]; then
 fi
 
 printf "🔴 UFS GATE — %d violation(s):\n" "${#violations[@]}" >&2
-for v in "${violations[@]}"; do
+for v in ${violations[@]+"${violations[@]}"}; do
   printf "  %s\n" "$v" >&2
 done
 printf "\nResolve by either (1) extract to a named const + replace all sites,\n" >&2
