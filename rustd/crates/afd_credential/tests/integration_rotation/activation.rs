@@ -24,10 +24,8 @@ use super::Fixture;
 /// The instant every activation here is stamped with.
 const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
 
-/// A model the fixture catalogues.
-const CATALOGUED: &str = "gpt-fixture";
-
-/// A model nothing catalogues.
+/// A model nothing catalogues — and, for the refusals that fire before the
+/// catalogue is consulted, a model whose name can never matter.
 const UNCATALOGUED: &str = "gpt-imaginary";
 
 /// The provider the catalogued row is published under.
@@ -40,6 +38,18 @@ fn providers(fixture: &Fixture) -> Providers {
         Arc::clone(&fixture.kek),
         Entropy::new(),
     )
+}
+
+/// A model id this test alone catalogues.
+///
+/// `core.model_library` is keyed `(provider, model_id)` with no tenant column,
+/// and the whole lane shares ONE live database — so a model id shared across
+/// tests is a ROW shared across tests, and [`catalogue`]'s `DO NOTHING` makes
+/// whichever test seeds first the author of every other test's ceiling. The
+/// first full run of this lane proved it: the `-1` seed below landed first and
+/// two sibling tests read their ceiling as the clamp's 0.
+fn unique_model() -> String {
+    format!("gpt-fixture-{}", afd_db::test_util::mint_id())
 }
 
 /// Publishes one catalogue row, which is what the named arm's gate requires.
@@ -86,7 +96,7 @@ async fn written(fixture: &Fixture) -> (i64, i64) {
 async fn a_name_the_vault_does_not_hold_is_refused_without_writing() {
     let fixture = Fixture::create().await;
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "nobody-stored-this", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "nobody-stored-this", Some(UNCATALOGUED), NOW)
         .await
         .expect("a missing credential is an outcome, not a failure");
 
@@ -110,7 +120,7 @@ async fn a_row_whose_metadata_is_not_a_provider_key_is_refused_before_any_decryp
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "a-webhook-secret", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "a-webhook-secret", Some(UNCATALOGUED), NOW)
         .await
         .expect("a non-provider credential is an outcome");
 
@@ -151,7 +161,8 @@ async fn an_uncatalogued_model_writes_neither_the_entry_nor_the_selection() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
     let fixture = Fixture::create().await;
-    catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, 200_000).await;
+    let model = unique_model();
+    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
     fixture
         .seed_with_shape(
             "tenant-key",
@@ -162,7 +173,7 @@ async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
         .await
         .expect("a catalogued activation applies");
 
@@ -188,7 +199,8 @@ async fn a_negative_catalogue_ceiling_is_clamped_the_way_the_zig_clamps_it() {
     // activation statement this daemon would STORE -1 where the Zig stores 0,
     // and the two implementations' rows would differ over one database.
     let fixture = Fixture::create().await;
-    catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, -1).await;
+    let model = unique_model();
+    catalogue(&fixture, NAMED_PROVIDER, &model, -1).await;
     fixture
         .seed_with_shape(
             "tenant-key",
@@ -199,7 +211,7 @@ async fn a_negative_catalogue_ceiling_is_clamped_the_way_the_zig_clamps_it() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
         .await
         .expect("a catalogued model activates whatever its ceiling reads");
 
@@ -219,8 +231,9 @@ async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
     // platform catalogue by design, so the gate passes and the ceiling is the
     // smallest any provider publishes for that model.
     let fixture = Fixture::create().await;
-    catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, 200_000).await;
-    catalogue(&fixture, "anthropic", CATALOGUED, 120_000).await;
+    let model = unique_model();
+    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
+    catalogue(&fixture, "anthropic", &model, 120_000).await;
     fixture
         .seed_with_shape(
             "my-gateway",
@@ -231,7 +244,7 @@ async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "my-gateway", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "my-gateway", Some(&model), NOW)
         .await
         .expect("a keyless compatible endpoint activates");
 
@@ -254,7 +267,8 @@ async fn an_activation_after_a_committed_delete_writes_nothing() {
     // lock is what orders them, needs two connections driven against each
     // other and is not covered here.
     let fixture = Fixture::create().await;
-    catalogue(&fixture, NAMED_PROVIDER, CATALOGUED, 200_000).await;
+    let model = unique_model();
+    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
     fixture
         .seed_with_shape(
             "doomed-key",
@@ -274,7 +288,7 @@ async fn an_activation_after_a_committed_delete_writes_nothing() {
     drop(connection);
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "doomed-key", Some(CATALOGUED), NOW)
+        .activate(&fixture.tenant, "doomed-key", Some(&model), NOW)
         .await
         .expect("a deleted credential is an outcome");
 
