@@ -36,7 +36,7 @@ LABEL org.opencontainers.image.title="agentsfleet agentsfleetd" \
       org.opencontainers.image.documentation="https://docs.agentsfleet.net" \
       org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"
 
-COPY dist/agentsfleetd-rs-linux-${TARGETARCH} /usr/local/bin/agentsfleetd
+COPY --chmod=0555 dist/agentsfleetd-rs-linux-${TARGETARCH} /usr/local/bin/agentsfleetd
 
 EXPOSE 3000
 CMD ["/usr/local/bin/agentsfleetd", "serve"]

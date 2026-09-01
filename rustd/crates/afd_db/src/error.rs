@@ -52,6 +52,15 @@ pub(crate) enum ErrorKind {
     #[error("{knob} must be a postgres:// or postgresql:// URL")]
     InvalidDatabaseUrlScheme { knob: &'static str },
 
+    #[error("{knob} sets {param}={path}, which this process cannot read")]
+    TlsCertFileUnreadable {
+        knob: &'static str,
+        param: &'static str,
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("{knob} must be true, false, 1 or 0")]
     InvalidBoolKnob { knob: &'static str },
 
@@ -114,6 +123,7 @@ impl Error {
             ErrorKind::MissingDatabaseUrl { .. }
                 | ErrorKind::InvalidDatabaseUrl { .. }
                 | ErrorKind::InvalidDatabaseUrlScheme { .. }
+                | ErrorKind::TlsCertFileUnreadable { .. }
                 | ErrorKind::InvalidBoolKnob { .. }
         )
     }
@@ -170,6 +180,7 @@ impl Error {
             | ErrorKind::MissingDatabaseUrl { .. }
             | ErrorKind::InvalidDatabaseUrl { .. }
             | ErrorKind::InvalidDatabaseUrlScheme { .. }
+            | ErrorKind::TlsCertFileUnreadable { .. }
             | ErrorKind::InvalidBoolKnob { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::MigrationSql { .. }
@@ -239,6 +250,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "invalid url scheme",
             Error::new(ErrorKind::InvalidDatabaseUrlScheme {
                 knob: "DATABASE_URL",
+            }),
+        ),
+        (
+            "unreadable tls cert file",
+            Error::new(ErrorKind::TlsCertFileUnreadable {
+                knob: "DATABASE_URL_MIGRATOR",
+                param: "sslrootcert",
+                path: "/nonexistent/ca.pem".to_owned(),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
             }),
         ),
         ("invalid bool knob", invalid_bool_knob("MIGRATE_ON_START")),
