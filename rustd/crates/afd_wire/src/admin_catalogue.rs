@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// Platform Fleet-library onboarding request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct AdminLibraryImport<'a> {
@@ -30,6 +31,7 @@ pub struct AdminLibraryImport<'a> {
 }
 
 /// Content-free requirements shown on one Fleet-library row.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLibraryRequirements<'a> {
@@ -47,6 +49,7 @@ pub struct AdminLibraryRequirements<'a> {
 }
 
 /// One metadata-only platform Fleet-library row.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLibraryItem<'a> {
@@ -84,6 +87,7 @@ pub struct AdminLibraryItem<'a> {
 }
 
 /// Admin Fleet-library list response.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLibrariesResponse<'a> {
@@ -93,6 +97,7 @@ pub struct AdminLibrariesResponse<'a> {
 }
 
 /// Successful platform Fleet-library onboarding.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLibraryCreated<'a> {
@@ -117,6 +122,7 @@ pub struct AdminLibraryCreated<'a> {
 }
 
 /// One public Fleet Bundle gallery row.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetBundleItem<'a> {
@@ -143,6 +149,7 @@ pub struct FleetBundleItem<'a> {
 }
 
 /// Public Fleet Bundle gallery response.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetBundlesResponse<'a> {
@@ -152,6 +159,7 @@ pub struct FleetBundlesResponse<'a> {
 }
 
 /// Partial operator edit for one Fleet-library row.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AdminLibraryPatch<'a> {
@@ -174,6 +182,7 @@ pub struct AdminLibraryPatch<'a> {
 }
 
 /// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeyPut<'a> {
@@ -192,6 +201,7 @@ pub struct PlatformKeyPut<'a> {
 }
 
 /// Reveal-free platform-key list item.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeyItem<'a> {
@@ -211,6 +221,7 @@ pub struct PlatformKeyItem<'a> {
 }
 
 /// `GET /v1/admin/platform-keys` response.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeysResponse<'a> {
@@ -223,6 +234,7 @@ pub struct PlatformKeysResponse<'a> {
 }
 
 /// Successful platform-default activation.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeySetResponse<'a> {
@@ -243,6 +255,7 @@ pub struct PlatformKeySetResponse<'a> {
 }
 
 /// Successful platform-default deactivation.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeyDeactivateResponse<'a> {
@@ -257,6 +270,7 @@ pub struct PlatformKeyDeactivateResponse<'a> {
 }
 
 /// Mutable rate fields shared by admin model create and patch.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelRates {
@@ -271,6 +285,7 @@ pub struct ModelRates {
 }
 
 /// `POST /v1/admin/models` input.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelCreate<'a> {
@@ -286,6 +301,7 @@ pub struct AdminModelCreate<'a> {
 }
 
 /// One priced model row in the admin list.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelItem<'a> {
@@ -304,6 +320,7 @@ pub struct AdminModelItem<'a> {
 }
 
 /// `GET /v1/admin/models` response.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelsResponse<'a> {
@@ -316,6 +333,7 @@ pub struct AdminModelsResponse<'a> {
 }
 
 /// Successful model creation.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelCreated<'a> {
@@ -328,6 +346,7 @@ pub struct AdminModelCreated<'a> {
 }
 
 /// Successful model rate update.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelUpdated<'a> {

@@ -47,6 +47,7 @@ pub type Triggers = Option<Box<RawValue>>;
 /// the refusal for neither and the refusal for both are different sentences,
 /// and a `#[serde(untagged)]` enum would collapse them into one parse failure
 /// the caller could not act on.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct InstallFleetRequest<'a> {
     /// A published platform entry, by slug.
@@ -64,6 +65,7 @@ pub struct InstallFleetRequest<'a> {
 }
 
 /// What an install answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstalledFleetResponse<'a> {
     /// The new fleet's identifier.
@@ -80,6 +82,7 @@ pub struct InstalledFleetResponse<'a> {
 }
 
 /// Where one declared webhook trigger is delivered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WebhookUrl<'a> {
     /// The provider that sends it.
@@ -89,6 +92,7 @@ pub struct WebhookUrl<'a> {
 }
 
 /// One fleet as a list page shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetSummary<'a> {
     /// The fleet's identifier.
@@ -102,6 +106,11 @@ pub struct FleetSummary<'a> {
     /// When it last changed.
     pub updated_at: i64,
     /// What may wake it, from the stored configuration.
+    ///
+    /// [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    /// through unparsed. `value_type` names the serialized shape, which is the
+    /// only thing a schema can say about it.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count. Server truth, never client arithmetic.
     pub events_processed: i64,
@@ -110,6 +119,7 @@ pub struct FleetSummary<'a> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets` — one page, newest first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetsResponse<'a> {
     /// The fleets on this page.
@@ -126,6 +136,7 @@ pub struct FleetsResponse<'a> {
 /// The list row's fields plus the editable surface. Flattened rather than
 /// nested under a `summary` key, because that is the shape the source editor
 /// already reads.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetDetailResponse<'a> {
     /// The fleet's identifier.
@@ -141,6 +152,11 @@ pub struct FleetDetailResponse<'a> {
     /// The bundle a runner materialises support files from.
     pub bundle_content_hash: Option<Cow<'a, str>>,
     /// What may wake it, from the stored configuration.
+    ///
+    /// [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    /// through unparsed. `value_type` names the serialized shape, which is the
+    /// only thing a schema can say about it.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count.
     pub events_processed: i64,
@@ -158,6 +174,7 @@ pub struct FleetDetailResponse<'a> {
 /// touches no row. `config_json` and `trigger_markdown` both drive the stored
 /// configuration and are mutually exclusive — sent together they are refused at
 /// the door, because there is no answer to which one wins.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct PatchFleetRequest<'a> {
     /// A configuration document, replacing the stored one directly.
@@ -189,6 +206,7 @@ pub struct PatchFleetRequest<'a> {
 ///
 /// It also makes two impossible responses impossible: an `etag` without a
 /// revision, and a revision on the no-op.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum PatchedFleetResponse<'a> {

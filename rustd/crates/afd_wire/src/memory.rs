@@ -26,6 +26,7 @@ pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
 ///
 /// Carries no scope: the fleet is a path segment, validated server-side against
 /// the runner's live lease.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryDelta<'a> {
@@ -46,6 +47,7 @@ pub struct MemoryDelta<'a> {
 /// control plane loads that lease, verifies the runner owns it, cross-checks the
 /// fleet against the path, and fences the write. Each delta is upserted, so a
 /// retried push is idempotent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryPushRequest<'a> {
     /// The lease authorizing this write.
@@ -59,6 +61,7 @@ pub struct MemoryPushRequest<'a> {
 }
 
 /// `GET /v1/runners/me/memory/{fleet_id}` reply — a compacted hydration window.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryHydrateResponse<'a> {
@@ -82,6 +85,7 @@ pub struct MemoryHydrateResponse<'a> {
 /// pinned by nothing and claims nothing. What the inline version did claim was
 /// that a response body could be spelled somewhere other than this crate, and
 /// two keys written by hand at a call site are two keys nothing type-checks.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryCaptureResponse {
@@ -102,6 +106,7 @@ pub struct MemoryCaptureResponse {
 /// straight to `res.json`, which emits the struct's fields in DECLARATION
 /// order, and a dashboard diffing two responses byte-for-byte would see a
 /// reorder as a change.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryEntry<'a> {
@@ -122,6 +127,7 @@ pub struct MemoryEntry<'a> {
 ///
 /// Exactly three fields, and an integration test pins the count: a page that
 /// grew a fourth would be a shape the dashboard's parser did not agree to.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoriesResponse<'a> {

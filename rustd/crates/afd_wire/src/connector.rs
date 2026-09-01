@@ -54,6 +54,7 @@ pub const ARCHETYPE_APP_INSTALL: &str = "app_install";
 /// Carries no token and no expiry. A status read answers whether a person has
 /// connected and what it is called; every other field of the stored handle is
 /// the broker's business and none of it belongs in a document a browser holds.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConnectionView<'a> {
     /// Whether this workspace holds a landed grant — [`STATUS_CONNECTED`] or
@@ -67,6 +68,7 @@ pub struct ConnectionView<'a> {
 ///
 /// No secret material and no field that could carry any — the whole document is
 /// four facts about availability.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogueEntry<'a> {
     /// The provider's route segment, which is also its stored id.
@@ -82,6 +84,7 @@ pub struct CatalogueEntry<'a> {
 }
 
 /// `POST …/connectors/{provider}/connect` — where a person is sent to consent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsentRedirect<'a> {
     /// The provider's own page, carrying this round-trip's signed state.
@@ -96,6 +99,7 @@ pub struct ConsentRedirect<'a> {
 /// would put it in the sender's retry queue forever without changing it. The
 /// shape is `error_entries.zig:135`'s `{"ignored":"fleet_paused"}` generalised
 /// over every reason.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeliveryIgnored<'a> {
     /// Which rule dropped it.

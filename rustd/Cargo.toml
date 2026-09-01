@@ -137,6 +137,16 @@ serde_json = { version = "1.0.151", default-features = false, features = ["std",
 # them into a tree and re-encoding it. The Zig builds and drops a whole
 # `std.json.Value` per tool call for want of this. A feature on a dependency
 # already resolved in the lock, not a new crate.
+# The OpenAPI document generator, and the reason it is `optional` at every
+# member that names it. `afd_wire` carries serde and serde_json deliberately
+# and nothing else; a schema compiler is a BUILD-time tool, so it is reachable
+# only under the non-default `openapi` feature and the shipped daemon resolves
+# a graph without it. The pattern is the one `json-patch`, `compact_str`,
+# `mistralrs-mcp` and the generated `google-apis-rs` crates already use.
+#
+# `macros` is the only feature taken: it carries `ToSchema`, `IntoParams` and
+# `OpenApi`, which is the whole of what the derives and the collectors need.
+utoipa = { version = "5.5.0", default-features = false, features = ["macros"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.92", default-features = false }
 

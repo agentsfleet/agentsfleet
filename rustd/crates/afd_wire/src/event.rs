@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// How an event entered the system.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventType {
@@ -89,6 +90,7 @@ pub mod field {
 /// `request_json` is opaque JSON bytes carried verbatim — the runner re-parses
 /// it for execution and the read endpoints surface it unchanged, so this layer
 /// deliberately does not interpret it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventEnvelope<'a> {
     /// The Redis stream entry identifier, which IS the canonical event id.
@@ -125,6 +127,7 @@ pub struct EventEnvelope<'a> {
 /// skipped, which is this crate's rule everywhere and the reason it declares no
 /// `skip_serializing_if`: the Zig emitter writes `null` for an absent optional,
 /// so a dropped key would be a byte mismatch against the daemon still serving.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventSummary<'a> {
     /// The fleet this event belongs to.
@@ -175,6 +178,7 @@ pub struct EventSummary<'a> {
 }
 
 /// A page of event history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventsResponse<'a> {
     /// The events on this page, newest first.
@@ -201,6 +205,7 @@ pub struct EventsResponse<'a> {
 /// JSON string, not as an embedded object. That is what `res.json` emits for
 /// the Zig row's `[]u8`, and a client parsing the string a second time is the
 /// contract already in production.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventDetail<'a> {
     /// The fleet this event belongs to.
@@ -270,6 +275,7 @@ pub struct EventDetail<'a> {
 /// else — the count would cost a second statement per page for a number the
 /// view does not render. Dropping the key would be a byte mismatch against
 /// the daemon still serving, so it stays, typed as the count it would hold.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThreadResponse<'a> {
     /// The turns on this page, newest first.
@@ -287,6 +293,7 @@ pub struct ThreadResponse<'a> {
 /// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
 /// a field this build does not read is not making a mistake it needs telling
 /// about.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteerRequest<'a> {
     /// What to say to the fleet.
@@ -299,6 +306,7 @@ pub struct SteerRequest<'a> {
 /// `event_id` is the stream entry id Redis minted, which IS the canonical
 /// event id — the CLI filters the live tail on it to follow the message it
 /// just sent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteerAccepted<'a> {
     /// Always `accepted`. A field rather than an implied 202, because that is

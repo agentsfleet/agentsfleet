@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 /// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
 /// and the parity is kept by the ABSENCE of a serde attribute. `name` is
 /// optional twice over — absent, `null`, or blank all mean "name it for me".
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct CreateWorkspaceRequest<'a> {
     /// What the workspace will be called, when the caller cares.
@@ -28,6 +29,7 @@ pub struct CreateWorkspaceRequest<'a> {
 }
 
 /// What creating answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CreatedWorkspaceResponse<'a> {
     /// The new workspace's identifier.
@@ -41,6 +43,7 @@ pub struct CreatedWorkspaceResponse<'a> {
 }
 
 /// One workspace as the list shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspaceSummary<'a> {
     /// The workspace's identifier.
@@ -53,6 +56,7 @@ pub struct WorkspaceSummary<'a> {
 }
 
 /// `GET /v1/tenants/me/workspaces` — one page of the tenant's workspaces.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspacesResponse<'a> {
     /// The rows on this page, oldest first.

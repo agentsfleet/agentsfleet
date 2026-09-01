@@ -102,9 +102,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The one unknown the external review left open is spiked before the bulk pass: a standalone top-level `Cow<'a, str>` as a reusable component is suspect (`impl<'a, T: ToSchema + Clone> ToSchema for Cow<'a, T>` implies `T: Sized`), while `Cow<'a, str>` as a field is documented to work. The spike is one lifetime-carrying wire type, one `Cow` field, one opaque `serde_json::Value` field.
 
-- **Dimension 1.1** — the spike compiles and emits: a lifetime-carrying type with a `Cow` field and an opaque `Value` field produces a correct schema under the feature → Test `test_schema_spike_lifetime_cow_value`
-- **Dimension 1.2** — every public wire type derives `ToSchema` behind the feature; the DEFAULT build's dependency graph and wire bytes are unchanged → Tests `test_default_build_carries_no_utoipa` (dependency-graph assertion) + the existing `afd_wire` byte-parity suite, re-run unchanged
-- **Dimension 1.3** — `value_type` overrides exist ONLY where the serialized form differs from the Rust form, each carrying a comment naming the difference → Test `test_value_type_overrides_are_justified`
+- **Dimension 1.1** — DONE — the spike compiles and emits: a lifetime-carrying type with a `Cow` field and an opaque `RawValue` field produces a correct schema under the feature → Tests `a_borrowed_field_is_a_string_and_an_opaque_body_is_an_object`, `a_type_carrying_only_borrowed_text_still_emits_an_object`, `a_map_of_borrowed_keys_to_raw_values_publishes_as_an_object`
+- **Dimension 1.2** — DONE — every public wire type derives `ToSchema` behind the feature; the DEFAULT build's dependency graph and wire bytes are unchanged → Test `the_default_build_carries_no_schema_generator` + the existing `afd_wire` byte-parity suite, re-run unchanged
+- **Dimension 1.3** — DONE — `value_type` overrides exist ONLY where the serialized form differs from the Rust form, each carrying a comment naming the difference → Test `every_value_type_override_names_its_serialized_difference`
 
 ### §2 — Annotations and per-plane collectors
 
@@ -143,7 +143,7 @@ Route::all() × Route::verbs()     the served side of the gate — owned by M181
 
 ## Invariants
 
-1. The default build of every crate this spec touches has an unchanged dependency graph — `test_default_build_carries_no_utoipa`.
+1. The default build of every crate this spec touches has an unchanged dependency graph — `the_default_build_carries_no_schema_generator`.
 2. The generated document is the only source of the committed artifact — `test_openapi_build_is_the_source`.
 3. The total match in `mount.rs` is untouched: no route registration moves into an annotation; enforced by `test_declared_verbs_match_the_mounted_router` (M181_002's, still running) plus review against the Files Changed table.
 4. Handlers and their modules stay `pub(crate)` — the collectors live inside each plane crate; `unreachable_pub` stays green.
@@ -156,9 +156,9 @@ No product or operational signal changes: the feature is off in production, and 
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | unit | `test_schema_spike_lifetime_cow_value` | the three suspect shapes emit correct schemas under the feature |
-| 1.2 | unit | `test_default_build_carries_no_utoipa` + existing byte-parity suite | default dependency graph unchanged; wire bytes identical |
-| 1.3 | unit | `test_value_type_overrides_are_justified` | every override names its serialized-form difference |
+| 1.1 | unit | `a_borrowed_field_is_a_string_and_an_opaque_body_is_an_object` (+2 siblings) | the three suspect shapes emit correct schemas under the feature |
+| 1.2 | unit | `the_default_build_carries_no_schema_generator` + existing byte-parity suite | default dependency graph unchanged; wire bytes identical |
+| 1.3 | unit | `every_value_type_override_names_its_serialized_difference` | every override names its serialized-form difference |
 | 2.1 | unit | `test_plane_documents_merge` | five `document()`s merge into one parseable 3.x document |
 | 2.2 | unit | `test_documented_codes_match_refusals` | documented error codes ⊆ handler refusal codes, per path |
 | 3.1 | unit | `test_coverage_gate_rust_source` | set equality both directions; seeded removal fails naming route+method+direction |
@@ -222,6 +222,26 @@ The hand-maintained provenance of `public/openapi.json` retires: any residual ge
 
 
 > Indy (2026-09-01): "I am leaning towards Option 2 — full generation" … "Yes go lets follow the practicse by the crates" … "Yes, 5 specs as drawn" — context: the generation scope, the `cfg_attr` optional-dependency pattern, and this spec's existence as the split-out Dimensions 1.2–1.3 of M181_002. The full decision record, the external review, and the production evidence live in M181_002's Discovery and bind here.
+
+**Amendment — the tests take the names the codebase uses, not the spec's drafted ones.**
+`docs/architecture/testing.md` §"Rust test naming — the function is a sentence"
+binds new files to sentence names with no `test_` prefix, and says outright that
+a disagreeing spec is amended rather than the codebase renamed. `afd_wire`'s
+suite is already overwhelmingly sentence-named. The Dimensions and the Test
+Specification table above carry the real names; the drafted `test_*` spellings
+were never written.
+
+**Finding — the first cut of Dimension 1.3's test could not fail.** It asked
+whether any doc comment sat above a `value_type` override. `missing_docs` is
+denied workspace-wide, so every field already carries prose and a stripped
+justification still passed — verified by seeding one. The predicate is now that
+the doc run above must NAME `value_type`, re-seeded to confirm it fails and
+reports the file and line (RULE TCF).
+
+**Measured — the derive is inert on the wire.** 175 `ToSchema` derives and six
+`value_type` overrides across 26 files. `afd_wire`'s byte-parity suite passes
+unchanged in the default build (154 tests), `cargo tree -p afd_wire` names
+utoipa 0 times by default and twice under the feature.
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.

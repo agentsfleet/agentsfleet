@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `args_redacted` is opaque, pre-stringified JSON built runner-side AFTER
 /// substitution — never the resolved bytes.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallStarted<'a> {
@@ -24,6 +25,7 @@ pub struct ToolCallStarted<'a> {
 }
 
 /// The fleet produced output.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetResponseChunk<'a> {
@@ -33,6 +35,7 @@ pub struct FleetResponseChunk<'a> {
 }
 
 /// A tool call finished.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallCompleted<'a> {
@@ -44,6 +47,7 @@ pub struct ToolCallCompleted<'a> {
 }
 
 /// A long-running tool is still working, so a reader's spinner survives it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallProgress<'a> {
@@ -61,6 +65,7 @@ pub struct ToolCallProgress<'a> {
 /// a named struct rather than an inline variant body, matching the Zig union
 /// field for field — the encoding is identical either way, and the named form
 /// is what lets each payload carry its own fixture.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
@@ -82,6 +87,7 @@ pub enum ActivityFrame<'a> {
 ///
 /// One frame per request today; the array shape lets a later change coalesce
 /// without a wire change. The reply is `202` with no acknowledgement.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActivityRequest<'a> {

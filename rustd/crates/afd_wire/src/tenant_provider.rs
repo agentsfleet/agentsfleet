@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Two spellings and no third, so a body naming something else is refused by
 /// serde at the boundary rather than by a string comparison inside a handler.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderMode {
@@ -30,6 +31,7 @@ pub enum ProviderMode {
 }
 
 /// `GET /v1/tenants/me/provider`, and what a write answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct TenantProviderResponse<'a> {
     /// Whose key this tenant's runs dial with.
@@ -60,6 +62,7 @@ pub struct TenantProviderResponse<'a> {
 ///
 /// `model` is optional because a tenant switching key without switching model
 /// sends only the credential; the daemon keeps the model it already resolved.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TenantProviderRequest {
