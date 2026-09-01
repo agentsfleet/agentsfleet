@@ -183,13 +183,13 @@ cat "$$summary"; \
 set -- $$(awk -F: '/^LF:/ { f += $$2 } /^LH:/ { h += $$2 } END { if (f == 0) print "0 0 0.0000"; else printf "%d %d %.4f\n", h, f, h * 100 / f }' "$$lcov" 2>/dev/null); \
 covered=$${1:-0}; total=$${2:-0}; pct=$${3:-0.0000}; missed=$$((total - covered)); \
 if [ "$$verdict" -ne 0 ]; then \
-  echo "✗ [rustd] line coverage $$pct% is below the $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
+  echo "✗ [rustd] line coverage $$pct% < $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
   echo "  the floor is a ratchet: write the tests. Lowering RUSTD_COVERAGE_FLOOR is the thing it exists to prevent."; \
   echo "  missed lines by crate:"; \
   awk -F: '/^SF:/ { file = $$2 } /^LF:/ { f = $$2 } /^LH:/ { m = f - $$2; if (m > 0) { crate = file; sub(/.*\/crates\//, "", crate); sub(/\/.*/, "", crate); if (crate == file) crate = "(workspace root)"; miss[crate] += m } } END { for (c in miss) printf "%d\t%s\n", miss[c], c }' "$$lcov" 2>/dev/null \
     | sort -rn | head -12 | awk -F'\t' '{ printf "    %6d  %s\n", $$1, $$2 }'; \
 else \
-  echo "✓ [rustd] line coverage $$pct% meets the $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
+  echo "✓ [rustd] line coverage $$pct% >= $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
 fi; \
 echo "  report at $$lcov"; \
 exit $$verdict
