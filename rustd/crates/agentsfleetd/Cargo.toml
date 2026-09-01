@@ -110,9 +110,6 @@ afd_runner.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true
-# Clears `IPV6_V6ONLY` before `bind`, which is the difference between a
-# listener the Cloudflare Tunnel can reach over Fly 6PN and one it cannot.
-socket2.workspace = true
 # The accept loop drives hyper directly: `axum::serve` cannot bound the header
 # buffer, and Dimension 5.3 is a bound on the header buffer.
 axum.workspace = true
