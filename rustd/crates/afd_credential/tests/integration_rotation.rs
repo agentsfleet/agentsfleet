@@ -26,6 +26,8 @@ use serde_json::Value;
 mod activation;
 #[path = "integration_rotation/provider_resolution.rs"]
 mod provider_resolution;
+#[path = "integration_rotation/registry.rs"]
+mod registry;
 
 const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
 const KEY_NAME: &str = "provider-handle";
@@ -150,6 +152,27 @@ impl Fixture {
         }
     }
 
+    /// A tenant row with NO workspace under it.
+    ///
+    /// The bootstrap invariant every other fixture upholds, deliberately
+    /// broken: `primary_workspace` resolves the earliest-named workspace, so a
+    /// tenant without one is the only way to reach the refusal that names it.
+    /// Seeded as its own tenant rather than by deleting this fixture's
+    /// workspace, which the vault rows reference.
+    async fn seed_tenant_without_workspace(&self) -> Uuid7 {
+        let orphan = id();
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
+             VALUES ($1::uuid, 'No workspace', 1, 1)",
+        )
+        .bind(orphan.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("the workspace-less tenant seeds");
+        orphan
+    }
+
     async fn seed_scope(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -205,6 +228,74 @@ impl Fixture {
         .execute(&mut *connection)
         .await
         .expect("the projection columns seed");
+    }
+
+    /// Publishes one catalogue row, which the default below has a foreign key
+    /// into: `platform_provider_defaults(provider, model)` references
+    /// `model_library`, so a default can only name a model the catalogue
+    /// carries — the schema's own way of saying an unpriced default is not a
+    /// default.
+    async fn seed_catalogue(&self, provider: &str, model: &str, cap: i32) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.model_library \
+               (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
+                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
+             VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, 1, 1) \
+             ON CONFLICT (provider, model_id) DO NOTHING",
+        )
+        .bind(mint_id())
+        .bind(model)
+        .bind(provider)
+        .bind(cap)
+        .execute(&mut *connection)
+        .await
+        .expect("the catalogue row seeds");
+    }
+
+    /// Publishes one ACTIVE platform default, for the reset's copy path.
+    ///
+    /// `core.platform_provider_defaults` has no tenant column and the read is
+    /// `WHERE active = true ... LIMIT 1`, so a caller seeding one is naming the
+    /// deployment's default and not its own — see `registry.rs`'s header on
+    /// what that costs and which half is therefore graded. Pass a provider name
+    /// no other test uses: the key is the provider, so a shared one would have
+    /// this seed silently rewrite a sibling's row rather than add its own.
+    ///
+    /// The row must be dropped by [`Self::clear_platform_default`] before
+    /// cleanup — it points at this fixture's workspace, and the scope teardown
+    /// cannot delete a workspace something still references.
+    async fn seed_platform_default(&self, provider: &str, model: &str, cap: i32) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.platform_provider_defaults \
+               (provider, source_workspace_id, active, model, context_cap_tokens, \
+                created_at, updated_at) \
+             VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
+             ON CONFLICT (provider) DO UPDATE SET \
+               source_workspace_id = EXCLUDED.source_workspace_id, \
+               active = TRUE, model = EXCLUDED.model, \
+               context_cap_tokens = EXCLUDED.context_cap_tokens, \
+               updated_at = EXCLUDED.updated_at",
+        )
+        .bind(provider)
+        .bind(self.workspace.as_str())
+        .bind(model)
+        .bind(cap)
+        .bind(NOW.as_millis())
+        .execute(&mut *connection)
+        .await
+        .expect("the platform default seeds");
+    }
+
+    /// Drops the default this fixture published, freeing its workspace.
+    async fn clear_platform_default(&self, provider: &str) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query("DELETE FROM core.platform_provider_defaults WHERE provider = $1")
+            .bind(provider)
+            .execute(&mut *connection)
+            .await
+            .expect("the platform default clears");
     }
 
     async fn insert(&self, name: &str, envelope: &Envelope) {

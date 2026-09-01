@@ -289,5 +289,6 @@ pub(crate) async fn remove<D: Services>(
 mod input;
 mod render;
 
-use self::input::{bounded_model, parse_entry_id, requested_limit, resume_from};
+use self::input::{bounded_model, parse_entry_id, resume_from};
 use self::render::{rendered, stored};
+use crate::handler::paging::requested_limit;

@@ -6,36 +6,21 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
-use afd_library::{DeleteLibrary, Destination, Libraries, LibraryPatch, PatchLibrary};
+use afd_library::{DeleteLibrary, Destination, Libraries, PatchLibrary};
 use std::sync::Arc;
 
-use afd_library::{ImportBody, LibraryImports, SourceKind, SupportFile};
+use afd_library::{LibraryImports, SupportFile};
 use object_store::memory::InMemory;
 
+#[path = "integration_catalogue/fixtures.rs"]
+mod fixtures;
 #[path = "integration_catalogue/source_imports.rs"]
 mod source_imports;
+#[path = "integration_catalogue/workspace_gallery.rs"]
+mod workspace_gallery;
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_725_000_000_000);
-
-const SEED: &str = r#"
-INSERT INTO core.fleet_library (
-    id, name, description, source_repo, source_path, source_ref,
-    required_credentials, required_credentials_reasons, required_tools,
-    network_hosts, visibility, content_hash, skill_markdown, trigger_markdown,
-    support_files_json, created_at, updated_at
-) VALUES
-    ($1, 'Draft Fleet', 'draft description', $3, '', 'main',
-     '["github"]', '{}', '["git"]', '["api.github.com"]', 'draft', NULL,
-     NULL, NULL, NULL, 1, 1),
-    ($2, 'Public Fleet', 'public description', $4, '', 'v1',
-     '[]', '{}', '[]', '[]', 'public', '0123456789abcdef',
-     '# Public Fleet', NULL, '[]', 2, 2)
-"#;
+use self::fixtures::{Fixtures, NOW, published, renamed, source_ref, upload};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -285,71 +270,4 @@ async fn assert_invalid_imports(imports: &LibraryImports, fixtures: &Fixtures) {
         .await
         .expect_err("a template cannot escape the fixed first-party owner");
     assert!(unsafe_template.to_string().contains("repository reference"));
-}
-
-fn upload(slug: &str, source_ref: &str, body: &str) -> ImportBody {
-    ImportBody {
-        source_kind: SourceKind::Upload,
-        source_ref: source_ref.to_owned(),
-        source_revision: None,
-        skill_markdown: format!(
-            "---\nname: {slug}\ndescription: {body}\nversion: 1.0.0\n---\nInstructions."
-        )
-        .into_bytes(),
-        trigger_markdown: None,
-        support_files: Vec::new(),
-    }
-}
-
-fn published() -> LibraryPatch {
-    LibraryPatch::new(None, None, None, None, None, Some(true))
-}
-
-fn renamed(name: &str) -> LibraryPatch {
-    LibraryPatch::new(Some(name.to_owned()), None, None, None, None, None)
-}
-
-fn source_ref(revision: &str) -> LibraryPatch {
-    LibraryPatch::new(None, None, None, Some(revision.to_owned()), None, None)
-}
-
-struct Fixtures {
-    lane: TestDatabase,
-    database: Db,
-    suffix: String,
-    draft_id: String,
-    public_id: String,
-    upload_id: String,
-}
-
-impl Fixtures {
-    async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        let suffix = afd_db::test_util::mint_id().replace('-', "");
-        Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            draft_id: format!("draft-{suffix}"),
-            public_id: format!("public-{suffix}"),
-            upload_id: format!("upload-{suffix}"),
-            suffix,
-            lane,
-        }
-    }
-
-    async fn seed(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(SEED)
-            .bind(&self.draft_id)
-            .bind(&self.public_id)
-            .bind(format!("agentsfleet/{}", self.draft_id))
-            .bind(format!("agentsfleet/{}", self.public_id))
-            .execute(&mut *connection)
-            .await
-            .expect("the catalogue fixture seeds");
-    }
-
-    async fn cleanup(self) {
-        drop(self.database);
-        self.lane.cleanup().await;
-    }
 }

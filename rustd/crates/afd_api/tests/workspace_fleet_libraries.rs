@@ -10,8 +10,10 @@
 //! the guard, the scope rung, the OWNERSHIP layer, the body parse, the page
 //! bounds and the cursor's binding to its workspace.
 //!
-//! The merged order, the seek predicate and the onboarding round trip ride the
-//! integration lane against a live datastore.
+//! The merged order, the seek predicate and the onboarding round trip are the
+//! store's outcomes. They need a live datastore and nothing grades them yet, so
+//! read the cases below as the front half of this surface and not as its
+//! coverage.
 //!
 //! # The cursor's workspace arm is the one worth reading twice
 //!
@@ -169,7 +171,9 @@ async fn test_a_workspace_this_caller_does_not_own_is_refused_by_the_ownership_l
 async fn test_both_verbs_reach_their_service_over_the_dead_pool() {
     // What "past every refusal layer" renders as over a pool that answers
     // nothing. The two differ: the gallery reports the datastore, and the
-    // onboarding fails fetching its source before it ever reaches one.
+    // onboarding fails fetching its source before it ever reaches one — from
+    // the dead loopback origin the harness points every import at, so reaching
+    // the pipeline never means reaching GitHub.
     let browsing = send(LIBRARY_READ, Method::GET, &owned(), Some(TENANT_KEY), "").await;
     assert_eq!(
         browsing.status(),

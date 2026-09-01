@@ -198,6 +198,48 @@ async fn test_a_self_managed_activation_reaches_its_transaction() {
 }
 
 #[tokio::test]
+async fn test_a_reset_on_a_deployment_with_no_default_names_the_missing_key() {
+    // The one refusal on this surface decided by a row nothing else can
+    // arrange. `core.platform_provider_defaults` has no tenant column, so the
+    // integration lane's shared database cannot assert the table is empty, and
+    // over the dead pool the same read answers 503 rather than the `None` this
+    // arm needs. The seam supplies that `None` and everything else is real:
+    // real router, real guard, real scope rung, real handler.
+    let router = Fleet::new()
+        .with_person(TENANT_KEY, SUBJECT, PROVIDER_WRITE)
+        .without_platform_default()
+        .router();
+    let refused = harness::send(&router, Method::DELETE, PROVIDER, Some(TENANT_KEY), "").await;
+
+    // 500, not 400, and the registry says why: this is a deployment that was
+    // never configured, so there is nothing the CALLER can change. The status
+    // is the difference between "you asked wrongly" and "an operator must set
+    // a platform default", and a 4xx here would send the tenant looking for a
+    // mistake of their own.
+    assert_eq!(refused.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(code_of(refused).await, "UZ-PROVIDER-009");
+
+    let sentence = harness::send(&router, Method::DELETE, PROVIDER, Some(TENANT_KEY), "").await;
+    assert_eq!(
+        detail_of(sentence).await,
+        "Platform LLM key not configured",
+        "the operator repair is naming the missing key, not the tenant's request"
+    );
+}
+
+#[tokio::test]
+async fn test_a_reset_reaches_its_write_when_a_default_is_configured() {
+    // The control the case above is read against. Same route, same scope, same
+    // credential — and without the substitution the read is the real store's,
+    // which over the dead pool is the datastore's refusal rather than
+    // `UZ-PROVIDER-009`. A handler that answered the missing-key code
+    // unconditionally would pass the case above and fail this one.
+    let reached = send(PROVIDER_WRITE, Method::DELETE, Some(TENANT_KEY)).await;
+
+    assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
 async fn test_the_write_scope_gates_the_activation() {
     let read_only = send_body(
         PROVIDER_READ,

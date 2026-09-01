@@ -1,41 +1,28 @@
 //! What the registry accepts from a request, before any store is reached.
 //!
 //! Split from the handler half at the file cap, along the seam the page
-//! already had: everything here refuses from the REQUEST alone — a bad page
-//! size, a token that does not belong to this walk, an id that is not a
-//! UUIDv7, a model name over the bound. None of it touches a pool, which is
-//! what lets the input bounds be proven at router tier with no Postgres.
+//! already had: everything here refuses from the REQUEST alone — a token that
+//! does not belong to this walk, an id that is not a `UUIDv7`, a model name
+//! over the bound. None of it touches a pool, which is what lets the input
+//! bounds be proven at router tier with no Postgres.
+//!
+//! The page SIZE is the one bound that left: the gallery next door holds
+//! callers to the identical rule and told them so in the identical sentence,
+//! so it is declared once in [`crate::handler::paging`] and read from here.
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor;
-use afd_core::paging::{DEFAULT_LIMIT, MAX_LIMIT, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_credential::provider::Boundary;
 
-use crate::handler::tenant::models::{DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED};
+use crate::handler::tenant::models::DETAIL_CURSOR_MALFORMED;
 use crate::handler::{Refusal, parameter};
 
 use super::{
     Cursor, DETAIL_CURSOR_MISMATCH, DETAIL_ENTRY_ID, DETAIL_MODEL_ID_REQUIRED,
     DETAIL_MODEL_ID_TOO_LONG, MODEL_ID_MAX,
 };
-
-/// The page size this request asked for, already bounded.
-pub(super) fn requested_limit(raw: &str) -> Result<u32, Refusal> {
-    let Some(asked) = parameter(raw, QUERY_LIMIT) else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    asked
-        .parse::<u32>()
-        .ok()
-        .filter(|limit| (1..=MAX_LIMIT).contains(limit))
-        .ok_or_else(|| {
-            Refusal::coded(
-                error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-                DETAIL_CATALOGUE_LIMIT,
-            )
-        })
-}
 
 /// The boundary this request resumes from, or nothing for the first page.
 ///

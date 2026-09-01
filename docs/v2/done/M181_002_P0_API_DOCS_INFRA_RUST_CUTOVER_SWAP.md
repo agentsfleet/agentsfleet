@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 002
 **Date:** Aug 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the family's payoff; everything before it is preparation
 **Categories:** API | DOCS | INFRA
 **Batch:** B6 — first half of the split family (siblings M181_003–006, created 2026-09-01); serial after M180_001 merged
@@ -69,6 +69,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/v2/pending/M181_003..006_*.md` | CREATE | the split's four sibling specs, travelling with the scope amendment that references them |
 | `public/openapi.json` | EDIT | the phantom `grant-approval` webhook removed — a contract correction, not generation; the generated document is M181_003's (see Discovery) |
 | `audits/*.sh` | EDIT | bash-3.2 portability (mapfile, `declare -A`) so the gates run on a machine whose only bash is macOS's — mirrored to the orly sources |
+| `playbooks/founding/01_bootstrap/02_vercel_env.sh` · `playbooks/founding/02_preflight/02_credentials.sh` · `playbooks/operations/observability/observability_test.sh` · `playbooks/lib/runner/runner_test_support.sh` | EDIT | the same bash-3.2 sweep, extended to `check-playbooks` when `make lint-all` came back red on four files this branch had not touched: `declare -A` in two gates, `BASHPID` in one, a quoted operand inside `$(( ))` in a test stub, and an empty array expanded under `set -u`. Inherited from `origin/main`, surfaced here because `mise` left `/bin/bash` 3.2 as the only bash on the workstation |
+| `audits/logging_rust.sh` · `audits/ufs_strings.sh` · `scripts/parity_lane_compare.sh` · `scripts/parity_lane_test_harness.sh` · `rustd/**/{paging/cursor,paging/tests,refusable/tests,services/contract,services/tenant_surface,plane/config,harness/fleet_seams,tenant_model_entry_input,handler/paging,integration_catalogue/fixtures}.rs` | CREATE | the S6 sweep: eleven files this branch touched were over the 350-line cap and each is now split along its own seam. Behaviour-preserving by construction and proven so — the two gate scripts report identical counts to their pre-split selves, and the parity self-tests stay 19/19 |
+| `rustd/crates/afd_credential/tests/integration_rotation/registry.rs` | CREATE | the row-decided outcomes Dimensions 1.5 and 1.7 were marked DONE without: the active-selection refusal, the duplicate pair on both write verbs, and the reset's copy from the live platform default |
 
 ## Applicable Rules
 
@@ -158,9 +161,32 @@ cannot pass this section by mounting a route that answers wrongly.
 
   **Amendment — the Zig oracle is the parity lane, not the Zig source.** This dimension read "the route dump equals the Zig daemon's served set", which assumed the Zig table could be compared statically. It cannot: `src/agentsfleetd/http/router.zig:12` matches on method, but several routes accept any method there and 405 INSIDE the invoke function (`:33`, `:93` say so in their own comments), so the served set is `match` ∩ what each invoke allows and is not readable from the table. The Rust-versus-Zig half is therefore graded black-box, by the lane built for exactly that — `make test-parity BASE_URL=<zig> COMPARE_URL=<rust>` — and this dimension grades the half a fast lane can: that the declaration and the mount are one set.
 - **Dimensions 1.2–1.3 — MOVED to M181_003** (the coverage gate, the generated artifact) with the utoipa design this spec's Discovery records. Dimension 1.4 is retired whole: `backfill` **deferred** with the measurement in Discovery, and `doctor` **dropped** by the same evidence standard — nothing operational invokes it, and the bare-invocation preflight plus `/readyz` already answer it (quote in M181_003's Discovery).
-- **Dimension 1.5** — the tenant provider surface serves all three methods: the view composes the tenant's own selection with the live platform default and never 404s, the reset writes an explicit platform row from the live default, and the activation's ladder answers each of its five refusals with the registry code the Zig answers — every refusal a client can provoke decided from a value rather than raised as an error → Test `test_tenant_provider_ladder` — **DONE** (integration lane 310 passed / 0 failed, 2026-09-01). All three methods are served and mounted (`afd_api_tenant/src/handler/tenant/provider.rs`). The refusal matrix in front of the verbs and the ladder's FIRST rung are green at router tier: `cargo test -p afd_api --test tenant_plane` → 208 passed, 8 of them `tenant_provider_route.rs`. Rungs two through five answer from real rows, so they are graded by `integration_rotation/activation.rs` — written, `#[ignore]`d, and NOT YET RUN: the lane needs live Postgres and Redis.
+- **Dimension 1.5** — the tenant provider surface serves all three methods: the view composes the tenant's own selection with the live platform default and never 404s, the reset writes an explicit platform row from the live default, and the activation's ladder answers each of its five refusals with the registry code the Zig answers — every refusal a client can provoke decided from a value rather than raised as an error → Test `test_tenant_provider_ladder` — **DONE** (integration 321/0, and every rung below named with the case that grades it). All three methods are served and mounted (`afd_api_tenant/src/handler/tenant/provider.rs`). The refusal matrix in front of the verbs is green at router tier: `cargo test -p afd_api --test tenant_plane` → 208 passed, 8 of them `tenant_provider_route.rs`. Of the row-decided rungs, `integration_rotation/activation.rs` ran and passed three — `UZ-PROVIDER-002` (a name the vault does not hold), `UZ-PROVIDER-003` (a row that is not a provider key) and `UZ-PROVIDER-004` (an uncatalogued model) — alongside the catalogue ceiling, its clamp, the compatible endpoint and the committed-delete race.
+
+  **Correction, then closure (2026-09-01).** This row first read **DONE** on the lane's `310 passed / 0 failed` — a count read as coverage. The tally contained none of the row-decided rungs, so the row was reverted and the missing cases written:
+
+  | Outcome | Where it is graded now |
+  |---|---|
+  | `UZ-PROVIDER-005` — an endpoint the SSRF guard refuses | `integration_rotation/activation.rs::a_compatible_endpoint_in_a_blocked_range_is_refused_by_the_guard` — `169.254.169.254` over `https`, so the ADDRESS refuses it rather than the scheme |
+  | `UZ-PROVIDER-010` — a tenant with no workspace | `…::a_tenant_with_no_workspace_is_refused_before_any_credential_is_looked_for` |
+  | A body that will not read as a credential | `…::a_body_that_will_not_read_as_a_credential_is_refused_after_the_metadata_passes` — the metadata rungs PASS, so the envelope is opened, which is what separates it from the rung above |
+  | The RESET's copy from the live default | `integration_rotation/registry.rs::a_reset_writes_an_explicit_platform_row_copied_from_the_live_default` |
+  | The VIEW's composition | `…::a_tenant_that_never_configured_a_provider_is_composed_from_the_live_default` |
+  | `UZ-PROVIDER-009` — a reset with no active default | `tenant_provider_route.rs::test_a_reset_on_a_deployment_with_no_default_names_the_missing_key`, plus its control |
+
+  **`UZ-PROVIDER-009` needed a seam, and the Zig's own answer is why.** `core.platform_provider_defaults` carries no tenant column, so `active = true` is a fact about the whole deployment: a lane sharing one database cannot assert the table is empty, and over the dead pool the read is a 503 rather than the `None` the arm needs. `tenant_provider_dispatch_test.zig` records the identical reasoning and settles for reading its own source text, because `applyPlatform` is file-private there. Here `platform_default` is a method on the `TenantProviders` TRAIT, so `HarnessProviders::NoPlatformDefault` answers `Ok(None)` — a value the real store also produces — and the arm is reached through the real router. The text pin is deliberately not ported (RULE PORT). The test also corrected this spec's own assumption: the status is **500**, not a 4xx, because a deployment that was never configured is not something the caller can repair.
 - **Dimension 1.6** — the activation is one transaction that decrypts once, and never at all on the refusals a client provokes: a credential absent or not a provider key is decided from `vault.secrets` metadata on the already-locked row, and the catalogue gate and the selection write are ONE statement, so no model can be deleted between checking it and storing its ceiling → Test `test_activation_is_atomic_and_decrypts_once` — **DONE** (the six activation cases ran and pass; the lane's first run also surfaced a fixture-isolation defect in the tests themselves, fixed in `0251bfea6`). The shape is built: one transaction, one decrypt, the gate and the write as one `INSERT … SELECT … RETURNING`. Both properties are datastore-observable only, so the evidence is the six `#[ignore]`d cases in `integration_rotation/activation.rs`, which have compiled but not run.
-- **Dimension 1.7** — the model-entries quad and the workspace fleet-libraries pair serve their route × method set, each refusal answering its registry code → Test `test_model_entries_and_libraries_ported` — **DONE** (row-decided outcomes graded by the integration lane, 310/0). BOTH are served and mounted (`afd_api_tenant/src/handler/{tenant/model_entry,workspace_library}.rs`), which closes §1's nine route × method gaps at the router. Everything in front of the verbs is green: `cargo test -p afd_api --all-features --test tenant_plane` → 232 passed, 13 of them `tenant_model_entry_route.rs` and 11 `workspace_fleet_libraries.rs`. What is NOT yet graded is every outcome decided from a row — a duplicate pair, an id that resolves to nothing, an entry that is the active selection, the merged gallery's order and its seek predicate, an onboarding's round trip. All are datastore-observable only and need the integration lane, which has still never run.
+- **Dimension 1.7** — the model-entries quad and the workspace fleet-libraries pair serve their route × method set, each refusal answering its registry code → Test `test_model_entries_and_libraries_ported` — **DONE** (integration 321/0, every row-decided outcome named below with its case). BOTH are served and mounted (`afd_api_tenant/src/handler/{tenant/model_entry,workspace_library}.rs`), which closes §1's nine route × method gaps at the router. Everything in front of the verbs is green: `cargo test -p afd_api --all-features --test tenant_plane` → 232 passed, split across `tenant_model_entry_route.rs`, its new `tenant_model_entry_input.rs` sibling and `workspace_fleet_libraries.rs`.
+
+  **Correction, then closure (2026-09-01).** This row first read **DONE** on the same `310/0`, and the row-decided half was graded by none of it — `grep -rn 'add_entry\|set_entry_model\|remove_entry\|registry_page\|gallery\|onboard_into'` over the test tree returned zero integration hits. Every named outcome is now written:
+
+  | Outcome | Where it is graded now |
+  |---|---|
+  | An entry that is the active selection | `integration_rotation/registry.rs::removing_the_entry_the_tenant_runs_on_is_refused` — with an IDLE entry removed in the same test, so the refusal is a discrimination rather than "delete always refuses" |
+  | A duplicate pair, on both write verbs | `…::the_same_model_on_the_same_credential_is_refused_as_a_duplicate` — including the uncollided retarget that proves the refusal is the collision and not the verb |
+  | An id that resolves to nothing | `…::an_id_that_resolves_to_nothing_is_answered_by_each_write_verb_in_its_own_way` — `Removed::Done` against `Retargeted::NotFound`, an asymmetry worth pinning |
+  | The merged gallery's order and its seek | `integration_catalogue/workspace_gallery.rs::the_gallery_merges_two_libraries_under_one_order_and_walks_it_by_seek` — rows interleaved in TIME, so a `UNION` that forgot its `ORDER BY` still returns all four and fails here |
+  | An onboarding's round trip | `…::an_onboarding_lands_in_the_workspaces_own_library_and_nobody_elses` — through a local archive origin, with the cross-workspace isolation half the ownership layer cannot answer for |
 
 ### §2 — MOVED to M181_004 (OTLP export)
 
@@ -245,18 +271,43 @@ Dimensions 1.2–1.4's rows moved to M181_003 with the dimensions themselves.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every contract route answers from the Rust daemon (§1) | `make test-parity LOCAL=1` | exit 0 | P0 | |
-| R2 | Declared verbs equal the mounted set (§1) | `cd rustd && cargo test -p afd_api --all-features --test http_substrate route_verbs` | exit 0, `2 passed` | P0 | |
-| R3 | Row-decided outcomes graded (§1) | `make test-integration-rustd` | exit 0 | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Version sync | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Every contract route answers from the Rust daemon (§1) | `make test-parity LOCAL=1` | exit 0 | P0 | ✅ `95 route/method pairs answered`, 1 declared divergence honoured |
+| R2 | Declared verbs equal the mounted set (§1) | `cd rustd && cargo test -p afd_api --all-features --test http_substrate route_verbs` | exit 0, `2 passed` | P0 | ✅ `2 passed` — every route declares a verb, declaration equals mount |
+| R3 | Row-decided outcomes graded (§1) | `make test-integration-rustd` | exit 0 | P0 | ✅ `321 passed` — 310 before the eleven row-decided cases |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 154 changed paths, 0 outside the table above |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN — ready for VERIFY` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed` — cargo 2147 · app 2410 · website 175 · CLI 1624 · design-system 512 |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ `all versions match 0.27.1` |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` — 5025 commits scanned |
+| S6 | No oversize source file | `git diff --name-only --diff-filter=d origin/main...HEAD \| grep -E '\.(rs\|ts\|tsx\|js\|jsx\|zig\|py\|sh\|sql)$' \| xargs wc -l 2>/dev/null \| awk '$2!="total" && $1>350'` | no output | P0 | ✅ no output |
 
 **Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
+
+**Why S6 names extensions instead of excluding `.md`.** The first spelling
+inverted the filter and could never go green: `Cargo.lock` is 4,775 lines and
+`public/openapi.json` is 9,481, both generated, neither a file the 350-line cap
+is about — so the row reported two permanent failures and taught its reader to
+skip it. Naming the source extensions is the same rule stated positively, and
+`--diff-filter=d` keeps a DELETED path out of `wc`, which would otherwise report
+the error rather than the length. RULE FLL applies to files an author writes.
+
+**Test Delta (VERIFY, 2026-09-01).** Like-for-like on the tier the CHORE(open)
+baseline actually measured: cargo workspace **2041 → 2147** (+106 across the
+branch). The `unit=4190` baseline is not comparable as a total — it summed
+cargo, `ui/packages/app` and `design-system` only, omitting `website` (175) and
+the `agentsfleet` CLI (1624), so a total-versus-total reading would invent
+growth that is really an accounting change. Today's full lane: cargo 2147 ·
+app 2410 · website 175 · CLI 1624 · design-system 512.
+
+**This session's growth is in the INTEGRATION tier by construction**, which is
+the tier the two reverted dimensions were short of: **310 → 321**, the eleven
+row-decided cases. They are `#[ignore]`d, so they count as ignored at unit tier
+and passed at integration tier — flat unit growth here is the design, not a
+missing test. The one unit test deleted was `SecretKind`'s
+`absence_is_reachable_only_from_a_missing_row`, which asserted that a variant
+nothing constructs is never returned; it went with the variant (RULE TCF — a
+test that survives the removal of its own subject is repaired or deleted).
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE. The production swap additionally requires Indy's explicit go in Discovery.
 

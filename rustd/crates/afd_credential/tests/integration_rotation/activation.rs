@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use afd_core::clock::UnixMillis;
-use afd_credential::provider::{Activation, Providers};
+use afd_credential::provider::{Activation, OPENAI_COMPATIBLE, Providers, Rejection};
 use afd_crypto::entropy::Entropy;
 
 use super::Fixture;
@@ -299,4 +299,85 @@ async fn an_activation_after_a_committed_delete_writes_nothing() {
 
     assert_eq!(outcome, Activation::CredentialMissing);
     assert_eq!(written(&fixture).await, (0, 0));
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_body_that_will_not_read_as_a_credential_is_refused_after_the_metadata_passes() {
+    let fixture = Fixture::create().await;
+    // The metadata says provider key, so the two cheap rungs pass and the
+    // envelope IS opened — which is what makes this a different refusal from
+    // the one above rather than a second spelling of it.
+    fixture
+        .seed_with_shape(
+            "a-truncated-credential",
+            b"[]",
+            Some(NAMED_PROVIDER),
+            Some(true),
+        )
+        .await;
+
+    let outcome = providers(&fixture)
+        .activate(
+            &fixture.tenant,
+            "a-truncated-credential",
+            Some(UNCATALOGUED),
+            NOW,
+        )
+        .await
+        .expect("an unreadable body is an outcome, not a failure");
+
+    assert_eq!(outcome, Activation::Malformed);
+    assert_eq!(written(&fixture).await, (0, 0));
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_compatible_endpoint_in_a_blocked_range_is_refused_by_the_guard() {
+    let fixture = Fixture::create().await;
+    // The cloud metadata service, which is the whole reason the guard exists:
+    // a tenant that can point an endpoint anywhere can point it at the host's
+    // own credentials. `https` on purpose, so what refuses this is the address
+    // range and not the scheme.
+    fixture
+        .seed_with_shape(
+            "a-blocked-endpoint",
+            br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#,
+            Some(OPENAI_COMPATIBLE),
+            Some(false),
+        )
+        .await;
+
+    let outcome = providers(&fixture)
+        .activate(
+            &fixture.tenant,
+            "a-blocked-endpoint",
+            Some(UNCATALOGUED),
+            NOW,
+        )
+        .await
+        .expect("a refused endpoint is an outcome");
+
+    assert_eq!(outcome, Activation::EndpointRefused(Rejection::BlockedHost));
+    assert_eq!(written(&fixture).await, (0, 0));
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_tenant_with_no_workspace_is_refused_before_any_credential_is_looked_for() {
+    let fixture = Fixture::create().await;
+    let orphan = fixture.seed_tenant_without_workspace().await;
+
+    // The credential name is one nothing stored, and it does not matter: the
+    // workspace is what a credential is looked up UNDER, so there is nowhere
+    // to look and the refusal names that rather than the missing credential.
+    let outcome = providers(&fixture)
+        .activate(&orphan, "anything-at-all", Some(UNCATALOGUED), NOW)
+        .await
+        .expect("a bootstrap invariant violation is an outcome");
+
+    assert_eq!(outcome, Activation::NoWorkspace);
+    fixture.cleanup().await;
 }

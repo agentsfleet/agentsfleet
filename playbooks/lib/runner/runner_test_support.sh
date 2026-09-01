@@ -98,7 +98,10 @@ case "$command" in
     index=0
     [ -f "$READYZ_COUNTER" ] && index="$(cat "$READYZ_COUNTER")"
     printf '%s\n' "$((index + 1))" >"$READYZ_COUNTER"
-    [ "$index" -ge "${#statuses[@]}" ] && index=$(("${#statuses[@]}" - 1))
+    # Unquoted inside the arithmetic: bash 3.2 refuses a quoted operand there
+    # ("1" - 1: operand expected), and this stub dying prints no status at all,
+    # which the caller then reads as a 000 that looks like a real outage.
+    [ "$index" -ge "${#statuses[@]}" ] && index=$((${#statuses[@]} - 1))
     printf '%s\n' "${statuses[index]}"
     ;;
 esac
