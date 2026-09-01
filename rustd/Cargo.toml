@@ -604,6 +604,17 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
 # Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
 tokio-util = { version = "0.7.19", default-features = false }
 
+# The listening socket, because `IPV6_V6ONLY` has to be cleared BEFORE `bind`
+# and neither `std` nor `tokio` exposes the option. The daemon's only ingress
+# in every deployed environment is Cloudflare Tunnel dialling
+# `agentsfleetd-{dev,prod}.internal:3000`, and Fly's private network (6PN)
+# resolves `.internal` to an IPv6 address ONLY — so an IPv4-only listener is
+# unreachable in production while still passing a local health check. See
+# `serve::dual_stack_listener`. Already in the resolve as a tokio dependency;
+# naming it here makes the socket option a stated dependency rather than one
+# borrowed through unification.
+socket2 = { version = "0.6.5", default-features = false }
+
 # `gethostname`, which `std` does not expose. The outbound worker's consumer
 # name must be the same string across restarts of one instance, or every
 # unacknowledged answer strands in a pending list nothing reads again — and

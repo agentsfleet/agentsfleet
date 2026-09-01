@@ -11,7 +11,9 @@
 )]
 
 use afd_core::env::MapEnv;
-use agentsfleetd::serve::{Acceptor, BootFailure, DEFAULT_PORT, serve_accepts};
+use agentsfleetd::serve::{
+    Acceptor, BootFailure, DEFAULT_PORT, dual_stack_listener, serve_accepts,
+};
 use agentsfleetd::supervisor::Supervisor;
 
 /// The API role's Postgres knob.
@@ -221,4 +223,95 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
         .await
         .expect("the loop stops when cancelled, even after failures")
         .expect("the loop does not panic");
+}
+
+// ── The bind address ─────────────────────────────────────────────────────
+//
+// These are the guard the Zig daemon carried and the Rust port dropped. The
+// deployment has no public Fly service: Cloudflare Tunnel reaches
+// `agentsfleetd-<env>.internal:3000`, Fly resolves `.internal` to a 6PN
+// address that is IPv6 only, and a listener that refuses IPv6 answers the
+// edge with 502 while every local check stays green. That asymmetry is why
+// the bug shipped twice, and why the assertion is about the SOCKET rather
+// than about a configuration string.
+
+/// The port that asks the kernel to choose one, so these can run anywhere.
+const EPHEMERAL: u16 = 0;
+
+#[tokio::test]
+async fn test_the_listener_binds_ipv6_not_ipv4_only() {
+    let listener = dual_stack_listener(EPHEMERAL).expect("an ephemeral port binds");
+    let address = listener
+        .local_addr()
+        .expect("a bound listener has an address");
+
+    assert!(
+        address.is_ipv6(),
+        "the listener must be IPv6: Fly 6PN resolves the tunnel's \
+         `.internal` target to an IPv6 address only, and `0.0.0.0` refused it \
+         — got {address}"
+    );
+    assert!(
+        address.ip().is_unspecified(),
+        "the listener must accept on every interface, not one — got {address}"
+    );
+}
+
+#[tokio::test]
+async fn test_an_ipv6_client_connects() {
+    let listener = dual_stack_listener(EPHEMERAL).expect("an ephemeral port binds");
+    let port = listener
+        .local_addr()
+        .expect("a bound listener has an address")
+        .port();
+
+    // The connection the Cloudflare Tunnel makes, and the one that was
+    // refused: IPv6 to the loopback address.
+    let client = tokio::net::TcpStream::connect((std::net::Ipv6Addr::LOCALHOST, port)).await;
+
+    assert!(
+        client.is_ok(),
+        "an IPv6 client must connect — this is the 502 the tunnel saw: {:?}",
+        client.err()
+    );
+}
+
+#[tokio::test]
+async fn test_an_ipv4_client_still_connects() {
+    let listener = dual_stack_listener(EPHEMERAL).expect("an ephemeral port binds");
+    let port = listener
+        .local_addr()
+        .expect("a bound listener has an address")
+        .port();
+
+    // The half that must NOT regress in exchange. `[checks.readiness]` in the
+    // Fly configuration probes port 3000 and passes today against an
+    // IPv4-only listener, so a v6-only socket would trade one outage for
+    // another. This is what `set_only_v6(false)` buys.
+    let client = tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).await;
+
+    assert!(
+        client.is_ok(),
+        "an IPv4 client must still connect — the Fly readiness check is one: {:?}",
+        client.err()
+    );
+}
+
+#[tokio::test]
+async fn test_two_listeners_cannot_share_a_port() {
+    let held = dual_stack_listener(EPHEMERAL).expect("an ephemeral port binds");
+    let port = held
+        .local_addr()
+        .expect("a bound listener has an address")
+        .port();
+
+    // `set_reuse_address` must not have become `SO_REUSEPORT`: two daemons
+    // silently load-balancing one port is a far worse failure than a refused
+    // second boot.
+    let second = dual_stack_listener(port);
+
+    assert!(
+        second.is_err(),
+        "a second bind on a held port must be refused"
+    );
 }

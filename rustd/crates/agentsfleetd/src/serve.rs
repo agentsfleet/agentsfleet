@@ -27,7 +27,7 @@
 mod accept;
 mod optional;
 
-use std::net::SocketAddr;
+use std::net::{Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -38,6 +38,7 @@ use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_observability::{Analytics, Telemetry};
 use afd_redis::Redis;
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::TcpListener;
 
 pub use self::accept::Acceptor;
@@ -150,7 +151,7 @@ async fn open(
     )
     .await;
     report_workers(supervisor, &analytics);
-    let address = listen(port, router, supervisor).await?;
+    let address = listen(port, router, supervisor)?;
     analytics.report(&Telemetry::ServerStarted {
         port: address.port(),
     });
@@ -291,12 +292,62 @@ fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {
     });
 }
 
-async fn listen(
+/// The `listen(2)` backlog. `std::net::TcpListener::bind` hard-codes 128 and
+/// this path replaces that call, so the number is carried over rather than
+/// chosen — nothing here has evidence for a different queue depth.
+const LISTEN_BACKLOG: i32 = 128;
+
+/// Binds `[::]:port` as a DUAL-STACK socket — IPv6 and IPv4 on one listener.
+///
+/// # Why this is not `TcpListener::bind`
+///
+/// The address is the whole point, and it is a deployment contract rather than
+/// a preference. The daemon publishes no public Fly service in any environment:
+/// `deploy/fly/agentsfleetd-{dev,prod}/fly.toml` says so, and the only route in
+/// is Cloudflare Tunnel dialling `agentsfleetd-<env>.internal:3000`. Fly's
+/// private network resolves a `.internal` name to a 6PN address, which is
+/// **IPv6 only** — so a listener bound to `0.0.0.0` refuses the tunnel's
+/// connection and the edge answers 502, which is exactly the outage this
+/// function exists to prevent. The Zig daemon defaulted its interface to `"::"`
+/// for this reason (`src/http/server.zig`, since removed); the port to Rust
+/// dropped the default and the outage returned, so the reason is written down
+/// here and held by `tests/serve.rs`.
+///
+/// # Why `socket2` rather than binding an IPv6 address directly
+///
+/// `TcpListener::bind((Ipv6Addr::UNSPECIFIED, port))` opens an `AF_INET6`
+/// socket and leaves `IPV6_V6ONLY` at the kernel default, which on Linux is the
+/// `net.ipv6.bindv6only` sysctl. Default-0 means dual stack, so it would
+/// usually work — but the option can only be cleared BEFORE `bind`, and IPv4
+/// reachability is load-bearing here too: `[checks.readiness]` in the Fly
+/// configuration probes port 3000 and is green today against an IPv4-only
+/// listener. Trading the tunnel outage for a failing health check on a host
+/// whose sysctl differs is not a fix, so the option is set rather than assumed.
+///
+/// # Errors
+/// Returns the `io::Error` from whichever step refused: opening the socket,
+/// setting an option, binding the port, or entering the listen state.
+pub fn dual_stack_listener(port: u16) -> std::io::Result<TcpListener> {
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+    // Before `bind`, and the reason the whole function exists.
+    socket.set_only_v6(false)?;
+    // `std`'s bind sets this on Unix; a restart must not lose the port to a
+    // socket still in TIME_WAIT, and the machine restart policy is `always`.
+    socket.set_reuse_address(true)?;
+    // Required before `from_std`: tokio drives a non-blocking accept and would
+    // otherwise stall its runtime on the first connection.
+    socket.set_nonblocking(true)?;
+    socket.bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)).into())?;
+    socket.listen(LISTEN_BACKLOG)?;
+    TcpListener::from_std(socket.into())
+}
+
+fn listen(
     port: u16,
     router: axum::Router,
     supervisor: &mut Supervisor,
 ) -> Result<SocketAddr, BootFailure> {
-    let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
+    let listener = dual_stack_listener(port)?;
     let address = listener.local_addr()?;
     supervisor.spawn(ACCEPT_LOOP, move |token| {
         accept_loop(listener, router, token)
