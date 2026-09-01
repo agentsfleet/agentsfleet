@@ -102,7 +102,10 @@ pub struct AdminLibraryCreated<'a> {
     /// Display name derived from `SKILL.md`.
     #[serde(borrow)]
     pub name: Cow<'a, str>,
-    /// Always `platform` for this endpoint.
+    /// Which library the entry now stands in.
+    ///
+    /// `platform` from the operator's catalogue and `tenant` from a workspace
+    /// onboard — both verbs answer this shape, and the tier is what differs.
     #[serde(borrow)]
     pub visibility: Cow<'a, str>,
     /// Content identity of the validated bundle.

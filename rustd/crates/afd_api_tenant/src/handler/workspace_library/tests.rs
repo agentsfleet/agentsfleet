@@ -19,7 +19,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_library::LibraryRequirements;
+use afd_library::{LibraryRequirements, PreparedBundle, Requirements};
 
 use super::*;
 
@@ -31,6 +31,25 @@ const FOREIGN_WORKSPACE: &str = "019329c5-0000-7000-8000-0000000000b2";
 
 /// The page size every token below is minted under.
 const LIMIT: u32 = 25;
+
+/// The bundle both fixtures below describe.
+///
+/// One set of names rather than two: the gallery card and the onboard response
+/// render the SAME declared bundle through different functions, and a reader
+/// comparing the two assertions has to be able to see that.
+const BUNDLE_NAME: &str = "PR reviewer";
+
+/// What that bundle says it does.
+const BUNDLE_DESCRIPTION: &str = "Reviews pull requests";
+
+/// The one credential it declares.
+const DECLARED_CREDENTIAL: &str = "github";
+
+/// The one tool it declares.
+const DECLARED_TOOL: &str = "shell";
+
+/// The one outbound host it declares.
+const DECLARED_HOST: &str = "api.github.com";
 
 /// A token for `workspace` at `limit`, minted the way the page mints one.
 fn token(workspace: &str, limit: u32) -> String {
@@ -48,15 +67,15 @@ fn token(workspace: &str, limit: u32) -> String {
 fn entry(id: &str, tier: Tier) -> SummaryEntry {
     SummaryEntry {
         id: id.to_owned(),
-        name: "PR reviewer".to_owned(),
-        description: "Reviews pull requests".to_owned(),
+        name: BUNDLE_NAME.to_owned(),
+        description: BUNDLE_DESCRIPTION.to_owned(),
         tier,
         source_ref: "owner/repo@main".to_owned(),
         created_at_ms: 1_760_000_000_000,
         requirements: LibraryRequirements::fixture(
-            vec!["github".to_owned()],
-            vec!["shell".to_owned()],
-            vec!["api.github.com".to_owned()],
+            vec![DECLARED_CREDENTIAL.to_owned()],
+            vec![DECLARED_TOOL.to_owned()],
+            vec![DECLARED_HOST.to_owned()],
             true,
         ),
         required_credentials_reasons: serde_json::Value::Null,
@@ -165,12 +184,12 @@ fn should_render_a_card_from_its_entry_and_its_tier() {
     let card = response.items.first().expect("the page carries its card");
 
     assert_eq!(card.id, "bundle-1");
-    assert_eq!(card.name, "PR reviewer");
+    assert_eq!(card.name, BUNDLE_NAME);
     assert_eq!(card.visibility, Tier::Tenant.label());
     assert_eq!(card.source_ref, "owner/repo@main");
-    assert_eq!(card.requirements.credentials, vec!["github"]);
-    assert_eq!(card.requirements.tools, vec!["shell"]);
-    assert_eq!(card.requirements.network_hosts, vec!["api.github.com"]);
+    assert_eq!(card.requirements.credentials, vec![DECLARED_CREDENTIAL]);
+    assert_eq!(card.requirements.tools, vec![DECLARED_TOOL]);
+    assert_eq!(card.requirements.network_hosts, vec![DECLARED_HOST]);
     assert!(card.requirements.trigger_present);
     assert_eq!(response.total, None, "a keyset page never counts");
 }
@@ -233,4 +252,78 @@ fn should_issue_a_cursor_its_own_parser_accepts() {
     assert_eq!(round_tripped.created_at_ms, 1_760_000_000_001);
     assert_eq!(round_tripped.tier, Tier::Platform);
     assert_eq!(round_tripped.id, "bundle-9");
+}
+
+/// An onboarded bundle renders into the TENANT library, whatever it declared.
+///
+/// The tier is not read from anything — [`created`] spells `Tier::Tenant`
+/// outright, because `onboard` passed `Destination::Workspace` and there is no
+/// other place this verb can put a bundle. Asserting it matters because the
+/// response type is the operator catalogue's, whose own onboard renders
+/// `Tier::Platform` into the same field: a copy-paste between the two would
+/// tell a workspace its private bundle is published deployment-wide, and every
+/// other field would still look right.
+#[test]
+fn should_render_an_onboarded_bundle_into_the_tenant_library() {
+    let response = created(onboarded());
+
+    assert_eq!(response.visibility, Tier::Tenant.label());
+    assert_ne!(
+        Tier::Tenant.label(),
+        Tier::Platform.label(),
+        "the labels must differ, or the assertion above proves nothing"
+    );
+    assert_eq!(
+        response.id, "019329c5-0000-7000-8000-0000000000c1",
+        "the row's identifier is what now stands — on a re-onboard that is the \
+         FIRST write's id, not this bundle's content hash"
+    );
+    assert_eq!(response.name, BUNDLE_NAME);
+    assert_eq!(response.content_hash, "0f".repeat(32));
+}
+
+/// The declared names ride the response; the support-file paths do not.
+///
+/// [`Requirements`] carries a fifth list, and the wire shape has four fields.
+/// The omission is the claim: a support manifest is the bundle's internal file
+/// layout, and answering it would tell a caller what is inside a bundle they
+/// onboarded rather than what it needs from them.
+#[test]
+fn should_answer_what_a_bundle_needs_without_its_file_layout() {
+    let response = created(onboarded());
+
+    assert_eq!(response.requirements.credentials, [DECLARED_CREDENTIAL]);
+    assert_eq!(response.requirements.tools, [DECLARED_TOOL]);
+    assert_eq!(response.requirements.network_hosts, [DECLARED_HOST]);
+    assert!(response.requirements.trigger_present);
+
+    let document = serde_json::to_value(&response).expect("the response serialises");
+    let requirements = document
+        .get("requirements")
+        .expect("the response carries its requirements");
+    assert!(
+        requirements.get("support_files").is_none(),
+        "the support manifest is not on this wire: {requirements}"
+    );
+}
+
+/// One onboarded bundle, as `library_onboard::run` answers with.
+fn onboarded() -> Onboarded {
+    Onboarded {
+        id: "019329c5-0000-7000-8000-0000000000c1".to_owned(),
+        bundle: PreparedBundle {
+            name: BUNDLE_NAME.to_owned(),
+            description: BUNDLE_DESCRIPTION.to_owned(),
+            content_hash: "0f".repeat(32),
+            snapshot_key: "bundles/0f.tar.zst".to_owned(),
+            support_manifest: Vec::new(),
+            requirements: Requirements {
+                credentials: vec![DECLARED_CREDENTIAL.to_owned()],
+                tools: vec![DECLARED_TOOL.to_owned()],
+                network_hosts: vec![DECLARED_HOST.to_owned()],
+                support_files: vec!["reference/checklist.md".to_owned()],
+                trigger_present: true,
+            },
+        },
+    }
 }

@@ -39,25 +39,25 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 /// Where a fire arrives.
-const PATH: &str = "/v1/ingress/qstash/schedules";
+pub(crate) const PATH: &str = "/v1/ingress/qstash/schedules";
 
 /// The header the scheduler carries its signed token in.
-const HEADER_SIGNATURE: &str = "upstash-signature";
+pub(crate) const HEADER_SIGNATURE: &str = "upstash-signature";
 
 /// The header naming which schedule fell due.
-const HEADER_SCHEDULE: &str = "upstash-schedule-id";
+pub(crate) const HEADER_SCHEDULE: &str = "upstash-schedule-id";
 
 /// The key this fixture deployment is signing with.
-const CURRENT_KEY: &str = "fixture-current-signing-key";
+pub(crate) const CURRENT_KEY: &str = "fixture-current-signing-key";
 
 /// The key it rotates to next.
-const NEXT_KEY: &str = "fixture-next-signing-key";
+pub(crate) const NEXT_KEY: &str = "fixture-next-signing-key";
 
 /// A key belonging to nobody, for the forged half.
 const FOREIGN_KEY: &str = "not-this-deployments-signing-key";
 
 /// The delivery body a fire carries.
-const BODY: &str = r#"{"schedule_id":"01J0000000000000000000000A"}"#;
+pub(crate) const BODY: &str = r#"{"schedule_id":"01J0000000000000000000000A"}"#;
 
 /// A schedule identifier the header can carry.
 const SCHEDULE_ID: &str = "019329c5-0000-7000-8000-0000000000b1";
@@ -70,7 +70,7 @@ const MAX_BODY_SIZE: usize = 1024 * 1024;
 
 /// The claims a fire token carries, as the scheduler mints them.
 #[derive(Serialize)]
-struct FireClaims {
+pub(crate) struct FireClaims {
     iss: String,
     sub: String,
     exp: u64,
@@ -81,13 +81,23 @@ struct FireClaims {
 
 impl FireClaims {
     /// A token this deployment should believe, over `body`.
-    fn good(body: &str) -> Self {
+    pub(crate) fn good(body: &str) -> Self {
+        Self::for_message(body, "msg_fixture_route_0001")
+    }
+
+    /// The same token under a chosen message id.
+    ///
+    /// The `jti` is what the appender claims a fire under, so a suite proving
+    /// the retry path has to repeat one deliberately — and one proving two
+    /// separate fires has to differ in it. Both are the same minting, which is
+    /// why they share this rather than each spelling a header.
+    pub(crate) fn for_message(body: &str, message_id: &str) -> Self {
         Self {
             iss: "Upstash".to_owned(),
             sub: SCHEDULE_DESTINATION.to_owned(),
             exp: now() + 300,
             nbf: now() - 10,
-            jti: "msg_fixture_route_0001".to_owned(),
+            jti: message_id.to_owned(),
             body: digest_of(body.as_bytes()),
         }
     }
@@ -107,7 +117,7 @@ fn digest_of(body: &[u8]) -> String {
 }
 
 /// Signs `claims` with `key`, as the scheduler would.
-fn mint(claims: &FireClaims, key: &str) -> String {
+pub(crate) fn mint(claims: &FireClaims, key: &str) -> String {
     jsonwebtoken::encode(
         &Header::new(Algorithm::HS256),
         claims,
@@ -124,7 +134,7 @@ fn configured() -> axum::Router {
 }
 
 /// One fire at `router`, with whatever headers the case wants.
-async fn fire(
+pub(crate) async fn fire(
     router: &axum::Router,
     body: &str,
     headers: &[(&str, &str)],

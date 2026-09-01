@@ -120,6 +120,31 @@ impl Fleet {
         self
     }
 
+    /// Appends a verified fire to a live queue rather than an unreachable one.
+    ///
+    /// `Fleet::live` gives the schedules plane a Redis nothing resolves, which
+    /// is the right default: every schedules suite but one proves what the
+    /// route REFUSES, and a route that refuses never reaches an append. The
+    /// exception is the accepted fire — the only path on which the handler
+    /// renders a queued event's own identifier back to the scheduler, and the
+    /// only one a suite cannot reach without a queue that takes the write.
+    pub(crate) fn with_live_fire(mut self, database: Db, queue: Redis) -> Self {
+        self.schedules = SchedulePlane::new(
+            ScheduleService::new(
+                CronSchedules::new(database, Entropy::new()),
+                QStash::new(
+                    reqwest::Client::new(),
+                    String::new(),
+                    SCHEDULE_DESTINATION.to_owned(),
+                    SCHEDULE_API_BASE.to_owned(),
+                ),
+            ),
+            Fire::new(queue),
+            Entropy::new(),
+        );
+        self
+    }
+
     /// Runs the fleet message ingress over a live queue.
     pub(crate) fn with_steering_queue(mut self, queue: Redis) -> Self {
         self.steering = Steer::new(queue);
