@@ -66,7 +66,7 @@ async fn provider_listener() -> String {
         "/users/{subject}",
         axum::routing::get(|| async {
             axum::Json(json!({
-                "public_metadata": { "scopes": "secret:read secret:write" }
+                "public_metadata": { "scopes": "secret:read secret:write connector:read fleet:read schedule:read" }
             }))
         }),
     );
@@ -368,6 +368,75 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
             .expect("an empty page is still a page")
             .is_empty(),
         "the row is gone: {emptied}"
+    );
+
+    // One request per seam the registry never touches. Each accessor in
+    // `plane/services.rs` is three lines that run only when a route needs the
+    // seam it hands out, and each of these routes is the cheapest one that
+    // does — the workspace-scoped pair also being the only callers of the
+    // `WorkspaceOwnership::authorize` forwarding, which nothing tenant-scoped
+    // can reach.
+    let connectors = get_json(
+        &http,
+        &token,
+        &run.base,
+        &format!("/v1/workspaces/{}/connectors", run.workspace),
+    )
+    .await;
+    assert!(
+        connectors["connectors"].is_array() || connectors.is_array(),
+        "the catalog lists whatever is registered: {connectors}"
+    );
+    let fleets = get_json(
+        &http,
+        &token,
+        &run.base,
+        &format!("/v1/workspaces/{}/fleets", run.workspace),
+    )
+    .await;
+    let listed = fleets["items"].as_array().expect("a fleet list answers");
+    assert!(
+        listed.iter().any(|fleet| fleet["id"] == run.fleet.as_str()),
+        "the scenario's own fleet is on its workspace wall: {fleets}"
+    );
+    let schedules = get_json(
+        &http,
+        &token,
+        &run.base,
+        &format!(
+            "/v1/workspaces/{}/fleets/{}/schedules",
+            run.workspace, run.fleet
+        ),
+    )
+    .await;
+    assert!(
+        schedules["schedules"].as_array().is_some_and(Vec::is_empty),
+        "nothing scheduled this fleet: {schedules}"
+    );
+    // The login mint takes a fresh person SESSION, and an api key is not one —
+    // the machine credential must trace to a person who just proved presence,
+    // not to whichever key holder found the route. What this buys the sweep is
+    // the sessions seam: the extractor consults it to classify the credential
+    // before it refuses.
+    let (status, minted) = send_json(
+        &http,
+        &token,
+        reqwest::Method::POST,
+        &run.base,
+        "/v1/cli-credentials",
+        &json!({ "machine_name": "e2e-walk" }),
+    )
+    .await;
+    assert!(
+        (400..500).contains(&status),
+        "an api key is refused as the wrong credential class, not served and \
+         not an outage: {status} {minted}"
+    );
+    assert!(
+        minted["error_code"]
+            .as_str()
+            .is_some_and(|code| code.starts_with("UZ-")),
+        "the refusal names its registry code: {minted}"
     );
 
     supervisor.shutdown().await;

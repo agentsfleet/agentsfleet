@@ -51,21 +51,21 @@ const CLIENT_SECRET: &str = "fixture-client-secret";
 const SUBJECT_PREFIX: &str = "user_live_connector_callback_";
 
 /// A workspace, its owner, and a deployment configured to connect Slack.
-pub(super) struct Fixture {
+pub(crate) struct Fixture {
     lane: TestDatabase,
-    pub(super) database: Db,
-    pub(super) queue: Redis,
-    pub(super) subject: String,
+    pub(crate) database: Db,
+    pub(crate) queue: Redis,
+    pub(crate) subject: String,
     tenant: String,
-    pub(super) workspace: Uuid7,
+    pub(crate) workspace: Uuid7,
     admin: Uuid7,
     user: String,
     key: String,
-    pub(super) token: String,
+    pub(crate) token: String,
 }
 
 impl Fixture {
-    pub(super) async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         let bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
@@ -84,7 +84,7 @@ impl Fixture {
 
     /// The production router over live stores, with `provider` standing in
     /// for the real one's token endpoint.
-    pub(super) fn router(&self, provider: &FakeProvider) -> axum::Router {
+    pub(crate) fn router(&self, provider: &FakeProvider) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
@@ -96,7 +96,7 @@ impl Fixture {
         .router()
     }
 
-    pub(super) async fn seed(&self) {
+    pub(crate) async fn seed(&self) {
         self.seed_rows().await;
         self.seal(
             STATE_KEY,
@@ -150,7 +150,7 @@ impl Fixture {
     /// of ciphertext: a row this fixture hand-wrote would be one the route could
     /// not open, and every reader here answers "not configured" for that — a
     /// refusal indistinguishable from having stored nothing at all.
-    async fn seal(&self, key: &str, document: &str) {
+    pub(crate) async fn seal(&self, key: &str, document: &str) {
         let raw = serde_json::value::RawValue::from_string(document.to_owned())
             .expect("the fixture credential is an object");
         let sealed = harness::vault(self.database.clone())
@@ -172,7 +172,7 @@ impl Fixture {
     /// Read through the vault rather than off the row, because the row holds
     /// ciphertext: what the assertion is about is the HANDLE a runner will open
     /// when a fleet declares this integration.
-    pub(super) async fn grant(&self, provider: Provider) -> Option<serde_json::Value> {
+    pub(crate) async fn grant(&self, provider: Provider) -> Option<serde_json::Value> {
         let name = SecretName::parse(provider.grant_key()).expect("a provider key is storable");
         let opened = harness::vault(self.database.clone())
             .load(&self.workspace, &name)
@@ -188,7 +188,7 @@ impl Fixture {
     /// A count as well as a read: a second connect that sealed under a second
     /// name would leave the first grant intact and pass a read-only assertion
     /// while a runner opened the wrong one.
-    pub(super) async fn secret_names(&self) -> Vec<String> {
+    pub(crate) async fn secret_names(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
@@ -202,7 +202,7 @@ impl Fixture {
         .collect()
     }
 
-    pub(super) async fn cleanup(self) {
+    pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
