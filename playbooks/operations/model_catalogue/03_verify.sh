@@ -29,7 +29,10 @@ catalogue_export_database_url
 # -A -t: unaligned, tuples only, so the result is the bare number.
 rows="$(psql "$DATABASE_URL" -A -t -c "$COUNT_SQL" 2>/dev/null | tr -d '[:space:]')"
 
-if ! printf '%s' "$rows" | grep -Eq '^[0-9]+$'; then
+# A here-string, not a pipe: `grep -q` exits on the match and, under
+# `set -o pipefail`, the writer's SIGPIPE would fail the pipeline precisely when
+# the count IS well formed.
+if ! grep -Eq '^[0-9]+$' <<<"$rows"; then
   echo "❌ ERROR: could not read core.model_library row count (got: '${rows}')" >&2
   exit 1
 fi
