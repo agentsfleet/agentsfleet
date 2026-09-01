@@ -119,7 +119,14 @@ impl Gate {
 #[cfg(test)]
 mod tests {
     use super::{BALANCE, BUDGET, OnFault, PAYER, RECEIPT};
+    use crate::lease::admit::{Admission, Transient};
     use std::collections::BTreeSet;
+
+    /// A billing failure to absorb. Which variant is immaterial — `absorb`
+    /// reads the posture beside the gate's name, never the fault.
+    fn fault() -> afd_billing::Error {
+        afd_billing::Error::WalletMissing
+    }
 
     #[test]
     fn the_two_money_gates_fail_open_and_the_two_write_gates_do_not() {
@@ -144,5 +151,41 @@ mod tests {
             "two gates share an event name: {events:?}"
         );
         assert!(events.iter().all(|event| !event.is_empty()));
+    }
+
+    /// A fail-open gate absorbs its fault and lets the pass continue.
+    ///
+    /// `None` IS the fail-open decision. Asserting the CONSTANT alone would
+    /// still pass if `absorb` ignored the posture it was given, which is the
+    /// one thing this module exists to make impossible: a metering outage must
+    /// not halt every fleet on the platform.
+    #[test]
+    fn a_money_gate_absorbs_its_fault_and_the_pass_continues() {
+        assert_eq!(BALANCE.absorb(&fault()), None);
+        assert_eq!(BUDGET.absorb(&fault()), None);
+    }
+
+    /// A fail-closed gate answers a retry naming itself.
+    ///
+    /// The gate NAME rides the answer because it is all a runner is told — the
+    /// cause stays in the line the gate logged. Two gates answering an
+    /// indistinguishable retry would leave an operator unable to say which read
+    /// ended the pass.
+    #[test]
+    fn a_write_gate_answers_a_retry_that_names_which_gate_stopped_it() {
+        assert_eq!(
+            PAYER.absorb(&fault()),
+            Some(Admission::Retry(Transient { at: PAYER.event }))
+        );
+        assert_eq!(
+            RECEIPT.absorb(&fault()),
+            Some(Admission::Retry(Transient { at: RECEIPT.event }))
+        );
+        assert_ne!(
+            PAYER.absorb(&fault()),
+            RECEIPT.absorb(&fault()),
+            "the two retry gates answer indistinguishably; the gate name is the \
+             only thing carried and it is not carrying"
+        );
     }
 }

@@ -386,3 +386,25 @@ fn test_every_stream_field_reply_shape_renders() {
          sentence with replacement characters punched through it"
     );
 }
+
+/// Every abort reason spells itself the way the stored value reads.
+///
+/// The reason rides `session:*` in Redis and BOTH binaries read it back. A
+/// respelling here is not a failed test in production — it is one process
+/// writing a reason the other cannot classify, on a record that exists to say
+/// why somebody's run was stopped.
+#[test]
+fn every_abort_reason_carries_its_stored_spelling() {
+    use afd_redis::session::AbortReason;
+
+    assert_eq!(AbortReason::ExplicitCancel.as_str(), "explicit_cancel");
+    assert_eq!(
+        AbortReason::RateLimitExceeded.as_str(),
+        "rate_limit_exceeded"
+    );
+    assert_ne!(
+        AbortReason::ExplicitCancel.as_str(),
+        AbortReason::RateLimitExceeded.as_str(),
+        "a person cancelling and a ceiling stopping them are different facts"
+    );
+}

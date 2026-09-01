@@ -201,3 +201,42 @@ fn every_ordering_breaks_its_tie_on_the_row_id() {
         );
     }
 }
+
+/// Every refusal reads as its own repair, and each is a sentence.
+///
+/// The type's own doc gives the reason: three reasons rather than one because
+/// a caller ACTS differently on each — stop sending a retired parameter, ask
+/// for fewer rows, or start the walk again. They share `UZ-REQ-001`, so the
+/// sentence is the only thing that tells them apart, and two arms answering one
+/// string would send a caller to fix the wrong parameter.
+#[test]
+fn every_paging_refusal_names_its_own_repair() {
+    let refusals = [
+        PagingRefusal::OffsetParametersRetired,
+        PagingRefusal::Limit,
+        PagingRefusal::Sort,
+        PagingRefusal::Cursor,
+    ];
+
+    let mut seen = std::collections::BTreeSet::new();
+    for refusal in refusals {
+        let detail = refusal.detail();
+        assert!(!detail.is_empty(), "{refusal:?} answers no sentence at all");
+        assert!(
+            seen.insert(detail),
+            "{refusal:?} repeats a sentence another refusal already owns: {detail}"
+        );
+    }
+
+    // The parameter each one is about, named in the sentence a caller reads.
+    // Without this the loop above passes on four distinct strings that could
+    // each be about the wrong field.
+    assert!(
+        PagingRefusal::OffsetParametersRetired
+            .detail()
+            .contains("page_size")
+    );
+    assert!(PagingRefusal::Limit.detail().contains("limit"));
+    assert!(PagingRefusal::Sort.detail().contains("sort"));
+    assert!(PagingRefusal::Cursor.detail().contains("starting_after"));
+}
