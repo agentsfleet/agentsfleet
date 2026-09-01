@@ -245,3 +245,58 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
     db.close().await;
     database.cleanup().await;
 }
+
+/// Warming a pool whose datastore has gone reports the shortfall and boots.
+///
+/// `warm` is documented as infallible on purpose: a pool that could not reach
+/// its floor is a slower pool, not a broken one, and failing boot over a
+/// warm-up would trade a cold start for an outage. That promise is only worth
+/// anything on the path where the datastore is actually gone — every other
+/// warm test has a live Postgres and reaches the floor, so the give-up arm and
+/// the shortfall it logs never ran.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_warming_a_pool_whose_datastore_went_away_reports_the_shortfall() {
+    install_subscriber();
+    let proxy = FaultProxy::to(lane_target()).await;
+
+    let url = format!(
+        "postgres://agentsfleet:agentsfleet@{}/{}?sslmode=disable",
+        proxy.addr(),
+        lane_database()
+    );
+    // A floor of exactly one: above zero so `warm` asks for something, and no
+    // higher, because every extra is another acquire this test waits out while
+    // holding a slot on the lane's shared Postgres. `integration_pool.rs`
+    // retries its own warm-up for precisely that reason — sibling load is what
+    // makes a 250 ms handshake budget lapse on a healthy datastore — so this
+    // one keeps its footprint to the single acquire the claim needs.
+    let env = MapEnv::from_pairs([
+        (DbRole::Api.url_knob(), url.as_str()),
+        ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_BUDGET_MS),
+        ("DATABASE_POOL_SIZE_API", "1"),
+        ("DATABASE_MIN_POOL_SIZE_API", "1"),
+    ]);
+    let config = PoolConfig::resolve(&env, DbRole::Api)
+        .expect("the constructed URL must resolve")
+        .with_connect_timeout(CONNECT_BUDGET);
+
+    let db = Db::connect(&config)
+        .await
+        .expect("the proxy relays, so the connect must succeed");
+    proxy.swallow();
+
+    let warmed = db.warm(std::time::Duration::from_secs(1)).await;
+
+    assert_eq!(
+        warmed, 0,
+        "no connection could be opened, so none was warmed"
+    );
+    assert_eq!(
+        db.size(),
+        0,
+        "and nothing was left behind in the pool either"
+    );
+
+    db.close().await;
+}
