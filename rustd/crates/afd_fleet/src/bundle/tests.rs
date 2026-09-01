@@ -136,3 +136,49 @@ async fn test_an_oversized_snapshot_is_refused_rather_than_buffered() {
         "the operator's line names the size that was refused: {error}"
     );
 }
+
+/// The digest reads back exactly as it was admitted.
+///
+/// The accessor exists because everything downstream — the snapshot key, the
+/// manifest a runner is handed — is built from this string, and `parse` is the
+/// only thing that ever validated it. A reader that normalised or re-cased on
+/// the way out would hand back a digest the store was never keyed under.
+#[test]
+fn test_a_parsed_digest_reads_back_unchanged() {
+    let hash = ContentHash::parse(EMPTY_SHA256).expect("the fixture digest is canonical");
+
+    assert_eq!(hash.as_str(), EMPTY_SHA256);
+    assert!(
+        hash.snapshot_key().as_ref().contains(hash.as_str()),
+        "the key is built from the digest this accessor answers"
+    );
+}
+
+/// A store failure that is not a missing object keeps its cause.
+///
+/// The collapse is deliberate and one-sided: a runner acts identically on a
+/// refused signature, a timeout and a missing bucket, so they share one kind.
+/// A MISSING object is the exception — this product treats it as a normal
+/// answer — so the two must never be confused. Classifying a timeout as
+/// "bundle not found" would tell an operator their snapshot was deleted.
+#[test]
+fn test_a_store_failure_that_is_not_a_missing_object_keeps_its_cause() {
+    use std::error::Error as _;
+
+    let refused = super::classify_store(object_store::Error::Generic {
+        store: "fixture",
+        source: "the store refused the request".into(),
+    });
+
+    assert_ne!(
+        refused.code().as_str(),
+        super::super::error::report::bundle_missing()
+            .code()
+            .as_str(),
+        "a store that answered wrongly is not a snapshot that is absent"
+    );
+    assert!(
+        refused.source().is_some(),
+        "the operator's diagnosis rides through as the source: {refused}"
+    );
+}
