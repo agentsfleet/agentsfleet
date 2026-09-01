@@ -176,7 +176,7 @@ define _rustd_coverage_verdict
 mkdir -p "$(CURDIR)/.tmp"; \
 summary="$(CURDIR)/.tmp/rustd-coverage-summary.txt"; \
 lcov="$(CURDIR)/$(RUSTD_DIR)/lcov.info"; \
-cd "$(RUSTD_DIR)" && cargo llvm-cov report --workspace --all-features \
+cd "$(RUSTD_DIR)" && cargo llvm-cov report --workspace \
   --summary-only --fail-under-lines $(RUSTD_COVERAGE_FLOOR) > "$$summary" 2>&1; \
 verdict=$$?; \
 cat "$$summary"; \
@@ -208,9 +208,18 @@ endef
 # The coverage lane still migrates after the reset, but it does so through
 # `cargo llvm-cov run --no-report`. The old `_migrate-test-db` prerequisite
 # built the full daemon normally and the coverage invocation then built the
-# same graph again with instrumentation. `--no-clean` carries the migrator's
-# profile and instrumented artifacts into the test run, so there is one LLVM
-# corpus and no preceding normal daemon build.
+# same graph again with instrumentation.
+#
+# `--no-report` on BOTH passes is what carries the migrator's profile into the
+# test run: it is cargo-llvm-cov's accumulate mode, which skips the implicit
+# clean and leaves the profraw for a later `report` to merge. The explicit
+# `cargo llvm-cov clean --workspace` above is therefore the only clean, and it
+# runs once, before either pass. `--no-clean` is NOT the way to spell this —
+# cargo-llvm-cov refuses the pair outright ("error: --no-report may not be used
+# together with --no-clean"), because --no-report already implies it. Verified
+# on a probe crate: a `run --no-report` covering one function then a
+# `--no-report` test pass covering another reported both (40% -> 60%), so
+# nothing is lost by dropping it.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
@@ -221,8 +230,8 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-clean --no-report -- --include-ignored)
+	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-report -- --include-ignored)
 	@echo "→ [rustd] Rendering lcov.info from the run's profile..."; \
-	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace --all-features --lcov --output-path lcov.info \
+	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace --lcov --output-path lcov.info \
 	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
 	@$(_rustd_coverage_verdict)
