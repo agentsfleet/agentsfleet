@@ -67,6 +67,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/**` | EDIT | the store and provider shapes the ports settled |
 | `rustd/Cargo.lock` · `codecov.yml` | EDIT | dependency and coverage bookkeeping for the crates above |
 | `docs/v2/pending/M181_003..006_*.md` | CREATE | the split's four sibling specs, travelling with the scope amendment that references them |
+| `public/openapi.json` | EDIT | the phantom `grant-approval` webhook removed — a contract correction, not generation; the generated document is M181_003's (see Discovery) |
+| `audits/*.sh` | EDIT | bash-3.2 portability (mapfile, `declare -A`) so the gates run on a machine whose only bash is macOS's — mirrored to the orly sources |
 
 ## Applicable Rules
 
