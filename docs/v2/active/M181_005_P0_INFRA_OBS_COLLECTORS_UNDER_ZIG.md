@@ -53,9 +53,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `deploy/**` | EDIT | collector deployment and configuration; the daemon's export endpoint repointed at it |
+| `deploy/fly/otelcol-{dev,prod}/**` | CREATE | the collector app per environment — `Dockerfile` + `fly.toml` + `config.yml`, mirroring the `cloudflared-{dev,prod}` sidecar shape |
+| `.github/workflows/deploy-dev-fly.yml` · `.github/workflows/release.yml` | EDIT | **where the endpoint actually lives.** `GRAFANA_OTLP_ENDPOINT` is a Fly secret staged from the vault by these two workflows (`deploy-dev-fly.yml:39,62`, `release.yml:513,539`), not a value in `deploy/`. The repoint is one changed string per environment; the collector's own upstream credentials are staged to the collector app |
+| `docs/architecture/observability.md` | EDIT | §The three signal paths line 38 reads "Direct to Grafana Cloud; **no collector hop**" — the exact claim this spec falsifies. `dispatch/name_architecture.md` is no-override, so the doc is reconciled in the same diff |
 | `playbooks/operations/cutover/001_playbook.md` | EDIT | the evidence row: collectors serving under Zig, dashboards verified continuous |
 | `playbooks/operations/cutover/probes.sh` | EDIT | an executable probe for the collector path, tagged to this spec's rubric row |
+| `playbooks/operations/cutover/coverage.tsv` | EDIT | the probe's row tags and this milestone's entry — **lands only in the CHORE(close) commit**, see §1's sequencing note |
+| `playbooks/operations/cutover/probes_test.sh` | EDIT | the runner's self-test covers the new probe; it rides `make lint-all` via `lint-scripts` |
 
 ## Applicable Rules
 
@@ -67,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| CI/CD edit approval | yes | `deploy/**` changes need Indy's explicit approval per the hard-safety list — sought at PLAN, before any edit |
+| CI/CD edit approval | yes | **GRANTED at PLAN (Indy, Sep 01, 2026)** — scope: author the repository diff (collector app, endpoint repoint, runbook rows, probe); Indy runs the Fly and Grafana Cloud rollout. No agent-run command touches staging or production. Quote in Discovery |
 | LOGGING | no | no daemon source touched |
 | LENGTH / UFS | yes | config files under the cap; shared endpoints named once |
 | MILESTONE-ID | yes | none in config; playbook is docs (exempt) |
@@ -87,6 +91,8 @@ The collectors deploy first, under the Zig daemon. Standing them up in front of 
 - **Dimension 1.1** — the collectors serve the Zig daemon's export on staging with every dashboard panel continuous → Test `test_collector_path_under_zig`
 - **Dimension 1.2** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
 - **Dimension 1.3** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
+
+**Sequencing — Dimension 1.3's manifest edit belongs to CHORE(close), not EXECUTE.** `probes.sh:75` reads each milestone's rubric rows out of `SPEC_DONE_DIR` (`docs/v2/done`), so a `milestone	M181_005` row in `coverage.tsv` resolves to no spec while this one sits in `active/` and the runner errors on its own new entry. The probe function and its self-test land during EXECUTE; the `milestone` and `covers` rows land in the same commit that moves this spec to `done/`. `exclude	M181_005:R2` rides with them — R2 is merge-time diff scope, the same reason `M175_001:R6` and its siblings are already excluded.
 
 ## Interfaces
 
@@ -136,9 +142,13 @@ No product-analytics changes; no new panels — continuity is the deliverable.
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
-**Command source rule:** S1–S3 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.lint`); S4 is the template's hygiene gate. The integration lane is omitted: this diff carries no Rust and the lane grades none of it.
+**Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.lint`, `verify.version`); S5–S6 are the template's repository hygiene gates. The integration lane is omitted: this diff carries no Rust and the lane grades none of it.
+
+**The S-row letters are positional, not free.** `playbooks/operations/cutover/coverage.tsv` maps hygiene rows by LETTER across every merged milestone — `covers version *:S4`, `covers secrets *:S5`, `exclude *:S6` — and `probes.sh` derives the row set from each merged spec's own rubric table (`probes.sh:75`). This spec was drawn with `gitleaks` at S4 and no version or oversize row, which would make the runner report a phantom `M181_005:S5` (`probes.sh:161`) and reject the `*:S6` exclusion (`probes.sh:180`) the moment this milestone joined the list. Amended to the convention M179_001 and its siblings already carry.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
 
@@ -175,7 +185,13 @@ N/A — no files deleted; the direct-to-backend endpoint configuration is supers
 
 > Indy (2026-09-01): "i wanna see what can be batched parallelized and break to smaller PRs?" … "Yes, 5 specs as drawn" — context: §4's collector-first step of M181_002, split out to run fully parallel; the deploy-approval gate still applies per-edit.
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+- **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - **Deploy scope (Sep 01, 2026).** Asked before any edit, per the gate this spec declares. Options put: repository diff with Indy running the rollout · collectors deployed but unwired · hold and amend the spec first.
+    > Indy (2026-09-01): chose "Repo diff, you run the rollout (Recommended)" — context: `deploy/**` and the two workflow files are approved for edit; the Fly and Grafana Cloud rollout is Indy's, and every rubric row here is graded from the output of that run.
+  - **The endpoint is not in `deploy/` (Sep 01, 2026) — Files Changed amended.** Read from source rather than assumed: `GRAFANA_OTLP_ENDPOINT` is a Fly secret staged from the vault by `.github/workflows/deploy-dev-fly.yml:39,62` and `.github/workflows/release.yml:513,539`; neither `deploy/fly/agentsfleetd-dev/fly.toml` nor its production twin mentions it. A spec whose blast radius stops at `deploy/**` cannot repoint anything. Both workflows join the table under the approval above.
+  - **Architecture consult — the doc this spec falsifies (Sep 01, 2026).** `docs/architecture/observability.md:38` reads "Direct to Grafana Cloud; **no collector hop**". `dispatch/name_architecture.md` carries no override — the doc wins until reconciled — so the line is reconciled in this diff rather than left to contradict the deployment. The one-directional assert in `probes.sh:225` is unaffected: it forbids claiming a scrape path the deployment lacks, and this change adds no `[[metrics]]` block and no pull endpoint. D2 of the register stays true.
+  - **No Zig edit is needed for the repoint, and none is permitted (Sep 01, 2026).** `src/agentsfleetd/observability/otlp/config.zig:60-70` requires all three `GRAFANA_OTLP_*` knobs or `configFromEnv` returns null and all three signals disable; the daemon posts to `{ENDPOINT}/v1/{logs,traces,metrics}` (`otel_logs.zig:18`), which is what an OTLP/HTTP receiver serves on `:4318`. So the repoint changes ONE staged string per environment, instance-id and api-key stay staged, and the collector holds its own upstream credentials. Invariant 1 holds by construction rather than by discipline.
+  - **Rubric S-row renumber (Sep 01, 2026).** Mechanical, applied under gate-flag triage: the letters are read positionally by `coverage.tsv`, this spec's drawing broke two asserts in `probes.sh`, and the fix is the convention every merged sibling already carries. Detail beneath the rubric.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
