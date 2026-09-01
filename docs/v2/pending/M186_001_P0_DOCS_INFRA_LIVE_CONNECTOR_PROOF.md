@@ -10,10 +10,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M136_001: Live Slack and GitHub reviewer proof
+# M186_001: Live Slack and GitHub reviewer proof
 
 **Prototype:** v2.0.0
-**Milestone:** M136
+**Milestone:** M186
 **Workstream:** 001
 **Date:** Jul 20, 2026
 **Status:** IN_PROGRESS — resumed on Indy's Aug 15, 2026 call after Pull Request (PR) #606 repaired the development acceptance lanes ("merged to main go")
@@ -22,11 +22,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 > **Resumed:** the follow-up owns one ordered development-environment pass across §1–§5. No provider mutation begins until the runner heartbeat advances and the workspace, repository, Fleet, grant, and control-Fleet tuple resolves uniquely.
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
-**Batch:** B1 — starts after the development runner is online
+**Batch:** B9 — last in the v2 sequence; the end-to-end acceptance runs against the binary the cutover leaves serving, so it starts after M181_002 swaps production
 **Branch:** `feat/m136-live-connector-proof-followup`
 **Test Baseline:** unit=4157 integration=709
-**Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
-**Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
+**Depends on:** M181_002 (the Rust daemon serving production — this spec's own reactivation clause, quoted in Discovery, is "when the Rust daemon is ready to replace the Zig daemon"; every Zig path in Files Changed is re-read against the Rust tree at CHORE(open)); M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
+**Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision. **Renumbered M136_001 → M186_001 on Aug 31, 2026** so the file's number matches its position: this is the full end-to-end acceptance and it runs last, after the cutover. Historical `M136` references — Indy's verbatim quotes below, the `HANDOFF_M136_*` filenames they cite, and the incident comments in `src/runner/*.zig` — are left untouched, because they name events that happened under that number and rewriting them would falsify the record. This file is where they resolve.
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
 
 ---
@@ -58,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/active/M136_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | Record the resumed branch, setup-blocker scope, current baseline, and ungraded live state. |
+| `docs/v2/active/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | Record the resumed branch, setup-blocker scope, current baseline, and ungraded live state. |
 | `docs/v2/pending/M166_001_P1_INFRA_VERIFICATION_CRITICAL_PATH.md` | CREATE | Specify a separate reduction of the repository verification critical path. |
 | `docs/AUTH.md` | EDIT | Document reconnect after external GitHub installation, internal binding drift, and identity-bound callback completion. |
 | `docs/architecture/connectors.md` | EDIT | Pin installation discovery, identity-bound callback completion, Disconnect ownership, and retry behavior. |
@@ -141,7 +141,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | UFS (repeated/semantic literals) | yes — seed prefixes, stream paths, and timeouts repeat | named constants per file, sharing the fixture vocabulary the acceptance suite already uses |
 | UI Substitution / DESIGN TOKEN | yes — connector actions change | existing `Button`, `Alert`, `StatusPill`, and `DashboardRow` primitives; no new token values |
 | ZIG / PUB / LIFECYCLE / SCHEMA / LOGGING | yes — connector handlers and routing change | Hx handler shape, externally consumed `pub` only, shared SQL statements, existing structured connector log vocabulary |
-| MILESTONE-ID | yes — the new spec is net-new source | the file header cites `M136_001` |
+| MILESTONE-ID | yes — the new spec is net-new source | the file header cites `M186_001` |
 
 ## Prior-Art / Reference Implementations
 
