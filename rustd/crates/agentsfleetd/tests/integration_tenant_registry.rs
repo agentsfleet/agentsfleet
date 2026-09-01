@@ -1,0 +1,247 @@
+//! §1's tenant provider and model-registry routes, over the BOOTED daemon.
+//!
+//! The one lane that reaches `afd_http`'s production seams. Those two files —
+//! `services/provider.rs` and `services/model_entry.rs` — are traits whose
+//! impls forward to `Providers`, and every other suite dispatches around them:
+//! `afd_credential`'s store tests bind the INHERENT methods, and `afd_api`'s
+//! router harness binds its own `HarnessProviders`. Only this process graph
+//! binds `type TenantProviders = Providers` (`plane/services.rs`), so a walk
+//! over a real socket is what executes the forwarding bodies at all.
+//!
+//! One walk, not eight tests: booting a daemon is the expensive fixture, and
+//! each step's precondition is the previous step's outcome — an activation
+//! needs the entry's credential stamped, a reset needs the selection the
+//! activation wrote, and the final empty page proves the removal the walk
+//! performed rather than an empty database.
+
+#![expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly, \
+              and a step reads exactly the JSON shape the step before pinned"
+)]
+
+use agentsfleetd::supervisor::Supervisor;
+use serde_json::{Value, json};
+
+use crate::e2e::{MODEL, PROVIDER, scenario_with_provider};
+
+/// The vault name the walk's own credential is sealed under.
+///
+/// Its own name rather than the scenario's `PROVIDER` key: that fixture's body
+/// deliberately fails the activation ladder, and the runner suites rely on it
+/// staying that way.
+const WALK_KEY: &str = "walk-provider-key";
+use crate::e2e_seed::{seed_activatable_key, seed_tenant_key};
+
+/// A tenant credential minted for this run alone.
+///
+/// Prefixed the way the production minting spells a tenant key, unique per
+/// scenario: the digest column is globally unique and this lane shares one
+/// database, so a fixed spelling would collide with its own previous run.
+fn mint_tenant_token() -> String {
+    let bits = format!(
+        "{}{}",
+        afd_db::test_util::mint_id(),
+        afd_db::test_util::mint_id()
+    )
+    .replace('-', "");
+    format!("agt_t{bits}")
+}
+
+/// Answers the provider's `GET /users/{subject}` for every subject, granting
+/// the two scopes the tenant surface gates on.
+///
+/// The daemon resolves a person's capabilities through `CLERK_API_BASE`, and
+/// the fixture base every other scenario keeps is a domain nothing resolves —
+/// correct for them, since only the tenant plane dials it, and a hard 503 for
+/// this walk. What the real provider answers is a user document whose
+/// `public_metadata.scopes` carries space-separated wire scopes; this listener
+/// answers exactly that shape and nothing else.
+async fn provider_listener() -> String {
+    let app = axum::Router::new().route(
+        "/users/{subject}",
+        axum::routing::get(|| async {
+            axum::Json(json!({
+                "public_metadata": { "scopes": "secret:read secret:write" }
+            }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("an ephemeral port binds");
+    let base = format!(
+        "http://{}",
+        listener.local_addr().expect("the bind has an address")
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("the provider fixture serves");
+    });
+    base
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
+    let mut supervisor = Supervisor::new();
+    let provider_base = provider_listener().await;
+    let run = scenario_with_provider(&mut supervisor, Some(&provider_base)).await;
+    let token = mint_tenant_token();
+    seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
+    seed_activatable_key(&run.booted, &run.workspace, WALK_KEY).await;
+    let http = reqwest::Client::new();
+
+    // A tenant that has configured nothing reads the deployment's default as
+    // platform mode — the seam pair `selection` + `platform_default`, and the
+    // rung that must never be a 404.
+    let view = get_json(&http, &token, &run.base, "/v1/tenants/me/provider").await;
+    assert_eq!(view["mode"], "platform", "no row of its own yet: {view}");
+
+    // REGISTER the seeded model on the seeded credential — `add_entry`.
+    let (status, created) = send_json(
+        &http,
+        &token,
+        reqwest::Method::POST,
+        &run.base,
+        "/v1/tenants/me/models",
+        &json!({ "model_id": MODEL, "secret_ref": WALK_KEY }),
+    )
+    .await;
+    assert_eq!(status, 201, "the entry stores: {created}");
+    let entry_id = created["id"]
+        .as_str()
+        .expect("a stored entry names itself")
+        .to_owned();
+
+    // ACTIVATE the credential as the tenant's own provider — the one seam verb
+    // that runs the whole ladder in one transaction (`activate`).
+    let (status, activated) = send_json(
+        &http,
+        &token,
+        reqwest::Method::PUT,
+        &run.base,
+        "/v1/tenants/me/provider",
+        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": MODEL }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the activation ladder admits the stamped key: {activated}"
+    );
+    assert_eq!(activated["mode"], "self_managed");
+    assert_eq!(activated["secret_ref"], WALK_KEY);
+
+    // The registry page now composes all three reads — the entry, the vault's
+    // projection, the catalogue rate — and flags the entry ACTIVE, because the
+    // selection just written agrees with it on `(secret_ref, model_id)`.
+    let page = get_json(&http, &token, &run.base, "/v1/tenants/me/models").await;
+    let rows = page["models"].as_array().expect("a page carries its rows");
+    assert_eq!(rows.len(), 1, "one entry was registered: {page}");
+    assert_eq!(rows[0]["id"], entry_id.as_str());
+    assert_eq!(
+        rows[0]["provider"], PROVIDER,
+        "the vault's projection labels the row"
+    );
+    assert_eq!(rows[0]["has_key"], true);
+    assert_eq!(
+        rows[0]["active"], true,
+        "the selection and the entry agree on (secret_ref, model_id)"
+    );
+    assert!(
+        rows[0]["input_nanos_per_mtok"].is_i64(),
+        "the catalogue row prices the entry: {page}"
+    );
+
+    // Removing the entry the tenant runs on is refused — the row-decided
+    // outcome the router harness's unreachable pool renders as a plain 503.
+    let item = format!("/v1/tenants/me/models/{entry_id}");
+    let (status, refused) = send_json(
+        &http,
+        &token,
+        reqwest::Method::DELETE,
+        &run.base,
+        &item,
+        &Value::Null,
+    )
+    .await;
+    assert_eq!(status, 409, "the active entry cannot be removed: {refused}");
+
+    // RESET to the platform default — `upsert`, writing the explicit platform
+    // row the view renders differently from "never configured".
+    let (status, reset) = send_json(
+        &http,
+        &token,
+        reqwest::Method::DELETE,
+        &run.base,
+        "/v1/tenants/me/provider",
+        &Value::Null,
+    )
+    .await;
+    assert_eq!(status, 200, "an active default exists to reset to: {reset}");
+    assert_eq!(reset["mode"], "platform");
+
+    // With the selection off the credential, the removal that was refused is
+    // now the other half of the discrimination — `remove_entry`, then a page
+    // that shows the walk cleaned up after itself.
+    let (status, _removed) = send_json(
+        &http,
+        &token,
+        reqwest::Method::DELETE,
+        &run.base,
+        &item,
+        &Value::Null,
+    )
+    .await;
+    assert_eq!(status, 204, "an idle entry removes");
+    let emptied = get_json(&http, &token, &run.base, "/v1/tenants/me/models").await;
+    assert!(
+        emptied["models"]
+            .as_array()
+            .expect("an empty page is still a page")
+            .is_empty(),
+        "the row is gone: {emptied}"
+    );
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// One authenticated GET, answered as JSON.
+async fn get_json(http: &reqwest::Client, token: &str, base: &str, path: &str) -> Value {
+    let response = http
+        .get(format!("{base}{path}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .expect("the daemon answers");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.unwrap_or(Value::Null);
+    assert_eq!(status, 200, "GET {path}: {body}");
+    body
+}
+
+/// One authenticated write, answered as a status and its JSON body.
+///
+/// `Value::Null` sends no body — the DELETE verbs take none, and an empty
+/// `json!({})` would be a body the handler has to read to refuse.
+async fn send_json(
+    http: &reqwest::Client,
+    token: &str,
+    method: reqwest::Method,
+    base: &str,
+    path: &str,
+    body: &Value,
+) -> (u16, Value) {
+    let mut request = http
+        .request(method, format!("{base}{path}"))
+        .bearer_auth(token);
+    if !body.is_null() {
+        request = request.json(body);
+    }
+    let response = request.send().await.expect("the daemon answers");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.unwrap_or(Value::Null);
+    (status, body)
+}

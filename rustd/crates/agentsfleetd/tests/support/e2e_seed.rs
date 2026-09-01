@@ -346,3 +346,87 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
     .await
     .expect("the provider key seed must run");
 }
+
+/// The key name a tenant-plane scenario authenticates under.
+///
+/// One name per tenant is enough: `uq_api_keys_tenant_id_key_name` is scoped
+/// to the tenant, and every scenario mints its own tenant id.
+const TENANT_KEY_NAME: &str = "e2e-tenant-plane";
+
+/// Stores the digest of `token` as an active API key for `tenant`.
+///
+/// The digest and not the token, exactly as the production minting writes it:
+/// the daemon's directory authenticates by digest lookup, so a seeded PLAIN
+/// token would prove a path nothing ships. The token itself never touches the
+/// database — the caller presents it over HTTP and the daemon re-digests it.
+pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, now: UnixMillis) {
+    let presented =
+        afd_auth::credential::Presented::new(token).expect("the fixture token is well formed");
+    let digest = afd_auth::directory::Digest::of(&presented);
+    let mut connection = booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO core.api_keys
+           (id, tenant_id, key_name, description, key_hash, created_by, active,
+            revoked_at, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, '', $4, 'e2e', TRUE, NULL, $5, $5)",
+    )
+    .bind(afd_db::test_util::mint_id())
+    .bind(tenant)
+    .bind(TENANT_KEY_NAME)
+    .bind(digest.as_str())
+    .bind(now.as_millis())
+    .execute(&mut *connection)
+    .await
+    .expect("the tenant credential seed must run");
+}
+
+/// Seals a credential the ACTIVATION ladder admits, under `name`.
+///
+/// [`seed_provider_key`]'s body deliberately carries no `provider` field — the
+/// runner path decrypts it only to dial, and a body that would also activate
+/// would let a scenario pass the ladder by accident. The tenant-plane walk
+/// needs the opposite: a body naming its provider (the field `UZ-PROVIDER-003`
+/// refuses without) and the projection columns the metadata gate reads before
+/// any decrypt, sealed under a name of the caller's own so the runner fixture
+/// keeps its shape.
+pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &str, name: &str) {
+    let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
+    let body = format!(r#"{{"provider":"{PROVIDER}","api_key":"sk-fixture-not-a-credential"}}"#);
+    let envelope = Sealer::new()
+        .seal(&kek, &Aad::new(workspace, name), body.as_bytes())
+        .expect("the walk credential seals");
+
+    let mut connection = booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO vault.secrets
+           (id, workspace_id, key_name, kek_version,
+            encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag,
+            created_at, updated_at,
+            meta_kind, meta_provider, meta_has_key)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+                 'provider_key', $12, TRUE)",
+    )
+    .bind(vault_row())
+    .bind(workspace)
+    .bind(name)
+    .bind(envelope.kek_version())
+    .bind(envelope.wrapped_dek())
+    .bind(envelope.dek_nonce().as_slice())
+    .bind(envelope.dek_tag().as_slice())
+    .bind(envelope.payload_nonce().as_slice())
+    .bind(envelope.payload_ciphertext())
+    .bind(envelope.payload_tag().as_slice())
+    .bind(afd_core::clock::now().as_millis())
+    .bind(PROVIDER)
+    .execute(&mut *connection)
+    .await
+    .expect("the walk credential seed must run");
+}
