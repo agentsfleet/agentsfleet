@@ -28,6 +28,10 @@ mod activation;
 mod provider_resolution;
 #[path = "integration_rotation/registry.rs"]
 mod registry;
+#[path = "integration_rotation/registry_page.rs"]
+mod registry_page;
+#[path = "integration_rotation/registry_walk.rs"]
+mod registry_walk;
 
 const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
 const KEY_NAME: &str = "provider-handle";
