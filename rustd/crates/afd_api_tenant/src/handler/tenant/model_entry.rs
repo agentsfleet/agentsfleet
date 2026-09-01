@@ -44,16 +44,9 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::paging::struct_cursor::{self, StructCursor};
-use afd_core::paging::{DEFAULT_LIMIT, MAX_LIMIT, QUERY_LIMIT, QUERY_STARTING_AFTER};
-use afd_credential::provider::{
-    Added, Boundary, PricedDefault, RegistryPage, RegistryRow, Removed, Retargeted,
-};
-use afd_wire::tenant_model_entry::{
-    CreateModelEntryRequest, ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow,
-    StoredModelEntry, UpdateModelEntryRequest,
-};
+use afd_core::paging::struct_cursor::StructCursor;
+use afd_credential::provider::{Added, Removed, Retargeted};
+use afd_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -62,7 +55,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::PersonIdentity;
-use crate::handler::{Refusal, parameter};
+use crate::handler::Refusal;
 use crate::services::{Services, TenantModelEntries as _};
 
 // Three sentences the catalogue page already owns, imported rather than
@@ -71,7 +64,6 @@ use crate::services::{Services, TenantModelEntries as _};
 // fail, where the Zig's `req.query()` can. One fewer refusal, and the
 // divergence is that a token with a stray `%` is simply not a cursor this
 // endpoint issued.
-use super::models::{DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED};
 // Two sentences the provider surface already owns, byte-identical here because
 // the fact is the same one: a body this daemon cannot read, and a tenant whose
 // bootstrap never produced a workspace (RULE UFS).
@@ -127,7 +119,7 @@ pub const DETAIL_DELETE_ACTIVE: &str =
 /// One rule and two call sites, so the bound cannot hold on the create and not
 /// on the change — which is exactly how `model_id` ended up bounded on the
 /// catalogue route and unbounded on this one.
-const MODEL_ID_MAX: usize = 256;
+pub(super) const MODEL_ID_MAX: usize = 256;
 
 /// This page's cursor payload, in the Zig's fixed key order.
 ///
@@ -137,7 +129,7 @@ const MODEL_ID_MAX: usize = 256;
 /// already in flight.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Cursor {
+pub(super) struct Cursor {
     /// The payload generation this cursor was issued under.
     v: u8,
     /// The boundary row's creation instant.
@@ -294,155 +286,8 @@ pub(crate) async fn remove<D: Services>(
     }
 }
 
-/// The page size this request asked for, already bounded.
-fn requested_limit(raw: &str) -> Result<u32, Refusal> {
-    let Some(asked) = parameter(raw, QUERY_LIMIT) else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    asked
-        .parse::<u32>()
-        .ok()
-        .filter(|limit| (1..=MAX_LIMIT).contains(limit))
-        .ok_or_else(|| {
-            Refusal::coded(
-                error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-                DETAIL_CATALOGUE_LIMIT,
-            )
-        })
-}
+mod input;
+mod render;
 
-/// The boundary this request resumes from, or nothing for the first page.
-///
-/// The identity check is here and not in the store: only this function knows
-/// which tenant authenticated and which limit was asked for, which is the whole
-/// reason the seam takes a [`Boundary`] rather than a token.
-fn resume_from(raw: &str, tenant: &Uuid7, limit: u32) -> Result<Option<Boundary>, Refusal> {
-    let Some(token) = parameter(raw, QUERY_STARTING_AFTER).filter(|token| !token.is_empty()) else {
-        return Ok(None);
-    };
-    let cursor: Cursor = struct_cursor::parse(token).map_err(|_foreign| {
-        Refusal::coded(
-            error_code::LIBRARY_CURSOR_MALFORMED,
-            DETAIL_CURSOR_MALFORMED,
-        )
-    })?;
-    if cursor.tenant_uuid != tenant.as_str() || cursor.limit != limit {
-        return Err(Refusal::coded(
-            error_code::LIBRARY_CURSOR_MISMATCH,
-            DETAIL_CURSOR_MISMATCH,
-        ));
-    }
-    // The id is the only field taken from the token besides the instant, and it
-    // is re-parsed rather than trusted: a `::uuid` cast is not the place to
-    // discover that a client sent something else.
-    let id = Uuid7::parse(&cursor.id).map_err(|_not_an_identifier| {
-        Refusal::coded(
-            error_code::LIBRARY_CURSOR_MALFORMED,
-            DETAIL_CURSOR_MALFORMED,
-        )
-    })?;
-    Ok(Some(Boundary {
-        created_at_ms: cursor.created_at,
-        id,
-    }))
-}
-
-/// The entry a path segment names.
-fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_ENTRY_ID))
-}
-
-/// A model name within its bound, or the refusal it earns.
-///
-/// Blank and oversized are different sentences because the repairs differ, and
-/// the bound is checked here rather than at the store: a name past it is a
-/// malformed REQUEST, and the column would take it.
-fn bounded_model(model_id: &str) -> Result<&str, Refusal> {
-    if model_id.is_empty() {
-        return Err(Refusal::malformed(DETAIL_MODEL_ID_REQUIRED));
-    }
-    if model_id.len() > MODEL_ID_MAX {
-        return Err(Refusal::malformed(DETAIL_MODEL_ID_TOO_LONG));
-    }
-    Ok(model_id)
-}
-
-/// The written row, rendered.
-fn stored(entry: &afd_credential::provider::Entry) -> StoredModelEntry<'_> {
-    StoredModelEntry {
-        id: entry.id.as_str(),
-        model_id: &entry.model_id,
-        secret_ref: &entry.secret_ref,
-        created_at: entry.created_at_ms,
-    }
-}
-
-/// The page, rendered.
-fn rendered<'p>(page: &'p RegistryPage, tenant: &Uuid7, limit: u32) -> ModelEntriesResponse<'p> {
-    ModelEntriesResponse {
-        models: page.rows.iter().map(row).collect(),
-        // Always null: counting a keyset page costs the scan this pagination
-        // exists to avoid, and the key stays present rather than vanishing.
-        total: None,
-        next_cursor: page.next.as_ref().map(|boundary| {
-            struct_cursor::render(&Cursor {
-                v: struct_cursor::VERSION,
-                created_at: boundary.created_at_ms,
-                id: boundary.id.as_str().to_owned(),
-                tenant_uuid: tenant.as_str().to_owned(),
-                limit,
-            })
-        }),
-        platform_default_available: page.platform_default.is_some(),
-        platform_default: page.platform_default.as_ref().map(default_row),
-    }
-}
-
-/// One row, rendered.
-///
-/// A credential the vault could not describe degrades to an opaque secret with
-/// no key and sheds its descriptors — the same shape the workspace secret list
-/// gives a row it cannot label, and the reason a dangling reference lists at
-/// all instead of failing the page.
-fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
-    let rate = entry.rate.as_ref();
-    ModelEntryRow {
-        id: entry.entry.id.as_str(),
-        model_id: &entry.entry.model_id,
-        secret_ref: &entry.entry.secret_ref,
-        provider: entry
-            .credential
-            .as_ref()
-            .and_then(|held| held.provider.as_deref()),
-        kind: entry
-            .credential
-            .as_ref()
-            .map_or(afd_vault::Kind::CustomSecret.as_str(), |held| {
-                held.kind.as_str()
-            }),
-        base_url: entry
-            .credential
-            .as_ref()
-            .and_then(|held| held.base_url.as_deref()),
-        has_key: entry.credential.as_ref().is_some_and(|held| held.has_key),
-        context_cap_tokens: rate.map(|rate| rate.context_cap_tokens),
-        input_nanos_per_mtok: rate.map(|rate| rate.input_nanos_per_mtok),
-        cached_input_nanos_per_mtok: rate.map(|rate| rate.cached_input_nanos_per_mtok),
-        output_nanos_per_mtok: rate.map(|rate| rate.output_nanos_per_mtok),
-        active: entry.active,
-        created_at: entry.entry.created_at_ms,
-    }
-}
-
-/// The platform default, rendered.
-fn default_row(priced: &PricedDefault) -> PlatformDefaultRow<'_> {
-    let rate = priced.rate.as_ref();
-    PlatformDefaultRow {
-        provider: &priced.default.provider,
-        model: &priced.default.model,
-        context_cap_tokens: priced.default.context_cap_tokens,
-        input_nanos_per_mtok: rate.map(|rate| rate.input_nanos_per_mtok),
-        cached_input_nanos_per_mtok: rate.map(|rate| rate.cached_input_nanos_per_mtok),
-        output_nanos_per_mtok: rate.map(|rate| rate.output_nanos_per_mtok),
-    }
-}
+use self::input::{bounded_model, parse_entry_id, requested_limit, resume_from};
+use self::render::{rendered, stored};

@@ -59,13 +59,12 @@ use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::SecretBytes;
 use sqlx::{Acquire as _, Row as _, Transaction};
 
-use crate::error::{
-    Result, entropy_drained, mint_failed, provider_no_workspace, query, vault_open,
-};
+use crate::error::{Result, entropy_drained, mint_failed, query, row_malformed, vault_open};
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
-use crate::provider::selection::Selection;
+use crate::provider::selection::{COLUMN_ID, Selection, TABLE_WORKSPACES};
 use crate::provider::store::Providers;
-use crate::provider::{SecretKind, managed, sql};
+use crate::provider::vetted::{Refused, vet};
+use crate::provider::{SecretKind, sql};
 use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.
@@ -77,6 +76,13 @@ const CONTEXT_ACTIVATE: &str = "tenant provider activation";
 /// [`Envelope::from_parts`]' own order plus the version — the same block
 /// [`crate::vault`] reads, at a different offset.
 const ENVELOPE_AT: usize = 2;
+
+/// Where the bridge's workspace id sits, APPENDED after the envelope block.
+///
+/// Appended rather than inserted so [`ENVELOPE_AT`] cannot shift. It is the
+/// join's own row — see [`sql::LOCK_CREDENTIAL_FOR_ACTIVATION`] for why it is
+/// projected here instead of read by a second statement.
+const WORKSPACE_AT: usize = ENVELOPE_AT + 7;
 
 /// What an activation attempt resolved to.
 ///
@@ -153,15 +159,18 @@ impl Providers {
             return Ok(Activation::NotAProviderKey);
         }
 
-        let workspace = self
-            .primary_workspace(tenant_id)
-            .await?
-            .ok_or_else(provider_no_workspace)?;
+        // From the locked row, not a second statement: this transaction already
+        // holds a connection and the credential's row lock, and acquiring a
+        // second connection under both is how a bounded pool starves under
+        // concurrent activations. The join already resolved this exact row.
+        let workspace: String = row.try_get(WORKSPACE_AT).map_err(query(CONTEXT_ACTIVATE))?;
+        let workspace =
+            Uuid7::parse(&workspace).map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID))?;
         let opened = open_envelope(&row, &workspace, secret_ref, self.vault_key())?;
-        let vetted = match managed::vet(opened.expose()) {
+        let vetted = match vet(opened.expose()) {
             Ok(vetted) => vetted,
-            Err(managed::Refused::Malformed) => return Ok(Activation::Malformed),
-            Err(managed::Refused::Endpoint(rejection)) => {
+            Err(Refused::Malformed) => return Ok(Activation::Malformed),
+            Err(Refused::Endpoint(rejection)) => {
                 return Ok(Activation::EndpointRefused(rejection));
             }
         };
@@ -301,54 +310,5 @@ impl Providers {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::effective_model;
-
-    /// What a client sends when it is changing model as well as credential.
-    const OVERRIDE: &str = "claude-opus-5";
-
-    /// What an older credential still carries in its body.
-    const FROM_CREDENTIAL: &str = "claude-sonnet-5";
-
-    #[test]
-    fn the_override_wins_and_the_credential_is_the_fallback() {
-        assert_eq!(
-            effective_model(Some(OVERRIDE), Some(FROM_CREDENTIAL)),
-            Some(OVERRIDE)
-        );
-        assert_eq!(
-            effective_model(None, Some(FROM_CREDENTIAL)),
-            Some(FROM_CREDENTIAL)
-        );
-        assert_eq!(effective_model(Some(OVERRIDE), None), Some(OVERRIDE));
-    }
-
-    #[test]
-    fn naming_no_model_at_all_is_not_a_model() {
-        assert_eq!(effective_model(None, None), None);
-    }
-
-    #[test]
-    fn a_blank_or_padded_model_is_refused_rather_than_trimmed() {
-        // Trimming would store a name the caller did not type and hide the
-        // typo; both sources are held to it.
-        for refused in [
-            "",
-            "   ",
-            " claude-opus-5",
-            "claude-opus-5 ",
-            "\tclaude-opus-5",
-        ] {
-            assert_eq!(effective_model(Some(refused), None), None, "{refused:?}");
-            assert_eq!(effective_model(None, Some(refused)), None, "{refused:?}");
-        }
-    }
-
-    #[test]
-    fn a_blank_override_does_not_fall_through_to_the_credential() {
-        // The Zig computes `input.model orelse probed.model` and then checks
-        // the RESULT, so an empty override is a refusal rather than a reason
-        // to use the credential's. Kept: a client that sent a field meant it.
-        assert_eq!(effective_model(Some(""), Some(FROM_CREDENTIAL)), None);
-    }
-}
+#[path = "activate/tests.rs"]
+mod tests;

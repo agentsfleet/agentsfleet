@@ -156,7 +156,18 @@ FOR UPDATE OF s"
 /// The envelope block keeps the exact column order
 /// [`crate::vault::sql::SELECT_SECRET`] uses, because that order is
 /// [`afd_crypto::envelope::Envelope::from_parts`]' parameter list. The two
-/// metadata columns lead, so the block starts at a fixed offset.
+/// metadata columns lead, so the block starts at a fixed offset, and the
+/// workspace id is APPENDED after it rather than inserted, so that offset
+/// cannot shift.
+///
+/// That trailing `w.id` is the join's own bridge row, projected rather than
+/// re-read. The envelope is opened under the workspace as associated data, and
+/// resolving it with a second statement meant a second POOL CONNECTION taken
+/// while this transaction already held one and the `FOR UPDATE` row lock —
+/// every concurrent activation holding one connection and waiting for another,
+/// which is how a bounded pool starves. The subquery here is
+/// `SELECT_PRIMARY_WORKSPACE`'s predicate and ordering exactly, so the row is
+/// the same one by construction.
 ///
 /// Zero rows means the tenant has no workspace OR holds no such credential —
 /// two different refusals, told apart by a second read on the MISS path only,
@@ -165,7 +176,8 @@ FOR UPDATE OF s"
 /// `$1` tenant · `$2` key name.
 pub const LOCK_CREDENTIAL_FOR_ACTIVATION: &str = concat!(
     "SELECT s.meta_provider, s.meta_has_key,
-       s.encrypted_dek, s.dek_nonce, s.dek_tag, s.nonce, s.ciphertext, s.tag, s.kek_version",
+       s.encrypted_dek, s.dek_nonce, s.dek_tag, s.nonce, s.ciphertext, s.tag, s.kek_version,
+       w.id::text",
     bridge_and_lock!()
 );
 
