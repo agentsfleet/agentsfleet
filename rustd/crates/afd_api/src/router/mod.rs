@@ -151,6 +151,25 @@ fn mounted_routes<D: Serving>(
     (mounted, merged)
 }
 
+/// The mount for `route` with none of its layers, or `None` if it is unserved.
+///
+/// Exposed to bind [`crate::route::Route::verbs`] — a DECLARATION — to what is
+/// actually mounted, which nothing in the type system does: a `MethodRouter` is
+/// opaque once built, so the methods a handler was mounted under cannot be read
+/// back out of it. A suite discovers them by probing instead.
+///
+/// It has to be the UN-layered router, and that is a measurement rather than a
+/// preference. [`MethodRouter::layer`] wraps the 405 fallback as well as the
+/// handlers, so on a guarded route an unserved method meets the authenticator
+/// before it reaches that fallback and is refused 401 — which is
+/// indistinguishable from a served method to a probe. Against the built router
+/// every `Guard::Bearer` template reports all five verbs.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn unlayered_mount<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
+    self::mount::handler_for::<D>(route)
+}
+
 /// Wraps `handler` in exactly the layers its route's row calls for.
 ///
 /// Outermost last, which is how `tower` composes: the guard is added first and
