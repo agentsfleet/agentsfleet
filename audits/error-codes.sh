@@ -108,7 +108,10 @@ gather_used_paths() {
   esac
 }
 
-mapfile -t USED_PATHS < <(gather_used_paths)
+# `while read` rather than mapfile: mapfile is bash 4+ and macOS ships 3.2 —
+# the portability rule scripts/run-playbook-tests.sh already records.
+USED_PATHS=()
+while IFS= read -r p; do USED_PATHS+=("$p"); done < <(gather_used_paths)
 if [[ ${#USED_PATHS[@]} -eq 0 ]]; then
   ok "no source files in scope ($MODE)"
   exit 0

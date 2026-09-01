@@ -48,13 +48,17 @@ note() { printf "NOTE: %s\n" "$*"; }
 # Discover spec files in scope.
 case "$MODE" in
   --staged|staged)
-    mapfile -t SPECS < <(git diff --cached --name-only --diff-filter=ACMRT | grep -E '^docs/v[0-9]+/(pending|active|done)/.*\.md$' || true)
+    # while read, not mapfile — bash-3.2 portability (see scripts/run-playbook-tests.sh).
+    SPECS=()
+    while IFS= read -r s; do SPECS+=("$s"); done < <(git diff --cached --name-only --diff-filter=ACMRT | grep -E '^docs/v[0-9]+/(pending|active|done)/.*\.md$' || true)
     ;;
   --all|all)
-    mapfile -t SPECS < <(find docs/v[0-9]* -type f -name '*.md' 2>/dev/null | grep -E '/(pending|active)/' || true)
+    SPECS=()
+    while IFS= read -r s; do SPECS+=("$s"); done < <(find docs/v[0-9]* -type f -name '*.md' 2>/dev/null | grep -E '/(pending|active)/' || true)
     ;;
   --include-done|include-done)
-    mapfile -t SPECS < <(find docs/v[0-9]* -type f -name '*.md' 2>/dev/null | grep -E '/(pending|active|done)/' || true)
+    SPECS=()
+    while IFS= read -r s; do SPECS+=("$s"); done < <(find docs/v[0-9]* -type f -name '*.md' 2>/dev/null | grep -E '/(pending|active|done)/' || true)
     ;;
   --file|file)
     # Single named spec, both families — the lifecycle engine's spec.gate

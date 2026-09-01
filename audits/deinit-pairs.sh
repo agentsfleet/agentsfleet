@@ -60,11 +60,14 @@ note() { printf "NOTE: %s\n" "$*"; }
 # ---------------------------------------------------------------------------
 case "$MODE" in
   --staged|staged)
-    mapfile -t FILES < <(git diff --cached --name-only --diff-filter=ACMRT \
+    # while read, not mapfile — bash-3.2 portability (see scripts/run-playbook-tests.sh).
+    FILES=()
+    while IFS= read -r f; do FILES+=("$f"); done < <(git diff --cached --name-only --diff-filter=ACMRT \
       | grep -E '^src/.*\.zig$' || true)
     ;;
   --all|all)
-    mapfile -t FILES < <(find src -type f -name '*.zig' 2>/dev/null || true)
+    FILES=()
+    while IFS= read -r f; do FILES+=("$f"); done < <(find src -type f -name '*.zig' 2>/dev/null || true)
     ;;
   *)
     printf "usage: %s [--staged|--all]\n" "$0" >&2
@@ -106,10 +109,13 @@ done
 # M70 perf: pre-compute file sets in batched greps instead of one grep
 # per file (~760 forks → 2 forks). Reads as "membership sets" for the
 # per-init loop below.
-declare -A files_with_cleanup=()
+# A membership set as a newline-delimited string, not declare -A: associative
+# arrays are bash 4+ and macOS ships 3.2. Lookup is a substring test on
+# \n<file>\n, which filenames cannot fake.
+files_with_cleanup=$'\n'
 if [[ ${#present_files[@]} -gt 0 ]]; then
   while IFS= read -r f; do
-    [[ -n "$f" ]] && files_with_cleanup["$f"]=1
+    [[ -n "$f" ]] && files_with_cleanup="${files_with_cleanup}${f}"$'\n'
   done < <(grep -lE "$CLEANUP_RE" "${present_files[@]}" 2>/dev/null || true)
 fi
 
@@ -151,7 +157,7 @@ if [[ -n "$inits_list" ]]; then
     fi
 
     inits_requires_cleanup=$((inits_requires_cleanup + 1))
-    if [[ -z "${files_with_cleanup[$f]+x}" ]]; then
+    if [[ "$files_with_cleanup" != *$'\n'"$f"$'\n'* ]]; then
       inits_unpaired=$((inits_unpaired + 1))
       reason=""
       [[ $heap -eq 1 ]] && reason="heap-return"
