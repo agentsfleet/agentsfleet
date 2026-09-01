@@ -91,7 +91,59 @@ regression and aborts the swap.
 document that declared it, and `make test-parity` reads this table so a declared
 difference does not fail the lane while an undeclared one still does.
 
+## Collectors in front of the incumbent export
+
+**This step changes no binary.** The collectors are stood up under the Zig
+daemon and the daemon's export endpoint is repointed at them by configuration.
+Doing it here, rather than with the swap, is what keeps a swap-day dashboard
+anomaly attributable: infrastructure moved on one day and the binary on
+another, so a dark panel names which one it belongs to.
+
+Run per environment, development first. Production follows a development run
+whose panels stayed continuous.
+
+1. Stand the collector up and give it the vendor credentials. The deploy
+   workflow does this on its own (`Ensure the OTLP collector is running`), and
+   a from-scratch stand-up can be forced ahead of a deploy:
+   `flyctl deploy deploy/fly/otelcol-dev --app otelcol-dev --wait-timeout 60`.
+   The positional path is the build context; without it the image's
+   `COPY config.yml` fails.
+2. Confirm the collector accepts all three signals BEFORE the daemon points at
+   it. From a machine on the private network —
+   `flyctl ssh console --app agentsfleetd-dev` — run the probe with
+   `OTLP_COLLECTOR_URL=http://otelcol-dev.internal:4318`. The collector's
+   address resolves only inside Fly's 6PN network, so this cannot be run from a
+   laptop and a probe that appears to pass from one is testing something else.
+3. Repoint the daemon. `GRAFANA_OTLP_ENDPOINT` is a staged Fly secret, so it
+   takes effect on the next deploy rather than immediately — the endpoint is
+   the collector's address and the auth pair stays as it is. The collector
+   holds its own copy of the vendor endpoint and forwards there.
+4. Watch every dashboard panel across the deploy. The deliverable is that
+   nothing changes: same families, same labels, same panels. A renamed or
+   missing series is a failure of this step, not a property of it.
+
+**Revert is one configuration edit.** Set `GRAFANA_OTLP_ENDPOINT` back to the
+vendor endpoint the collector is forwarding to and redeploy; the daemon posts
+direct again and the collector becomes an idle app. Nothing else moves — the
+auth pair the daemon carries was never changed, which is what makes the revert
+one line rather than a credential rotation. State this before making the change,
+not after.
+
+**Abort criterion for this step:** any panel that stops resolving, or any signal
+type whose series stop arriving while the other two continue. A partial
+delivery is the failure mode worth naming separately — a collector can be
+healthy as a process while one pipeline is misconfigured, and liveness alone
+would read that as success.
+
 ## Evidence
 
 `M181_002` records the rehearsal and the swap here: the staging rollback
 rehearsal, the soak numbers against the budgets, and the post-swap probe run.
+
+**Collectors under the incumbent binary.** One row per environment, filled at
+the change window:
+
+| Environment | Collector deployed | Endpoint repointed | Panels continuous | Probe run | Notes |
+|---|---|---|---|---|---|
+| development | | | | | |
+| production | | | | | |

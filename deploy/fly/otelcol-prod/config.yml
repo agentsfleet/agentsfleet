@@ -1,0 +1,75 @@
+# The collector hop. It receives what the daemon already exports and forwards
+# it unchanged to the same Grafana Cloud endpoint the daemon used to post to
+# directly.
+#
+# NOTHING IN THIS FILE MAY RENAME, DROP OR DECORATE A SERIES. Continuity across
+# the binary swap is graded through this path, so a collector that adds an
+# attribute or rewrites a family makes a dashboard gap indistinguishable from a
+# daemon regression — which is the exact attribution loss standing the
+# collectors up early exists to prevent. No attributes processor, no filter, no
+# transform: receive, batch, forward.
+
+receivers:
+  otlp:
+    protocols:
+      # HTTP only. The daemon posts to {endpoint}/v1/{logs,traces,metrics}
+      # (src/agentsfleetd/observability/otel_logs.zig), which is what the OTLP
+      # HTTP receiver serves. No gRPC listener, because nothing dials one.
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # memory_limiter must be FIRST in every pipeline: it sheds at admission, and
+  # a limiter placed after the batcher is a limiter that has already let the
+  # batch be built. Sized against the 512mb in fly.toml.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 15
+  batch:
+    timeout: 5s
+    send_batch_size: 8192
+
+extensions:
+  # Fly's [checks.health] block polls this. A collector whose upstream is
+  # refusing is still healthy as a receiver — the drop shows up in the
+  # collector's own logs and on the dashboard, not as a failed Fly check.
+  health_check:
+    endpoint: 0.0.0.0:13133
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_OTLP_INSTANCE_ID}
+      password: ${env:GRAFANA_OTLP_API_KEY}
+
+exporters:
+  otlphttp/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/grafana
+    retry_on_failure:
+      enabled: true
+    # The queue is what makes a brief Grafana Cloud outage invisible to the
+    # dashboards rather than a hole in them. It is bounded: past the bound the
+    # collector drops and says so, which is the honest failure.
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+
+service:
+  extensions: [health_check, basicauth/grafana]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/grafana]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/grafana]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/grafana]
+  telemetry:
+    logs:
+      level: info
