@@ -33,8 +33,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
+use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor::{self, StructCursor};
-use afd_core::paging::{DEFAULT_LIMIT, MAX_LIMIT, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_library::{Destination, GalleryPage, Onboarded, Position, SummaryEntry, Tier};
 use afd_wire::admin::AdminLibraryRequirements;
 use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
@@ -46,15 +46,17 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::WorkspaceContext;
+use crate::handler::paging::requested_limit;
 use crate::handler::{Refusal, library_onboard, parameter};
 use crate::services::Services;
 
-// Two sentences the catalogue page already owns, imported rather than respelled
-// (RULE UFS). The bound is the same bound and an unissued token is the same
-// fact; a caller told two different things about one rule looks for two
-// mistakes. What is NOT shared is the mismatch below, because the three pages
-// bind a cursor to three different things.
-use super::tenant::{DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED};
+// A sentence the catalogue page already owns, imported rather than respelled
+// (RULE UFS): an unissued token is the same fact here, and a caller told two
+// different things about one rule looks for two mistakes. The page bound is
+// shared the same way, one level up in `handler::paging`. What is NOT shared is
+// the mismatch below, because the three pages bind a cursor to three different
+// things.
+use super::tenant::DETAIL_CURSOR_MALFORMED;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_GALLERY: &str = "workspace_library_list_failed";
@@ -143,23 +145,6 @@ pub(crate) async fn onboard<D: Services>(
     .map_err(Refusal::at(EVENT_ONBOARD))?;
 
     Ok((StatusCode::CREATED, Json(created(onboarded))).into_response())
-}
-
-/// The page size this request asked for, already bounded.
-fn requested_limit(raw: &str) -> Result<u32, Refusal> {
-    let Some(asked) = parameter(raw, QUERY_LIMIT) else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    asked
-        .parse::<u32>()
-        .ok()
-        .filter(|limit| (1..=MAX_LIMIT).contains(limit))
-        .ok_or_else(|| {
-            Refusal::coded(
-                error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-                DETAIL_CATALOGUE_LIMIT,
-            )
-        })
 }
 
 /// The boundary this request resumes from, or nothing for the first page.

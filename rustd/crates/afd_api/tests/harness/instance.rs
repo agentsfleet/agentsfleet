@@ -56,7 +56,7 @@ use bytes::Bytes;
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
-use super::readiness::{unreachable_pool, unreachable_queue};
+use super::readiness::{NOWHERE_GITHUB, unreachable_pool, unreachable_queue};
 use afd_api::SchedulePlane;
 use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
 
@@ -121,7 +121,8 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database.clone(), Entropy::new()),
+            library_imports: LibraryImports::without_store(database.clone(), Entropy::new())
+                .with_github_api_base(NOWHERE_GITHUB),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
@@ -312,7 +313,8 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database, Entropy::new()),
+            library_imports: LibraryImports::without_store(database, Entropy::new())
+                .with_github_api_base(NOWHERE_GITHUB),
             now: UnixMillis::from_millis(FROZEN),
         }
     }

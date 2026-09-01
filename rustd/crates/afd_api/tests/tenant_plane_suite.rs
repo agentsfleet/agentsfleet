@@ -50,6 +50,8 @@ mod tenant_api_keys;
 mod tenant_billing;
 #[path = "tenant_cli_credential.rs"]
 mod tenant_cli_credential;
+#[path = "tenant_model_entry_input.rs"]
+mod tenant_model_entry_input;
 #[path = "tenant_model_entry_route.rs"]
 mod tenant_model_entry_route;
 #[path = "tenant_models.rs"]

@@ -46,10 +46,12 @@ const LABEL_TENANT: &str = "tenant";
 
 /// Which library a gallery row came from.
 ///
-/// The numeric rank is the sort position, not an encoding of the name. Both
-/// spellings are declared once so [`Tier::from_label`] and [`Tier::label`]
-/// cannot drift into disagreeing — a parse that accepts a spelling the renderer
-/// never emits is a round trip that silently loses rows.
+/// The numeric rank is the sort position, not an encoding of the name. The two
+/// directions are deliberately asymmetric: a persisted RANK is parsed back by
+/// [`Tier::from_rank`], because the projection reads one; a LABEL is only ever
+/// rendered by [`Tier::label`], because nothing this daemon reads carries the
+/// spelling. A parse for the direction nobody walks is a second definition of
+/// the tier set that no caller keeps honest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
     /// The platform catalogue, curated by an operator.
@@ -90,14 +92,6 @@ impl Tier {
             1 => Some(Self::Tenant),
             _unknown => None,
         }
-    }
-
-    /// The tier a spelling names, if this build knows it.
-    #[must_use]
-    pub fn from_label(label: &str) -> Option<Self> {
-        [Self::Platform, Self::Tenant]
-            .into_iter()
-            .find(|tier| tier.label() == label)
     }
 }
 
@@ -278,27 +272,23 @@ mod tests {
     }
 
     #[test]
-    fn every_rank_and_label_round_trips() {
-        // The drift this pins: a parse that accepts a spelling the renderer
-        // never emits, or a rank the projection cannot map back, both lose rows
-        // silently rather than loudly.
+    fn every_rank_round_trips_and_both_labels_render() {
+        // The drift this pins: a rank the projection cannot map back loses rows
+        // silently rather than loudly, and a label that stops matching the
+        // stored spelling changes a wire field nobody versioned.
         for tier in [Tier::Platform, Tier::Tenant] {
             assert_eq!(Tier::from_rank(tier.rank()), Some(tier));
-            assert_eq!(Tier::from_label(tier.label()), Some(tier));
         }
         assert_eq!(Tier::Platform.label(), LABEL_PLATFORM);
         assert_eq!(Tier::Tenant.label(), LABEL_TENANT);
     }
 
     #[test]
-    fn a_rank_or_label_this_build_does_not_know_is_refused() {
+    fn a_rank_this_build_does_not_know_is_refused() {
         // Never defaulted to `Platform`: that would leak entries from a library
         // the caller cannot read, and it would look like a working page.
         for rank in [-1, 2, i32::MAX, i32::MIN] {
             assert_eq!(Tier::from_rank(rank), None, "rank {rank}");
-        }
-        for label in ["", "curated", "PLATFORM", "platform "] {
-            assert_eq!(Tier::from_label(label), None, "label {label:?}");
         }
     }
 }

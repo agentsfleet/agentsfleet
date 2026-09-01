@@ -315,7 +315,10 @@ test_should_reject_invalid_gate_inputs() {
   for arguments in "${cases[@]}"; do
     status=0
     read -r -a argv <<<"$arguments"
-    output="$(run_script bash "$GATE" "${argv[@]}")" || status=$?
+    # The empty case is the point of this test, and bash 3.2 treats an empty
+    # array expansion as unbound under `set -u` — so the no-argument row has to
+    # be spelled the way the audit scripts spell theirs.
+    output="$(run_script bash "$GATE" ${argv[@]+"${argv[@]}"})" || status=$?
     if [ "$status" -ne 2 ]; then
       bad "$name" "invalid input '$arguments' did not fail with usage status"
       return

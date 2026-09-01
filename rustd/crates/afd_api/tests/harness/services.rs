@@ -11,7 +11,7 @@
 //! crate raises rather than one this file invented.
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_api::{Planes, SchedulePlane, Services};
+use afd_api::{Planes, SchedulePlane, Services, TenantSurface};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
@@ -36,6 +36,7 @@ use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_vault::Vault as SecretVault;
 
+use super::HarnessProviders;
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
 use super::{DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, SCHEDULE_DESTINATION};
@@ -45,9 +46,6 @@ impl Services for Fleet {
     type Leases = NoWork;
     type Sessions = Logins;
     type Workspaces = OneWorkspace;
-    type WorkspaceDirectory = Workspaces;
-    type ApiKeys = ApiKeys;
-    type CliCredentials = CliCredentials;
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
@@ -59,9 +57,6 @@ impl Services for Fleet {
     type Connectors = Connectors;
     type Steering = Steer;
     type Memories = Memories;
-    type Billing = Billing;
-    type Catalogue = Models;
-    type TenantProviders = Providers;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -92,18 +87,6 @@ impl Services for Fleet {
     /// The split is the suites': the ownership seam has to answer HONESTLY for
     /// both halves of the refusal matrix to be reachable, so it stays
     /// [`OneWorkspace`], while the directory refuses like every other store.
-    fn workspace_directory(&self) -> &Workspaces {
-        &self.workspace_directory
-    }
-
-    fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
-    }
-
-    fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
-    }
-
     fn preferences(&self) -> &Preferences {
         &self.preferences
     }
@@ -171,12 +154,6 @@ impl Services for Fleet {
     /// admin workspace refuses every App delivery as unconfigured, and one with
     /// it serves them. A suite that could not say which it was could prove only
     /// half of that.
-    type Signups = afd_tenant::signup::Signups;
-
-    fn signups(&self) -> &Self::Signups {
-        &self.signups
-    }
-
     fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
         self.identity_webhook_secret.as_ref()
     }
@@ -199,18 +176,6 @@ impl Services for Fleet {
 
     fn fleets(&self) -> &Fleets {
         &self.fleets
-    }
-
-    fn billing(&self) -> &Billing {
-        &self.billing
-    }
-
-    fn tenant_providers(&self) -> &Providers {
-        &self.providers
-    }
-
-    fn catalogue(&self) -> &Models {
-        &self.catalogue
     }
 
     fn runner_lease_history(&self) -> &RunnerLeaseHistory {
@@ -244,5 +209,46 @@ impl Services for Fleet {
 
     fn now(&self) -> UnixMillis {
         self.now
+    }
+}
+
+// The tenant-scoped half, which the seam declares as a supertrait. Two blocks
+// rather than one, and the fixture values are the same ones — what changed is
+// which file of the seam each accessor is declared in.
+impl TenantSurface for Fleet {
+    type WorkspaceDirectory = Workspaces;
+    type ApiKeys = ApiKeys;
+    type CliCredentials = CliCredentials;
+    type Billing = Billing;
+    type Catalogue = Models;
+    type TenantProviders = HarnessProviders;
+    type Signups = afd_tenant::signup::Signups;
+
+    fn workspace_directory(&self) -> &Workspaces {
+        &self.workspace_directory
+    }
+
+    fn api_keys(&self) -> &ApiKeys {
+        &self.api_keys
+    }
+
+    fn cli_credentials(&self) -> &CliCredentials {
+        &self.cli_credentials
+    }
+
+    fn signups(&self) -> &Self::Signups {
+        &self.signups
+    }
+
+    fn billing(&self) -> &Billing {
+        &self.billing
+    }
+
+    fn tenant_providers(&self) -> &HarnessProviders {
+        &self.providers
+    }
+
+    fn catalogue(&self) -> &Models {
+        &self.catalogue
     }
 }

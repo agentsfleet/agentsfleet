@@ -54,4 +54,4 @@ pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
 pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
-pub use self::services::{SchedulePlane, Services};
+pub use self::services::{SchedulePlane, Services, TenantSurface};

@@ -59,6 +59,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/cutover/probes.sh` | EDIT | probes for this spec's rubric rows |
 | `make/test-parity.mk` | EDIT | the soak's route corpus, now that every route serves and the contract is generated |
 | `docs/architecture/runner_fleet.md` | EDIT | production-shape note — serving binary and rollback posture |
+| `.github/workflows/{release,deploy-dev}.yml` | EDIT | build and publish the Rust `agentsfleetd` as the SERVING artifact and the Zig one as the rollback artifact, so the selection knob has two named things to choose between rather than one built binary and one hand-dispatched revision |
+| `rustd/crates/agentsfleetd/**` | EDIT | only what the soak proves it needs — a startup or shutdown ordering fix the drain-swap surfaces, a budget-driven change the latency or memory dimension forces. No feature work: a soak that changes the daemon it is measuring has measured nothing |
 
 ## Applicable Rules
 
@@ -91,6 +93,16 @@ The whole-system proof on staging: the black-box HTTP parity suite, the runner p
 **The Zig integration corpus cannot grade the Rust daemon.** Three independent reasons, each checkable in one command: the lane was deleted with the Zig gating; the tests are in-process, importing Zig modules directly, so there is no HTTP boundary to repoint; and nothing in them names a daemon — the only environment knobs they read are datastore pointers. A green run against a Rust-served environment would report a pass rate for the implementation being retired — worse than no number, because it reads like evidence. M181_001's black-box lane is what replaces it.
 
 **The Zig-side baseline is a manual build.** The Zig binary is still built by the release workflow and by the staging deploy workflow; the frozen revision the comparison needs is pinned deliberately, not taken from whatever last shipped.
+
+**The rollback window has an END, and naming it is this spec's job.** Every
+sentence below keeps the Zig binary warm, which is correct for the swap and
+wrong as a permanent posture: a rollback nobody ever ends is a second
+implementation the repository maintains forever, and it is what left
+`src/agentsfleetd` with no retirement date. The window opens at the production
+swap in §2 and closes when M187_001's end-to-end fleet acceptance is green
+against the Rust daemon — at which point the Zig tree, its build steps and its
+rollback artifact are deleted together. Until then the Zig binary is REQUIRED to
+stay buildable, and this spec's invariants say so.
 
 - **Dimension 1.1** — the black-box parity suite, the runner parity lane and the dry lane are green against the Rust daemon on staging → Test `test_soak_suites_green`
 - **Dimension 1.2** — per-route-class latency is within the budget the lane embeds → Test `test_latency_budget`
@@ -140,10 +152,11 @@ make bench-cutover · make dry-app-rustd   the budget and dry lanes M181_001 shi
 
 1. Rollback requires no schema or data migration — the family rule that no `schema/` change lands in M175–M181, plus `test_rollback_rehearsal`; the daemon enforces it by refusing a ledger it does not know. The invariant is only cheap while the family rule holds — the first post-cutover migration makes rollback across that boundary a schema decision.
 2. The Zig binary is reachable as the rollback by exactly ONE documented mechanism, named in the runbook — `test_rollback_rehearsal`; carrying two descriptions is the failure this invariant prevents.
-3. Budgets are named constants compared mechanically, never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
-4. Every declared divergence is in the register before cutover, and the parity oracles read it — a declared divergence never surfaces as a regression and an undeclared one always does.
-5. Every runbook step carries an executable probe — `test_runbook_probes`.
-6. Cutover cannot proceed with any M175–M181 rubric row ungraded or red — the probe runner's row-coverage assert: covered by a tagged probe, or named in the printed exclusion manifest; anything else is a red run.
+3. The Zig binary stays BUILDABLE for the whole of this spec — a rollback that cannot be built is not a rollback, and the release workflow is where that is asserted rather than assumed → `test_rollback_artifact_builds`. The invariant expires with the window: M187_001 deletes this assertion in the same diff that deletes the tree, so neither outlives the other.
+4. Budgets are named constants compared mechanically, never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
+5. Every declared divergence is in the register before cutover, and the parity oracles read it — a declared divergence never surfaces as a regression and an undeclared one always does.
+6. Every runbook step carries an executable probe — `test_runbook_probes`.
+7. Cutover cannot proceed with any M175–M181 rubric row ungraded or red — the probe runner's row-coverage assert: covered by a tagged probe, or named in the printed exclusion manifest; anything else is a red run.
 
 ## Metrics & Observability
 
@@ -191,11 +204,23 @@ No product-analytics changes.
 
 ## Dead Code Sweep
 
-N/A — no files deleted. The Zig daemon's retirement is a separate post-cutover milestone; its binary remains the rollback for the whole of this one.
+N/A — no files deleted. The Zig daemon's retirement is a separate milestone and
+its binary remains the rollback for the whole of this one — a tree cannot be
+deleted while it is the single documented way back (Invariant 2 above).
+
+**The retirement is gated on M187_001, not on this spec** (Indy, Sep 01, 2026).
+That is later than cutover on purpose: `src/agentsfleetd` stays the rollback
+through the soak here, and it is M187's end-to-end fleet acceptance — the full
+journey against the Rust daemon, human eyeball included — that earns the
+deletion. Recording the trigger is the point: this section previously said only
+"a separate post-cutover milestone", which named no milestone, no number and no
+condition, so the promise was unfalsifiable and the tree would have outlived the
+family by default.
 
 ## Out of Scope
 
-- Zig retirement, behaviour changes, new dashboards, canary infrastructure beyond the selection knob.
+- Zig retirement — owned by M187_001, which is also the gate that ends the rollback window this spec opens.
+- Behaviour changes, new dashboards, canary infrastructure beyond the selection knob.
 - Everything the four sibling specs own: the route surface (002), the coverage gate (003), the export (004), the collectors (005).
 
 ## Product Clarity (authoring record)

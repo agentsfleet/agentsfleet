@@ -1,13 +1,15 @@
 //! What the vault holds under a name, decided without opening it.
 //!
-//! # Three answers, because there are three repairs
+//! # Two answers, and the third is somebody else's
 //!
 //! The write path's ladder asks two separate questions before it will store a
 //! self-managed selection: is there a credential under this name at all, and is
 //! what is there a PROVIDER key. They are different refusals with different
 //! repairs — "store that credential first" against "that credential is not a
-//! provider key" — so a `bool` here would collapse them and leave the caller
-//! guessing which sentence to serve.
+//! provider key" — and this type answers only the SECOND. Absence is decided
+//! before it: the locked read either returns a row or does not, so a variant
+//! for "no row" here could never be constructed, and a reader matching on one
+//! would look for a path that does not exist.
 //!
 //! # Nothing is decrypted to answer either
 //!
@@ -25,8 +27,6 @@ use crate::provider::endpoint::OPENAI_COMPATIBLE;
 /// What the vault holds under a name, as far as the metadata can say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecretKind {
-    /// No row in this workspace carries the name.
-    Absent,
     /// A row exists, and its metadata does not describe a provider key.
     NotAProviderKey,
     /// A row exists and describes a provider key.
@@ -41,8 +41,7 @@ impl SecretKind {
     /// gateway has no bearer token to give. That asymmetry is the registry
     /// hint's own wording, and it is why `has_key` alone does not decide this.
     ///
-    /// Never answers [`Self::Absent`]: this reads a row that EXISTS, and the
-    /// store answers absence before calling it.
+    /// Reads a row that EXISTS; the store answers absence before calling it.
     #[must_use]
     pub fn of(provider: Option<&str>, has_key: Option<bool>) -> Self {
         match (provider, has_key) {
@@ -108,17 +107,5 @@ mod tests {
             SecretKind::of(NOT_A_PROVIDER, Some(true)),
             SecretKind::NotAProviderKey
         );
-    }
-
-    #[test]
-    fn absence_is_reachable_only_from_a_missing_row() {
-        // `of` reads a row that exists, so it must never answer Absent —
-        // conflating the two would turn "no such credential" into "that
-        // credential is wrong", which is a different repair.
-        for provider in [NOT_A_PROVIDER, Some(NAMED), Some(OPENAI_COMPATIBLE)] {
-            for has_key in [None, Some(true), Some(false)] {
-                assert_ne!(SecretKind::of(provider, has_key), SecretKind::Absent);
-            }
-        }
     }
 }

@@ -7,6 +7,7 @@ pub(crate) mod event;
 pub mod fleet;
 pub(crate) mod fleet_bundles;
 pub(crate) mod grant;
+pub(crate) mod paging;
 pub(crate) mod preference;
 pub(crate) mod schedule;
 pub mod secret;
