@@ -46,10 +46,13 @@ added_hit() {
 
 case "$MODE" in
   --staged|staged)
-    mapfile -t FILES < <(git diff --cached --name-only --diff-filter=ACMRT -- '*.zig' || true)
+    # while read, not mapfile — bash-3.2 portability (see scripts/run-playbook-tests.sh).
+    FILES=()
+    while IFS= read -r f; do FILES+=("$f"); done < <(git diff --cached --name-only --diff-filter=ACMRT -- '*.zig' || true)
     STAGED=1 ;;
   --all|all)
-    mapfile -t FILES < <(find src -type f -name '*.zig' 2>/dev/null || true)
+    FILES=()
+    while IFS= read -r f; do FILES+=("$f"); done < <(find src -type f -name '*.zig' 2>/dev/null || true)
     STAGED=0 ;;
   *)
     printf "usage: %s [--staged|--all]\n" "$0" >&2

@@ -110,7 +110,10 @@ gather_paths() {
   esac
 }
 
-mapfile -t FILES < <(gather_paths)
+# `while read` rather than mapfile: mapfile is bash 4+ and macOS ships 3.2 —
+# the portability rule scripts/run-playbook-tests.sh already records.
+FILES=()
+while IFS= read -r p; do FILES+=("$p"); done < <(gather_paths)
 if [[ ${#FILES[@]} -eq 0 ]]; then
   ok "no source files in scope ($MODE)"
   exit 0
@@ -139,7 +142,9 @@ for f in "${FILES[@]}"; do
 done
 
 if [[ ${#rust_nontest[@]} -gt 0 ]]; then
-  mapfile -t rust_candidates < <(grep -lE '(^|[^[:alnum:]_])(println|eprintln|dbg)!|tracing::(error|warn|info|debug|trace)!' "${rust_nontest[@]}" 2>/dev/null || true)
+  rust_candidates=()
+  while IFS= read -r p; do rust_candidates+=("$p"); done \
+    < <(grep -lE '(^|[^[:alnum:]_])(println|eprintln|dbg)!|tracing::(error|warn|info|debug|trace)!' "${rust_nontest[@]}" 2>/dev/null || true)
 fi
 
 # ---------------------------------------------------------------------------

@@ -116,7 +116,12 @@ if [ "$MODE" = "--staged" ]; then
 else
   scope_files() { git ls-files; }
 fi
-mapfile -t FILES < <(scope_files | while read -r f; do
+# `while read` rather than mapfile: mapfile is bash 4+ and macOS ships 3.2 —
+# the portability rule scripts/run-playbook-tests.sh already records.
+FILES=()
+while IFS= read -r f; do
+  FILES+=("$f")
+done < <(scope_files | while read -r f; do
   is_source "$f" && echo "$f"
 done)
 
