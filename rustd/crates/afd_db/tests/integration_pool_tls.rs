@@ -85,3 +85,73 @@ async fn test_pool_connects_under_each_resolved_mode() {
         "nothing was exhausted here: {refused}"
     );
 }
+
+/// A real file, removed when the guard drops — even across a panicking
+/// assertion. Mirrors `config_tls_cert_files.rs`'s `TempCert`; kept local
+/// rather than shared because each live-service test file in this suite is
+/// self-contained (`db_suite.rs`'s `#[path]` aggregation gives each one its
+/// own module, not a shared one to import from).
+struct TempCert(std::path::PathBuf);
+
+impl TempCert {
+    fn create(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "agentsfleetd-pool-tls-cert-{}-{name}.pem",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"not a real certificate; preflight only reads it")
+            .expect("temp cert file is writable");
+        Self(path)
+    }
+
+    fn as_str(&self) -> &str {
+        self.0.to_str().expect("temp path is utf-8")
+    }
+}
+
+impl Drop for TempCert {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// A readable certificate file clears the preflight and reaches the wire,
+/// where a server offering no TLS refuses it — the same refusal an absent
+/// `sslmode` resolves to above.
+///
+/// `config_tls_cert_files.rs` proves the preflight rejects an UNREADABLE file
+/// at resolve, before any socket opens. That is half the claim for the file
+/// this daemon actually deploys with: a `DATABASE_URL_MIGRATOR` whose
+/// `sslrootcert` names a real path still has to reach Postgres, not stop
+/// silently at the preflight for every path that happens to exist. If the
+/// read-check ever grew a false positive — refusing a file it can plainly
+/// read — this is the test that would catch it: `Db::connect` would never run
+/// and the failure would misreport as `is_config` instead of
+/// `is_datastore_unavailable`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_readable_cert_file_clears_preflight_and_reaches_the_refusing_server() {
+    let cert = TempCert::create("readable");
+
+    let base = without_query(&TestDatabase::shared().url());
+    let url = format!("{base}?sslmode=require&sslrootcert={}", cert.as_str());
+
+    let config = config_for(&url);
+    assert_eq!(
+        config.ssl_mode(),
+        "require",
+        "the declared mode must survive resolution alongside the cert param"
+    );
+
+    let refused = Db::connect(&config)
+        .await
+        .expect_err("a server with no TLS cannot satisfy require, cert or not");
+    assert!(
+        refused.is_datastore_unavailable(),
+        "a readable-but-untrusted cert must reach the wire, not stop at config: {refused}"
+    );
+    assert!(
+        !refused.is_config(),
+        "the preflight already accepted this file; this refusal is the server's: {refused}"
+    );
+}
