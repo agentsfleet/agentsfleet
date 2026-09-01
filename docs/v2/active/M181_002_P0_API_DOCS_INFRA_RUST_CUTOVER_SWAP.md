@@ -445,3 +445,5 @@ state applied and no layers.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+> Indy (2026-09-01): "donot do changelog i wanna do 1 changelog with the 0.30 release may be with 186 working." — context: no `<Update>` ships with this PR or its siblings; one consolidated changelog lands with the 0.30 release (around M186). The CHORE(close) changelog row and `orly gate pr`'s docs criterion are satisfied by this quote as the recorded override, family-wide.
