@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** added at CHORE(open)
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
 **Depends on:** M181_002 **merged** (the full route surface, `Route::verbs`, and the mount-grading test are its diff; annotating an unmerged handler is annotating a moving target)
-**Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — Dimensions 1.2–1.4 of M181_002, split out on Indy's parallelization call; the design decisions live in that spec's Discovery ("Decision — OpenAPI generation is utoipa 5.5.0, feature-gated out of production" and the external review beneath it) and are inherited here, not re-litigated
+**Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — Dimensions 1.2–1.3 of M181_002, split out on Indy's parallelization call; the design decisions live in that spec's Discovery ("Decision — OpenAPI generation is utoipa 5.5.0, feature-gated out of production" and the external review beneath it) and are inherited here, not re-litigated
 **Canonical architecture:** `docs/architecture/testing.md` + `docs/REST_API_DESIGN_GUIDELINES.md`
 
 ---
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** the committed document is 321KB of hand-written JSON that nothing generates or grades — the served-versus-documented direction is unguarded on both daemons, and the checker family that once graded the Zig side was deleted with the Zig gating. M181_002 built the served half (`Route::verbs`, graded against the mount); nothing yet produces or grades the documented half.
 
-**Solution summary:** adopt utoipa 5.5.0 exactly as recorded in M181_002's Discovery — optional dependency + `cfg_attr` derives in `afd_wire` (the `json-patch`/`compact_str`/`google-apis-rs` pattern), `#[utoipa::path]` annotations over the existing handlers, one feature-gated `OpenApi` collector per plane crate exposing `document()`, merged at the composition root; an in-process set-equality test as the gate; the committed artifact regenerated from the build and diffed in CI; `doctor` parity beside it. NOT `utoipa-axum`'s router integration — the total match in `mount.rs` is the stronger invariant and survives untouched.
+**Solution summary:** adopt utoipa 5.5.0 exactly as recorded in M181_002's Discovery — optional dependency + `cfg_attr` derives in `afd_wire` (the `json-patch`/`compact_str`/`google-apis-rs` pattern), `#[utoipa::path]` annotations over the existing handlers, one feature-gated `OpenApi` collector per plane crate exposing `document()`, merged at the composition root; an in-process set-equality test as the gate; the committed artifact regenerated from the build and diffed in CI. NOT `utoipa-axum`'s router integration — the total match in `mount.rs` is the stronger invariant and survives untouched.
 
 ## PR Intent & comprehension handshake
 
@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_wire/**` | EDIT | `utoipa` as an OPTIONAL dependency; `cfg_attr` schema derives on the public wire types; `value_type` overrides only where the serialized form differs from the Rust form |
 | `rustd/crates/afd_api_tenant/**` · `afd_api_runner` · `afd_api_operator` · `afd_api_ingress` · `afd_api` | EDIT | `#[utoipa::path]` annotations over the existing handlers; one feature-gated `OpenApi` collector per plane, each exposing `document()` |
-| `rustd/crates/agentsfleetd/**` | EDIT | the feature-gated emitter that writes the merged document; `doctor` parity |
+| `rustd/crates/agentsfleetd/**` | EDIT | the feature-gated emitter that writes the merged document |
 | `rustd/Cargo.toml` | EDIT | the workspace utoipa dependency, pinned, default-features off |
 | `public/openapi.json` | EDIT | regenerated from the build; hand-written prose reconciled into annotations where it survives |
 | `make/quality.mk` or CI workflow | EDIT | the artifact-equality diff runs where lint runs — needs Indy's approval if the workflow file itself changes |
@@ -111,12 +111,6 @@ The served set (`Route::all()` × `Route::verbs()`) and the documented set (the 
 - **Dimension 3.2** — the feature build's emitter writes the document, and the committed `public/openapi.json` equals what it emits — regenerated, never hand-patched → Test `test_openapi_build_is_the_source`
 - **Dimension 3.3** — the gate and the diff run where lint runs, and the production build path never enables the feature → Test `test_release_build_excludes_openapi` (asserts the feature absent from the release build invocation and the dependency graph it produces)
 
-### §4 — `doctor` parity
-
-The operator diagnostic subcommand reaches behaviour parity with the Zig `doctor` on seeded states. `backfill` is NOT here: deferred with Indy's quote and the planetscale-dev measurement in M181_002's Discovery.
-
-- **Dimension 4.1** — `doctor` produces parity outcomes on seeded states → Test `test_ops_subcommand_parity`
-
 ## Interfaces
 
 ```
@@ -124,7 +118,6 @@ openapi (cargo feature)           non-default; the only switch between productio
 document() per plane crate        the one public item each gated collector exposes
 public/openapi.json               the committed artifact; regenerated from the build, diffed in CI
 Route::all() × Route::verbs()     the served side of the gate — owned by M181_002, read-only here
-agentsfleetd doctor               operator diagnostics, parity with the Zig subcommand
 ```
 
 ## Failure Modes
@@ -161,7 +154,6 @@ No product or operational signal changes: the feature is off in production, and 
 | 3.1 | unit | `test_coverage_gate_rust_source` | set equality both directions; seeded removal fails naming route+method+direction |
 | 3.2 | unit | `test_openapi_build_is_the_source` | emitted document == committed artifact, byte-for-byte after canonicalization |
 | 3.3 | unit | `test_release_build_excludes_openapi` | release invocation and its dependency graph carry no utoipa |
-| 4.1 | integration | `test_ops_subcommand_parity` | `doctor` outcomes match the Zig subcommand on seeded states |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -190,6 +182,7 @@ The hand-maintained provenance of `public/openapi.json` retires: any residual ge
 ## Out of Scope
 
 - `backfill` parity — deferred with Indy's quote and the measurement in M181_002's Discovery.
+- `doctor` parity — dropped by the same evidence standard: no deploy step, playbook or workflow invokes `agentsfleetd doctor`, and its two jobs already ship — bare `agentsfleetd` runs the environment preflight, `/readyz` probes live dependencies and is what the runbook actually uses. Quote in Discovery.
 - Schema prose beyond what annotations carry — reconciliation judgment lands here, but rewriting descriptions for style does not.
 - `utoipa-axum`, `axum_extras`, or any router-integrated registration — rejected in the inherited decision.
 - Serving the document at runtime (`GET /openapi.json` or Swagger UI) — nothing serves it today; adding a route is a product decision, not this gate's.
@@ -200,8 +193,8 @@ The hand-maintained provenance of `public/openapi.json` retires: any residual ge
 2. **Preserved user behaviour** — every request path byte-identical; the production binary is unchanged by construction (R3).
 3. **Optimal-way check** — feature-gated generation beats shipping the emitter (production pays zero) and beats hand-maintenance (the drift is the disease); in-process set equality beats the retired external-checker shape (typed values, no serialization boundary).
 4. **Rebuild-vs-iterate** — iterate: annotations over existing handlers; the route table stays the source of reachability.
-5. **What we build** — feature-gated schemas, annotations, per-plane collectors, the gate test, the artifact diff, `doctor` parity.
-6. **What we do NOT build** — router-integrated registration, owned schema DTOs, a served document endpoint, `backfill`.
+5. **What we build** — feature-gated schemas, annotations, per-plane collectors, the gate test, the artifact diff.
+6. **What we do NOT build** — router-integrated registration, owned schema DTOs, a served document endpoint, `backfill`, `doctor`.
 7. **Fit with existing features** — the parity lane's roster reads the same file it always read, now generated; the total match keeps owning reachability.
 8. **Surface order** — N/A — no new user surface; the document is a published artifact, not an endpoint.
 9. **Dashboard restraint** — N/A — no signals.
@@ -209,13 +202,16 @@ The hand-maintained provenance of `public/openapi.json` retires: any residual ge
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** four slices — spike-then-derives, annotations+collectors, gate+artifact, doctor — ordered so the one open risk (the `Cow` papercut) is retired first.
+- **Chosen shape:** three slices — spike-then-derives, annotations+collectors, gate+artifact — ordered so the one open risk (the `Cow` papercut) is retired first.
 - **Alternatives considered:** building `paths` programmatically from `Route::all()` with annotations carrying only prose (rejected: it fights utoipa's collector model, and the set-equality gate closes the same drift at lower complexity — recorded with the external review); a Python checker over two JSON dumps (rejected: two typed sets in one process need no serialization boundary; the earlier design is amended out in M181_002's Discovery).
 - **Patch-vs-refactor verdict:** this is a **patch** adding a generated artifact and its gate; the one genuinely new surface in the family, as the parent spec said.
 
 ## Discovery (consult log)
 
-> Indy (2026-09-01): "I am leaning towards Option 2 — full generation" … "Yes go lets follow the practicse by the crates" … "Yes, 5 specs as drawn" — context: the generation scope, the `cfg_attr` optional-dependency pattern, and this spec's existence as the split-out Dimensions 1.2–1.4 of M181_002. The full decision record, the external review, and the production evidence live in M181_002's Discovery and bind here.
+> Indy (2026-09-01): "I donot need parity with zig if its not useful" — context: `doctor` parity dropped from this spec by the evidence standard that already retired `backfill`: nothing operational invokes `agentsfleetd doctor`, and the bare-invocation preflight plus `/readyz` answer both of its questions today.
+
+
+> Indy (2026-09-01): "I am leaning towards Option 2 — full generation" … "Yes go lets follow the practicse by the crates" … "Yes, 5 specs as drawn" — context: the generation scope, the `cfg_attr` optional-dependency pattern, and this spec's existence as the split-out Dimensions 1.2–1.3 of M181_002. The full decision record, the external review, and the production evidence live in M181_002's Discovery and bind here.
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
