@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 003
 **Date:** Sep 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the served-versus-documented direction is unguarded on both daemons until this lands
 **Categories:** API | DOCS
 **Batch:** B7 — serial after M181_002 merges: every annotation sits on a handler that branch carries
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m181-003-openapi-coverage-gate
+**Test Baseline:** unit=2186 integration=156
 **Depends on:** M181_002 **merged** (the full route surface, `Route::verbs`, and the mount-grading test are its diff; annotating an unmerged handler is annotating a moving target)
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — Dimensions 1.2–1.3 of M181_002, split out on Indy's parallelization call; the design decisions live in that spec's Discovery ("Decision — OpenAPI generation is utoipa 5.5.0, feature-gated out of production" and the external review beneath it) and are inherited here, not re-litigated
 **Canonical architecture:** `docs/architecture/testing.md` + `docs/REST_API_DESIGN_GUIDELINES.md`
@@ -40,7 +40,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api): the daemon generates its OpenAPI document, gated against the route table
 - **Intent (one sentence):** the published API document becomes an artifact the daemon's own build emits and a test grades, so a served route can no longer go undocumented or a documented one unserved.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN): `public/openapi.json` stops being a document somebody maintains and becomes a build output. The handlers already know their own paths, methods and payloads; utoipa reads that back out under a non-default feature, five per-plane collectors merge into one document, and a test asserts that document's path × method set equals `Route::all() × Route::verbs()` in both directions. The shipped binary compiles none of it.
+
+`ASSUMPTIONS I'M MAKING:`
+1. **`#[utoipa::path]` sits on generic handlers.** Every handler is `handle<D: Services>`; the macro's `__path_*` item carries no generics, so the annotation is unaffected. Spiked in §1 before the bulk pass — if it fails, the fallback is a per-plane hand-built `paths` map and §2 changes shape.
+2. **`RawValue` is the real `value_type` case, not `Cow`.** `&'a RawValue`, `Box<RawValue>` and `BTreeMap<&'a str, &'a RawValue>` have no `ToSchema` impl and are opaque JSON by design; each takes one override naming that. Borrowed `Cow<'a, str>` fields take none — the external review settled that.
+3. **The gate compares path × METHOD, not paths.** Two route identities share one template (`PollSession`/`DeleteSession`, connector `Callback`/`Complete`), so a path-only comparison would pass while a verb went missing.
+4. **The committed artifact is replaced wholesale, not merged into.** It documents routes neither daemon serves (`/metrics`, `/v1/connectors/slack/events`) and omits the entire runner plane; hand-written prose is carried into annotations where it survives the reconciliation, and the gate decides what is left.
+5. **No new `make` target.** `test-unit-rustd` already runs `cargo test --workspace --all-features` and `lint-rustd` already runs clippy with `--all-features`, so the feature, the gate and the artifact diff are graded by the lanes that exist.
+6. **The parity lane's roster grows.** `scripts/parity_lane.sh` reflects over this file, so a regenerated artifact changes which routes the live cutover lane probes. Its hermetic self-test is fixture-driven and unaffected; the live lane's new rows are a M181_006 concern, named in Session Notes rather than silently absorbed.
+
+*Correct me now or I proceed on these.*
 
 ## Implementing agent — read these first
 
