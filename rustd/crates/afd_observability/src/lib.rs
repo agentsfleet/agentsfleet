@@ -24,8 +24,9 @@
 // here is the lint's own documented remedy, and keeps the deny in force for
 // everything else.
 #[cfg(test)]
-use {opentelemetry as _, tokio as _};
+use tokio as _;
 
+pub mod delivery;
 pub mod error;
 pub mod export;
 pub mod metrics;
@@ -33,6 +34,7 @@ pub mod product;
 pub mod runner;
 pub mod semconv;
 
+pub use self::delivery::Delivery;
 pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, SpanDrops};
 pub use self::product::{Analytics, Telemetry};
