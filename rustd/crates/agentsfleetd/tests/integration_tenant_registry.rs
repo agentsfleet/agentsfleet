@@ -85,6 +85,11 @@ async fn provider_listener() -> String {
     base
 }
 
+/// The whole walk, over one booted daemon.
+///
+/// The phases below are functions only because a 300-line body is not
+/// reviewable — they are steps of ONE scenario, not independent tests, and
+/// each takes the previous one's outcome as its argument.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
@@ -96,16 +101,35 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     seed_activatable_key(&run.booted, &run.workspace, WALK_KEY).await;
     let http = reqwest::Client::new();
 
+    let entry_id = register_and_refuse_the_repeats(&http, &token, &run).await;
+    let second_id = walk_the_keyset_over_two_entries(&http, &token, &run).await;
+    retarget_over_the_freed_pair(&http, &token, &run, &entry_id, &second_id).await;
+    activate_after_the_ladder_refuses(&http, &token, &run, &entry_id).await;
+    reset_and_remove_what_the_walk_registered(&http, &token, &run, &entry_id).await;
+    sweep_the_seams_the_registry_never_touches(&http, &token, &run).await;
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// REGISTER the seeded model, then the two row-decided refusals of a repeat.
+///
+/// Returns the stored entry's id — every later phase addresses it.
+async fn register_and_refuse_the_repeats(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+) -> String {
     // A tenant that has configured nothing reads the deployment's default as
     // platform mode — the seam pair `selection` + `platform_default`, and the
     // rung that must never be a 404.
-    let view = get_json(&http, &token, &run.base, "/v1/tenants/me/provider").await;
+    let view = get_json(http, token, &run.base, "/v1/tenants/me/provider").await;
     assert_eq!(view["mode"], "platform", "no row of its own yet: {view}");
 
     // REGISTER the seeded model on the seeded credential — `add_entry`.
     let (status, created) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
@@ -121,8 +145,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // The registry's row-decided refusals, each answering its own code. The
     // router harness proves who may ASK; only real rows prove these answers.
     let (_status, duplicate) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
@@ -134,8 +158,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         "same pair, second time: {duplicate}"
     );
     let (_status, unknown_ref) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
@@ -144,12 +168,23 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     .await;
     assert_eq!(unknown_ref["error_code"], "UZ-MODELS-002", "{unknown_ref}");
 
+    entry_id
+}
+
+/// A second entry on the same credential, and the keyset page across the pair.
+///
+/// Returns the second entry's id, which the retarget phase frees.
+async fn walk_the_keyset_over_two_entries(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+) -> String {
     // A second catalogued model, a second entry, and a keyset walk across the
     // pair — the daemon-served twin of the store suite's boundary claim.
-    seed_second_model(&run).await;
+    seed_second_model(run).await;
     let (status, second) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
@@ -165,15 +200,15 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         .expect("the second entry names itself")
         .to_owned();
 
-    let first_page = get_json(&http, &token, &run.base, "/v1/tenants/me/models?limit=1").await;
+    let first_page = get_json(http, token, &run.base, "/v1/tenants/me/models?limit=1").await;
     assert_eq!(first_page["models"].as_array().expect("one row").len(), 1);
     let cursor = first_page["next_cursor"]
         .as_str()
         .expect("a second row exists, so a cursor is issued")
         .to_owned();
     let second_page = get_json(
-        &http,
-        &token,
+        http,
+        token,
         &run.base,
         &format!("/v1/tenants/me/models?limit=1&starting_after={cursor}"),
     )
@@ -184,10 +219,21 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         "the walk resumes strictly after what was served"
     );
 
+    second_id
+}
+
+/// Retargeting: onto an occupied pair, onto nothing, and then for real.
+async fn retarget_over_the_freed_pair(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+    entry_id: &str,
+    second_id: &str,
+) {
     // Retargeting: onto an occupied pair, onto nothing, and then for real.
     let (_status, retarget_duplicate) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PATCH,
         &run.base,
         &format!("/v1/tenants/me/models/{entry_id}"),
@@ -199,8 +245,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         "the second entry holds that pair: {retarget_duplicate}"
     );
     let (_status, retarget_nothing) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PATCH,
         &run.base,
         "/v1/tenants/me/models/019329c5-0000-7000-8000-00000000dead",
@@ -213,8 +259,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     );
 
     let (status, _removed_second) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::DELETE,
         &run.base,
         &format!("/v1/tenants/me/models/{second_id}"),
@@ -223,8 +269,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     .await;
     assert_eq!(status, 204, "the freed pair unblocks the retarget");
     let (status, retargeted) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PATCH,
         &run.base,
         &format!("/v1/tenants/me/models/{entry_id}"),
@@ -237,11 +283,20 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         retargeted["secret_ref"], WALK_KEY,
         "a retarget keeps its credential"
     );
+}
 
+/// The activation ladder's three refusals, the activation, and the page it
+/// flags ACTIVE.
+async fn activate_after_the_ladder_refuses(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+    entry_id: &str,
+) {
     // The activation ladder's own refusals, before the one that lands.
     let (_status, missing) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
@@ -252,8 +307,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // The scenario's own key: sealed, but projected as nothing — the metadata
     // gate refuses it before any decrypt, and the runner suites rely on that.
     let (_status, unlabelled) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
@@ -262,8 +317,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     .await;
     assert_eq!(unlabelled["error_code"], "UZ-PROVIDER-003", "{unlabelled}");
     let (_status, uncatalogued) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
@@ -278,8 +333,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // ACTIVATE the credential as the tenant's own provider — the one seam verb
     // that runs the whole ladder in one transaction (`activate`).
     let (status, activated) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
@@ -292,7 +347,7 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     );
     assert_eq!(activated["mode"], "self_managed");
     assert_eq!(activated["secret_ref"], WALK_KEY);
-    let own_view = get_json(&http, &token, &run.base, "/v1/tenants/me/provider").await;
+    let own_view = get_json(http, token, &run.base, "/v1/tenants/me/provider").await;
     assert_eq!(
         own_view["mode"], "self_managed",
         "a stored row outranks the live default in the composed view"
@@ -302,10 +357,10 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // The registry page now composes all three reads — the entry, the vault's
     // projection, the catalogue rate — and flags the entry ACTIVE, because the
     // selection just written agrees with it on `(secret_ref, model_id)`.
-    let page = get_json(&http, &token, &run.base, "/v1/tenants/me/models").await;
+    let page = get_json(http, token, &run.base, "/v1/tenants/me/models").await;
     let rows = page["models"].as_array().expect("a page carries its rows");
     assert_eq!(rows.len(), 1, "one entry was registered: {page}");
-    assert_eq!(rows[0]["id"], entry_id.as_str());
+    assert_eq!(rows[0]["id"], entry_id);
     assert_eq!(
         rows[0]["provider"], PROVIDER,
         "the vault's projection labels the row"
@@ -319,13 +374,21 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         rows[0]["input_nanos_per_mtok"].is_i64(),
         "the catalogue row prices the entry: {page}"
     );
+}
 
+/// The active entry's refused removal, the reset, and the removal that lands.
+async fn reset_and_remove_what_the_walk_registered(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+    entry_id: &str,
+) {
     // Removing the entry the tenant runs on is refused — the row-decided
     // outcome the router harness's unreachable pool renders as a plain 503.
     let item = format!("/v1/tenants/me/models/{entry_id}");
     let (status, refused) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::DELETE,
         &run.base,
         &item,
@@ -337,8 +400,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // RESET to the platform default — `upsert`, writing the explicit platform
     // row the view renders differently from "never configured".
     let (status, reset) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::DELETE,
         &run.base,
         "/v1/tenants/me/provider",
@@ -352,8 +415,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // now the other half of the discrimination — `remove_entry`, then a page
     // that shows the walk cleaned up after itself.
     let (status, _removed) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::DELETE,
         &run.base,
         &item,
@@ -361,7 +424,7 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     )
     .await;
     assert_eq!(status, 204, "an idle entry removes");
-    let emptied = get_json(&http, &token, &run.base, "/v1/tenants/me/models").await;
+    let emptied = get_json(http, token, &run.base, "/v1/tenants/me/models").await;
     assert!(
         emptied["models"]
             .as_array()
@@ -369,7 +432,14 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
             .is_empty(),
         "the row is gone: {emptied}"
     );
+}
 
+/// One request per seam the registry's own routes never reach.
+async fn sweep_the_seams_the_registry_never_touches(
+    http: &reqwest::Client,
+    token: &str,
+    run: &crate::e2e::Scenario,
+) {
     // One request per seam the registry never touches. Each accessor in
     // `plane/services.rs` is three lines that run only when a route needs the
     // seam it hands out, and each of these routes is the cheapest one that
@@ -377,8 +447,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // `WorkspaceOwnership::authorize` forwarding, which nothing tenant-scoped
     // can reach.
     let connectors = get_json(
-        &http,
-        &token,
+        http,
+        token,
         &run.base,
         &format!("/v1/workspaces/{}/connectors", run.workspace),
     )
@@ -388,8 +458,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         "the catalog lists whatever is registered: {connectors}"
     );
     let fleets = get_json(
-        &http,
-        &token,
+        http,
+        token,
         &run.base,
         &format!("/v1/workspaces/{}/fleets", run.workspace),
     )
@@ -400,8 +470,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
         "the scenario's own fleet is on its workspace wall: {fleets}"
     );
     let schedules = get_json(
-        &http,
-        &token,
+        http,
+        token,
         &run.base,
         &format!(
             "/v1/workspaces/{}/fleets/{}/schedules",
@@ -419,8 +489,8 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     // the sessions seam: the extractor consults it to classify the credential
     // before it refuses.
     let (status, minted) = send_json(
-        &http,
-        &token,
+        http,
+        token,
         reqwest::Method::POST,
         &run.base,
         "/v1/cli-credentials",
@@ -438,9 +508,6 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
             .is_some_and(|code| code.starts_with("UZ-")),
         "the refusal names its registry code: {minted}"
     );
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
 }
 
 /// Publishes the second model beside the scenario's own catalogue row.
