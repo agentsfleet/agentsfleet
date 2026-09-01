@@ -314,3 +314,6 @@ const fn empty_view() -> TenantProviderResponse<'static> {
         platform_default_available: false,
     }
 }
+
+#[cfg(test)]
+mod tests;

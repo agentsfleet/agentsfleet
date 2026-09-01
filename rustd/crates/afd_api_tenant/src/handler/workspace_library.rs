@@ -259,3 +259,6 @@ fn created(onboarded: Onboarded) -> afd_wire::admin::AdminLibraryCreated<'static
         },
     }
 }
+
+#[cfg(test)]
+mod tests;

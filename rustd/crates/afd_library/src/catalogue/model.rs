@@ -27,6 +27,25 @@ impl LibraryRequirements {
         }
     }
 
+    /// The same value, for a suite outside this crate.
+    ///
+    /// [`Self::new`] is `pub(super)` because only the catalogue's own reads
+    /// project one, and a caller able to mint requirements out of nothing could
+    /// write a row the store would never answer with. A renderer in another
+    /// crate has the opposite need — it must be handed one to render — so this
+    /// is the same constructor behind `test-util`, the gate this crate already
+    /// uses for `LibraryImports::with_github_api_base`.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub const fn fixture(
+        credentials: Vec<String>,
+        tools: Vec<String>,
+        network_hosts: Vec<String>,
+        trigger_present: bool,
+    ) -> Self {
+        Self::new(credentials, tools, network_hosts, trigger_present)
+    }
+
     /// Required credential names only.
     #[must_use]
     pub fn credentials(&self) -> &[String] {
