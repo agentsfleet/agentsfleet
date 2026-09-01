@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 004
 **Date:** Sep 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the cutover's continuity dimension is unprovable while one side of the boundary exports nothing
 **Categories:** API | OBS
 **Batch:** B6 — runs parallel with M181_002's close; nothing here waits on the route surface except one named producer slice
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m181-004-otlp-export
+**Test Baseline:** `unit=2186 integration=not-run` — `make test-unit-all` on 2026-09-02 at the branch point: cargo workspace 2186 passed (352 ignored, the integration tier), `ui/packages/app` 2410, `ui/packages/website` 175; the `agentsfleet` and `design-system` gates were not reached before the run was stopped on Indy's override below. `verify.integration` is not run at CHORE(open): the full declared `verify.*` set runs once at the boundary (Discovery)
 **Depends on:** M181_001 (the metrics pipeline's receiving half: registry, census grading, counting exporter); M181_002 **merged for Dimension 2.1's tenant-library slice only** — the seven `agentsfleet_library_*` producers sit in code that branch carries; every other dimension is independent of it
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — §2 of M181_002, split out on Indy's parallelization call; section prose carried over, not re-derived
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths + `docs/architecture/runner_fleet.md` §Multi-replica
@@ -40,7 +40,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(observability): OTLP export — metrics, spans and logs leave the daemon
 - **Intent (one sentence):** the Rust daemon exports all three signals over OTLP so metric-family continuity across the cutover becomes provable.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
+- **Handshake (filled at PLAN):** the daemon gains a real OTLP transport for spans, metrics and logs, the vocabulary and producers that give the transport something to carry, and the knobs that point it somewhere — so M181_006 can grade the same families arriving from both binaries.
+- **ASSUMPTIONS I'M MAKING:**
+  1. `afd_api/**` in Files Changed means the api crate family plus `afd_http`, where admission lives — Dimension 1.2 itself names `afd_api_runner`. The table below is widened to say so.
+  2. Dimension 2.1 outranks §2's prose. "Every census family" reaches every crate a family's mechanism lives in — lease polls in `afd_fleet`, sweeps in `afd_runner`, signup in `afd_tenant`, streams in `afd_sse` — not two producer sites. The table is widened to the true blast radius.
+  3. A family whose mechanism this daemon does not run gets no fabricated producer. It is declared in a reviewed unproduced ledger with a one-line reason, logged once at boot, and the orphan test still names any family outside both sets. The ledger (§2) is Indy's to accept or strike at REVIEW; a struck row becomes a producer or a census change.
+  4. Transport is the published exporter over HTTP — protobuf by default, JSON accepted — on the SDK's own batch threads with its blocking client. A hand-rolled poster over the workspace's HTTP client is rejected: it would re-implement OTLP encoding to save one dependency.
+  5. The subscriber installs in `main` before any knob is read; boot attaches the OpenTelemetry layers into a reload slot after preflight, so knobs stay preflight's and `migrate`/`check` never build an exporter.
+  6. New test files carry sentence names per `docs/architecture/testing.md`; each Dimension's `Test` cell is amended to the name the file carries, in the commit that adds it.
+- **Quality ceiling:** the sound build is the SDK's pipeline with the census-built instrument layer M181_001 left a slot for; a leaner build (skip the instrument layer, emit through `global::meter`) would lose the census grading that makes continuity provable. No larger refactor beats this patch.
+- **Surface area:** OpenAPI no · CLI no · user docs **yes** (new operator knobs → `~/Projects/docs` env reference + changelog at CHORE(close)) · release no · schema no · spec-vs-rules: this handshake amends the spec, nothing else.
 
 ## Implementing agent — read these first
 
@@ -54,11 +63,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_observability/**` | EDIT | the OTLP transport the crate was shaped to receive; the completed `semconv` vocabulary; the log signal |
-| `rustd/Cargo.toml` | EDIT | the OTLP exporter dependency and its HTTP transport features — a NEW dependency, not a feature flag on one in the lock |
-| `rustd/crates/agentsfleetd/**` | EDIT | boot constructs the exporter from configuration and supervises the flush loop under the inventoried name; preflight gains the standard knobs |
-| `rustd/crates/afd_api/**` | EDIT | the tower layers that produce the HTTP-side families; the fleet-delivery span at the report handler |
-| `rustd/crates/afd_db/**` · `afd_redis/**` | EDIT | observable-gauge callbacks over the pool state both crates already expose |
+| `rustd/crates/afd_observability/**` | EDIT | the OTLP transport the crate was shaped to receive; the completed `semconv` vocabulary; the instrument layer, the producer handles, the delivery span, the trace budget; the log signal |
+| `rustd/Cargo.toml` · `rustd/Cargo.lock` | EDIT | the OTLP exporter dependency and its HTTP transport features, the two tracing bridges — NEW dependencies, not feature flags on ones in the lock |
+| `rustd/crates/agentsfleetd/**` | EDIT | boot constructs the exporter from configuration and supervises the flush loop under the inventoried name; preflight gains the standard knobs; gauge callbacks are registered where their sources are known |
+| `rustd/crates/afd_api/**` · `afd_api_runner/**` · `afd_api_tenant/**` · `afd_api_ingress/**` · `afd_http/**` | EDIT | the admission shed counter; the fleet-delivery span, cost families and runner counters at the report handler; signup, library-read and repair-result producers in the handlers that own those operations |
+| `rustd/crates/afd_redis/**` · `afd_sse/**` | EDIT | the ready-index and hub-reconnect producers; the stream ceiling's shed and dropped-frame counters; gauge callbacks over the state these crates already expose |
+| `rustd/crates/afd_fleet/**` · `afd_runner/**` · `afd_tenant/**` | EDIT | lease-poll and memory producers; retention and repair-dispatch producers; signup outcome producers — each at the one call site that owns the operation |
+| `docs/architecture/observability.md` · `docs/architecture/concurrency.md` | EDIT | the export path as built; the `otlp_export` row's real stop path |
 
 ## Applicable Rules
 
@@ -99,9 +110,33 @@ NOT a file-for-file port. Zig's seventeen `http/` emit sites become a small numb
 
 - **Dimension 2.1** — every census family has a producer: each family the registry declares is recorded by a call site the daemon actually reaches, and a family with no producer fails naming it → Test `test_every_census_family_has_a_producer`. The seven `agentsfleet_library_*` families' producers live in handlers M181_002 carries; this dimension's tenant-library slice lands only after that branch merges, and the dependency is stated in the frontmatter rather than discovered.
 
+**Producer map (PLAN).** Handles are claimed from the census-built instrument layer at boot; a family nobody claims is named by `Instruments::unclaimed`, which is what the test and the boot log both read. Grouped by the site that owns the operation:
+
+| Site | Families |
+|---|---|
+| `afd_http` admission · `afd_api` router | `api_in_flight_requests` (gauge over the semaphore) · `api_backpressure_rejections_total` |
+| `afd_observability` trace budget (span processor) | `http_trace_suppressed_total` — the route policy `observability.md` §Traces states |
+| `afd_observability` exporter self-signal | `otlp_queue_depth` · `otlp_entries_discarded_total` (the three drop counters) · `otel_attribute_omitted_total` · `agentsfleet.telemetry.samples_dropped` |
+| `afd_api_runner` report + lease handlers | the five cost families · `runner_*` (through `RunnerMetrics`) · `lease_polls_total` · `lease_poll_candidates_scanned_total` · `lease_poll_db_roundtrips_total` · `memory_*` where the Rust memory path performs the operation |
+| `afd_api_tenant` · `afd_tenant` | `signup_*` · `library_*` (the M181_002 slice) |
+| `afd_api_ingress` · `afd_runner` repair sweep | `repair_*` — results and correlations at the ingress handler; intents, retries, synthetic events, verifier runs, due-batch and oldest-age at the dispatcher |
+| `afd_runner` retention sweep | `runner_retention_swept_total` · `runner_retention_sweep_failures_total` |
+| `afd_redis` · `afd_sse` | `fleet_ready_depth` · `fleet_ready_write_failures_total` · `sse_hub_reconnects_total` · `sse_in_flight_streams` · `sse_backpressure_rejections_total` · `sse_dropped_frames_total` |
+| `agentsfleetd` flush loop | `worker_running` · `process_resident_memory_bytes` (published each interval, never read in a callback) |
+
+**Unproduced ledger (PLAN — Indy accepts or strikes each row at REVIEW).** Declared once in `afd_observability`, logged at boot with its reason, and excluded from nothing else: a family here still builds no instrument and still fails the orphan test if the census stops declaring it.
+
+| Family | Why this daemon cannot feed it |
+|---|---|
+| `redis_pool_*` (eight) | `afd_redis` holds one multiplexed connection; there is no pool, so active, idle, dials, overflow, poisoning, reconnects, forced closes and acquire timeouts measure a mechanism that does not exist here |
+| `sensitive_request_erased_bytes_total` · `sensitive_response_erased_bytes_total` · `sensitive_response_write_failures_total` | no request- or response-buffer erasure path in the Rust daemon |
+| `account_teardown_unregister_failures_total` | the Rust ingress declares `user.deleted` unported (`identity_route.rs`) |
+| `fleet_triggered_total` | the Zig daemon declares the family and never increments it; nothing to carry over |
+| any `memory_*` or `repair_*` row whose operation the Rust path does not perform | named individually in EXECUTE as each site is read; every such row lands in this table, not silently |
+
 ### §3 — The transport, boot, and the knobs
 
-The OTLP exporter is a NEW dependency bringing a protocol-encoding and HTTP-client subtree; the default is the published exporter over its HTTP transport, matching the wire path the Zig daemon already posts to, which keeps the gRPC stack out of the tree. The alternative — a small exporter over the workspace's existing HTTP client — is a PLAN decision to surface, not an EXECUTE discovery. Knobs are the OpenTelemetry specification's own names; the Zig daemon's vendor spellings are accepted as aliases through cutover so a rollback keeps exporting, and retire with that daemon.
+The OTLP exporter is a NEW dependency bringing a protocol-encoding and HTTP-client subtree; the default is the published exporter over its HTTP transport, matching the wire path the Zig daemon already posts to, which keeps the gRPC stack out of the tree. The alternative — a small exporter over the workspace's existing HTTP client — is a PLAN decision to surface, not an EXECUTE discovery. **PLAN decision:** the published exporter, HTTP transport, protobuf default with JSON accepted, blocking client on the SDK's batch threads; gRPC is refused at preflight as a knob this build does not carry. The tracing bridges (spans, log records) are two further published crates, pinned to the SDK line already in the lock. Knobs are the OpenTelemetry specification's own names; the Zig daemon's vendor spellings are accepted as aliases through cutover so a rollback keeps exporting, and retire with that daemon.
 
 - **Dimension 3.1** — boot constructs the transport from configuration and supervises the flush loop under the inventoried task name; the daemon's real inventory equals its declared background task set, and the task joins on termination → Test `test_boot_supervises_otlp_export`
 - **Dimension 3.2** — the standard knobs configure endpoint, headers, protocol and timeout, and the vendor spellings still resolve as aliases with the standard name winning when both are set → Test `test_otlp_endpoint_knob_precedence`
@@ -218,3 +253,4 @@ N/A — no files deleted. The export-task stub that today waits for cancellation
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+- **Verification cadence override** — > Indy (2026-09-02 00:24): "Just run all the clippy, fmt, test-unit-rustd, test-integration-rustd after the code is complete on all the dimension/sections. Avoid running them for every section/dimension since you would end up waiting for the disk space to be pruned and purged" — context: the declared `verify.*` set and the lint pair run ONCE at the milestone boundary; inside a Section the inner loop is `cargo check`/`cargo test -p <crate>` over the crate touched, which proves a package and never satisfies a VERIFY row.
