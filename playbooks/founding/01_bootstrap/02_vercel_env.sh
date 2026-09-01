@@ -33,9 +33,14 @@ api_base="https://api.vercel.com"
 posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
 work_dir="$(mktemp -d)"
 auth_config="$work_dir/curl.conf"
-owner_bash_pid="$BASHPID"
 cleanup() {
-  if [ "$BASHPID" = "$owner_bash_pid" ]; then
+  # Only the top-level shell owns the directory: an EXIT trap is inherited by
+  # every subshell, and one of those removing the auth config would leave the
+  # rest of the run curling without credentials. `BASH_SUBSHELL` counts the
+  # nesting and is 0 only in the owner — `BASHPID` says the same thing and is
+  # what this used, but it does not exist before bash 4 and the bash macOS
+  # ships is 3.2.
+  if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then
     rm -rf "$work_dir"
   fi
 }
@@ -58,13 +63,34 @@ vercel_get() {
   curl --config "$auth_config" "$api_base$path"
 }
 
-declare -A PROJECT_ID
+# The resolved project ids, as two parallel lists rather than one associative
+# array: bash 3.2 has no `declare -A`, and the map is small enough — one entry
+# per Vercel project this deployment owns — that a linear scan costs nothing
+# next to the HTTP call that filled it.
+PROJECT_NAMES=()
+PROJECT_IDS=()
+
+# The id resolved for `$1`, or empty if nothing resolved it.
+project_id_of() {
+  local wanted="$1" index=0
+  while [ "$index" -lt "${#PROJECT_NAMES[@]}" ]; do
+    if [ "${PROJECT_NAMES[index]}" = "$wanted" ]; then
+      printf '%s' "${PROJECT_IDS[index]}"
+      return 0
+    fi
+    index=$((index + 1))
+  done
+  return 1
+}
+
 resolve_project() {
   local name="$1"
-  local response
+  local response resolved
   response="$(vercel_get "/v10/projects/$name")" || return 1
-  PROJECT_ID["$name"]="$(jq -r '.id // empty' <<<"$response")"
-  [ -n "${PROJECT_ID[$name]}" ]
+  resolved="$(jq -r '.id // empty' <<<"$response")"
+  [ -n "$resolved" ] || return 1
+  PROJECT_NAMES+=("$name")
+  PROJECT_IDS+=("$resolved")
 }
 
 list_projects() {
@@ -164,7 +190,7 @@ drift=0
 applied=0
 for row in "${rows[@]}"; do
   IFS='|' read -r project key production_source preview_source <<<"$row"
-  project_id="${PROJECT_ID[$project]}"
+  project_id="$(project_id_of "$project")"
   production_value="$(resolve_source "$production_source")"
   preview_value="$(resolve_source "$preview_source")"
   current="$(fetch_envs "$project_id")"

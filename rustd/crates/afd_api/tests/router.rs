@@ -59,20 +59,29 @@ async fn test_head_is_refused_on_a_route_that_serves_get() {
     );
 }
 
-/// A HEAD at a path this binary does not serve is still a 404.
+/// This binary now serves every route the table declares.
 ///
-/// The refusal is mounted with `route_layer` for this: a 405 would say the
-/// path exists and only the method is wrong, which for an unmounted route is
-/// not true.
+/// The test that stood here asserted the opposite half — that a HEAD at a
+/// TABLED BUT UNSERVED path answers 404 rather than the 405 a served path with
+/// the wrong method gets. Its own note said each milestone landing a handler
+/// group would push its example down the table "until nothing qualifies and the
+/// test retires". The workspace fleet-library pair was the last example, and
+/// nothing qualifies now.
+///
+/// What replaces it is the stronger claim the retirement makes available: the
+/// route table and the mount are the same set. A route that lost its handler
+/// would fail here rather than becoming a silent 404 nobody asserted on.
 #[tokio::test]
-async fn test_head_at_an_unserved_path_is_not_found() {
-    // The provider row is still tabled-and-unserved; `/v1/workspaces` held
-    // this role until the create was mounted, and each milestone that lands a
-    // handler group will keep pushing this example down the table until
-    // nothing qualifies and the test retires.
-    let missing = send(Method::HEAD, "/v1/tenants/me/provider", ALL_HEALTHY).await;
+async fn test_every_tabled_route_is_served() {
+    let unserved: Vec<&str> = Route::all()
+        .filter(|route| !is_mounted(*route))
+        .map(|route| route.meta().template)
+        .collect();
 
-    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    assert!(
+        unserved.is_empty(),
+        "tabled routes with no handler: {unserved:?}"
+    );
 }
 
 /// Liveness answers for the process and says nothing about dependencies.
@@ -307,6 +316,14 @@ const fn is_mounted(route: Route) -> bool {
             // matcher and the router disagree the moment the skip is lifted.
             | Route::Webhook(_)
             | Route::Connector(_)
+            // Every workspace and per-fleet route. The loop above reaches
+            // neither, because each template names a workspace or a fleet —
+            // which is exactly why both were missing from this matcher until
+            // the test below started grading it against the whole table. Listed
+            // for the reason that note gives: a served route left out makes the
+            // matcher and the router disagree the moment the skip is lifted.
+            | Route::Workspace(_)
+            | Route::Fleet(_)
             | Route::Tenant(
                 TenantRoute::ApiKeys
                     | TenantRoute::ApiKey
@@ -318,6 +335,9 @@ const fn is_mounted(route: Route) -> bool {
                     | TenantRoute::CreateWorkspace
                     | TenantRoute::ModelLibrary
                     | TenantRoute::FleetBundles
+                    | TenantRoute::Provider
+                    | TenantRoute::ModelEntries
+                    | TenantRoute::ModelEntry
             )
     )
 }

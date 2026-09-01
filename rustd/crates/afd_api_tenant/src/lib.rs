@@ -7,7 +7,7 @@
 pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
 
 mod handler;
-pub use handler::{fleet, secret, tenant};
+pub use handler::{fleet, secret, tenant, workspace_library};
 
 use std::sync::Arc;
 
@@ -45,7 +45,19 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
         TenantRoute::CreateWorkspace => Some(post(handler::tenant::create_workspace::<D>)),
         TenantRoute::ModelLibrary => Some(get(handler::tenant::catalogue::<D>)),
         TenantRoute::FleetBundles => Some(get(handler::fleet_bundles::list::<D>)),
-        TenantRoute::Provider | TenantRoute::ModelEntries | TenantRoute::ModelEntry => None,
+        TenantRoute::Provider => Some(
+            get(handler::tenant::provider_view::<D>)
+                .put(handler::tenant::provider_apply::<D>)
+                .delete(handler::tenant::provider_reset::<D>),
+        ),
+        TenantRoute::ModelEntries => Some(
+            get(handler::tenant::list_model_entries::<D>)
+                .post(handler::tenant::create_model_entry::<D>),
+        ),
+        TenantRoute::ModelEntry => Some(
+            patch(handler::tenant::update_model_entry::<D>)
+                .delete(handler::tenant::remove_model_entry::<D>),
+        ),
     }
 }
 
@@ -69,7 +81,10 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::<D>)),
         WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
         WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::FleetLibrary => None,
+        WorkspaceRoute::FleetLibrary => Some(
+            get(handler::workspace_library::list::<D>)
+                .post(handler::workspace_library::onboard::<D>),
+        ),
     }
 }
 

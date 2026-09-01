@@ -10,8 +10,42 @@ vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
 missing=0
-declare -A OP_CACHE_VALUE
-declare -A OP_CACHE_STATUS
+
+# The read-through cache, as three parallel lists rather than two associative
+# arrays: bash 3.2 has no `declare -A`, and the gate reads a few dozen refs, so
+# a linear scan is invisible next to the `op read` it exists to avoid. Status
+# is kept beside the value because a ref that FAILED must not be retried on
+# every later question about it — a wrong credential and an unreadable one are
+# both answered once.
+OP_CACHE_REFS=()
+OP_CACHE_VALUES=()
+OP_CACHE_STATUSES=()
+
+# The cache slot holding `$1`, or nothing when it has never been read.
+op_cache_index() {
+  local wanted="$1" index=0
+  while [ "$index" -lt "${#OP_CACHE_REFS[@]}" ]; do
+    if [ "${OP_CACHE_REFS[index]}" = "$wanted" ]; then
+      printf '%s' "$index"
+      return 0
+    fi
+    index=$((index + 1))
+  done
+  return 1
+}
+
+# Files `$2`/`$3` under `$1`, replacing an earlier answer for the same ref.
+op_cache_put() {
+  local ref="$1" status="$2" value="$3" index
+  if index="$(op_cache_index "$ref")"; then
+    OP_CACHE_STATUSES[index]="$status"
+    OP_CACHE_VALUES[index]="$value"
+    return 0
+  fi
+  OP_CACHE_REFS+=("$ref")
+  OP_CACHE_STATUSES+=("$status")
+  OP_CACHE_VALUES+=("$value")
+}
 
 case "$stage" in
   bootstrap|deployment) ;;
@@ -22,10 +56,10 @@ case "$stage" in
 esac
 
 op_read_with_retry() {
-  local ref="$1"
-  if [ -n "${OP_CACHE_STATUS[$ref]:-}" ]; then
-    if [ "${OP_CACHE_STATUS[$ref]}" = "ok" ]; then
-      printf '%s' "${OP_CACHE_VALUE[$ref]}"
+  local ref="$1" cached
+  if cached="$(op_cache_index "$ref")"; then
+    if [ "${OP_CACHE_STATUSES[cached]}" = "ok" ]; then
+      printf '%s' "${OP_CACHE_VALUES[cached]}"
       return 0
     fi
     return 1
@@ -43,8 +77,7 @@ op_read_with_retry() {
     # delay is a literal no-op; production's real 0.2s default is unaffected.
     [ "$min_interval_s" = "0" ] || sleep "$min_interval_s"
     if value="$(op read "$ref" 2>/dev/null)"; then
-      OP_CACHE_STATUS["$ref"]="ok"
-      OP_CACHE_VALUE["$ref"]="$value"
+      op_cache_put "$ref" ok "$value"
       printf '%s' "$value"
       return 0
     fi
@@ -54,8 +87,7 @@ op_read_with_retry() {
     fi
   done
 
-  OP_CACHE_STATUS["$ref"]="err"
-  OP_CACHE_VALUE["$ref"]=""
+  op_cache_put "$ref" err ""
   return 1
 }
 

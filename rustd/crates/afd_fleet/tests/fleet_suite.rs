@@ -42,6 +42,8 @@ mod integration_lease_installed;
 mod integration_lease_issue;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
+#[path = "integration_money_gates.rs"]
+mod integration_money_gates;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

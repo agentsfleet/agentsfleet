@@ -23,81 +23,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly LANE="$SCRIPT_DIR/parity_lane.sh"
 
-# The fixture roster: one route with a path parameter, one without, so the
-# placeholder substitution is on the path every test takes.
-readonly FIXTURE_ROUTE_PLAIN="/healthz"
-readonly FIXTURE_ROUTE_PARAM="/v1/workspaces/{workspace_id}/fleets"
-readonly BASE_A="http://parity-a.invalid"
-readonly BASE_B="http://parity-b.invalid"
+# The fixtures, the responder and the runner, sourced rather than spelled here:
+# the file was over the length cap and the harness is its own concern.
+# shellcheck source=scripts/parity_lane_test_harness.sh
+. "$SCRIPT_DIR/parity_lane_test_harness.sh"
 
-passed=0
-failed=0
-ok()  { printf 'ok   %s\n' "$1"; passed=$((passed + 1)); }
-bad() { printf 'FAIL %s\n       %s\n' "$1" "$2" >&2; failed=$((failed + 1)); }
-
-WORK_DIR="$(mktemp -d)"
-readonly WORK_DIR
-cleanup() { rm -rf "$WORK_DIR"; }
-trap cleanup EXIT
-
-# An OpenAPI document with exactly the two fixture routes, or an empty one.
-write_contract() {
-  local path="$1" empty="${2:-}"
-  if [ -n "$empty" ]; then
-    printf '{"paths":{}}\n' >"$path"
-    return
-  fi
-  jq -n --arg plain "$FIXTURE_ROUTE_PLAIN" --arg param "$FIXTURE_ROUTE_PARAM" \
-    '{paths: {($plain): {get: {}}, ($param): {get: {}, post: {}}}}' >"$path"
-}
-
-# A responder taking <base> <method> <path>. The SEED_* variables select what
-# base B changes, so a test names ONE difference and the rest of the corpus
-# stays identical — otherwise a passing diff would prove nothing.
-write_responder() {
-  cat >"$WORK_DIR/responder.sh" <<'RESPONDER'
-#!/usr/bin/env bash
-set -uo pipefail
-base="$1"; method="$2"; path="$3"
-seed_base="${SEED_BASE:-}"; seed_route="${SEED_ROUTE:-}"
-status="401"; extra_header="cache-control: no-store"; detail="Credentials required"
-apply_seed() {
-  local target_base="$1" seeded_status="$2" seeded_header="$3" seeded_detail="$4"
-  [ -n "$target_base" ] && [ "$base" = "$target_base" ] \
-    && [ "$seed_route" = "$method $path" ] || return
-  [ -n "$seeded_status" ] && status="$seeded_status"
-  [ -n "$seeded_header" ] && extra_header="$seeded_header"
-  [ -n "$seeded_detail" ] && detail="$seeded_detail"
-}
-apply_seed "$seed_base" "${SEED_STATUS:-}" "${SEED_HEADER:-}" "${SEED_DETAIL:-}"
-apply_seed "${SECOND_SEED_BASE:-}" "${SECOND_SEED_STATUS:-}" \
-  "${SECOND_SEED_HEADER:-}" "${SECOND_SEED_DETAIL:-}"
-printf '%s\n' "$status"
-printf 'content-type: application/problem+json\n'
-printf '%s\n' "$extra_header"
-# Volatile on every request AND different between the two bases on purpose:
-# normalisation is the thing that has to make these compare equal.
-printf 'date: %s\n' "$(date -u +%s)-$base"
-printf 'x-request-id: %s\n' "req-${RANDOM}-$base"
-printf '\n'
-jq -nc --arg d "$detail" --arg r "rid-${RANDOM}-$base" \
-  '{title: "Unauthorized", status: 401, detail: $d, request_id: $r}'
-RESPONDER
-  chmod +x "$WORK_DIR/responder.sh"
-}
-
-# Runs the lane against the fixtures. First argument is the contract path;
-# every remaining argument is a VAR=value the run is given. `env` rather than an
-# assignment prefix, because a prefix is parsed before "$@" expands.
-run_lane() {
-  local contract="$1"; shift
-  env PARITY_OPENAPI="$contract" PARITY_PROBE="$WORK_DIR/responder.sh" \
-    SEED_BASE="$BASE_B" "$@" bash "$LANE" >"$WORK_DIR/out" 2>&1
-  printf '%s' "$?"
-}
-
-# The lane's own output, for a test that asserts on what it said.
-lane_output() { cat "$WORK_DIR/out"; }
 
 CONTRACT="$WORK_DIR/openapi.json"
 EMPTY_CONTRACT="$WORK_DIR/openapi-empty.json"
@@ -282,6 +212,23 @@ else
   bad "a 404 not in the register still fails" "exit $status: $(lane_output)"
 fi
 
+# A mounted route may legitimately answer 404, and reading the status alone
+# called three of them missing. An OPEN route has no auth to refuse, so its
+# handler runs against the placeholder segment, finds nothing, and answers a
+# correct not-found with its own envelope. That is a mounted route, and RECORD
+# mode must say so. The router's own unmatched-route answer is what absence
+# looks like, and the seeded envelope here is deliberately not it.
+status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
+  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
+  SEED_ROUTE="POST $(concrete "$FIXTURE_ROUTE_PARAM")" SEED_STATUS="404" \
+  SEED_DETAIL="No such session" \
+  BASE_URL="$BASE_A" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
+if [ "$status" = "0" ] && ! lane_output | grep -qF "not mounted"; then
+  ok "a handler's own 404 is a mounted route, not a missing one"
+else
+  bad "a handler's own 404 is a mounted route" "exit $status: $(lane_output)"
+fi
+
 # COMPARE mode must read the register too. It did not: RECORD consulted it and
 # COMPARE diffed every route blind, so a difference the register DECLARES — the
 # case the register exists for, one daemon deliberately not serving what the
@@ -299,12 +246,9 @@ declared_compare_case \
   SEED_BASE="$BASE_A" SEED_STATUS="404" \
   SECOND_SEED_BASE="$BASE_B" SECOND_SEED_STATUS="000"
 
-# Only the absence status is declared. The serving response and the 404
-# response must otherwise carry the same canonical snapshot.
-declared_compare_case \
-  "a declared 404 does not hide serving-side header drift" fail "disagree" \
-  SEED_BASE="$BASE_B" SEED_STATUS="404" \
-  SECOND_SEED_BASE="$BASE_A" SECOND_SEED_HEADER="cache-control: max-age=60"
+# The absent side must look like THIS daemon's unmatched-route answer. A 404 a
+# handler authored — carrying an envelope and a body — is not a route absence,
+# and the register does not declare it.
 declared_compare_case \
   "a declared 404 does not hide an arbitrary absence body" fail "disagree" \
   SEED_BASE="$BASE_A" SEED_STATUS="404" SEED_DETAIL="Not a route absence"

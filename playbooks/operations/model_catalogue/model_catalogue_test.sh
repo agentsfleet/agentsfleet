@@ -167,7 +167,12 @@ test_scripts_print_no_credentials() {
   dir="$(make_sandbox "$name")"
   output="$(run_gate "$dir" ACTION=diff ENV=dev ALLOW_VAULT_READS=1 || true)"
   # The stubbed vault returns a connection string; it must never be echoed.
-  if printf '%s' "$output" | grep -q 'postgres://stub'; then
+  #
+  # A here-string and not a pipe. Under `set -o pipefail` a `grep -q` that
+  # MATCHES exits before the writer has finished, the writer takes SIGPIPE, and
+  # the pipeline reports 141 — so a leaked credential would have inverted this
+  # test into a pass. There is no pipe to break here.
+  if grep -q 'postgres://stub' <<<"$output"; then
     bad "$name" "a step printed the connection string"
   else
     ok "$name"
@@ -199,10 +204,16 @@ test_verify_fails_on_empty_catalogue() {
 
   # An empty catalogue means every fleet has no model to run on. Verify must
   # refuse, and NAME the count, so a skipped priming cannot be recorded green.
+  #
+  # The row-count check below reads `$out` through a here-string rather than a
+  # pipe, for the reason given in `scripts_print_no_credentials`: piping into
+  # `grep -q` under `pipefail` fails the pipeline with SIGPIPE exactly when the
+  # match SUCCEEDS, which reported this assertion as "did not name the row
+  # count" while the count was named.
   out="$(run_step "$empty" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 || true)"
   if run_step "$empty" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
     bad "$name" "verify passed against a catalogue reporting 0 rows"
-  elif ! printf '%s' "$out" | grep -q '0 rows'; then
+  elif ! grep -q '0 rows' <<<"$out"; then
     bad "$name" "verify failed but did not name the row count it found"
   elif run_step "$populated" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
     ok "$name"

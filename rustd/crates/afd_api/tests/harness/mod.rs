@@ -58,6 +58,7 @@ use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
+use afd_credential::provider::Providers;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
@@ -92,8 +93,9 @@ use object_store::memory::InMemory;
 
 mod readiness;
 mod stubs_ingress;
+mod stubs_provider;
 
-use self::readiness::{unreachable_pool, unreachable_queue};
+use self::readiness::{NOWHERE_GITHUB, unreachable_pool, unreachable_queue};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
@@ -102,6 +104,7 @@ mod support;
 pub(crate) mod webhook;
 
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
+pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
 /// Where this fixture deployment's schedule fires would arrive.
@@ -234,6 +237,9 @@ pub(crate) struct Fleet {
     memories: Memories,
     billing: Billing,
     catalogue: Models,
+    /// The tenant provider store: the same production value, over a pool that
+    /// answers nothing and a fixture key that opens nothing.
+    providers: HarnessProviders,
     runner_lease_history: RunnerLeaseHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
@@ -274,5 +280,6 @@ impl CredentialDirectory for Directory {
 const DEFAULT_STREAM_CEILING: usize = 64;
 
 mod fleet;
+mod fleet_seams;
 
 mod services;

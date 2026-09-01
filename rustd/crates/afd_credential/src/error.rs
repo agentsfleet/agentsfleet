@@ -72,6 +72,24 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
+
+    #[error("could not draw the entropy a registry entry is minted from")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    #[error("a minted registry-entry identifier was not well-formed")]
+    Mint {
+        #[source]
+        source: afd_core::error::Error,
+    },
+
+    #[error("the credential directory would not describe a registry page's rows")]
+    Directory {
+        #[source]
+        source: afd_vault::Error,
+    },
 }
 
 impl Error {
@@ -85,9 +103,13 @@ impl Error {
             ErrorKind::Datastore { .. } => {
                 (error_code::INTERNAL_DB_UNAVAILABLE, DETAIL_UNAVAILABLE)
             }
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR)
-            }
+            // `Directory` joins them because it can only BE one of them: the
+            // describe read fails on a datastore that would not answer or a
+            // row whose columns are not the types this build reads, and it
+            // decrypts nothing that could fail differently.
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Directory { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
             // The provider family answers one code, matching what
             // `service_billing.zig` logs for the whole of it. The finer
             // `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
@@ -111,6 +133,13 @@ impl Error {
             // shape is wrong answers this one — the shape is a fact the
             // operator who stored it can act on.
             ErrorKind::VaultDataInvalid => (error_code::VAULT_DATA_INVALID, DETAIL_VAULT_INVALID),
+            // Two failures of this instance rather than of its input: a host
+            // that cannot draw entropy, and a mint that produced something
+            // `Uuid7` refuses. Neither is the caller's to correct, and both
+            // answer the same internal code `afd_tenant` gives them.
+            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
+                (error_code::INTERNAL_OPERATION_FAILED, DETAIL_DATABASE_ERROR)
+            }
             // The one provider-family failure an operator can ACT on: the
             // fleet named a credential and nobody stored it.
             ErrorKind::CredentialMissing => (
@@ -138,7 +167,15 @@ impl Error {
     /// problem and answers 503, where everything else here is a 500.
     #[must_use]
     pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Datastore { .. })
+        match self.kind() {
+            ErrorKind::Datastore { .. } => true,
+            // An outage reached through the credential directory is the same
+            // outage. Answering 500 here and 503 one statement earlier would
+            // make the status depend on which read noticed first, which is not
+            // a distinction an operator or a retrying client can use.
+            ErrorKind::Directory { source } => source.is_datastore_unavailable(),
+            _otherwise => false,
+        }
     }
 
     /// Whether this failure is a stored-configuration fault a human must fix.
@@ -188,6 +225,7 @@ const DETAIL_CREDENTIAL_MISSING: &str =
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
+    afd_vault::Error => Directory,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -251,6 +289,22 @@ pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
 /// Reports a stored credential body that is not an addressable object.
 pub(crate) fn vault_data_invalid() -> Error {
     ErrorKind::VaultDataInvalid.into()
+}
+
+/// Reports a host that could not draw entropy for a minted identifier.
+///
+/// A `map_err` that ADDS what the call site alone knows — WHICH mint drained —
+/// with the cause riding through as `#[source]`, per `RUST_ERROR_STANDARD`
+/// rule 3. Not an `error_lifts!` entry: `afd_crypto::error::Error` already
+/// means "an envelope would not open" on this crate's vault path, and one
+/// `From` cannot mean both.
+pub(crate) fn entropy_drained(source: afd_crypto::error::Error) -> Error {
+    ErrorKind::Entropy { source }.into()
+}
+
+/// Reports a minted identifier the domain type refused.
+pub(crate) fn mint_failed(source: afd_core::error::Error) -> Error {
+    ErrorKind::Mint { source }.into()
 }
 
 /// Reports a declared credential with no vault row.

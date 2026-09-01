@@ -66,7 +66,9 @@ use tokio as _;
 pub mod error;
 mod load;
 
+mod classified;
 mod delete;
+mod describe;
 mod projection;
 mod read;
 mod secret;
@@ -80,7 +82,9 @@ use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 
+pub use self::classified::Classified;
 pub use self::delete::Deleted;
+pub use self::describe::Descriptor;
 pub use self::error::{Error, Result};
 pub use self::projection::Kind;
 pub use self::read::SecretSummary;

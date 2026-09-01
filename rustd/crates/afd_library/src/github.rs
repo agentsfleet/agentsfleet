@@ -1,6 +1,7 @@
 //! GitHub tarball transport and safe archive extraction.
 
 use std::io::Read as _;
+use std::time::Duration;
 
 use flate2::read::GzDecoder;
 use futures_util::StreamExt as _;
@@ -18,6 +19,23 @@ const MAX_COMPRESSED_BYTES: usize = 8 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TAR_ENTRIES: usize = 4096;
 const MAX_ENTRY_BYTES: u64 = 200 * 1024;
+
+/// How long the tarball fetch may spend reaching GitHub.
+///
+/// A deadline at the call site, per Invariant 4, and this is the call site: no
+/// caller above holds one. Without it a GitHub that accepts a connection and
+/// then says nothing parks an onboarding request forever — `reqwest`'s default
+/// is no timeout at all, and the size caps above bound only how much this
+/// reads, never how long it waits to read it.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long the whole fetch may take, connection included.
+///
+/// Generous next to [`CONNECT_TIMEOUT`] because it covers a real download of up
+/// to [`MAX_COMPRESSED_BYTES`] over whatever link the daemon has, and the two
+/// differ for that reason: an unreachable host is decided in seconds, a slow
+/// one is given the minute a large bundle honestly needs.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A validated GitHub `owner/repository` pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +88,8 @@ impl GithubSource {
             return Err(SourceFailure::InvalidReference.into());
         }
         let client = reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(Error::Github)?;

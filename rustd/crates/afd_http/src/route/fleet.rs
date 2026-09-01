@@ -9,7 +9,7 @@
 use afd_auth::Scope;
 
 use super::path::fleet_path;
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const FLEET_READ: &[Scope] = &[Scope::FleetRead];
 const FLEET_WRITE: &[Scope] = &[Scope::FleetWrite];
@@ -64,6 +64,25 @@ impl FleetRoute {
         Self::Grants,
         Self::Grant,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// No `PUT` sits beside either `PATCH`. A fleet and a schedule are both
+    /// edited field by field, and a whole-row replace would let a caller
+    /// silently drop the upstream handle the schedule sync reconciles against
+    /// — the reason is stated once more beside `Schedules` in [`Self::meta`].
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Events | Self::EventsStream | Self::Event | Self::Memories | Self::Grants => {
+                &[Verb::Get]
+            }
+            Self::Memory | Self::Grant => &[Verb::Delete],
+            Self::ScheduleSync => &[Verb::Post],
+            Self::Messages | Self::Schedules => &[Verb::Get, Verb::Post],
+            Self::Detail | Self::Schedule => &[Verb::Get, Verb::Patch, Verb::Delete],
+        }
+    }
 
     /// Reading a thread is a read and steering it is a write; deleting the
     /// fleet outranks both. Forgetting a memory takes the write scope because

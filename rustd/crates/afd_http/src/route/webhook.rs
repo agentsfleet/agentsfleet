@@ -5,7 +5,7 @@
 //! before the handler runs. They carry no capability scope because there is no
 //! principal to hold one — the sender proves itself, not a person.
 
-use super::{Guard, NONE, RouteClass, RouteMeta, Scopes};
+use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 
 /// Signed inbound deliveries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,6 +34,16 @@ impl WebhookRoute {
         Self::AppIngress,
         Self::QstashSchedules,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// `POST` throughout, and it could not be otherwise: the credential is a
+    /// signature over the body, so a delivery that carries no body carries no
+    /// proof and there is nothing for a `GET` to authenticate.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        &[Verb::Post]
+    }
 
     /// The guard IS the authentication here, which is why it varies per route
     /// while the scope never does.

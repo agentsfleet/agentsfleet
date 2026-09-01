@@ -13,6 +13,43 @@ pub enum SourceKind {
     Github,
 }
 
+/// The stored and accepted spelling of a template source.
+const KIND_TEMPLATE: &str = "template";
+
+/// The stored and accepted spelling of an upload source.
+const KIND_UPLOAD: &str = "upload";
+
+/// The stored and accepted spelling of a GitHub source.
+const KIND_GITHUB: &str = "github";
+
+impl SourceKind {
+    /// The stored spelling — the bytes in `source_kind`, and the ones a caller
+    /// names on the wire.
+    ///
+    /// One declaration for both directions, so a kind this daemon WRITES is one
+    /// it would accept back (RULE UFS). A request naming a spelling the store
+    /// never emits would be a round trip that loses the row's own identity.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Template => KIND_TEMPLATE,
+            Self::Upload => KIND_UPLOAD,
+            Self::Github => KIND_GITHUB,
+        }
+    }
+
+    /// The kind a spelling names, or nothing for one this daemon does not serve.
+    ///
+    /// `None` rather than a default: a source kind silently becoming `Upload`
+    /// would skip the fetch a caller asked for and store an empty bundle.
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<Self> {
+        [Self::Template, Self::Upload, Self::Github]
+            .into_iter()
+            .find(|kind| kind.as_str() == raw)
+    }
+}
+
 /// One non-root file supplied by a bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupportFile {

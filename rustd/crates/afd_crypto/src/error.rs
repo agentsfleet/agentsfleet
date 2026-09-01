@@ -12,9 +12,6 @@
 //! Zig daemon collapses them into `DecryptFailed` for the same reason, and both
 //! report `UZ-INTERNAL-003` on the wire.
 
-use std::backtrace::Backtrace;
-use std::fmt::{self, Display, Formatter};
-
 use afd_core::error_code::{self, ErrorCode};
 
 /// The result every fallible function in this crate returns.
@@ -30,12 +27,10 @@ use afd_core::error_code::{self, ErrorCode};
 /// cannot quietly introduce a second error type without saying so.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// A cryptographic operation failed, or a value handed to one was malformed.
-#[derive(Debug)]
-pub struct Error {
-    kind: ErrorKind,
-    backtrace: Backtrace,
-}
+afd_core::error_shell!(
+    /// A cryptographic operation failed, or a value handed to one was malformed.
+    pub struct Error(ErrorKind);
+);
 
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
@@ -67,13 +62,6 @@ pub(crate) enum ErrorKind {
 }
 
 impl Error {
-    pub(crate) fn new(kind: ErrorKind) -> Self {
-        Self {
-            kind,
-            backtrace: Backtrace::capture(),
-        }
-    }
-
     /// Whether the configured master key was not 64 hexadecimal characters.
     ///
     /// Either case decodes — operators paste the key from both — so this asks
@@ -81,7 +69,7 @@ impl Error {
     #[must_use]
     pub fn is_key_hex(&self) -> bool {
         matches!(
-            self.kind,
+            *self.kind(),
             ErrorKind::KeyHexLength { .. } | ErrorKind::KeyHexDigit
         )
     }
@@ -90,7 +78,7 @@ impl Error {
     #[must_use]
     pub fn is_malformed_envelope(&self) -> bool {
         matches!(
-            self.kind,
+            *self.kind(),
             ErrorKind::ComponentLength { .. } | ErrorKind::UnsupportedVersion { .. }
         )
     }
@@ -101,60 +89,29 @@ impl Error {
     /// wrong key from a tampered tag would be a decryption oracle.
     #[must_use]
     pub fn is_open_failed(&self) -> bool {
-        matches!(self.kind, ErrorKind::OpenFailed)
+        matches!(*self.kind(), ErrorKind::OpenFailed)
     }
 
     /// Whether a message authentication code did not verify.
     #[must_use]
     pub fn is_mac_mismatch(&self) -> bool {
-        matches!(self.kind, ErrorKind::MacMismatch)
+        matches!(*self.kind(), ErrorKind::MacMismatch)
     }
 
     /// Whether the operating system's entropy source refused to produce bytes.
     #[must_use]
     pub fn is_entropy(&self) -> bool {
-        matches!(self.kind, ErrorKind::Entropy)
+        matches!(*self.kind(), ErrorKind::Entropy)
     }
 
     /// The registry code a handler would surface for this failure.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
-        match self.kind {
+        match *self.kind() {
             ErrorKind::ComponentLength { .. } | ErrorKind::UnsupportedVersion { .. } => {
                 error_code::VAULT_DATA_INVALID
             }
             _ => error_code::INTERNAL_OPERATION_FAILED,
         }
-    }
-
-    /// The backtrace captured when this error was constructed.
-    ///
-    /// Empty unless `RUST_BACKTRACE` asked for one — capturing is opt-in, so
-    /// the common path costs a few instructions rather than microseconds.
-    pub fn backtrace(&self) -> &Backtrace {
-        &self.backtrace
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code().as_str(), self.kind)?;
-        if self.backtrace.status() == std::backtrace::BacktraceStatus::Captured {
-            write!(f, "\n{}", self.backtrace)?;
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for Error {
-    /// The failure beneath this one, skipping our own kind.
-    ///
-    /// Returning `&self.kind` here — which every crate in this workspace did —
-    /// makes an error repeat itself: `Display` already renders the kind's
-    /// message, so a chain walker prints it twice before reaching anything new.
-    /// The kind is not a CAUSE of this error, it IS this error; what caused it
-    /// is whatever the kind wraps.
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        std::error::Error::source(&self.kind)
     }
 }

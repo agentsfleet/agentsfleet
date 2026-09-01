@@ -11,7 +11,7 @@
 use afd_auth::Scope;
 
 use super::path::runner_path;
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 /// What a runner may do on its own behalf. One scope, because the plane IS the
 /// authorisation: a runner token is not a capability a person hands out.
@@ -56,6 +56,26 @@ impl RunnerRoute {
         Self::MemoryCapture,
         Self::Bundle,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// Reads are the runner asking what it has been given — its own record, a
+    /// fleet's memory, a bundle by content hash. Everything else is the runner
+    /// reporting, and reporting is a `POST` because each one appends a fact
+    /// rather than replacing a resource.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::SelfRecord | Self::MemoryHydrate | Self::Bundle => &[Verb::Get],
+            Self::Heartbeat
+            | Self::Lease
+            | Self::Report
+            | Self::CredentialsMint
+            | Self::Activity
+            | Self::Renew
+            | Self::MemoryCapture => &[Verb::Post],
+        }
+    }
 
     /// Hydrate and capture share a path and differ by method, so they share an
     /// arm here. They stay two routes because they are two operations — one

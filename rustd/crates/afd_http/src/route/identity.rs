@@ -2,7 +2,7 @@
 
 use super::{
     AdminRoute, AuthRoute, ConnectorRoute, FleetRoute, OpsRoute, RouteMeta, RunnerOpsRoute,
-    RunnerRoute, TenantRoute, WebhookRoute, WorkspaceRoute,
+    RunnerRoute, TenantRoute, Verb, WebhookRoute, WorkspaceRoute,
 };
 
 /// Every route this daemon knows, grouped by the surface it belongs to.
@@ -63,6 +63,36 @@ impl Route {
             Self::Connector(route) => route.meta(),
             Self::Runner(route) => route.meta(),
             Self::RunnerOps(route) => route.meta(),
+        }
+    }
+
+    /// The methods this route answers.
+    ///
+    /// The one fact about a route no middleware reads. It exists because a
+    /// route × method inventory is what the served-versus-documented gate
+    /// compares, and neither half of that comparison can be derived from the
+    /// router: `axum`'s [`MethodRouter`](axum::routing::MethodRouter) is opaque
+    /// once built, so the set a handler was mounted under is unrecoverable
+    /// from the thing that mounts it.
+    ///
+    /// Total at both levels, exactly as [`Self::meta`] is, so a new route
+    /// cannot compile until somebody has said which methods it answers. What
+    /// keeps the declaration honest against the mount is
+    /// `test_declared_verbs_match_the_mounted_router`, which probes the built
+    /// router rather than trusting this table.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Ops(route) => route.verbs(),
+            Self::Auth(route) => route.verbs(),
+            Self::Tenant(route) => route.verbs(),
+            Self::Admin(route) => route.verbs(),
+            Self::Webhook(route) => route.verbs(),
+            Self::Workspace(route) => route.verbs(),
+            Self::Fleet(route) => route.verbs(),
+            Self::Connector(route) => route.verbs(),
+            Self::Runner(route) => route.verbs(),
+            Self::RunnerOps(route) => route.verbs(),
         }
     }
 }

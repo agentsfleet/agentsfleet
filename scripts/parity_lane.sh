@@ -164,81 +164,10 @@ probe() {
   fi
 }
 
-# Header names lowercased, volatile ones dropped, the rest sorted — so two
-# daemons that emit the same contract in a different order compare equal.
-normalize_headers() {
-  local drop_list
-  drop_list="$(printf '%s,' "${VOLATILE_HEADERS[@]}")"
-  awk -v drop="$drop_list" '
-    BEGIN {
-      n = split(drop, names, ",")
-      for (i = 1; i <= n; i++) if (names[i] != "") volatile[names[i]] = 1
-    }
-    /^[^:]+:/ {
-      name = tolower(substr($0, 1, index($0, ":") - 1))
-      value = substr($0, index($0, ":") + 1)
-      gsub(/^[ \t]+|[ \t]+$/, "", value)
-      if (!(name in volatile)) print name ": " value
-    }
-  ' | sort
-}
-
-# Volatile body fields replaced with a constant and keys sorted, so two equal
-# refusals compare equal. Replaced rather than deleted: a daemon that stops
-# emitting `request_id` is a difference this lane should still report.
-# Anything that is not JSON passes through as bytes.
-normalize_body() {
-  local fields
-  fields="$(printf '%s\n' "${VOLATILE_BODY_FIELDS[@]}" | jq -R . | jq -sc .)"
-  local raw
-  raw="$(cat)"
-  printf '%s' "$raw" | jq -S --argjson fields "$fields" \
-    --arg replacement "$VOLATILE_BODY_REPLACEMENT" '
-      walk(
-        if type == "object"
-        then with_entries(if (.key | IN($fields[])) then .value = $replacement else . end)
-        else . end
-      )
-    ' 2>/dev/null || printf '%s' "$raw"
-}
-
-# One route×method against one base URL, rendered as the canonical text the
-# diff compares. Status first so a status difference is the first line to
-# differ, which is what makes the report readable.
-snapshot() {
-  local base="$1" method="$2" path="$3"
-  local raw status
-  raw="$(probe "$base" "$method" "$path")"
-  status="$(printf '%s\n' "$raw" | head -n 1)"
-  printf 'status: %s\n' "$status"
-  printf '%s\n' "$raw" | sed -n '2,/^$/p' | normalize_headers | sed 's/^/header: /'
-  printf 'body:\n'
-  printf '%s\n' "$raw" | sed -n '/^$/,$p' | tail -n +2 | normalize_body
-  printf '\n'
-}
-
-# The status a mounted route can never answer to a bodyless, credential-less
-# probe. Auth refuses before a handler resolves an identifier, so a 404 here
-# means the path is not routed at all — which is precisely the drift a port
-# introduces and the one thing a black-box probe can prove without credentials.
-readonly ROUTE_ABSENT_STATUS="404"
-
-# The register permits only the missing-route status. `000` means the daemon
-# never answered, so it is never an absence divergence. Removing the status
-# line must leave equal snapshots; otherwise a header or body drift would be
-# hidden merely because the other response happened to be a 404.
-declared_absence_only() {
-  local status_a="$1" status_b="$2" snap_a="$3" snap_b="$4"
-  [ "$status_a" != "$NO_ANSWER_STATUS" ] && [ "$status_b" != "$NO_ANSWER_STATUS" ] || return 1
-  if [ "$status_a" = "$ROUTE_ABSENT_STATUS" ]; then
-    [ "$status_b" != "$ROUTE_ABSENT_STATUS" ] || return 1
-  elif [ "$status_b" = "$ROUTE_ABSENT_STATUS" ]; then
-    [ "$status_a" != "$ROUTE_ABSENT_STATUS" ] || return 1
-  else
-    return 1
-  fi
-  cmp -s <(sed '1d' "$snap_a") <(sed '1d' "$snap_b")
-}
+# Response normalisation and route-absence discrimination, sourced rather than
+# spelled here: the file was over the length cap and this is its own concern.
+# shellcheck source=scripts/parity_lane_compare.sh
+. "$SCRIPT_DIR/parity_lane_compare.sh"
 
 # RECORD mode — one daemon, no second to compare against.
 #
@@ -249,20 +178,24 @@ declared_absence_only() {
 # and the full route surface, and is graded by the cutover milestone, not here.
 record_mode() {
   local base="$1" probed=0 declared_count=0 method path concrete status declared
+  local snap="$WORK_DIR/record.snapshot"
   declared="$(declared_divergences)"
   while IFS=$'\t' read -r method path; do
     [ -n "$method" ] || continue
     concrete="$(concrete_path "$path")"
-    status="$(snapshot "$base" "$method" "$concrete" | sed -n 's/^status: //p')"
+    snapshot "$base" "$method" "$concrete" >"$snap"
+    status="$(sed -n 's/^status: //p' "$snap")"
     probed=$((probed + 1))
     if [ "$status" = "$NO_ANSWER_STATUS" ]; then
       err "$method $path — no answer from $base (refused or timed out)"
-    elif [ "$status" = "$ROUTE_ABSENT_STATUS" ]; then
+    elif [ "$status" = "$ROUTE_ABSENT_STATUS" ] \
+      && cmp -s <(sed '1d' "$snap") <(absence_shape "$base" "$method"); then
+      # The router answered, not a handler: this path is genuinely not mounted.
       if printf '%s\n' "$declared" | grep -qxF "$method $path"; then
         declared_count=$((declared_count + 1))
         printf '  declared: %s %s is not served, per the divergence register\n' "$method" "$path"
       else
-        err "$method $path — answered $ROUTE_ABSENT_STATUS, so the route is not mounted"
+        err "$method $path — answered the router's unmatched-route response, so the route is not mounted"
       fi
     fi
   done < <(roster)
@@ -294,12 +227,14 @@ compare_mode() {
     probed=$((probed + 1))
     diff -u "$snap_a" "$snap_b" >"$WORK_DIR/delta" 2>&1 && continue
 
-    # A declared route is still probed. Only its status line may differ; the
-    # predicate also rejects a no-answer response and checks the full envelope.
+    # A declared route is still probed. The predicate rejects a no-answer
+    # response and grades the absent side against its own daemon's
+    # unmatched-route shape.
     status_a="$(sed -n 's/^status: //p' "$snap_a")"
     status_b="$(sed -n 's/^status: //p' "$snap_b")"
     if [ "$is_declared" -eq 1 ] \
-      && declared_absence_only "$status_a" "$status_b" "$snap_a" "$snap_b"; then
+      && declared_absence_only "$status_a" "$status_b" "$snap_a" "$snap_b" \
+        "$base_a" "$base_b" "$method"; then
       declared_count=$((declared_count + 1))
       printf '  declared: %s %s — %s on one side, %s on the other, per the divergence register\n' \
         "$method" "$path" "$status_a" "$status_b"

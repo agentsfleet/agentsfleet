@@ -9,6 +9,8 @@ mod integration_fleet_schedules;
 mod connector_callback_route;
 #[path = "integration_connector_callback.rs"]
 mod integration_connector_callback;
+#[path = "integration_connector_refresh.rs"]
+mod integration_connector_refresh;
 #[path = "integration_connector_status.rs"]
 mod integration_connector_status;
 
@@ -38,6 +40,8 @@ mod integration_fleet_streams;
 mod integration_tenant;
 #[path = "integration_tenant_cli.rs"]
 mod integration_tenant_cli;
+#[path = "integration_tenant_models.rs"]
+mod integration_tenant_models;
 #[path = "integration_tenant_money.rs"]
 mod integration_tenant_money;
 #[path = "integration_workspace_approvals.rs"]
@@ -50,8 +54,14 @@ mod tenant_api_keys;
 mod tenant_billing;
 #[path = "tenant_cli_credential.rs"]
 mod tenant_cli_credential;
+#[path = "tenant_model_entry_input.rs"]
+mod tenant_model_entry_input;
+#[path = "tenant_model_entry_route.rs"]
+mod tenant_model_entry_route;
 #[path = "tenant_models.rs"]
 mod tenant_models;
+#[path = "tenant_provider_route.rs"]
+mod tenant_provider_route;
 #[path = "tenant_shape_parity.rs"]
 mod tenant_shape_parity;
 #[path = "tenant_workspaces.rs"]
@@ -62,6 +72,8 @@ mod workspace_approvals;
 mod workspace_events;
 #[path = "workspace_events_input.rs"]
 mod workspace_events_input;
+#[path = "workspace_fleet_libraries.rs"]
+mod workspace_fleet_libraries;
 #[path = "workspace_fleets.rs"]
 mod workspace_fleets;
 #[path = "workspace_fleets_input.rs"]

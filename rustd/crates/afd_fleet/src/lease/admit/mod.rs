@@ -255,3 +255,60 @@ fn unowned_workspace(workspace_id: &Uuid7) -> Admission {
         afd_core::event::label::TENANT_RESOLVE_FAILED,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking on an unmet precondition"
+    )]
+
+    use super::{Admission, Refusal, unowned_workspace};
+    use afd_core::id::Uuid7;
+
+    /// A workspace identifier. Its VALUE is immaterial here — `unowned_workspace`
+    /// reads it only to name the workspace in the line it logs.
+    fn workspace() -> Uuid7 {
+        Uuid7::parse("019329c5-0000-7000-8000-0000000000f1").expect("the fixture id is canonical")
+    }
+
+    /// A workspace naming no tenant ends the event rather than retrying it.
+    ///
+    /// The distinction the whole [`Admission`] enum exists for: a broken
+    /// foreign key is not a datastore that will answer next time. Waiting does
+    /// not fix it, and answering `Retry` would leave the delivery leasable
+    /// forever — every poll re-reading the same missing row.
+    #[test]
+    fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
+        let decided = unowned_workspace(&workspace());
+
+        assert_eq!(
+            decided,
+            Admission::Refuse(Refusal::labelled(
+                afd_core::event::label::TENANT_RESOLVE_FAILED
+            )),
+            "an unowned workspace must end the event, not leave it leasable"
+        );
+        assert!(
+            !matches!(decided, Admission::Retry(_) | Admission::Await(_)),
+            "a missing foreign key is not something a later poll repairs"
+        );
+    }
+
+    /// The refusal carries the label the events table stores, and no detail.
+    ///
+    /// `failure_label` is what an operator filters a dashboard on, so an empty
+    /// one would make these refusals invisible among every other ended event.
+    #[test]
+    fn the_refusal_carries_the_stored_failure_label() {
+        let expected = Refusal::labelled(afd_core::event::label::TENANT_RESOLVE_FAILED);
+
+        assert_eq!(unowned_workspace(&workspace()), Admission::Refuse(expected));
+        assert!(!expected.label.is_empty());
+        assert!(
+            expected.detail.is_empty(),
+            "this refusal carries no recovery instruction; an operator fixes the \
+             workspace row, which is not something the wire can tell a runner"
+        );
+    }
+}

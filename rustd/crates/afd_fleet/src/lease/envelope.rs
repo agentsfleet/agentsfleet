@@ -167,3 +167,22 @@ pub(crate) fn from_fresh(
         reused: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Kind;
+
+    /// Both kinds spell themselves, and differently.
+    ///
+    /// The value lands in the lease audit row, and it is the only record of
+    /// HOW a runner came to hold a slot — freshly claimed, or swept from an
+    /// instance that stopped renewing. One spelling for both would erase the
+    /// distinction an operator uses to tell a healthy fleet from one whose
+    /// runners keep dying.
+    #[test]
+    fn every_acquisition_kind_records_its_own_spelling() {
+        assert_eq!(Kind::Fresh.as_str(), "fresh");
+        assert_eq!(Kind::Reclaim.as_str(), "reclaim");
+        assert_ne!(Kind::Fresh.as_str(), Kind::Reclaim.as_str());
+    }
+}

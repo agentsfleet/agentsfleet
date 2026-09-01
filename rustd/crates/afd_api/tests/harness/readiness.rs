@@ -26,6 +26,16 @@ const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
 /// A Redis nobody is listening on, for the same reason and on the same port.
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
+/// A GitHub nobody is listening on, for the same reason and on the same port.
+///
+/// The library onboarding fetches a bundle before it writes one, and this
+/// harness holds the ONLY seam that decides where from — so without it a
+/// router-tier test of the onboarding route leaves the machine and asks the
+/// real `api.github.com`, which makes the suite depend on a network, a rate
+/// limit, and a repository staying public. What it is meant to prove is that
+/// the route reaches its pipeline, and a refused connect proves exactly that.
+pub(super) const NOWHERE_GITHUB: &str = "http://127.0.0.1:1";
+
 /// The pool knob naming how long an acquire may spend before it reports.
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 

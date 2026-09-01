@@ -31,6 +31,28 @@ pub const CRED_INTEGRATION_NOT_CONNECTED: ErrorCode = ErrorCode::declare("UZ-CRE
 /// singleton, so its absence is a deployment that was never set up to mint.
 pub const CRED_BROKER_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CRED-002");
 
+/// A self-managed selection named no credential to dial with.
+///
+/// `ERR_PROVIDER_SECRET_REF_REQUIRED` (`error_registry.zig:127`). The first
+/// rung of the write ladder: a tenant asking to bring its own key has to say
+/// which one, and the mode is meaningless without it.
+pub const PROVIDER_SECRET_REF_REQUIRED: ErrorCode = ErrorCode::declare("UZ-PROVIDER-001");
+
+/// The credential a self-managed selection named does not exist.
+///
+/// `ERR_PROVIDER_SECRET_NOT_FOUND` (`error_registry.zig:128`). Distinct from
+/// the rung above because the tenant DID answer: the name is simply not one of
+/// this workspace's, and telling it apart from silence is what makes the
+/// refusal actionable.
+pub const PROVIDER_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-PROVIDER-002");
+
+/// The stored credential is not shaped like a provider key.
+///
+/// `ERR_PROVIDER_SECRET_DATA_MALFORMED` (`error_registry.zig:129`). The row
+/// opened and its contents did not parse. It carries no detail about WHAT did
+/// not parse, deliberately — the value is a credential.
+pub const PROVIDER_SECRET_DATA_MALFORMED: ErrorCode = ErrorCode::declare("UZ-PROVIDER-003");
+
 /// The selected provider/model pair has no priced catalogue row.
 pub const PROVIDER_MODEL_NOT_IN_CATALOGUE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-004");
 
@@ -45,6 +67,44 @@ pub const PROVIDER_MODEL_IN_USE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-007
 
 /// A priced row already has the requested provider/model identity.
 pub const PROVIDER_MODEL_EXISTS: ErrorCode = ErrorCode::declare("UZ-PROVIDER-008");
+
+/// No platform key is configured for the active default.
+///
+/// `ERR_PROVIDER_PLATFORM_KEY_MISSING` (`error_registry.zig:135`). An
+/// operator's fault, not a tenant's: the platform default is a deployment-wide
+/// row and a tenant riding it cannot supply what is missing.
+pub const PROVIDER_PLATFORM_KEY_MISSING: ErrorCode = ErrorCode::declare("UZ-PROVIDER-009");
+
+/// The tenant has no primary workspace to resolve a credential against.
+///
+/// `ERR_TENANT_NO_PRIMARY_WORKSPACE` (`error_registry.zig:136`). A
+/// self-managed key lives in a workspace's vault, so a tenant without one has
+/// nowhere for the key to be.
+pub const TENANT_NO_PRIMARY_WORKSPACE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-010");
+
+/// The entry a tenant asked to remove is the one currently selected.
+///
+/// `ERR_MODELS_DELETE_ACTIVE` (`error_registry.zig:138`). Refused rather than
+/// cascaded: dropping the active entry would leave the selection pointing at
+/// nothing, and choosing a replacement is the tenant's call.
+pub const MODELS_DELETE_ACTIVE: ErrorCode = ErrorCode::declare("UZ-MODELS-001");
+
+/// The credential a registry entry named does not exist.
+///
+/// `ERR_MODELS_SECRET_NOT_FOUND` (`error_registry.zig:139`). The same fact as
+/// `PROVIDER_SECRET_NOT_FOUND` on a different surface, and kept apart because
+/// the two answer different requests with different repairs.
+pub const MODELS_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MODELS-002");
+
+/// The tenant already registered this model against this credential.
+///
+/// `ERR_MODELS_DUPLICATE_ENTRY` (`error_registry.zig:140`).
+pub const MODELS_DUPLICATE_ENTRY: ErrorCode = ErrorCode::declare("UZ-MODELS-003");
+
+/// No registry entry has the requested identifier.
+///
+/// `ERR_MODELS_ENTRY_NOT_FOUND` (`error_registry.zig:141`).
+pub const MODELS_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MODELS-004");
 
 /// The GitHub App installation is gone.
 ///

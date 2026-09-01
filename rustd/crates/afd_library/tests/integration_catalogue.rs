@@ -6,35 +6,21 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
-use afd_library::{DeleteLibrary, Libraries, LibraryPatch, PatchLibrary};
+use afd_crypto::entropy::Entropy;
+use afd_library::{DeleteLibrary, Destination, Libraries, PatchLibrary};
 use std::sync::Arc;
 
-use afd_library::{ImportBody, LibraryImports, SourceKind, SupportFile};
+use afd_library::{LibraryImports, SupportFile};
 use object_store::memory::InMemory;
 
+#[path = "integration_catalogue/fixtures.rs"]
+mod fixtures;
 #[path = "integration_catalogue/source_imports.rs"]
 mod source_imports;
+#[path = "integration_catalogue/workspace_gallery.rs"]
+mod workspace_gallery;
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_725_000_000_000);
-
-const SEED: &str = r#"
-INSERT INTO core.fleet_library (
-    id, name, description, source_repo, source_path, source_ref,
-    required_credentials, required_credentials_reasons, required_tools,
-    network_hosts, visibility, content_hash, skill_markdown, trigger_markdown,
-    support_files_json, created_at, updated_at
-) VALUES
-    ($1, 'Draft Fleet', 'draft description', $3, '', 'main',
-     '["github"]', '{}', '["git"]', '["api.github.com"]', 'draft', NULL,
-     NULL, NULL, NULL, 1, 1),
-    ($2, 'Public Fleet', 'public description', $4, '', 'v1',
-     '[]', '{}', '[]', '[]', 'public', '0123456789abcdef',
-     '# Public Fleet', NULL, '[]', 2, 2)
-"#;
+use self::fixtures::{Fixtures, NOW, published, renamed, source_ref, upload};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -157,7 +143,7 @@ async fn assert_deletion_outcomes(libraries: &Libraries, fixtures: &Fixtures) {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn platform_upload_stages_draft_and_guards_source_ownership() {
     let fixtures = Fixtures::create().await;
-    let imports = LibraryImports::without_store(fixtures.database.clone());
+    let imports = LibraryImports::without_store(fixtures.database.clone(), Entropy::new());
     let libraries = Libraries::new(fixtures.database.clone());
 
     let first_source = upload_initial_draft(&imports, &libraries, &fixtures).await;
@@ -176,10 +162,10 @@ async fn upload_initial_draft(
     let first_source = format!("unit/{}/first", fixtures.suffix);
     let first = upload(&fixtures.upload_id, &first_source, "First body");
     let imported = imports
-        .upload(&first, false, NOW)
+        .upload(&first, Destination::Platform { replace: false }, NOW)
         .await
         .expect("a skill-only upload needs no R2");
-    assert_eq!(imported.name, fixtures.upload_id);
+    assert_eq!(imported.bundle.name, fixtures.upload_id);
     assert!(
         libraries
             .published()
@@ -204,12 +190,12 @@ async fn replace_foreign_source(imports: &LibraryImports, fixtures: &Fixtures, f
     let second_source = format!("unit/{}/second", fixtures.suffix);
     let second = upload(&fixtures.upload_id, &second_source, "Second body");
     let collision = imports
-        .upload(&second, false, NOW)
+        .upload(&second, Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("a foreign source cannot take the slug silently");
     assert_eq!(collision.collision_incumbent(), Some(first_source));
     imports
-        .upload(&second, true, NOW)
+        .upload(&second, Destination::Platform { replace: true }, NOW)
         .await
         .expect("explicit replacement changes the source");
 }
@@ -244,11 +230,15 @@ async fn store_support_snapshot(fixtures: &Fixtures) {
         path: "notes/context.txt".to_owned(),
         content: b"context".to_vec(),
     });
-    let stored = LibraryImports::new(fixtures.database.clone(), Arc::new(InMemory::new()))
-        .upload(&stored, false, NOW)
-        .await
-        .expect("a configured store accepts the canonical snapshot");
-    assert_eq!(stored.support_manifest.len(), 1);
+    let stored = LibraryImports::new(
+        fixtures.database.clone(),
+        Arc::new(InMemory::new()),
+        Entropy::new(),
+    )
+    .upload(&stored, Destination::Platform { replace: false }, NOW)
+    .await
+    .expect("a configured store accepts the canonical snapshot");
+    assert_eq!(stored.bundle.support_manifest.len(), 1);
 }
 
 async fn assert_invalid_imports(imports: &LibraryImports, fixtures: &Fixtures) {
@@ -259,87 +249,25 @@ async fn assert_invalid_imports(imports: &LibraryImports, fixtures: &Fixtures) {
     );
     invalid_utf8.skill_markdown = vec![0xff];
     let error = imports
-        .upload(&invalid_utf8, false, NOW)
+        .upload(&invalid_utf8, Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("non-UTF-8 root documents are refused before persistence");
     assert!(error.to_string().contains("SKILL.md is not UTF-8"));
 
     let unsafe_revision = imports
-        .github("agentsfleet/reviewer", Some("bad/ref"), false, NOW)
+        .github(
+            "agentsfleet/reviewer",
+            Some("bad/ref"),
+            Destination::Platform { replace: false },
+            NOW,
+        )
         .await
         .expect_err("an unsafe revision is refused before a network request");
     assert!(unsafe_revision.to_string().contains("repository reference"));
 
     let unsafe_template = imports
-        .template("nested/name", false, NOW)
+        .template("nested/name", Destination::Platform { replace: false }, NOW)
         .await
         .expect_err("a template cannot escape the fixed first-party owner");
     assert!(unsafe_template.to_string().contains("repository reference"));
-}
-
-fn upload(slug: &str, source_ref: &str, body: &str) -> ImportBody {
-    ImportBody {
-        source_kind: SourceKind::Upload,
-        source_ref: source_ref.to_owned(),
-        source_revision: None,
-        skill_markdown: format!(
-            "---\nname: {slug}\ndescription: {body}\nversion: 1.0.0\n---\nInstructions."
-        )
-        .into_bytes(),
-        trigger_markdown: None,
-        support_files: Vec::new(),
-    }
-}
-
-fn published() -> LibraryPatch {
-    LibraryPatch::new(None, None, None, None, None, Some(true))
-}
-
-fn renamed(name: &str) -> LibraryPatch {
-    LibraryPatch::new(Some(name.to_owned()), None, None, None, None, None)
-}
-
-fn source_ref(revision: &str) -> LibraryPatch {
-    LibraryPatch::new(None, None, None, Some(revision.to_owned()), None, None)
-}
-
-struct Fixtures {
-    lane: TestDatabase,
-    database: Db,
-    suffix: String,
-    draft_id: String,
-    public_id: String,
-    upload_id: String,
-}
-
-impl Fixtures {
-    async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        let suffix = afd_db::test_util::mint_id().replace('-', "");
-        Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            draft_id: format!("draft-{suffix}"),
-            public_id: format!("public-{suffix}"),
-            upload_id: format!("upload-{suffix}"),
-            suffix,
-            lane,
-        }
-    }
-
-    async fn seed(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(SEED)
-            .bind(&self.draft_id)
-            .bind(&self.public_id)
-            .bind(format!("agentsfleet/{}", self.draft_id))
-            .bind(format!("agentsfleet/{}", self.public_id))
-            .execute(&mut *connection)
-            .await
-            .expect("the catalogue fixture seeds");
-    }
-
-    async fn cleanup(self) {
-        drop(self.database);
-        self.lane.cleanup().await;
-    }
 }

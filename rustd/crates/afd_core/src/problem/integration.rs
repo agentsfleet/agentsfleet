@@ -28,6 +28,33 @@ pub(super) const INTEGRATION: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::PROVIDER_SECRET_REF_REQUIRED,
+        status: 400,
+        title: "secret_ref required when mode=self_managed",
+        hint: "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed.",
+        user_message: Some(
+            "Pick a secret to activate. Choose a stored secret before switching to a self-managed model.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_SECRET_NOT_FOUND,
+        status: 400,
+        title: "Secret not found",
+        hint: "The named secret_ref does not exist in the tenant's primary workspace. Create it with `agentsfleet secret create <NAME> --data=@-`.",
+        user_message: Some(
+            "We couldn't find that secret. Store it under Secrets & ENVs, then try again.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_SECRET_DATA_MALFORMED,
+        status: 400,
+        title: "Secret JSON missing required field",
+        hint: "The stored secret must include `provider`. `api_key` is required for a named provider, optional for `openai-compatible`. `model` belongs on the registry entry.",
+        user_message: Some(
+            "That secret is missing required fields. It needs a provider set (and an API key for a named provider) — edit it under Secrets & ENVs and add them.",
+        ),
+    },
+    Problem {
         code: error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
         status: 400,
         title: "Model not in library",
@@ -70,6 +97,60 @@ pub(super) const INTEGRATION: &[Problem] = &[
         hint: "A library row for this provider and model already exists. Edit the existing row instead of adding a duplicate.",
         user_message: Some(
             "That model is already in the library. Edit the existing entry instead of adding a duplicate.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_PLATFORM_KEY_MISSING,
+        status: 500,
+        title: "Platform model key not configured",
+        hint: "No platform default model is configured. An operator must set one via PUT /admin/platform-keys first.",
+        user_message: Some(
+            "Platform defaults aren't set up on this deployment yet. Keep your current provider for now, or contact support.",
+        ),
+    },
+    Problem {
+        code: error_code::TENANT_NO_PRIMARY_WORKSPACE,
+        status: 500,
+        title: "Tenant has no primary workspace",
+        hint: "This tenant has no primary workspace, which should never happen. Contact support with the request id.",
+        user_message: Some(
+            "Something's off with your account setup. Contact support with the request id below.",
+        ),
+    },
+    Problem {
+        code: error_code::MODELS_DELETE_ACTIVE,
+        status: 409,
+        title: "Cannot delete the active model entry",
+        hint: "This entry is the tenant's current active selection. Switch to a different entry first, then delete this one.",
+        user_message: Some(
+            "This is your active model — switch to a different one first, then remove this entry.",
+        ),
+    },
+    Problem {
+        code: error_code::MODELS_SECRET_NOT_FOUND,
+        status: 404,
+        title: "Referenced secret not found",
+        hint: "POST/PATCH secret_ref does not name a vault secret in the tenant's primary workspace. Store the secret first, or pick an existing one.",
+        user_message: Some(
+            "We couldn't find that key. Store it under Secrets & ENVs first, or pick an existing key.",
+        ),
+    },
+    Problem {
+        code: error_code::MODELS_DUPLICATE_ENTRY,
+        status: 409,
+        title: "Model entry already exists",
+        hint: "This model and key pair is already registered for this tenant. Edit the existing entry instead.",
+        user_message: Some(
+            "You already have this model registered with that key. Edit the existing entry instead.",
+        ),
+    },
+    Problem {
+        code: error_code::MODELS_ENTRY_NOT_FOUND,
+        status: 404,
+        title: "Model entry not found",
+        hint: "No model entry matches this id for this tenant. It may already be deleted — refresh the list.",
+        user_message: Some(
+            "We couldn't find that model entry. It may have already been removed — refresh the list.",
         ),
     },
     Problem {
