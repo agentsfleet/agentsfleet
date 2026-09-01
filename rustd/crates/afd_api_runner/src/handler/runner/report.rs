@@ -20,10 +20,21 @@
 //! on. Only a datastore failure is worth a retry, and that arrives as a 503
 //! through the transport class the code carries, which is what the runner
 //! already backs off on.
+//!
+//! # Why the run's telemetry is described HERE and not where it settled
+//!
+//! A settled report is the one moment this daemon knows what a whole run cost
+//! and how long it took, and two records are owed for it: a product event and
+//! a delivery span. Neither is written on the money path. `afd_fleet` answers
+//! with the facts — the charge, and the identity the lease row resolved — and
+//! this handler decides what to say about them, so a lease plane stays usable
+//! by a process with no exporter and no analytics project configured.
 
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-use afd_observability::Telemetry;
+use afd_fleet::lease::report::Reconciled;
+use afd_observability::{Delivery, Telemetry};
 use afd_wire::report::{ReportRequest, ReportResponse};
 use axum::Json;
 use axum::body::Bytes;
@@ -82,8 +93,37 @@ pub(crate) async fn handle<D: Services>(
                 exit_status: request.outcome.as_str().to_owned(),
                 time_to_first_token_ms: u64::from(request.telemetry.time_to_first_token_ms),
             });
+            // Read here rather than reused from `services.now()`: that instant
+            // was taken BEFORE the settle, and the span's end is the moment the
+            // run's record actually closed. The Zig reads its clock at the same
+            // point, for the same reason.
+            delivery_of(&settled, &request).record(SystemTime::now());
             Json(ReportResponse { ok: true }).into_response()
         }
         Err(error) => refuse(&error, EVENT),
+    }
+}
+
+/// The finished run, as the span that describes it.
+///
+/// Borrowed from both halves the settle produced: the lease row's identity,
+/// which only the plane could resolve, and the runner's own counts, which only
+/// the request carries.
+///
+/// Input tokens are SUMMED with the cached ones because the standard's
+/// `gen_ai.usage.input_tokens` already includes the cached portion — cache
+/// detail is its own subset metric, never a third additive direction.
+fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> Delivery<'a> {
+    Delivery {
+        tenant_id: settled.tenant_id.as_str(),
+        workspace_id: settled.workspace_id.as_str(),
+        fleet_id: settled.fleet_id.as_str(),
+        event_id: &settled.event_id,
+        posture: &settled.posture,
+        provider: &settled.provider,
+        model: &settled.model,
+        input_tokens: u64::from(request.input_tokens) + u64::from(request.cached_input_tokens),
+        output_tokens: u64::from(request.output_tokens),
+        wall: Duration::from_millis(request.telemetry.wall_ms),
     }
 }

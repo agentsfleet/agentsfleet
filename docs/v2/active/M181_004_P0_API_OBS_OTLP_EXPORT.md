@@ -97,12 +97,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — The vocabulary and the delivery span
+### §1 — The vocabulary and the delivery span — DONE
 
 The Zig daemon opens spans in exactly two production files. The per-request server span is already ported; `SPAN_FLEET_DELIVERY` is not, and it is SYNTHESIZED — built retro-dated from a recorded start epoch plus a capped wall duration where a runner reports completion. Under it sits the vocabulary: `afd_observability::semconv` carries 6 constants against the Zig module's 74, and the 68 missing ones are precisely the GenAI/cost/fleet keys the delivery span's attributes and the census's label columns are made of. They land here rather than earlier because constants ahead of their consumers are dead code at write time (RULE NDC).
 
-- **Dimension 1.1** — the attribute vocabulary is complete: every attribute key the census's label columns name, and every key the delivery span carries, resolves to a `semconv` constant rather than a string literal → Test `test_semconv_covers_every_census_label`
-- **Dimension 1.2** — the fleet-delivery span is emitted where a runner reports completion, carrying operation, agent, provider, model, token counts, posture, workspace, tenant and event → Test `test_delivery_span_attributes`
+- **Dimension 1.1** — the attribute vocabulary is complete: every attribute key the census's label columns name, and every key the delivery span carries, resolves to a `semconv` constant rather than a string literal → Test `every_census_label_resolves_to_a_constant` — **DONE** (`afd_observability::semconv`, with `no_key_is_spelled_twice` and `every_delivery_span_key_is_namespaced` beside it)
+- **Dimension 1.2** — the fleet-delivery span is emitted where a runner reports completion, carrying operation, agent, provider, model, token counts, posture, workspace, tenant and event → Test `the_delivery_span_carries_every_declared_key` — **DONE** (`afd_observability::delivery`, recorded at `afd_api_runner`'s report handler; `the_delivery_span_is_retro_dated_from_the_reported_duration` and `the_delivery_span_is_a_root` carry the shape)
 
 ### §2 — The producers
 
@@ -189,8 +189,8 @@ No product-analytics changes.
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | unit | `test_semconv_covers_every_census_label` | every census label column and delivery-span key resolves to a constant; the diff of the two sets is empty both ways |
-| 1.2 | unit | `test_delivery_span_attributes` | the span carries the nine declared attributes, retro-dated from the recorded epoch with the capped duration |
+| 1.1 | unit | `every_census_label_resolves_to_a_constant` | every census label column resolves to a constant and every constant to a column — the diff of the two sets is empty both ways |
+| 1.2 | unit | `the_delivery_span_carries_every_declared_key` | the span carries every declared attribute and no other, retro-dated from the settle by the capped duration, as a root |
 | 2.1 | unit | `test_every_census_family_has_a_producer` | each declared family maps to a reachable producer; a seeded orphan family fails naming it |
 | 3.1 | unit | `test_boot_supervises_otlp_export` | real inventory == declared set; the task joins on shutdown within the drain deadline |
 | 3.2 | unit | `test_otlp_endpoint_knob_precedence` | standard name wins over alias when both set; alias alone still exports |

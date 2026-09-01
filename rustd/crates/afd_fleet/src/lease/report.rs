@@ -46,10 +46,19 @@ const EVENT_SETTLED: &str = "report_settled";
 /// What one settled report leaves its caller with.
 ///
 /// A struct rather than a bare [`Nanos`] because the charge was never the only
-/// thing the call learned. The report names a LEASE; which fleet and workspace
-/// it belonged to is resolved by the load inside, and the caller — which
-/// reports the finished run to product analytics — would otherwise have to run
-/// a second statement for a fact this call already held.
+/// thing the call learned. The report names a LEASE; everything else about the
+/// run — which fleet and workspace and tenant, which event, which model under
+/// which posture — was resolved by the load inside, and the caller would
+/// otherwise run a second statement for facts this call already held.
+///
+/// # Why the identity travels up rather than the telemetry down
+///
+/// Both callers of this verb describe the finished run: one reports it to
+/// product analytics, the other records its delivery span. Neither concern
+/// belongs on the money path — fusing an exporter into it is what leaves
+/// `service_billing.zig` unable to run without one configured — so the money
+/// path answers with the facts and the handler decides what to say about them.
+///
 /// Exhaustive on purpose, where most of this crate's public types are not: a
 /// suite stubbing the lease plane has to ANSWER with one of these, and a
 /// `non_exhaustive` struct cannot be built outside the crate that declares it.
@@ -61,6 +70,20 @@ pub struct Reconciled {
     pub fleet_id: Uuid7,
     /// The workspace it belongs to.
     pub workspace_id: Uuid7,
+    /// The tenant whose wallet the settle drew on.
+    pub tenant_id: Uuid7,
+    /// The event that was executed, as the LEASE row records it.
+    ///
+    /// The lease's copy, never the request's. A runner names an event in its
+    /// report and this is the one the lease was issued for; where they could
+    /// differ, the row is the authority.
+    pub event_id: String,
+    /// The billing posture the lease was issued under, in the stored spelling.
+    pub posture: String,
+    /// The provider resolved at issue, as configured.
+    pub provider: String,
+    /// The model resolved at issue.
+    pub model: String,
 }
 
 impl Plane {
@@ -122,6 +145,11 @@ impl Plane {
             charged,
             fleet_id: lease.fleet_id,
             workspace_id: lease.workspace_id,
+            tenant_id: lease.tenant_id,
+            event_id: lease.event_id,
+            posture: lease.posture,
+            provider: lease.provider,
+            model: lease.model,
         })
     }
 
