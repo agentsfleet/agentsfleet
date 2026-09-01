@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 005
 **Date:** Sep 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — on the cutover's critical path: continuity across the swap is graded through these collectors
 **Categories:** INFRA | OBS
 **Batch:** B6 — fully parallel: touches deploy configuration only and serves the export path that exists today
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m181-005-collectors-under-zig`
+**Test Baseline:** `unit=6907 integration=not-run` — `make test-unit-all` exit 0 at `ac5a00157` (rustd cargo workspace 2186 + app 2410 + website 175 + cli 1624 + design-system 512). `verify.integration` is not run at CHORE(open) and will not be run at VERIFY: the stage table declares the slow suites only when the branch carries code, and this diff carries none — deploy configuration, a runbook and a probe. The Acceptance Rubric omits the lane for the same reason.
 **Depends on:** M181_001 (the probe runner this spec's evidence rows ride); nothing in the Rust tree — the Zig daemon's endpoint is already configuration
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — §4's collector-first step of M181_002, split out on Indy's parallelization call
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths
