@@ -34,6 +34,23 @@ const DETAIL_IN_USE: &str =
     "This model is the active platform default; repoint the default before deleting it";
 
 /// Lists every priced catalogue row.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/admin/models",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "list_admin_models",
+    summary = "List models",
+    description = concat!(
+        "Returns every shared model, ordered by provider and model ",
+        "identifier. Requires the `model:read` scope. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = AdminModelsResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
     match services.models().list().await {
         Ok(models) => Json(AdminModelsResponse {
@@ -46,6 +63,26 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
 }
 
 /// Creates one immutable provider/model identity with mutable rates.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/admin/models",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "create_admin_model",
+    summary = "Add a priced model to the catalogue",
+    description = concat!(
+        "Creates one catalogue row. `(provider, model_id)` is the row's ",
+        "immutable identity — change either by deleting and re-adding. The ",
+        "rate cache is repopulated on success, so a new price is live with no ",
+        "restart. Requires the `model:admin` scope. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -80,6 +117,25 @@ pub(crate) async fn create<D: Services>(
 }
 
 /// Replaces one row's mutable context cap and rates.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/admin/models/{id}",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "update_admin_model",
+    summary = "Update a catalogue row's caps and rates",
+    description = concat!(
+        "Rates-only change; `provider` and `model_id` are the row identity ",
+        "and are immutable on this endpoint. The rate cache is repopulated on ",
+        "success. Requires the `model:admin` scope. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn update<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -112,6 +168,25 @@ pub(crate) async fn update<D: Services>(
 }
 
 /// Deletes one row unless the active platform default references it.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/admin/models/{id}",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "delete_admin_model",
+    summary = "Remove a model",
+    description = concat!(
+        "Refuses to remove the active default model. Choose another default ",
+        "first. Requires the `model:admin` scope. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

@@ -40,6 +40,9 @@ pub use afd_http::client;
 pub use afd_http::envelope;
 pub use afd_http::etag;
 pub mod handler;
+// The document generator, compiled only when it is asked for.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 pub use afd_http::request_id;
 pub use afd_http::route;
 pub mod router;

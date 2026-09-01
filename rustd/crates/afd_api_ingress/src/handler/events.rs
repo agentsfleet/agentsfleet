@@ -163,6 +163,24 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
 /// refusals — `UZ-WH-020` for a deployment holding no signing secret for this
 /// connector, `UZ-WH-010` for a signature that did not match, `UZ-WH-011` for
 /// one outside its window.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/connectors/{provider}/events",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "slack_events",
+    summary = "Receive Slack events",
+    description = concat!(
+        "Slack sends signed events to this route. Users do not call this ",
+        "route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp ",
+        "outside 5 minutes returns 401 `UZ-SLK-011`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(segment): Path<String>,

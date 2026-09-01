@@ -6,13 +6,13 @@
 //! is reading — the first is a property of the error's code, the second is the
 //! route table's, and the third is the tenant the credential resolved to.
 
-mod api_key;
-mod billing;
-mod cli_credential;
-mod model_entry;
-mod models;
-mod provider;
-mod workspace;
+pub(crate) mod api_key;
+pub(crate) mod billing;
+pub(crate) mod cli_credential;
+pub(crate) mod model_entry;
+pub(crate) mod models;
+pub(crate) mod provider;
+pub(crate) mod workspace;
 
 pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};

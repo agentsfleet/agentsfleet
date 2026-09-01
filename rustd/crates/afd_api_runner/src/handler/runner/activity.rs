@@ -34,6 +34,24 @@ const EVENT: &str = "runner_activity_failed";
 const DETAIL_MALFORMED: &str = "Malformed activity body";
 
 /// Forwards one batch of live-tail frames.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/leases/{lease_id}/activity",
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_publish_activity",
+    summary = "Publish live-tail activity frames",
+    description = concat!(
+        "Frames for the workspace event stream. Answers 202 rather than 200: ",
+        "the frame is accepted for publication, and a subscriber reading it ",
+        "is a separate event from this call returning. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

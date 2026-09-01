@@ -13,6 +13,42 @@ use crate::services::Services;
 
 const EVENT: &str = "runner_leases_failed";
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/fleets/runners/{runner_id}/leases",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "list_fleet_runner_leases",
+    summary = "List a runner's leases",
+    description = concat!(
+        "Platform-admin read of a single runner's lease history, newest ",
+        "first. Each lease is joined to its Fleet event, so outcome and ",
+        "failure cause arrive in one round trip. Stripe-style keyset ",
+        "pagination — `starting_after` is a lease id from a previous page's ",
+        "`next_cursor`. Settled leases are retained for 30 days. The window ",
+        "is measured from settlement, not from acquisition. A lease acquired ",
+        "long ago and settled yesterday keeps its full window. A background ",
+        "sweep deletes them past that window. A lease still running or ",
+        "renewing is never swept. The per-lease activity records ",
+        "(`lease_acquired`, `lease_released`) are swept on the same 30-day ",
+        "window. Each record ages from when it occurred, not from its lease's ",
+        "settlement. A long run's opening record can therefore be pruned ",
+        "shortly before its lease row. The runner's lifecycle activity is ",
+        "kept at any age, so a long-lived runner's feed never empties. A ",
+        "lease whose runner died without reporting is marked expired once it ",
+        "passes the same window. It then keeps its own window, like any ",
+        "settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` ",
+        "are unaffected by any of this. They count transitions as they ",
+        "happen, not surviving rows. A long-lived runner's `leases_acquired` ",
+        "will therefore exceed what this endpoint returns. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,

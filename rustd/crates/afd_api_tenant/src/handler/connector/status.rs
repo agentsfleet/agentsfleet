@@ -56,6 +56,26 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, and a datastore that
 /// would not answer.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/connectors/{provider}",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_status",
+    summary = "Read a connector status",
+    description = concat!(
+        "Returns `connected` or `not_connected` for one provider. Requires ",
+        "the `connector:read` scope. An unknown provider returns 404 `UZ- ",
+        "CONN-004`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -81,6 +101,27 @@ pub(crate) async fn read<D: Services>(
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, a datastore that
 /// would not answer, and a vault that refused the delete.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/connectors/{provider}",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_disconnect",
+    summary = "Disconnect a provider from a workspace",
+    description = concat!(
+        "Removes the workspace's connector handle and event-routing records ",
+        "from `agentsfleet`. Provider authorization remains active outside ",
+        "`agentsfleet`. Repeating this request returns 204. Use Connect to ",
+        "authorize the provider again. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn disconnect<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

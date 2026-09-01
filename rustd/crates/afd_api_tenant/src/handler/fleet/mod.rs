@@ -91,6 +91,26 @@ pub const DETAIL_TENANT_LIBRARY_ID: &str = "tenant_library_id must be a valid UU
 const EMPTY_OBJECT: &[u8] = b"{}";
 
 /// `GET /v1/workspaces/{workspace_id}/fleets` — one page, newest first.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "list_fleets",
+    summary = "List fleets in a workspace",
+    description = concat!(
+        "Returns visible fleets with the newest fleet first. Omit ",
+        "`starting_after` for the first page. Use the returned `next_cursor` ",
+        "to read the next page. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = FleetsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -112,6 +132,28 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleets",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "create_fleet",
+    summary = "Create a fleet",
+    description = concat!(
+        "Creates a fleet from one library entry. Use either ",
+        "`platform_library_id` or `tenant_library_id`. The service creates a ",
+        "default API trigger when the library has no trigger. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = InstalledFleetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 424, description = afd_http::openapi::FAILED_DEPENDENCY),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn install<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

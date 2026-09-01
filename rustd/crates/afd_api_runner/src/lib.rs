@@ -5,7 +5,11 @@
 
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
 
-mod handler;
+pub(crate) mod handler;
+
+// The document generator, compiled only when it is asked for.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 
 use std::sync::Arc;
 

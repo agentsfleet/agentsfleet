@@ -93,6 +93,27 @@ pub(crate) struct ResolvePath {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/approvals` — the queue.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/approvals",
+    tag = afd_http::openapi::tag::APPROVALS,
+    operation_id = "list_workspace_approvals",
+    summary = "List pending approval gates for a workspace",
+    description = concat!(
+        "Returns approval gates oldest-first (oldest is most urgent). Each ",
+        "row surfaces the fleet's proposed action, gathered evidence, blast- ",
+        "radius assessment, and timeout countdown. Filter by fleet, gate ",
+        "kind, or status. Cursor pagination over (created_at, id) so ",
+        "concurrent inserts don't cause silent skips. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ApprovalsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -113,6 +134,24 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// `GET /v1/workspaces/{workspace_id}/approvals/{gate_id}` — one gate.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
+    tag = afd_http::openapi::tag::APPROVALS,
+    operation_id = "get_workspace_approval",
+    summary = "Get a single approval gate by id",
+    description = concat!(
+        "Drives the dashboard detail page. 404 when the gate doesn't exist or ",
+        "belongs to a different workspace. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -126,6 +165,26 @@ pub(crate) async fn detail<D: Services>(
 ///
 /// Two segments where the Zig daemon spelled one — see the route table on why
 /// the decision moved out of the gate id's segment.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
+    tag = afd_http::openapi::tag::APPROVALS,
+    operation_id = "approve_workspace_approval",
+    summary = "Approve a pending request",
+    description = concat!(
+        "Approves a pending request. If two callers resolve it, the first ",
+        "result wins. Other callers receive 409 with the existing result and ",
+        "resolver. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn resolve<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

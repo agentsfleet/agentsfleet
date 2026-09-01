@@ -37,6 +37,23 @@ pub const DETAIL_LIMIT_NOT_NUMERIC: &str = "limit must be a positive integer";
 pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/tenants/me/billing",
+    tag = afd_http::openapi::tag::BILLING,
+    operation_id = "get_tenant_billing",
+    summary = "Read the tenant balance",
+    description = concat!(
+        "Returns the balance shared by every workspace in the tenant. The ",
+        "response also shows whether the balance is empty. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = BillingResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn snapshot<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -59,6 +76,23 @@ pub(crate) async fn snapshot<D: Services>(
 }
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/tenants/me/billing/charges",
+    tag = afd_http::openapi::tag::BILLING,
+    operation_id = "get_tenant_billing_charges",
+    summary = "List tenant charges",
+    description = concat!(
+        "Returns charge records with the newest record first. Use `limit` and ",
+        "`cursor` to read more records. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ChargesResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn charges<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

@@ -96,6 +96,31 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
 /// callback carrying no state or a query this daemon cannot decode, and
 /// `UZ-CONN-001` for a dashboard base that is not a URL.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/connectors/{provider}/callback",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_callback",
+    summary = "Relay a provider callback to the dashboard",
+    description = concat!(
+        "Compatibility URL for provider registrations that still target the ",
+        "API host. It forwards the browser to the dashboard callback with a ",
+        "fixed legacy marker. The authenticated endpoint uses that marker ",
+        "only to echo the old redirect URL during token exchange. This ",
+        "endpoint never exchanges a provider code or changes connector data. ",
+        "New provider registrations use ",
+        "`https://<APP_HOST>/api/connectors/{provider}/callback` for the ",
+        "matching environment. The dashboard posts the current Bearer token ",
+        "to the authenticated callback completion method. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 302, description = afd_http::openapi::FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn relay<D: Services>(
     State(services): State<Arc<D>>,
     Path(provider_segment): Path<String>,
@@ -133,6 +158,30 @@ pub(crate) async fn relay<D: Services>(
 /// else's, `UZ-AUTH-003` for a caller who does not hold the workspace the state
 /// names, `UZ-CONN-001` for a provider this deployment configured no app for,
 /// and the vendor and datastore failures the exchange can raise.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/connectors/{provider}/callback",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_callback_complete",
+    summary = "Complete a provider connection",
+    description = concat!(
+        "The dashboard calls this endpoint after the provider returns to the ",
+        "browser. The caller needs `connector:write` and must be the same ",
+        "person who started the signed connection state. The signed state ",
+        "binds the workspace, a keyed tag of the starter identity, a nonce, ",
+        "and expiry. The endpoint verifies identity and workspace access ",
+        "before consuming the nonce or exchanging a provider code. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 302, description = afd_http::openapi::FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn complete<D: Services>(
     State(services): State<Arc<D>>,
     Acting(principal): Acting,

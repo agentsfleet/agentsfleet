@@ -61,6 +61,36 @@ const CACHE_CONTROL_VALUE: &str = "private, no-cache";
 const VARY_VALUE: &str = "Authorization";
 
 /// `GET /v1/models` — one page of the catalogue, as 200 or a bodyless 304.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/models",
+    tag = afd_http::openapi::tag::MODEL_LIBRARY,
+    operation_id = "get_model_library",
+    summary = "List available models",
+    description = concat!(
+        "Returns models available to the tenant. Each item includes its ",
+        "provider, context limit, and usage fields. An empty library returns ",
+        "an empty array. A bounded keyset page ordered by normalized ",
+        "`model_id`, then normalized `provider`, then an opaque row identity. ",
+        "Every comparison runs under `COLLATE \"C\"`, so the order is byte-wise ",
+        "and stable across locales. Follow `next_cursor` to read the whole ",
+        "catalogue; a client that reads only the first page silently loses ",
+        "every model past it. The response is conditionally revalidated. ",
+        "Every answer carries an `ETag` over the exact bytes served, plus ",
+        "`Cache-Control: private, no-cache` and `Vary: Authorization`. Send ",
+        "the tag back as `If-None-Match` and a match answers `304` with no ",
+        "body and the same headers. `private` is what stops a shared proxy ",
+        "handing one tenant's response to another even though the payload is ",
+        "identical for every authorized caller. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 304, description = afd_http::openapi::NOT_MODIFIED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn catalogue<D: Services>(
     State(services): State<Arc<D>>,
     _identity: PersonIdentity,

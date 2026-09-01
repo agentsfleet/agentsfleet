@@ -38,6 +38,25 @@ const EVENT: &str = "runner_credential_mint_failed";
 const DETAIL_MALFORMED: &str = "Malformed mint request body";
 
 /// Mints one short-lived credential for the child behind this runner.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/credentials/mint",
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_mint_credential",
+    summary = "Mint a credential for a declared tool",
+    description = concat!(
+        "Issued at the moment a tool needs one, scoped to what the lease ",
+        "already proved. The body names no workspace: the credential is ",
+        "minted against the lease the caller holds, so a runner cannot ask ",
+        "for material outside the run it is executing. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = MintCredentialResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

@@ -144,6 +144,25 @@ impl IdentityUser {
 /// signature that did not match, `UZ-WH-011` for one outside its window,
 /// `UZ-WH-030` for a body past the cap, and `UZ-REQ-001` for a verified body
 /// this route cannot read as an event or that names no usable address.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/auth/identity-events/clerk",
+    tag = afd_http::openapi::tag::IDENTITY_EVENTS,
+    operation_id = "auth_identity_event_clerk",
+    summary = "Receive a Clerk account event",
+    description = concat!(
+        "Receives signed account events from Clerk. A `user.created` event ",
+        "creates the user's account and default workspace. Repeated events ",
+        "return `created:false`. Unsupported event types return 200 with ",
+        "`status: ignored`. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     headers: HeaderMap,

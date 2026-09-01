@@ -70,6 +70,24 @@ const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
 /// # Errors
 /// `UZ-WH-030` for a body past the cap, and `UZ-WH-010` for a callback that did
 /// not prove itself.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/ingress/qstash/schedules",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "ingest_qstash_schedule",
+    summary = "Receive a scheduled fire",
+    description = concat!(
+        "Receives a signed fire from Upstash QStash and appends a `cron` ",
+        "event to the target Fleet. A valid duplicate, missing, inactive, or ",
+        "stale fire is accepted without appending an event. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     headers: HeaderMap,

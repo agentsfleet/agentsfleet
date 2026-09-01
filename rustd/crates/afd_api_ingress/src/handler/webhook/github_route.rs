@@ -42,6 +42,28 @@ const EVENT_APPEND: &str = "webhook_github_append_failed";
 /// # Errors
 /// The wall's refusals, and `UZ-WH-002` for a verified body that is not the
 /// event its own header claims.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/webhooks/{fleet_id}/github",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "github_webhook",
+    summary = "Receive a signed GitHub event",
+    description = concat!(
+        "Verifies the body with the `webhook_secret` field from the ",
+        "workspace's `github` secret. Reviewable `pull_request` events and ",
+        "failed completed `workflow_run` events create fleet events. A ",
+        "delivery identifier remains reserved for 72 hours after acceptance. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

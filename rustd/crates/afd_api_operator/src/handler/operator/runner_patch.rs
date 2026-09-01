@@ -36,6 +36,33 @@ enum OrdinaryMutation<'a> {
 }
 
 /// Applies one exactly-one-of runner mutation.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/fleets/runners/{runner_id}",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "patch_fleet_runner",
+    summary = "Administer a fleet runner",
+    description = concat!(
+        "Platform-admin mutation on a single runner. The body carries exactly ",
+        "one of `action` or `assigned_policy`. `action` moves the admin ",
+        "state: `cordon` to cordoned, `drain` to draining, `revoke` to ",
+        "revoked. Revoked is terminal; a revoked runner cannot transition ",
+        "back. `self_test` moves no state. It records a request for the ",
+        "runner to test its own sandbox. The host picks the request up on its ",
+        "next heartbeat and answers on a later one. The reply is the recorded ",
+        "request, never a verdict. A revoked runner refuses it with 409 `UZ- ",
+        "RUN-018`, since it will never heartbeat again. `assigned_policy` re- ",
+        "assigns the runner's policy, and the host picks it up on its next ",
+        "heartbeat. Sending the same policy again changes nothing and records ",
+        "no event. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

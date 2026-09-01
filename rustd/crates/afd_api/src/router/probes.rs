@@ -82,6 +82,21 @@ pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
 /// `GET /healthz` — the process is up and answering.
 ///
 /// Reads no state, touches no dependency. That is the whole contract.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/healthz",
+    tag = afd_http::openapi::tag::HEALTH,
+    operation_id = "healthz",
+    summary = "Liveness check",
+    description = concat!(
+        "Returns 200 as long as the process is alive and able to serve ",
+        "HTTP. Does not probe dependencies — use /readyz for readiness ",
+        "(database + queue). ",
+    ),
+    responses(
+        (status = 200, description = "The process is alive"),
+    ),
+))]
 pub(super) async fn healthz() -> Response {
     // `trace`: an orchestrator hits this every few seconds per instance, so at
     // any level a person leaves on it would be the loudest event in the log
@@ -102,6 +117,23 @@ pub(super) async fn healthz() -> Response {
 /// Answers 503 when it is not, so an orchestrator takes the instance out of
 /// rotation rather than restarting it — the process is fine, its dependencies
 /// are not.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/readyz",
+    tag = afd_http::openapi::tag::HEALTH,
+    operation_id = "readyz",
+    summary = "Readiness probe",
+    description = concat!(
+        "Returns 200 when the database and event queue are available, and ",
+        "503 when either is not. Never shed: an orchestrator that cannot ",
+        "reach this because the instance is busy learns nothing it can act ",
+        "on. ",
+    ),
+    responses(
+        (status = 200, description = "Every dependency this instance needs is reachable"),
+        (status = 503, description = "A dependency this instance needs is unreachable"),
+    ),
+))]
 pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) -> Response {
     let inputs = dependencies.probe().await;
     let ready = ready_decision(inputs);

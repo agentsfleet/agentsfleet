@@ -44,6 +44,28 @@ const DETAIL_DELETE_PUBLISHED: &str =
     "This fleet is published. Unpublish it first, then delete it.";
 
 /// Lists every platform row, including drafts and entries with no bundle.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/admin/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "list_platform_fleet_library",
+    summary = "List the platform Fleet library catalog",
+    description = concat!(
+        "Lists every entry in the global platform catalog. Published, draft, ",
+        "and entries whose bundle was never fetched all appear. Unlike the ",
+        "workspace gallery, this operator view hides nothing: it shows what ",
+        "is live and what still needs work. Requires the `platform- ",
+        "library:write` scope. Metadata only — never bundle markdown, a ",
+        "support-file body, or an object-store key. Each row carries an ",
+        "`etag` that an editor can send as `If-Match` on PATCH. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = AdminLibrariesResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
     match services.libraries().list().await {
         Ok(entries) => Json(AdminLibrariesResponse {
@@ -55,6 +77,36 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
 }
 
 /// Curates, publishes, or withdraws one platform row.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/admin/fleet-libraries/{id}",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "update_platform_fleet_library",
+    summary = "Curate, publish, or unpublish a platform Fleet library entry",
+    description = concat!(
+        "Partial update. `description` and `required_credentials_reasons` are ",
+        "the two fields no bundle can supply, so they are operator-owned: a ",
+        "later bundle refetch never overwrites them. `published` moves the ",
+        "entry between `draft` (stored, invisible to every tenant) and ",
+        "`public` (live in every workspace gallery and installable). ",
+        "Publishing an entry whose bundle was never fetched is refused — a ",
+        "published entry always has something to install. Requires the ",
+        "`platform-library:write` scope. Send `If-Match` with the row's ",
+        "`etag` to reject stale edits before they can repoint the source or ",
+        "unpublish the entry. Omitting the header preserves last-write-wins ",
+        "behavior. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -104,6 +156,28 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
 }
 
 /// Deletes one draft; public entries must be withdrawn first.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/admin/fleet-libraries/{id}",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "delete_platform_fleet_library",
+    summary = "Delete an unpublished platform Fleet library entry",
+    description = concat!(
+        "Removes a catalog entry. Only an entry that is NOT published may be ",
+        "deleted. A live fleet is never taken away from the tenants who can ",
+        "install it, so unpublish it first. Workspaces that already installed ",
+        "the fleet are unaffected: an install snapshots the bundle, so it ",
+        "keeps running. Requires the `platform-library:write` scope. ",
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

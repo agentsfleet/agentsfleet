@@ -74,6 +74,33 @@ pub struct SecretPath {
 /// A name this workspace already holds is refused rather than overwritten, and
 /// the decision is Postgres's: two concurrent creates on one name resolve to
 /// one 201 and one 409 with no window in which both saw the name free.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/secrets",
+    tag = afd_http::openapi::tag::SECRETS,
+    operation_id = "store_workspace_secret",
+    summary = "Store a workspace secret",
+    description = concat!(
+        "Stores an encrypted JSON object. Secret values are never returned. ",
+        "`data` must be a non-empty object no larger than 4 KiB. Larger ",
+        "values return `UZ-VAULT-002`. Strings, arrays, scalars, and empty ",
+        "objects return `UZ-VAULT-001`. Creating claims a name that is free. ",
+        "A name already held in this workspace returns `UZ-VAULT-005` and ",
+        "nothing is written. Replace the existing secret's whole body with ",
+        "`PUT` on the item route instead. The database decides the winner, so ",
+        "two concurrent creates on one name resolve to one `201` and one ",
+        "`409`. ",
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = SecretsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn store<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -104,6 +131,25 @@ pub(crate) async fn store<D: Services>(
 ///
 /// Answers from the projection columns alone. No envelope is opened, and the
 /// half of the store this reaches holds no key with which to open one.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/secrets",
+    tag = afd_http::openapi::tag::SECRETS,
+    operation_id = "list_workspace_secrets",
+    summary = "List secrets stored for a workspace",
+    description = concat!(
+        "Returns secret names and non-secret details. Secret values are never ",
+        "returned. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -125,6 +171,33 @@ pub(crate) async fn list<D: Services>(
 /// A name this workspace does not hold is a 404 and creates nothing: claiming a
 /// name is [`store`]'s sole job, and an upsert here would resurrect a
 /// credential a concurrent delete had just removed.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/v1/workspaces/{workspace_id}/secrets/{name}",
+    tag = afd_http::openapi::tag::SECRETS,
+    operation_id = "replace_workspace_secret",
+    summary = "Replace a secret's stored body",
+    description = concat!(
+        "Replaces the stored object in full. Send the secret you want stored, ",
+        "in the same `data` shape `create` takes — a field you omit is absent ",
+        "from the secret afterwards. Replacement is total by design. A stored ",
+        "secret is never readable, so a partial write cannot be reasoned ",
+        "about by the caller. Every field needed to rebuild the body is ",
+        "already returned by `GET /v1/workspaces/{workspace_id}/secrets`. The ",
+        "secret itself is the one exception, and this call supplies it. The ",
+        "name must already be held. A name this workspace does not have ",
+        "returns `UZ-VAULT-003` and nothing is created — claiming a name is ",
+        "`create`'s job. ",
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn replace<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -159,6 +232,22 @@ pub(crate) async fn replace<D: Services>(
 /// A credential the tenant's model registry still names is a 409 carrying the
 /// COUNT. The count comes from the statement that locked those entries, so it
 /// cannot have changed between the decision and this sentence.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/secrets/{name}",
+    tag = afd_http::openapi::tag::SECRETS,
+    operation_id = "delete_workspace_secret",
+    summary = "Delete a secret from the workspace vault",
+    description = "Idempotent — returns 204 whether or not the secret existed. ",
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+    ),
+))]
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
