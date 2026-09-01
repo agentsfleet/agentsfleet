@@ -21,6 +21,12 @@ primary_region = "iad"
   API_HTTP_WORKERS = "1"
   API_URL = "https://api-dev.agentsfleet.net"
   APP_URL = "https://app-dev.agentsfleet.net"
+  # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
+  # not a credential — so it lives here rather than in the 1Password-staged
+  # secrets list. agentsfleetd builds `{CLERK_API_BASE}/users/{id}` directly
+  # (afd_identity/src/provider.rs) with no version segment inserted for it,
+  # so the value has to carry `/v1` itself.
+  CLERK_API_BASE = "https://api.clerk.com/v1"
 
 [[vm]]
   size = "shared-cpu-1x"
