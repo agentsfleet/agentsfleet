@@ -9,6 +9,8 @@ mod integration_fleet_schedules;
 mod connector_callback_route;
 #[path = "integration_connector_callback.rs"]
 mod integration_connector_callback;
+#[path = "integration_connector_refresh.rs"]
+mod integration_connector_refresh;
 #[path = "integration_connector_status.rs"]
 mod integration_connector_status;
 

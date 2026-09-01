@@ -292,25 +292,6 @@ impl Fixture {
         .expect("the platform default seeds");
     }
 
-    /// The row `core.platform_provider_defaults` holds for `provider`.
-    ///
-    /// For the cross-check a race-free assertion on the live default needs: the
-    /// table has no tenant column and the read is `WHERE active = true LIMIT 1`,
-    /// so a test cannot assert WHICH default it gets — but it can assert that
-    /// whichever it got was rendered from that provider's own row rather than
-    /// substituted from a built-in.
-    async fn stored_default(&self, provider: &str) -> Option<(String, i32)> {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_as::<_, (String, i32)>(
-            "SELECT model, context_cap_tokens FROM core.platform_provider_defaults \
-             WHERE provider = $1 AND active = TRUE",
-        )
-        .bind(provider)
-        .fetch_optional(&mut *connection)
-        .await
-        .expect("the default read answers")
-    }
-
     /// Drops the default this fixture published, freeing its workspace.
     async fn clear_platform_default(&self, provider: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
