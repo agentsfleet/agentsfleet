@@ -15,6 +15,16 @@ jobs:
   deploy-fly:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The collector hop. The daemon's OTLP endpoint points HERE, and the
+    # collector holds the Grafana Cloud credentials and forwards. Named at job
+    # scope because the address is read by the daemon's staged secret and the
+    # app name by the collector's own deploy, and a repoint that updated one
+    # spelling and not the other would send telemetry to an app that is not
+    # listening.
+    env:
+      OTLP_COLLECTOR_APP: otelcol-dev
+      OTLP_COLLECTOR_DIR: deploy/fly/otelcol-dev
+      OTLP_COLLECTOR_ENDPOINT: http://otelcol-dev.internal:4318
     steps:
       - uses: actions/checkout@v7
 
@@ -41,6 +51,49 @@ jobs:
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
+      - name: Ensure the OTLP collector is running
+        # The collector must be serving BEFORE the daemon's endpoint is
+        # repointed at it, or the first export after the next deploy lands
+        # nowhere. Same shape as the cloudflared tunnel step in
+        # deploy-dev-verify.yml: sync secrets from the vault, then restart or
+        # deploy from scratch.
+        #
+        # The three GRAFANA_OTLP_* values staged here are the COLLECTOR's
+        # upstream credentials — the real Grafana Cloud endpoint and its Basic
+        # auth pair. The daemon keeps its own copy of the pair but no longer
+        # reaches Grafana with them; it reaches this app, which ignores the
+        # inbound header and re-authenticates upstream with these.
+        #
+        # A failed deploy here is NOT swallowed, unlike the tunnel step's
+        # `|| true`. A collector that is not serving means every dashboard goes
+        # dark at the next daemon deploy, and continuity across the swap is the
+        # property this whole milestone is graded on.
+        run: |
+          flyctl secrets set \
+            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
+            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
+            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            --app "$OTLP_COLLECTOR_APP"
+          MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
+          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+          TOTAL="$(echo "$MACHINES" | jq 'length')"
+          echo "  machines: $RUNNING/$TOTAL running"
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "  no machines found — deploying $OTLP_COLLECTOR_APP from scratch..."
+            # Positional path = build context; without it flyctl uses CWD and
+            # the Dockerfile's `COPY config.yml` fails.
+            flyctl deploy "$OTLP_COLLECTOR_DIR" --app "$OTLP_COLLECTOR_APP" --wait-timeout 60
+          elif [ "$RUNNING" -eq 0 ]; then
+            echo "  no running machines — restarting..."
+            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
+              flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
+            done
+          else
+            echo "  collector is running"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \

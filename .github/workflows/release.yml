@@ -488,6 +488,14 @@ jobs:
     permissions:
       contents: read
       packages: read
+    # The collector hop, production side. Same shape as deploy-dev-fly.yml: the
+    # daemon's OTLP endpoint points at this app, and the collector holds the
+    # Grafana Cloud credentials and forwards. Named at job scope so a repoint
+    # cannot update one spelling and miss the other.
+    env:
+      OTLP_COLLECTOR_APP: otelcol-prod
+      OTLP_COLLECTOR_DIR: deploy/fly/otelcol-prod
+      OTLP_COLLECTOR_ENDPOINT: http://otelcol-prod.internal:4318
     steps:
       - uses: actions/checkout@v7
 
@@ -536,7 +544,7 @@ jobs:
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api.agentsfleet.net" \
-            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
             R2_ACCOUNT_ID="$R2_ACCOUNT_ID" \
@@ -612,6 +620,41 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_APP_PROD: ${{ vars.FLY_APP_PROD }}
+
+      - name: Ensure the OTLP collector is running
+        # Must be serving BEFORE the daemon's repointed endpoint takes effect on
+        # the next deploy, or the first export lands nowhere. The three values
+        # staged here are the COLLECTOR's upstream credentials; the daemon keeps
+        # its own copy of the auth pair but now reaches this app instead, which
+        # ignores the inbound header and re-authenticates upstream with these.
+        #
+        # A failed deploy is not swallowed here, unlike the tunnel step below: a
+        # collector that is not serving takes every production dashboard dark at
+        # the next daemon deploy, and continuity is the graded property.
+        run: |
+          flyctl secrets set \
+            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
+            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            --app "$OTLP_COLLECTOR_APP"
+          MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
+          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+          TOTAL="$(echo "$MACHINES" | jq 'length')"
+          echo "  machines: $RUNNING/$TOTAL running"
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "  no machines found — deploying $OTLP_COLLECTOR_APP from scratch..."
+            # Positional path = build context, so the Dockerfile's COPY resolves.
+            flyctl deploy "$OTLP_COLLECTOR_DIR" --app "$OTLP_COLLECTOR_APP" --wait-timeout 60
+          elif [ "$RUNNING" -eq 0 ]; then
+            echo "  no running machines — restarting..."
+            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
+              flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
+            done
+          else
+            echo "  collector is running"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Ensure cloudflared-prod tunnel is running
         # cloudflared-prod bridges Cloudflare Edge to
