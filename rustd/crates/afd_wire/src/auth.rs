@@ -27,6 +27,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// `POST /v1/auth/sessions` — the command line opens a login.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenSessionRequest<'a> {
@@ -39,6 +40,7 @@ pub struct OpenSessionRequest<'a> {
 }
 
 /// What opening a login answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OpenSessionResponse<'a> {
     /// The identifier the command line polls on.
@@ -55,6 +57,7 @@ pub struct OpenSessionResponse<'a> {
 /// thing presented — so anything it returns is readable by whoever holds the
 /// id, and the sealed credential is released only by `/verify`, against a code
 /// that never travelled the same channel.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PollSessionResponse<'a> {
     /// `pending` or `verification_pending`.
@@ -68,6 +71,7 @@ pub struct PollSessionResponse<'a> {
 }
 
 /// `PATCH /v1/auth/sessions/{session_id}/approve` — a person clicked Approve.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApproveSessionRequest<'a> {
@@ -90,6 +94,7 @@ pub struct ApproveSessionRequest<'a> {
 /// The request id and nothing else. An approval has no state worth returning —
 /// the dashboard already holds everything it sent — and echoing the session
 /// back would put the ciphertext on a second response for no reason.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApproveSessionResponse<'a> {
     /// The request that recorded the approval.
@@ -97,6 +102,7 @@ pub struct ApproveSessionResponse<'a> {
 }
 
 /// `POST /v1/auth/sessions/{session_id}/verify` — the code is presented.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VerifySessionRequest<'a> {
@@ -110,6 +116,7 @@ pub struct VerifySessionRequest<'a> {
 /// Identical for a first redemption and for a repeat inside the replay window,
 /// deliberately: a command line asking again after a dropped connection must
 /// not be able to learn that its first request landed.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VerifySessionResponse<'a> {
     /// The dashboard's public key.
@@ -121,6 +128,7 @@ pub struct VerifySessionResponse<'a> {
 }
 
 /// What aborting every in-flight login answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeleteAllSessionsResponse {
     /// How many were aborted by this call.

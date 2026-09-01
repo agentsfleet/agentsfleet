@@ -30,6 +30,7 @@ use serde::Serialize;
 /// the FIRST attempt's id rather than a new one — that is the whole point of
 /// the at-most-once claim, and a sender comparing two responses should see the
 /// same event both times.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Accepted<'a> {
     /// The event the fleet will run, or already ran.
@@ -49,6 +50,7 @@ pub struct Accepted<'a> {
 /// correctly-signed delivery that simply does not wake this fleet — a green
 /// build, a label edit, a paused fleet. Answering an error would put it in the
 /// sender's retry queue forever, and retrying changes none of them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Ignored<'a> {
     /// Which rule dropped it.
@@ -61,6 +63,7 @@ pub struct Ignored<'a> {
 /// Wider than [`Accepted`] because one App delivery is many appends: a sender
 /// debugging its integration wants to know how many fleets this installation
 /// actually woke, which is the number no single event id can show.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FannedOut {
     /// How many fleets subscribed to this delivery.
@@ -74,6 +77,7 @@ pub struct FannedOut {
 }
 
 /// What a `ping` is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Pong<'a> {
     /// The pong marker this deployment answers with.
@@ -88,6 +92,7 @@ pub struct Pong<'a> {
 /// is the shape the callback sender is owed, and the two differ because their
 /// readers do. A sender gets back what it sent plus a marker, and nothing about
 /// who else may have answered the gate first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Resolved<'a> {
     /// The resolved marker this route answers with.
@@ -102,6 +107,7 @@ pub struct Resolved<'a> {
 }
 
 /// What an accepted schedule fire is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Fired<'a> {
     /// The event the fleet will run, or already ran.
@@ -115,6 +121,7 @@ pub struct Fired<'a> {
 ///
 /// A one-key map rather than a struct because the KEY is provider data, and a
 /// struct would fix it at compile time to whichever vendor was ported first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct EchoAnswer<'a> {
     /// The provider's own challenge field, echoed under its own name.
@@ -126,6 +133,7 @@ pub struct EchoAnswer<'a> {
 ///
 /// Field names and order are `normalizer/github.zig`'s `Normalized`, kept
 /// exactly: a fleet's prose reads them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowRunDigest<'a> {
     /// The run's page on the forge.
@@ -158,6 +166,7 @@ pub struct WorkflowRunDigest<'a> {
 /// The flat object a `pull_request` becomes on the stream.
 ///
 /// `github_app.zig`'s `PullRequest`, field for field.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PullRequestDigest<'a> {
     /// What happened to the pull request.
@@ -201,6 +210,7 @@ pub struct PullRequestDigest<'a> {
 /// The workspace rather than the person: a provider's delivery log is read by
 /// an operator asking "did this signup land", and the workspace is the thing
 /// they can then go and look at. The subject is already in the request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountOpened<'a> {
     /// The default workspace the account was opened with.

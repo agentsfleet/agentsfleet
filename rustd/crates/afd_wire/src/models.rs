@@ -18,6 +18,7 @@ use serde::Serialize;
 /// `id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),
 /// never the row's own id — that one is admin-plane identity and rides the
 /// cursor opaquely instead.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogueModel<'a> {
     /// The model identifier a tenant selects by.
@@ -35,6 +36,7 @@ pub struct CatalogueModel<'a> {
 }
 
 /// `GET /v1/models` — one page of the catalogue.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogueResponse<'a> {
     /// The catalogue's version stamp: the newest row's change date, UTC.

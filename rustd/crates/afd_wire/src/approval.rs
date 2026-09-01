@@ -41,6 +41,7 @@ pub mod status {
 }
 
 /// One gate as the inbox lists it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ApprovalSummary<'a> {
     /// The gate's own row id — what a decision addresses it by.
@@ -82,10 +83,16 @@ pub struct ApprovalSummary<'a> {
     /// — and showing the gate WITHOUT its evidence beats failing the whole
     /// queue, because an operator can still read what is being asked and deny
     /// it, where a failed read hides every other gate too.
+    ///
+    /// Serialized it is whatever document the gate was opened with; in Rust it
+    /// is an unparsed slice, which has no schema of its own. `value_type` names
+    /// that difference.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub evidence: Option<&'a RawValue>,
 }
 
 /// `GET /v1/workspaces/{workspace_id}/approvals` — the queue.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ApprovalsResponse<'a> {
     /// The gates on this page, oldest first.
@@ -99,6 +106,7 @@ pub struct ApprovalsResponse<'a> {
 /// Every field optional, and the whole body optional with it: a decision is
 /// complete without a note, and demanding one would make the common answer the
 /// awkward one.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ResolveApprovalRequest<'a> {
     /// The operator's note, stored as the gate's `detail`.
@@ -107,6 +115,7 @@ pub struct ResolveApprovalRequest<'a> {
 }
 
 /// What answering a gate reports, whether or not this caller won the race.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ResolvedResponse<'a> {
     /// The gate that was answered.

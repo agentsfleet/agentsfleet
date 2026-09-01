@@ -50,6 +50,7 @@ pub mod status {
 /// transitions stamp — the table carries no `updated_at`, because a row-change
 /// time would say nothing those two do not already say. Both are `null` on a
 /// pending row and exactly one is set afterwards.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantSummary<'a> {
     /// The grant's own row id — what a revoke addresses it by.
@@ -74,6 +75,7 @@ pub struct GrantSummary<'a> {
 /// list is unpaged, because a fleet holds at most one grant per service and the
 /// supported-service count is what bounds it. Emitted anyway, because the Zig
 /// handler emits it and a dashboard reads it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantsResponse<'a> {
     /// The fleet's grants, newest first.

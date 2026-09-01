@@ -21,6 +21,16 @@ serde.workspace = true
 # the daemon carries verbatim. `preserve_order` is load-bearing: without it an
 # object's keys re-serialize in hash order and the byte comparison fails.
 serde_json.workspace = true
+# The schema compiler, off by default. `ToSchema` touches no `Serialize` impl,
+# so a build with this feature on emits the same bytes as one without it — the
+# round-trip suite re-proves that rather than asserting it.
+utoipa = { workspace = true, optional = true }
+
+[features]
+# Generates the OpenAPI schemas for these wire types. NOT default: the shipped
+# daemon resolves a dependency graph carrying serde and serde_json alone, which
+# is the invariant `the_default_build_carries_no_utoipa` grades.
+openapi = ["dep:utoipa"]
 
 [dev-dependencies]
 serde_json.workspace = true

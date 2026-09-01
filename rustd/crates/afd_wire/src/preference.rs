@@ -25,6 +25,7 @@ use serde_json::value::RawValue;
 /// A write returns the WHOLE bag rather than the one key it set, matching
 /// `respondWithBag`: the dashboard holds the bag in one piece of state, so
 /// handing back a fragment would make it merge on the client instead.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PreferencesResponse<'a> {
     /// Every key this person has set in this workspace, key-ordered.
@@ -32,6 +33,11 @@ pub struct PreferencesResponse<'a> {
     /// A `BTreeMap` so the order is the SQL's `ORDER BY pref_key` and stays
     /// stable between two captures — object key order is not load-bearing for a
     /// client, and is exactly what makes a diff of two responses readable.
+    ///
+    /// The serialized form is an object of arbitrary JSON values; the Rust form
+    /// maps borrowed keys to unparsed slices, and `RawValue` has no schema of
+    /// its own. `value_type` names that difference.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub prefs: BTreeMap<&'a str, &'a RawValue>,
 }
 
@@ -45,6 +51,7 @@ pub struct PreferencesResponse<'a> {
 /// means a missing type. Not here: this IS the wire shape, field for field, and
 /// the dashboard destructures all eight. Collapsing any of them into an enum
 /// would change the JSON a shipped client reads.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "this struct IS the documented response body; see above"

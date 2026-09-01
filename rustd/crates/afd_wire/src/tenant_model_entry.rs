@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `id` is the entry's own identity — the `{id}` the item route takes — and not
 /// the model's. The model is `model_id`, which is what a provider spells.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntryRow<'a> {
     /// The entry's identity.
@@ -71,6 +72,7 @@ pub struct ModelEntryRow<'a> {
 }
 
 /// The deployment's platform default, as the page's Default row shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformDefaultRow<'a> {
     /// The provider the default belongs to.
@@ -91,6 +93,7 @@ pub struct PlatformDefaultRow<'a> {
 }
 
 /// `GET /v1/tenants/me/models` — one page of the registry.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntriesResponse<'a> {
     /// The rows, newest first.
@@ -118,6 +121,7 @@ pub struct ModelEntriesResponse<'a> {
 ///
 /// One shape for both verbs because both say the same thing — which entry now
 /// stands — and the status code is what distinguishes them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StoredModelEntry<'a> {
     /// The entry's identity.
@@ -135,6 +139,7 @@ pub struct StoredModelEntry<'a> {
 /// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
 /// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
 /// serde attribute.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
@@ -148,6 +153,7 @@ pub struct CreateModelEntryRequest {
 /// There is no `secret_ref` field and adding one would be a different verb: the
 /// same model on a different credential is a DIFFERENT entry, which is what the
 /// table's domain key says.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.

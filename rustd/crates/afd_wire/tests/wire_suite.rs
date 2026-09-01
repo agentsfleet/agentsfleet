@@ -15,10 +15,18 @@
 mod admin_shapes;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
+// Ungated: what it asserts is a property of the build WITHOUT the feature.
+#[path = "manifest.rs"]
+mod manifest;
 #[path = "redaction.rs"]
 mod redaction;
+// Gated with the feature it grades: without `openapi` there are no schemas to
+// assert, and the module would name types whose derives were never expanded.
 #[path = "roundtrip.rs"]
 mod roundtrip;
+#[cfg(feature = "openapi")]
+#[path = "schema.rs"]
+mod schema;
 #[path = "strictness.rs"]
 mod strictness;
 #[path = "tenant_provider_shapes.rs"]

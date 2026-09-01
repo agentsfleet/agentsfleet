@@ -32,6 +32,7 @@ use crate::admin::AdminLibraryRequirements;
 /// accident: the two responses share an `OpenAPI` schema, and the Zig's own note
 /// records that emitting a different shape here made two documented-identical
 /// payloads disagree about their contents. One type is what stops that.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GalleryCard<'a> {
@@ -65,6 +66,7 @@ pub struct GalleryCard<'a> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleet-libraries` — one page of the gallery.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GalleryResponse<'a> {
