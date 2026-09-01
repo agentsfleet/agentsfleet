@@ -3,7 +3,7 @@
 use afd_auth::Scope;
 
 use super::path::workspace_path;
-use super::{Guard, NONE, RouteClass, RouteMeta, Scopes};
+use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 
 const CONNECTOR_READ: &[Scope] = &[Scope::ConnectorRead];
 const CONNECTOR_WRITE: &[Scope] = &[Scope::ConnectorWrite];
@@ -43,6 +43,21 @@ impl ConnectorRoute {
         Self::Catalog,
         Self::Events,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// `Callback` and `Complete` share a template and are told apart by
+    /// method: the provider's browser redirect is a `GET`, the dashboard's
+    /// follow-up a `POST`. There is no `PUT` beside `Status`'s pair because a
+    /// connection is produced by a consent round trip and cannot be asserted.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Connect | Self::Complete | Self::Events => &[Verb::Post],
+            Self::Status => &[Verb::Get, Verb::Delete],
+            Self::Callback | Self::Catalog => &[Verb::Get],
+        }
+    }
 
     /// `Callback` and `Complete` share a template and differ in guard, which
     /// is why a template is not an identity: the browser's redirect and the

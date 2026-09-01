@@ -62,16 +62,29 @@ impl TenantRoute {
         Self::CliCredential,
     ];
 
-    /// The verb on the public platform-bundle gallery.
+    /// The verbs this route identity serves.
     ///
-    /// Kept beside the route rather than repeated in M179's inventory test.
-    /// Uploads enter through a library onboarding route; this surface only
-    /// lists already-published snapshots.
+    /// `Provider` is the one three-verb row in the family: a tenant reads its
+    /// selection, replaces it whole, or resets to the platform default, and
+    /// the reset is a `DELETE` because what it removes is the tenant's own
+    /// choice rather than the credential behind it.
+    ///
+    /// `FleetBundles` lists already-published snapshots and nothing more —
+    /// uploads enter through a library onboarding route, so there is no `POST`
+    /// on the public gallery.
     #[must_use]
-    pub const fn fleet_bundle_verbs(self) -> Option<&'static [Verb]> {
+    pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::FleetBundles => Some(&[Verb::Get]),
-            _ => None,
+            Self::Billing
+            | Self::BillingCharges
+            | Self::Workspaces
+            | Self::ModelLibrary
+            | Self::FleetBundles => &[Verb::Get],
+            Self::CreateWorkspace | Self::CliCredentials => &[Verb::Post],
+            Self::CliCredential => &[Verb::Delete],
+            Self::ApiKeys | Self::ModelEntries => &[Verb::Get, Verb::Post],
+            Self::ApiKey | Self::ModelEntry => &[Verb::Patch, Verb::Delete],
+            Self::Provider => &[Verb::Get, Verb::Put, Verb::Delete],
         }
     }
 
