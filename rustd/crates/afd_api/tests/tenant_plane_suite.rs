@@ -54,6 +54,8 @@ mod tenant_cli_credential;
 mod tenant_model_entry_input;
 #[path = "tenant_model_entry_route.rs"]
 mod tenant_model_entry_route;
+#[path = "integration_tenant_models.rs"]
+mod integration_tenant_models;
 #[path = "tenant_models.rs"]
 mod tenant_models;
 #[path = "tenant_provider_route.rs"]
