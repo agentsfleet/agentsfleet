@@ -21,7 +21,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** INFRA | OBS
 **Batch:** B6 — fully parallel: touches deploy configuration only and serves the export path that exists today
 **Branch:** `feat/m181-005-collectors-under-zig`
-**Test Baseline:** `unit=6907 integration=not-run` — `make test-unit-all` exit 0 at `ac5a00157` (rustd cargo workspace 2186 + app 2410 + website 175 + cli 1624 + design-system 512). `verify.integration` is not run at CHORE(open) and will not be run at VERIFY: the stage table declares the slow suites only when the branch carries code, and this diff carries none — deploy configuration, a runbook and a probe. The Acceptance Rubric omits the lane for the same reason.
+**Test Baseline:** `unit=6907 integration=not-run` — `make test-unit-all` exit 0 at `ac5a00157` (rustd cargo workspace 2186 + app 2410 + website 175 + cli 1624 + design-system 512). `verify.integration` is not run at CHORE(open): the stage table declares the slow suites only when the branch carries code, and this diff carries none — deploy configuration, a runbook and a probe. It WAS run once at the boundary on Indy's instruction (`349 passed`), recorded in the Test Delta below rather than as a rubric row, since the lane grades no part of this diff.
 **Depends on:** M181_001 (the probe runner this spec's evidence rows ride); nothing in the Rust tree — the Zig daemon's endpoint is already configuration
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — §4's collector-first step of M181_002, split out on Indy's parallelization call
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths
@@ -137,18 +137,20 @@ No product-analytics changes; no new panels — continuity is the deliverable.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Collectors serve the Zig export, dashboards continuous (§1) | `bash playbooks/operations/cutover/probes.sh` | exit 0, collector rows green | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table; no `src/**` or `rustd/**` path present | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Version sync | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Collectors serve the Zig export, dashboards continuous (§1) | `bash playbooks/operations/cutover/probes.sh` | exit 0, collector rows green | P0 | ⏳ pending the change window — graded from the rollout, which is Indy's. The probe and its manifest rows land in the same commit, per §1's sequencing note |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table; no `src/**` or `rustd/**` path present | P0 | ✅ 11 paths, every one in the table; no `src/**` or `rustd/**` path, so Invariant 1 holds. Measured against the branch base `ac5a00157`, not `origin/main`, which is one unpushed commit behind and would otherwise attribute that commit's two spec files to this diff |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0 |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — 6907 (rustd 2186 + app 2410 + website 175 + cli 1624 + design-system 512) |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ exit 0 — carries `check-cutover-probes`, so the probe runner's asserts ran for real against this tree |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ exit 0 |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found, 5051 commits scanned |
+| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ⚠️ flagged, surfaced not decided — `.github/workflows/release.yml` is 904 lines. It was **861 at the branch base**, so this is a pre-existing violation the diff touched rather than created; the 43 lines added are the collector stand-up step. It is the only workflow over the cap. Splitting it is a refactor outside this spec's Files Changed and past RULE NLR's ~200-line bundling bound. Disposition is Indy's |
 
 **Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.lint`, `verify.version`); S5–S6 are the template's repository hygiene gates. The integration lane is omitted: this diff carries no Rust and the lane grades none of it.
 
 **The S-row letters are positional, not free.** `playbooks/operations/cutover/coverage.tsv` maps hygiene rows by LETTER across every merged milestone — `covers version *:S4`, `covers secrets *:S5`, `exclude *:S6` — and `probes.sh` derives the row set from each merged spec's own rubric table (`probes.sh:75`). This spec was drawn with `gitleaks` at S4 and no version or oversize row, which would make the runner report a phantom `M181_005:S5` (`probes.sh:161`) and reject the `*:S6` exclusion (`probes.sh:180`) the moment this milestone joined the list. Amended to the convention M179_001 and its siblings already carry.
+
+**Test Delta (VERIFY).** `unit 6907 → 6907` (+0) against the CHORE(open) baseline, and that zero is the correct result rather than an unmet obligation: the rule flags zero growth on a **code-adding** diff, and this diff adds no code — two collector app directories of Fly configuration, two workflow steps, an architecture reconciliation and runbook prose. The proof that it is nonetheless tested is `lint-all`, which runs the probe runner's three asserts against this tree, plus the eight playbook and workflow gates the diff triggers. `make test-integration-rustd` ran once at the boundary on Indy's instruction: `349 passed`, unchanged by this diff and expected to be.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
 
