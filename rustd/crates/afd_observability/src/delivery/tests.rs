@@ -36,28 +36,32 @@ impl SpanExporter for Collected {
     }
 }
 
+/// How far past the epoch a report settles, in these tests.
+///
+/// Far enough that a run of any length still starts after the epoch, so a test
+/// about durations is never accidentally a test about the epoch — which is
+/// what [`just_after_the_epoch`] is for instead.
+const SETTLED_AT_SECONDS: u64 = 1_700_000_000;
+
+/// One second, as the whole distance between the epoch and a settle no run
+/// can fit before.
+const A_SECOND: Duration = Duration::from_secs(1);
+
 /// When a report settles, in these tests.
 ///
-/// Far enough past the epoch that a run of any length still starts after it,
-/// so a test about durations is never accidentally a test about the epoch —
-/// which is what [`JUST_AFTER_THE_EPOCH`] is for instead.
-const SETTLED_AT: SystemTime = unix_time(1_700_000_000);
+/// A function rather than a `const`: `SystemTime` arithmetic is not available
+/// in a constant, because the epoch's relationship to the platform clock is
+/// not something the compiler can evaluate.
+fn settled_at() -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(SETTLED_AT_SECONDS)
+}
 
 /// A settle instant no run can fit before.
 ///
-/// One second past the epoch: subtract any believable duration and the start
-/// is a moment OTLP cannot carry.
-const JUST_AFTER_THE_EPOCH: SystemTime = unix_time(1);
-
-/// The instant `seconds` after the Unix epoch.
-const fn unix_time(seconds: u64) -> SystemTime {
-    match SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(seconds)) {
-        Some(instant) => instant,
-        // Unreachable for the two call sites above and not written as a panic:
-        // these crates deny `panic`, and a const that could abort a build is a
-        // worse answer than one that clamps to a time no assertion uses.
-        None => SystemTime::UNIX_EPOCH,
-    }
+/// Subtract any believable duration from it and the start is a moment OTLP
+/// cannot carry.
+fn just_after_the_epoch() -> SystemTime {
+    SystemTime::UNIX_EPOCH + A_SECOND
 }
 
 /// One settled run, with every field distinguishable from every other.
@@ -110,7 +114,7 @@ fn attribute(span: &SpanData, key: &str) -> Option<String> {
 #[test]
 fn the_delivery_span_carries_every_declared_key() {
     let delivery = delivery();
-    let span = only_span(recorded(&delivery, SETTLED_AT));
+    let span = only_span(recorded(&delivery, settled_at()));
 
     assert_eq!(span.name, semconv::SPAN_FLEET_DELIVERY);
     for key in semconv::DELIVERY_SPAN_KEYS {
@@ -160,7 +164,7 @@ fn the_delivery_span_carries_every_declared_key() {
 #[test]
 fn the_delivery_span_is_retro_dated_from_the_reported_duration() {
     let delivery = delivery();
-    let completed_at = SETTLED_AT;
+    let completed_at = settled_at();
     let span = only_span(recorded(&delivery, completed_at));
 
     assert_eq!(span.end_time, completed_at, "the run ended when it settled");
@@ -188,7 +192,7 @@ fn an_implausible_duration_is_capped_and_the_span_still_lands() {
         wall: MAX_RUN * 4,
         ..delivery()
     };
-    let completed_at = SETTLED_AT;
+    let completed_at = settled_at();
     let span = only_span(recorded(&delivery, completed_at));
 
     assert_eq!(
@@ -213,7 +217,7 @@ fn a_start_before_the_epoch_records_no_span() {
         wall: Duration::from_secs(60),
         ..delivery()
     };
-    let spans = recorded(&delivery, JUST_AFTER_THE_EPOCH);
+    let spans = recorded(&delivery, just_after_the_epoch());
 
     assert!(
         spans.is_empty(),
@@ -228,7 +232,7 @@ fn a_start_before_the_epoch_records_no_span() {
 /// as a clock fault and drops or flags.
 #[test]
 fn the_delivery_span_is_a_root() {
-    let span = only_span(recorded(&delivery(), SETTLED_AT));
+    let span = only_span(recorded(&delivery(), settled_at()));
 
     assert_eq!(
         span.parent_span_id,
@@ -244,7 +248,7 @@ fn an_unmapped_provider_is_omitted_rather_than_exported() {
         provider: "our-internal-gateway",
         ..delivery()
     };
-    let span = only_span(recorded(&delivery, SETTLED_AT));
+    let span = only_span(recorded(&delivery, settled_at()));
 
     assert_eq!(
         attribute(&span, semconv::ATTR_PROVIDER_NAME),
