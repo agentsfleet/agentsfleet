@@ -13,6 +13,12 @@
 //! rendered as a string comparison, so it is asserted directly rather than
 //! through the page that happens to call it.
 
+#![expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
 use afd_library::LibraryRequirements;
 
 use super::*;
@@ -53,7 +59,7 @@ fn entry(id: &str, tier: Tier) -> SummaryEntry {
             vec!["api.github.com".to_owned()],
             true,
         ),
-        required_credentials_reasons: Default::default(),
+        required_credentials_reasons: serde_json::Value::Null,
     }
 }
 

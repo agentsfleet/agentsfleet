@@ -67,11 +67,7 @@ pub(super) fn unique_provider() -> String {
 /// degrade is real behaviour and the dangling-reference test below leans on the
 /// same path — this is how a row that IS labelled gets to prove the other half.
 pub(super) async fn label_kind(fixture: &Fixture, name: &str, kind: &str) {
-    let mut connection = fixture
-        .database
-        .acquire()
-        .await
-        .expect("an API connection");
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
     sqlx::query(
         "UPDATE vault.secrets SET meta_kind = $3 \
          WHERE workspace_id = $1::uuid AND key_name = $2",
@@ -85,7 +81,11 @@ pub(super) async fn label_kind(fixture: &Fixture, name: &str, kind: &str) {
 }
 
 /// Registers `model` on the fixture credential and answers the stored entry.
-pub(super) async fn add(store: &Providers, fixture: &Fixture, model: &str) -> afd_credential::provider::Entry {
+pub(super) async fn add(
+    store: &Providers,
+    fixture: &Fixture,
+    model: &str,
+) -> afd_credential::provider::Entry {
     let Added::Stored(entry) = store
         .add_entry(&fixture.tenant, model, CREDENTIAL, NOW)
         .await
@@ -164,8 +164,8 @@ async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
         .credential
         .as_ref()
         .expect("the vault describes a credential it holds");
-    assert_eq!(held.kind, afd_vault::Kind::ProviderKey);
-    assert_eq!(held.provider.as_deref(), Some(provider.as_str()));
+    assert_eq!(held.kind(), afd_vault::Kind::ProviderKey);
+    assert_eq!(held.provider(), Some(provider.as_str()));
     assert!(held.has_key, "the seeded projection says a key is stored");
 
     let rate = flagged
@@ -194,7 +194,9 @@ async fn an_entry_whose_credential_is_gone_lists_degraded_beside_an_intact_row()
     let store = providers(&fixture);
 
     let orphaned_model = unique_model();
-    fixture.seed_catalogue(&provider, &orphaned_model, CAP).await;
+    fixture
+        .seed_catalogue(&provider, &orphaned_model, CAP)
+        .await;
     let orphaned = add(&store, &fixture, &orphaned_model).await;
 
     // A SECOND credential, kept, so the page has an intact row to prove the
@@ -217,11 +219,7 @@ async fn an_entry_whose_credential_is_gone_lists_degraded_beside_an_intact_row()
     };
 
     // Out of band: the registry keeps its row, the vault loses its own.
-    let mut connection = fixture
-        .database
-        .acquire()
-        .await
-        .expect("an API connection");
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
     sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
         .bind(fixture.workspace.as_str())
         .bind(CREDENTIAL)
@@ -262,4 +260,3 @@ async fn an_entry_whose_credential_is_gone_lists_degraded_beside_an_intact_row()
 
     fixture.cleanup().await;
 }
-

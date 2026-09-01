@@ -38,6 +38,8 @@ mod integration_fleet_streams;
 mod integration_tenant;
 #[path = "integration_tenant_cli.rs"]
 mod integration_tenant_cli;
+#[path = "integration_tenant_models.rs"]
+mod integration_tenant_models;
 #[path = "integration_tenant_money.rs"]
 mod integration_tenant_money;
 #[path = "integration_workspace_approvals.rs"]
@@ -54,8 +56,6 @@ mod tenant_cli_credential;
 mod tenant_model_entry_input;
 #[path = "tenant_model_entry_route.rs"]
 mod tenant_model_entry_route;
-#[path = "integration_tenant_models.rs"]
-mod integration_tenant_models;
 #[path = "tenant_models.rs"]
 mod tenant_models;
 #[path = "tenant_provider_route.rs"]

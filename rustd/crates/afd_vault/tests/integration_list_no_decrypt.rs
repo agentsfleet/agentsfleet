@@ -69,22 +69,19 @@ async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
     let row = |index: usize| listed.get(index).expect("the page holds three rows");
 
     let provider_key = row(0);
-    assert_eq!(provider_key.kind, Kind::ProviderKey);
-    assert_eq!(provider_key.provider.as_deref(), Some("anthropic"));
-    assert_eq!(provider_key.base_url, None);
+    assert_eq!(provider_key.kind(), Kind::ProviderKey);
+    assert_eq!(provider_key.provider(), Some("anthropic"));
+    assert_eq!(provider_key.base_url(), None);
     assert_eq!(provider_key.created_at_ms, crate::support::NOW_MS);
 
     let endpoint = row(1);
-    assert_eq!(endpoint.kind, Kind::CustomEndpoint);
-    assert_eq!(endpoint.provider.as_deref(), Some("openai-compatible"));
-    assert_eq!(
-        endpoint.base_url.as_deref(),
-        Some("https://gw.example.com/v1")
-    );
+    assert_eq!(endpoint.kind(), Kind::CustomEndpoint);
+    assert_eq!(endpoint.provider(), Some("openai-compatible"));
+    assert_eq!(endpoint.base_url(), Some("https://gw.example.com/v1"));
 
     let opaque = row(2);
-    assert_eq!(opaque.kind, Kind::CustomSecret);
-    assert_eq!(opaque.provider, None);
+    assert_eq!(opaque.kind(), Kind::CustomSecret);
+    assert_eq!(opaque.provider(), None);
 
     // Delete is idempotent, and both outcomes are distinguishable here even
     // though the route answers 204 for either.
@@ -129,11 +126,11 @@ async fn a_row_whose_ciphertext_cannot_open_still_lists_with_its_full_projection
     assert_eq!(listed.len(), 1);
     let corrupt = listed.first().expect("the row still lists");
     assert_eq!(
-        corrupt.kind,
+        corrupt.kind(),
         Kind::ProviderKey,
         "the projection is read from columns, so an unopenable body changes nothing"
     );
-    assert_eq!(corrupt.provider.as_deref(), Some("anthropic"));
+    assert_eq!(corrupt.provider(), Some("anthropic"));
 
     lane.cleanup().await;
 }
@@ -198,11 +195,11 @@ async fn a_replace_rewrites_the_body_whole_and_the_projection_with_it() {
         .expect("the list answers");
     let replaced = listed.first().expect("the row still lists");
     assert_eq!(
-        replaced.kind,
+        replaced.kind(),
         Kind::CustomSecret,
         "the projection followed the body into the same statement"
     );
-    assert_eq!(replaced.provider, None);
+    assert_eq!(replaced.provider(), None);
 
     lane.cleanup().await;
 }

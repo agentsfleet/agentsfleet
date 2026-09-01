@@ -23,7 +23,9 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    reason = "integration preconditions should fail the test loudly"
+    clippy::indexing_slicing,
+    reason = "integration preconditions should fail the test loudly, and a test \
+              reads exactly the JSON shape the assertion before it pinned"
 )]
 
 use crate::harness;
@@ -89,8 +91,14 @@ async fn the_registry_lifecycle_walks_over_real_rows() {
     .await;
     assert_eq!(created.status(), StatusCode::CREATED);
     let body = json_body(created).await;
-    let entry_id = body["id"].as_str().expect("a stored entry names itself").to_owned();
-    assert_eq!(body["model_id"].as_str(), Some(fixture.first_model.as_str()));
+    let entry_id = body["id"]
+        .as_str()
+        .expect("a stored entry names itself")
+        .to_owned();
+    assert_eq!(
+        body["model_id"].as_str(),
+        Some(fixture.first_model.as_str())
+    );
     assert_eq!(body["secret_ref"].as_str(), Some(CREDENTIAL));
 
     // LIST — the page composes the row from the vault and the catalogue, which
@@ -133,8 +141,11 @@ async fn the_registry_lifecycle_walks_over_real_rows() {
     .await;
     assert_eq!(patched.status(), StatusCode::OK);
 
-    let after_patch = json_body(send(&router, Method::GET, ENTRIES, Some(&fixture.token), "").await).await;
-    let rows = after_patch["models"].as_array().expect("a page carries its rows");
+    let after_patch =
+        json_body(send(&router, Method::GET, ENTRIES, Some(&fixture.token), "").await).await;
+    let rows = after_patch["models"]
+        .as_array()
+        .expect("a page carries its rows");
     assert_eq!(
         rows[0]["model_id"].as_str(),
         Some(fixture.second_model.as_str()),
@@ -150,7 +161,8 @@ async fn the_registry_lifecycle_walks_over_real_rows() {
     let removed = send(&router, Method::DELETE, &item, Some(&fixture.token), "").await;
     assert_eq!(removed.status(), StatusCode::NO_CONTENT);
 
-    let after_delete = json_body(send(&router, Method::GET, ENTRIES, Some(&fixture.token), "").await).await;
+    let after_delete =
+        json_body(send(&router, Method::GET, ENTRIES, Some(&fixture.token), "").await).await;
     assert!(
         after_delete["models"]
             .as_array()
@@ -303,7 +315,20 @@ impl Fixture {
             .expect("the provider credential seals");
     }
 
+    /// Deletes the rows this fixture wrote to tables without a tenant column.
+    ///
+    /// The catalogue is the shared surface: `core.model_library` is keyed by
+    /// `(provider, model_id)` alone, so rows left behind accumulate across
+    /// `KEEP_TEST_STATE=1` inner-loop runs even though their unique names never
+    /// collide. Tenant-keyed rows are left to the lane's schema reset.
     async fn cleanup(self) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query("DELETE FROM core.model_library WHERE provider = $1")
+            .bind(&self.provider)
+            .execute(&mut *connection)
+            .await
+            .expect("the scoped catalogue cleans up");
+        drop(connection);
         drop(self.lane);
     }
 }

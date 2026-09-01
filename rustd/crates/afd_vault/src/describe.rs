@@ -36,9 +36,9 @@ use afd_core::id::Uuid7;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
+use crate::classified::Classified;
 use crate::error::{Result, query};
 use crate::projection::Kind;
-use crate::read::labelled;
 use crate::{Directory, sql};
 
 /// The context a failed describe reports under.
@@ -49,16 +49,36 @@ const CONTEXT_DESCRIBE: &str = "describe named secrets";
 /// The non-secret half of [`crate::projection::Projection`], as it comes back
 /// OUT of the `meta_*` columns rather than on its way in. There is no field a
 /// key would fit in, which is the same guarantee the columns themselves carry.
+///
+/// The classification is a sum type, not a struct of options: the fields a
+/// kind carries are exactly the fields it can carry, and a degraded row sheds
+/// its descriptors by construction. See [`Classified`]'s module note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Descriptor {
     /// What the credential is, as the server classified it at write time.
-    pub kind: Kind,
-    /// The provider label, for the kinds that carry one.
-    pub provider: Option<Box<str>>,
-    /// The custom endpoint, where one may be displayed.
-    pub base_url: Option<Box<str>>,
+    pub classified: Classified,
     /// Whether a non-empty key is stored. Never the key.
     pub has_key: bool,
+}
+
+impl Descriptor {
+    /// The kind this row answers on the wire.
+    #[must_use]
+    pub const fn kind(&self) -> Kind {
+        self.classified.kind()
+    }
+
+    /// The provider label, for the kinds that carry one.
+    #[must_use]
+    pub fn provider(&self) -> Option<&str> {
+        self.classified.provider()
+    }
+
+    /// The custom endpoint, where one may be displayed.
+    #[must_use]
+    pub fn base_url(&self) -> Option<&str> {
+        self.classified.base_url()
+    }
 }
 
 impl Directory {
@@ -113,19 +133,9 @@ fn read_descriptor(row: &PgRow) -> Result<(Box<str>, Descriptor)> {
     // this read failed to look for.
     let has_key: Option<bool> = row.try_get(4).map_err(&unreadable)?;
 
-    let descriptor = match labelled(stored_kind.as_deref(), &name) {
-        Some(kind) => Descriptor {
-            kind,
-            provider: provider.map(String::into_boxed_str),
-            base_url: base_url.map(String::into_boxed_str),
-            has_key: has_key.unwrap_or_default(),
-        },
-        None => Descriptor {
-            kind: Kind::CustomSecret,
-            provider: None,
-            base_url: None,
-            has_key: has_key.unwrap_or_default(),
-        },
+    let descriptor = Descriptor {
+        classified: Classified::classify(stored_kind.as_deref(), &name, provider, base_url),
+        has_key: has_key.unwrap_or_default(),
     };
     Ok((name.into_boxed_str(), descriptor))
 }

@@ -42,7 +42,11 @@ async fn a_limit_below_the_row_count_resumes_strictly_after_the_last_row_served(
         .registry_page(&fixture.tenant, 2, None)
         .await
         .expect("the first page reads");
-    assert_eq!(first.rows.len(), 2, "the limit is served, never the probe row");
+    assert_eq!(
+        first.rows.len(),
+        2,
+        "the limit is served, never the probe row"
+    );
     let boundary: Boundary = first
         .next
         .clone()

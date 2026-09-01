@@ -119,7 +119,7 @@ async fn a_password_inside_a_base_url_is_sealed_but_never_promoted_to_a_column()
         .await
         .expect("the list answers");
     assert_eq!(
-        listed.first().expect("the row lists").base_url,
+        listed.first().expect("the row lists").base_url(),
         None,
         "the wire omits what the column refused to hold"
     );
@@ -192,12 +192,9 @@ async fn a_row_another_daemon_projected_lists_identically_from_here() {
         .find(|row| row.name == "written-elsewhere")
         .expect("the seeded row lists");
 
-    assert_eq!(foreign.kind, Kind::CustomEndpoint);
-    assert_eq!(foreign.provider.as_deref(), Some("openai-compatible"));
-    assert_eq!(
-        foreign.base_url.as_deref(),
-        Some("https://elsewhere.example.com/v1")
-    );
+    assert_eq!(foreign.kind(), Kind::CustomEndpoint);
+    assert_eq!(foreign.provider(), Some("openai-compatible"));
+    assert_eq!(foreign.base_url(), Some("https://elsewhere.example.com/v1"));
 
     lane.cleanup().await;
 }
@@ -223,8 +220,8 @@ async fn a_row_from_before_the_projection_columns_lists_as_an_opaque_credential(
         .find(|row| row.name == "un-backfilled")
         .expect("the row still lists");
 
-    assert_eq!(legacy.kind, Kind::CustomSecret);
-    assert_eq!(legacy.provider, None);
+    assert_eq!(legacy.kind(), Kind::CustomSecret);
+    assert_eq!(legacy.provider(), None);
 
     lane.cleanup().await;
 }
@@ -258,8 +255,8 @@ async fn a_kind_this_build_does_not_know_sheds_its_descriptors_with_it() {
         .find(|row| row.name == "from-the-future")
         .expect("the row still lists");
 
-    assert_eq!(future.kind, Kind::CustomSecret);
-    assert_eq!(future.provider, None);
+    assert_eq!(future.kind(), Kind::CustomSecret);
+    assert_eq!(future.provider(), None);
 
     lane.cleanup().await;
 }
