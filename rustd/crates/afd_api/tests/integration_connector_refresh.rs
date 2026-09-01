@@ -85,20 +85,29 @@ async fn connected_grant(provider: Provider, body: &str) -> Value {
 async fn a_linear_connect_seals_the_refresh_triple_under_the_display_name() {
     let grant = connected_grant(Provider::Linear, &triple_answer("")).await;
 
-    assert_eq!(grant["integration"].as_str(), Some(Provider::Linear.id()));
-    assert_eq!(grant["access_token"].as_str(), Some("at-fixture-access"));
     assert_eq!(
-        grant["refresh_token"].as_str(),
+        grant.get("integration").and_then(Value::as_str),
+        Some(Provider::Linear.id())
+    );
+    assert_eq!(
+        grant.get("access_token").and_then(Value::as_str),
+        Some("at-fixture-access")
+    );
+    assert_eq!(
+        grant.get("refresh_token").and_then(Value::as_str),
         Some("rt-fixture-refresh"),
         "an access token with no refresh half would look connected and stop \
          working within the hour — the triple is the grant"
     );
     assert_eq!(
-        grant["label"].as_str(),
+        grant.get("label").and_then(Value::as_str),
         Some(Provider::Linear.display_name())
     );
     assert!(
-        grant["expires_at_ms"].as_i64().is_some_and(|at| at > 0),
+        grant
+            .get("expires_at_ms")
+            .and_then(Value::as_i64)
+            .is_some_and(|at| at > 0),
         "the expiry is resolved to an instant at seal time, not stored as a \
          duration a later reader would have to anchor"
     );
@@ -119,17 +128,24 @@ async fn a_zoho_connect_seals_the_accounts_base_beside_the_triple() {
     )
     .await;
 
-    assert_eq!(grant["integration"].as_str(), Some(Provider::Zoho.id()));
-    assert_eq!(grant["refresh_token"].as_str(), Some("rt-fixture-refresh"));
-    let accounts_base = grant["accounts_base"]
-        .as_str()
+    assert_eq!(
+        grant.get("integration").and_then(Value::as_str),
+        Some(Provider::Zoho.id())
+    );
+    assert_eq!(
+        grant.get("refresh_token").and_then(Value::as_str),
+        Some("rt-fixture-refresh")
+    );
+    let accounts_base = grant
+        .get("accounts_base")
+        .and_then(Value::as_str)
         .expect("a Zoho grant names the centre a refresh mints at");
     assert!(
         accounts_base.starts_with("https://accounts.zoho"),
         "an unnamed location resolves to a documented centre: {accounts_base}"
     );
     assert_eq!(
-        grant["label"].as_str(),
+        grant.get("label").and_then(Value::as_str),
         Some("https://www.zohoapis.com"),
         "the vendor's own api_domain labels the connection when it sends one"
     );
