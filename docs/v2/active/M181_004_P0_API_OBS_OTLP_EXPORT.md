@@ -146,12 +146,12 @@ The OTLP exporter is a NEW dependency bringing a protocol-encoding and HTTP-clie
 - **Dimension 3.1** — boot constructs the transport from configuration and supervises the flush loop under the inventoried task name; the daemon's real inventory equals its declared background task set, and the task joins on termination → Test `boot_supervises_the_export_under_its_inventoried_name` — **DONE** (`agentsfleetd::telemetry`; the declared-set half stays `test_the_daemon_supervises_what_it_claims`)
 - **Dimension 3.2** — the standard knobs configure endpoint, headers, protocol and timeout, and the vendor spellings still resolve as aliases with the standard name winning when both are set → Test `the_standard_endpoint_outranks_the_vendor_alias` — **DONE** (`preflight::otlp`, with the vendor pair resolving to one basic credential a standard header replaces)
 
-### §4 — Failure posture and the three signals
+### §4 — Failure posture and the three signals — DONE
 
 Stderr stays logfmt regardless: it is the path that works before the exporter exists and after it fails. A transport that carries metrics and spans but not logs would take the log backend dark at the swap with nothing to catch it, so the log signal is graded here on event-name continuity per the logging standard's port rule.
 
-- **Dimension 4.1** — with no endpoint configured the daemon boots and serves, exporting nothing; with an unreachable one, request latency is unchanged and the drop counter climbs → Test `test_export_absent_and_unreachable`
-- **Dimension 4.2** — all three signals leave the daemon, and log records carry the event names the Zig daemon emits → Test `test_all_three_signals_exported`
+- **Dimension 4.1** — with no endpoint configured the daemon boots and serves, exporting nothing; with an unreachable one, request latency is unchanged and the drop counter climbs → Test `an_unreachable_collector_costs_spans_and_not_requests` — **DONE** (the absent half is `no_endpoint_supervises_nothing_and_is_not_a_failure` plus `test_boot_to_ready_on_compose`, whose inventory has never carried the export task)
+- **Dimension 4.2** — all three signals leave the daemon, and log records carry the event names the Zig daemon emits → Test `all_three_signals_reach_a_collector` — **DONE** (a collector fixture on a real socket receives traces, metrics and logs, and the log body carries a ported event name)
 
 ## Interfaces
 
@@ -199,14 +199,14 @@ No product-analytics changes.
 | 2.1 | unit | `every_census_family_has_a_producer` | each declared family is claimed by a producer or excused by name; an excuse for a family that HAS a producer fails too |
 | 3.1 | unit | `boot_supervises_the_export_under_its_inventoried_name` | a configured endpoint spawns the flush loop under the inventoried name and it joins on shutdown; an unconfigured one supervises nothing |
 | 3.2 | unit | `the_standard_endpoint_outranks_the_vendor_alias` | the standard name wins over the alias when both are set; the alias alone still exports; an unusable protocol or timeout faults naming its knob |
-| 4.1 | integration | `test_export_absent_and_unreachable` | no endpoint → serving daemon, zero export attempts; unreachable endpoint → drop counter climbs, request latency unchanged |
-| 4.2 | integration | `test_all_three_signals_exported` | a collector fixture receives metrics, spans and logs; log records carry the Zig event names |
+| 4.1 | integration | `an_unreachable_collector_costs_spans_and_not_requests` | a refused collector climbs the span-drop counter while the emit stays off the caller's path; no endpoint supervises nothing |
+| 4.2 | integration | `all_three_signals_reach_a_collector` | a collector fixture receives all three signal paths; the bodies carry a ported event name and this service's identity |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | All three signals leave the daemon (§1–§4) | `cd rustd && cargo test --package agentsfleetd otlp_` | exit 0 | P0 | |
+| R1 | All three signals leave the daemon (§1–§4) | `cd rustd && cargo test --package agentsfleetd --all-features --test daemon_suite -- --ignored integration_telemetry` | exit 0, 2 passed | P0 | |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -216,7 +216,7 @@ No product-analytics changes.
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
-**Command source rule:** S1–S5 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.integration`, `verify.lint`, `verify.version`); S6–S7 are the template's hygiene gates. R1 names the oracle this spec's own sections create.
+**Command source rule:** R1 was amended at §4 to name the tests that exist: the original filter `otlp_` matched a `test_`-prefixed naming this repository left behind (`docs/architecture/testing.md` §Rust test naming). S1–S5 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.integration`, `verify.lint`, `verify.version`); S6–S7 are the template's hygiene gates. R1 names the oracle this spec's own sections create.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
 
