@@ -193,7 +193,7 @@ change that takes the runner with it by accident.
 - **Dimension 5.1** — `src/agentsfleetd/**` is removed, and no reference to it survives anywhere in the repository outside `docs/v2/done/` and `docs/v1/` → Test `no path under src/agentsfleetd is referenced after the deletion`
 - **Dimension 5.2** — no workflow step builds or publishes a **daemon** artifact from `src/agentsfleetd`, and M181_006's buildable-rollback invariant is deleted in the same diff. Scoped to the daemon deliberately: the only Zig artifact these workflows build is `agentsfleet-runner`, which §5.4 requires to survive, so a dimension phrased as "no Zig artifact" would mandate deleting `compile-runner-amd64` / `compile-runner-arm64` and contradict 5.4 outright. The first clause is in fact already satisfied — no workflow builds a Zig daemon today (M181_006's premise correction), so the load-bearing half is the rollback invariant → Test `no workflow step builds the zig daemon`
 - **Dimension 5.3** — every gate, make target and playbook whose scope was `src/agentsfleetd` either loses that scope or is removed, and none is left scanning nothing and reporting green. A gate that scanned the daemon **and** the runner narrows rather than dies; only a gate left with an empty scope is removed → Test `no gate reports a vacuous pass over a deleted tree`
-- **Dimension 5.4** — the daemon's removal leaves the runner intact: `build_runner.zig`, `src/runner/**` and `src/build/**` are unmodified, and `compile-runner-amd64` / `compile-runner-arm64` still produce their artifacts → Test `the runner build still produces its artifact after the daemon is deleted`
+- **Dimension 5.4** — the daemon's removal leaves the runner intact **and still shipping**: `build_runner.zig`, `src/runner/**` and `src/build/**` are unmodified; `compile-runner-amd64` and `compile-runner-arm64` are still declared and still in the release job's `needs`; and the deploy stages still consume `agentsfleet-runner-linux-amd64`. Source and pipeline are graded separately on purpose — a §5 diff that deletes the workflow jobs while leaving the tree alone would keep a local `zig build` green while the runner silently stopped reaching a single host, which is the exact failure this dimension exists to catch → Tests `the runner build still produces its artifact after the daemon is deleted` · `the release workflow still builds and ships the runner`
 
 ## Interfaces
 
@@ -260,7 +260,9 @@ The acceptance lane is the operator-facing signal and it already reports through
 | R6 | Human verdict recorded (§4) | the `results` job artifact for the graded build | present, names the reviewer and the build | P0 | |
 | R7 | The Zig daemon tree is gone (§5) | `test ! -d src/agentsfleetd` | exit 0 | P0 | |
 | R8 | Nothing references the deleted tree (§5) | `git grep -l "src/agentsfleetd" -- ':!docs/v2/done' ':!docs/v1'` | no output | P0 | |
-| R9 | The runner survives the daemon's deletion (§5.4) | `zig build --build-file build_runner.zig -Doptimize=ReleaseSafe && test -x zig-out/bin/agentsfleet-runner` | exit 0 | P0 | |
+| R9 | The runner SOURCE survives the daemon's deletion (§5.4) | `zig build --build-file build_runner.zig -Doptimize=ReleaseSafe && test -x zig-out/bin/agentsfleet-runner` | exit 0 | P0 | |
+| R10 | The runner PIPELINE survives it too (§5.4) | `grep -c compile-runner- .github/workflows/release.yml` | at least 3 — both job declarations plus the release job's `needs` | P0 | |
+| R11 | The runner still reaches a host (§5.4) | `grep -c agentsfleet-runner-linux-amd64 .github/workflows/release.yml` | at least 11 — build, upload, download and the canary + fleet deploy stages | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
