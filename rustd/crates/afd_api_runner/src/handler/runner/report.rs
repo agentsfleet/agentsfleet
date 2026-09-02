@@ -34,8 +34,11 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use afd_fleet::lease::report::Reconciled;
+use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
+use afd_observability::producers::cost::{self, Spend};
+use afd_observability::producers::fleet::runner;
 use afd_observability::{Delivery, Telemetry};
-use afd_wire::report::{ReportRequest, ReportResponse};
+use afd_wire::report::{Outcome, ReportRequest, ReportResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -98,9 +101,53 @@ pub(crate) async fn handle<D: Services>(
             // run's record actually closed. The Zig reads its clock at the same
             // point, for the same reason.
             delivery_of(&settled, &request).record(SystemTime::now());
+            meter(&settled, &request, runner.id().as_str());
             Json(ReportResponse { ok: true }).into_response()
         }
         Err(error) => refuse(&error, EVENT),
+    }
+}
+
+/// Records what the finished run cost, and what its runner did.
+///
+/// Everything here is derived from facts the settle already produced, so a
+/// deployment exporting nothing pays one branch. The per-runner counters go
+/// through the RAW identifier deliberately: the slot table decides what it is
+/// attributed to, and a caller that chose the label would make the cardinality
+/// ceiling a suggestion.
+fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
+    match request.failure_reason {
+        // A failure the runner classified, and the classification is the label.
+        reason @ Some(_) => runner::failed(runner_id, reason),
+        // No class reported. `Outcome` still decides which it was: a fleet
+        // error with no class is counted under the unmodelled bucket rather
+        // than as a clean run, because the totals have to agree.
+        None => match request.outcome {
+            Outcome::Processed => runner::processed(runner_id),
+            Outcome::FleetError => runner::failed(runner_id, None),
+        },
+    }
+
+    cost::invocation(&Spend {
+        model: &settled.model,
+        posture: &settled.posture,
+        input_tokens: u64::from(request.input_tokens),
+        cached_input_tokens: u64::from(request.cached_input_tokens),
+        output_tokens: u64::from(request.output_tokens),
+        wall: Duration::from_millis(request.telemetry.wall_ms),
+        error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
+    });
+
+    // The final slice only. Receive and renewal are charged on their own paths
+    // and record their own class there — summing them here would double-count
+    // every renewed run.
+    if let Ok(nanocredits) = u64::try_from(settled.charged.as_i64()) {
+        cost::credits_consumed(
+            &settled.model,
+            &settled.posture,
+            ChargeClass::Settle,
+            nanocredits,
+        );
     }
 }
 

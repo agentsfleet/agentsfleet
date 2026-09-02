@@ -165,6 +165,7 @@ pub const fn is_metered(class: RouteClass) -> bool {
 /// or is cancelled.
 pub async fn admit(State(admission): State<Admission>, request: Request, next: Next) -> Response {
     let Some(_permit) = admission.claim() else {
+        afd_observability::producers::http::request_shed();
         return shed::response(&admission, &request);
     };
     // `trace`, per request, and deliberately AFTER the claim: the number worth

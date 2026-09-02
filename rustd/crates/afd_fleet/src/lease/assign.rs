@@ -20,6 +20,7 @@
 //! costs one poll rather than a full TTL of silence on that fleet.
 
 use afd_core::clock::UnixMillis;
+use afd_observability::producers;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
@@ -98,6 +99,20 @@ fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_redis::Erro
     );
 }
 
+/// What one lease poll cost, gathered as it runs.
+///
+/// The ratio is what an operator reads: candidates per poll says how much a
+/// poll examined, and round-trips per poll says how much of that reached
+/// Postgres. Either number alone is unreadable, which is why they are tallied
+/// together and recorded together.
+#[derive(Debug, Default)]
+struct PollCost {
+    /// Fleets the readiness index offered this poll.
+    candidates_scanned: u64,
+    /// Statements this poll issued.
+    database_roundtrips: u64,
+}
+
 impl Leases {
     /// Select the next work for `runner_id`, or `None` when nothing is leasable
     /// this pass.
@@ -106,11 +121,32 @@ impl Leases {
     /// Reports a datastore that would not answer. "Nothing to do" is
     /// `Ok(None)`, not an error — the runner backs off and re-polls.
     pub async fn select(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Option<Acquired>> {
+        let mut cost = PollCost::default();
+        let selected = self.select_counted(runner_id, now, &mut cost).await;
+        // On EVERY exit path, including the one where the peek itself failed:
+        // a poll that could not read the index is still a poll, and a total
+        // that skipped it would make idle cost look lower than it is.
+        producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
+        selected
+    }
+
+    /// [`Leases::select`] without the recording, tallying what it cost.
+    async fn select_counted(
+        &self,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+        cost: &mut PollCost,
+    ) -> Result<Option<Acquired>> {
         let ready = self
             .ready()
             .peek(MAX_READY_CANDIDATES_PER_POLL)
             .await
             .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
+        cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
+        // The readiness depth this poll saw, published for the gauge that
+        // reports it: the index is a network round trip, and a collection
+        // callback cannot make one.
+        producers::fleet::ready_depth_observed(cost.candidates_scanned);
         // The zero-Postgres path. Returning here is what makes idle cost scale
         // with runner count alone instead of runners × fleets.
         if ready.is_empty() {
@@ -118,7 +154,9 @@ impl Leases {
         }
 
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
+        cost.database_roundtrips += 1;
         for fleet_id in self.candidates(runner_id, &ids).await? {
+            cost.database_roundtrips += 1;
             if let Some(acquired) = self.try_candidate(&fleet_id, runner_id, now).await? {
                 return Ok(Some(acquired));
             }

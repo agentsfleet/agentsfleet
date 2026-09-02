@@ -371,6 +371,7 @@ version = "0.27.1"
 dependencies = [
  "afd_core",
  "afd_db",
+ "afd_observability",
  "afd_redis",
  "afd_sse",
  "afd_wire",
@@ -399,6 +400,7 @@ dependencies = [
  "afd_events",
  "afd_fleet_runtime",
  "afd_gate",
+ "afd_observability",
  "afd_redis",
  "afd_runner",
  "afd_state",
@@ -425,6 +427,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_observability",
  "afd_redis",
  "backon",
  "moka",
@@ -469,6 +472,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_observability",
  "afd_redis",
  "afd_runner",
  "afd_wire",
@@ -636,6 +640,7 @@ name = "afd_redis"
 version = "0.27.1"
 dependencies = [
  "afd_core",
+ "afd_observability",
  "backon",
  "futures-util",
  "hostname",
@@ -656,6 +661,7 @@ dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "afd_observability",
  "afd_redis",
  "afd_state",
  "afd_wire",
@@ -673,6 +679,7 @@ name = "afd_sse"
 version = "0.27.1"
 dependencies = [
  "afd_core",
+ "afd_observability",
  "afd_redis",
  "futures-util",
  "serde_json",
@@ -705,6 +712,7 @@ dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "afd_observability",
  "afd_redis",
  "base64 0.23.1",
  "futures-util",

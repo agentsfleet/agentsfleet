@@ -27,8 +27,18 @@ closed_set! {
         /// The database refused the write.
         DatabaseError => "db_error",
         /// No connection was available to attempt it on.
+        ///
+        /// The daemon this ports separates this from a database refusal; here
+        /// an exhausted pool arrives as one, so nothing writes this yet. It
+        /// stays in the set because the set is the WIRE vocabulary both
+        /// binaries share during the cutover, and the census ceiling is derived
+        /// from it — dropping it would understate the budget for a value the
+        /// other daemon still emits.
         PoolUnavailable => "pool_unavailable",
         /// The account opened and the provider would not record that it had.
+        ///
+        /// Kept for [`SignupFailure::PoolUnavailable`]'s reason: this daemon
+        /// writes no metadata back, and the other one does.
         MetadataWriteback => "metadata_writeback",
     }
 }

@@ -29,6 +29,10 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The families this crate produces. The dependency points this way and not the
+# other: telemetry knows nothing about leases or memory, and the counts below exist only
+# where the work happens.
+afd_observability.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
 afd_billing.workspace = true
 afd_credential.workspace = true
