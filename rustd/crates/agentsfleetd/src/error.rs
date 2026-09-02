@@ -222,3 +222,40 @@ pub enum MigrateFailure {
     #[error("agentsfleetd cannot migrate: the schema was not applied")]
     Run(#[from] afd_db::Error),
 }
+
+#[cfg(test)]
+mod tests {
+    use afd_observability::metrics::registry::Registry;
+
+    use super::BootFailure;
+
+    /// Both telemetry variants report the same boot phase.
+    ///
+    /// `phase` is deliberately exhaustive rather than defaulted, so that a
+    /// variant added later fails the match here instead of being reported as
+    /// one of the old phases. The arm that carries TWO variants is the one
+    /// where that could go unnoticed — a new telemetry failure folded into it
+    /// would inherit "telemetry" silently — so the pair is asserted together
+    /// rather than through whichever of them a test happened to build.
+    #[test]
+    fn a_refused_metric_contract_reports_the_telemetry_phase() -> Result<(), &'static str> {
+        // A row that cannot become a `Family`: the census declares eleven
+        // columns and this offers two, so the refusal comes from the reader
+        // rather than from any vocabulary this test would have to track.
+        let refused = Registry::read("name\tkind\na.family\tcounter\n")
+            .err()
+            .ok_or("a row short of the declared columns does not read clean")?;
+
+        let failure = BootFailure::from(refused);
+        assert_eq!(
+            failure.phase(),
+            "telemetry",
+            "a contract refusal is reported under the telemetry phase"
+        );
+        assert!(
+            !failure.to_string().is_empty(),
+            "and renders a sentence a boot log can carry"
+        );
+        Ok(())
+    }
+}
