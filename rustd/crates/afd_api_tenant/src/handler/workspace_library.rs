@@ -36,7 +36,12 @@ use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor::{self, StructCursor};
 use afd_library::{Destination, GalleryPage, Onboarded, Position, SummaryEntry, Tier};
-use afd_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
+/// Named only by the `body =` clause of this module's `utoipa::path`
+/// annotations, which the default build compiles away — so the import has to
+/// go with them or the feature-off build fails on an unused name.
+#[cfg(feature = "openapi")]
+use afd_wire::admin::AdminLibraryCreated;
+use afd_wire::admin::AdminLibraryRequirements;
 use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
 use axum::Json;
 use axum::body::Bytes;
