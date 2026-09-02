@@ -38,7 +38,7 @@ use crate::error::{Error, Result};
 use crate::metrics::family::{
     Counter as CounterFamily, Gauge as GaugeFamily, Histogram as HistogramFamily,
 };
-use crate::metrics::registry::{Family, Number, Registry};
+use crate::metrics::registry::{Family, Number, Registry, Temporality};
 
 pub use self::view::series_ceilings;
 
@@ -78,7 +78,20 @@ impl Reading {
 /// be a second set of series under the same names.
 #[derive(Debug)]
 pub struct Instruments {
-    meter: Meter,
+    /// The meter a family reporting a running total is built on.
+    ///
+    /// Gauges are built here too. They carry no window at all, so either
+    /// provider would describe them identically, and putting them beside the
+    /// cumulative families keeps the delta provider to exactly the families
+    /// whose payload IS a window.
+    cumulative: Meter,
+    /// The meter a family reporting only its window is built on.
+    ///
+    /// A second provider and not a setting, because the SDK asks the EXPORTER
+    /// which temporality it wants and aggregates to match — one provider would
+    /// silently rewrite the cost families' temporality to whatever the runtime
+    /// families use.
+    delta: Meter,
     registry: Registry,
     claimed: Mutex<BTreeSet<&'static str>>,
     /// The observable handles, kept alive.
@@ -93,9 +106,10 @@ pub struct Instruments {
 impl Instruments {
     /// Binds the declared contract to a meter.
     #[must_use]
-    pub fn new(registry: Registry, meter: Meter) -> Self {
+    pub fn new(registry: Registry, cumulative: Meter, delta: Meter) -> Self {
         Self {
-            meter,
+            cumulative,
+            delta,
             registry,
             claimed: Mutex::new(BTreeSet::new()),
             observed: Mutex::new(Vec::new()),
@@ -118,7 +132,7 @@ impl Instruments {
     pub fn counter_u64<M: CounterFamily>(&self, family: M) -> Result<Counter<u64>> {
         let declared = self.declared_counter(&family, Number::U64)?;
         Ok(self
-            .meter
+            .meter_for(declared)
             .u64_counter(declared.name.to_string())
             .with_unit(declared.unit.to_string())
             .with_description(declared.watch_for.to_string())
@@ -133,7 +147,7 @@ impl Instruments {
     pub fn counter_f64<M: CounterFamily>(&self, family: M) -> Result<Counter<f64>> {
         let declared = self.declared_counter(&family, Number::F64)?;
         Ok(self
-            .meter
+            .meter_for(declared)
             .f64_counter(declared.name.to_string())
             .with_unit(declared.unit.to_string())
             .with_description(declared.watch_for.to_string())
@@ -156,7 +170,7 @@ impl Instruments {
         check_number(declared, Number::F64)?;
         self.claim(family.name());
         Ok(self
-            .meter
+            .meter_for(declared)
             .f64_histogram(declared.name.to_string())
             .with_unit(declared.unit.to_string())
             .with_description(declared.watch_for.to_string())
@@ -183,7 +197,7 @@ impl Instruments {
         let declared = self.registry.gauge(&family)?;
         self.claim(family.name());
         let gauge = self
-            .meter
+            .meter_for(declared)
             .u64_observable_gauge(declared.name.to_string())
             .with_unit(declared.unit.to_string())
             .with_description(declared.watch_for.to_string())
@@ -212,6 +226,18 @@ impl Instruments {
             .filter(|family| !claimed.contains(&*family.name))
             .map(|family| family.name.clone())
             .collect()
+    }
+
+    /// The meter a family's declared temporality routes it to.
+    ///
+    /// The census column decides, not the call site: a family built on the
+    /// wrong provider exports under a temporality it never declared, and every
+    /// downstream `rate()` over it is then wrong in a way no error reports.
+    const fn meter_for(&self, declared: &Family) -> &Meter {
+        match declared.temporality {
+            Some(Temporality::Delta) => &self.delta,
+            Some(Temporality::Cumulative) | None => &self.cumulative,
+        }
     }
 
     /// The census row for a counter, checked for kind and number.

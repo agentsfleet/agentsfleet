@@ -34,6 +34,7 @@ pub mod probes;
 pub mod serve;
 pub mod signal;
 pub mod supervisor;
+pub mod telemetry;
 pub mod sweepers;
 pub mod tty;
 

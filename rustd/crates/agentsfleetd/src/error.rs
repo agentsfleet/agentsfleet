@@ -151,6 +151,21 @@ pub enum BootFailure {
     /// The port could not be bound.
     #[error("agentsfleetd cannot listen")]
     Listen(#[from] std::io::Error),
+    /// The telemetry transport would not build from the resolved knobs.
+    ///
+    /// Refuses boot, and that is not over-strictness: preflight already
+    /// accepted every knob, so a failure here is an endpoint the exporter
+    /// cannot parse. A daemon that served on through it would export nothing
+    /// and look exactly like a collector that is down.
+    #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
+    Exporter(#[from] opentelemetry_otlp::ExporterBuildError),
+    /// The metric contract and the code disagree.
+    ///
+    /// A family a producer names and the census does not declare, a kind or a
+    /// number they disagree about, or a series ceiling the SDK refuses. Every
+    /// one is a defect in this build rather than a condition to serve through.
+    #[error("agentsfleetd cannot boot: the metric contract was refused")]
+    Contract(#[from] afd_observability::Error),
 }
 
 impl BootFailure {
@@ -166,6 +181,7 @@ impl BootFailure {
             Self::Database(_) => "database",
             Self::Queue(_) => "queue",
             Self::Listen(_) => "listen",
+            Self::Exporter(_) | Self::Contract(_) => "telemetry",
         }
     }
 
@@ -180,7 +196,9 @@ impl BootFailure {
             Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
             Self::Queue(_) => afd_core::error_code::STARTUP_REDIS_CONNECT,
-            Self::Listen(_) => afd_core::error_code::INTERNAL_OPERATION_FAILED,
+            Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) => {
+                afd_core::error_code::INTERNAL_OPERATION_FAILED
+            }
         }
     }
 }

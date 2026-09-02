@@ -21,9 +21,14 @@
 //! opened a listening socket.
 
 mod config;
+mod otlp;
 mod read;
 
 pub use self::config::{BootConfig, BundleStoreConfig, IdentityConfig, PostHogConfig};
+pub use self::otlp::{
+    GRAFANA_API_KEY_KNOB, GRAFANA_ENDPOINT_KNOB, GRAFANA_INSTANCE_KNOB, OTEL_ENDPOINT_KNOB,
+    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
+};
 
 use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
@@ -283,6 +288,11 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 .filter(|raw| !raw.is_empty())
                 .map(String::into_boxed_str),
         });
+    // Absent is a deployment that exports nothing, which is most of them and
+    // is not a fault. What IS a fault is an endpoint with a protocol, timeout
+    // or header list this build cannot use — those are typos that would
+    // otherwise surface as a collector that never receives anything.
+    let otlp = self::otlp::otlp(env, &mut faults);
     let dashboard = optional_url(APP_URL_KNOB, APP_URL_DEFAULT);
     let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
     let identity = identity(env, &mut faults);
@@ -327,6 +337,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
                 posthog,
+                otlp,
             })
         }
         // Anything else: a knob that is missing or unusable, the identity
