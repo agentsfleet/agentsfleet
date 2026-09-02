@@ -156,7 +156,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Gate,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ApprovalSummary),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -191,7 +191,7 @@ pub(crate) async fn detail<D: Services>(
         afd_http::openapi::path::GateDecision,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

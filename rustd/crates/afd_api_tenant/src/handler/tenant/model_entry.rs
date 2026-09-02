@@ -46,7 +46,9 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_core::paging::struct_cursor::StructCursor;
 use afd_credential::provider::{Added, Removed, Retargeted};
-use afd_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
+use afd_wire::tenant_model_entry::{
+    CreateModelEntryRequest, ModelEntriesResponse, StoredModelEntry, UpdateModelEntryRequest,
+};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -171,7 +173,7 @@ impl StructCursor for Cursor {
     params(
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = ModelEntriesResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -218,7 +220,7 @@ pub(crate) async fn list<D: Services>(
     ),
     request_body = CreateModelEntryRequest,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = afd_http::openapi::CREATED, body = StoredModelEntry),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -286,7 +288,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::path::Id,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = StoredModelEntry),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

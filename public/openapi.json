@@ -32,7 +32,8 @@
           "200": {
             "description": "The process is alive"
           }
-        }
+        },
+        "security": []
       }
     },
     "/readyz": {
@@ -50,7 +51,8 @@
           "503": {
             "description": "A dependency this instance needs is unreachable"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/admin/fleet-libraries": {
@@ -81,7 +83,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -112,7 +119,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/admin/fleet-libraries/{id}": {
@@ -153,7 +165,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -210,7 +227,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/admin/models": {
@@ -241,7 +263,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -252,7 +279,14 @@
         "operationId": "create_admin_model",
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminModelCreated"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -266,7 +300,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/admin/models/{id}": {
@@ -307,7 +346,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -329,7 +373,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminModelUpdated"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -343,7 +394,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/admin/platform-keys": {
@@ -360,7 +416,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlatformKeyDeactivateResponse"
+                  "$ref": "#/components/schemas/PlatformKeysResponse"
                 }
               }
             }
@@ -374,7 +430,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -403,7 +464,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/admin/platform-keys/{provider}": {
@@ -427,7 +493,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyDeactivateResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -438,7 +511,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/api-keys": {
@@ -478,7 +556,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_ApiKeySummary"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -492,7 +577,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -517,7 +607,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RevokedApiKeyResponse"
+                  "$ref": "#/components/schemas/MintedApiKeyResponse"
                 }
               }
             }
@@ -537,7 +627,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/api-keys/{id}": {
@@ -581,7 +676,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -613,7 +713,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedApiKeyResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -633,7 +740,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/auth/identity-events/clerk": {
@@ -675,7 +787,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ignored"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -686,7 +805,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/auth/sessions": {
@@ -713,7 +833,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteAllSessionsResponse"
+                  "$ref": "#/components/schemas/OpenSessionResponse"
                 }
               }
             }
@@ -727,7 +847,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/auth/sessions/all": {
@@ -740,7 +861,14 @@
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAllSessionsResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -748,7 +876,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/auth/sessions/{session_id}": {
@@ -790,7 +923,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       },
       "delete": {
         "tags": [
@@ -823,7 +957,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/auth/sessions/{session_id}/approve": {
@@ -884,7 +1023,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/auth/sessions/{session_id}/verify": {
@@ -939,7 +1083,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/cli-credentials": {
@@ -973,7 +1118,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/cli-credentials/{id}": {
@@ -1011,7 +1161,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/connectors/{provider}/callback": {
@@ -1085,7 +1240,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       },
       "post": {
         "tags": [
@@ -1172,7 +1328,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/connectors/{provider}/events": {
@@ -1225,7 +1386,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/fleets/bundles": {
@@ -1256,7 +1422,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/fleets/runners": {
@@ -1307,7 +1478,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/fleets/runners/{runner_id}": {
@@ -1331,7 +1507,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerDetail"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -1345,7 +1528,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -1395,7 +1583,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/fleets/runners/{runner_id}/events": {
@@ -1482,7 +1675,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/fleets/runners/{runner_id}/leases": {
@@ -1556,7 +1754,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/ingress/qstash/schedules": {
@@ -1598,7 +1801,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fired"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -1609,7 +1819,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/ingress/{provider}": {
@@ -1660,10 +1871,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pong"
+                }
+              }
+            }
           },
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pong"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -1680,7 +1905,8 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/models": {
@@ -1736,7 +1962,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners": {
@@ -1763,7 +1994,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me": {
@@ -1794,7 +2030,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/bundles/{content_hash}": {
@@ -1829,7 +2070,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/credentials/mint": {
@@ -1870,7 +2116,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/heartbeats": {
@@ -1883,7 +2134,14 @@
         "operationId": "runner_heartbeat",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -1894,7 +2152,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/leases": {
@@ -1918,7 +2181,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/leases/{lease_id}/activity": {
@@ -1963,7 +2231,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/leases/{lease_id}/renew": {
@@ -2005,7 +2278,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/memory/{fleet_id}": {
@@ -2047,7 +2325,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -2097,7 +2380,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/runners/me/reports": {
@@ -2138,7 +2426,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/billing": {
@@ -2189,7 +2482,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/billing/charges": {
@@ -2240,7 +2538,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/models": {
@@ -2253,7 +2556,14 @@
         "operationId": "list_tenant_model_entries",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelEntriesResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -2267,7 +2577,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -2288,7 +2603,14 @@
         },
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredModelEntry"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -2308,7 +2630,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/models/{id}": {
@@ -2346,7 +2673,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -2378,7 +2710,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredModelEntry"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -2398,7 +2737,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/provider": {
@@ -2429,7 +2773,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -2450,7 +2799,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProviderResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -2461,7 +2817,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -2490,7 +2851,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/tenants/me/workspaces": {
@@ -2550,7 +2916,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/webhooks/svix/{fleet_id}": {
@@ -2618,7 +2989,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/webhooks/{fleet_id}": {
@@ -2659,7 +3035,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/webhooks/{fleet_id}/approval": {
@@ -2683,7 +3064,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolved"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -2697,7 +3085,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/webhooks/{fleet_id}/github": {
@@ -2768,7 +3161,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces": {
@@ -2818,7 +3216,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/approvals": {
@@ -2904,7 +3307,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}": {
@@ -2941,7 +3349,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResolvedResponse"
+                  "$ref": "#/components/schemas/ApprovalSummary"
                 }
               }
             }
@@ -2958,7 +3366,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}": {
@@ -3000,7 +3413,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -3017,7 +3437,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/connectors": {
@@ -3055,7 +3480,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/connectors/{provider}": {
@@ -3088,7 +3518,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3105,7 +3542,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -3153,7 +3595,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/connectors/{provider}/connect": {
@@ -3186,7 +3633,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRedirect"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3203,7 +3657,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/events": {
@@ -3290,7 +3749,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/events/stream": {
@@ -3325,7 +3789,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleet-libraries": {
@@ -3388,7 +3857,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -3410,7 +3884,14 @@
         ],
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLibraryCreated"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3427,7 +3908,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets": {
@@ -3493,7 +3979,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -3555,7 +4046,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
@@ -3612,7 +4108,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -3660,7 +4161,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -3733,7 +4239,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events": {
@@ -3820,7 +4331,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream": {
@@ -3864,7 +4380,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}": {
@@ -3906,7 +4427,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetail"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -3920,7 +4448,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants": {
@@ -3977,7 +4510,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}": {
@@ -4036,7 +4574,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories": {
@@ -4093,7 +4636,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}": {
@@ -4152,7 +4700,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages": {
@@ -4223,7 +4776,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -4254,7 +4812,14 @@
         ],
         "responses": {
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SteerAccepted"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -4274,7 +4839,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules": {
@@ -4307,7 +4877,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4318,7 +4895,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -4369,7 +4951,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}": {
@@ -4411,7 +4998,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4425,7 +5019,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -4482,7 +5081,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -4545,7 +5149,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}/sync": {
@@ -4604,7 +5213,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/onboarding": {
@@ -4615,38 +5229,6 @@
         "summary": "Read the workspace's onboarding checklist state",
         "description": "Returns every signal the Getting Started checklist needs in one call. Five signals are derived server-side in a single query. A model is configured, a fleet exists, a credential exists, an event has been processed, and a steer event exists. Three more are the caller's stored UI preferences: dismissed, collapsed, and CLI ticked. This replaces six separate requests with one. ",
         "operationId": "get_workspace_onboarding",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "`UUIDv7` of the workspace.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "No credential, or one this route does not accept"
-          },
-          "500": {
-            "description": "The daemon failed to answer"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/preferences": {
-      "get": {
-        "tags": [
-          "Workspaces"
-        ],
-        "summary": "Read the caller's dashboard preferences for a workspace",
-        "description": "Returns every dashboard preference the calling user has set in this workspace, as an object keyed by preference key. A user who has set nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no preferences\" from \"preferences unavailable\" without branching. Preferences are per user AND per workspace: a second workspace starts its onboarding checklist fresh. ",
-        "operationId": "get_workspace_preferences",
         "parameters": [
           {
             "name": "workspace_id",
@@ -4675,7 +5257,56 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/preferences": {
+      "get": {
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "Read the caller's dashboard preferences for a workspace",
+        "description": "Returns every dashboard preference the calling user has set in this workspace, as an object keyed by preference key. A user who has set nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no preferences\" from \"preferences unavailable\" without branching. Preferences are per user AND per workspace: a second workspace starts its onboarding checklist fresh. ",
+        "operationId": "get_workspace_preferences",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept"
+          },
+          "500": {
+            "description": "The daemon failed to answer"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
@@ -4716,7 +5347,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/secrets": {
@@ -4744,7 +5380,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoredSecretResponse"
+                  "$ref": "#/components/schemas/SecretsResponse"
                 }
               }
             }
@@ -4764,7 +5400,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -4800,7 +5441,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SecretsResponse"
+                  "$ref": "#/components/schemas/StoredSecretResponse"
                 }
               }
             }
@@ -4823,7 +5464,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/secrets/{name}": {
@@ -4866,7 +5512,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredSecretResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -4883,7 +5536,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -4931,7 +5589,12 @@
           "500": {
             "description": "The daemon failed to answer"
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     }
   },
@@ -5024,6 +5687,40 @@
               "$ref": "#/components/schemas/AdminLibraryItem"
             },
             "description": "Every draft and public row."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminLibraryCreated": {
+        "type": "object",
+        "description": "Successful platform Fleet-library onboarding.",
+        "required": [
+          "id",
+          "name",
+          "visibility",
+          "content_hash",
+          "requirements"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "description": "Content identity of the validated bundle."
+          },
+          "id": {
+            "type": "string",
+            "description": "Slug derived from `SKILL.md`."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name derived from `SKILL.md`."
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/AdminLibraryRequirements",
+            "description": "Credential/tool/host names without support-file paths."
+          },
+          "visibility": {
+            "type": "string",
+            "description": "Which library the entry now stands in.\n\n`platform` from the operator's catalogue and `tenant` from a workspace\nonboard — both verbs answer this shape, and the tier is what differs."
           }
         },
         "additionalProperties": false
@@ -5132,6 +5829,27 @@
         },
         "additionalProperties": false
       },
+      "AdminModelCreated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AdminModelItem",
+            "description": "The created model fields, flattened on the existing wire."
+          },
+          {
+            "type": "object",
+            "required": [
+              "request_id"
+            ],
+            "properties": {
+              "request_id": {
+                "type": "string",
+                "description": "Server-generated support correlation id."
+              }
+            }
+          }
+        ],
+        "description": "Successful model creation."
+      },
       "AdminModelItem": {
         "allOf": [
           {
@@ -5162,6 +5880,30 @@
           }
         ],
         "description": "One priced model row in the admin list."
+      },
+      "AdminModelUpdated": {
+        "type": "object",
+        "description": "Successful model rate update.",
+        "required": [
+          "id",
+          "updated",
+          "request_id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Updated row identity."
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Server-generated support correlation id."
+          },
+          "updated": {
+            "type": "boolean",
+            "description": "Always true after an update."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelsResponse": {
         "type": "object",
@@ -5195,6 +5937,51 @@
           "drained",
           "revoked"
         ]
+      },
+      "ApiKeySummary": {
+        "type": "object",
+        "description": "One key as a list shows it: metadata, never a secret.",
+        "required": [
+          "id",
+          "key_name",
+          "active",
+          "created_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether it still authenticates."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was minted."
+          },
+          "id": {
+            "type": "string",
+            "description": "The key's identifier."
+          },
+          "key_name": {
+            "type": "string",
+            "description": "What it is called."
+          },
+          "last_used_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it last authenticated, if it ever has."
+          },
+          "revoked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
+          }
+        }
       },
       "ApprovalSummary": {
         "type": "object",
@@ -5590,6 +6377,39 @@
           }
         }
       },
+      "ConnectionView": {
+        "type": "object",
+        "description": "`GET …/connectors/{provider}` — one provider's connection.\n\nCarries no token and no expiry. A status read answers whether a person has\nconnected and what it is called; every other field of the stored handle is\nthe broker's business and none of it belongs in a document a browser holds.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What a person sees the connection called, when the grant named one."
+          },
+          "status": {
+            "type": "string",
+            "description": "Whether this workspace holds a landed grant — [`STATUS_CONNECTED`] or\n[`STATUS_NOT_CONNECTED`]."
+          }
+        }
+      },
+      "ConsentRedirect": {
+        "type": "object",
+        "description": "`POST …/connectors/{provider}/connect` — where a person is sent to consent.",
+        "required": [
+          "install_url"
+        ],
+        "properties": {
+          "install_url": {
+            "type": "string",
+            "description": "The provider's own page, carrying this round-trip's signed state."
+          }
+        }
+      },
       "CreateModelEntryRequest": {
         "type": "object",
         "description": "`POST /v1/tenants/me/models` — register a model on a stored credential.\n\nUnknown fields are IGNORED, matching `innerCreateModelEntry`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
@@ -5941,6 +6761,24 @@
           "renewal_terminate",
           "budget_breach"
         ]
+      },
+      "Fired": {
+        "type": "object",
+        "description": "What an accepted schedule fire is answered with.",
+        "required": [
+          "event_id",
+          "replayed"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The event the fleet will run, or already ran."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Whether an earlier attempt already produced it."
+          }
+        }
       },
       "FleetBundleItem": {
         "type": "object",
@@ -6335,6 +7173,70 @@
           }
         }
       },
+      "HeartbeatResponse": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/heartbeats` reply.\n\nCarries the current assignment on EVERY beat, so a dashboard change reaches\nthe host within one interval. A null assignment means a row predating the\npolicy columns: the runner then fails closed and refuses to lease.",
+        "required": [
+          "status",
+          "degraded",
+          "selftest_requested"
+        ],
+        "properties": {
+          "assigned_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssignedPolicy",
+                "description": "The runner's current assignment."
+              }
+            ]
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "Whether the row reads degraded."
+          },
+          "degraded_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it reads degraded."
+          },
+          "selftest_requested": {
+            "type": "boolean",
+            "description": "An operator asked this runner to self-test. Rides the beat like the\nassignment does — one interval, no second endpoint, no host visit."
+          },
+          "status": {
+            "$ref": "#/components/schemas/HeartbeatStatus",
+            "description": "Whether to keep working, drain, or stop."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HeartbeatStatus": {
+        "type": "string",
+        "description": "Heartbeat reply status.",
+        "enum": [
+          "ok",
+          "drain",
+          "stop"
+        ]
+      },
+      "Ignored": {
+        "type": "object",
+        "description": "What a delivery this daemon deliberately dropped is answered with.\n\n`200` and a reason, never a 4xx. Every one of these is a real,\ncorrectly-signed delivery that simply does not wake this fleet — a green\nbuild, a label edit, a paused fleet. Answering an error would put it in the\nsender's retry queue forever, and retrying changes none of them.",
+        "required": [
+          "ignored"
+        ],
+        "properties": {
+          "ignored": {
+            "type": "string",
+            "description": "Which rule dropped it."
+          }
+        }
+      },
       "InstallFleetRequest": {
         "type": "object",
         "description": "`POST /v1/workspaces/{workspace_id}/fleets` — install one.",
@@ -6623,6 +7525,174 @@
         },
         "additionalProperties": false
       },
+      "MintedApiKeyResponse": {
+        "type": "object",
+        "description": "The one response that reveals a key's plaintext.",
+        "required": [
+          "id",
+          "key_name",
+          "key",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was minted."
+          },
+          "id": {
+            "type": "string",
+            "description": "The key's identifier, which every later call addresses it by."
+          },
+          "key": {
+            "type": "string",
+            "description": "The credential itself. Shown once and never stored in this shape."
+          },
+          "key_name": {
+            "type": "string",
+            "description": "What it is called."
+          }
+        }
+      },
+      "ModelEntriesResponse": {
+        "type": "object",
+        "description": "`GET /v1/tenants/me/models` — one page of the registry.",
+        "required": [
+          "models",
+          "platform_default_available"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelEntryRow"
+            },
+            "description": "The rows, newest first.\n\n`models`, not `items`: renaming a shipped v1 field is what\n`docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and\n`next_cursor` were ADDED beside it, so the page became navigable without\nbreaking a client."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or null on the last one."
+          },
+          "platform_default": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlatformDefaultRow",
+                "description": "The default's identity, when there is one."
+              }
+            ]
+          },
+          "platform_default_available": {
+            "type": "boolean",
+            "description": "Whether an active platform-default row exists at all."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Always null — see the module note.",
+            "minimum": 0
+          }
+        }
+      },
+      "ModelEntryRow": {
+        "type": "object",
+        "description": "One configured model, as the registry page shows it.\n\n`id` is the entry's own identity — the `{id}` the item route takes — and not\nthe model's. The model is `model_id`, which is what a provider spells.",
+        "required": [
+          "id",
+          "model_id",
+          "secret_ref",
+          "kind",
+          "has_key",
+          "active",
+          "created_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether this entry is the tenant's current selection."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The custom endpoint, where one may be displayed."
+          },
+          "cached_input_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The cached-input rate, likewise."
+          },
+          "context_cap_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The context window the catalogue prices this model at.\n\nAbsent when the catalogue carries no rate for the pair — a blank cell,\nwhich is different from a zero window and must not render as one.",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was first stored, in epoch milliseconds."
+          },
+          "has_key": {
+            "type": "boolean",
+            "description": "Whether a key is stored under that name. Never the key."
+          },
+          "id": {
+            "type": "string",
+            "description": "The entry's identity."
+          },
+          "input_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The input rate, in nanos per million tokens."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What the credential is, as the server classified it at write time."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "The model this entry configures."
+          },
+          "output_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The output rate, likewise."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider label, for the credential kinds that carry one."
+          },
+          "secret_ref": {
+            "type": "string",
+            "description": "The vault key name backing it."
+          }
+        }
+      },
       "ModelRates": {
         "type": "object",
         "description": "Mutable rate fields shared by admin model create and patch.",
@@ -6732,6 +7802,29 @@
         },
         "additionalProperties": false
       },
+      "OpenSessionResponse": {
+        "type": "object",
+        "description": "What opening a login answers with.",
+        "required": [
+          "session_id",
+          "login_url",
+          "request_id"
+        ],
+        "properties": {
+          "login_url": {
+            "type": "string",
+            "description": "The page a person approves the login on."
+          },
+          "request_id": {
+            "type": "string",
+            "description": "The request that opened it, for an operator correlating a failed login."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The identifier the command line polls on."
+          }
+        }
+      },
       "Outcome": {
         "type": "string",
         "description": "The terminal verdict a runner reports.\n\nMirrors the event statuses a RUNNER can produce; the daemon-side statuses are\nnever runner-reported.",
@@ -6739,6 +7832,93 @@
           "processed",
           "fleet_error"
         ]
+      },
+      "Page": {
+        "type": "object",
+        "description": "A page of schedules.",
+        "required": [
+          "schedules"
+        ],
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/View"
+            },
+            "description": "The fleet's schedules, oldest first."
+          }
+        }
+      },
+      "PageResponse_ApiKeySummary": {
+        "type": "object",
+        "description": "A page of a keyset-paginated list, in the envelope every list shares.\n\nGeneric over the item, because the envelope is the same for every paged\nresource on these planes and a per-resource copy is a per-resource chance\nfor the keys to drift apart.\n\nExactly three keys, always — `items`, `total`, `next_cursor` — pinned to\nwhat `api_keys/list.zig` answers and to the integration test that counts\nthem. An earlier shape here said `data` with a `has_more` beside it, which\nread well and was nobody's wire format: parity is with the daemon being\nreplaced, not with the envelope one would design today.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One key as a list shows it: metadata, never a secret.",
+              "required": [
+                "id",
+                "key_name",
+                "active",
+                "created_at"
+              ],
+              "properties": {
+                "active": {
+                  "type": "boolean",
+                  "description": "Whether it still authenticates."
+                },
+                "created_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When it was minted."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "The key's identifier."
+                },
+                "key_name": {
+                  "type": "string",
+                  "description": "What it is called."
+                },
+                "last_used_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "When it last authenticated, if it ever has."
+                },
+                "revoked_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
+                }
+              }
+            },
+            "description": "The rows on this page, in the requested order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page.\n\nAlways emitted, never omitted, for the module's null rule."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows the collection holds in total.\n\nPage-stable — the count carries no keyset predicate — so a client\nwalking pages sees one number rather than a shrinking one. Whether more\npages exist is answered by `next_cursor` being non-null, not by a flag."
+          }
+        }
       },
       "PatchApiKeyRequest": {
         "type": "object",
@@ -6833,6 +8013,55 @@
         ],
         "description": "What a PATCH answers with — one of three shapes."
       },
+      "PlatformDefaultRow": {
+        "type": "object",
+        "description": "The deployment's platform default, as the page's Default row shows it.",
+        "required": [
+          "provider",
+          "model",
+          "context_cap_tokens"
+        ],
+        "properties": {
+          "cached_input_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The cached-input rate, likewise."
+          },
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The context window the catalogue prices it at.",
+            "minimum": 0
+          },
+          "input_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The input rate, in nanos per million tokens."
+          },
+          "model": {
+            "type": "string",
+            "description": "The model it selects."
+          },
+          "output_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The output rate, likewise."
+          },
+          "provider": {
+            "type": "string",
+            "description": "The provider the default belongs to."
+          }
+        }
+      },
       "PlatformKeyDeactivateResponse": {
         "type": "object",
         "description": "Successful platform-default deactivation.",
@@ -6853,6 +8082,43 @@
           "request_id": {
             "type": "string",
             "description": "Server-generated support correlation id."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlatformKeyItem": {
+        "type": "object",
+        "description": "Reveal-free platform-key list item.",
+        "required": [
+          "provider",
+          "source_workspace_id",
+          "active",
+          "updated_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether this row is the platform default."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Active priced model, absent after deactivation."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider and vault-row name."
+          },
+          "source_workspace_id": {
+            "type": "string",
+            "description": "Workspace holding the key."
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last mutation instant in epoch milliseconds."
           }
         },
         "additionalProperties": false
@@ -6891,6 +8157,28 @@
         },
         "additionalProperties": false
       },
+      "PlatformKeysResponse": {
+        "type": "object",
+        "description": "`GET /v1/admin/platform-keys` response.",
+        "required": [
+          "keys",
+          "request_id"
+        ],
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformKeyItem"
+            },
+            "description": "Every active and inactive provider row."
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Server-generated support correlation id."
+          }
+        },
+        "additionalProperties": false
+      },
       "PollSessionResponse": {
         "type": "object",
         "description": "`GET /v1/auth/sessions/{session_id}` — where a login has got to.",
@@ -6917,6 +8205,32 @@
           "token_name": {
             "type": "string",
             "description": "What the credential will be called."
+          }
+        }
+      },
+      "Pong": {
+        "type": "object",
+        "description": "What a `ping` is answered with.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The pong marker this deployment answers with."
+          }
+        }
+      },
+      "PreferencesResponse": {
+        "type": "object",
+        "description": "`GET /v1/workspaces/{workspace_id}/preferences` and the response every\npreference write answers with.\n\nA write returns the WHOLE bag rather than the one key it set, matching\n`respondWithBag`: the dashboard holds the bag in one piece of state, so\nhanding back a fragment would make it merge on the client instead.",
+        "required": [
+          "prefs"
+        ],
+        "properties": {
+          "prefs": {
+            "type": "object",
+            "description": "Every key this person has set in this workspace, key-ordered.\n\nA `BTreeMap` so the order is the SQL's `ORDER BY pref_key` and stays\nstable between two captures — object key order is not load-bearing for a\nclient, and is exactly what makes a diff of two responses readable.\n\nThe serialized form is an object of arbitrary JSON values; the Rust form\nmaps borrowed keys to unparsed slices, and `RawValue` has no schema of\nits own. `value_type` names that difference."
           }
         }
       },
@@ -7102,6 +8416,29 @@
         },
         "additionalProperties": false
       },
+      "Resolved": {
+        "type": "object",
+        "description": "What a gate resolved through the approval callback is answered with.\n\nDeliberately NOT [`crate::approval::ResolvedResponse`]. That is the\ndashboard's shape, carrying the gate id, the outcome and who decided it; this\nis the shape the callback sender is owed, and the two differ because their\nreaders do. A sender gets back what it sent plus a marker, and nothing about\nwho else may have answered the gate first.",
+        "required": [
+          "status",
+          "action_id",
+          "decision"
+        ],
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "description": "The gate that was answered."
+          },
+          "decision": {
+            "type": "string",
+            "description": "The answer it was given."
+          },
+          "status": {
+            "type": "string",
+            "description": "The resolved marker this route answers with."
+          }
+        }
+      },
       "ResolvedResponse": {
         "type": "object",
         "description": "What answering a gate reports, whether or not this caller won the race.",
@@ -7237,6 +8574,85 @@
           }
         },
         "additionalProperties": false
+      },
+      "RunnerDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RunnerItem",
+            "description": "The fields shared with the runner list, flattened on the wire."
+          },
+          {
+            "type": "object",
+            "required": [
+              "active_lease_count",
+              "active_fleet_count",
+              "leases_acquired",
+              "leases_succeeded",
+              "leases_failed",
+              "leases_expired"
+            ],
+            "properties": {
+              "active_fleet_count": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Fleets represented by live leases."
+              },
+              "active_lease_count": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Live leases currently held."
+              },
+              "leases_acquired": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Lifetime acquired count."
+              },
+              "leases_expired": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Lifetime expired count."
+              },
+              "leases_failed": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Lifetime failed count."
+              },
+              "leases_succeeded": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Lifetime successful count."
+              },
+              "selftest": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelftestReport",
+                    "description": "Latest complete self-test report."
+                  }
+                ]
+              },
+              "selftest_completed_at": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Latest self-test completion instant."
+              },
+              "selftest_requested_at": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Outstanding self-test request instant."
+              }
+            }
+          }
+        ],
+        "description": "One runner with its live and lifetime counters."
       },
       "RunnerEventItem": {
         "type": "object",
@@ -7579,6 +8995,78 @@
         },
         "additionalProperties": false
       },
+      "SelftestCheck": {
+        "type": "object",
+        "description": "One self-test check's verdict.\n\n`detail` is prose even when `ok`: every passing check carries a line, and a\nwhitespace-free cause reads to an operator as a leaked internal identifier.",
+        "required": [
+          "name",
+          "ok",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "Why, in prose."
+          },
+          "name": {
+            "type": "string",
+            "description": "What was checked."
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "Whether it passed."
+          }
+        }
+      },
+      "SelftestReport": {
+        "type": "object",
+        "description": "One probe run as it crosses the wire.\n\nThe tier and policy travel WITH the verdict rather than being read from the\nrunner row at render time: a result outlives the assignment that produced it,\nso a reader compares these against the row's live values and labels a\nmismatch stale instead of presenting a verdict on a policy nothing tested.",
+        "required": [
+          "checks",
+          "all_ok",
+          "sandbox_tier",
+          "network_policy"
+        ],
+        "properties": {
+          "all_ok": {
+            "type": "boolean",
+            "description": "Whether every check passed."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelftestCheck"
+            },
+            "description": "Every check the probe ran."
+          },
+          "network_policy": {
+            "type": "string",
+            "description": "The egress posture in force when the probe ran."
+          },
+          "sandbox_tier": {
+            "type": "string",
+            "description": "The tier in force when the probe ran."
+          }
+        }
+      },
+      "SteerAccepted": {
+        "type": "object",
+        "description": "What a steer answers with: 202, and the id the run will be found under.\n\n`event_id` is the stream entry id Redis minted, which IS the canonical\nevent id — the CLI filters the live tail on it to follow the message it\njust sent.",
+        "required": [
+          "status",
+          "event_id"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The canonical event id the steer became."
+          },
+          "status": {
+            "type": "string",
+            "description": "Always `accepted`. A field rather than an implied 202, because that is\nwhat the daemon this ports writes."
+          }
+        }
+      },
       "StoreSecretRequest": {
         "type": "object",
         "description": "`POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.\n\nUnknown fields are IGNORED, matching `innerStoreSecret`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
@@ -7594,6 +9082,35 @@
           "name": {
             "type": "string",
             "description": "The name a fleet interpolates as `${secrets.<name>.<field>}`."
+          }
+        }
+      },
+      "StoredModelEntry": {
+        "type": "object",
+        "description": "What a create and a model change both answer with.\n\nOne shape for both verbs because both say the same thing — which entry now\nstands — and the status code is what distinguishes them.",
+        "required": [
+          "id",
+          "model_id",
+          "secret_ref",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was first stored, in epoch milliseconds."
+          },
+          "id": {
+            "type": "string",
+            "description": "The entry's identity."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "The model it configures."
+          },
+          "secret_ref": {
+            "type": "string",
+            "description": "The vault key name backing it."
           }
         }
       },
@@ -7818,6 +9335,68 @@
           "nonce": {
             "type": "string",
             "description": "The nonce it was sealed under."
+          }
+        }
+      },
+      "View": {
+        "type": "object",
+        "description": "One schedule, as the tenant surface renders it.",
+        "required": [
+          "schedule_id",
+          "fleet_id",
+          "cron",
+          "timezone",
+          "message",
+          "status",
+          "sync",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was created."
+          },
+          "cron": {
+            "type": "string",
+            "description": "The expression it fires on."
+          },
+          "fleet_id": {
+            "type": "string",
+            "description": "The fleet it wakes."
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last push failed, when one did."
+          },
+          "message": {
+            "type": "string",
+            "description": "What the fleet is asked to do."
+          },
+          "schedule_id": {
+            "type": "string",
+            "description": "Its identity."
+          },
+          "status": {
+            "type": "string",
+            "description": "What the operator wants it to be doing."
+          },
+          "sync": {
+            "type": "string",
+            "description": "How far the external scheduler has been brought in line.\n\nRendered rather than hidden: a schedule that saved and did not register\nis the one state a person needs to see, and a view that showed only the\nintent would report a schedule as live when it fires nowhere."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The zone that expression is read in."
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was last changed."
           }
         }
       },

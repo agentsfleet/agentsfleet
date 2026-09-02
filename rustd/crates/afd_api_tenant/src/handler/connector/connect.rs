@@ -50,7 +50,7 @@ use crate::services::{Services, WorkspaceConnectors as _};
         afd_http::openapi::path::WorkspaceProvider,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = ConsentRedirect),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

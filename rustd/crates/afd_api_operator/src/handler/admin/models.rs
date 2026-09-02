@@ -78,7 +78,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         "restart. Requires the `model:admin` scope. ",
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminModelCreated),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -134,7 +134,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::path::Id,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = AdminModelUpdated),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

@@ -55,7 +55,7 @@ const EVENT: &str = "runner_heartbeat_failed";
         "able to fail its own liveness by sending nonsense. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = HeartbeatResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

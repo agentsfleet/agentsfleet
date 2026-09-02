@@ -36,7 +36,7 @@ use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor::{self, StructCursor};
 use afd_library::{Destination, GalleryPage, Onboarded, Position, SummaryEntry, Tier};
-use afd_wire::admin::AdminLibraryRequirements;
+use afd_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
 use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
 use axum::Json;
 use axum::body::Bytes;
@@ -170,7 +170,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

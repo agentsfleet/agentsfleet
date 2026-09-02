@@ -46,7 +46,7 @@ const DETAIL_MODEL_UNKNOWN: &str =
     params(
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeysResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -143,7 +143,7 @@ pub(crate) async fn set<D: Services>(
         afd_http::openapi::path::Provider,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

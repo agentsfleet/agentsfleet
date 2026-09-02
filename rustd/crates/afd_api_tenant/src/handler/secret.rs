@@ -69,6 +69,15 @@ pub struct SecretPath {
     pub name: String,
 }
 
+/// The body `store` answers a success with.
+///
+/// Named once, and named in the signature, so the handler and its
+/// `#[utoipa::path]` annotation cannot drift apart without the binding test
+/// below going red. `Response` erases this: `store` and `list` had identical
+/// return types while answering different shapes, which is exactly how their
+/// two annotations came to be swapped.
+pub(crate) type StoredSecret = StoredSecretResponse<'static>;
+
 /// `POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.
 ///
 /// A name this workspace already holds is refused rather than overwritten, and
@@ -96,7 +105,7 @@ pub struct SecretPath {
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = SecretsResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = StoredSecretResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -109,7 +118,7 @@ pub(crate) async fn store<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     body: Bytes,
-) -> Result<Response, Refusal> {
+) -> Result<(StatusCode, Json<StoredSecret>), Refusal> {
     let request = read_body::<StoreSecretRequest<'_>>(&body)?;
     // Parsed before the pool is touched, so a malformed request never draws a
     // connection and the refusal is the same whichever verb reached it.
@@ -125,10 +134,12 @@ pub(crate) async fn store<D: Services>(
     Ok((
         StatusCode::CREATED,
         Json(StoredSecretResponse {
-            name: Cow::Borrowed(name.as_str()),
+            // Owned rather than borrowed: the name is parsed into a local, and
+            // a typed return outlives it. One small allocation buys a signature
+            // that states what this handler answers.
+            name: Cow::Owned(name.as_str().to_owned()),
         }),
-    )
-        .into_response())
+    ))
 }
 
 /// `GET /v1/workspaces/{workspace_id}/secrets` — the descriptors, never a value.
@@ -149,7 +160,7 @@ pub(crate) async fn store<D: Services>(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse),
+        (status = 200, description = afd_http::openapi::OK, body = SecretsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -201,7 +212,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Secret,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -318,4 +329,58 @@ fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Result<T, Refusa
     }
     afd_core::json::object_from_slice::<T>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))
+}
+
+/// The annotation and the signature describe the same body.
+///
+/// # Why this exists
+///
+/// `#[utoipa::path]` never sees the function it sits on. `body = X` is an
+/// independent assertion, and when a handler returned the erased `Response`
+/// there was nothing to check it against — which is how `store` came to
+/// publish `SecretsResponse` and `list` to publish `StoredSecretResponse`,
+/// each documenting the other's shape.
+///
+/// A typed return gives the check something to stand on. `StoredSecret` is
+/// named in the signature, so changing what the handler answers changes the
+/// alias, and changing the alias fails this test unless the annotation moves
+/// with it. That is the binding no static analysis could provide.
+#[cfg(all(test, feature = "openapi"))]
+mod contract {
+    use utoipa::Path as _;
+
+    use super::StoredSecret;
+
+    /// A Rust type's short name, as utoipa spells it in a `$ref`.
+    fn schema_name<T: ?Sized>() -> &'static str {
+        std::any::type_name::<T>()
+            .rsplit("::")
+            .next()
+            .unwrap_or_default()
+            .split('<')
+            .next()
+            .unwrap_or_default()
+    }
+
+    /// The schema one documented response refers to.
+    fn documented(operation: &utoipa::openapi::path::Operation, status: &str) -> String {
+        serde_json::to_value(operation).expect("the operation serializes")["responses"][status]
+            ["content"]["application/json"]["schema"]["$ref"]
+            .as_str()
+            .unwrap_or("(none documented)")
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    }
+
+    #[test]
+    fn the_documented_created_body_is_the_type_store_returns() {
+        assert_eq!(
+            documented(&super::__path_store::operation(), "201"),
+            schema_name::<StoredSecret>(),
+            "POST /v1/workspaces/{{workspace_id}}/secrets documents a 201 body \
+             that is not the type the handler returns",
+        );
+    }
 }
