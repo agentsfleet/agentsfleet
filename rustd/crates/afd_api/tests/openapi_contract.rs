@@ -20,6 +20,11 @@
 //!
 //! Both are mechanical, and the defects they catch are the ones a
 //! route × method comparison is structurally blind to.
+#![expect(
+    clippy::expect_used,
+    reason = "a document utoipa just built must serialize; a failure here is the
+              generator broken, not a state under test"
+)]
 #![cfg(all(feature = "test-util", feature = "openapi"))]
 
 /// The verbs a `PathItem` can carry, as the document spells them.
@@ -41,10 +46,10 @@ fn references(value: &serde_json::Value, found: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(fields) => {
             for (key, nested) in fields {
-                if key == "$ref" {
-                    if let Some(target) = nested.as_str() {
-                        found.push(target.to_owned());
-                    }
+                if key == "$ref"
+                    && let Some(target) = nested.as_str()
+                {
+                    found.push(target.to_owned());
                 }
                 references(nested, found);
             }

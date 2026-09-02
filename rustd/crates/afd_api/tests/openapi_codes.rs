@@ -29,6 +29,11 @@
 //! and was not told about, which is the defect the committed contract had at
 //! scale: most of its operations listed a success and `default` and nothing in
 //! between.
+#![expect(
+    clippy::expect_used,
+    reason = "a document utoipa just built must serialize; a failure here is the
+              generator broken, not a state under test"
+)]
 #![cfg(all(feature = "test-util", feature = "openapi"))]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -127,7 +132,7 @@ fn credentialed() -> BTreeSet<Operation> {
 /// A guarded route publishes the credential that gets a caller past its guard.
 ///
 /// The same `RouteMeta::guard` that decides the 401 above decides this. Under
-/// OpenAPI 3.1 an operation with no `security`, in a document with no root
+/// `OpenAPI` 3.1 an operation with no `security`, in a document with no root
 /// `security`, requires NO authentication — a positive claim, not an absence.
 /// A generated client omits the `Authorization` header and a spec-driven
 /// gateway lets the call through, so a guarded route that says nothing here is

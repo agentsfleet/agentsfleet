@@ -2,7 +2,7 @@
 //!
 //! Neither reaches the external scheduler. A row this daemon holds is the whole
 //! answer, including its `sync` field — a caller asking what is registered
-//! reads what the last reconcile recorded, not a fresh call to QStash, because
+//! reads what the last reconcile recorded, not a fresh call to `QStash`, because
 //! a read that could fail upstream is a read that fails when the scheduler is
 //! down and the schedule is fine.
 
