@@ -101,6 +101,9 @@ struct Answer {
         "reject a paused fleet. Body is HMAC-signed by the issuer; the ",
         "signature is verified against the fleet's webhook secret. ",
     ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

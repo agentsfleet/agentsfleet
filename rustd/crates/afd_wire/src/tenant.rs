@@ -41,14 +41,14 @@ pub struct MintedApiKeyResponse<'a> {
 }
 
 /// `POST /v1/cli-credentials` — mint this machine's credential.
-///
-/// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
-/// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
-/// with `.ignore_unknown_fields = true`, and a client that has been sending a
-/// field this daemon does not read would start receiving a 400 the moment an
-/// attribute were added here for tidiness. Serde ignores by default, so the
-/// parity is kept by the ABSENCE of an attribute — which is exactly why it is
-/// written down.
+//
+// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
+// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
+// with `.ignore_unknown_fields = true`, and a client that has been sending a
+// field this daemon does not read would start receiving a 400 the moment an
+// attribute were added here for tidiness. Serde ignores by default, so the
+// parity is kept by the ABSENCE of an attribute — which is exactly why it is
+// written down.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MintCliCredentialRequest<'a> {
@@ -122,12 +122,12 @@ pub struct ApiKeySummary<'a> {
 }
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
-///
-/// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
-/// `tenant_billing.zig` emits the pair so a dashboard can branch without a
-/// null-check, and parity keeps the redundancy. `updated_at` and
-/// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
-/// types carry stops at the wire because the Zig field names are the format.
+//
+// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
+// `tenant_billing.zig` emits the pair so a dashboard can branch without a
+// null-check, and parity keeps the redundancy. `updated_at` and
+// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
+// types carry stops at the wire because the Zig field names are the format.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
@@ -180,11 +180,11 @@ pub struct ChargeSummary<'a> {
 }
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
-///
-/// Two keys, not [`PageResponse`]'s three: the Zig handler answers
-/// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
-/// same way it pins a presence. Folding this into the shared envelope would
-/// put a key on the wire the daemon being replaced never sent.
+//
+// Two keys, not [`PageResponse`]'s three: the Zig handler answers
+// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
+// same way it pins a presence. Folding this into the shared envelope would
+// put a key on the wire the daemon being replaced never sent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargesResponse<'a> {

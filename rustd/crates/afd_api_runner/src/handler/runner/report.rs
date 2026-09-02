@@ -49,10 +49,11 @@ const DETAIL_MALFORMED: &str = "Malformed report body";
     summary = "Report the result of one run",
     description = concat!(
         "The terminal result of one lease. A report from a holder the fleet ",
-        "has already superseded is refused by the fence and writes nothing, ",
-        "so a stale writer cannot land a partial finalize on the current ",
-        "holder's run. ",
+        "has already superseded is refused by the fence and writes nothing. ",
+        "A stale writer therefore cannot land a partial finalize on the ",
+        "current holder's run. ",
     ),
+    request_body = ReportRequest,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ReportResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

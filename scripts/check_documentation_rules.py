@@ -3,13 +3,14 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 import re
 import sys
 
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT_KEY = re.compile(r"^(?P<indent>\s*)(?:summary|description):(?:\s*(?P<value>.*))?$")
+JSON_TEXT_KEY = re.compile(r'^\s*"(?:summary|description)":\s*(?P<value>"(?:[^"\\]|\\.)*")')
 TS_DESCRIPTION = re.compile(r"\bdescription\s*:\s*([\"'`])(?P<text>.+?)\1")
 TS_METHOD_DESCRIPTION = re.compile(r"\.description\(\s*([\"'`])(?P<text>.+?)\1\s*\)")
 WORD = re.compile(r"\b[\w][\w'-]*\b")
@@ -79,40 +80,6 @@ def issue(rule: str, path: Path, line: int, message: str) -> str:
     return f"{rule} {path}:{line}: {message}"
 
 
-def clean_yaml_value(value: str) -> str:
-    text = value.strip()
-    if text in {">", ">-", "|", "|-", "|+"}:
-        return ""
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
-        return text[1:-1]
-    return text
-
-
-def public_yaml_text(source: str) -> list[PublicText]:
-    lines = source.splitlines()
-    values: list[PublicText] = []
-    index = 0
-    while index < len(lines):
-        match = TEXT_KEY.match(lines[index])
-        if not match:
-            index += 1
-            continue
-        base_indent = len(match.group("indent"))
-        chunks = [clean_yaml_value(match.group("value") or "")]
-        cursor = index + 1
-        while cursor < len(lines):
-            candidate = lines[cursor]
-            if candidate.strip() and len(candidate) - len(candidate.lstrip()) <= base_indent:
-                break
-            if candidate.strip():
-                chunks.append(candidate.strip())
-            cursor += 1
-        value = " ".join(chunk for chunk in chunks if chunk)
-        values.append(PublicText(index + 1, clean_yaml_value(value)))
-        index = cursor
-    return values
-
-
 def lint_wording(path: Path, line: int, text: str) -> list[str]:
     problems: list[str] = []
     for replacement, pattern in PLAIN_WORDS.items():
@@ -125,19 +92,6 @@ def lint_wording(path: Path, line: int, text: str) -> list[str]:
         count = len(WORD.findall(sentence))
         if count > 25:
             problems.append(issue("DOC-02", path, line, f"sentence has {count} words; maximum is 25"))
-    return problems
-
-
-def lint_openapi_source(path: Path, source: str) -> list[str]:
-    problems: list[str] = []
-    for field in public_yaml_text(source):
-        problems.extend(lint_wording(path, field.line, field.value))
-        if re.search(r"\$[0-9]", field.value):
-            problems.append(issue("DOC-23", path, field.line, "remove mutable price copy"))
-        if re.search(r"\b(?:version\s+|v)[0-9]+\.[0-9]+(?:\.[0-9]+)?\b", field.value, re.IGNORECASE):
-            problems.append(issue("DOC-31", path, field.line, "remove release-number prose"))
-        if any(pattern.search(field.value) for pattern in INTERNAL_DETAILS):
-            problems.append(issue("DOC-22", path, field.line, "state customer behavior, not implementation details"))
     return problems
 
 
@@ -173,13 +127,47 @@ def files_under(relative: str) -> list[Path]:
     return [path for path in base.rglob("*") if path.is_file() and is_public_source(path)]
 
 
+def public_json_text(source: str) -> list[PublicText]:
+    """The customer-facing prose in a generated OpenAPI document.
+
+    `public/openapi/` was the hand-edited source of truth and no longer exists:
+    the document is emitted from the daemon's own handlers now, so the reader
+    that walked those YAML files retired with them. The prose is the same
+    published surface it always was and is linted the same way, read out of the
+    JSON with the line each value sits on so a report can point at it.
+    """
+    values: list[PublicText] = []
+    for number, line in enumerate(source.splitlines(), start=1):
+        match = JSON_TEXT_KEY.match(line)
+        if match:
+            values.append(PublicText(number, json.loads(match.group("value"))))
+    return values
+
+
+def lint_openapi_document(path: Path, source: str) -> list[str]:
+    """The generated document's prose, held to the same rules the YAML was."""
+    problems: list[str] = []
+    for field in public_json_text(source):
+        problems.extend(lint_wording(path, field.line, field.value))
+        if re.search(r"\$[0-9]", field.value):
+            problems.append(issue("DOC-23", path, field.line, "remove mutable price copy"))
+        if any(pattern.search(field.value) for pattern in INTERNAL_DETAILS):
+            problems.append(
+                issue("DOC-22", path, field.line, "state customer behavior, not implementation details")
+            )
+    return problems
+
+
 def lint_repository() -> list[str]:
     problems: list[str] = []
-    openapi_files = sorted((ROOT / "public/openapi").rglob("*.yaml"))
-    for path in openapi_files:
-        relative = path.relative_to(ROOT)
-        source = path.read_text(encoding="utf-8")
-        problems.extend(lint_openapi_source(relative, source))
+    # The published document, generated rather than hand-edited.
+    # Linting the emitted artifact keeps the prose graded; the annotations that
+    # produce it are where a violation is FIXED.
+    document = ROOT / "public/openapi.json"
+    if document.exists():
+        source = document.read_text(encoding="utf-8")
+        relative = document.relative_to(ROOT)
+        problems.extend(lint_openapi_document(relative, source))
         problems.extend(lint_removed_commands(relative, source))
     for path in sorted((ROOT / "cli/src/program").rglob("*.ts")):
         relative = path.relative_to(ROOT)

@@ -12,9 +12,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# The published document's shared vocabulary — descriptions and tags the plane
-# crates' annotations name. No dependency: these are strings.
-openapi = []
+# The published document's shared vocabulary: the descriptions and tags the
+# plane crates' annotations name, and the path-parameter shapes they address
+# resources by. Those shapes are `IntoParams` derives, which is why the feature
+# takes the generator rather than being strings alone.
+openapi = ["dep:utoipa"]
 
 [dependencies]
 afd_admin.workspace = true
@@ -45,6 +47,10 @@ serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
+
+# The document generator, reachable only under `openapi`. Optional, so the
+# default resolve of the substrate every plane depends on is unchanged.
+utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The `Refusable` suite grades this crate's adapters against one error of every

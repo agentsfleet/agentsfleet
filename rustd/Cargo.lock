@@ -521,6 +521,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]

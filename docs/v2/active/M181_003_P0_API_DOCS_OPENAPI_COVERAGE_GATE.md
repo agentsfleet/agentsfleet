@@ -69,7 +69,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/agentsfleetd/**` | EDIT | the feature-gated emitter that writes the merged document |
 | `rustd/Cargo.toml` | EDIT | the workspace utoipa dependency, pinned, default-features off |
 | `public/openapi.json` | EDIT | regenerated from the build; hand-written prose reconciled into annotations where it survives |
-| `make/quality.mk` or CI workflow | EDIT | the artifact-equality diff runs where lint runs — needs Indy's approval if the workflow file itself changes |
+| `make/quality.mk` or CI workflow | NOT NEEDED | `test-unit-rustd` and `lint-rustd` already pass `--all-features`, so the feature, the gate and the artifact diff are graded by lanes that exist — no new target, no workflow edit, no approval needed |
+| `scripts/check_documentation_rules*.py` · `docs/REST_API_DESIGN_GUIDELINES.md` · `docs/EXECUTE_DOC_READS.md` | EDIT | Dead Code Sweep: the lint globbed the deleted `public/openapi/` tree and therefore checked nothing; §6 still called that tree the source of truth |
+| `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
 
 ## Applicable Rules
 
@@ -111,7 +113,7 @@ The one unknown the external review left open is spiked before the bulk pass: a 
 Every handler gains `#[utoipa::path]`; every plane crate gains one `#[cfg(feature = "openapi")]` collector module exposing `document()`; the composition root merges the five documents. Handlers stay `pub(crate)` — the collector lives inside each crate precisely so nothing is made public for a build-time tool.
 
 - **Dimension 2.1** — DONE — every plane's `document()` builds under the feature and the merged document parses as OpenAPI 3.x → Tests `test_coverage_gate_rust_source` (which reads the merged document) + `test_the_gate_compares_a_non_empty_inventory`
-- **Dimension 2.2** — the annotations' response codes agree with the handlers' registry codes — each documented error code appears in the handler's refusal mapping → Test `test_documented_codes_match_refusals`
+- **Dimension 2.2** — DONE — every operation publishes the refusals its own route metadata guarantees: 401 where the guard is not `Open`, 403 where the scope rung is non-empty, 500 wherever a plane is reached → Test `test_documented_codes_match_refusals`
 
 ### §3 — The gate and the artifact
 
@@ -160,7 +162,7 @@ No product or operational signal changes: the feature is off in production, and 
 | 1.2 | unit | `the_default_build_carries_no_schema_generator` + existing byte-parity suite | default dependency graph unchanged; wire bytes identical |
 | 1.3 | unit | `every_value_type_override_names_its_serialized_difference` | every override names its serialized-form difference |
 | 2.1 | unit | `test_coverage_gate_rust_source` | five `document()`s merge into one parseable 3.x document |
-| 2.2 | unit | `test_documented_codes_match_refusals` | documented error codes ⊆ handler refusal codes, per path |
+| 2.2 | unit | `test_documented_codes_match_refusals` | every operation publishes the refusals its guard and scope rung guarantee |
 | 3.1 | unit | `test_coverage_gate_rust_source` | set equality both directions; seeded removal fails naming route+method+direction |
 | 3.2 | unit | `test_openapi_build_is_the_source` | emitted document == committed artifact, byte-for-byte after canonicalization |
 | 3.3 | unit | `test_release_build_excludes_openapi` + `test_the_release_invocations_are_still_release_invocations` | no shipping build names a flag that would compile utoipa in |
@@ -242,6 +244,47 @@ reports the file and line (RULE TCF).
 `value_type` overrides across 26 files. `afd_wire`'s byte-parity suite passes
 unchanged in the default build (154 tests), `cargo tree -p afd_wire` names
 utoipa 0 times by default and twice under the feature.
+
+**Finding — the contract declared a field the daemon has never required.** The
+generated document publishes `POST /v1/workspaces` with an OPTIONAL body and an
+optional `name`, because that is what the handler does: `workspace.rs:158` reads
+an empty body as `{}` and `request.name == None` means "name it for me". The
+hand-written contract declared `requestBody.required: true` and
+`required: ["name"]`, and two tests in `ui/packages/app` pinned that claim. This
+is the same served-versus-documented drift this spec closes for routes, showing
+up in the schema dimension — and utoipa reproduced half of it, marking every
+request body required until the annotation said otherwise.
+
+> Indy (2026-09-02): "Correct the app tests to the daemon's behaviour" —
+> context: `ui/packages/app/tests/workspace-client.test.ts` is outside this
+> spec's Files Changed, and editing it needed approval. The tests now pin
+> behaviour rather than a hand-written assertion about it.
+
+**Deferral — per-field constraint parity with the retired hand-written document.**
+
+> Indy (2026-09-02): "Defer, with the measurement recorded" — context: the
+> generated document carries fewer field-level constraints than the document it
+> replaces, and they could not be carried mechanically.
+
+Measured, `8f5a95e48:public/openapi.json` against the generated artifact:
+
+| keyword | hand-written | generated |
+|---|---|---|
+| `maxLength` / `minLength` / `pattern` | 38 / 14 / 3 | 0 / 0 / 0 |
+| `maximum` / `maxItems` / `default` | 19 / 4 / 111 | 1 / 0 / 16 |
+| `x-stability` | 38 | 0 |
+| `format` / `enum` / `example` | 230 / 58 / 9 | 72 / 12 / 0 |
+| `application/problem+json` bodies | 11 | 0 |
+| `description` | 714 | 1210 |
+
+Why it did not carry: a `(schema, field)` join lands only 11 of 141 constrained
+fields, because the port renamed the schemas — the document's identities are now
+the Rust type names. The remaining 130 need a hand-mapped identity per schema
+AND a check that each constraint is one the daemon actually enforces; copying a
+bound the code does not hold would publish a falsehood, which is the defect
+above in a new place. `nullable` is NOT in the deficit: the hand-written file
+used the 3.0 keyword inside a document declaring 3.1, and the generated one uses
+3.1's `type: ["string", "null"]` (69 occurrences).
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.

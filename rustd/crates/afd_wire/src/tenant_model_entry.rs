@@ -108,9 +108,9 @@ pub struct ModelEntriesResponse<'a> {
     /// Where the next page resumes, or null on the last one.
     pub next_cursor: Option<String>,
     /// Whether an active platform-default row exists at all.
-    ///
-    /// Derived from the same read as `platform_default`, so the two cannot
-    /// disagree about whether there is one.
+    //
+    // Derived from the same read as `platform_default`, so the two cannot
+    // disagree about whether there is one.
     pub platform_default_available: bool,
     /// The default's identity, when there is one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -149,10 +149,10 @@ pub struct CreateModelEntryRequest {
 }
 
 /// `PATCH /v1/tenants/me/models/{id}` — point an entry at another model.
-///
-/// There is no `secret_ref` field and adding one would be a different verb: the
-/// same model on a different credential is a DIFFERENT entry, which is what the
-/// table's domain key says.
+//
+// There is no `secret_ref` field and adding one would be a different verb: the
+// same model on a different credential is a DIFFERENT entry, which is what the
+// table's domain key says.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateModelEntryRequest {

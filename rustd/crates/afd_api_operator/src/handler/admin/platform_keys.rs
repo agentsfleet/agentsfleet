@@ -43,6 +43,8 @@ const DETAIL_MODEL_UNKNOWN: &str =
         "shared keys that workspaces fall back to when no self-managed key is ",
         "configured. ",
     ),
+    params(
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -136,6 +138,9 @@ pub(crate) async fn set<D: Services>(
     description = concat!(
         "Removes a platform-wide LLM provider key. Workspaces without self- ",
         "managed keys will no longer be able to use this provider. ",
+    ),
+    params(
+        afd_http::openapi::path::Provider,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

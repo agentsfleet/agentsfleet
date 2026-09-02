@@ -56,6 +56,9 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
         "response includes a URL for approval in a browser. No access token ",
         "is required. Rate limits may return 429. ",
     ),
+    request_body = OpenSessionRequest,
+    params(
+    ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = DeleteAllSessionsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -105,6 +108,9 @@ pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Byte
         "Expired, used, or cancelled sessions return 410 with a stable error ",
         "code. ",
     ),
+    params(
+        afd_http::openapi::path::Session,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PollSessionResponse),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -145,6 +151,10 @@ pub(crate) async fn poll<D: Services>(
         "Approves a pending command-line sign-in session. The dashboard sends ",
         "encrypted sign-in data and a six-digit verification code. A second ",
         "approval for the same session returns 409 `UZ-AUTH-015`. ",
+    ),
+    request_body = ApproveSessionRequest,
+    params(
+        afd_http::openapi::path::Session,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ApproveSessionResponse),
@@ -221,6 +231,10 @@ pub(crate) async fn approve<D: Services>(
         "means approval is pending. `UZ-AUTH-006` means the session expired ",
         "after 5 minutes. ",
     ),
+    request_body = VerifySessionRequest,
+    params(
+        afd_http::openapi::path::Session,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = VerifySessionResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -282,6 +296,9 @@ pub(crate) async fn verify<D: Services>(
         "`reason=\"explicit_cancel\"`. The Clerk JWT MUST match the session's ",
         "`clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`); ",
         "otherwise 403. ",
+    ),
+    params(
+        afd_http::openapi::path::Session,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

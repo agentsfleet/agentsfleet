@@ -21,6 +21,9 @@ mod request_id;
 #[path = "openapi_artifact.rs"]
 mod openapi_artifact;
 #[cfg(feature = "openapi")]
+#[path = "openapi_codes.rs"]
+mod openapi_codes;
+#[cfg(feature = "openapi")]
 #[path = "openapi_coverage.rs"]
 mod openapi_coverage;
 #[path = "route_inventory.rs"]

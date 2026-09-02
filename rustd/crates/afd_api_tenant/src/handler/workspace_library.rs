@@ -117,6 +117,11 @@ impl StructCursor for Cursor {
         "The support-file manifest is stored on import but served by no ",
         "endpoint. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("limit" = Option<String>, Query, description = "Rows per page, 1..100. Defaults to 50."),
+        ("starting_after" = Option<String>, Query, description = "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = GalleryResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -160,6 +165,9 @@ pub(crate) async fn list<D: Services>(
         "plus ownership of the target workspace. Re-onboarding identical ",
         "bytes converges on one `(workspace_id, content_hash)` row. The ",
         "response carries metadata only. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
     ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED),

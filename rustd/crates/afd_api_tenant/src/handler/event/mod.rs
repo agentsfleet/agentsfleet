@@ -106,6 +106,11 @@ pub(crate) struct EventPath {
         "(duration or RFC 3339), and a `cursor` mutually exclusive with ",
         "`since`. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("fleet_id" = Option<String>, Query, description = "Drill down to one fleet within the workspace."),
+        afd_http::openapi::query::EventFilter,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -144,6 +149,10 @@ pub(crate) async fn workspace_list<D: Services>(
     description = concat!(
         "Returns fleet events with the newest event first. Filter with ",
         "`actor` or `since`. You cannot use `since` and `cursor` together. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+        afd_http::openapi::query::EventFilter,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
@@ -191,6 +200,9 @@ pub(crate) async fn fleet_list<D: Services>(
         "workspace both answer 404. The two are deliberately ",
         "indistinguishable. The read is scoped inside its own query, so no ",
         "caller can probe for events outside its own workspace. ",
+    ),
+    params(
+        afd_http::openapi::path::Event,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

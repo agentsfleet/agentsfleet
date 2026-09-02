@@ -38,15 +38,15 @@ use serde_json::value::RawValue;
 pub type Triggers = Option<Box<RawValue>>;
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
-///
-/// Unknown fields are IGNORED, matching `create.zig`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
-///
-/// Exactly one library id is required. Both fields are optional HERE because
-/// the refusal for neither and the refusal for both are different sentences,
-/// and a `#[serde(untagged)]` enum would collapse them into one parse failure
-/// the caller could not act on.
+//
+// Unknown fields are IGNORED, matching `create.zig`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+//
+// Exactly one library id is required. Both fields are optional HERE because
+// the refusal for neither and the refusal for both are different sentences,
+// and a `#[serde(untagged)]` enum would collapse them into one parse failure
+// the caller could not act on.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct InstallFleetRequest<'a> {
@@ -194,18 +194,18 @@ pub struct PatchFleetRequest<'a> {
     pub source_markdown: Option<Cow<'a, str>>,
 }
 
-/// What a PATCH answers with — one of three shapes, as `patch.zig` writes them.
-///
-/// An untagged enum rather than one struct with optional keys, and that is the
-/// rule this crate already keeps rather than an exception to it: no
-/// `skip_serializing_if` appears here, because each variant emits exactly the
-/// keys its case carries. A config-only edit never wrote a `status` key, and a
-/// no-op never wrote an `etag` — with one struct those would have to be skipped
-/// conditionally, which is the thing that silently drops a field somebody adds
-/// later.
-///
-/// It also makes two impossible responses impossible: an `etag` without a
-/// revision, and a revision on the no-op.
+/// What a PATCH answers with — one of three shapes.
+//
+// An untagged enum rather than one struct with optional keys, and that is the
+// rule this crate already keeps rather than an exception to it: no
+// `skip_serializing_if` appears here, because each variant emits exactly the
+// keys its case carries. A config-only edit never wrote a `status` key, and a
+// no-op never wrote an `etag` — with one struct those would have to be skipped
+// conditionally, which is the thing that silently drops a field somebody adds
+// later.
+//
+// It also makes two impossible responses impossible: an `etag` without a
+// revision, and a revision on the no-op.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]

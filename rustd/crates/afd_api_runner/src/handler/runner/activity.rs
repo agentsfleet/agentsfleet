@@ -45,6 +45,10 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
         "the frame is accepted for publication, and a subscriber reading it ",
         "is a separate event from this call returning. ",
     ),
+    request_body = ActivityRequest,
+    params(
+        afd_http::openapi::path::Lease,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

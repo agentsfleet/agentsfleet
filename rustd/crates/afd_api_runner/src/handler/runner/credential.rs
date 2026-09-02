@@ -46,10 +46,11 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
     summary = "Mint a credential for a declared tool",
     description = concat!(
         "Issued at the moment a tool needs one, scoped to what the lease ",
-        "already proved. The body names no workspace: the credential is ",
+        "already proved. The body names no workspace. The credential is ",
         "minted against the lease the caller holds, so a runner cannot ask ",
-        "for material outside the run it is executing. ",
+        "for material outside its own run. ",
     ),
+    request_body = MintCredentialRequest,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MintCredentialResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

@@ -1,7 +1,7 @@
 # REST API Design Guidelines — `agentsfleet/agentsfleetd`
 
 **Status:** Canonical instruction set. Read this before adding, modifying, or removing any HTTP endpoint.
-**Trigger:** the global instruction `HTTP handler or OpenAPI changes → read docs/REST_API_DESIGN_GUIDELINES.md first` fires when the diff touches `src/agentsfleetd/http/handlers/**`, `public/openapi/**`, or any `route_*` file. If you're an agent reading this — you got here because that trigger fired. Follow this doc as a checklist, not as background reading.
+**Trigger:** the global instruction `HTTP handler or OpenAPI changes → read docs/REST_API_DESIGN_GUIDELINES.md first` fires when the diff touches a handler, `public/openapi.json`, or any `route_*` file. If you're an agent reading this — you got here because that trigger fired. Follow this doc as a checklist, not as background reading.
 
 This is a goal-oriented instruction set. Each rule states the goal it serves so you can apply judgment at the edge cases instead of memorizing exceptions.
 
@@ -37,7 +37,7 @@ Run this checklist as part of `CHORE(close)` (per `~/.claude/CLAUDE.md` lifecycl
 - [ ] **Status codes** — 409 includes `current_state`; 412 includes `etag`; 429 includes `Retry-After` + `X-RateLimit-*` (§4)
 - [ ] **ETag/`If-Match`** wired for any resource with realistic concurrent edits (§4)
 - [ ] **Error responses** use the registry; `detail` follows hygiene rules (no IDs, no SQL, no paths, ≤200 chars) (§5)
-- [ ] **OpenAPI YAML** edited under `public/openapi/paths/<tag>.yaml`; tag is 1:1 with resource; file ≤400 lines (§6)
+- [ ] **OpenAPI document** regenerated from the build, not hand-edited; the coverage gate is green (§6)
 - [ ] **Route registered** in all six places (§7)
 - [ ] **Handler signature** matches `inner*(hx: Hx, req: *httpz.Request, ...)` (§8)
 - [ ] **Middleware policy** picked from the table; raw handlers carry first-10-lines comment (§7)
@@ -90,7 +90,7 @@ Nested paths express the containment relationship. Don't flatten — `/agents?wo
 
 Anything else MUST be modeled as `PATCH /resource/{id}` with a state field. "Convenience" is not a category. If you can't pick one of the three in one sentence, you don't have an operation.
 
-**Collision check** — before adding `POST /v1/.../{id}:verb`, grep the same resource's schema in `public/openapi/components/schemas.yaml` for an existing lifecycle field (`status`, `state`, `stage`, `lifecycle_state`). If one exists AND the new `:verb` would set it to a value that field can already hold, the operation is forbidden — use `PATCH /resource/{id}` body `{status: "<verb>"}` instead. Adding `:approve` when `status` already has an `approved` value is the canonical anti-pattern. The PR description MUST state the result of this grep ("no `status` field on `Approval`" or "`Approval.status` exists but `approved` is not a settable value via PATCH because <reason>").
+**Collision check** — before adding `POST /v1/.../{id}:verb`, grep the same resource's schema in `public/openapi.json` for an existing lifecycle field (`status`, `state`, `stage`, `lifecycle_state`). If one exists AND the new `:verb` would set it to a value that field can already hold, the operation is forbidden — use `PATCH /resource/{id}` body `{status: "<verb>"}` instead. Adding `:approve` when `status` already has an `approved` value is the canonical anti-pattern. The PR description MUST state the result of this grep ("no `status` field on `Approval`" or "`Approval.status` exists but `approved` is not a settable value via PATCH because <reason>").
 
 ### Path-param naming consistency
 
@@ -405,29 +405,44 @@ Don't invent other extensions without amending this doc.
 
 ## §6 — OpenAPI editing
 
-The source of truth lives under `public/openapi/`:
+**The document is generated. There is nothing to hand-edit.**
 
-```
-public/openapi/
-├── root.yaml                        # info, servers, tags, security, paths map with $refs
-├── paths/<tag>.yaml                 # one file per tag, hard cap 400 lines — split by sub-resource when exceeded
-└── components/
-    ├── schemas.yaml
-    ├── responses.yaml
-    └── security.yaml
-```
+`public/openapi.json` is emitted from the daemon's own handlers — the route
+table decides the paths and methods, `#[utoipa::path]` beside each handler
+carries the prose and the status codes, and the `afd_wire` types carry the
+schemas. The `public/openapi/` YAML tree this section used to describe was
+retired with the Zig daemon; a hand-edit to the JSON is reverted by the next
+regeneration and fails a test before it gets that far.
 
 ### Adding, renaming, or removing an endpoint
 
-1. Edit the relevant YAML under `public/openapi/paths/<tag>.yaml`.
-2. Add / rename / remove the corresponding `match()` arm in `src/agentsfleetd/http/router.zig`.
-3. Commit YAML + bundled JSON + `router.zig` together. Splitting these across commits leaves CI red.
+1. Add, rename or remove the [`Route`] variant and its template, and say which
+   methods it answers in that family's `verbs()`.
+2. Mount it in `rustd/crates/afd_api/src/router/mount.rs`.
+3. Put a `#[cfg_attr(feature = "openapi", utoipa::path(…))]` on the handler and
+   name it in that plane's `src/openapi.rs` collector.
+4. Regenerate and commit the artifact with the code:
 
-**Router ↔ openapi.json parity is reviewer-enforced.** There is no mechanical gate cross-checking that every `router.match()` arm has a documented openapi path or vice versa. When you add, rename, or remove a route, both surfaces must move in the same diff and the reviewer must verify it. The previous Python parity gate (`audits/check_openapi_sync.py`) and its data file (`route_manifest.zig`, deleted) were retired in M61_002.
+   ```bash
+   cd rustd && cargo run -q -p agentsfleetd --features openapi \
+     --bin agentsfleetd -- --no-banner openapi > ../public/openapi.json
+   ```
 
-**Agent-edit recipe:** see `public/openapi/AGENTS.md` for copy-paste-ready rename / append / remove / update-description workflows.
+**Parity is mechanical, not reviewer-enforced.** Three tests grade it, and the
+first is the one that used to be a review obligation:
 
----
+| Test | What it refuses |
+|---|---|
+| `test_coverage_gate_rust_source` | a served route with no annotation, or an annotation for a route nobody mounts — named with its method and direction |
+| `test_openapi_build_is_the_source` | a committed artifact that is not what the build emits |
+| `test_documented_codes_match_refusals` | an operation that omits a refusal its guard or scope rung guarantees |
+
+The prose is graded too: `scripts/check_documentation_rules.py` reads the
+generated document, so a description that breaks the wording rules fails
+`make lint-all`. Fix it at the annotation — or, for a schema description, at the
+`afd_wire` type's doc comment, which is what utoipa publishes. Rationale that is
+for maintainers rather than for API consumers belongs in a `//` comment beside
+it, which the document does not carry.
 
 ## §7 — Registering a route
 
@@ -440,7 +455,7 @@ Six places, in order. Steps 1–5 fail loudly at build/runtime; step 6 is review
 | 3 (`route_table.zig::specFor()`) | Compile error — exhaustive switch on `Route` union is missing your arm. |
 | 4 (`route_scopes.zig::requiredScopes()`) | Compile error — exhaustive switch on `Route` is missing your arm; the route can't be assigned a capability requirement until you do. |
 | 5 (invoke shim) | Compile error — `specFor` references `invoke.invokeMyEndpoint` which doesn't exist. |
-| 6 (OpenAPI YAML) | **No automated check.** Router ↔ openapi.json parity is reviewer-enforced (§6). Reviewer must confirm both surfaces moved in the same diff. |
+| 6 (the document) | `test_coverage_gate_rust_source` fails, naming the route, the method and which side is missing it (§6). |
 
 If you only see #2's silent-404 failure mode, you've forgotten the matcher even though the route compiles. Test the URL after wiring.
 
@@ -467,7 +482,7 @@ If you only see #2's silent-404 failure mode, you've forgotten the matcher even 
    }
    ```
 
-6. **`public/openapi/paths/<tag>.yaml`** — add the endpoint (§6).
+6. **`public/openapi.json`** — regenerate it from the build (§6).
 
 ### Matcher style — segment-based, not substring-based
 

@@ -61,6 +61,9 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
         "refused. Minting revokes whatever credential the same machine name ",
         "already held. One machine holds one live credential at a time. ",
     ),
+    request_body = MintCliCredentialRequest,
+    params(
+    ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -120,6 +123,9 @@ pub(crate) async fn mint<D: Services>(
         "logout` calls this for the credential on that machine. Browser ",
         "sessions are untouched, so signing out of a terminal does not sign ",
         "you out of the dashboard. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

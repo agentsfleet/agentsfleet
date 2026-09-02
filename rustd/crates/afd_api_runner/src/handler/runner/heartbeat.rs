@@ -48,10 +48,10 @@ const EVENT: &str = "runner_heartbeat_failed";
     operation_id = "runner_heartbeat",
     summary = "Report liveness, receive assignment",
     description = concat!(
-        "Liveness up, configuration down. The assignment rides every reply, ",
-        "so an operator's dashboard change reaches the host within one ",
-        "interval and nobody visits the host. An unreadable body is read as ",
-        "`no report this beat` and the beat still counts: a host must not be ",
+        "Liveness up, configuration down. The assignment rides every reply. ",
+        "An operator's dashboard change therefore reaches the host within one ",
+        "interval, and nobody visits the host. An unreadable body is read as ",
+        "`no report this beat` and the beat still counts. A host must not be ",
         "able to fail its own liveness by sending nonsense. ",
     ),
     responses(

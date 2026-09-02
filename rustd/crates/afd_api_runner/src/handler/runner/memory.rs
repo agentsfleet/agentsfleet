@@ -44,11 +44,14 @@ const DETAIL_MALFORMED: &str = "Malformed memory body";
     path = "/v1/runners/me/memory/{fleet_id}",
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_hydrate_memory",
-    summary = "Hydrate what a fleet remembers",
+    summary = "Load what a fleet remembers",
     description = concat!(
         "The memory a fleet carries between runs, read at the start of one. ",
         "The runner names the fleet, and the lease it holds is what makes ",
         "that name legitimate. ",
+    ),
+    params(
+        afd_http::openapi::path::FleetOnly,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MemoryHydrateResponse),
@@ -86,6 +89,10 @@ pub(crate) async fn hydrate<D: Services>(
         "Writes back what the run decided is worth keeping. The reply names ",
         "what was stored and what was skipped, so a runner learns which of ",
         "its entries did not survive the bounds. ",
+    ),
+    request_body = MemoryPushRequest,
+    params(
+        afd_http::openapi::path::FleetOnly,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MemoryCaptureResponse),

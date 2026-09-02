@@ -113,6 +113,11 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         "matching environment. The dashboard posts the current Bearer token ",
         "to the authenticated callback completion method. ",
     ),
+    params(
+        afd_http::openapi::path::Provider,
+        afd_http::openapi::query::ConnectorState,
+        afd_http::openapi::query::ConnectorCallback,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 302, description = afd_http::openapi::FOUND),
@@ -171,6 +176,12 @@ pub(crate) async fn relay<D: Services>(
         "binds the workspace, a keyed tag of the starter identity, a nonce, ",
         "and expiry. The endpoint verifies identity and workspace access ",
         "before consuming the nonce or exchanging a provider code. ",
+    ),
+    params(
+        afd_http::openapi::path::Provider,
+        afd_http::openapi::query::ConnectorState,
+        afd_http::openapi::query::ConnectorCallback,
+        ("callback_source" = Option<String>, Query, description = "Fixed compatibility marker added by the legacy API relay. Browser callers omit it."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

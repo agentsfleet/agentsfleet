@@ -103,6 +103,11 @@ fn the_default_build_carries_no_schema_generator() {
 /// distinguishes a justified override is prose about the OVERRIDE, so the
 /// predicate is that the run above names `value_type` — which is what all six
 /// of them do, and what a seventh added without thought would not.
+///
+/// `//` and not only `///`: what an override justifies is a Rust-versus-wire
+/// mismatch, which is a note to whoever maintains the type and not something
+/// the published contract should carry. Those runs were demoted to plain
+/// comments when the generated document began publishing doc comments.
 #[test]
 fn every_value_type_override_names_its_serialized_difference() {
     let source = workspace_root().join("crates").join("afd_wire").join("src");
@@ -124,7 +129,7 @@ fn every_value_type_override_names_its_serialized_difference() {
                 .iter()
                 .rev()
                 .skip_while(|above| above.trim_start().starts_with("#["))
-                .take_while(|above| above.trim_start().starts_with("///"))
+                .take_while(|above| above.trim_start().starts_with("//"))
                 .any(|above| above.contains(OVERRIDE));
             if !justified {
                 unjustified.push(format!("{}:{}", file.display(), number + 1));

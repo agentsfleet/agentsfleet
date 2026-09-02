@@ -31,6 +31,10 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
         "carries a derived `liveness` — never the stored auth state, never ",
         "the token hash. ",
     ),
+    params(
+        ("starting_after" = Option<String>, Query, description = "An opaque cursor from a previous page's `next_cursor`."),
+        ("limit" = Option<String>, Query, description = "Rows per page (1-100)."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnersResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -74,6 +78,9 @@ pub(crate) async fn list<D: Services>(
         "a live-work snapshot, and lifetime counters from durable lease and ",
         "event rows — never from in-memory metrics. The runner detail page ",
         "loads from this read. ",
+    ),
+    params(
+        afd_http::openapi::path::Runner,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

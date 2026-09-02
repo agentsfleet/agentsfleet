@@ -15,11 +15,11 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// `POST /v1/workspaces` — create one.
-///
-/// Unknown fields are IGNORED, like the command-line credential mint and for
-/// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
-/// and the parity is kept by the ABSENCE of a serde attribute. `name` is
-/// optional twice over — absent, `null`, or blank all mean "name it for me".
+//
+// Unknown fields are IGNORED, like the command-line credential mint and for
+// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
+// and the parity is kept by the ABSENCE of a serde attribute. `name` is
+// optional twice over — absent, `null`, or blank all mean "name it for me".
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct CreateWorkspaceRequest<'a> {

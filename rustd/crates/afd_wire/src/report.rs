@@ -162,7 +162,7 @@ pub struct RenewRequest {
     pub output_tokens: u32,
 }
 
-/// Latency telemetry the runner observed for one execution.
+/// Latency the runner observed for one run.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -187,10 +187,10 @@ pub struct ReportCheckpoint<'a> {
 }
 
 /// `POST /v1/runners/me/reports` — one batched write keyed by event id.
-///
-/// The fencing token is echoed and verified: a reclaimed holder carrying a token
-/// below the fleet's live sequence is refused. No runner id — the token owns the
-/// identity.
+//
+// The fencing token is echoed and verified: a reclaimed holder carrying a token
+// below the fleet's live sequence is refused. No runner id — the token owns the
+// identity.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -198,7 +198,7 @@ pub struct ReportRequest<'a> {
     /// The lease being reported on.
     #[serde(borrow)]
     pub lease_id: Cow<'a, str>,
-    /// The event that was executed.
+    /// The event this report is about.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
     /// Monotonic guard, verified against the fleet's live sequence.
@@ -207,7 +207,7 @@ pub struct ReportRequest<'a> {
     pub outcome: Outcome,
     /// The granular cause when the run failed.
     pub failure_reason: Option<FailureClass>,
-    /// Human-readable cause, persisted only on failure.
+    /// Human-readable cause, stored only on failure.
     #[serde(borrow)]
     pub failure_detail: Cow<'a, str>,
     /// The run's output.

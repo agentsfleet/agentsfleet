@@ -59,12 +59,12 @@ pub struct ToolCallProgress<'a> {
 }
 
 /// One progress frame.
-///
-/// The variant name IS the wire discriminator, so the enum is the single source
-/// for the vocabulary and there are no re-spelled kind strings. Each payload is
-/// a named struct rather than an inline variant body, matching the Zig union
-/// field for field — the encoding is identical either way, and the named form
-/// is what lets each payload carry its own fixture.
+//
+// The variant name IS the wire discriminator, so the enum is the single source
+// for the vocabulary and there are no re-spelled kind strings. Each payload is
+// a named struct rather than an inline variant body, matching the Zig union
+// field for field — the encoding is identical either way, and the named form
+// is what lets each payload carry its own fixture.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

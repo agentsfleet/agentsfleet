@@ -92,6 +92,9 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         "equality and supports reconciliation after an uncertain workspace- ",
         "create response. ",
     ),
+    params(
+        afd_http::openapi::query::WorkspaceFilter,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = WorkspacesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -135,6 +138,11 @@ pub(crate) async fn list<D: Services>(
         "unique name cannot create a second row and returns 409 when the ",
         "first request committed. ",
     ),
+    // `Option<…>`, because the body is optional and so is the one field in it:
+    // an empty body is read as `{}` and an absent name means "name it for me".
+    // The hand-written contract declared this required, which is the defect the
+    // generated document exists to stop repeating.
+    request_body = Option<CreateWorkspaceRequest>,
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = CreatedWorkspaceResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

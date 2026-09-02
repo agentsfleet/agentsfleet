@@ -86,6 +86,9 @@ pub(crate) struct GrantPath {
     operation_id = "list_integration_grants",
     summary = "List integration grants for a fleet",
     description = "Returns pending, approved, and revoked grants, newest first. ",
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = GrantsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -129,6 +132,9 @@ pub(crate) async fn list<D: Services>(
     description = concat!(
         "Immediately revokes a grant. A revoked grant blocks the fleet on its ",
         "next call against the affected service. ",
+    ),
+    params(
+        afd_http::openapi::path::Grant,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

@@ -68,6 +68,9 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
         "whether the provider is ready and connected. Requires the ",
         "`connector:read` scope. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

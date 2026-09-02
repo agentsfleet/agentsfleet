@@ -21,6 +21,9 @@
 //! refuse — so the sentences belong beside the table that decides them rather
 //! than in whichever plane happened to need them first.
 
+pub mod path;
+pub mod query;
+
 /// A read or an update answered.
 pub const OK: &str = "OK";
 

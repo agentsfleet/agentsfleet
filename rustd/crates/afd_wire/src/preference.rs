@@ -41,16 +41,16 @@ pub struct PreferencesResponse<'a> {
     pub prefs: BTreeMap<&'a str, &'a RawValue>,
 }
 
-/// `GET /v1/workspaces/{workspace_id}/onboarding` — the whole checklist.
-///
-/// Five derived signals and three preference reads in one call, which is the
-/// consolidation this endpoint exists for: the dashboard used to fetch it as
-/// six separate requests.
-///
-/// Eight booleans, and `struct_excessive_bools` is right that this usually
-/// means a missing type. Not here: this IS the wire shape, field for field, and
-/// the dashboard destructures all eight. Collapsing any of them into an enum
-/// would change the JSON a shipped client reads.
+/// The whole onboarding checklist, in one call.
+//
+// Five derived signals and three preference reads in one call, which is the
+// consolidation this endpoint exists for: the dashboard used to fetch it as
+// six separate requests.
+//
+// Eight booleans, and `struct_excessive_bools` is right that this usually
+// means a missing type. Not here: this IS the wire shape, field for field, and
+// the dashboard destructures all eight. Collapsing any of them into an enum
+// would change the JSON a shipped client reads.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::struct_excessive_bools,

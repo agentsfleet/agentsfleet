@@ -222,6 +222,7 @@ pub(crate) async fn reset<D: Services>(
         "`credential_ref` that names an existing secret. If the model entry ",
         "does not exist, this request creates it. ",
     ),
+    request_body = TenantProviderRequest,
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
