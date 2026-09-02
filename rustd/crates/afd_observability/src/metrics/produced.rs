@@ -24,7 +24,7 @@
 //! request-erasure path, the ported account teardown — its row leaves this
 //! file in the same commit that adds the producer.
 
-use crate::metrics::declared::{fleet, http, memory, redis};
+use crate::metrics::declared::{fleet, http, library, memory, redis};
 
 /// One family this build declines to produce, and the reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +92,16 @@ pub const UNPRODUCED: &[Unproduced] = &[
     Unproduced {
         family: fleet::REPAIR_QUEUE_TO_COMPLETION_SECONDS.wire_name(),
         why: NO_REPAIR_INGRESS,
+    },
+    Unproduced {
+        family: library::LIBRARY_CACHE_OUTCOME_TOTAL.wire_name(),
+        why: "the revision-keyed response cache is a declared non-port, so no \
+              read here consults one and there is no decision to record",
+    },
+    Unproduced {
+        family: library::LIBRARY_POOL_RESULT_TOTAL.wire_name(),
+        why: "the connection acquire happens inside the store, where the read \
+              path cannot see how it ended",
     },
     Unproduced {
         family: http::OTLP_QUEUE_DEPTH.wire_name(),

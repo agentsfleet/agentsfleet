@@ -96,6 +96,13 @@ closed_set! {
 closed_set! {
     /// How one pool acquisition ended.
     ///
+    /// Nothing in this daemon writes it: the acquire happens inside the store,
+    /// where the read path cannot see how it ended, and the family is excused
+    /// by name in [`crate::metrics::produced`]. The set stays because it is the
+    /// WIRE vocabulary both binaries share through the cutover and the census
+    /// ceiling is derived from it — deleting it would understate the budget for
+    /// values the other daemon still emits.
+    ///
     /// Carries no surface, deliberately: a starving pool is a process-wide
     /// fact, and attributing it per surface would invite a reader to conclude
     /// that one catalogue exhausted the pool.
@@ -117,6 +124,10 @@ closed_set! {
     /// Four members where the Zig has five: its `not_applicable` is absence,
     /// and absence is spelled `None` here rather than occupying a series that
     /// counts every read that never asked a cache anything.
+    ///
+    /// Nothing in this daemon writes it either — the revision-keyed response
+    /// cache is a declared non-port — and the set stays for the reason
+    /// [`PoolResult`]'s does.
     CacheOutcome {
         /// Served from the cache.
         Hit => "hit",
