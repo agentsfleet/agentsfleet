@@ -25,19 +25,19 @@ pub fn dispatch_retried() {
 /// Records whether a verification event was appended or already there.
 pub fn event(outcome: SyntheticEvent) {
     if let Some(producers) = installed() {
-        producers
-            .fleet
-            .repair_events
-            .add(1, &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())]);
+        producers.fleet.repair_events.add(
+            1,
+            &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())],
+        );
     }
 }
 
 /// Records where a verification run got to.
 pub fn run(outcome: VerifierRun) {
     if let Some(producers) = installed() {
-        producers
-            .fleet
-            .repair_runs
-            .add(1, &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())]);
+        producers.fleet.repair_runs.add(
+            1,
+            &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())],
+        );
     }
 }

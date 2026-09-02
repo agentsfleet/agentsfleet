@@ -64,8 +64,8 @@ impl core::fmt::Debug for Signals {
     /// A boxed layer carries nothing printable, and whether the slot is filled
     /// is the only fact about this a reader could act on — which the boot log
     /// already says.
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.debug_struct("Signals").finish_non_exhaustive()
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Signals").finish_non_exhaustive()
     }
 }
 
@@ -81,12 +81,14 @@ impl Signals {
     /// Answers whether the slot took it. `false` means the subscriber it
     /// belongs to is gone, which cannot happen at boot and is not worth
     /// failing over if it somehow did.
+    #[must_use]
     pub fn attach(&self, exports: &Exports) -> bool {
-        let spans = tracing_opentelemetry::layer()
-            .with_tracer(opentelemetry::trace::TracerProvider::tracer(
+        let spans = tracing_opentelemetry::layer().with_tracer(
+            opentelemetry::trace::TracerProvider::tracer(
                 exports.tracer(),
                 afd_observability::semconv::SCOPE_NAME,
-            ));
+            ),
+        );
         let records = opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
             exports.logger(),
         );

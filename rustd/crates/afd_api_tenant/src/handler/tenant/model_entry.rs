@@ -161,10 +161,10 @@ pub(crate) async fn list<D: Services>(
     let read = read_registry(&services, &identity, query).await;
     library::read_finished(
         SURFACE,
-        read.as_ref().map_or_else(
-            |refused| afd_http::handler::library_outcome(refused),
-            |_served| ReadOutcome::Ok,
-        ),
+        read.as_ref()
+            .map_or_else(afd_http::handler::library_outcome, |_served| {
+                ReadOutcome::Ok
+            }),
     );
     read
 }
@@ -182,7 +182,7 @@ async fn read_registry<D: Services>(
     let raw = query.unwrap_or_default();
     let limit = requested_limit(&raw)?;
     let tenant = tenant_of(
-        &services,
+        services,
         identity.person(),
         super::DETAIL_TENANT_REQUIRED,
         EVENT_TENANT,

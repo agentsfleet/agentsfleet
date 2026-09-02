@@ -32,7 +32,7 @@ fn an_undeclared_family_cannot_be_claimed() {
     let invented: Declared<CounterKind> = Declared::new("agentsfleet_invented_total");
 
     let refusal = instruments
-        .counter_u64(invented)
+        .counter_u64(&invented)
         .expect_err("the census declares no such family");
     assert!(
         matches!(refusal, Error::UnknownFamily { ref family } if &**family == "agentsfleet_invented_total"),
@@ -52,7 +52,7 @@ fn a_family_claimed_as_the_wrong_kind_is_refused() {
     let miscast: Declared<CounterKind> = Declared::new(http::API_IN_FLIGHT_REQUESTS.wire_name());
 
     let refusal = instruments
-        .counter_u64(miscast)
+        .counter_u64(&miscast)
         .expect_err("the census declares this a gauge");
     assert!(
         matches!(refusal, Error::KindMismatch { .. }),
@@ -70,7 +70,7 @@ fn a_family_claimed_in_the_wrong_number_is_refused() {
     let instruments = instruments();
 
     let refusal = instruments
-        .counter_f64(fleet::SIGNUP_BOOTSTRAPPED_TOTAL)
+        .counter_f64(&fleet::SIGNUP_BOOTSTRAPPED_TOTAL)
         .expect_err("the census declares this counts in u64");
     assert!(
         matches!(refusal, Error::NumberMismatch { .. }),
@@ -85,7 +85,7 @@ fn a_histogram_is_built_and_claimed() {
     let outstanding = instruments.unclaimed().len();
 
     let _histogram = instruments
-        .histogram_f64(fleet::REPAIR_PRODUCTION_TO_QUEUE_SECONDS)
+        .histogram_f64(&fleet::REPAIR_PRODUCTION_TO_QUEUE_SECONDS)
         .expect("the census declares this a histogram in f64");
 
     assert_eq!(
@@ -102,7 +102,7 @@ fn a_gauge_is_registered_and_claimed() {
     let outstanding = instruments.unclaimed().len();
 
     instruments
-        .gauge_u64(http::WORKER_RUNNING, Vec::new)
+        .gauge_u64(&http::WORKER_RUNNING, Vec::new)
         .expect("the census declares this a gauge");
 
     assert_eq!(instruments.unclaimed().len(), outstanding - 1);
@@ -112,11 +112,10 @@ fn a_gauge_is_registered_and_claimed() {
 #[test]
 fn a_counter_claimed_as_a_gauge_is_refused() {
     let instruments = instruments();
-    let miscast: Declared<GaugeKind> =
-        Declared::new(fleet::SIGNUP_BOOTSTRAPPED_TOTAL.wire_name());
+    let miscast: Declared<GaugeKind> = Declared::new(fleet::SIGNUP_BOOTSTRAPPED_TOTAL.wire_name());
 
     let refusal = instruments
-        .gauge_u64(miscast, Vec::new)
+        .gauge_u64(&miscast, Vec::new)
         .expect_err("the census declares this a counter");
     assert!(matches!(refusal, Error::KindMismatch { .. }));
 }
@@ -129,7 +128,7 @@ fn a_counter_claimed_as_a_histogram_is_refused() {
         Declared::new(fleet::SIGNUP_BOOTSTRAPPED_TOTAL.wire_name());
 
     let refusal = instruments
-        .histogram_f64(miscast)
+        .histogram_f64(&miscast)
         .expect_err("the census declares this a counter");
     assert!(matches!(refusal, Error::KindMismatch { .. }));
 }
@@ -142,6 +141,6 @@ fn a_counter_claimed_as_a_histogram_is_refused() {
 #[test]
 fn every_declared_ceiling_builds_a_stream() {
     let registry = Registry::declared().expect("the compiled-in census reads");
-    let _view = series_ceilings(&registry)
-        .expect("every declared ceiling is one the SDK will accept");
+    let _view =
+        series_ceilings(&registry).expect("every declared ceiling is one the SDK will accept");
 }

@@ -30,12 +30,12 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use afd_observability::metrics::export::BatchDrops;
+use afd_observability::metrics::export::CountingMetricExporter;
 use afd_observability::metrics::instrument::{Instruments, series_ceilings};
 use afd_observability::metrics::registry::Registry;
 use afd_observability::producers::{self, GaugeSources};
-use afd_observability::metrics::export::BatchDrops;
 use afd_observability::{CountingExporter, SpanDrops, semconv};
-use afd_observability::metrics::export::CountingMetricExporter;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
 use opentelemetry_sdk::Resource;
@@ -190,8 +190,13 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         .build();
 
     let registry = Registry::declared()?;
-    let (cumulative, cycles_lost) =
-        meter_provider(config, &resource, &registry, Temporality::Cumulative, &headers)?;
+    let (cumulative, cycles_lost) = meter_provider(
+        config,
+        &resource,
+        &registry,
+        Temporality::Cumulative,
+        &headers,
+    )?;
     let (delta, _delta_drops) =
         meter_provider(config, &resource, &registry, Temporality::Delta, &headers)?;
 

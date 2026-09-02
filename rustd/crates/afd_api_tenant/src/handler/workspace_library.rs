@@ -112,10 +112,10 @@ pub(crate) async fn list<D: Services>(
     let read = read_gallery(&services, &owned, query).await;
     library::read_finished(
         SURFACE,
-        read.as_ref().map_or_else(
-            |refused| afd_http::handler::library_outcome(refused),
-            |_served| ReadOutcome::Ok,
-        ),
+        read.as_ref()
+            .map_or_else(afd_http::handler::library_outcome, |_served| {
+                ReadOutcome::Ok
+            }),
     );
     read
 }

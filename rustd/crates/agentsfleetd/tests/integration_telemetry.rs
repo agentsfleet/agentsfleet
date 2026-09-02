@@ -69,10 +69,7 @@ async fn collector() -> (String, Received) {
 }
 
 /// Records one delivery and accepts it.
-async fn accept(
-    State(received): State<Received>,
-    request: axum::extract::Request,
-) -> &'static str {
+async fn accept(State(received): State<Received>, request: axum::extract::Request) -> &'static str {
     let path = request.uri().path().to_owned();
     let body = axum::body::to_bytes(request.into_body(), usize::MAX)
         .await

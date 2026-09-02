@@ -48,7 +48,14 @@ mod tests;
 /// Beyond this, the run is described as this long and the report is still
 /// recorded; the alternative, discarding it, loses the delivery entirely over
 /// one bad field.
-const MAX_RUN: Duration = Duration::from_secs(604_800);
+const MAX_RUN: Duration = Duration::from_hours(HOURS_IN_A_WEEK);
+
+/// One week, in the unit the constructor takes.
+///
+/// Hours rather than seconds because `604_800` is a number a reader has to
+/// divide twice before it means anything, and `Duration::from_weeks` is not
+/// stable on the pinned toolchain.
+const HOURS_IN_A_WEEK: u64 = 24 * 7;
 
 /// A settled run, as the span it becomes.
 ///

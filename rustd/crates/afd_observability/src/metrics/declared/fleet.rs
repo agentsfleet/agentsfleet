@@ -5,7 +5,7 @@
 //! index), whether a runner took it (the lease poll), what the runner did with
 //! it (the per-runner counters), and whether the sweepers behind them kept up.
 
-use crate::metrics::family::{Declared, CounterKind, GaugeKind, HistogramKind};
+use crate::metrics::family::{CounterKind, Declared, GaugeKind, HistogramKind};
 
 /// Provider completion to proof-qualified verifier queueing.
 pub const REPAIR_PRODUCTION_TO_QUEUE_SECONDS: Declared<HistogramKind> =
@@ -34,8 +34,7 @@ pub const SIGNUP_FAILED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_failed_total");
 
 /// The denominator for the two below.
-pub const LEASE_POLLS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_polls_total");
+pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_polls_total");
 
 /// Rate ÷ polls = fan-out per poll.
 pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
@@ -46,8 +45,7 @@ pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
 /// Readiness backlog (not summable across replicas).
-pub const FLEET_READY_DEPTH: Declared<GaugeKind> =
-    Declared::new("agentsfleet_fleet_ready_depth");
+pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
 /// Redis index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =

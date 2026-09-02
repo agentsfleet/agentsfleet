@@ -116,6 +116,10 @@ fn every_declared_ceiling_admits_its_label_product() {
 /// spelled two ways is still two series in the money dashboards.
 #[test]
 fn the_cost_attribute_sets_stay_closed() {
-    assert_eq!(TokenType::ALL.len(), 2, "input already includes the cached portion; a third direction would make the total wrong");
+    assert_eq!(
+        TokenType::ALL.len(),
+        2,
+        "input already includes the cached portion; a third direction would make the total wrong"
+    );
     assert_eq!(ChargeClass::ALL.len(), 3);
 }

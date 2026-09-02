@@ -62,8 +62,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const AUTHORIZATION: &str = "Authorization";
 
 /// Why a protocol this build does not carry refuses boot.
-const WHY_PROTOCOL: &str =
-    "http/protobuf or http/json; this build carries no gRPC transport, and a \
+const WHY_PROTOCOL: &str = "http/protobuf or http/json; this build carries no gRPC transport, and a \
      deployment asking for one would export nothing at all";
 
 /// Why a timeout that will not parse refuses boot.
@@ -135,7 +134,11 @@ fn headers<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Vec<(Stri
     let Some(raw) = super::optional(env, OTEL_HEADERS_KNOB) else {
         return headers;
     };
-    for pair in raw.split(',').map(str::trim).filter(|pair| !pair.is_empty()) {
+    for pair in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|pair| !pair.is_empty())
+    {
         let Some((name, value)) = pair.split_once('=') else {
             faults.push(Fault::Invalid {
                 knob: OTEL_HEADERS_KNOB,

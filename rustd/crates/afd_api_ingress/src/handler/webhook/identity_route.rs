@@ -37,9 +37,9 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_webhook::vendor::svix::{self, SvixHeaders, SvixSecret};
 use afd_observability::metrics::label::fleet::SignupFailure;
 use afd_observability::producers;
+use afd_webhook::vendor::svix::{self, SvixHeaders, SvixSecret};
 use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -260,6 +260,6 @@ const fn signup_failure(refusal: WallRefusal) -> Option<SignupFailure> {
     match refusal {
         WallRefusal::Signature => Some(SignupFailure::BadSignature),
         WallRefusal::StaleTimestamp => Some(SignupFailure::StaleTimestamp),
-        _not_a_delivery_fault => None,
+        WallRefusal::Unconfigured => None,
     }
 }

@@ -11,7 +11,7 @@
 //! fires twice per registry read — dividing by requests would halve its
 //! apparent cost.
 
-use crate::metrics::family::{Declared, CounterKind};
+use crate::metrics::family::{CounterKind, Declared};
 
 /// ÷ observations = mean stage cost.
 ///

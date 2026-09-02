@@ -22,7 +22,10 @@ struct Collected(Arc<Mutex<Vec<SpanData>>>);
 impl Collected {
     /// Every span exported so far.
     fn spans(&self) -> Vec<SpanData> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 

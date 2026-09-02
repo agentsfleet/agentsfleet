@@ -48,24 +48,28 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     pub(super) fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
         let handles = Self {
-            captured: instruments.counter_u64(declared::MEMORY_ENTRIES_CAPTURED_TOTAL)?,
-            push_failures: instruments.counter_u64(declared::MEMORY_PUSH_FAILURES_TOTAL)?,
+            captured: instruments.counter_u64(&declared::MEMORY_ENTRIES_CAPTURED_TOTAL)?,
+            push_failures: instruments.counter_u64(&declared::MEMORY_PUSH_FAILURES_TOTAL)?,
             dropped_entries: instruments
-                .counter_u64(declared::MEMORY_HYDRATION_DROPPED_ENTRIES_TOTAL)?,
+                .counter_u64(&declared::MEMORY_HYDRATION_DROPPED_ENTRIES_TOTAL)?,
             dropped_bytes: instruments
-                .counter_u64(declared::MEMORY_HYDRATION_DROPPED_BYTES_TOTAL)?,
-            cap_evictions: instruments.counter_u64(declared::MEMORY_CAP_EVICTIONS_TOTAL)?,
-            truncated: instruments.counter_u64(declared::MEMORY_CAPTURE_TRUNCATED_TOTAL)?,
-            skipped: instruments.counter_u64(declared::MEMORY_CAPTURE_SKIPPED_TOTAL)?,
-            search_zero_hits: instruments.counter_u64(declared::MEMORY_SEARCH_ZERO_HITS_TOTAL)?,
+                .counter_u64(&declared::MEMORY_HYDRATION_DROPPED_BYTES_TOTAL)?,
+            cap_evictions: instruments.counter_u64(&declared::MEMORY_CAP_EVICTIONS_TOTAL)?,
+            truncated: instruments.counter_u64(&declared::MEMORY_CAPTURE_TRUNCATED_TOTAL)?,
+            skipped: instruments.counter_u64(&declared::MEMORY_CAPTURE_SKIPPED_TOTAL)?,
+            search_zero_hits: instruments.counter_u64(&declared::MEMORY_SEARCH_ZERO_HITS_TOTAL)?,
         };
 
-        instruments.gauge_u64(declared::MEMORY_HYDRATION_WINDOW_ENTRIES, || {
-            WINDOW_ENTRIES.load().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(&declared::MEMORY_HYDRATION_WINDOW_ENTRIES, || {
+            WINDOW_ENTRIES
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
         })?;
 
         let resident = Arc::clone(&sources.resident_memory);
-        instruments.gauge_u64(declared::PROCESS_RESIDENT_MEMORY_BYTES, move || {
+        instruments.gauge_u64(&declared::PROCESS_RESIDENT_MEMORY_BYTES, move || {
             resident().into_iter().map(Reading::unlabelled).collect()
         })?;
 

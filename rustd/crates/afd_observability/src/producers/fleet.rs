@@ -8,9 +8,9 @@
 pub mod repair;
 pub mod runner;
 
-use std::sync::Arc;
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::Counter;
+use std::sync::Arc;
 
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
@@ -95,47 +95,58 @@ impl Handles {
         let runners = Arc::new(RunnerMetrics::new());
         let handles = Self {
             runners: Arc::clone(&runners),
-            signup_bootstrapped: instruments.counter_u64(declared::SIGNUP_BOOTSTRAPPED_TOTAL)?,
-            signup_replayed: instruments.counter_u64(declared::SIGNUP_REPLAYED_TOTAL)?,
-            signup_failed: instruments.counter_u64(declared::SIGNUP_FAILED_TOTAL)?,
-            lease_polls: instruments.counter_u64(declared::LEASE_POLLS_TOTAL)?,
+            signup_bootstrapped: instruments.counter_u64(&declared::SIGNUP_BOOTSTRAPPED_TOTAL)?,
+            signup_replayed: instruments.counter_u64(&declared::SIGNUP_REPLAYED_TOTAL)?,
+            signup_failed: instruments.counter_u64(&declared::SIGNUP_FAILED_TOTAL)?,
+            lease_polls: instruments.counter_u64(&declared::LEASE_POLLS_TOTAL)?,
             lease_candidates: instruments
-                .counter_u64(declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
-            lease_roundtrips: instruments
-                .counter_u64(declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
+                .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
+            lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
             ready_write_failures: instruments
-                .counter_u64(declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
-            retention_swept: instruments.counter_u64(declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
+                .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
+            retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
-                .counter_u64(declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
-            repair_retries: instruments.counter_u64(declared::REPAIR_DISPATCH_RETRIED_TOTAL)?,
-            repair_events: instruments.counter_u64(declared::REPAIR_SYNTHETIC_EVENTS_TOTAL)?,
-            repair_runs: instruments.counter_u64(declared::REPAIR_VERIFIER_RUNS_TOTAL)?,
-            runner_failures: instruments.counter_u64(declared::RUNNER_FAILURES_TOTAL)?,
+                .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
+            repair_retries: instruments.counter_u64(&declared::REPAIR_DISPATCH_RETRIED_TOTAL)?,
+            repair_events: instruments.counter_u64(&declared::REPAIR_SYNTHETIC_EVENTS_TOTAL)?,
+            repair_runs: instruments.counter_u64(&declared::REPAIR_VERIFIER_RUNS_TOTAL)?,
+            runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
-                .counter_u64(declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
-            runner_executions: instruments.counter_u64(declared::RUNNER_EXECUTIONS_TOTAL)?,
+                .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
+            runner_executions: instruments.counter_u64(&declared::RUNNER_EXECUTIONS_TOTAL)?,
         };
 
-        instruments.gauge_u64(declared::FLEET_READY_DEPTH, || {
-            READY_DEPTH.load().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(&declared::FLEET_READY_DEPTH, || {
+            READY_DEPTH
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
         })?;
 
-        instruments.gauge_u64(declared::REPAIR_DISPATCH_DUE_BATCH, || {
-            REPAIR_DUE.load().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(&declared::REPAIR_DISPATCH_DUE_BATCH, || {
+            REPAIR_DUE
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
         })?;
 
-        instruments.gauge_u64(declared::REPAIR_DISPATCH_OLDEST_AGE_SECONDS, || {
-            REPAIR_OLDEST.load().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(&declared::REPAIR_DISPATCH_OLDEST_AGE_SECONDS, || {
+            REPAIR_OLDEST
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
         })?;
 
         let seen = Arc::clone(&runners);
-        instruments.gauge_u64(declared::RUNNER_LAST_SEEN_SECONDS, move || {
+        instruments.gauge_u64(&declared::RUNNER_LAST_SEEN_SECONDS, move || {
             seen.last_seen_readings()
         })?;
 
         let leased = Arc::clone(&runners);
-        instruments.gauge_u64(declared::RUNNER_ACTIVE_LEASES, move || {
+        instruments.gauge_u64(&declared::RUNNER_ACTIVE_LEASES, move || {
             leased.active_lease_readings()
         })?;
 

@@ -32,7 +32,7 @@ fn declared_labels() -> BTreeSet<String> {
     Registry::declared()
         .expect("the compiled-in census reads")
         .families()
-        .flat_map(|family| family.labels.iter().map(|label| label.to_string()))
+        .flat_map(|family| family.labels.iter().map(std::string::ToString::to_string))
         .collect()
 }
 
