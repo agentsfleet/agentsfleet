@@ -46,15 +46,3 @@ pub const MEMORY_SEARCH_ZERO_HITS_TOTAL: Declared<CounterKind> =
 /// Process RSS.
 pub const PROCESS_RESIDENT_MEMORY_BYTES: Declared<GaugeKind> =
     Declared::new("agentsfleet_process_resident_memory_bytes");
-
-/// Plaintext-erasure proof; no labels by design.
-pub const SENSITIVE_REQUEST_ERASED_BYTES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_sensitive_request_erased_bytes_total");
-
-/// Plaintext-erasure proof; no labels by design.
-pub const SENSITIVE_RESPONSE_ERASED_BYTES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_sensitive_response_erased_bytes_total");
-
-/// Sensitive writes failing.
-pub const SENSITIVE_RESPONSE_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_sensitive_response_write_failures_total");
