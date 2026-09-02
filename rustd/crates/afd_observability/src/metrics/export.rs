@@ -41,6 +41,8 @@ use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 
+use crate::metrics::label::http::Signal;
+
 #[cfg(test)]
 mod tests;
 
@@ -134,6 +136,11 @@ impl<E: PushMetricExporter> PushMetricExporter for CountingMetricExporter<E> {
         // Hoisted before the macro: the `log` bridge compiles a second copy of
         // every field expression, and llvm-cov scores the copy that never runs.
         let run = self.drops.lost();
+        crate::producers::http::export_discarded(
+            Signal::Metrics,
+            crate::export::discard_reason(failure),
+            1,
+        );
         let reason = failure.to_string();
         let total = self.drops.failed();
         tracing::warn!(

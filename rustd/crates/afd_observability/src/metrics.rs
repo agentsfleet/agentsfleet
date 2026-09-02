@@ -14,7 +14,11 @@
 //! against the same file in both directions, and a family on one side only is
 //! named rather than quietly dropped.
 
+pub mod declared;
 pub mod export;
 pub mod family;
+pub mod instrument;
+pub mod label;
 pub mod observed;
+pub mod produced;
 pub mod registry;
