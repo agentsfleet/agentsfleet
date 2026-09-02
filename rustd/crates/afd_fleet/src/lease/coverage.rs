@@ -184,3 +184,65 @@ fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault:
         "a renewal gate could not be read; the run is admitted for one more slice"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use afd_core::clock::UnixMillis;
+    use afd_core::id::{ENTROPY_LEN, Uuid7};
+
+    use super::admit_unreadable;
+    use crate::lease::renew::Renewing;
+
+    /// A lease for the reporting helper, with three distinct identifiers.
+    ///
+    /// Distinct because the warning names the fleet and the lease separately,
+    /// and a fixture that reused one id would let a swapped field pass.
+    fn renewing() -> Result<Renewing, &'static str> {
+        let at = UnixMillis::from_millis(1_767_225_600_000);
+        let mint = |seed: u8| {
+            Uuid7::encode(at, [seed; ENTROPY_LEN])
+                .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
+        };
+        Ok(Renewing {
+            tenant_id: mint(1)?,
+            fleet_id: mint(2)?,
+            workspace_id: mint(3)?,
+            posture: "sandboxed".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-opus-5".to_owned(),
+            status: "active".to_owned(),
+        })
+    }
+
+    /// The unreadable-gate admission renders every refusal it can be handed.
+    ///
+    /// The three call sites pass a balance, a budget and a spend failure, and
+    /// each is admitted for one more slice rather than refused — so what there
+    /// is to prove is that the reporting itself survives every error kind. Both
+    /// `fault.to_string()` and `fault.code()` run arbitrary per-kind code at the
+    /// moment a gate has already failed, which is the worst moment for either
+    /// to panic.
+    #[test]
+    fn the_unreadable_gate_admission_renders_every_refusal() -> Result<(), &'static str> {
+        let lease = renewing()?;
+
+        for fault in [
+            crate::error::stale_fence(),
+            crate::error::lease_not_found(),
+            crate::error::lease_lost(),
+            crate::error::lease_max_runtime(),
+            crate::error::renewal_no_credits(),
+            crate::error::budget_exhausted(),
+        ] {
+            assert!(
+                !fault.to_string().is_empty(),
+                "the refusal renders to something a reader can act on"
+            );
+            assert!(!fault.code().as_str().is_empty());
+            admit_unreadable("balance", &lease, "lease-fixture", &fault);
+            admit_unreadable("budget", &lease, "lease-fixture", &fault);
+            admit_unreadable("spend", &lease, "lease-fixture", &fault);
+        }
+        Ok(())
+    }
+}
