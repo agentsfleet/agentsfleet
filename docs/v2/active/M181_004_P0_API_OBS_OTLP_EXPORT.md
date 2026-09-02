@@ -69,6 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api/**` · `afd_api_runner/**` · `afd_api_tenant/**` · `afd_api_ingress/**` · `afd_http/**` | EDIT | the admission shed counter; the fleet-delivery span, cost families and runner counters at the report handler; signup, library-read and repair-result producers in the handlers that own those operations |
 | `rustd/crates/afd_redis/**` · `afd_sse/**` | EDIT | the ready-index and hub-reconnect producers; the stream ceiling's shed and dropped-frame counters; gauge callbacks over the state these crates already expose |
 | `rustd/crates/afd_fleet/**` · `afd_runner/**` · `afd_tenant/**` | EDIT | lease-poll and memory producers; retention and repair-dispatch producers; signup outcome producers — each at the one call site that owns the operation |
+| `rustd/crates/afd_gate/**` · `afd_events/**` · `afd_fleet_lifecycle/**` | EDIT | the ready-write failure counter, at each of the three crates that writes a readiness mark — one call and the dependency it needs, and nothing else |
 | `docs/metrics.census.tsv` | EDIT | the six understated series ceilings Indy approved correcting (Discovery), and the two families this build moves to the unproduced ledger |
 | `docs/architecture/observability.md` · `docs/architecture/concurrency.md` | EDIT | the export path as built; the `otlp_export` row's real stop path |
 

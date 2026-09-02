@@ -42,9 +42,12 @@ use afd_observability::producers;
 use afd_redis::Redis;
 use afd_redis::streams::{FleetStreams, OnceScope};
 use afd_wire::event::EventType;
-use serde::Serialize;
 use sqlx::Row as _;
 
+mod cleanup;
+mod rows;
+
+use self::rows::{Dispatched, Due, Incident, Production, Repair, Synthetic};
 use crate::error::{Result, query};
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
@@ -97,113 +100,6 @@ pub const VERIFIER_ACTOR: &str = "system:repair-verifier";
 ///
 /// Every field rides into the event payload except the identifiers, which are
 /// what the completion is written against.
-#[derive(Debug)]
-struct Due {
-    /// The verification row.
-    id: String,
-    /// The fleet that will RUN the verification.
-    verifier_fleet_id: String,
-    /// The workspace both fleets belong to.
-    workspace_id: String,
-    /// The incident's own fleet and event, which the payload names so the
-    /// verification knows what it is checking.
-    incident: Incident,
-    /// The repair that was merged.
-    repair: Repair,
-    /// The deployment that carried it.
-    production: Production,
-    /// When this became due, for the pacing decision.
-    verify_after: i64,
-}
-
-/// The incident a verification is checking.
-#[derive(Debug, Serialize)]
-struct Incident {
-    /// The fleet the incident belonged to.
-    fleet_id: String,
-    /// The event that recorded it.
-    event_id: String,
-    /// What was asked, verbatim.
-    request_json: String,
-    /// What was answered.
-    response_text: String,
-}
-
-/// The merged repair.
-#[derive(Debug, Serialize)]
-struct Repair {
-    /// The pull request's number.
-    pr_number: i64,
-    /// Its address.
-    pr_url: String,
-    /// The commit the merge produced.
-    merged_commit_sha: String,
-    /// When it merged.
-    merged_at: i64,
-}
-
-/// The deployment that carried the repair to production.
-#[derive(Debug, Serialize)]
-struct Production {
-    /// Which deployment provider reported it.
-    provider: String,
-    /// Its identifier there.
-    deployment_id: String,
-    /// How it ended.
-    conclusion: String,
-    /// When it ended.
-    completed_at: i64,
-}
-
-/// The payload a verification run is handed.
-#[derive(Debug, Serialize)]
-struct Synthetic<'a> {
-    /// What this payload is.
-    event_type: &'static str,
-    /// The incident under verification.
-    incident: &'a Incident,
-    /// The repair that was supposed to fix it.
-    repair: &'a Repair,
-    /// The deployment that shipped it.
-    production: &'a Production,
-}
-
-/// What one pass did, and what it implies about when to come back.
-#[derive(Debug, Clone, Copy, Default)]
-struct Dispatched {
-    /// Intents claimed.
-    due: usize,
-    /// Intents that produced an event and were recorded.
-    completed: usize,
-    /// Intents that did not, and will be retried once their claim lapses.
-    failed: usize,
-    /// Whether the cleanup page was full, meaning more keys are waiting.
-    cleanup_pending: bool,
-}
-
-impl Dispatched {
-    /// How long to wait before the next pass.
-    fn pacing(self) -> Duration {
-        // A full cleanup page means more keys are waiting, and forgetting them
-        // costs one round trip each — so the next pass follows immediately
-        // rather than leaving keys in Redis for a minute at a time.
-        if self.cleanup_pending {
-            return Duration::ZERO;
-        }
-        let full_batch = self.due >= usize::try_from(DUE_BATCH_LIMIT).unwrap_or(usize::MAX);
-        if self.failed > 0 && (!full_batch || self.completed == 0) {
-            // Coming back sooner would find the failed rows still claimed by
-            // this very pass, so the wait is exactly a claim's life.
-            return CLAIM_STALE;
-        }
-        if full_batch {
-            // A backlog: the next batch is already waiting.
-            return Duration::ZERO;
-        }
-        NOTHING_DUE_INTERVAL
-    }
-}
-
 /// The repair-verification dispatcher.
 #[derive(Debug)]
 pub struct Repairs {
@@ -330,87 +226,6 @@ impl Repairs {
             .await
             .map_err(query(CONTEXT_COMPLETE))?;
         Ok(recorded.rows_affected() > 0)
-    }
-
-    /// Forgets the append-once keys of intents that are fully recorded.
-    ///
-    /// Answers whether the page was full, which means more are waiting. A
-    /// failure here is reported and swallowed: an un-forgotten key costs one
-    /// Redis entry until the next pass, and failing the whole sweep over it
-    /// would stop dispatching work that is due.
-    async fn clean(&self, now: UnixMillis) -> bool {
-        let Ok(page) = self.cleanup_page(now).await.inspect_err(|failure| {
-            tracing::warn!(
-                error = %failure,
-                event = "repair_verification_cleanup_lookup_failed",
-                "the append-once cleanup page could not be read"
-            );
-        }) else {
-            return false;
-        };
-        if page.is_empty() {
-            return false;
-        }
-
-        let mut forgotten = Vec::with_capacity(page.len());
-        for id in &page {
-            match self.streams.forget_once(OnceScope::FleetIntent, id).await {
-                Ok(()) => forgotten.push(id.clone()),
-                // Left for the next pass: the row keeps its uncleared marker,
-                // so nothing is lost by not recording this one.
-                Err(failure) => tracing::warn!(
-                    verification_id = id,
-                    error = %failure,
-                    event = "repair_verification_once_key_uncleared",
-                    "an append-once key could not be forgotten"
-                ),
-            }
-        }
-        if forgotten.is_empty() {
-            return false;
-        }
-
-        let full = page.len() >= usize::try_from(CLEANUP_BATCH_LIMIT).unwrap_or(usize::MAX);
-        if let Err(failure) = self.record_cleanup(&forgotten, now).await {
-            tracing::warn!(
-                error = %failure,
-                event = "repair_verification_cleanup_update_failed",
-                "forgotten append-once keys could not be recorded"
-            );
-            return false;
-        }
-        full
-    }
-
-    /// The intents whose keys are still in Redis.
-    async fn cleanup_page(&self, now: UnixMillis) -> Result<Vec<String>> {
-        let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::sweep::SELECT_REPAIR_VERIFICATION_CLEANUP)
-            .bind(now.as_millis())
-            .bind(CLEANUP_BATCH_LIMIT)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_CLEANUP))?;
-        rows.iter()
-            .map(|row| row.try_get::<String, _>(0).map_err(query(CONTEXT_CLEANUP)))
-            .collect()
-    }
-
-    /// Records that a batch of keys is gone.
-    async fn record_cleanup(&self, forgotten: &[String], now: UnixMillis) -> Result<()> {
-        // Serialised to TEXT and cast by the statement, because a `jsonb` bind
-        // would need a sqlx feature this crate does not take for one array of
-        // identifiers.
-        let identifiers = serde_json::to_string(forgotten)
-            .map_err(|_shape| crate::error::vault_data_invalid())?;
-        let mut connection = self.database.acquire().await?;
-        sqlx::query(sql::sweep::COMPLETE_REPAIR_VERIFICATION_CLEANUP)
-            .bind(identifiers)
-            .bind(now.as_millis())
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_CLEANUP))?;
-        Ok(())
     }
 
     /// A fresh claim token for one pass.

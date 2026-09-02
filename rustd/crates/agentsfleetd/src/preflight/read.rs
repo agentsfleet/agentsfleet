@@ -13,12 +13,13 @@ use afd_core::env::EnvSource;
 use afd_crypto::secret::Kek;
 use afd_identity::ProviderSecret;
 
-use super::{
-    BundleStoreConfig, ENCRYPTION_MASTER_KEY_KNOB, Fault, IdentityConfig, OIDC_AUDIENCE_KNOB,
-    OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS,
-    SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
-    WHY_R2, WHY_SECRET, WHY_SSE_MAX_STREAMS,
+use super::knobs::{
+    ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB,
+    PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS, SSE_MAX_STREAMS_DEFAULT,
+    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK, WHY_R2, WHY_SECRET,
+    WHY_SSE_MAX_STREAMS,
 };
+use super::{BundleStoreConfig, Fault, IdentityConfig};
 
 /// Resolves the snapshot store, which a boot may legitimately not have.
 ///
