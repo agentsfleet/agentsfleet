@@ -60,7 +60,7 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
     params(
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = DeleteAllSessionsResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = OpenSessionResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -347,7 +347,7 @@ pub(crate) async fn delete_one<D: Services>(
         "flight login sessions only. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = DeleteAllSessionsResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
     ),

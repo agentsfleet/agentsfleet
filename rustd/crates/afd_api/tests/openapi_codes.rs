@@ -48,6 +48,9 @@ const INTERNAL: u16 = 500;
 /// One operation, keyed as both sides spell it.
 type Operation = (String, String);
 
+/// The scheme `document()` registers, and the only one this daemon names.
+const BEARER_SCHEME: &str = "BearerAuth";
+
 /// The codes each operation publishes, read out of the generated document.
 fn published() -> BTreeMap<Operation, BTreeSet<u16>> {
     let mut out = BTreeMap::new();
@@ -71,6 +74,93 @@ fn published() -> BTreeMap<Operation, BTreeSet<u16>> {
         }
     }
     out
+}
+
+/// The operations that name the bearer scheme, read out of the generated document.
+///
+/// `SecurityRequirement` keeps its one field private, so the requirement cannot
+/// be inspected through the builder's types the way the codes above are. The
+/// serialized form is the more honest subject anyway: what a caller reads is
+/// `public/openapi.json`, not a `BTreeMap`.
+///
+/// An EMPTY `security` array is deliberately not a match. It is how an
+/// operation says "no credential", which is right for an open route and a lie
+/// for a guarded one.
+fn credentialed() -> BTreeSet<Operation> {
+    let document =
+        serde_json::to_value(afd_api::openapi::document()).expect("the document serializes");
+    let names_bearer = |security: Option<&serde_json::Value>| {
+        security
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|requirements| {
+                requirements.iter().any(|one| one.get(BEARER_SCHEME).is_some())
+            })
+    };
+    if names_bearer(document.get("security")) {
+        return Route::all()
+            .flat_map(|route| {
+                let template = route.meta().template;
+                route
+                    .verbs()
+                    .iter()
+                    .map(move |verb| (template.to_owned(), verb.method().to_string()))
+            })
+            .collect();
+    }
+    let mut out = BTreeSet::new();
+    let paths = document.get("paths").and_then(serde_json::Value::as_object);
+    for (path, item) in paths.into_iter().flatten() {
+        for method in ["get", "post", "put", "patch", "delete"] {
+            let Some(operation) = item.get(method) else {
+                continue;
+            };
+            if names_bearer(operation.get("security")) {
+                out.insert((path.clone(), method.to_uppercase()));
+            }
+        }
+    }
+    out
+}
+
+/// A guarded route publishes the credential that gets a caller past its guard.
+///
+/// The same `RouteMeta::guard` that decides the 401 above decides this. Under
+/// OpenAPI 3.1 an operation with no `security`, in a document with no root
+/// `security`, requires NO authentication — a positive claim, not an absence.
+/// A generated client omits the `Authorization` header and a spec-driven
+/// gateway lets the call through, so a guarded route that says nothing here is
+/// published as open.
+#[test]
+fn test_every_guarded_operation_names_its_credential() {
+    let credentialed = credentialed();
+    let mut naked = Vec::new();
+
+    for route in Route::all() {
+        let meta = route.meta();
+        if meta.guard == Guard::Open {
+            continue;
+        }
+        for verb in route.verbs() {
+            let key = (meta.template.to_owned(), verb.method().to_string());
+            if !credentialed.contains(&key) {
+                naked.push(format!(
+                    "{} {} (guard {:?})",
+                    verb.method(),
+                    meta.template,
+                    meta.guard
+                ));
+            }
+        }
+    }
+
+    assert!(
+        naked.is_empty(),
+        "an operation the router guards publishes no credential, so the \
+         document tells every caller and every generated client it is open \
+         ({} of them):\n  {}",
+        naked.len(),
+        naked.join("\n  "),
+    );
 }
 
 /// Every operation publishes the refusals its own route metadata implies.

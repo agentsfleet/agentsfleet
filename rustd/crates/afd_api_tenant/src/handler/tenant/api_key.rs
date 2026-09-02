@@ -64,7 +64,7 @@ const DETAIL_NO_TENANT: &str =
     params(
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = RevokedApiKeyResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = MintedApiKeyResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -123,7 +123,7 @@ pub(crate) async fn mint<D: Services>(
         ("sort" = Option<String>, Query),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = PageResponse<ApiKeySummary>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -167,7 +167,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Id,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = RevokedApiKeyResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

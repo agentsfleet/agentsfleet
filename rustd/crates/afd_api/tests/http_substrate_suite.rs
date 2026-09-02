@@ -26,6 +26,9 @@ mod openapi_codes;
 #[cfg(feature = "openapi")]
 #[path = "openapi_coverage.rs"]
 mod openapi_coverage;
+
+#[path = "openapi_contract.rs"]
+mod openapi_contract;
 #[path = "route_inventory.rs"]
 mod route_inventory;
 #[path = "route_meta_total.rs"]

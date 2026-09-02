@@ -179,7 +179,7 @@ pub(crate) async fn thread<D: Services>(
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = SteerAccepted),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

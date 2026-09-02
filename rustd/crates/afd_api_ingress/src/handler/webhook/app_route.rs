@@ -121,8 +121,8 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         ("X-Hub-Signature-256" = String, Header, description = "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
-        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 200, description = afd_http::openapi::OK, body = Pong),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = Pong),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

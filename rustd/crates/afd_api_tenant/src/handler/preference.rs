@@ -92,7 +92,7 @@ pub(crate) struct PreferencePath {
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = OnboardingResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PreferencesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
     ),
@@ -194,7 +194,7 @@ pub(crate) async fn write<D: Services>(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = OnboardingResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
     ),

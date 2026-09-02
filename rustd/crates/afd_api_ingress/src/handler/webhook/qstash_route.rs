@@ -87,7 +87,7 @@ const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
         ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = Fired),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),

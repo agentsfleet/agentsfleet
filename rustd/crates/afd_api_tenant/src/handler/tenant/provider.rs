@@ -224,7 +224,7 @@ pub(crate) async fn reset<D: Services>(
     ),
     request_body = TenantProviderRequest,
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

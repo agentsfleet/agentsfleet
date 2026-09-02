@@ -162,7 +162,7 @@ impl IdentityUser {
         ("svix-signature" = String, Header, description = "Space-separated list of Svix v1 signatures."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = Ignored),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
