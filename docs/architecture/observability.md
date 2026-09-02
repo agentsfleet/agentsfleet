@@ -35,7 +35,7 @@ The control plane's telemetry surfaces live in `afd_observability`.
 
 | Path | What | Consumer |
 |---|---|---|
-| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir, **through the collector** (`deploy/fly/otelcol-{dev,prod}`), which holds the vendor credentials and owns the fan-out. Gated on the `GRAFANA_OTLP_*` env triple, whose endpoint names the collector and no longer names the vendor. The daemon's **only** metrics egress: there is no pull endpoint. See §The export path | <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud, operator dashboards |
 | <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog | nullable client, product events only | product analytics |
 | Postgres | per-run execution telemetry + billing counters in `afd_billing` | the money system of record |
 
@@ -292,12 +292,25 @@ the runner's go to the host supervisor. Field rules:
 endpoint, addressed by the OpenTelemetry specification's own environment names.
 It does not know which backend its signal reaches, and that is the point.
 
-The Zig daemon posts direct to a vendor, gated on a `GRAFANA_OTLP_*` triple —
+The Zig daemon posted direct to a vendor, gated on a `GRAFANA_OTLP_*` triple —
 vendor identity spelled into the daemon's own configuration. That worked while
 there was one backend, and it makes moving to a second one a daemon change:
 new credentials, new configuration, a redeploy, and a window in which the old
 and new paths are both half-configured. Fan-out to two backends at once is not
 expressible at all without teaching the daemon about both.
+
+**The collector is a Fly app per environment, reached only on the private
+network.** `otelcol-{dev,prod}` hold the vendor credential and export upstream;
+the daemon's endpoint names them instead of the vendor, and it still posts to
+`{endpoint}/v1/{logs,traces,metrics}` — only the host on the front changed, so
+the repoint is one staged string and no daemon source edit.
+
+**Its receiver requires a credential, and that is not optional.** The private
+network spans the whole organisation rather than this app pair, so an
+unauthenticated receiver in front of the vendor key is a relay any workload on
+that network can post through. The daemon already sends a Basic pair on every
+export; the collector checks it, which is what keeps the boundary where it was
+before the hop existed.
 
 Pointing the daemon at a collector moves that decision out of the binary.
 Adding a backend, splitting one signal to two destinations, or moving a vendor
