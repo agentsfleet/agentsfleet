@@ -1,12 +1,12 @@
-//! The families this build cannot feed, and why each one.
+//! The families this build cannot feed YET, and why each one.
 //!
 //! # Why a declared absence beats a silent one
 //!
-//! The census is one contract for two daemons. Some of what it declares
-//! measures machinery only the Zig daemon has, and the honest answer for those
-//! is nothing at all — a Rust producer for a connection pool that does not
-//! exist would report a number describing no mechanism, which is worse than a
-//! gap because a gap is visibly a gap.
+//! The census is one contract for two daemons, and some of what it declares
+//! measures work that has not reached this one. The honest answer for those is
+//! nothing at all: a producer reporting a number for a mechanism that is not
+//! running describes nothing, which is worse than a gap because a gap is
+//! visibly a gap.
 //!
 //! The dishonest alternatives were both available and both rejected. Emitting
 //! zeroes would draw a flat line that reads as health. Quietly dropping the
@@ -17,14 +17,23 @@
 //! neither produced nor excused fails, and so does an excuse for a family the
 //! census no longer declares. The ledger cannot rot in either direction.
 //!
-//! # These are not deferrals
+//! # A row is a "not yet", never a "never"
 //!
-//! A row here is a family whose mechanism this daemon does not run, not work
-//! postponed. When the mechanism arrives — a pooled Redis client, a
-//! request-erasure path, the ported account teardown — its row leaves this
-//! file in the same commit that adds the producer.
+//! A row here is a family whose mechanism this daemon does not run YET — the
+//! repair-result ingress with no Rust home, the unported account teardown —
+//! and it leaves this file in the same commit that adds its producer.
+//!
+//! A family whose mechanism this architecture will not have at all does not
+//! belong here: it leaves the CENSUS. Eleven were struck on that rule —
+//! the eight `agentsfleet_redis_pool_*` families, because the Zig hand-rolled
+//! a pool to serialise one command per socket and the multiplexed async client
+//! has no such limit, so what the pool existed to solve stopped being a problem
+//! rather than being ported; and the three `agentsfleet_sensitive_*` erasure
+//! families, because no request- or response-buffer erasure path exists here.
+//! Excusing those forever would have made this ledger a list of two different
+//! things, and a to-do list that also holds never-do items stops being read.
 
-use crate::metrics::declared::{cost, fleet, http, library, memory, redis};
+use crate::metrics::declared::{cost, fleet, http, library};
 
 /// One family this build declines to produce, and the reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,16 +44,6 @@ pub struct Unproduced {
     pub why: &'static str,
 }
 
-/// Why none of the pool families has a producer.
-///
-/// Named once because eight rows share it, and because it is a fact about the
-/// port rather than about any one family: the Zig hand-rolled a connection
-/// pool because a blocking client can only have one command in flight per
-/// socket, and the async client this daemon uses has no such limit. What the
-/// pool existed to solve stopped being a problem rather than being ported.
-const NO_REDIS_POOL: &str =
-    "this daemon holds one multiplexed Redis connection; there is no pool to read";
-
 /// Why the first three links of the verification chain have no producer.
 ///
 /// The dispatcher and the run are ported and record; what is not is the
@@ -53,9 +52,6 @@ const NO_REDIS_POOL: &str =
 /// that handler.
 const NO_REPAIR_INGRESS: &str = "the repair-result ingress has no Rust home yet, so no result is received, \
      correlated or turned into an intent here";
-
-/// Why nothing feeds the request- and response-erasure counters.
-const NO_ERASURE_PATH: &str = "no request- or response-buffer erasure path exists in this daemon";
 
 /// Every declared family this build does not produce.
 ///
@@ -116,49 +112,5 @@ pub const UNPRODUCED: &[Unproduced] = &[
         why: "the ring this counted belongs to the daemon being replaced; the loss \
               this build can see is the SDK's, already counted per signal and \
               reason by `agentsfleet_otlp_entries_discarded_total`",
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_ACTIVE.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_IDLE.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_DIALS_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_OVERFLOW_DIALS_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_POISONED_CONNECTIONS_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_RECONNECTS_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_FORCED_CLOSES_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: redis::REDIS_POOL_ACQUIRE_TIMEOUTS_TOTAL.wire_name(),
-        why: NO_REDIS_POOL,
-    },
-    Unproduced {
-        family: memory::SENSITIVE_REQUEST_ERASED_BYTES_TOTAL.wire_name(),
-        why: NO_ERASURE_PATH,
-    },
-    Unproduced {
-        family: memory::SENSITIVE_RESPONSE_ERASED_BYTES_TOTAL.wire_name(),
-        why: NO_ERASURE_PATH,
-    },
-    Unproduced {
-        family: memory::SENSITIVE_RESPONSE_WRITE_FAILURES_TOTAL.wire_name(),
-        why: NO_ERASURE_PATH,
     },
 ];

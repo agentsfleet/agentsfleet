@@ -26,4 +26,3 @@ pub mod fleet;
 pub mod http;
 pub mod library;
 pub mod memory;
-pub mod redis;

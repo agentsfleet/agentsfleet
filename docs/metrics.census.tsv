@@ -77,14 +77,6 @@ agentsfleet_library_pool_result_total	counter	u64	1	cumulative	pool_result	-	fix
 agentsfleet_library_cache_outcome_total	counter	u64	1	cumulative	cache	-	fixed:4	no	latency	hit ratio of the global catalogue cache
 agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
 agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface
-agentsfleet_redis_pool_active	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (leased)
-agentsfleet_redis_pool_idle	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (ready)
-agentsfleet_redis_pool_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	dial volume
-agentsfleet_redis_pool_overflow_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	burst dialing past `max_idle`
-agentsfleet_redis_pool_poisoned_connections_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: in-flight transport errors
-agentsfleet_redis_pool_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: retry-layer redials
-agentsfleet_redis_pool_forced_closes_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: over-cap releases
-agentsfleet_redis_pool_acquire_timeouts_total	counter	u64	1	cumulative	-	-	fixed:1	yes	errors	currently always 0; acquires never block
 agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
 agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
 agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill
@@ -95,9 +87,6 @@ agentsfleet_memory_capture_truncated_total	counter	u64	1	cumulative	-	-	fixed:1	
 agentsfleet_memory_capture_skipped_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures lost to validation
 agentsfleet_memory_search_zero_hits_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	searches finding nothing
 agentsfleet_process_resident_memory_bytes	gauge	u64	By	-	-	-	fixed:1	yes	saturation	process RSS
-agentsfleet_sensitive_request_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
-agentsfleet_sensitive_response_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
-agentsfleet_sensitive_response_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	sensitive writes failing
 agentsfleet_runner_failures_total	counter	u64	1	cumulative	runner_id,reason	-	runner:4096	no	errors	failure rate per reason
 agentsfleet_runner_failures_overflow_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	increments only past 4096 runner slots
 agentsfleet_runner_executions_total	counter	u64	1	cumulative	runner_id,outcome	-	runner:4096	no	traffic	run volume per runner
