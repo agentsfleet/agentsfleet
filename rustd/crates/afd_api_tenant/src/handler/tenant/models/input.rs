@@ -131,3 +131,71 @@ pub(super) fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, s
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{decoded, normalize_provider};
+
+    /// The filter collapses interior runs and lowercases, and empty means absent.
+    ///
+    /// The collapse is what makes `?provider=Anthropic  Claude` and
+    /// `?provider=anthropic claude` ONE cache key and one query rather than
+    /// two, so a run of spaces reaching the catalogue would split a filter that
+    /// is meant to be a single value. The absent cases matter for the opposite
+    /// reason: `?provider=` must mean "no filter", not "match the empty
+    /// provider", which would answer an empty catalogue to a caller who asked
+    /// for everything.
+    #[test]
+    fn a_provider_filter_collapses_interior_runs_and_lowercases() -> Result<(), &'static str> {
+        let bound = |raw| {
+            normalize_provider(Some(Cow::Borrowed(raw)))
+                .map_err(|_refused| "a short filter is inside the byte bound")
+        };
+
+        assert_eq!(
+            bound("  Anthropic \t\r\n  CLAUDE  ")?.as_deref(),
+            Some("anthropic claude"),
+            "every interior run becomes one space, and the ends are trimmed"
+        );
+        assert_eq!(
+            bound("anthropic")?.as_deref(),
+            Some("anthropic"),
+            "a filter with nothing to normalize survives unchanged"
+        );
+
+        for absent in ["", "   ", "\t\r\n"] {
+            assert_eq!(
+                bound(absent)?,
+                None,
+                "whitespace-only is the same request as omitting the filter"
+            );
+        }
+        assert_eq!(
+            normalize_provider(None).map_err(|_refused| "an absent filter never refuses")?,
+            None
+        );
+        Ok(())
+    }
+
+    /// A query string that will not percent-decode refuses, rather than
+    /// silently reading as absent.
+    ///
+    /// The two answers are very different to a caller: a refusal says the
+    /// request was malformed, while `None` says "you did not filter" and
+    /// returns the whole catalogue. Answering the second to a caller who did
+    /// filter is how a truncated or corrupted query becomes a wrong result
+    /// presented as a right one.
+    #[test]
+    fn an_undecodable_query_refuses_rather_than_reading_as_absent() {
+        assert!(
+            decoded("provider=%ZZ", "provider").is_err(),
+            "an invalid percent escape is refused"
+        );
+        assert!(
+            matches!(decoded("provider=anthropic", "provider"), Ok(Some(_))),
+            "a readable query still answers its value"
+        );
+    }
+}

@@ -223,6 +223,16 @@ async fn an_unreachable_collector_costs_spans_and_not_requests() {
 ///   SAME emits stderr already writes, and answers whether the swap took.
 /// - `Signals` renders without leaking its handle's innards, because a `{:?}`
 ///   somebody adds later must not print a subscriber's guts into a log line.
+///
+/// The last two are OPPORTUNISTIC here and must not be read as this suite's
+/// proof of them. The process-wide slot is won by whoever installs a subscriber
+/// first, and in this binary that is usually `support`, so `signals()` answers
+/// `None` and the assertions below are skipped — silently, and depending on
+/// test order. `logs::tests::the_reload_slot_takes_the_export_bridges` proves
+/// both against a handle of its own, deterministically and with no collector.
+/// What is left here is the one claim that needs a REAL pipeline: that a
+/// `Signals` taken from the live process accepts bridges built from an
+/// `Exports` this suite actually exported through.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
 async fn the_subscriber_slot_takes_the_export_bridges() {
