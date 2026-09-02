@@ -13,7 +13,7 @@ use afd_db::PoolConfig;
 use afd_identity::ProviderSecret;
 use afd_redis::RedisConfig;
 
-use super::R2_REGION;
+use super::knobs::R2_REGION;
 
 /// The identity provider a deployment has, when it has one.
 ///
