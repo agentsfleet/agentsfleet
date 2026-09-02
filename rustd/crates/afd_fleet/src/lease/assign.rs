@@ -23,6 +23,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
+use afd_observability::producers;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
@@ -98,6 +99,20 @@ fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_redis::Erro
     );
 }
 
+/// What one lease poll cost, gathered as it runs.
+///
+/// The ratio is what an operator reads: candidates per poll says how much a
+/// poll examined, and round-trips per poll says how much of that reached
+/// Postgres. Either number alone is unreadable, which is why they are tallied
+/// together and recorded together.
+#[derive(Debug, Default)]
+struct PollCost {
+    /// Fleets the readiness index offered this poll.
+    candidates_scanned: u64,
+    /// Statements this poll issued.
+    database_roundtrips: u64,
+}
+
 impl Leases {
     /// Select the next work for `runner_id`, or `None` when nothing is leasable
     /// this pass.
@@ -106,11 +121,32 @@ impl Leases {
     /// Reports a datastore that would not answer. "Nothing to do" is
     /// `Ok(None)`, not an error — the runner backs off and re-polls.
     pub async fn select(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Option<Acquired>> {
+        let mut cost = PollCost::default();
+        let selected = self.select_counted(runner_id, now, &mut cost).await;
+        // On EVERY exit path, including the one where the peek itself failed:
+        // a poll that could not read the index is still a poll, and a total
+        // that skipped it would make idle cost look lower than it is.
+        producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
+        selected
+    }
+
+    /// [`Leases::select`] without the recording, tallying what it cost.
+    async fn select_counted(
+        &self,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+        cost: &mut PollCost,
+    ) -> Result<Option<Acquired>> {
         let ready = self
             .ready()
             .peek(MAX_READY_CANDIDATES_PER_POLL)
             .await
             .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
+        cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
+        // The readiness depth this poll saw, published for the gauge that
+        // reports it: the index is a network round trip, and a collection
+        // callback cannot make one.
+        producers::fleet::ready_depth_observed(cost.candidates_scanned);
         // The zero-Postgres path. Returning here is what makes idle cost scale
         // with runner count alone instead of runners × fleets.
         if ready.is_empty() {
@@ -118,7 +154,9 @@ impl Leases {
         }
 
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
+        cost.database_roundtrips += 1;
         for fleet_id in self.candidates(runner_id, &ids).await? {
+            cost.database_roundtrips += 1;
             if let Some(acquired) = self.try_candidate(&fleet_id, runner_id, now).await? {
                 return Ok(Some(acquired));
             }
@@ -248,4 +286,50 @@ impl Leases {
 #[must_use]
 pub fn runner_consumer() -> String {
     format!("agentsfleetd-{}", std::process::id())
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use afd_core::clock::UnixMillis;
+    use afd_core::id::{ENTROPY_LEN, Uuid7};
+
+    /// A runner identifier for the two reporting helpers.
+    ///
+    /// Minted rather than parsed from a literal: `Uuid7::encode` is the only
+    /// constructor that yields one without a fixture string to keep in step
+    /// with the type's own shape rules.
+    fn runner_id() -> Result<Uuid7, &'static str> {
+        Uuid7::encode(
+            UnixMillis::from_millis(1_767_225_600_000),
+            [7u8; ENTROPY_LEN],
+        )
+        .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
+    }
+
+    /// Both queue reporters render every Redis failure kind without panicking.
+    ///
+    /// Thin, and deliberately so. These are `tracing::warn!` calls with no
+    /// return value, so what there is to prove is that each field expression
+    /// EVALUATES for every kind the transport can produce — `error.to_string()`
+    /// most of all, which is the one that runs arbitrary `Display` code while
+    /// something is already going wrong.
+    ///
+    /// That is not a hypothetical concern in these two functions: the fields
+    /// are hoisted into locals precisely because the `log` bridge compiles a
+    /// second copy of every field expression, and a panic in the copy that does
+    /// run would take down a path whose entire job is to report calmly.
+    #[test]
+    fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str> {
+        let runner = runner_id()?;
+
+        for (label, error) in afd_redis::error::one_of_each_kind() {
+            assert!(
+                !error.to_string().is_empty(),
+                "{label} renders to something a reader can act on"
+            );
+            super::warn_queue("lease_poll_queue_failed", &runner, &error);
+            super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
+        }
+        Ok(())
+    }
 }

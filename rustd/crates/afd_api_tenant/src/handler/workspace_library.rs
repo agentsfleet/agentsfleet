@@ -31,6 +31,10 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Instant;
+
+use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
+use afd_observability::producers::library;
 
 use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
@@ -105,17 +109,48 @@ pub(crate) async fn list<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
+    let read = read_gallery(&services, &owned, query).await;
+    library::read_finished(
+        SURFACE,
+        read.as_ref()
+            .map_or_else(afd_http::handler::library_outcome, |_served| {
+                ReadOutcome::Ok
+            }),
+    );
+    read
+}
+
+/// The surface this read serves, in the census's own spelling.
+const SURFACE: Surface = Surface::FleetSummary;
+
+/// [`list`] without the outcome recording, so there is one place the answer is
+/// produced and one place it is classified.
+async fn read_gallery<D: Services>(
+    services: &Arc<D>,
+    owned: &afd_http::auth::Owned,
+    query: Option<String>,
+) -> Result<Response, Refusal> {
     let raw = query.unwrap_or_default();
     let limit = requested_limit(&raw)?;
     let after = resume_from(&raw, owned.workspace.as_str(), limit)?;
 
-    let page = services
-        .libraries()
-        .gallery(&owned.workspace, limit, after.as_ref())
-        .await
-        .map_err(Refusal::at(EVENT_GALLERY))?;
+    let page = library::timed(
+        SURFACE,
+        Stage::Sql,
+        services
+            .libraries()
+            .gallery(&owned.workspace, limit, after.as_ref()),
+    )
+    .await
+    .map_err(Refusal::at(EVENT_GALLERY))?;
 
-    Ok(Json(rendered(&page, owned.workspace.as_str(), limit)).into_response())
+    let rows = u64::try_from(page.items.len()).unwrap_or(u64::MAX);
+    let serializing = Instant::now();
+    let body = Json(rendered(&page, owned.workspace.as_str(), limit)).into_response();
+    library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
+    library::read_served(SURFACE, rows);
+
+    Ok(body)
 }
 
 /// `POST /v1/workspaces/{workspace_id}/fleet-libraries` — onboard into it.

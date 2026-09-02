@@ -58,6 +58,11 @@ fn every_variant() -> Vec<Error> {
         Error::UnknownFamily {
             family: "agentsfleet.nothing.declares.this".into(),
         },
+        Error::NumberMismatch {
+            family: FAMILY.into(),
+            declared: "u64",
+            claimed: "f64",
+        },
     ]
 }
 

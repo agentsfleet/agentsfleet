@@ -95,6 +95,7 @@ async fn run(
 
         connection = redial(&config, schedule).await;
         inner.record_connection();
+        afd_observability::producers::http::hub_reconnected();
         tracing::info!(event = "hub_reconnected");
     }
 }

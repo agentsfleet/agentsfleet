@@ -462,4 +462,21 @@ mod tests {
             }
         }
     }
+
+    /// A row whose columns are not this daemon's shape stays a query fault.
+    ///
+    /// The reader `try_get`s by name, so a renamed or retyped column surfaces
+    /// here rather than as a wrong value further in — which is the whole point
+    /// of routing it through `error::query` with a context instead of letting a
+    /// bare `sqlx::Error` reach a caller that cannot say which read produced it.
+    #[test]
+    fn an_unreadable_api_key_row_keeps_its_context_and_cause() {
+        use std::error::Error as _;
+
+        let failure = super::row_unreadable(sqlx::Error::PoolClosed);
+
+        assert!(failure.source().is_some(), "the sqlx cause survives");
+        assert!(!failure.to_string().is_empty());
+        assert!(!failure.code().as_str().is_empty());
+    }
 }

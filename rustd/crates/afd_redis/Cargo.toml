@@ -20,6 +20,10 @@ categories.workspace = true
 test-util = ["afd_core/test-util"]
 
 [dependencies]
+# The families this crate produces. The dependency points this way and not the
+# other: telemetry knows nothing about Redis, and the one thing this crate can
+# say that nothing else can is that its pub/sub connection was re-established.
+afd_observability.workspace = true
 afd_core.workspace = true
 # The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
 # hand-rolled `Backoff` beside a jitter source of its own.

@@ -24,13 +24,19 @@
 //! is a different signal, and the SDK counts it in its own internal metrics
 //! rather than exposing a hook to count it here.
 
+mod logs;
+
+pub use self::logs::{CountingLogExporter, LogDrops};
+
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::trace::{SpanData, SpanExporter};
+
+use crate::metrics::label::http::{DiscardReason, Signal};
 
 /// How many spans this process has failed to export.
 ///
@@ -103,6 +109,11 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
 
         if let Err(ref failure) = outcome {
             self.drops.add(spans);
+            crate::producers::http::export_discarded(
+                Signal::Traces,
+                discard_reason(failure),
+                spans as u64,
+            );
             // Hoisted: the `log` bridge compiles a second copy of every field
             // expression, and llvm-cov scores the copy that never runs.
             let reason = failure.to_string();
@@ -129,5 +140,54 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
 
     fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
         self.inner.set_resource(resource);
+    }
+}
+
+/// What a failed export tells an operator about the collector.
+///
+/// A timeout is UNCERTAIN and everything else is a refusal, and the
+/// distinction is the one an operator acts on: a refused batch is definitely
+/// gone, and an uncertain one may have arrived and been counted twice
+/// downstream. Collapsing them would make both unactionable.
+pub(crate) fn discard_reason(failure: &OTelSdkError) -> DiscardReason {
+    // Matched by reference: the error owns a string, so binding it by value in
+    // a `const fn` would need a destructor the compiler will not run there.
+    match failure {
+        OTelSdkError::Timeout(_elapsed) => DiscardReason::ExportUncertain,
+        _refused => DiscardReason::ExportRejected,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use opentelemetry_sdk::error::OTelSdkError;
+
+    use super::discard_reason;
+    use crate::metrics::label::http::DiscardReason;
+
+    /// A timeout is uncertain; every other refusal is definite.
+    ///
+    /// The distinction is the one an operator acts on, and it is one `match`
+    /// arm wide. Collapsing the two makes both unactionable: a refused batch
+    /// is provably gone and worth re-emitting, and an uncertain one may have
+    /// arrived, so re-emitting it double-counts the window it carried.
+    #[test]
+    fn a_timeout_is_uncertain_and_every_other_refusal_is_definite() {
+        assert_eq!(
+            discard_reason(&OTelSdkError::Timeout(Duration::from_secs(1))),
+            DiscardReason::ExportUncertain
+        );
+        for refused in [
+            OTelSdkError::AlreadyShutdown,
+            OTelSdkError::InternalFailure("the collector said no".to_owned()),
+        ] {
+            assert_eq!(
+                discard_reason(&refused),
+                DiscardReason::ExportRejected,
+                "`{refused}` is a batch that is definitely gone"
+            );
+        }
     }
 }

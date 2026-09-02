@@ -200,6 +200,42 @@ fn test_a_runtime_that_will_not_build_is_reported() {
     );
 }
 
+/// A blocking task nothing can cancel does not hold the process open.
+///
+/// `Runtime`'s `Drop` waits on the blocking pool with no deadline, and a
+/// `spawn_blocking` task cannot be cancelled once it has started — dropping its
+/// `JoinHandle` detaches it and nothing more. So a caller that bounded its own
+/// await bounded only itself, and the exit still paid the full wait.
+///
+/// The stall is far longer than the grace on purpose: the assertion is that the
+/// process left WITHOUT it, so a fixed budget with no stall to outrun would
+/// pass whether or not the shutdown is bounded at all.
+#[test]
+fn test_a_stalled_blocking_task_does_not_hold_the_exit() {
+    let stall = std::time::Duration::from_secs(30);
+    let started = std::time::Instant::now();
+
+    let status = on_runtime(tokio::runtime::Runtime::new, async move {
+        // Detached deliberately, which is the shape the telemetry flush takes
+        // when it outruns its own budget: the handle is gone, the work is not.
+        drop(tokio::task::spawn_blocking(move || {
+            std::thread::sleep(stall);
+        }));
+        // Let the blocking pool actually pick it up, so the exit has something
+        // real to wait on rather than a task that never started.
+        tokio::task::yield_now().await;
+        SUCCESS
+    });
+    let elapsed = started.elapsed();
+
+    assert_eq!(status, SUCCESS, "the body's own answer is unaffected");
+    assert!(
+        elapsed < stall,
+        "the exit took {elapsed:?}, at least the {stall:?} the abandoned \
+         blocking task sleeps for — the runtime drop is unbounded"
+    );
+}
+
 /// A clean stop is success; anything else is not.
 ///
 /// Both halves of [`Outcome::is_clean`] are checked, because the status is the

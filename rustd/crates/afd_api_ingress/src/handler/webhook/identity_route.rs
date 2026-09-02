@@ -37,6 +37,8 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
+use afd_observability::metrics::label::fleet::SignupFailure;
+use afd_observability::producers;
 use afd_webhook::vendor::svix::{self, SvixHeaders, SvixSecret};
 use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::extract::State;
@@ -176,7 +178,12 @@ pub(crate) async fn receive<D: Services>(
 
     match svix::verify_at(&secret, presented, &body, services.now().as_seconds()) {
         Verdict::Verified => {}
-        Verdict::Refused(refusal) => return Err(wall(refusal)),
+        Verdict::Refused(refusal) => {
+            if let Some(reason) = signup_failure(refusal) {
+                producers::fleet::signup_failed(reason);
+            }
+            return Err(wall(refusal));
+        }
     }
 
     let event: IdentityEvent = serde_json::from_slice(&body)
@@ -196,6 +203,7 @@ pub(crate) async fn receive<D: Services>(
     }
 
     let Some(email) = event.data.primary_email() else {
+        producers::fleet::signup_failed(SignupFailure::MissingEmail);
         return Err(Refusal::coded(
             error_code::INVALID_REQUEST,
             DETAIL_NO_ADDRESS,
@@ -224,6 +232,7 @@ pub(crate) async fn receive<D: Services>(
             services.now(),
         )
         .await
+        .inspect_err(|_refused| producers::fleet::signup_failed(SignupFailure::DatabaseError))
         .map_err(Refusal::at(EVENT_BOOTSTRAP))?;
 
     // 200 either way, and the flag says which. A replay is not a conflict: the
@@ -238,4 +247,19 @@ pub(crate) async fn receive<D: Services>(
         }),
     )
         .into_response())
+}
+
+/// The signup reason a wall refusal counts under, where it counts as one.
+///
+/// `Unconfigured` is deliberately not one: it is answered BEFORE anything is
+/// verified, because this deployment named no secret — an operator's
+/// misconfiguration rather than a delivery that failed, and counting it as a
+/// signup failure would put a deployment fault in the funnel that measures
+/// senders.
+const fn signup_failure(refusal: WallRefusal) -> Option<SignupFailure> {
+    match refusal {
+        WallRefusal::Signature => Some(SignupFailure::BadSignature),
+        WallRefusal::StaleTimestamp => Some(SignupFailure::StaleTimestamp),
+        WallRefusal::Unconfigured => None,
+    }
 }

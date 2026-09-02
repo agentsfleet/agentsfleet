@@ -46,6 +46,11 @@ impl Leasing for NoWork {
             charged: afd_billing::Nanos::ZERO,
             fleet_id: fixture_id(),
             workspace_id: fixture_id(),
+            tenant_id: fixture_id(),
+            event_id: String::new(),
+            posture: String::new(),
+            provider: String::new(),
+            model: String::new(),
         }))
     }
 
