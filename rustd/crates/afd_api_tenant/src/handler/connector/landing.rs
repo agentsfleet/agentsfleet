@@ -78,7 +78,7 @@ mod tests {
     use axum::response::Response;
     use http::{HeaderValue, StatusCode, header};
 
-    use super::{found, sealed};
+    use super::{found, relayed, sealed};
 
     /// A destination the header alphabet cannot carry is `None`, not a
     /// redirect to a truncated or mangled location.
@@ -121,5 +121,37 @@ mod tests {
             .await
             .ok();
         assert_eq!(bytes.as_deref(), Some(&br#"{"status":"connected"}"#[..]));
+    }
+
+    /// A relay this daemon cannot write is the deployment's misconfiguration,
+    /// answered as one: the same code a dashboard base that is not a URL earns,
+    /// never a 200 that would tell the browser a connect it has not begun
+    /// succeeded.
+    #[tokio::test]
+    async fn test_an_unwritable_relay_is_refused_as_not_configured() {
+        let refused = relayed("https://app.example/x\ny")
+            .err()
+            .map(axum::response::IntoResponse::into_response);
+
+        assert_eq!(
+            refused.as_ref().map(axum::response::Response::status),
+            Some(StatusCode::SERVICE_UNAVAILABLE)
+        );
+        let body = match refused {
+            Some(response) => axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .ok(),
+            None => None,
+        };
+        let code = body
+            .as_deref()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok())
+            .and_then(|document| document.get("error_code").cloned());
+        assert_eq!(
+            code,
+            Some(serde_json::json!(
+                afd_core::error_code::CONNECTOR_NOT_CONFIGURED.as_str()
+            ))
+        );
     }
 }
