@@ -65,11 +65,12 @@ fn a_malformed_row_keeps_table_column_and_cause() -> Result<(), &'static str> {
 ///
 /// Short AND non-hex, so it fails whichever check `decode_hex_into` reaches
 /// first — the fixture is about producing a real `afd_crypto` error, not about
-/// which of its arms produced it.
-fn crypto_failure() -> afd_crypto::error::Error {
+/// which of its arms produced it. Returned as a `Result` rather than unwrapped
+/// because `expect_used` is denied workspace-wide, tests included.
+fn crypto_failure() -> Result<afd_crypto::error::Error, &'static str> {
     afd_crypto::secret::Kek::from_hex("zz")
         .err()
-        .expect("a two-character non-hex key is not a KEK")
+        .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")
 }
 
 /// An envelope that will not open keeps its cause and answers internally.
@@ -77,13 +78,14 @@ fn crypto_failure() -> afd_crypto::error::Error {
 /// The caller cannot act on it: a stored envelope that will not decrypt is
 /// this deployment's key material being wrong, not the request being wrong.
 #[test]
-fn a_vault_envelope_that_will_not_open_keeps_its_cause() {
-    let failure = super::vault_open(crypto_failure());
+fn a_vault_envelope_that_will_not_open_keeps_its_cause() -> Result<(), &'static str> {
+    let failure = super::vault_open(crypto_failure()?);
 
     assert!(failure.source().is_some(), "the crypto cause is preserved");
     assert!(!failure.detail().is_empty());
     assert!(!failure.to_string().is_empty());
     assert!(!failure.is_credential_missing());
+    Ok(())
 }
 
 /// Drained entropy and a malformed mint share one internal code.
@@ -92,12 +94,12 @@ fn a_vault_envelope_that_will_not_open_keeps_its_cause() {
 /// cannot draw randomness, and a mint that produced something `Uuid7` refuses
 /// — so neither is the caller's to correct and both answer the same way.
 #[test]
-fn entropy_and_mint_failures_share_the_internal_operation_code() {
-    let drained = super::entropy_drained(crypto_failure());
+fn entropy_and_mint_failures_share_the_internal_operation_code() -> Result<(), &'static str> {
+    let drained = super::entropy_drained(crypto_failure()?);
     let minted = super::mint_failed(
         afd_core::id::Uuid7::parse("not-an-id")
             .err()
-            .expect("a malformed identifier does not parse"),
+            .ok_or("a malformed identifier unexpectedly parsed")?,
     );
 
     for (label, failure) in [("entropy", &drained), ("mint", &minted)] {
@@ -113,4 +115,5 @@ fn entropy_and_mint_failures_share_the_internal_operation_code() {
             "{label} is not a stored-configuration fault an operator edits"
         );
     }
+    Ok(())
 }
