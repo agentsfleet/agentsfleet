@@ -205,3 +205,55 @@ async fn an_unreachable_collector_costs_spans_and_not_requests() {
          process that discards telemetry while being trusted"
     );
 }
+
+/// The stderr subscriber's reload slot takes the export bridges.
+///
+/// `logs.rs` was the worst-covered file in the daemon, and the reason is
+/// structural rather than neglectful: `attach` needs a real `Exports` to build
+/// its two bridges from, and no unit test has one. This suite does — it builds
+/// a live pipeline against a collector fixture two tests up — so the seam gets
+/// covered where the fixture already is.
+///
+/// What is being held:
+///
+/// - `install` answers TRUE for the caller that took the process-wide slot and
+///   FALSE for anyone after, which is the answer boot reads to decide whether
+///   it owns the subscriber.
+/// - `attach` fills the reload slot with the span and record bridges over the
+///   SAME emits stderr already writes, and answers whether the swap took.
+/// - `Signals` renders without leaking its handle's innards, because a `{:?}`
+///   somebody adds later must not print a subscriber's guts into a log line.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
+async fn the_subscriber_slot_takes_the_export_bridges() {
+    let (endpoint, _received) = collector().await;
+    let exports = install(&configured(&endpoint), &GaugeSources::silent())
+        .expect("the pipeline builds against the fixture");
+
+    // First installer wins the process-wide slot; every later one is told so
+    // rather than silently replacing a subscriber somebody is already reading.
+    let took = agentsfleetd::logs::install(&afd_core::env::MapEnv::default());
+    let took_again = agentsfleetd::logs::install(&afd_core::env::MapEnv::default());
+    assert!(
+        !took_again,
+        "a second install answers false — the global default is set once"
+    );
+
+    let Some(signals) = agentsfleetd::logs::signals() else {
+        assert!(
+            !took,
+            "install answered true, so the slot must hold the handle it set"
+        );
+        return;
+    };
+
+    assert!(
+        !format!("{signals:?}").contains("Handle"),
+        "the debug rendering names the type without unfolding the subscriber \
+         handle it wraps"
+    );
+    assert!(
+        signals.attach(&exports),
+        "the reload slot accepts the span and record bridges"
+    );
+}
