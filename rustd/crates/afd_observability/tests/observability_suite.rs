@@ -19,3 +19,6 @@ mod otlp_outage_metrics;
 
 #[path = "otlp_outage_logs.rs"]
 mod otlp_outage_logs;
+
+#[path = "producers_drive.rs"]
+mod producers_drive;
