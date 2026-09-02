@@ -22,6 +22,14 @@ function renderApp(initialRoute = "/") {
 
 const APP_TEST_TIMEOUT_MS = 20_000;
 
+// `findBy*` carries its OWN 1s timeout, independent of the describe-level
+// timeout above. Every route below is a React.lazy chunk, so the assertion is
+// racing a dynamic import: observed failures clocked 1367-1709ms on a loaded
+// machine, all of them just past the 1s default rather than genuinely broken.
+// The bound the tests mean is "the chunk eventually resolves", so it is stated
+// explicitly instead of inherited.
+const LAZY_ROUTE_TIMEOUT_MS = 10_000;
+
 describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   beforeEach(() => {
     analytics.trackNavigationClicked.mockReset();
@@ -95,21 +103,21 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   it("renders fleets page at /fleets", async () => {
     renderApp("/fleets");
     expect(
-      await screen.findByRole("heading", { level: 1 }),
+      await screen.findByRole("heading", { level: 1 }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
   });
 
   it("renders privacy page at /privacy", async () => {
     renderApp("/privacy");
     expect(
-      await screen.findByRole("heading", { level: 1, name: /privacy policy/i }),
+      await screen.findByRole("heading", { level: 1, name: /privacy policy/i }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
   });
 
   it("renders terms page at /terms", async () => {
     renderApp("/terms");
     expect(
-      await screen.findByRole("heading", { level: 1, name: /terms of service/i }),
+      await screen.findByRole("heading", { level: 1, name: /terms of service/i }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
   });
 
@@ -119,7 +127,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     // App.tsx one function short of full coverage.
     renderApp("/_design-system");
     expect(
-      await screen.findByRole("heading", { level: 1, name: /design system gallery/i }),
+      await screen.findByRole("heading", { level: 1, name: /design system gallery/i }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
   });
 

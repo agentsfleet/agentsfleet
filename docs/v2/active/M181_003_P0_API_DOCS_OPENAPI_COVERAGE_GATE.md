@@ -73,6 +73,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_documentation_rules*.py` · `docs/REST_API_DESIGN_GUIDELINES.md` · `docs/EXECUTE_DOC_READS.md` | EDIT | Dead Code Sweep: the lint globbed the deleted `public/openapi/` tree and therefore checked nothing; §6 still called that tree the source of truth |
 | `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` · `ui/packages/design-system/vitest.config.ts` | EDIT | the TypeScript coverage floor goes to 100% on Indy's in-session call; the package sat at 99.78% on one unreachable ref guard, excluded the way `website/src/components/HowItWorks.tsx` already excludes its defensive invariant |
+| `ui/packages/website/src/App.test.tsx` | EDIT | the unit lane's flake: four `React.lazy` routes asserted with `findByRole`, whose own 1s timeout is independent of the suite's 20s one; observed failures all landed 1367-1709ms, just past the default. The bound is now stated rather than inherited |
 
 ## Applicable Rules
 
@@ -304,3 +305,15 @@ that div is in the DOM, so React cannot make the null case true: it is excluded
 with `/* v8 ignore next */`, the same resolution `website`'s
 `HowItWorks.tsx` already uses for its unreachable defensive invariant, and the
 package's four thresholds go to 100.
+
+**Amendment — the unit lane's flake was a latent bug, not this branch's.**
+Four runs failed in `ui/packages/website/src/App.test.tsx` and one in
+`design-system`, always on a different test, always a `React.lazy` route:
+`/fleets`, `/privacy`, `/_design-system`. `findBy*` carries its own 1-second
+timeout that the suite's 20-second `describe` timeout does not raise, so every
+one of those assertions was racing a dynamic import — the durations, 1367ms to
+1709ms, are all just past the 1s bound and none of them near 20s. The suite has
+been one slow chunk from red since it was written; three worktrees building Rust
+concurrently on 2026-09-02 is what finally made it fire. The four call sites now
+name `LAZY_ROUTE_TIMEOUT_MS`. `make test-integration-rustd` went green on the
+quiet machine unchanged, which is the same story from the Rust side.
