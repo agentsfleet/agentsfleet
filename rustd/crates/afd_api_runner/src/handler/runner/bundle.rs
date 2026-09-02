@@ -40,7 +40,10 @@ const EVENT: &str = "runner_bundle_fetch_failed";
 
 /// What a canonical snapshot is, and it is not negotiable — `importer.zig`
 /// writes one shape and this serves it.
-const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static("application/x-tar");
+const TAR: &str = "application/x-tar";
+
+/// [`TAR`], as the response header carries it.
+const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static(TAR);
 
 /// Serves one bundle's canonical tar by content hash.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -59,7 +62,7 @@ const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static("application/x-ta
         afd_http::openapi::path::Bundle,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "The canonical tar, byte for byte as it was imported", body = afd_http::openapi::body::Binary, content_type = TAR),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

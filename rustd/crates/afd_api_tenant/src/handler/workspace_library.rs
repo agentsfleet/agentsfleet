@@ -29,7 +29,6 @@
 //! one workspace from seeking inside another. Nothing is trusted from the token
 //! except the sort boundary — the workspace read is always the path's.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -39,14 +38,14 @@ use afd_observability::producers::library;
 use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor::{self, StructCursor};
-use afd_library::{Destination, GalleryPage, Onboarded, Position, SummaryEntry, Tier};
+use afd_library::{Destination, Position, Tier};
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
 use afd_wire::admin::AdminLibraryCreated;
-use afd_wire::admin::AdminLibraryRequirements;
-use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
+#[cfg(feature = "openapi")]
+use afd_wire::workspace_library::GalleryResponse;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -58,6 +57,8 @@ use crate::auth::WorkspaceContext;
 use crate::handler::paging::requested_limit;
 use crate::handler::{Refusal, library_onboard, parameter};
 use crate::services::Services;
+
+use self::render::{created, rendered};
 
 // A sentence the catalogue page already owns, imported rather than respelled
 // (RULE UFS): an unissued token is the same fact here, and a caller told two
@@ -275,85 +276,7 @@ fn resume_from(raw: &str, workspace: &str, limit: u32) -> Result<Option<Position
     }))
 }
 
-/// The page, rendered.
-fn rendered<'p>(page: &'p GalleryPage, workspace: &str, limit: u32) -> GalleryResponse<'p> {
-    GalleryResponse {
-        items: page.items.iter().map(card).collect(),
-        // Always null: counting a keyset page costs the scan this pagination
-        // exists to avoid, and the key stays present rather than vanishing.
-        total: None,
-        next_cursor: page.next.as_ref().map(|position| {
-            struct_cursor::render(&Cursor {
-                v: struct_cursor::VERSION,
-                created_at: position.created_at_ms,
-                tier_rank: position.tier.rank(),
-                id: position.id.clone(),
-                workspace_uuid: workspace.to_owned(),
-                limit,
-            })
-        }),
-    }
-}
-
-/// One card, rendered.
-///
-/// `visibility` is the TIER's label — see [`afd_wire::workspace_library`] on why
-/// that field name carries a different fact here than on the admin surface.
-fn card(entry: &SummaryEntry) -> GalleryCard<'_> {
-    GalleryCard {
-        id: Cow::Borrowed(&entry.id),
-        name: Cow::Borrowed(&entry.name),
-        description: Cow::Borrowed(&entry.description),
-        visibility: Cow::Borrowed(entry.tier.label()),
-        source_ref: Cow::Borrowed(&entry.source_ref),
-        created_at: entry.created_at_ms,
-        requirements: requirements(&entry.requirements),
-        required_credentials_reasons: entry.required_credentials_reasons.clone(),
-    }
-}
-
-/// What a bundle declares it needs, rendered.
-///
-/// Every name is BORROWED onto the wire. A page is up to a hundred cards and
-/// each carries three lists, so copying them would be the one allocation on
-/// this path that scales with the page.
-fn requirements(declared: &afd_library::LibraryRequirements) -> AdminLibraryRequirements<'_> {
-    AdminLibraryRequirements {
-        credentials: borrowed(declared.credentials()),
-        tools: borrowed(declared.tools()),
-        network_hosts: borrowed(declared.network_hosts()),
-        trigger_present: declared.trigger_present(),
-    }
-}
-
-/// One declared list, borrowed rather than copied.
-fn borrowed(names: &[String]) -> Vec<Cow<'_, str>> {
-    names
-        .iter()
-        .map(|name| Cow::Borrowed(name.as_str()))
-        .collect()
-}
-
-/// The onboarded entry, rendered.
-///
-/// The same shape the operator's catalogue answers with, because both verbs say
-/// the same thing — which entry now stands — and the tier is what differs.
-fn created(onboarded: Onboarded) -> afd_wire::admin::AdminLibraryCreated<'static> {
-    let bundle = onboarded.bundle;
-    let declared = bundle.requirements;
-    afd_wire::admin::AdminLibraryCreated {
-        id: Cow::Owned(onboarded.id),
-        name: Cow::Owned(bundle.name),
-        visibility: Cow::Borrowed(Tier::Tenant.label()),
-        content_hash: Cow::Owned(bundle.content_hash),
-        requirements: AdminLibraryRequirements {
-            credentials: declared.credentials.into_iter().map(Cow::Owned).collect(),
-            tools: declared.tools.into_iter().map(Cow::Owned).collect(),
-            network_hosts: declared.network_hosts.into_iter().map(Cow::Owned).collect(),
-            trigger_present: declared.trigger_present,
-        },
-    }
-}
+mod render;
 
 #[cfg(test)]
 mod tests;

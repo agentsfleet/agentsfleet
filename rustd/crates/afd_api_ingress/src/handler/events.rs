@@ -64,8 +64,8 @@ use crate::handler::{Refusal, webhook};
 use crate::services::Services;
 
 use super::provider_of;
-/// The echo a handshake is answered with. Public wire.
-use afd_wire::ingress::EchoAnswer;
+/// The two documents a 200 carries. Public wire.
+use afd_wire::ingress::{EchoAnswer, EventsAnswer};
 
 /// The scoped event a dropped delivery is logged under.
 const EVENT_DROPPED: &str = "connector_events_dropped";
@@ -180,7 +180,7 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
         ("X-Slack-Request-Timestamp" = String, Header, description = "Delivery time in Unix seconds. Values outside 5 minutes are rejected."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = EventsAnswer),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -234,9 +234,9 @@ fn answer(provider: Provider, ingress: &EventIngress, body: &Bytes) -> Response 
     match decide(ingress, &envelope) {
         Answer::Echo { field, value } => (
             StatusCode::OK,
-            Json(EchoAnswer {
+            Json(EventsAnswer::Echo(EchoAnswer {
                 field: std::iter::once((field, value)).collect(),
-            }),
+            })),
         )
             .into_response(),
         Answer::Drop(reason) => dropped(provider, body, reason),
@@ -262,9 +262,9 @@ fn dropped(provider: Provider, body: &Bytes, reason: &str) -> Response {
     );
     (
         StatusCode::OK,
-        Json(webhook::Ignored {
+        Json(EventsAnswer::Ignored(webhook::Ignored {
             ignored: reason.into(),
-        }),
+        })),
     )
         .into_response()
 }

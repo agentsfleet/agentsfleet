@@ -27,7 +27,7 @@ use serde::Serialize;
 ///
 /// `202`, and the event id, so a provider's delivery log carries the identifier
 /// an operator can search the fleet's history by. A replayed delivery answers
-/// the FIRST attempt's id rather than a new one — that is the whole point of
+/// the FIRST attempt's id rather than a new one. That is the whole point of
 /// the at-most-once claim, and a sender comparing two responses should see the
 /// same event both times.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -130,6 +130,25 @@ pub struct EchoAnswer<'a> {
     pub field: BTreeMap<&'a str, &'a str>,
 }
 
+/// What `POST /v1/connectors/{provider}/events` answers with a 200.
+///
+/// One status, two documents: a handshake is echoed and a delivery that wakes
+/// nothing is acknowledged with its reason. Both are 200 because both are
+/// correct outcomes for a correctly signed request, and a sender treats
+/// anything else as a retry.
+// Untagged, so the bytes are exactly the inner document's. The enum exists so
+// the published contract can say "one of these two" where a single `body =`
+// could only name one, and so the handler's two exits are one type.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum EventsAnswer<'a> {
+    /// The provider's challenge, echoed under the field name it arrived in.
+    Echo(EchoAnswer<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
 /// The flat object a `workflow_run` becomes on the stream.
 ///
 /// Field names and order are `normalizer/github.zig`'s `Normalized`, kept
@@ -222,4 +241,34 @@ pub struct AccountOpened<'a> {
     pub workspace_name: Cow<'a, str>,
     /// `true` on a fresh account, `false` when this delivery was a replay.
     pub created: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{EchoAnswer, EventsAnswer, Ignored};
+
+    /// The untagged answer is bytes-identical to the document it wraps.
+    ///
+    /// Asserted as bytes: a vendor reads the echo literally, and a wrapper
+    /// or a tag around it fails the ownership check on their side.
+    #[test]
+    fn test_the_events_answer_adds_no_bytes_around_either_document() {
+        let echo = EventsAnswer::Echo(EchoAnswer {
+            field: std::iter::once(("challenge", "3eZbrw1a")).collect(),
+        });
+        let ignored = EventsAnswer::Ignored(Ignored {
+            ignored: Cow::Borrowed("fleet_paused"),
+        });
+
+        assert_eq!(
+            serde_json::to_string(&echo).ok().as_deref(),
+            Some(r#"{"challenge":"3eZbrw1a"}"#),
+        );
+        assert_eq!(
+            serde_json::to_string(&ignored).ok().as_deref(),
+            Some(r#"{"ignored":"fleet_paused"}"#),
+        );
+    }
 }

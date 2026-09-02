@@ -6,7 +6,9 @@
 //! were published — the publish is best-effort and happens whether or not
 //! anybody is listening on the channel. A 200 would imply the daemon is
 //! reporting on the outcome of the work, and the runner would have no way to
-//! act on a promise the daemon never made.
+//! act on a promise the daemon never made. The body is `{"ok":true}`, which is
+//! what `service_activity.zig` answers: the first port of this verb dropped it
+//! and answered a bare status, and the document gate is what noticed.
 //!
 //! # The only hard check is authorization
 //!
@@ -17,7 +19,8 @@
 
 use std::sync::Arc;
 
-use afd_wire::activity::ActivityRequest;
+use afd_wire::activity::{ActivityAccepted, ActivityRequest};
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -50,7 +53,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
         afd_http::openapi::path::Lease,
     ),
     responses(
-        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = ActivityAccepted),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -79,7 +82,7 @@ pub(crate) async fn handle<D: Services>(
         .activity(runner.id(), &lease_id, &request.frames)
         .await
     {
-        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Ok(()) => (StatusCode::ACCEPTED, Json(ActivityAccepted { ok: true })).into_response(),
         Err(error) => refuse(&error, EVENT),
     }
 }

@@ -27,8 +27,7 @@
 
 use std::borrow::Cow;
 
-use serde::ser::SerializeMap as _;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 /// What a workspace holding a landed grant is told.
 ///
@@ -92,96 +91,29 @@ pub struct ConsentRedirect<'a> {
     pub install_url: Cow<'a, str>,
 }
 
-/// `POST /v1/connectors/{provider}/events` — a delivery acknowledged and not
-/// acted on.
+/// The connect landed and no dashboard page could be named to send the person to.
 ///
-/// `200` with a reason, never a 4xx. Every one of these is a real,
-/// correctly-signed delivery that simply wakes nothing, and answering an error
-/// would put it in the sender's retry queue forever without changing it. The
-/// shape is `error_entries.zig:135`'s `{"ignored":"fleet_paused"}` generalised
-/// over every reason.
+/// `POST /v1/connectors/{provider}/callback` answers this as a `200`, and
+/// deliberately not as a failure: the grant is sealed and the connection is
+/// live by the time this is written, so an error would tell a person their
+/// connect did not work when it did, and the next thing they would do is
+/// press Connect again.
+// The value is [`STATUS_CONNECTED`], the word a status read answers once the
+// grant has landed. `callback.zig` answers the same one field for the same
+// reason.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct DeliveryIgnored<'a> {
-    /// Which rule dropped it.
-    pub ignored: Cow<'a, str>,
-}
-
-/// `POST /v1/connectors/{provider}/events` — the answer to an endpoint-
-/// ownership handshake.
-///
-/// # Why the KEY is data
-///
-/// A vendor proves it is talking to the endpoint it registered by posting a
-/// value and requiring it back. Slack's is `challenge`; another vendor's is
-/// its own word. So the field NAME is provider data, and a struct with a
-/// `challenge` member would be one connector's spelling frozen into the type
-/// that serves every connector.
-///
-/// This is still a typed shape rather than an untyped document: the invariant —
-/// exactly one key, whose name and value both come from the registry entry — is
-/// written once, here, in the crate that owns wire shapes. A handler assembling
-/// a map would be re-deciding it per call site.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HandshakeEcho<'a> {
-    /// The key the provider looks for in the response.
-    pub field: Cow<'a, str>,
-    /// Exactly the value the request carried under that key.
-    pub value: Cow<'a, str>,
-}
-
-impl Serialize for HandshakeEcho<'_> {
-    /// Writes the one pair, and nothing else.
-    ///
-    /// Hand-written rather than `#[serde(flatten)]` over a map, because flatten
-    /// buys nothing here and costs the guarantee: a map is free to hold two
-    /// entries or none, and this document is exactly one by construction.
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(1))?;
-        map.serialize_entry(self.field.as_ref(), self.value.as_ref())?;
-        map.end()
-    }
+pub struct Connected<'a> {
+    /// Always `connected`; the same word a status read answers once the grant
+    /// has landed.
+    pub status: Cow<'a, str>,
 }
 
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
 
-    use super::{ConnectionView, DeliveryIgnored, HandshakeEcho};
-
-    /// The handshake answer is the one pair, under the name it was asked for.
-    ///
-    /// Asserted as BYTES rather than through a parsed value: what proves the
-    /// endpoint is the document the vendor reads, and a comparison that parsed
-    /// first would pass over an envelope wrapped around the pair.
-    #[test]
-    fn test_the_handshake_echo_is_exactly_the_one_pair() {
-        let echo = HandshakeEcho {
-            field: Cow::Borrowed("challenge"),
-            value: Cow::Borrowed("3eZbrw1a"),
-        };
-
-        assert_eq!(
-            serde_json::to_string(&echo).ok().as_deref(),
-            Some(r#"{"challenge":"3eZbrw1a"}"#),
-            "a vendor reads this document literally; an envelope around it \
-             fails the ownership check"
-        );
-    }
-
-    /// The key travels from the value, so another vendor's word works too.
-    #[test]
-    fn test_the_handshake_echo_carries_whatever_key_it_was_given() {
-        let echo = HandshakeEcho {
-            field: Cow::Borrowed("nonce"),
-            value: Cow::Borrowed("abc123"),
-        };
-
-        assert_eq!(
-            serde_json::to_string(&echo).ok().as_deref(),
-            Some(r#"{"nonce":"abc123"}"#)
-        );
-    }
+    use super::{Connected, ConnectionView};
 
     /// An absent label is `null`, never a missing key.
     ///
@@ -201,16 +133,17 @@ mod tests {
         );
     }
 
-    /// The drop acknowledgement is the reason and nothing else.
+    /// The landing answer is the status word a later status read agrees with.
     #[test]
-    fn test_an_ignored_delivery_answers_only_its_reason() {
-        let ignored = DeliveryIgnored {
-            ignored: Cow::Borrowed("event_producer_not_ported"),
+    fn test_a_landed_connect_answers_the_status_a_read_would() {
+        let landed = Connected {
+            status: Cow::Borrowed(super::STATUS_CONNECTED),
         };
 
         assert_eq!(
-            serde_json::to_string(&ignored).ok().as_deref(),
-            Some(r#"{"ignored":"event_producer_not_ported"}"#)
+            serde_json::to_string(&landed).ok().as_deref(),
+            Some(r#"{"status":"connected"}"#),
+            "the dashboard switches on this word in two places; they must agree"
         );
     }
 }

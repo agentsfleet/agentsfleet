@@ -10,11 +10,14 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
+use afd_wire::health::{Liveness, Readiness};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use http::StatusCode;
-use serde_json::json;
+
+/// The one word a live process answers.
+const STATUS_OK: &str = "ok";
 
 /// The name this service reports as.
 const SERVICE: &str = "agentsfleetd";
@@ -94,7 +97,7 @@ pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
         "(database + queue). ",
     ),
     responses(
-        (status = 200, description = "The process is alive"),
+        (status = 200, description = "The process is alive", body = Liveness),
     ),
 ))]
 pub(super) async fn healthz() -> Response {
@@ -103,12 +106,12 @@ pub(super) async fn healthz() -> Response {
     // and would say nothing. It exists for the case where someone needs to
     // prove the probe is arriving at all.
     tracing::trace!(event = "liveness_probed", "liveness probed");
-    Json(json!({
-        "status": "ok",
-        "service": SERVICE,
-        "version": VERSION,
-        "commit": COMMIT,
-    }))
+    Json(Liveness {
+        status: STATUS_OK.into(),
+        service: SERVICE.into(),
+        version: VERSION.into(),
+        commit: COMMIT.into(),
+    })
     .into_response()
 }
 
@@ -130,8 +133,8 @@ pub(super) async fn healthz() -> Response {
         "on. ",
     ),
     responses(
-        (status = 200, description = "Every dependency this instance needs is reachable"),
-        (status = 503, description = "A dependency this instance needs is unreachable"),
+        (status = 200, description = "Every dependency this instance needs is reachable", body = Readiness),
+        (status = 503, description = "A dependency this instance needs is unreachable", body = Readiness),
     ),
 ))]
 pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) -> Response {
@@ -165,11 +168,11 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
 
     (
         status,
-        Json(json!({
-            "ready": ready,
-            "database": inputs.database,
-            "queue": inputs.queue,
-        })),
+        Json(Readiness {
+            ready,
+            database: inputs.database,
+            queue: inputs.queue,
+        }),
     )
         .into_response()
 }

@@ -30,7 +30,14 @@
         "operationId": "healthz",
         "responses": {
           "200": {
-            "description": "The process is alive"
+            "description": "The process is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Liveness"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -46,10 +53,24 @@
         "operationId": "readyz",
         "responses": {
           "200": {
-            "description": "Every dependency this instance needs is reachable"
+            "description": "Every dependency this instance needs is reachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
           },
           "503": {
-            "description": "A dependency this instance needs is unreachable"
+            "description": "A dependency this instance needs is unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -211,7 +232,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The entry as it now reads, under its new entity tag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLibraryItem"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -1239,9 +1267,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
           "302": {
             "description": "Redirect back to the caller that began the flow"
           },
@@ -1253,6 +1278,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -1322,7 +1350,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The grant landed and no dashboard page could be named to send the person to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connected"
+                }
+              }
+            }
           },
           "302": {
             "description": "Redirect back to the caller that began the flow"
@@ -1389,7 +1424,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "A handshake echoed, or a delivery acknowledged and not acted on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsAnswer"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -1754,7 +1796,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "One page of the runner's leases, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerLeasesResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -1962,7 +2011,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "One page of the catalogue, under the entity tag its bytes hash to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueResponse"
+                }
+              }
+            }
           },
           "304": {
             "description": "Not modified — the entity tag the caller presented still holds"
@@ -2080,7 +2136,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The canonical tar, byte for byte as it was imported",
+            "content": {
+              "application/x-tar": {
+                "schema": {
+                  "$ref": "#/components/schemas/Binary"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -2191,7 +2254,14 @@
         "operationId": "runner_lease",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "A lease to run, or a backoff to wait out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -2241,7 +2311,14 @@
         },
         "responses": {
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityAccepted"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -2993,10 +3070,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "A correctly signed delivery this fleet does not act on, and why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ignored"
+                }
+              }
+            }
           },
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3039,10 +3130,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "A correctly signed delivery this fleet does not act on, and why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ignored"
+                }
+              }
+            }
           },
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3162,10 +3267,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "A correctly signed delivery this fleet does not act on, and why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ignored"
+                }
+              }
+            }
           },
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event"
+            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -3809,7 +3928,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The stream is open; frames follow as Server-Sent Events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4400,7 +4526,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The stream is open; frames follow as Server-Sent Events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4962,7 +5095,14 @@
         ],
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "The schedule as reconciled with the scheduler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -5157,7 +5297,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The schedule as reconciled with the scheduler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -5227,7 +5374,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The schedule as re-reconciled with the scheduler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -5370,7 +5524,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The whole bag as it now reads, the written key included",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -5631,6 +5792,38 @@
   },
   "components": {
     "schemas": {
+      "Accepted": {
+        "type": "object",
+        "description": "What an accepted delivery is answered with.\n\n`202`, and the event id, so a provider's delivery log carries the identifier\nan operator can search the fleet's history by. A replayed delivery answers\nthe FIRST attempt's id rather than a new one. That is the whole point of\nthe at-most-once claim, and a sender comparing two responses should see the\nsame event both times.",
+        "required": [
+          "event_id",
+          "replayed"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The event the fleet will run, or already ran."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Whether an earlier delivery already produced it.\n\nReported rather than hidden: a provider debugging a duplicate wants to\nknow this daemon SAW the repeat and declined to run twice, which is a\ndifferent fact from the delivery having been lost."
+          }
+        }
+      },
+      "ActivityAccepted": {
+        "type": "object",
+        "description": "The acknowledgement a batch of frames is answered with.\n\n`202`, because the frames were received and not yet read by anybody. The\npublish is best-effort and a subscriber seeing a frame is a separate event\nfrom this call returning.",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "Always `true`: a batch this daemon could not accept is refused with a\nproblem document, never acknowledged with `false`."
+          }
+        },
+        "additionalProperties": false
+      },
       "ActivityFrame": {
         "oneOf": [
           {
@@ -5690,7 +5883,7 @@
       },
       "ActivityRequest": {
         "type": "object",
-        "description": "`POST /v1/runners/me/leases/{lease_id}/activity` request — a batch of frames.\n\nOne frame per request today; the array shape lets a later change coalesce\nwithout a wire change. The reply is `202` with no acknowledgement.",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/activity` request, a batch of frames.\n\nOne frame per request today; the array shape lets a later change coalesce\nwithout a wire change. The reply is `202` carrying [`ActivityAccepted`].",
         "required": [
           "frames"
         ],
@@ -6253,6 +6446,11 @@
           }
         }
       },
+      "Binary": {
+        "type": "string",
+        "format": "binary",
+        "description": "A body of raw bytes, read whole and never parsed."
+      },
       "BindMode": {
         "type": "string",
         "description": "Whether an operator-added bind is writable.",
@@ -6260,6 +6458,20 @@
           "read_only",
           "read_write"
         ]
+      },
+      "BundleManifest": {
+        "type": "object",
+        "description": "Content-addressed reference to an installed Fleet Bundle's snapshot.\n\nThe hash's presence on a lease IS the \"has bundle\" signal. A `404` from the\ndownload means the bundle is skill-only and the runner proceeds with none.",
+        "required": [
+          "content_hash"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "description": "Content hash addressing the immutable canonical archive."
+          }
+        },
+        "additionalProperties": false
       },
       "CapabilityReport": {
         "type": "object",
@@ -6327,6 +6539,84 @@
           "id": {
             "type": "string",
             "description": "The provider's route segment, which is also its stored id."
+          }
+        }
+      },
+      "CatalogueModel": {
+        "type": "object",
+        "description": "One priced model as the catalogue shows it.\n\n`id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),\nnever the row's own id — that one is admin-plane identity and rides the\ncursor opaquely instead.",
+        "required": [
+          "id",
+          "provider",
+          "context_cap_tokens",
+          "input_nanos_per_mtok",
+          "cached_input_nanos_per_mtok",
+          "output_nanos_per_mtok"
+        ],
+        "properties": {
+          "cached_input_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The cached-input rate, likewise."
+          },
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The context window the price is quoted for."
+          },
+          "id": {
+            "type": "string",
+            "description": "The model identifier a tenant selects by."
+          },
+          "input_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The input rate, in nanos per million tokens."
+          },
+          "output_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The output rate, likewise."
+          },
+          "provider": {
+            "type": "string",
+            "description": "The provider hosting it."
+          }
+        }
+      },
+      "CatalogueResponse": {
+        "type": "object",
+        "description": "`GET /v1/models` — one page of the catalogue.",
+        "required": [
+          "version",
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogueModel"
+            },
+            "description": "The rows on this page, in the catalogue's normalized order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Always `null` — never counted, always present."
+          },
+          "version": {
+            "type": "string",
+            "description": "The catalogue's version stamp: the newest row's change date, UTC."
           }
         }
       },
@@ -6441,6 +6731,19 @@
           }
         }
       },
+      "Connected": {
+        "type": "object",
+        "description": "The connect landed and no dashboard page could be named to send the person to.\n\n`POST /v1/connectors/{provider}/callback` answers this as a `200`, and\ndeliberately not as a failure: the grant is sealed and the connection is\nlive by the time this is written, so an error would tell a person their\nconnect did not work when it did, and the next thing they would do is\npress Connect again.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Always `connected`; the same word a status read answers once the grant\nhas landed."
+          }
+        }
+      },
       "ConnectionView": {
         "type": "object",
         "description": "One provider's connection, as a status read returns it.\n\nThis response carries no access token and no expiry. It tells you whether\nsomeone connected this provider, and what the connection is called.",
@@ -6473,6 +6776,47 @@
             "description": "The provider's own page, carrying this round-trip's signed state."
           }
         }
+      },
+      "ContextBudget": {
+        "type": "object",
+        "description": "Context-budget knobs. `model` and `context_cap_tokens` are upstream-populated\npassthrough — the runner does not interpret `model`.",
+        "required": [
+          "tool_window",
+          "memory_checkpoint_every",
+          "stage_chunk_threshold",
+          "model",
+          "context_cap_tokens"
+        ],
+        "properties": {
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The active model's context cap in tokens, or zero when unresolved.",
+            "minimum": 0
+          },
+          "memory_checkpoint_every": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How often a run checkpoints its memory.",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "The active model, carried through without interpretation."
+          },
+          "stage_chunk_threshold": {
+            "type": "number",
+            "format": "float",
+            "description": "Fill fraction at which a stage chunks rather than growing."
+          },
+          "tool_window": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tool results retained in the working window.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "CreateModelEntryRequest": {
         "type": "object",
@@ -6545,6 +6889,14 @@
             "description": "How many were aborted by this call.",
             "minimum": 0
           }
+        }
+      },
+      "EchoAnswer": {
+        "type": "object",
+        "description": "The echo a connector handshake is answered with.\n\nA one-key map rather than a struct because the KEY is provider data, and a\nstruct would fix it at compile time to whichever vendor was ported first.",
+        "additionalProperties": {
+          "type": "string",
+          "description": "The provider's own challenge field, echoed under its own name."
         }
       },
       "EventDetail": {
@@ -6661,6 +7013,50 @@
           }
         }
       },
+      "EventEnvelope": {
+        "type": "object",
+        "description": "One event on the wire, flat by convention.\n\n`request_json` is opaque JSON bytes carried verbatim — the runner re-parses\nit for execution and the read endpoints surface it unchanged, so this layer\ndeliberately does not interpret it.",
+        "required": [
+          "event_id",
+          "fleet_id",
+          "workspace_id",
+          "actor",
+          "event_type",
+          "request_json",
+          "created_at"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "description": "Who or what produced the event."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds at which the event was created."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The Redis stream entry identifier, which IS the canonical event id."
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/EventType",
+            "description": "How the event entered the system."
+          },
+          "fleet_id": {
+            "type": "string",
+            "description": "The fleet this event belongs to."
+          },
+          "request_json": {
+            "type": "string",
+            "description": "Opaque request payload, carried verbatim."
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "The workspace the fleet belongs to."
+          }
+        }
+      },
       "EventSummary": {
         "type": "object",
         "description": "One event as the operator surface renders it.",
@@ -6763,6 +7159,29 @@
           }
         }
       },
+      "EventType": {
+        "type": "string",
+        "description": "How an event entered the system.",
+        "enum": [
+          "chat",
+          "webhook",
+          "cron",
+          "continuation"
+        ]
+      },
+      "EventsAnswer": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EchoAnswer",
+            "description": "The provider's challenge, echoed under the field name it arrived in."
+          },
+          {
+            "$ref": "#/components/schemas/Ignored",
+            "description": "A delivery this daemon deliberately did not act on, and why."
+          }
+        ],
+        "description": "What `POST /v1/connectors/{provider}/events` answers with a 200.\n\nOne status, two documents: a handshake is echoed and a delivery that wakes\nnothing is acknowledged with its reason. Both are 200 because both are\ncorrect outcomes for a correctly signed request, and a sender treats\nanything else as a retry."
+      },
       "EventsResponse": {
         "type": "object",
         "description": "A page of event history.",
@@ -6785,6 +7204,85 @@
             "description": "Where the next page resumes, or `null` on the last one."
           }
         }
+      },
+      "ExecutionPolicy": {
+        "type": "object",
+        "description": "Everything a single execution is permitted to do.",
+        "required": [
+          "network_policy",
+          "tools",
+          "mintable",
+          "provider",
+          "api_key",
+          "inference_host",
+          "http_origin_policies",
+          "context"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Provider credential for this run. Secret — never logged, never echoed."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL override for a compatible provider."
+          },
+          "context": {
+            "$ref": "#/components/schemas/ContextBudget",
+            "description": "Context-budget knobs for the run."
+          },
+          "http_origin_policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HttpOriginPolicy"
+            },
+            "description": "Per-host request boundaries."
+          },
+          "inference_host": {
+            "type": "string",
+            "description": "Inference host to dial."
+          },
+          "mintable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mintable"
+            },
+            "description": "Credentials the run may mint on demand."
+          },
+          "network_policy": {
+            "$ref": "#/components/schemas/NetworkPolicy",
+            "description": "Where the run may reach on the network."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Inference provider name."
+          },
+          "repository_binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RepositoryBinding",
+                "description": "Repositories the run is bound to, when it is bound to any."
+              }
+            ]
+          },
+          "secrets_map": {
+            "description": "Static secrets substituted at the tool boundary. Free-form by design."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tools the run may call."
+          }
+        },
+        "additionalProperties": false
       },
       "ExtraBind": {
         "type": "object",
@@ -7288,6 +7786,113 @@
           "stop"
         ]
       },
+      "HttpJsonFieldRule": {
+        "type": "object",
+        "description": "One required top-level JSON field, with exactly one expected value set.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "boolean_value": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Expected boolean value, when the rule locks a boolean."
+          },
+          "name": {
+            "type": "string",
+            "description": "The field name the rule locks."
+          },
+          "string_value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Expected string value, when the rule locks a string."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HttpMethod": {
+        "type": "string",
+        "description": "Methods a daemon-authored request rule may express.",
+        "enum": [
+          "get",
+          "head",
+          "post"
+        ]
+      },
+      "HttpOriginPolicy": {
+        "type": "object",
+        "description": "The provider-neutral request boundary for one exact host.",
+        "required": [
+          "host",
+          "credential_names",
+          "requests"
+        ],
+        "properties": {
+          "credential_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Credentials admitted at this host."
+          },
+          "host": {
+            "type": "string",
+            "description": "The host this boundary governs."
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HttpRequestRule"
+            },
+            "description": "Requests admitted at this host."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HttpPathMatch": {
+        "type": "string",
+        "description": "Whether a request path must equal the authored bytes or begin with them.",
+        "enum": [
+          "exact",
+          "prefix"
+        ]
+      },
+      "HttpRequestRule": {
+        "type": "object",
+        "description": "One method and path admitted at an origin.\n\nJSON rules lock selected fields; any field the rules do not name stays\navailable for request-specific content.",
+        "required": [
+          "method",
+          "path",
+          "path_match",
+          "json_fields"
+        ],
+        "properties": {
+          "json_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HttpJsonFieldRule"
+            },
+            "description": "Fields whose values the rule locks."
+          },
+          "method": {
+            "$ref": "#/components/schemas/HttpMethod",
+            "description": "The method this rule admits."
+          },
+          "path": {
+            "type": "string",
+            "description": "The path this rule admits."
+          },
+          "path_match": {
+            "$ref": "#/components/schemas/HttpPathMatch",
+            "description": "Whether `path` is matched exactly or as a prefix."
+          }
+        },
+        "additionalProperties": false
+      },
       "Ignored": {
         "type": "object",
         "description": "What a delivery this daemon deliberately dropped is answered with.\n\n`200` and a reason, never a 4xx. Every one of these is a real,\ncorrectly-signed delivery that simply does not wake this fleet — a green\nbuild, a label edit, a paused fleet. Answering an error would put it in the\nsender's retry queue forever, and retrying changes none of them.",
@@ -7356,6 +7961,136 @@
               "$ref": "#/components/schemas/WebhookUrl"
             },
             "description": "One entry per webhook trigger the bundle declared, keyed by source.\n\nAn empty object where the fleet declares none, never `null`: a client\niterating the map should not have to branch on its absence first."
+          }
+        }
+      },
+      "LeaseKind": {
+        "type": "string",
+        "description": "Whether the lease was the event's first claim or a later reclaim.",
+        "enum": [
+          "fresh",
+          "reclaim"
+        ]
+      },
+      "LeaseOutcome": {
+        "type": "string",
+        "description": "Server-derived outcome of one runner lease.",
+        "enum": [
+          "running",
+          "succeeded",
+          "failed",
+          "expired",
+          "unknown"
+        ]
+      },
+      "LeasePayload": {
+        "type": "object",
+        "description": "The work half of a lease.\n\n`fencing_token` is a monotonic guard: a report must echo it, and a stale\nholder carrying an older token is rejected. That is what makes reporting safe\nunder lease reclaim, beyond plain idempotency by event id.",
+        "required": [
+          "lease_id",
+          "fencing_token",
+          "lease_expires_at",
+          "secret_delivery",
+          "event",
+          "policy",
+          "instructions"
+        ],
+        "properties": {
+          "bundle": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BundleManifest",
+                "description": "The bundle to materialize, when the fleet was created from one."
+              }
+            ]
+          },
+          "event": {
+            "$ref": "#/components/schemas/EventEnvelope",
+            "description": "The event to execute."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic guard a report must echo.",
+            "minimum": 0
+          },
+          "instructions": {
+            "type": "string",
+            "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
+          },
+          "lease_expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds after which the event becomes reclaimable."
+          },
+          "lease_id": {
+            "type": "string",
+            "description": "Identifier for this lease."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ExecutionPolicy",
+            "description": "What the run is permitted to do."
+          },
+          "secret_delivery": {
+            "$ref": "#/components/schemas/SecretDelivery",
+            "description": "How secrets reached this run."
+          }
+        }
+      },
+      "LeaseResponse": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases` reply. Always `200`.\n\n`lease` is the work, or null with `retry_after_ms` set when there is none —\na backoff hint rather than a `204`.",
+        "properties": {
+          "lease": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LeasePayload",
+                "description": "The work, when there is any."
+              }
+            ]
+          },
+          "retry_after_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How long to wait before asking again, when there is none.",
+            "minimum": 0
+          }
+        }
+      },
+      "Liveness": {
+        "type": "object",
+        "description": "The process is up and answering HTTP.\n\nReports the build and nothing about its dependencies. A liveness answer\nthat went red when the database blinked would get the process killed and\nrestarted, which does nothing about the database and drops every request\nthe instance was serving.",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "commit"
+        ],
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "The commit this binary was built from, or `unknown` when the build was\nnot told."
+          },
+          "service": {
+            "type": "string",
+            "description": "The service answering: `agentsfleetd`."
+          },
+          "status": {
+            "type": "string",
+            "description": "Always `ok` from a live process. One word to switch on, so a reader\nnever has to treat an empty document as a signal."
+          },
+          "version": {
+            "type": "string",
+            "description": "The version this binary was cut from."
           }
         }
       },
@@ -7585,6 +8320,25 @@
           "token": {
             "type": "string",
             "description": "The short-lived, workspace-scoped credential. Secret — never logged,\nnever echoed into a frame."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Mintable": {
+        "type": "object",
+        "description": "One credential the lease grants the run permission to mint on demand.\n\nCarries the integration id ONLY — never a stored handle and never a token.\nThe child mints a short-lived token at the tool boundary through the runner.",
+        "required": [
+          "name",
+          "integration"
+        ],
+        "properties": {
+          "integration": {
+            "type": "string",
+            "description": "The integration the broker mints for. The workspace is server-derived."
+          },
+          "name": {
+            "type": "string",
+            "description": "The placeholder name the fleet references."
           }
         },
         "additionalProperties": false
@@ -8334,6 +9088,29 @@
           "self_managed"
         ]
       },
+      "Readiness": {
+        "type": "object",
+        "description": "Whether this instance should take traffic, and if not, why.\n\nOne shape for the 200 and the 503: only the booleans differ. The fields\nstay separate all the way to the wire because an operator's next action\ndoes. A red database and a red queue are different incidents.",
+        "required": [
+          "ready",
+          "database",
+          "queue"
+        ],
+        "properties": {
+          "database": {
+            "type": "boolean",
+            "description": "Whether the database answered."
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "Whether the event queue answered."
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "`true` only when every dependency answered. Mirrors the status code:\n`true` with a 200, `false` with a 503."
+          }
+        }
+      },
       "RegisterResponse": {
         "type": "object",
         "description": "`POST /v1/runners` reply: the durable identity plus its bearer token.\n\nThe token is returned ONCE — the daemon stores only its hash.",
@@ -8528,6 +9305,41 @@
             "format": "int64",
             "description": "Total wall-clock milliseconds.",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RepositoryAccess": {
+        "type": "string",
+        "description": "Whether a bound repository may be written or only read.",
+        "enum": [
+          "read",
+          "write"
+        ]
+      },
+      "RepositoryBinding": {
+        "type": "object",
+        "description": "The repositories a run is bound to, and how it may use them.",
+        "required": [
+          "repositories",
+          "access",
+          "base_branch"
+        ],
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/RepositoryAccess",
+            "description": "Whether the run may write to them."
+          },
+          "base_branch": {
+            "type": "string",
+            "description": "Branch a write is based on."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Repositories the run may reach."
           }
         },
         "additionalProperties": false
@@ -8939,6 +9751,165 @@
         },
         "additionalProperties": false
       },
+      "RunnerLeaseItem": {
+        "type": "object",
+        "description": "One lease in a runner's newest-first operator history.",
+        "required": [
+          "id",
+          "fleet_id",
+          "workspace_id",
+          "event_id",
+          "event_type",
+          "actor",
+          "outcome",
+          "kind",
+          "fencing_token",
+          "provider",
+          "model",
+          "posture",
+          "metered_input_tokens",
+          "metered_cached_tokens",
+          "metered_output_tokens",
+          "lease_expires_at",
+          "created_at"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "description": "Actor recorded on the Fleet event."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Claim instant in epoch milliseconds."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "Fleet event identifier."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "Fleet event type."
+          },
+          "failure_detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Terminal failure explanation, when one was stored."
+          },
+          "failure_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Terminal failure classification, when one was stored."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic holder generation."
+          },
+          "fleet_id": {
+            "type": "string",
+            "description": "Fleet whose event was leased."
+          },
+          "fleet_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current display name, absent if the fleet row is gone."
+          },
+          "id": {
+            "type": "string",
+            "description": "Lease identifier and external pagination cursor."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LeaseKind",
+            "description": "Whether this was the first claim or a reclaim."
+          },
+          "lease_expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Holder deadline in epoch milliseconds."
+          },
+          "metered_cached_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Metered cached input tokens."
+          },
+          "metered_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Metered non-cached input tokens."
+          },
+          "metered_output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Metered output tokens."
+          },
+          "model": {
+            "type": "string",
+            "description": "Provider-native model selected for execution."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/LeaseOutcome",
+            "description": "Server-derived closed outcome."
+          },
+          "posture": {
+            "type": "string",
+            "description": "Credential posture used for execution."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider selected for execution."
+          },
+          "wall_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Settled wall time, absent before settlement."
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "Workspace owning the Fleet event."
+          }
+        },
+        "additionalProperties": false
+      },
+      "RunnerLeasesResponse": {
+        "type": "object",
+        "description": "A keyset page of one runner's lease history.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunnerLeaseItem"
+            },
+            "description": "Rows in newest-first order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last lease identifier when another page may exist."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Filtered total independent of the page boundary."
+          }
+        },
+        "additionalProperties": false
+      },
       "RunnerLiveness": {
         "type": "string",
         "description": "Derived runtime liveness, computed by the fleet read and NEVER stored —\nstoring it would drift from the values it is derived from.",
@@ -8986,6 +9957,15 @@
           "landlock_full",
           "container_nested",
           "dev_none"
+        ]
+      },
+      "SecretDelivery": {
+        "type": "string",
+        "description": "How tenant secrets reach the runner.",
+        "enum": [
+          "inline",
+          "scoped",
+          "proxy"
         ]
       },
       "SecretSummary": {

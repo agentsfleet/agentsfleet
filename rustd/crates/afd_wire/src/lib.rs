@@ -57,6 +57,7 @@ pub mod credentials;
 pub mod event;
 pub mod fleet;
 pub mod grant;
+pub mod health;
 pub mod ingress;
 pub mod lease;
 pub mod memory;

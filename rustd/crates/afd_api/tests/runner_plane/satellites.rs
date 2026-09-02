@@ -93,3 +93,34 @@ async fn runner_memory_routes_validate_and_render() {
         serde_json::json!({"stored": 0, "skipped": 0})
     );
 }
+
+/// A batch of live-tail frames is acknowledged with `{"ok":true}`, not a bare
+/// 202.
+///
+/// The body is what `service_activity.zig` answers, and the first port of the
+/// verb dropped it. A generated client types a 202 with no content as
+/// returning nothing, so the assertion is on the bytes, not the status alone.
+#[tokio::test]
+async fn runner_activity_is_acknowledged_with_a_body() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let path = format!("/v1/runners/me/leases/{LEASE_ID}/activity");
+
+    let accepted = send(
+        &router,
+        Method::POST,
+        &path,
+        Some(RUNNER_TOKEN),
+        r#"{"frames":[{"fleet_response_chunk":{"text":"hello"}}]}"#,
+    )
+    .await;
+
+    assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+    let body = json_body(accepted).await;
+    assert_eq!(
+        body,
+        serde_json::json!({"ok": true}),
+        "a runner pointed at either daemon reads one acknowledgement shape"
+    );
+}
