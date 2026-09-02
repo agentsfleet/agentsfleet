@@ -72,6 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/quality.mk` or CI workflow | NOT NEEDED | `test-unit-rustd` and `lint-rustd` already pass `--all-features`, so the feature, the gate and the artifact diff are graded by lanes that exist — no new target, no workflow edit, no approval needed |
 | `scripts/check_documentation_rules*.py` · `docs/REST_API_DESIGN_GUIDELINES.md` · `docs/EXECUTE_DOC_READS.md` | EDIT | Dead Code Sweep: the lint globbed the deleted `public/openapi/` tree and therefore checked nothing; §6 still called that tree the source of truth |
 | `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
+| `ui/packages/design-system/src/design-system/DataTableView.tsx` · `ui/packages/design-system/vitest.config.ts` | EDIT | the TypeScript coverage floor goes to 100% on Indy's in-session call; the package sat at 99.78% on one unreachable ref guard, excluded the way `website/src/components/HowItWorks.tsx` already excludes its defensive invariant |
 
 ## Applicable Rules
 
@@ -290,3 +291,16 @@ used the 3.0 keyword inside a document declaring 3.1, and the generated one uses
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+**Amendment — the coverage floors, and why `design-system` joined the blast radius.**
+Indy (2026-09-02): "ensure we keep the rustd coverage > 97%" and "and 100% the
+ts, tsx". Asked where the TypeScript work should land, the answer was **fold it
+into this PR** rather than a follow-up. `cli`, `ui/packages/app` and
+`ui/packages/website` were already pinned at 100%; `ui/packages/design-system`
+sat at 99 with a measured 99.78% — one statement and one branch, both the
+`if (!viewport) return;` guard in `DataTableView.tsx`. The ref is attached to a
+div the component renders unconditionally and a layout effect runs only once
+that div is in the DOM, so React cannot make the null case true: it is excluded
+with `/* v8 ignore next */`, the same resolution `website`'s
+`HowItWorks.tsx` already uses for its unreachable defensive invariant, and the
+package's four thresholds go to 100.
