@@ -49,6 +49,7 @@
 pub mod activity;
 pub mod admin;
 mod admin_catalogue;
+mod admin_library;
 pub mod approval;
 pub mod auth;
 pub mod connector;
