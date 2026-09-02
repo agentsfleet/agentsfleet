@@ -161,6 +161,105 @@ fn a_header_list_resolves_every_pair() {
     assert_eq!(header(&config, "x-extra").as_deref(), Some("spaced"));
 }
 
+/// The credential is standard base64, padding included.
+///
+/// Spelled out rather than round-tripped through the same encoder the code
+/// uses: an assertion that decodes what it just encoded passes for the
+/// URL-safe alphabet and for an unpadded one too, and either produces a 401
+/// the vendor explains as bad credentials rather than as bad encoding.
+#[test]
+fn the_basic_credential_is_standard_base64_of_the_pair() {
+    let config = resolved([
+        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
+        (GRAFANA_INSTANCE_KNOB, "1"),
+        (GRAFANA_API_KEY_KNOB, "k"),
+    ]);
+
+    // `1:k`, which is short enough to read as base64 by eye.
+    assert_eq!(
+        header(&config, AUTHORIZATION).as_deref(),
+        Some("Basic MTpr")
+    );
+}
+
+/// A timeout is read as milliseconds, exactly as written.
+///
+/// The unit is the whole risk here. Reading the same digits as seconds turns
+/// a one-and-a-half second budget into twenty-five minutes, and every export
+/// still succeeds in a test that only checks the knob was accepted.
+#[test]
+fn a_timeout_is_kept_in_the_milliseconds_it_was_written_in() {
+    // pin test: literal is the contract — the knob's unit is milliseconds.
+    let config = resolved([
+        (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
+        (OTEL_TIMEOUT_KNOB, "1500"),
+    ]);
+
+    assert_eq!(config.timeout, core::time::Duration::from_millis(1500));
+}
+
+/// One malformed pair faults without taking its neighbours with it.
+///
+/// The whole list is one knob, so the alternative to skipping the bad pair is
+/// dropping every header a deployment set — including the credential — over a
+/// typo in an unrelated one, and reporting it as a collector that refuses to
+/// authenticate.
+#[test]
+fn a_malformed_pair_faults_without_dropping_its_neighbours() {
+    let mut faults = Vec::new();
+    let config = otlp(
+        &MapEnv::from_pairs([
+            (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
+            (OTEL_HEADERS_KNOB, "a=1,,no-equals-sign, b=x=y,"),
+        ]),
+        &mut faults,
+    )
+    .expect("an endpoint is configured");
+
+    assert_eq!(
+        faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
+        vec![OTEL_HEADERS_KNOB],
+        "the one bad pair faults once, naming the knob it was written in"
+    );
+    assert_eq!(header(&config, "a").as_deref(), Some("1"));
+    assert_eq!(
+        header(&config, "b").as_deref(),
+        Some("x=y"),
+        "a value carrying its own `=` splits at the first one, not at every one"
+    );
+    assert_eq!(
+        config.headers.len(),
+        2,
+        "an empty pair is skipped rather than sent as a header with no name"
+    );
+}
+
+/// A name written twice resolves to the last value, once.
+///
+/// Same rule the vendor credential's replacement follows, and it has to hold
+/// for every name: two entries of one header name is a request whose meaning
+/// depends on which the client happened to send.
+#[test]
+fn a_repeated_header_name_keeps_only_the_last_value() {
+    let config = resolved([
+        (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
+        (
+            OTEL_HEADERS_KNOB,
+            "X-Scope-OrgID=tenant-a,x-scope-orgid=tenant-b",
+        ),
+    ]);
+
+    assert_eq!(
+        header(&config, "x-scope-orgid").as_deref(),
+        Some("tenant-b")
+    );
+    assert_eq!(
+        config.headers.len(),
+        1,
+        "the replaced entry must not survive beside its replacement"
+    );
+}
+
 /// Every unusable knob is a fault naming itself.
 ///
 /// Refused at boot rather than at the first export: a deployment that asked

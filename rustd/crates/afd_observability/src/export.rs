@@ -153,3 +153,37 @@ pub(crate) fn discard_reason(failure: &OTelSdkError) -> DiscardReason {
         _refused => DiscardReason::ExportRejected,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use opentelemetry_sdk::error::OTelSdkError;
+
+    use super::discard_reason;
+    use crate::metrics::label::http::DiscardReason;
+
+    /// A timeout is uncertain; every other refusal is definite.
+    ///
+    /// The distinction is the one an operator acts on, and it is one `match`
+    /// arm wide. Collapsing the two makes both unactionable: a refused batch
+    /// is provably gone and worth re-emitting, and an uncertain one may have
+    /// arrived, so re-emitting it double-counts the window it carried.
+    #[test]
+    fn a_timeout_is_uncertain_and_every_other_refusal_is_definite() {
+        assert_eq!(
+            discard_reason(&OTelSdkError::Timeout(Duration::from_secs(1))),
+            DiscardReason::ExportUncertain
+        );
+        for refused in [
+            OTelSdkError::AlreadyShutdown,
+            OTelSdkError::InternalFailure("the collector said no".to_owned()),
+        ] {
+            assert_eq!(
+                discard_reason(&refused),
+                DiscardReason::ExportRejected,
+                "`{refused}` is a batch that is definitely gone"
+            );
+        }
+    }
+}

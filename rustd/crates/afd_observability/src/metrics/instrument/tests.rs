@@ -73,8 +73,16 @@ fn a_family_claimed_in_the_wrong_number_is_refused() {
         .counter_f64(&fleet::SIGNUP_BOOTSTRAPPED_TOTAL)
         .expect_err("the census declares this counts in u64");
     assert!(
-        matches!(refusal, Error::NumberMismatch { .. }),
-        "a u64 family claimed as f64 must be refused: {refusal}"
+        matches!(
+            refusal,
+            Error::NumberMismatch {
+                declared: "u64",
+                claimed: "f64",
+                ..
+            }
+        ),
+        "the refusal names which side declared what, in the census's own \
+         spelling: {refusal}"
     );
 }
 

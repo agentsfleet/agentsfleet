@@ -9,6 +9,9 @@
 use afd_core::env::MapEnv;
 use afd_observability::producers::GaugeSources;
 
+use opentelemetry_otlp::Protocol;
+
+use crate::error::BootFailure;
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, preflight};
 use crate::serve::open_telemetry;
@@ -117,4 +120,67 @@ async fn the_json_protocol_builds_a_transport() {
     open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
         .expect("http/json is one of the two encodings this build carries");
     let _report = supervisor.shutdown().await;
+}
+
+/// A trailing slash on the endpoint does not double the separator.
+///
+/// The signal path is appended programmatically, so the endpoint's own last
+/// character decides the URL. `https://host//v1/traces` is a path a collector
+/// does not route, and the daemon that posted it would report success at
+/// every layer it owns while nothing arrived.
+#[test]
+fn a_trailing_slash_does_not_double_the_signal_path() {
+    let config = configured(&[(OTEL_ENDPOINT_KNOB, "https://collector.example.test/")]);
+    let otlp = config.otlp().expect("an endpoint is configured");
+
+    assert_eq!(
+        super::signal_endpoint(otlp, super::TRACES_PATH),
+        "https://collector.example.test/v1/traces"
+    );
+}
+
+/// The two accepted spellings reach the exporter's own two encodings.
+///
+/// The knob's vocabulary and the SDK's are different types, and the mapping
+/// between them is the only place they meet. A default that answered for both
+/// would accept `http/json` at preflight and post protobuf.
+#[test]
+fn each_accepted_protocol_maps_to_its_own_encoding() {
+    let json = configured(&[
+        (OTEL_ENDPOINT_KNOB, UNREACHABLE),
+        (OTEL_PROTOCOL_KNOB, "http/json"),
+    ]);
+    let default = configured(&[(OTEL_ENDPOINT_KNOB, UNREACHABLE)]);
+
+    assert!(matches!(
+        super::protocol_of(json.otlp().expect("configured")),
+        Protocol::HttpJson
+    ));
+    assert!(matches!(
+        super::protocol_of(default.otlp().expect("configured")),
+        Protocol::HttpBinary
+    ));
+}
+
+/// An endpoint the exporter cannot parse refuses boot, as telemetry.
+///
+/// Preflight grades the knobs it owns — present, spelled right, in range — and
+/// a URI it accepted can still be one no exporter will build. Serving on
+/// through that produces a daemon exporting nothing that looks exactly like a
+/// collector which is down, so the failure is raised where it is still
+/// attributable and carries the phase an operator greps for.
+#[tokio::test]
+async fn an_endpoint_the_exporter_refuses_refuses_boot() {
+    let config = configured(&[(OTEL_ENDPOINT_KNOB, "http://a space is not a host")]);
+    let mut supervisor = Supervisor::new();
+
+    let failure = open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
+        .expect_err("an endpoint no exporter can build must not boot a dark daemon");
+
+    assert!(matches!(failure, BootFailure::Exporter(_)));
+    assert_eq!(failure.phase(), "telemetry");
+    assert!(
+        supervisor.inventory().is_empty(),
+        "a transport that would not build leaves nothing to supervise"
+    );
 }

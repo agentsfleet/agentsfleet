@@ -58,10 +58,10 @@ fn past_the_capacity_everything_lands_in_one_series() {
 }
 
 #[test]
-fn an_overflowed_runner_is_still_counted_and_still_carries_its_reason() {
-    // What overflow costs is WHICH runner, and nothing else: the failure totals
-    // and their reasons stay correct, because a deployment past the capacity
-    // has a problem that per-runner attribution would not help with.
+fn an_overflowed_runner_is_counted_without_taking_a_series() {
+    // What overflow costs is WHICH runner, and nothing else: the totals stay
+    // correct, because a deployment past the capacity has a problem that
+    // per-runner attribution would not help with.
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
         let _admitted = metrics.admit(&runner(index));
@@ -260,4 +260,58 @@ fn test_the_overflow_label_is_not_the_sdk_marker() {
         "a capacity notice and a bug indicator must stay distinguishable"
     );
     assert_eq!(SDK_OVERFLOW_MARKER, "otel.metric.overflow");
+}
+
+/// More releases than leases publishes no reading rather than a huge one.
+///
+/// The count is a signed cell and the reading is unsigned, so an over-release
+/// is the one input that cannot be published truthfully. A conversion that
+/// reached for `as` instead of `try_from` would report the largest number a
+/// gauge can hold on a fleet that is merely idle.
+#[test]
+fn more_releases_than_leases_publishes_no_reading() {
+    let metrics = RunnerMetrics::new();
+    let runner_id = runner(1);
+    let _label = metrics.admit(&runner_id);
+
+    metrics.released(&runner_id);
+
+    assert!(
+        metrics.active_lease_readings().is_empty(),
+        "a count below zero is a gap in the gauge, never a number in it"
+    );
+}
+
+/// Each reading is attributed to the runner it was read from.
+///
+/// The values alone cannot catch a table that labels every reading with one
+/// runner's identifier: two rows would still carry two values, and the graph
+/// would draw both under whichever name won.
+#[test]
+fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
+    let metrics = RunnerMetrics::new();
+    let (first, second) = (runner(1), runner(2));
+    let _first = metrics.admit(&first);
+    let _second = metrics.admit(&second);
+
+    metrics.leased(&first);
+    for _lease in 0..3 {
+        metrics.leased(&second);
+    }
+
+    let mut attributed: Vec<(String, u64)> = metrics
+        .active_lease_readings()
+        .into_iter()
+        .map(|reading| {
+            let carried = reading
+                .attributes
+                .iter()
+                .find(|pair| pair.key.as_str() == crate::semconv::LABEL_RUNNER_ID)
+                .expect("every reading carries the runner it was read from");
+            (carried.value.to_string(), reading.value)
+        })
+        .collect();
+    attributed.sort();
+
+    assert_eq!(attributed, vec![(first, 1), (second, 3)]);
 }
