@@ -20,6 +20,49 @@
 
 ## Overview
 
+> **PREMISE CORRECTION (Sep 02, 2026) — §5 deletes a binary that is still
+> built, still shipped, and still deployed, and nothing replaces it.** The
+> daemon half of §5 is sound; the runner half is not, and they were bundled
+> because "the Zig tree" was read as one thing.
+>
+> - **`agentsfleet-runner` is Zig-only and has no Rust counterpart.**
+>   `build_runner.zig:48,101-104` roots the executable at `src/runner/main.zig`
+>   over 153 `.zig` files, and imports `src/build/main.zig` at line 21. The
+>   cargo workspace declares exactly one `[[bin]]` —
+>   `rustd/crates/agentsfleetd/Cargo.toml:24-26`, `path = "src/main.rs"`, the
+>   only `main.rs` under `rustd/`. `afd_runner` and `afd_api_runner` are
+>   **libraries inside the daemon** — the registry, lease, heartbeat and admin
+>   logic the control plane serves — and `afd_runner`'s `runner_suite` is a
+>   `[[test]]` target, not a binary. The name collides; the artifact does not
+>   exist.
+> - **The release still builds and deploys it.** `release.yml:162,259` run
+>   `zig build --build-file build_runner.zig`; `:182-189` and `:279-286`
+>   package `agentsfleet-runner-linux-{amd64,arm64}.tar.gz`; `:440` makes the
+>   release job depend on both; and `:674-714` deploys the amd64 tarball to
+>   `PROD_RUNNER_HOSTS` behind `vars.PROD_RUNNER_READY`. The development lane
+>   does the same at `deploy-dev-build.yml:38,43` and
+>   `deploy-dev-metal.yml:52,94-95`.
+> - **No spec anywhere plans the port.** `git grep -rn -w 'agentsfleet-runner'`
+>   over `docs/v2/{pending,active}/` returns two hits, neither of them a port:
+>   M186_001:111 fixes a comment in `deploy/baremetal/agentsfleet-runner.service`,
+>   and M181_006:45 records that the runner is the only thing `zig build`
+>   produces.
+>
+> So the daemon and the runner are opposite cases wearing one name. The daemon
+> was ported and `Dockerfile:39` already ships the Rust binary, which is why
+> deleting `src/agentsfleetd/**` costs nothing. The runner was never ported, so
+> deleting `src/runner/**` and `src/build/**` removes the only implementation
+> of a binary the release job requires — `compile-runner-amd64` and
+> `compile-runner-arm64` fail, and the release fails with them.
+>
+> **Disposition — recorded, not repaired, because the fix is a scope call and
+> not a mechanical one.** Indy's deletion consult below says "the agentsfleet
+> zig related and its files must be deleted", which the runner satisfies on
+> spelling. Whether the runner retires (port first, then delete) or is
+> genuinely dead (stop shipping it) is Indy's to decide, and the rows below
+> that turn on it are marked BLOCKED rather than rewritten. `src/agentsfleetd/**`
+> is unaffected and stays in scope.
+
 **Goal (testable):** one fleet completes install → activate → trigger → lease → execute → observe against the Rust daemon on the development environment, graded by the `deploy-dev / acceptance` lane and countersigned by a recorded human visual pass, with every defect that walk surfaces fixed inside this milestone.
 
 **Problem:** the cutover family proves the Rust daemon answers every route, holds its budgets and can be rolled back. None of that is a customer finishing a job. The 41 acceptance journeys under `ui/packages/app/tests/e2e/acceptance/` run against the daemon serving `api-dev`, and the one that reaches a real runner lease — `runner-detail.spec.ts` — is deliberately built to FAIL closed before the model call, because an empty SKILL.md body is the only model-free way to place a failed lease from the outside. So the repository has never asserted that a fleet runs to a real result. M186_001 was written to close exactly that gap and its §1–§5 never ran; its Files Changed still names Zig paths, so running it as written would land connector code into a tree this spec deletes.
@@ -55,7 +98,8 @@
 | `rustd/crates/**` | EDIT | whatever §1 surfaces — bounded by §2's rule that a fix lands with the test that caught it, never on its own. |
 | `playbooks/operations/acceptance/001_playbook.md` | CREATE | the human pass: what a person opens, in what order, what they must see, and where the evidence lands. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | the proof punch list this spec finally closes. |
-| `src/agentsfleetd/**` · `src/runner/**` · `src/build/**` | DELETE | §5 — the Zig daemon and its build tree, once §1–§4 are green. |
+| `src/agentsfleetd/**` | DELETE | §5 — the Zig daemon, once §1–§4 are green. `Dockerfile:39` already ships the Rust binary, so nothing is lost. |
+| `src/runner/**` · `src/build/**` | **BLOCKED — see PREMISE CORRECTION** | These build `agentsfleet-runner`, which has no Rust counterpart and which `release.yml:162,259` still compiles and `:674-714` still deploys. Deleting them breaks the release. Held for Indy's scope call. |
 | `.github/workflows/{release,deploy-dev}.yml` | EDIT | remove the Zig build and its rollback artifact in the same diff as the tree, so neither outlives the other. |
 | `docs/v2/pending/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | superseded — its dimensions move here and the file records where they went. |
 
@@ -133,7 +177,12 @@ A green Playwright run and a dashboard an operator would trust are different cla
 
 The tree, its build steps, and its rollback artifact go together. This is what §1–§4 buy.
 
-- **Dimension 5.1** — `src/agentsfleetd/**`, `src/runner/**` and `src/build/**` are removed, and no reference to them survives anywhere in the repository → Test `no path under src/ is referenced after the deletion`
+**Scope narrowed by the PREMISE CORRECTION above: the daemon only.** `src/runner/**`
+and `src/build/**` build a shipped binary with no Rust counterpart, and leave §5
+pending Indy's call. Dimension 5.1 grades the daemon; 5.4 records the remainder.
+
+- **Dimension 5.1** — `src/agentsfleetd/**` is removed, and no reference to it survives anywhere in the repository outside `docs/v2/done/` and `docs/v1/` → Test `no path under src/agentsfleetd is referenced after the deletion`
+- **Dimension 5.4** — the runner's disposition is recorded in Discovery with Indy's verbatim quote, and `src/runner/**` + `src/build/**` are either deleted with their release steps in the same diff or left whole with the reason named → Test `the runner build still produces its artifact, or nothing references it`
 - **Dimension 5.2** — the release and deploy workflows no longer build or publish a Zig artifact, and M181_006's buildable-rollback invariant is deleted in the same diff → Test `no workflow step builds the zig daemon`
 - **Dimension 5.3** — every gate, make target and playbook that scanned the Zig tree either loses that scope or is removed, and none is left scanning nothing and reporting green → Test `no gate reports a vacuous pass over a deleted tree`
 
@@ -200,8 +249,9 @@ The acceptance lane is the operator-facing signal and it already reports through
 | R4 | Connector proof green on the Rust tree (§3) | `make test-integration-rustd` | exit 0 | P0 | |
 | R5 | Every §1 defect resolved or quoted (§2) | inspect Discovery's defect table | no row without a commit or a verbatim quote | P0 | |
 | R6 | Human verdict recorded (§4) | the `results` job artifact for the graded build | present, names the reviewer and the build | P0 | |
-| R7 | The Zig tree is gone (§5) | `test ! -d src/agentsfleetd && test ! -d src/runner` | exit 0 | P0 | |
+| R7 | The Zig daemon tree is gone (§5) | `test ! -d src/agentsfleetd` | exit 0 | P0 | |
 | R8 | Nothing references the deleted tree (§5) | `git grep -l "src/agentsfleetd" -- ':!docs/v2/done' ':!docs/v1'` | no output | P0 | |
+| R9 | The runner still builds what the release ships (§5.4) | `zig build --build-file build_runner.zig -Doptimize=ReleaseSafe && test -x zig-out/bin/agentsfleet-runner` | exit 0 — or the row is struck with Indy's quote retiring the runner | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -212,7 +262,9 @@ The acceptance lane is the operator-facing signal and it already reports through
 
 ## Dead Code Sweep
 
-This spec IS the sweep the family deferred. `src/agentsfleetd/**`, `src/runner/**` and `src/build/**` are deleted in §5, together with the release and deploy steps that build them and M181_006's buildable-rollback invariant. The ordering is the point: the tree is the rollback until §1–§4 prove it is not needed, and it is deleted the moment that is true rather than left to outlive the family by default.
+This spec IS the sweep the family deferred. `src/agentsfleetd/**` is deleted in §5, together with the release and deploy steps that build it and M181_006's buildable-rollback invariant. The ordering is the point: the tree is the rollback until §1–§4 prove it is not needed, and it is deleted the moment that is true rather than left to outlive the family by default.
+
+`src/runner/**` and `src/build/**` are **not** dead code and are excluded from the sweep — see the PREMISE CORRECTION. They compile `agentsfleet-runner`, which `release.yml:162,259` builds, `:440` requires, and `:674-714` deploys to `PROD_RUNNER_HOSTS`. Retiring them is a port, not a sweep, and needs its own milestone.
 
 ## Out of Scope
 
@@ -249,6 +301,8 @@ This spec IS the sweep the family deferred. `src/agentsfleetd/**`, `src/runner/*
 | Sep 01, 2026 | Indy — scope | "read and port to the M186 work, first will be to test the sequence of a fleet we have end to end fully and the look at the fixes." §1 is the fleet sequence; §2 is the fixes; §3 is the port. |
 | Sep 01, 2026 | Indy — human pass | "it could have human part to eyeball manually as well and then lets add the tests as needed to verify it in acceptance* job or so." §4 is the eyeball; §1.5 is the acceptance job. |
 | Sep 01, 2026 | Indy — deletion | "all is good with this spec the agentsfleet zig related and its files must be deleted." §5, gated behind §1–§4 by Invariant 1. |
+| Sep 02, 2026 | Agent — blast-radius grep (`dispatch/write_spec.md` §Authoring discipline) | The teardown grep §5 never ran. `git grep -rn -w 'agentsfleet-runner'` returns live hits in `release.yml`, `deploy-dev-build.yml`, `deploy-dev-metal.yml`, `deploy/baremetal/agentsfleet-runner.service`, `build.zig:185`, `build_runner.zig`, `README.md:43`, `SECURITY.md:19,23,24,27` and `AGENTS.md:12`. The runner is Zig-only with no Rust counterpart; §5's runner rows are BLOCKED pending the row below. |
+| **OPEN — Indy** | Runner disposition | Does `agentsfleet-runner` get ported to Rust before retirement (its own milestone, §5 keeps the daemon only), or is it dead and its release steps removed with the tree? R9 and Dimension 5.4 turn on the answer. |
 
 **Defect table (§2)** — populated during §1; every row resolves to a commit or a verbatim quote before CHORE(close).
 
