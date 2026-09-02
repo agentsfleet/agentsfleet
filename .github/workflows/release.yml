@@ -527,6 +527,60 @@ jobs:
           R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_PROD }}/cloudflare-r2/secret-access-key
           R2_BUCKET: op://${{ vars.VAULT_PROD }}/cloudflare-r2/bucket
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
+      - name: Ensure the OTLP collector is running
+        # Must be serving BEFORE the daemon's repointed endpoint takes effect on
+        # the next deploy, or the first export lands nowhere. The three values
+        # staged here are the COLLECTOR's upstream credentials; the daemon keeps
+        # its own copy of the auth pair but now reaches this app instead, which
+        # ignores the inbound header and re-authenticates upstream with these.
+        #
+        # A failed deploy is not swallowed here, unlike the tunnel step below: a
+        # collector that is not serving takes every production dashboard dark at
+        # the next daemon deploy, and continuity is the graded property.
+        run: |
+          flyctl secrets set \
+            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
+            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            OTLP_INGEST_USER="$GRAFANA_OTLP_INSTANCE_ID" \
+            OTLP_INGEST_PASSWORD="$GRAFANA_OTLP_API_KEY" \
+            --app "$OTLP_COLLECTOR_APP"
+          MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
+          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+          TOTAL="$(echo "$MACHINES" | jq 'length')"
+          echo "  machines: $RUNNING/$TOTAL running"
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "  no machines found — deploying $OTLP_COLLECTOR_APP from scratch..."
+            # Positional path = build context, so the Dockerfile's COPY resolves.
+            flyctl deploy "$OTLP_COLLECTOR_DIR" --app "$OTLP_COLLECTOR_APP" --wait-timeout 60
+          elif [ "$RUNNING" -eq 0 ]; then
+            echo "  no running machines — restarting..."
+            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
+              flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
+            done
+            # `machine start` returns when the API ACCEPTS the request, not when
+            # the collector is listening on 4318. Falling through here is what
+            # lets the daemon deploy against a collector that is still starting
+            # — the one race this whole step exists to close — so poll, and fail
+            # rather than report a success the next step would rely on. The
+            # from-scratch branch above needs none of this: `flyctl deploy
+            # --wait-timeout` already blocks until the machine is up.
+            for _ in $(seq 1 12); do
+              sleep 5
+              RUNNING="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null \
+                | jq '[.[] | select(.state == "started")] | length')"
+              [ "$RUNNING" -gt 0 ] && break
+            done
+            test "$RUNNING" -gt 0 || {
+              echo "  collector never reached started after restart — refusing to deploy the daemon at it"
+              exit 1
+            }
+          else
+            echo "  collector is running"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
@@ -620,41 +674,6 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_APP_PROD: ${{ vars.FLY_APP_PROD }}
-
-      - name: Ensure the OTLP collector is running
-        # Must be serving BEFORE the daemon's repointed endpoint takes effect on
-        # the next deploy, or the first export lands nowhere. The three values
-        # staged here are the COLLECTOR's upstream credentials; the daemon keeps
-        # its own copy of the auth pair but now reaches this app instead, which
-        # ignores the inbound header and re-authenticates upstream with these.
-        #
-        # A failed deploy is not swallowed here, unlike the tunnel step below: a
-        # collector that is not serving takes every production dashboard dark at
-        # the next daemon deploy, and continuity is the graded property.
-        run: |
-          flyctl secrets set \
-            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
-            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
-            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
-            --app "$OTLP_COLLECTOR_APP"
-          MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
-          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
-          TOTAL="$(echo "$MACHINES" | jq 'length')"
-          echo "  machines: $RUNNING/$TOTAL running"
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "  no machines found — deploying $OTLP_COLLECTOR_APP from scratch..."
-            # Positional path = build context, so the Dockerfile's COPY resolves.
-            flyctl deploy "$OTLP_COLLECTOR_DIR" --app "$OTLP_COLLECTOR_APP" --wait-timeout 60
-          elif [ "$RUNNING" -eq 0 ]; then
-            echo "  no running machines — restarting..."
-            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
-              flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
-            done
-          else
-            echo "  collector is running"
-          fi
-        env:
-          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Ensure cloudflared-prod tunnel is running
         # cloudflared-prod bridges Cloudflare Edge to

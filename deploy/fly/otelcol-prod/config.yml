@@ -17,6 +17,13 @@ receivers:
       # HTTP receiver serves. No gRPC listener, because nothing dials one.
       http:
         endpoint: 0.0.0.0:4318
+        # Without this the receiver is an OPEN RELAY. Fly's 6PN spans the whole
+        # organisation rather than just this app pair, so any workload on it
+        # could post series that this collector forwards upstream under the real
+        # vendor credential. Before the hop existed that boundary was "you hold
+        # the vendor key"; the authenticator is what keeps it that way.
+        auth:
+          authenticator: basicauth/ingest
 
 processors:
   # memory_limiter must be FIRST in every pipeline: it sheds at admission, and
@@ -36,6 +43,20 @@ extensions:
   # collector's own logs and on the dashboard, not as a failed Fly check.
   health_check:
     endpoint: 0.0.0.0:13133
+  # The server half, and it costs no daemon change: the daemon ALREADY sends
+  # this pair as a Basic header on every export, built unconditionally from its
+  # own GRAFANA_OTLP_* triple. Requiring it here turns a header that was
+  # previously transmitted and discarded into the actual boundary.
+  #
+  # Deliberately its own env pair rather than reading the GRAFANA_OTLP_* names
+  # directly. Today the deploy stages these FROM the vendor pair, so they match
+  # what the daemon sends. Moving to a dedicated ingest credential — so the
+  # vendor key lives only on this collector and never on the daemon — is then a
+  # vault-path change in the two workflows, with this file untouched.
+  basicauth/ingest:
+    htpasswd:
+      inline: |
+        ${env:OTLP_INGEST_USER}:${env:OTLP_INGEST_PASSWORD}
   basicauth/grafana:
     client_auth:
       username: ${env:GRAFANA_OTLP_INSTANCE_ID}
@@ -48,15 +69,26 @@ exporters:
       authenticator: basicauth/grafana
     retry_on_failure:
       enabled: true
-    # The queue is what makes a brief Grafana Cloud outage invisible to the
-    # dashboards rather than a hole in them. It is bounded: past the bound the
-    # collector drops and says so, which is the honest failure.
+    # The queue absorbs a brief Grafana Cloud outage. Read the bound honestly:
+    # it is IN-MEMORY (no `storage:` backing), so it survives an outage but NOT
+    # a collector restart — and `[[restart]] policy = "always"` in fly.toml,
+    # the workflow's restart branch, and an OOM kill are all restarts. An
+    # outage that overlaps one of those loses what was queued, as a process
+    # kill rather than a logged drop.
+    #
+    # It also moves where delivery is proven. The daemon counts an export
+    # successful once this collector returns 2xx, which now means "enqueued"
+    # rather than "Grafana accepted" — a queue-full refusal still propagates
+    # back, but retry-exhaustion after admission does not. Persisting the queue
+    # (file_storage extension) or reading the collector's own
+    # otelcol_exporter_send_failed_* families is what closes that gap; neither
+    # is done here, and the runbook's dashboard watch is the current cover.
     sending_queue:
       enabled: true
       queue_size: 1000
 
 service:
-  extensions: [health_check, basicauth/grafana]
+  extensions: [health_check, basicauth/ingest, basicauth/grafana]
   pipelines:
     traces:
       receivers: [otlp]

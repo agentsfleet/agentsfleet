@@ -111,9 +111,16 @@ whose panels stayed continuous.
 2. Confirm the collector accepts all three signals BEFORE the daemon points at
    it. From a machine on the private network —
    `flyctl ssh console --app agentsfleetd-dev` — run the probe with
-   `OTLP_COLLECTOR_URL=http://otelcol-dev.internal:4318`. The collector's
-   address resolves only inside Fly's 6PN network, so this cannot be run from a
-   laptop and a probe that appears to pass from one is testing something else.
+   `OTLP_COLLECTOR_URL=http://otelcol-dev.internal:4318` plus
+   `OTLP_INGEST_USER` and `OTLP_INGEST_PASSWORD`. The collector's address
+   resolves only inside Fly's 6PN network, so this cannot be run from a laptop
+   and a probe that appears to pass from one is testing something else.
+
+   **The receiver requires Basic auth**, so read a failure carefully: `401` is
+   the gate working and the probe holding the wrong pair, while a connection
+   refusal is the collector not serving. Those are different incidents and the
+   revert below only addresses the second. The pair is the one the daemon
+   already sends, so a 401 from the probe means the daemon would be refused too.
 3. Repoint the daemon. `GRAFANA_OTLP_ENDPOINT` is a staged Fly secret, so it
    takes effect on the next deploy rather than immediately — the endpoint is
    the collector's address and the auth pair stays as it is. The collector
@@ -128,6 +135,14 @@ direct again and the collector becomes an idle app. Nothing else moves — the
 auth pair the daemon carries was never changed, which is what makes the revert
 one line rather than a credential rotation. State this before making the change,
 not after.
+
+**That claim has one dependency, and it is a process one.** Revert is cheap only
+while the daemon's dormant copy of the auth pair still works. After this change
+the collector's copy is the live one, so a routine Grafana key rotation applied
+to the collector alone leaves the daemon holding a stale credential — and the
+revert that was one line becomes the credential rotation it promised to avoid,
+discovered mid-incident. Rotate both, or drop the daemon's copy once the Rust
+daemon (whose OTLP knobs do not require it) is the one serving.
 
 **Abort criterion for this step:** any panel that stops resolving, or any signal
 type whose series stop arriving while the other two continue. A partial
