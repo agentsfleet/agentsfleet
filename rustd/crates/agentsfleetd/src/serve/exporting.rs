@@ -5,13 +5,37 @@
 //! gauge fresh, and the flush that runs when the process is asked to stop.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use afd_api::Admission;
 use afd_observability::producers::GaugeSources;
 
 use crate::error::BootFailure;
 use crate::preflight::BootConfig;
-use crate::supervisor::Supervisor;
+use crate::supervisor::{JOIN_TIMEOUT, Supervisor};
+
+/// How long shutdown spends delivering what telemetry still holds.
+///
+/// The flush is NOT bounded by its own parts. `Exports::flush` walks four
+/// providers in sequence; the span and log processors wait five seconds each,
+/// and both metric readers wait on a channel with `recv()` and no timeout at
+/// all — `PeriodicReader::force_flush` takes as long as a collect-and-export
+/// takes, which the operator-set OTLP timeout is the only bound on. With the
+/// 10 s default that is 5 + 10 + 10 + 5 against a ten-second join budget, and
+/// a deployment that set a longer timeout makes it worse.
+///
+/// So the budget is here, strictly under [`JOIN_TIMEOUT`], and the point of
+/// the gap is that the supervisor sees this task FINISH rather than abandon
+/// it: an abandoned task is reported as a failed shutdown and tells an
+/// operator nothing about which signal was lost. Bounded, the join is clean
+/// and the warning below names what did not make it out.
+const FLUSH_BUDGET: Duration = Duration::from_secs(8);
+
+/// The budget only works while it is under the join deadline it is protecting.
+const _: () = assert!(
+    FLUSH_BUDGET.as_secs() < JOIN_TIMEOUT.as_secs(),
+    "the shutdown flush budget must leave the supervisor room to join it"
+);
 
 /// What the two boot-owned gauges read.
 ///
@@ -81,21 +105,25 @@ pub(crate) fn open_telemetry(
         // for the same reason.
         //
         // On the blocking pool, because `force_flush` parks the thread that
-        // calls it: the span and log processors wait up to five seconds each,
-        // and the metric reader's wait has NO timeout at all — it returns when
-        // a collect-and-export finishes, bounded only by the configured OTLP
-        // timeout. Run on a reactor thread that would block a worker for the
-        // whole shutdown, and the supervisor's join deadline could not
-        // interrupt it, because a task parked in a synchronous call has no
-        // await point to cancel at.
-        if tokio::task::spawn_blocking(move || exports.flush())
-            .await
-            .is_err()
+        // calls it, and a parked reactor worker is one the whole shutdown
+        // waits behind. Under a budget as well, because moving the parking off
+        // the reactor does not shorten it: see `FLUSH_BUDGET`.
+        match tokio::time::timeout(
+            FLUSH_BUDGET,
+            tokio::task::spawn_blocking(move || exports.flush()),
+        )
+        .await
         {
-            tracing::warn!(
+            Ok(Ok(())) => {}
+            Ok(Err(_panicked)) => tracing::warn!(
                 event = "telemetry_flush_abandoned",
                 "the shutdown flush did not run to completion"
-            );
+            ),
+            Err(_elapsed) => tracing::warn!(
+                budget_ms = FLUSH_BUDGET.as_millis(),
+                event = "telemetry_flush_timed_out",
+                "the shutdown flush outran its budget — some telemetry was not delivered"
+            ),
         }
     });
     Ok(())
