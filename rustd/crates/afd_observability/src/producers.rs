@@ -69,7 +69,7 @@ impl Producers {
             http: self::http::Handles::claim(instruments, sources)?,
             fleet: self::fleet::Handles::claim(instruments)?,
             library: self::library::Handles::claim(instruments)?,
-            memory: self::memory::Handles::claim(instruments, sources)?,
+            memory: self::memory::Handles::claim(instruments)?,
             cost: self::cost::Handles::claim(instruments)?,
         })
     }
@@ -104,8 +104,6 @@ pub struct GaugeSources {
     pub requests_in_flight: Reader,
     /// Event streams this instance is carrying.
     pub streams_in_flight: Reader,
-    /// This process's resident set, in bytes.
-    pub resident_memory: Reader,
 }
 
 impl GaugeSources {
@@ -120,7 +118,6 @@ impl GaugeSources {
         Self {
             requests_in_flight: Arc::new(|| None),
             streams_in_flight: Arc::new(|| None),
-            resident_memory: Arc::new(|| None),
         }
     }
 }

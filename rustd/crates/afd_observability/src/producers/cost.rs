@@ -81,7 +81,8 @@ impl Handles {
 /// as a model that is cheap rather than as a measurement that is missing.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "a token count past 2^53 is not a number a runner can report; the               histogram's own top bucket is 2^26"
+    reason = "a token count past 2^53 is not a number a runner can report; the \
+              histogram's own top bucket is 2^26"
 )]
 pub fn invocation(spend: &Spend<'_>) {
     let Some(producers) = installed() else {

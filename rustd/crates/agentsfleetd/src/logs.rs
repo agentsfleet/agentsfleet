@@ -57,7 +57,6 @@ type Attached = Option<Box<dyn Layer<Registry> + Send + Sync>>;
 /// Held by whoever installed the subscriber. A deployment that exports nothing
 /// simply never calls [`Signals::attach`], and the slot stays empty for the
 /// life of the process.
-#[derive(Clone)]
 pub struct Signals(reload::Handle<Attached, Registry>);
 
 impl core::fmt::Debug for Signals {

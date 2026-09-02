@@ -1,14 +1,12 @@
 //! What a fleet's recall costs, and what this process is holding.
 
-use std::sync::Arc;
-
 use opentelemetry::metrics::Counter;
 
 use crate::error::Result;
 use crate::metrics::declared::memory as declared;
 use crate::metrics::instrument::{Instruments, Reading};
 use crate::metrics::observed::Observed;
-use crate::producers::{GaugeSources, installed};
+use crate::producers::installed;
 
 /// Entries the last hydration window carried.
 ///
@@ -46,7 +44,7 @@ impl Handles {
     /// # Errors
     ///
     /// Whatever [`Instruments`] refuses — see [`super::install`].
-    pub(super) fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
+    pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
         let handles = Self {
             captured: instruments.counter_u64(&declared::MEMORY_ENTRIES_CAPTURED_TOTAL)?,
             push_failures: instruments.counter_u64(&declared::MEMORY_PUSH_FAILURES_TOTAL)?,
@@ -68,12 +66,36 @@ impl Handles {
                 .collect()
         })?;
 
-        let resident = Arc::clone(&sources.resident_memory);
-        instruments.gauge_u64(&declared::PROCESS_RESIDENT_MEMORY_BYTES, move || {
-            resident().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(&declared::PROCESS_RESIDENT_MEMORY_BYTES, || {
+            RESIDENT
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
         })?;
 
         Ok(handles)
+    }
+}
+
+/// This process's resident set, as its last sampler saw it.
+///
+/// Published rather than read in the callback: the reading comes from
+/// `/proc/self/statm`, and a collection callback runs under the SDK's pipeline
+/// lock where a syscall that stalls takes every family silent at once — which
+/// is the hazard [`crate::metrics::observed`] exists to name.
+static RESIDENT: Observed = Observed::new();
+
+/// Publishes what a sampler just read, or withdraws the gauge when it could
+/// not read at all.
+///
+/// `None` is a GAP rather than a zero: a process whose resident set could not
+/// be read has not shrunk to nothing, and a zero there is a number an operator
+/// would act on.
+pub fn resident_observed(bytes: Option<u64>) {
+    match bytes {
+        Some(resident) => RESIDENT.publish(resident),
+        None => RESIDENT.withdraw(),
     }
 }
 
@@ -110,17 +132,21 @@ pub fn cap_evicted(entries: u64) {
     }
 }
 
-/// Records a capture stored shorter than it arrived.
-pub fn capture_truncated() {
+/// Records captures stored shorter than they arrived.
+///
+/// A count rather than a call per entry: the batch size is the caller's, and
+/// one add is one atomic where a loop is one per entry under the SDK's
+/// aggregation lock.
+pub fn capture_truncated(entries: u64) {
     if let Some(producers) = installed() {
-        producers.memory.truncated.add(1, &[]);
+        producers.memory.truncated.add(entries, &[]);
     }
 }
 
-/// Records a capture this daemon declined to store at all.
-pub fn capture_skipped() {
+/// Records captures this daemon declined to store at all.
+pub fn capture_skipped(entries: u64) {
     if let Some(producers) = installed() {
-        producers.memory.skipped.add(1, &[]);
+        producers.memory.skipped.add(entries, &[]);
     }
 }
 

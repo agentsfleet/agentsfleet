@@ -275,12 +275,20 @@ fn an_unusable_knob_is_a_fault_that_names_itself() {
         (OTEL_TIMEOUT_KNOB, "0"),
         (OTEL_TIMEOUT_KNOB, "soon"),
         (OTEL_HEADERS_KNOB, "no-equals-sign"),
+        // Graded here rather than at the exporter, whose own rejection
+        // renders the whole endpoint — read from the same place as the
+        // credential beside it.
+        (OTEL_ENDPOINT_KNOB, "not a url"),
     ] {
         let mut faults = Vec::new();
-        let _config = otlp(
-            &MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT), (knob, value)]),
-            &mut faults,
-        );
+        // The endpoint case replaces the good one rather than sitting beside
+        // it, so a later pair cannot mask the knob under test.
+        let pairs = if knob == OTEL_ENDPOINT_KNOB {
+            vec![(knob, value)]
+        } else {
+            vec![(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT), (knob, value)]
+        };
+        let _config = otlp(&MapEnv::from_pairs(pairs), &mut faults);
         assert_eq!(
             faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
             vec![knob],
@@ -297,4 +305,35 @@ fn unset_knobs_resolve_to_the_documented_defaults() {
     assert_eq!(&*config.protocol, super::PROTOCOL_PROTOBUF);
     assert_eq!(config.timeout, super::DEFAULT_TIMEOUT);
     assert!(config.headers.is_empty());
+}
+
+/// A resolved configuration never renders the credential it carries.
+///
+/// The derived `Debug` did: the first header is the vendor pair as
+/// `Basic <base64>`, and base64 is an encoding rather than a protection. The
+/// master key and the session pepper are asserted the same way one module
+/// over, and for the same reason — the `{:?}` that ships a token to a log is
+/// always one somebody adds later.
+#[test]
+fn a_resolved_configuration_renders_no_credential() {
+    let config = resolved([
+        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
+        (GRAFANA_INSTANCE_KNOB, VENDOR_INSTANCE),
+        (GRAFANA_API_KEY_KNOB, VENDOR_KEY),
+    ]);
+
+    let rendered = format!("{config:?}");
+    assert!(
+        !rendered.contains(VENDOR_KEY) && !rendered.contains(VENDOR_INSTANCE),
+        "the credential's own bytes must not render: {rendered}"
+    );
+    let encoded = header(&config, AUTHORIZATION).expect("both halves are configured");
+    assert!(
+        !rendered.contains(&encoded),
+        "nor the encoding of them, which is reversible: {rendered}"
+    );
+    assert!(
+        rendered.contains(AUTHORIZATION),
+        "the header NAME is what a reader needs, and it stays: {rendered}"
+    );
 }

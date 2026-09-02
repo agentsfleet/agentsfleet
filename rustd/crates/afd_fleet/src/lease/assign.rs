@@ -127,11 +127,6 @@ impl Leases {
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
         producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
-        // Only a poll that granted one: the gauge counts leases held, and a
-        // poll that found nothing changes nothing it reports.
-        if matches!(selected, Ok(Some(_))) {
-            producers::fleet::runner::lease_taken(runner_id.as_str());
-        }
         selected
     }
 

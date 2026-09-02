@@ -108,6 +108,12 @@ impl Plane {
                 now,
             )
             .await?;
+        // Here, and not at the claim: a claim is an affinity token, and the
+        // dozen refusals between it and this line — a stopped fleet, an
+        // unparseable event, a denied budget, an unauthorised branch — end
+        // without a lease row. Counting one there would make the gauge climb
+        // on requests that were refused.
+        afd_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
         let runner_id = runner_id.as_str();
         let lease_id = issued.lease_id.as_str();
         let fleet_id = admitted.acquired.fleet_id.as_str();

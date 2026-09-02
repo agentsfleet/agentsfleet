@@ -25,6 +25,7 @@
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
 mod accept;
+mod exporting;
 mod optional;
 
 use std::net::{Ipv6Addr, SocketAddr};
@@ -36,7 +37,6 @@ use afd_core::env::EnvSource;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
-use afd_observability::producers::GaugeSources;
 use afd_observability::{Analytics, Telemetry};
 use afd_redis::Redis;
 use tokio::net::TcpListener;
@@ -46,6 +46,8 @@ pub use self::accept::Acceptor;
 pub use self::accept::serve_accepts;
 
 use self::accept::accept_loop;
+use self::exporting::gauge_sources;
+pub(crate) use self::exporting::open_telemetry;
 use self::optional::{announce_identity, open_analytics, open_live};
 use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
@@ -405,59 +407,4 @@ where
     // dropped only after a shutdown that joined every task reading through them.
     drop(booted);
     Ok(outcome)
-}
-
-/// What the three boot-owned gauges read.
-///
-/// Every one is a lock-free load on a value boot already holds, which is what
-/// makes them safe inside a collection callback: the SDK runs those under its
-/// own pipeline lock, with no timeout, so a reading that could block would
-/// take every family silent at once rather than slow one down.
-fn gauge_sources(admission: &Admission, live: &afd_sse::Live) -> GaugeSources {
-    let requests = admission.clone();
-    let streams = live.clone();
-    GaugeSources {
-        requests_in_flight: Arc::new(move || u64::try_from(requests.in_flight()).ok()),
-        streams_in_flight: Arc::new(move || u64::try_from(streams.carrying()).ok()),
-        resident_memory: Arc::new(crate::telemetry::resident_bytes),
-    }
-}
-
-/// Builds the export pipelines and supervises their flush, where a collector
-/// is configured.
-///
-/// A deployment that named none boots, serves, and exports nothing — which is
-/// every developer's environment and most tests. The task is spawned only in
-/// the configured case, which is why the daemon's inventory carries it
-/// conditionally and `integration_serve.rs` says so.
-pub(crate) fn open_telemetry(
-    config: &BootConfig,
-    supervisor: &mut Supervisor,
-    sources: &GaugeSources,
-) -> Result<(), BootFailure> {
-    let Some(otlp) = config.otlp() else {
-        // The Zig daemon's own event name and reason field, kept: a dashboard
-        // or an alert matching on this line matches it from either binary.
-        tracing::info!(
-            reason = "no endpoint configured",
-            event = "startup_otel_disabled",
-            "telemetry is not exporting"
-        );
-        return Ok(());
-    };
-
-    let exports = crate::telemetry::install(otlp, sources)?;
-    if let Some(signals) = crate::logs::signals() {
-        let attached = signals.attach(&exports);
-        tracing::debug!(attached, event = "telemetry_layers_attached");
-    }
-    supervisor.spawn(crate::OTLP_EXPORT, move |token| async move {
-        token.cancelled().await;
-        // The last thing that happens to telemetry. Every signal the process
-        // still holds is delivered here, before the pools it described are
-        // dropped — which is the same ordering the analytics flush has, and
-        // for the same reason.
-        exports.flush();
-    });
-    Ok(())
 }

@@ -48,7 +48,7 @@ mod tests;
 /// Beyond this, the run is described as this long and the report is still
 /// recorded; the alternative, discarding it, loses the delivery entirely over
 /// one bad field.
-const MAX_RUN: Duration = Duration::from_hours(HOURS_IN_A_WEEK);
+pub const MAX_RUN: Duration = Duration::from_hours(HOURS_IN_A_WEEK);
 
 /// One week, in the unit the constructor takes.
 ///
