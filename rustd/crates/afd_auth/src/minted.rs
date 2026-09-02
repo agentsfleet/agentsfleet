@@ -114,3 +114,51 @@ impl Drop for Minted {
         bytes.zeroize();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use afd_crypto::entropy::Entropy;
+
+    use super::Minted;
+    use crate::credential::CredentialKind;
+
+    /// The debug rendering never carries the credential it wraps.
+    ///
+    /// This is the whole reason the impl is hand-written: a `#[derive(Debug)]`
+    /// on any struct that transitively holds a `Minted` is how a live
+    /// credential reaches a log line, and nothing downstream would notice —
+    /// the log is written, shipped and indexed exactly as it would be for a
+    /// redacted one.
+    ///
+    /// So the assertion is the negative: the exposed token must not appear,
+    /// and neither must a leading fragment of it, because a truncating
+    /// formatter would still hand an attacker the search space.
+    #[test]
+    fn the_debug_rendering_never_carries_the_token() -> Result<(), &'static str> {
+        for kind in [
+            CredentialKind::TenantApiKey,
+            CredentialKind::CliCredential,
+            CredentialKind::RunnerToken,
+        ] {
+            let minted = Minted::draw(kind, &Entropy::new())
+                .map_err(|_drained| "the host draws entropy for a credential")?;
+            let token = minted.expose().to_owned();
+            let rendered = format!("{minted:?}");
+
+            assert!(
+                !rendered.contains(&token),
+                "the whole token must not render"
+            );
+            assert!(
+                !rendered.contains(&token[..16]),
+                "nor a leading fragment of it — a truncated credential is still \
+                 a search space handed over"
+            );
+            assert!(
+                rendered.contains("redacted"),
+                "and the reader is told the value was withheld rather than absent"
+            );
+        }
+        Ok(())
+    }
+}
