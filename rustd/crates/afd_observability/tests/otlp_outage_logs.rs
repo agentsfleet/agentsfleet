@@ -37,12 +37,15 @@ struct DeadLogCollector {
 }
 
 impl LogExporter for DeadLogCollector {
-    async fn export(&self, _batch: LogBatch<'_>) -> OTelSdkResult {
+    // Not `async fn`: the body has no await point, and clippy's
+    // `unused_async_trait_impl` is right that a future which resolves
+    // immediately should say so. The same shape the metric fixture uses.
+    fn export(&self, _batch: LogBatch<'_>) -> impl Future<Output = OTelSdkResult> + Send {
         self.attempts.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(self.latency);
-        Err(OTelSdkError::InternalFailure(
+        std::future::ready(Err(OTelSdkError::InternalFailure(
             "the collector is not answering".to_owned(),
-        ))
+        )))
     }
 
     fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
@@ -57,8 +60,8 @@ impl LogExporter for DeadLogCollector {
 struct LiveLogCollector;
 
 impl LogExporter for LiveLogCollector {
-    async fn export(&self, _batch: LogBatch<'_>) -> OTelSdkResult {
-        Ok(())
+    fn export(&self, _batch: LogBatch<'_>) -> impl Future<Output = OTelSdkResult> + Send {
+        std::future::ready(Ok(()))
     }
 
     fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {

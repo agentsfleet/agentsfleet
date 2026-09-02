@@ -350,11 +350,18 @@ client awaited there would have no driver.
 
 - **Spans** ride the SDK's batch span processor inside `afd_observability`'s
   counting wrapper, whose number is spans the exporter failed to send.
-- **Log records** ride the batch log processor. `logs.rs` installs the stderr
-  subscriber in `main`, before any knob is read, with an empty reload slot;
-  boot fills the slot with two bridges, one for spans and one for events, over
-  the SAME emits stderr already writes. Stderr stays logfmt with the exporter
-  present, absent or failed.
+- **Log records** ride the batch log processor inside a counting wrapper of
+  their own, whose number is RECORDS the exporter failed to send. It is the
+  one wrapper that raises no warning: a warning about a failed log export
+  becomes a log record the subscriber hands to the batch processor, which
+  hands it back to the exporter that just failed, so a collector that stayed
+  down would drive a feedback loop. For this signal the count is the whole
+  report, and it reaches
+  `agentsfleet_otlp_entries_discarded_total{signal="logs"}` like the other
+  two. `logs.rs` installs the stderr subscriber in `main`, before any knob is
+  read, with an empty reload slot; boot fills the slot with two bridges, one
+  for spans and one for events, over the SAME emits stderr already writes.
+  Stderr stays logfmt with the exporter present, absent or failed.
 - **Metrics** ride TWO meter providers, because the SDK asks the exporter for
   its temporality and the census declares it per family. The cost families
   report windows (delta) and the runtime families report running totals
@@ -372,9 +379,16 @@ Nothing retries: OTLP carries no idempotency key, and a resent delta window
 counts twice. A collector that is down costs dropped batches and a climbing
 counter, never latency on a request. That is the property `export.rs` states
 and `an_unreachable_collector_costs_spans_and_not_requests` grades on a real
-socket. The supervised `otlp_export` task does no exporting. It waits for
-cancellation and force-flushes every provider before the pools they describe
-are dropped, the `analytics_flush` ordering for the same reason. The endpoint
+socket. The supervised `otlp_export` task does no exporting. It samples this
+process's resident set on the metric reader's own 5 s cadence and publishes it
+into the cell the gauge callback loads — a reading taken from `/proc` inside
+that callback would run under the SDK's pipeline lock, where a stalling
+syscall takes every family silent at once. On cancellation it force-flushes
+every provider before the pools they describe are dropped, the
+`analytics_flush` ordering for the same reason. The flush runs on the blocking
+pool, because `PeriodicReader::force_flush` parks the thread that calls it and
+has no timeout at all, and a task parked in a synchronous call has no await
+point for the supervisor's join deadline to cancel at. The endpoint
 is logged as its SOURCE, the knob's name, never its value, because the header
 beside it carries a credential.
 
