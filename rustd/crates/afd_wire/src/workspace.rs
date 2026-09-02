@@ -36,7 +36,8 @@ pub struct CreatedWorkspaceResponse<'a> {
     pub workspace_id: Cow<'a, str>,
     /// Its name — echoed when chosen, revealed when generated.
     pub name: Cow<'a, str>,
-    /// The correlation token, in the body as `lifecycle.zig` writes it.
+    // In the body as `lifecycle.zig` writes it.
+    /// The correlation token for this request, repeated in the body.
     pub request_id: Cow<'a, str>,
     /// The tenant it was created in — the daemon's resolution, never a claim.
     pub tenant_id: Cow<'a, str>,

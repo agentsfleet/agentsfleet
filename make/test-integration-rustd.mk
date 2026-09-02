@@ -143,7 +143,51 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # lane needs the live datastores, and the same provenance rule the 96 was set
 # under applies: the number is the user's reading, recorded rather than
 # re-derived.
+# Raised 97 -> 98 on Indy's call (2026-09-02), during M181_004. That raise did
+# NOT follow a measurement the way 96 -> 97 did: it was a target set ahead of
+# the code, so the ratchet led rather than trailed.
+#
+# Returned 98 -> 97 on Indy's call, later the same day, and the distinction
+# matters enough to write down. The rule this file states is that a floor never
+# drops below a number a run ACHIEVED, because that is how a regression gets
+# hidden. 98 was never achieved: the lane measured 97.0409% when the target was
+# set and 97.2041% after the tests written against it. So this is not a floor
+# retreating from its own history — it is an aspiration returning to the
+# measurement, which is where every other number in this list came from.
+#
+# What that costs is honest: the gap to 98 was 295 lines at the last reading,
+# and 97 does not close it. It concedes that reaching 98 is a milestone of its
+# own — 295 lines spread across 240 files, whose cheap seams are spent and
+# whose remainder is untaken-branch bodies and Err paths, one live-datastore
+# fixture apiece. The 100% contract in the header remains authoritative and
+# unchanged; this line is the ratchet, not the goal.
 RUSTD_COVERAGE_FLOOR ?= 97
+
+# Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
+#
+# `crates/*/src/test_util.rs` is fixture code compiled only under the
+# `test-util` feature -- `TestDatabase::shared` and the two like it. The lane
+# measures with `--all-features`, so it was being graded as production surface:
+# 143 lines, of which the suites happen to cover 127.
+#
+# That is the whole reason this is a MEASUREMENT fix and not a coverage win.
+# Removing those lines removes 127 covered ones with them, so the number moves
+# 97.1717% -> 97.2041% and the gap to the floor goes 308 lines -> 295. Nothing
+# here is a shortcut to 98; it is only the denominator no longer counting
+# fixtures as shipped code.
+#
+# Deleting the files instead was measured and rejected: 74 files and 117 call
+# sites reach them, including every suite that depends on the shared-database
+# contract this file's header describes.
+#
+# FILE granularity is all `--ignore-filename-regex` has, so this is exactly the
+# three whole-file modules. The `#[cfg(feature = "test-util")]` helpers that sit
+# INSIDE otherwise-production files -- afd_crypto's entropy seams, afd_db's
+# migration and pool helpers, and a dozen more -- are still counted, because a
+# filename filter cannot see a block. The exclusion is therefore partial by
+# construction, and that is recorded here rather than discovered later by
+# someone reconciling two numbers.
+RUSTD_COVERAGE_IGNORE ?= /src/test_util\.rs$$
 
 # The floor's verdict, carrying the number that decided it.
 #
@@ -177,6 +221,7 @@ mkdir -p "$(CURDIR)/.tmp"; \
 summary="$(CURDIR)/.tmp/rustd-coverage-summary.txt"; \
 lcov="$(CURDIR)/$(RUSTD_DIR)/lcov.info"; \
 cd "$(RUSTD_DIR)" && cargo llvm-cov report --workspace \
+  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' \
   --summary-only --fail-under-lines $(RUSTD_COVERAGE_FLOOR) > "$$summary" 2>&1; \
 verdict=$$?; \
 cat "$$summary"; \
@@ -232,6 +277,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
 	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-report -- --include-ignored)
 	@echo "→ [rustd] Rendering lcov.info from the run's profile..."; \
-	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace --lcov --output-path lcov.info \
+	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov.info \
 	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
 	@$(_rustd_coverage_verdict)

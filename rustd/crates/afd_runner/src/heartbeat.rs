@@ -21,6 +21,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_observability::producers;
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
 use sqlx::{Executor as _, PgConnection, Row as _};
 
@@ -108,6 +109,11 @@ impl Runners {
         // beat its reconciliation.
         let reported = persist_selftest(&mut connection, runner, beat.selftest.as_ref(), now).await;
         self.bump_liveness(&mut connection, runner, now).await;
+        // The gauge's only input. Liveness is a Postgres row a collection
+        // callback cannot read — it is a network round trip, and the SDK
+        // collects on a thread that must not make one — so the beat that
+        // writes the row publishes the same instant for the gauge to serve.
+        producers::fleet::runner::seen(runner.as_str(), now.as_millis());
 
         Ok(Beat {
             selftest_requested: row.selftest_requested && !reported,

@@ -49,11 +49,12 @@ pub const ARCHETYPE_OAUTH2: &str = "oauth2";
 /// The wire spelling of a connector whose flow is an App installation.
 pub const ARCHETYPE_APP_INSTALL: &str = "app_install";
 
-/// `GET …/connectors/{provider}` — one provider's connection.
+// Every other field of the stored handle is the broker's business, and none of
+// it belongs in a document a browser holds.
+/// One provider's connection, as a status read returns it.
 ///
-/// Carries no token and no expiry. A status read answers whether a person has
-/// connected and what it is called; every other field of the stored handle is
-/// the broker's business and none of it belongs in a document a browser holds.
+/// This response carries no access token and no expiry. It tells you whether
+/// someone connected this provider, and what the connection is called.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConnectionView<'a> {

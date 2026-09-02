@@ -50,10 +50,12 @@ pub struct ModelEntryRow<'a> {
     pub base_url: Option<&'a str>,
     /// Whether a key is stored under that name. Never the key.
     pub has_key: bool,
-    /// The context window the catalogue prices this model at.
+    // A blank cell, which is different from a zero window and must not render
+    // as one.
+    /// The context window this model is priced at, in tokens.
     ///
-    /// Absent when the catalogue carries no rate for the pair — a blank cell,
-    /// which is different from a zero window and must not render as one.
+    /// Absent when the catalogue carries no rate for this model. An absent
+    /// value does not mean zero.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_cap_tokens: Option<u32>,
     /// The input rate, in nanos per million tokens.
@@ -96,12 +98,11 @@ pub struct PlatformDefaultRow<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntriesResponse<'a> {
-    /// The rows, newest first.
-    ///
-    /// `models`, not `items`: renaming a shipped v1 field is what
-    /// `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and
-    /// `next_cursor` were ADDED beside it, so the page became navigable without
-    /// breaking a client.
+    // `models`, not `items`: renaming a shipped v1 field is what
+    // `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and
+    // `next_cursor` were ADDED beside it, so the page became navigable without
+    // breaking a client.
+    /// The registered models, newest first.
     pub models: Vec<ModelEntryRow<'a>>,
     /// Always null — see the module note.
     pub total: Option<u64>,
@@ -134,11 +135,13 @@ pub struct StoredModelEntry<'a> {
     pub created_at: i64,
 }
 
-/// `POST /v1/tenants/me/models` — register a model on a stored credential.
+// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+/// Registers a model against a stored credential.
 ///
-/// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
+/// agentsfleet ignores fields it does not know, instead of refusing the
+/// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateModelEntryRequest {

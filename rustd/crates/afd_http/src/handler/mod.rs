@@ -4,6 +4,8 @@ pub mod library_onboard;
 mod refusable;
 mod refusal;
 
+use afd_observability::metrics::label::library::ReadOutcome;
+use http::StatusCode;
 use std::borrow::Cow;
 
 use axum::response::{IntoResponse as _, Response};
@@ -139,4 +141,61 @@ pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
     afd_core::id::Uuid7::parse(raw)
         .map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
+}
+
+/// How a refused library read is classified for the outcome family.
+///
+/// Off the STATUS rather than the registry code, and the loss is named: two
+/// refusals that share a status are counted alike. That is the right trade for
+/// this family — the question it answers is "what is failing these reads", and
+/// the status is what separates a caller's mistake from a dependency's.
+///
+/// Anything unclassified lands on [`ReadOutcome::InternalError`], never on
+/// `Ok`: a path that ends in a status this map does not know is one to
+/// investigate, and calling it a success is how it would stay unnoticed.
+#[must_use]
+pub fn library_outcome(refusal: &Refusal) -> ReadOutcome {
+    match refusal.status() {
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => ReadOutcome::Invalid,
+        StatusCode::UNAUTHORIZED => ReadOutcome::Unauthorized,
+        StatusCode::FORBIDDEN => ReadOutcome::Forbidden,
+        StatusCode::NOT_FOUND => ReadOutcome::NotFound,
+        StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => ReadOutcome::Timeout,
+        StatusCode::BAD_GATEWAY | StatusCode::SERVICE_UNAVAILABLE => ReadOutcome::DependencyError,
+        _unclassified => ReadOutcome::InternalError,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ReadOutcome, library_outcome};
+    use crate::handler::refusal::Refusal;
+    use afd_core::error_code;
+
+    /// A status this map does not know is an internal error, never an `Ok`.
+    ///
+    /// The fallthrough is the arm that matters: the family exists to answer
+    /// "what is failing these reads", and a refusal counted as a SUCCESS is one
+    /// that never appears in that answer. So an unmapped status has to land on
+    /// something an operator investigates, and the mapped ones have to keep
+    /// their own classification rather than all falling here.
+    #[test]
+    fn an_unmapped_status_is_an_internal_error_rather_than_a_success() {
+        let internal = Refusal::coded(
+            error_code::INTERNAL_OPERATION_FAILED,
+            "the dependency did not answer",
+        );
+        assert_eq!(
+            library_outcome(&internal),
+            ReadOutcome::InternalError,
+            "a status outside the map is investigated, not counted as served"
+        );
+
+        let not_found = Refusal::coded(error_code::LIBRARY_INPUT_OUT_OF_BOUNDS, "out of bounds");
+        assert_ne!(
+            library_outcome(&not_found),
+            ReadOutcome::InternalError,
+            "a status the map DOES know keeps its own classification"
+        );
+    }
 }

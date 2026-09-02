@@ -35,6 +35,7 @@ pub mod serve;
 pub mod signal;
 pub mod supervisor;
 pub mod sweepers;
+pub mod telemetry;
 pub mod tty;
 
 pub use self::cli::{Cli, Command};

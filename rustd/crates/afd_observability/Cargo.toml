@@ -21,10 +21,11 @@ categories.workspace = true
 # never authored here: an outcome this crate spelled for itself would be a
 # second vocabulary the wire does not know about.
 afd_wire.workspace = true
-# The span pipeline. The SDK only — it re-exports the API types this crate
-# names, and `unused_crate_dependencies` caught the API crate riding along
-# unused. The OTLP transport is boot's, because an endpoint is configuration
-# and this crate has none.
+# The span pipeline. The SDK builds and exports; the API crate beside it is
+# what the delivery span is CONSTRUCTED through — a synthesized span sets its
+# own start and end, which is a `SpanBuilder` and not a scope, so this crate
+# names the API directly rather than reaching it through the SDK's re-exports.
+opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 # The OFFICIAL PostHog Rust client. `default-features = false` drops its error
 # tracking, which is `tracing`'s job here and would otherwise ship a second
@@ -49,9 +50,6 @@ csv.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-# The tracer API the suites emit spans through. A dev-dependency because the
-# library names only the SDK's own re-exports.
-opentelemetry.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]

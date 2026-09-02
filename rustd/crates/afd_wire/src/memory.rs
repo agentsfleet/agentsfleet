@@ -134,8 +134,10 @@ pub struct MemoriesResponse<'a> {
     /// The entries on this page, newest first.
     #[serde(borrow)]
     pub items: Vec<MemoryEntry<'a>>,
-    /// How many are on THIS page — not the fleet's whole count. The name is
-    /// the one that shipped, and `handler.zig` answers the page length too.
+    // The name is the one that shipped, and `handler.zig` answers the page
+    // length too.
+    /// How many memories this page carries. The count covers this page only,
+    /// not the whole Fleet.
     pub total: usize,
     /// Where the next page resumes, or `null` on the last one.
     #[serde(borrow)]

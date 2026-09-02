@@ -61,3 +61,73 @@ pub trait Histogram: Metric {}
 ///
 /// [`Observed`]: crate::metrics::observed::Observed
 pub trait Gauge: Metric {}
+
+/// One declared family, with its kind carried in the type.
+///
+/// # Why a parameterised newtype rather than habitat's enum per domain
+///
+/// The principle is habitat's and is unchanged: kind is carried by WHICH TRAIT
+/// a type implements, never by a field somebody sets. What differs is the
+/// shape, and the reason is arithmetic. habitat declares a handful of metrics,
+/// so an enum variant plus a `name()` match arm per family costs nothing. This
+/// contract declares seventy-one, and the match arm would be a second
+/// transcription of a name the census already holds — seventy-one chances for
+/// a typo that compiles, in a file whose only job is to spell names correctly.
+///
+/// This carries the name once, in the declaration, and the kind stays in the
+/// type: [`crate::metrics::registry::Registry::counter`] will not accept a
+/// `Declared<GaugeKind>` and there is no `kind` field to set wrongly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Declared<K> {
+    name: &'static str,
+    kind: core::marker::PhantomData<K>,
+}
+
+impl<K> Declared<K> {
+    /// The family the census declares under `name`.
+    ///
+    /// `const` so a family is a compile-time value: an assembled name is the
+    /// beginning of an unbounded family set, and this makes that unwritable.
+    #[must_use]
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            kind: core::marker::PhantomData,
+        }
+    }
+
+    /// The wire name, in a constant context.
+    ///
+    /// [`Metric::name`] answers the same string and cannot be called from one:
+    /// a trait method is not `const`. This exists so a table pairing families
+    /// with the label sets they carry can itself be a `const`, which is what
+    /// keeps that table from being a runtime list somebody forgets to extend.
+    #[must_use]
+    pub const fn wire_name(&self) -> &'static str {
+        self.name
+    }
+}
+
+impl<K> Metric for Declared<K> {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+/// The kind marker for a family that only goes up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterKind;
+
+/// The kind marker for a family read at collection time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GaugeKind;
+
+/// The kind marker for a family distributed over declared buckets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistogramKind;
+
+impl Counter for Declared<CounterKind> {}
+
+impl Gauge for Declared<GaugeKind> {}
+
+impl Histogram for Declared<HistogramKind> {}

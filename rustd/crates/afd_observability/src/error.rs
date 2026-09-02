@@ -93,6 +93,24 @@ pub enum Error {
         claimed: &'static str,
     },
 
+    /// A family's Rust type and the census disagree about what it counts IN.
+    ///
+    /// A different edit from [`Error::KindMismatch`], which is why it is a
+    /// different variant: there the trait and the contract disagree about what
+    /// the family IS, and here they agree about that and disagree about the
+    /// number. Left unreported it exports whole counts as a floating-point
+    /// series, or truncates a fractional one to nothing — both of which draw a
+    /// plausible graph.
+    #[error("the census declares `{family}` counts in {declared}, but its caller claims {claimed}")]
+    NumberMismatch {
+        /// The family the two disagree about.
+        family: Box<str>,
+        /// What the census says, in its own spelling.
+        declared: &'static str,
+        /// What the caller asked for.
+        claimed: &'static str,
+    },
+
     /// The SDK refused the stream a declared family describes.
     ///
     /// Raised eagerly at registry construction rather than inside a View

@@ -87,6 +87,7 @@ impl Gates {
 
         // Only after the pause committed. See the module note.
         if let Err(fault) = self.ready().force_clear(fleet).await {
+            afd_observability::producers::fleet::ready_write_failed();
             let reason = fault.to_string();
             tracing::warn!(
                 event = EVENT_READY_STALE,

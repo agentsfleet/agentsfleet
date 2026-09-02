@@ -60,6 +60,8 @@ mod integration_runner_e2e;
 mod integration_runner_shapes;
 #[path = "integration_serve.rs"]
 mod integration_serve;
+#[path = "integration_telemetry.rs"]
+mod integration_telemetry;
 #[path = "integration_tenant_registry.rs"]
 mod integration_tenant_registry;
 #[path = "migrate.rs"]

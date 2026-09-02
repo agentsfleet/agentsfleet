@@ -112,6 +112,7 @@ impl Fleets {
     /// left squatting there by a transport failure on the `DEL` that follows.
     async fn forget_state(&self, fleet: &str) {
         if let Err(failure) = self.ready.force_clear(fleet).await {
+            afd_observability::producers::fleet::ready_write_failed();
             report(fleet, &failure, "purge_readiness_clear_failed");
         }
         if let Err(failure) = self.streams.forget(fleet).await {
@@ -134,4 +135,27 @@ fn report(fleet: &str, failure: &afd_redis::Error, event: &'static str) {
         hint = HINT_STREAM_ORPHANED,
         event,
     );
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    /// The orphan report renders every Redis failure kind.
+    ///
+    /// The purge already COMMITTED when this runs — Postgres is done and what
+    /// is left behind is an unreachable stream that ages out on its own. So the
+    /// report is the only observable thing left on this path, and a panic in it
+    /// would turn a successful purge into a failed one.
+    ///
+    /// `failure.to_string()` is the field that runs arbitrary per-kind `Display`
+    /// code, which is why every kind is walked rather than one representative.
+    #[test]
+    fn the_orphan_report_renders_every_redis_failure() {
+        for (label, failure) in afd_redis::error::one_of_each_kind() {
+            assert!(
+                !failure.to_string().is_empty(),
+                "{label} renders to something an operator can act on"
+            );
+            super::report("fleet-fixture", &failure, "fleet_purge_stream_orphaned");
+        }
+    }
 }

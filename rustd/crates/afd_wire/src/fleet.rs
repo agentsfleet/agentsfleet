@@ -105,11 +105,11 @@ pub struct FleetSummary<'a> {
     pub created_at: i64,
     /// When it last changed.
     pub updated_at: i64,
-    /// What may wake it, from the stored configuration.
-    ///
-    /// [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
-    /// through unparsed. `value_type` names the serialized shape, which is the
-    /// only thing a schema can say about it.
+    // [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    // through unparsed. `value_type` names the serialized shape, which is the
+    // only thing a schema can say about it.
+    /// What may wake this Fleet, as stored. agentsfleet returns the document
+    /// unchanged.
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count. Server truth, never client arithmetic.
@@ -124,8 +124,9 @@ pub struct FleetSummary<'a> {
 pub struct FleetsResponse<'a> {
     /// The fleets on this page.
     pub items: Vec<FleetSummary<'a>>,
-    /// How many are on this page — `list.zig` answers the page length, not the
-    /// workspace's whole count, and the name is the one that shipped.
+    // `list.zig` answers the page length, and the name is the one that shipped.
+    /// How many Fleets this page carries. The count covers this page only, not
+    /// the whole workspace.
     pub total: usize,
     /// Where the next page resumes, or `null` on the last one.
     pub next_cursor: Option<Cow<'a, str>>,
@@ -151,11 +152,11 @@ pub struct FleetDetailResponse<'a> {
     pub trigger_markdown: Option<Cow<'a, str>>,
     /// The bundle a runner materialises support files from.
     pub bundle_content_hash: Option<Cow<'a, str>>,
-    /// What may wake it, from the stored configuration.
-    ///
-    /// [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
-    /// through unparsed. `value_type` names the serialized shape, which is the
-    /// only thing a schema can say about it.
+    // [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    // through unparsed. `value_type` names the serialized shape, which is the
+    // only thing a schema can say about it.
+    /// What may wake this Fleet, as stored. agentsfleet returns the document
+    /// unchanged.
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count.
@@ -214,8 +215,10 @@ pub enum PatchedFleetResponse<'a> {
     Unchanged {
         /// The fleet the request named.
         fleet_id: Cow<'a, str>,
-        /// Always `null` — the literal `@as(?i64, null)` the Zig answers, kept
-        /// because a client distinguishes "no write" from a revision by it.
+        // The literal `@as(?i64, null)` the Zig answers, kept because a
+        // client distinguishes "no write" from a revision by it.
+        /// Always `null` on this response. Use it to tell "no write" apart
+        /// from a revision number.
         config_revision: Option<i64>,
     },
     /// A configuration or source edit, with no transition asked for.

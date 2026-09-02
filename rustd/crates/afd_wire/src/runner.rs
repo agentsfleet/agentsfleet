@@ -140,12 +140,14 @@ pub struct SelftestCheck<'a> {
     pub detail: Cow<'a, str>,
 }
 
-/// One probe run as it crosses the wire.
+// The tier and policy travel WITH the verdict rather than being read from the
+// runner row at render time: a result outlives the assignment that produced
+// it, so a reader labels a mismatch stale instead of presenting a verdict on a
+// policy nothing tested.
+/// One probe run and the verdict it reached.
 ///
-/// The tier and policy travel WITH the verdict rather than being read from the
-/// runner row at render time: a result outlives the assignment that produced it,
-/// so a reader compares these against the row's live values and labels a
-/// mismatch stale instead of presenting a verdict on a policy nothing tested.
+/// The tier and policy travel with the verdict. Compare them against the
+/// runner's current values to tell a stale result from a live one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelftestReport<'a> {

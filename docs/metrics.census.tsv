@@ -15,6 +15,12 @@
 #   number       u64 | f64
 #   unit         UCUM unit string, byte-exact
 #   temporality  delta | cumulative | -   (gauges carry no temporality)
+#   policy       fixed:<n> | runner:<n> | shared:cost. A `fixed` ceiling is
+#                the PRODUCT of the family's closed label sets and must be at
+#                least that: `every_declared_ceiling_admits_its_label_product`
+#                (afd_observability) fails on a row that understates, because a
+#                ceiling below the real count makes the SDK fold live series
+#                into `otel.metric.overflow` — the backstop that must never fire.
 #   labels       comma-joined label keys, or -   (cost families additionally
 #                carry the evented attribute keys listed in the trailing
 #                # evented-attrs comment; runner families carry runner_id)
@@ -41,13 +47,13 @@ agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	err
 agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	pub/sub redials; spikes mean Redis instability
 agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
 agentsfleet_fleet_triggered_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	trigger volume
-agentsfleet_http_trace_suppressed_total	counter	u64	1	cumulative	reason	-	fixed:4	no	health	span budget shedding; storms stay visible
+agentsfleet_http_trace_suppressed_total	counter	u64	1	cumulative	reason	-	fixed:5	no	health	span budget shedding; storms stay visible
 agentsfleet_otlp_queue_depth	gauge	u64	{entry}	-	signal	-	fixed:3	no	saturation	exporter ring fill per signal
-agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:9	no	errors	telemetry loss counted at the source
+agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry loss counted at the source
 agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)
 agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
 agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
-agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:4	no	errors	rejected signups per cause
+agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
 agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
@@ -64,21 +70,13 @@ agentsfleet_repair_synthetic_events_total	counter	u64	1	cumulative	outcome	-	fix
 agentsfleet_repair_verifier_runs_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	queued and completed verifier Fleet runs
 agentsfleet_repair_dispatch_due_batch	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	due verifier sample capped at the dispatcher batch limit
 agentsfleet_repair_dispatch_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest due verifier intent
-agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:24	no	latency	÷ observations = mean stage cost
-agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:24	no	latency	the denominator above
-agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:30	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:30	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:27	no	errors	non-`ok` outcomes per surface
 agentsfleet_library_pool_result_total	counter	u64	1	cumulative	pool_result	-	fixed:4	no	saturation	`timeout` = pool starved; `error` = datastore down
 agentsfleet_library_cache_outcome_total	counter	u64	1	cumulative	cache	-	fixed:4	no	latency	hit ratio of the global catalogue cache
 agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
 agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface
-agentsfleet_redis_pool_active	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (leased)
-agentsfleet_redis_pool_idle	gauge	u64	{connection}	-	-	-	fixed:1	yes	saturation	pool utilisation (ready)
-agentsfleet_redis_pool_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	dial volume
-agentsfleet_redis_pool_overflow_dials_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	burst dialing past `max_idle`
-agentsfleet_redis_pool_poisoned_connections_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: in-flight transport errors
-agentsfleet_redis_pool_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: retry-layer redials
-agentsfleet_redis_pool_forced_closes_total	counter	u64	1	cumulative	-	-	fixed:1	yes	health	transport churn: over-cap releases
-agentsfleet_redis_pool_acquire_timeouts_total	counter	u64	1	cumulative	-	-	fixed:1	yes	errors	currently always 0; acquires never block
 agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
 agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
 agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill
@@ -89,9 +87,6 @@ agentsfleet_memory_capture_truncated_total	counter	u64	1	cumulative	-	-	fixed:1	
 agentsfleet_memory_capture_skipped_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures lost to validation
 agentsfleet_memory_search_zero_hits_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	searches finding nothing
 agentsfleet_process_resident_memory_bytes	gauge	u64	By	-	-	-	fixed:1	yes	saturation	process RSS
-agentsfleet_sensitive_request_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
-agentsfleet_sensitive_response_erased_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	plaintext-erasure proof; no labels by design
-agentsfleet_sensitive_response_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	sensitive writes failing
 agentsfleet_runner_failures_total	counter	u64	1	cumulative	runner_id,reason	-	runner:4096	no	errors	failure rate per reason
 agentsfleet_runner_failures_overflow_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	increments only past 4096 runner slots
 agentsfleet_runner_executions_total	counter	u64	1	cumulative	runner_id,outcome	-	runner:4096	no	traffic	run volume per runner

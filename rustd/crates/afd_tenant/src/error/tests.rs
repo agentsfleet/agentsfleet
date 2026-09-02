@@ -123,3 +123,31 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
         afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
 }
+
+/// A mint failure and a drawn-entropy failure lift through `From`.
+///
+/// Both exist so `?` can carry a foreign error across this crate's boundary
+/// without a `map_err` at every call site — which is the shape
+/// `docs/RUST_ERROR_STANDARD.md` requires, and the shape that keeps the
+/// `source()` chain intact. What the test holds is exactly that: the lift
+/// happens AND the cause survives it.
+#[test]
+fn foreign_failures_lift_through_from_and_keep_their_cause() -> Result<(), &'static str> {
+    use std::error::Error as _;
+
+    let minted: super::Error = afd_core::id::Uuid7::parse("not-an-id")
+        .err()
+        .ok_or("a malformed identifier unexpectedly parsed")?
+        .into();
+    let drawn: super::Error = afd_crypto::secret::Kek::from_hex("zz")
+        .err()
+        .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")?
+        .into();
+
+    for (label, failure) in [("mint", &minted), ("entropy", &drawn)] {
+        assert!(failure.source().is_some(), "{label} keeps its cause");
+        assert!(!failure.to_string().is_empty(), "{label}");
+        assert!(!failure.code().as_str().is_empty(), "{label}");
+    }
+    Ok(())
+}
