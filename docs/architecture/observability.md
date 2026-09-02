@@ -155,9 +155,9 @@ and retry limits plus the allowlist proof.
 |---|---|---|
 | structured stderr | installed, called | `rustd/crates/agentsfleetd/src/logs.rs` installs the subscriber on stderr at boot; `AGENTSFLEET_LOG_LEVEL` sets the level |
 | server spans | emitted | `rustd/crates/afd_api/src/router/trace.rs` opens one span per matched request, carrying the route template, the method and the status — never the raw path |
-| OTLP logs | absent | no transport: `rustd/crates/afd_observability/src/lib.rs` states the OTLP transport is not in the crate |
-| OTLP traces | absent | no transport: `otlp_export` is a reserved name in `rustd/crates/agentsfleetd/src/inventory.rs` with no spawn site |
-| OTLP run metrics | absent | no transport, and no exported metric family is declared under `rustd/crates/` |
+| OTLP logs | installed, called when configured | `rustd/crates/agentsfleetd/src/telemetry.rs` builds the log exporter; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
+| OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve.rs` spawns `otlp_export`, whose only job is the shutdown flush |
+| OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); families this build cannot feed are named in `metrics/produced.rs` and logged once at boot |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner exporter | absent | one local stderr sink, nothing else |
 
@@ -324,7 +324,63 @@ The vendor-named knobs are accepted as ALIASES through cutover so a rollback to
 the Zig binary keeps exporting, and they retire with that daemon. Where both a
 standard name and a vendor alias are set, the standard name wins.
 
+### The Rust daemon's export path, as built
+
+`agentsfleetd` reads four knobs in preflight and nowhere else, spelled as the
+OpenTelemetry specification spells them: `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_HEADERS` (comma-joined `key=value` pairs),
+`OTEL_EXPORTER_OTLP_PROTOCOL` (`http/protobuf` by default, `http/json`
+accepted) and `OTEL_EXPORTER_OTLP_TIMEOUT` (whole milliseconds, 10 000 by
+default). The vendor triple resolves as aliases. `GRAFANA_OTLP_ENDPOINT` is
+read only when the standard endpoint is unset, and the instance-id and key
+pair becomes one basic `Authorization` header that a standard header of the
+same name replaces. A protocol this build does not carry (`grpc` included), a
+zero or unreadable timeout, or a header pair with no `=` refuses boot at
+preflight, before anything opens: a daemon that silently exported nothing
+would present as a collector fault for as long as nobody checked.
+
+No endpoint is the ordinary case and not a fault. The daemon boots, serves,
+logs `startup_otel_disabled`, and supervises no export task. With one, boot
+(`rustd/crates/agentsfleetd/src/telemetry.rs`) builds four pipelines on the
+published `opentelemetry-otlp` exporter over HTTP, each posting under its
+signal path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one
+endpoint, on the SDK's own batch threads with a blocking client. The periodic
+metric reader collects on a plain thread with no async reactor, so an async
+client awaited there would have no driver.
+
+- **Spans** ride the SDK's batch span processor inside `afd_observability`'s
+  counting wrapper, whose number is spans the exporter failed to send.
+- **Log records** ride the batch log processor. `logs.rs` installs the stderr
+  subscriber in `main`, before any knob is read, with an empty reload slot;
+  boot fills the slot with two bridges, one for spans and one for events, over
+  the SAME emits stderr already writes. Stderr stays logfmt with the exporter
+  present, absent or failed.
+- **Metrics** ride TWO meter providers, because the SDK asks the exporter for
+  its temporality and the census declares it per family. The cost families
+  report windows (delta) and the runtime families report running totals
+  (cumulative); one provider would silently rewrite half of them. Each
+  provider's periodic reader collects every 5 s, the Zig exporter's own
+  maximum flush interval, kept so no series changes rate at the swap. The
+  reader posts through a counting wrapper whose number is collection CYCLES
+  the exporter failed to send. Every census family is claimed from the
+  registry at boot under its declared kind and series ceiling. Families whose
+  mechanism this daemon does not run are named, with a reason each, in
+  `metrics/produced.rs` and logged once at boot rather than fed zeros; a
+  family in neither set fails the census test.
+
+Nothing retries: OTLP carries no idempotency key, and a resent delta window
+counts twice. A collector that is down costs dropped batches and a climbing
+counter, never latency on a request. That is the property `export.rs` states
+and `an_unreachable_collector_costs_spans_and_not_requests` grades on a real
+socket. The supervised `otlp_export` task does no exporting. It waits for
+cancellation and force-flushes every provider before the pools they describe
+are dropped, the `analytics_flush` ordering for the same reason. The endpoint
+is logged as its SOURCE, the knob's name, never its value, because the header
+beside it carries a credential.
+
 ## The OTLP exporter substrate
+
+The Zig daemon's substrate; the Rust daemon's is the SDK pipeline above.
 
 One pipeline serves traces (`/v1/traces`), logs (`/v1/logs`), and metrics
 (`/v1/metrics`): a lock-free MPSC ring, one shared endpoint configuration, a
