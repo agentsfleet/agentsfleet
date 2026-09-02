@@ -12,7 +12,6 @@
 
 use std::sync::Arc;
 
-use afd_wire::report::FailureClass;
 
 use super::{MAX_SERIES, OVERFLOW_RUNNER, RunnerMetrics, SDK_OVERFLOW_MARKER};
 
@@ -25,7 +24,7 @@ fn runner(index: usize) -> String {
 fn a_runner_gets_its_own_series_until_the_table_is_full() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        metrics.processed(&runner(index));
+        let _admitted = metrics.admit(&runner(index));
     }
     assert_eq!(metrics.series_count(), MAX_SERIES);
     assert_eq!(metrics.overflowed(), 0, "the table was not yet full");
@@ -39,12 +38,12 @@ fn past_the_capacity_everything_lands_in_one_series() {
     // explain why.
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        metrics.processed(&runner(index));
+        let _admitted = metrics.admit(&runner(index));
     }
 
     let beyond = 10_000;
     for index in MAX_SERIES..MAX_SERIES + beyond {
-        metrics.processed(&runner(index));
+        let _admitted = metrics.admit(&runner(index));
     }
 
     assert_eq!(
@@ -66,14 +65,14 @@ fn an_overflowed_runner_is_still_counted_and_still_carries_its_reason() {
     // has a problem that per-runner attribution would not help with.
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        metrics.processed(&runner(index));
+        let _admitted = metrics.admit(&runner(index));
     }
 
-    metrics.failed(&runner(MAX_SERIES + 1), Some(FailureClass::OomKill));
-    metrics.failed(&runner(MAX_SERIES + 2), None);
+    let _admitted = metrics.admit(&runner(MAX_SERIES + 1));
+    let _label = metrics.admit(&runner(MAX_SERIES + 2));
 
-    // Two failures and two executions, from two different overflowed runners.
-    assert_eq!(metrics.overflowed(), 4);
+    // Two records, from two different overflowed runners, each admitted once.
+    assert_eq!(metrics.overflowed(), 2);
     assert_eq!(metrics.series_count(), MAX_SERIES);
 }
 
@@ -83,7 +82,7 @@ fn a_repeated_runner_reuses_its_series() {
     // healthy deployment: a host recording ten thousand runs holds one series.
     let metrics = RunnerMetrics::new();
     for _run in 0..10_000 {
-        metrics.processed(&runner(1));
+        let _admitted = metrics.admit(&runner(1));
     }
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);
@@ -101,7 +100,7 @@ fn concurrent_first_records_of_one_runner_produce_one_series() {
             let metrics = Arc::clone(&metrics);
             std::thread::spawn(move || {
                 for _record in 0..64 {
-                    metrics.processed(&runner(7));
+                    let _admitted = metrics.admit(&runner(7));
                 }
             })
         })
@@ -119,10 +118,10 @@ fn admission_recheck_returns_the_series_that_won_the_race() {
     let metrics = RunnerMetrics::new();
     let runner_id = runner(7);
     let first = metrics
-        .admit(&runner_id)
+        .admit_new(&runner_id)
         .expect("the empty table admits the runner");
     let rechecked = metrics
-        .admit(&runner_id)
+        .admit_new(&runner_id)
         .expect("an already-admitted runner reuses its series");
 
     assert!(Arc::ptr_eq(&first, &rechecked));
@@ -130,33 +129,51 @@ fn admission_recheck_returns_the_series_that_won_the_race() {
 }
 
 #[test]
-fn every_failure_class_and_runner_gauge_uses_the_admitted_series() {
+fn a_runner_gauge_reads_only_the_admitted_series() {
     let metrics = RunnerMetrics::default();
     let runner_id = runner(1);
-    metrics.processed(&runner_id);
+    let label = metrics.admit(&runner_id);
+    assert_eq!(label, runner_id, "a table with room admits the runner itself");
+
     metrics.seen(&runner_id, 1_760_000_000_000);
+    metrics.leased(&runner_id);
     metrics.leased(&runner_id);
     metrics.released(&runner_id);
 
-    for reason in [
-        FailureClass::StartupPosture,
-        FailureClass::PolicyDeny,
-        FailureClass::TimeoutKill,
-        FailureClass::OomKill,
-        FailureClass::ResourceKill,
-        FailureClass::RunnerCrash,
-        FailureClass::TransportLoss,
-        FailureClass::LandlockDeny,
-        FailureClass::LeaseExpired,
-        FailureClass::RenewalTerminate,
-        FailureClass::BudgetBreach,
-    ] {
-        metrics.failed(&runner_id, Some(reason));
-    }
-    metrics.failed(&runner_id, None);
+    let seen = metrics.last_seen_readings();
+    assert_eq!(seen.len(), 1, "one admitted runner is one reading");
+    assert_eq!(
+        seen[0].value, 1_760_000_000,
+        "the stamp is published in the seconds the census declares, not the \
+         milliseconds it is stored in"
+    );
+
+    let leases = metrics.active_lease_readings();
+    assert_eq!(leases.len(), 1);
+    assert_eq!(leases[0].value, 1, "two taken and one given back is one held");
 
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);
+}
+
+/// A runner that never reported publishes no reading at all.
+///
+/// A zero would be published as `1970` by the last-seen gauge, which every
+/// dashboard draws as the oldest host in the fleet — a gap is the truth.
+#[test]
+fn a_runner_never_heard_from_publishes_no_last_seen_reading() {
+    let metrics = RunnerMetrics::new();
+    let _label = metrics.admit(&runner(1));
+
+    assert!(
+        metrics.last_seen_readings().is_empty(),
+        "an unpublished stamp must leave a gap, not report the epoch"
+    );
+    assert_eq!(
+        metrics.active_lease_readings().len(),
+        1,
+        "a lease count of zero IS a measurement — the runner holds nothing"
+    );
 }
 
 #[test]
@@ -176,7 +193,7 @@ fn gauges_ignore_a_runner_that_has_not_acquired_a_series() {
 #[test]
 fn test_an_admitted_runner_is_labelled_with_its_own_id() {
     let metrics = RunnerMetrics::new();
-    metrics.processed("runner-1");
+    let _label = metrics.admit("runner-1");
     assert_eq!(metrics.label_for("runner-1"), "runner-1");
 }
 
@@ -198,7 +215,7 @@ fn test_a_runner_with_room_is_labelled_with_its_own_id() {
 fn test_runner_admission_other_spelling() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        metrics.processed(&format!("runner-{index}"));
+        let _admitted = metrics.admit(&format!("runner-{index}"));
     }
     assert_eq!(metrics.series_count(), MAX_SERIES);
 
@@ -219,7 +236,7 @@ fn test_runner_admission_other_spelling() {
 fn test_a_full_table_does_not_relabel_its_existing_runners() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        metrics.processed(&format!("runner-{index}"));
+        let _admitted = metrics.admit(&format!("runner-{index}"));
     }
     assert_eq!(metrics.label_for("runner-0"), "runner-0");
 }

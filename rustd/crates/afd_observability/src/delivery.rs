@@ -33,6 +33,7 @@ use std::time::{Duration, SystemTime};
 use opentelemetry::trace::{Span as _, SpanBuilder, SpanKind, Tracer};
 use opentelemetry::{Context, KeyValue};
 
+use crate::metrics::label::http::{OmissionReason, OmittedAttribute};
 use crate::semconv;
 
 #[cfg(test)]
@@ -164,8 +165,14 @@ impl Delivery<'_> {
             semconv::ATTR_AGENT_ID,
             self.fleet_id.to_owned(),
         ));
-        if let Some(known) = semconv::provider::normalize(self.provider) {
-            attributes.push(KeyValue::new(semconv::ATTR_PROVIDER_NAME, known));
+        match semconv::provider::normalize(self.provider) {
+            Some(known) => attributes.push(KeyValue::new(semconv::ATTR_PROVIDER_NAME, known)),
+            // Counted, not silent. A provider that stops being attributed
+            // looks on a dashboard exactly like one nobody used.
+            None => crate::producers::http::attribute_omitted(
+                OmittedAttribute::ProviderName,
+                OmissionReason::UnmappedProvider,
+            ),
         }
         attributes.push(KeyValue::new(
             semconv::ATTR_REQUEST_MODEL,

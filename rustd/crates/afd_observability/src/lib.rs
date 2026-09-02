@@ -30,6 +30,7 @@ pub mod delivery;
 pub mod error;
 pub mod export;
 pub mod metrics;
+pub mod producers;
 pub mod product;
 pub mod runner;
 pub mod semconv;

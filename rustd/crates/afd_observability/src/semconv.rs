@@ -95,6 +95,19 @@ pub const ATTR_TENANT_ID: &str = "agentsfleet.tenant.id";
 /// The event a run executed.
 pub const ATTR_EVENT_ID: &str = "agentsfleet.event.id";
 
+/// Which direction a token count is: prompt, or completion.
+pub const ATTR_TOKEN_TYPE: &str = "gen_ai.token.type";
+
+/// Which class of debit a charge was.
+pub const ATTR_CHARGE_TYPE: &str = "agentsfleet.billing.charge.type";
+
+/// The coarse verdict on a run that did not finish cleanly.
+///
+/// Absent on success. The granular failure class stays off this key on
+/// purpose: it multiplies the per-model series budget, and the durable event
+/// row already carries it exactly.
+pub const ATTR_ERROR_TYPE: &str = "error.type";
+
 /// Every key the fleet-delivery span carries, in the order it writes them.
 ///
 /// Declared rather than derived so the span's shape is a value a test can hold

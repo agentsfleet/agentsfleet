@@ -52,6 +52,16 @@ pub enum Number {
     F64,
 }
 
+impl Number {
+    /// The census spelling, so a failure reports the contract's own word.
+    pub(crate) const fn spelling(self) -> &'static str {
+        match self {
+            Self::U64 => "u64",
+            Self::F64 => "f64",
+        }
+    }
+}
+
 /// Whether a reported number is the running total or the window's increment.
 ///
 /// The SDK selects this at the EXPORTER, never per family — which is the whole

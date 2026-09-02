@@ -29,8 +29,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::trace::{SpanData, SpanExporter};
+
+use crate::metrics::label::http::{DiscardReason, Signal};
 
 /// How many spans this process has failed to export.
 ///
@@ -103,6 +105,11 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
 
         if let Err(ref failure) = outcome {
             self.drops.add(spans);
+            crate::producers::http::export_discarded(
+                Signal::Traces,
+                discard_reason(failure),
+                spans as u64,
+            );
             // Hoisted: the `log` bridge compiles a second copy of every field
             // expression, and llvm-cov scores the copy that never runs.
             let reason = failure.to_string();
@@ -129,5 +136,20 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
 
     fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
         self.inner.set_resource(resource);
+    }
+}
+
+/// What a failed export tells an operator about the collector.
+///
+/// A timeout is UNCERTAIN and everything else is a refusal, and the
+/// distinction is the one an operator acts on: a refused batch is definitely
+/// gone, and an uncertain one may have arrived and been counted twice
+/// downstream. Collapsing them would make both unactionable.
+pub(crate) fn discard_reason(failure: &OTelSdkError) -> DiscardReason {
+    // Matched by reference: the error owns a string, so binding it by value in
+    // a `const fn` would need a destructor the compiler will not run there.
+    match failure {
+        OTelSdkError::Timeout(_elapsed) => DiscardReason::ExportUncertain,
+        _refused => DiscardReason::ExportRejected,
     }
 }
