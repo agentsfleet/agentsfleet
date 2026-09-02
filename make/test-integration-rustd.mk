@@ -143,7 +143,13 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # lane needs the live datastores, and the same provenance rule the 96 was set
 # under applies: the number is the user's reading, recorded rather than
 # re-derived.
-RUSTD_COVERAGE_FLOOR ?= 97
+# Raised 97 -> 98 on Indy's call (2026-09-02), during M181_004. This one does
+# NOT follow a measurement the way 96 -> 97 did: the branch that raised it
+# measured 96.7445%, below the floor it was already under. The number is a
+# target Indy set, so the ratchet leads the code here instead of trailing it,
+# and the tests that reach it are the work — not a later adjustment of this
+# line. Lowering it back is the thing the verdict below refuses.
+RUSTD_COVERAGE_FLOOR ?= 98
 
 # The floor's verdict, carrying the number that decided it.
 #
