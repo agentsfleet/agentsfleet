@@ -1,0 +1,28 @@
+app = "otelcol-prod"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# No public Fly service. agentsfleetd-prod reaches otelcol-prod.internal:4318
+# over Fly's private IPv6 network (6PN), the same way cloudflared-prod reaches
+# the daemon. The collector's only outbound path is to Grafana Cloud.
+#
+# memory_limiter in config.yml is set against this 512mb: a collector that
+# OOMs is a collector that drops the window it was buffering, and the drop
+# would read on a dashboard as a daemon that stopped exporting.
+[[restart]]
+  policy = "always"
+
+[checks.health]
+  type = "http"
+  port = 13133
+  method = "get"
+  path = "/"
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "20s"
