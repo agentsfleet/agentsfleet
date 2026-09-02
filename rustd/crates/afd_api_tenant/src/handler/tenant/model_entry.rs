@@ -43,36 +43,26 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
 use afd_core::paging::struct_cursor::StructCursor;
-use afd_credential::provider::{Added, Removed, Retargeted};
-use afd_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
-use afd_wire::tenant_model_entry::{ModelEntriesResponse, StoredModelEntry};
+use afd_wire::tenant_model_entry::ModelEntriesResponse;
 use axum::Json;
-use axum::body::Bytes;
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
-use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantModelEntries as _};
 
-// Three sentences the catalogue page already owns, imported rather than
-// respelled (RULE UFS). The fourth — a query string this daemon cannot decode —
-// has no path here: `RawQuery` hands over the raw text and `parameter` cannot
-// fail, where the Zig's `req.query()` can. One fewer refusal, and the
+// A query string this daemon cannot decode has no refusal on this surface:
+// `RawQuery` hands over the raw text and `parameter` cannot fail, where the
+// Zig's `req.query()` can. One fewer refusal than the catalogue page, and the
 // divergence is that a token with a stray `%` is simply not a cursor this
 // endpoint issued.
-// Two sentences the provider surface already owns, byte-identical here because
-// the fact is the same one: a body this daemon cannot read, and a tenant whose
-// bootstrap never produced a workspace (RULE UFS).
-use super::provider::{DETAIL_MALFORMED_BODY, DETAIL_NO_PRIMARY_WORKSPACE};
 use super::tenant_of;
 
 /// The scoped events each verb's failures are logged under.
@@ -208,190 +198,10 @@ pub(crate) async fn list<D: Services>(
     Ok(Json(rendered(&page, &tenant, limit)).into_response())
 }
 
-/// `POST /v1/tenants/me/models` — register a model on a stored credential.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post,
-    path = "/v1/tenants/me/models",
-    tag = afd_http::openapi::tag::TENANT,
-    operation_id = "create_tenant_model_entry",
-    summary = "Register a model entry",
-    description = concat!(
-        "Creates one `(model_id, secret_ref)` row. `secret_ref` must already ",
-        "name a vault secret in the tenant's primary workspace — store or ",
-        "reuse one via `/v1/workspaces/{workspace_id}/secrets` first. Does ",
-        "not activate the entry; activate via `PUT /v1/tenants/me/provider`. ",
-    ),
-    request_body = CreateModelEntryRequest,
-    responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = StoredModelEntry),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-    ),
-))]
-pub(crate) async fn create<D: Services>(
-    State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let request: CreateModelEntryRequest = afd_core::json::object_from_slice(&body)
-        .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let model = bounded_model(&request.model_id)?;
-    if request.secret_ref.is_empty() {
-        return Err(Refusal::malformed(DETAIL_SECRET_REF_REQUIRED));
-    }
-
-    let tenant = tenant_of(
-        &services,
-        identity.person(),
-        super::DETAIL_TENANT_REQUIRED,
-        EVENT_TENANT,
-    )
-    .await?;
-
-    let outcome = services
-        .tenant_providers()
-        .add_entry(&tenant, model, &request.secret_ref, services.now())
-        .await
-        .map_err(Refusal::at(EVENT_CREATE))?;
-
-    match outcome {
-        Added::Stored(entry) => Ok((StatusCode::CREATED, Json(stored(&entry))).into_response()),
-        Added::CredentialMissing => Err(Refusal::coded(
-            error_code::MODELS_SECRET_NOT_FOUND,
-            DETAIL_SECRET_REF_UNKNOWN,
-        )),
-        Added::Duplicate => Err(Refusal::coded(
-            error_code::MODELS_DUPLICATE_ENTRY,
-            DETAIL_DUPLICATE_ENTRY,
-        )),
-        Added::NoWorkspace => Err(Refusal::coded(
-            error_code::TENANT_NO_PRIMARY_WORKSPACE,
-            DETAIL_NO_PRIMARY_WORKSPACE,
-        )),
-    }
-}
-
-/// `PATCH /v1/tenants/me/models/{id}` — point an entry at another model.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    patch,
-    path = "/v1/tenants/me/models/{id}",
-    tag = afd_http::openapi::tag::TENANT,
-    operation_id = "update_tenant_model_entry",
-    summary = "Change a model entry's model_id",
-    description = concat!(
-        "Model-only change; `secret_ref` is immutable on this endpoint — ",
-        "create a new entry to point at a different secret. ",
-    ),
-    request_body = UpdateModelEntryRequest,
-    params(
-        afd_http::openapi::path::Id,
-    ),
-    responses(
-        (status = 200, description = afd_http::openapi::OK, body = StoredModelEntry),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-    ),
-))]
-pub(crate) async fn update<D: Services>(
-    State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    Path(entry_id): Path<String>,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let entry = parse_entry_id(&entry_id)?;
-    let request: UpdateModelEntryRequest = afd_core::json::object_from_slice(&body)
-        .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let model = bounded_model(&request.model_id)?;
-
-    let tenant = tenant_of(
-        &services,
-        identity.person(),
-        super::DETAIL_TENANT_REQUIRED,
-        EVENT_TENANT,
-    )
-    .await?;
-
-    let outcome = services
-        .tenant_providers()
-        .set_entry_model(&tenant, &entry, model, services.now())
-        .await
-        .map_err(Refusal::at(EVENT_UPDATE))?;
-
-    match outcome {
-        Retargeted::Stored(entry) => Ok(Json(stored(&entry)).into_response()),
-        Retargeted::NotFound => Err(Refusal::coded(
-            error_code::MODELS_ENTRY_NOT_FOUND,
-            DETAIL_ENTRY_NOT_FOUND,
-        )),
-        Retargeted::Duplicate => Err(Refusal::coded(
-            error_code::MODELS_DUPLICATE_ENTRY,
-            DETAIL_DUPLICATE_ENTRY,
-        )),
-    }
-}
-
-/// `DELETE /v1/tenants/me/models/{id}` — remove an entry.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    delete,
-    path = "/v1/tenants/me/models/{id}",
-    tag = afd_http::openapi::tag::TENANT,
-    operation_id = "delete_tenant_model_entry",
-    summary = "Remove a model entry",
-    description = concat!(
-        "Idempotent — deleting an id that doesn't exist (already removed, or ",
-        "never existed) still returns 204. The referenced vault secret is ",
-        "never touched; sibling entries sharing it survive. ",
-    ),
-    params(
-        afd_http::openapi::path::Id,
-    ),
-    responses(
-        (status = 204, description = afd_http::openapi::NO_CONTENT),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-    ),
-))]
-pub(crate) async fn remove<D: Services>(
-    State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    Path(entry_id): Path<String>,
-) -> Result<Response, Refusal> {
-    let entry = parse_entry_id(&entry_id)?;
-    let tenant = tenant_of(
-        &services,
-        identity.person(),
-        super::DETAIL_TENANT_REQUIRED,
-        EVENT_TENANT,
-    )
-    .await?;
-
-    match services
-        .tenant_providers()
-        .remove_entry(&tenant, &entry)
-        .await
-        .map_err(Refusal::at(EVENT_DELETE))?
-    {
-        Removed::Done => Ok(StatusCode::NO_CONTENT.into_response()),
-        Removed::Active => Err(Refusal::coded(
-            error_code::MODELS_DELETE_ACTIVE,
-            DETAIL_DELETE_ACTIVE,
-        )),
-    }
-}
-
 mod input;
 mod render;
+pub(crate) mod write;
 
-use self::input::{bounded_model, parse_entry_id, resume_from};
-use self::render::{rendered, stored};
+use self::input::resume_from;
+use self::render::rendered;
 use crate::handler::paging::requested_limit;
