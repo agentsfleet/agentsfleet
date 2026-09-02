@@ -160,3 +160,33 @@ fn each_accepted_protocol_maps_to_its_own_encoding() {
         Protocol::HttpBinary
     ));
 }
+
+/// The resident reading is a real measurement or nothing, never a guess.
+///
+/// Linux answers from `/proc/self/statm`; every other host has no such file and
+/// gets `None`. That asymmetry is the design — a number invented for a
+/// developer's macOS box would be a measurement nobody took, reported as one
+/// that was — so the assertion is conditional on the platform rather than on
+/// the value.
+///
+/// The positive arm matters more than it looks: `statm` answers in PAGES, and a
+/// reading that forgot to multiply would be off by four thousand and still look
+/// like a plausible byte count.
+#[test]
+fn the_resident_reading_is_a_measurement_or_nothing() {
+    let reading = super::resident_bytes();
+
+    if cfg!(target_os = "linux") {
+        let bytes = reading.unwrap_or_default();
+        assert!(
+            bytes > 0,
+            "a running process holds a resident set; zero means the pages were \
+             read but not converted"
+        );
+    } else {
+        assert!(
+            reading.is_none(),
+            "a host with no /proc reports nothing rather than a fabricated size"
+        );
+    }
+}
