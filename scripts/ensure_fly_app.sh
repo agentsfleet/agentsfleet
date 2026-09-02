@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Bring a Fly app to a desired running-machine count, deploying it from its
-# build context if it does not exist yet, and record the image digest actually
-# deployed.
+# Deploy a Fly app from its build context, bring it to a desired count of
+# machines whose health checks are PASSING, and record the image digest
+# actually deployed.
 #
 #     scripts/ensure_fly_app.sh <app> <build-context-dir> <desired-count>
 #
@@ -51,34 +51,60 @@ main() {
     return 2
   fi
 
-  local machines total
-  machines="$("$FLYCTL" machine list --app "$app" --json 2>/dev/null || echo '[]')"
-  total="$(printf '%s' "$machines" | jq 'length')"
-
-  if [ "$total" -eq 0 ]; then
-    printf 'no machines for %s — deploying from %s\n' "$app" "$context_dir"
-    # Positional path is the BUILD CONTEXT. Without it flyctl uses the working
-    # directory and a Dockerfile `COPY config.yml` cannot resolve.
-    "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60
-  fi
+  # EVERY run deploys. This used to deploy only when the app had no machines,
+  # which quietly made this milestone's central claim false: `config.yml` is
+  # baked into the image by the Dockerfile's `COPY`, so on every run after the
+  # first, a changed receiver, authentication policy or exporter pipeline was
+  # built and never shipped. Choosing a backend is supposed to be a collector
+  # configuration change; a configuration change that never deploys is not one.
+  #
+  # Positional path is the BUILD CONTEXT. Without it flyctl uses the working
+  # directory and a Dockerfile `COPY config.yml` cannot resolve.
+  printf 'deploying %s from %s\n' "$app" "$context_dir"
+  "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60
 
   "$FLYCTL" scale count "$desired" --app "$app" --yes
 
-  local attempt running
-  running=0
+  # Readiness is the health check passing, NOT the machine state. Fly reports
+  # `started` when the VM is running, which happens before the collector inside
+  # it binds 4318 — so a caller gated on `started` can point a daemon at a
+  # receiver that is not listening yet and lose the export. `fly.toml` already
+  # declares [checks.health] against the collector's own health_check extension
+  # on 13133; this reads the verdict it was already producing.
+  #
+  # A machine with NO checks counts as not ready, deliberately. It means
+  # readiness cannot be proven from here, and this script's entire contract is
+  # refusing to report a success it cannot prove.
+  local attempt machines total started ready
+  started=0
+  ready=0
   for attempt in $(seq 1 "$POLL_ATTEMPTS"); do
     machines="$("$FLYCTL" machine list --app "$app" --json 2>/dev/null || echo '[]')"
     total="$(printf '%s' "$machines" | jq 'length')"
-    running="$(printf '%s' "$machines" | jq '[.[] | select(.state == "started")] | length')"
-    printf '%s (attempt %s/%s): %s/%s running, want %s\n' \
-      "$app" "$attempt" "$POLL_ATTEMPTS" "$running" "$total" "$desired"
-    [ "$running" -ge "$desired" ] && break
+    started="$(printf '%s' "$machines" | jq '[.[] | select(.state == "started")] | length')"
+    ready="$(printf '%s' "$machines" | jq '
+      [ .[]
+        | select(.state == "started")
+        | select((.checks // []) as $c
+                 | ($c | length) > 0 and ($c | all(.status == "passing")))
+      ] | length')"
+    printf '%s (attempt %s/%s): %s/%s started, %s health-passing, want %s\n' \
+      "$app" "$attempt" "$POLL_ATTEMPTS" "$started" "$total" "$ready" "$desired"
+    [ "$ready" -ge "$desired" ] && break
     sleep "$POLL_SLEEP_SECONDS"
   done
 
-  if [ "$running" -lt "$desired" ]; then
-    printf '%s never reached %s running machines — refusing to report success\n' \
-      "$app" "$desired" >&2
+  if [ "$ready" -lt "$desired" ]; then
+    # Name which half failed. "Not running" and "running but never healthy" are
+    # different incidents with different first moves, and an operator reading a
+    # deploy log at 3am should not have to guess which one this was.
+    if [ "$started" -lt "$desired" ]; then
+      printf '%s never reached %s running machines (%s started) — refusing to report success\n' \
+        "$app" "$desired" "$started" >&2
+    else
+      printf '%s reached %s running machines but only %s passed health checks — refusing to report success\n' \
+        "$app" "$started" "$ready" >&2
+    fi
     return 1
   fi
 
