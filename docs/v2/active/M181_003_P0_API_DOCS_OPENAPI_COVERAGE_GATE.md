@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_wire/**` | EDIT | `utoipa` as an OPTIONAL dependency; `cfg_attr` schema derives on the public wire types; `value_type` overrides only where the serialized form differs from the Rust form |
 | `rustd/crates/afd_api_tenant/**` · `afd_api_runner` · `afd_api_operator` · `afd_api_ingress` · `afd_api` | EDIT | `#[utoipa::path]` annotations over the existing handlers; one feature-gated `OpenApi` collector per plane, each exposing `document()` |
 | `rustd/crates/agentsfleetd/**` | EDIT | the feature-gated emitter that writes the merged document |
+| `rustd/crates/afd_http/**` | EDIT | the `openapi` feature and the shared vocabulary every plane's annotations name: response sentences, tags, and the document-only path, query and body shapes |
 | `rustd/Cargo.toml` | EDIT | the workspace utoipa dependency, pinned, default-features off |
 | `public/openapi.json` | EDIT | regenerated from the build; hand-written prose reconciled into annotations where it survives |
 | `make/quality.mk` or CI workflow | NOT NEEDED | `test-unit-rustd` and `lint-rustd` already pass `--all-features`, so the feature, the gate and the artifact diff are graded by lanes that exist — no new target, no workflow edit, no approval needed |

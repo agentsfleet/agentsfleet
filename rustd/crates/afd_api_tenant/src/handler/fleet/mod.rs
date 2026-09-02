@@ -14,6 +14,7 @@
 //! acting in — never a handler deciding whether it may.
 
 pub mod detail;
+mod detail_request;
 pub mod memory;
 mod memory_request;
 pub mod message;

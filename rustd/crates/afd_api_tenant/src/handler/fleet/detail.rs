@@ -16,8 +16,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{ConfigSource, FleetDetail, Patch, Requested};
-use afd_wire::fleet::{FleetDetailResponse, PatchFleetRequest, PatchedFleetResponse};
+use afd_fleet_lifecycle::{FleetDetail, Patch};
+use afd_wire::fleet::{FleetDetailResponse, PatchedFleetResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -29,6 +29,7 @@ use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceFleets as _};
 pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 
+use super::detail_request::read_patch;
 use super::triggers;
 
 /// The scoped events each verb's failures are logged under.
@@ -59,13 +60,6 @@ pub const DETAIL_TRIGGER_BOUNDS: &str = "trigger_markdown must be 1..64KiB";
 
 /// The refusal a source document outside its length bounds earns.
 pub const DETAIL_SOURCE_BOUNDS: &str = "source_markdown must be 1..64KiB";
-
-/// The most bytes an authored document may carry.
-///
-/// The sentences above say 64KiB and this says two hundred. The mismatch is in
-/// the Zig too, and it is the NUMBER that is load-bearing — ported as-is,
-/// because a client sitting between the two would change class if either moved.
-const MAX_MARKDOWN_LEN: usize = 200 * 1024;
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — one fleet, whole.
 ///
@@ -224,71 +218,6 @@ pub(crate) async fn purge<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_PURGE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// The PATCH the body asks for, or the refusal it earns.
-///
-/// Every ambiguity is resolved HERE, once, into a type that cannot hold it: the
-/// two configuration sources become one [`ConfigSource`], and the status becomes
-/// a [`Requested`] that cannot spell `paused`.
-fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch, Refusal> {
-    if body.is_empty() {
-        return Ok(Patch {
-            if_match,
-            ..Patch::default()
-        });
-    }
-    let sent = afd_core::json::object_from_slice::<PatchFleetRequest<'_>>(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-
-    let config = match (
-        sent.config_json.as_deref(),
-        sent.trigger_markdown.as_deref(),
-    ) {
-        // Both drive `core.fleets.config_json`, so there is no answer to which
-        // one wins — refused at the door rather than resolved by precedence.
-        (Some(_json), Some(_document)) => return Err(Refusal::malformed(DETAIL_CONFIG_AMBIGUOUS)),
-        (Some(""), None) => return Err(Refusal::malformed(DETAIL_CONFIG_REQUIRED)),
-        (Some(json), None) => Some(ConfigSource::Json(json.to_owned())),
-        (None, Some(document)) => Some(ConfigSource::Trigger(
-            bounded(document, DETAIL_TRIGGER_BOUNDS)?.to_owned(),
-        )),
-        (None, None) => None,
-    };
-    let source_markdown = sent
-        .source_markdown
-        .as_deref()
-        .map(|document| bounded(document, DETAIL_SOURCE_BOUNDS).map(str::to_owned))
-        .transpose()?;
-
-    Ok(Patch {
-        config,
-        status: sent.status.as_deref().map(requested).transpose()?,
-        source_markdown,
-        if_match,
-    })
-}
-
-/// The document, if it is one this daemon will store.
-fn bounded<'a>(document: &'a str, detail: &'static str) -> Result<&'a str, Refusal> {
-    if document.is_empty() || document.len() > MAX_MARKDOWN_LEN {
-        return Err(Refusal::malformed(detail));
-    }
-    Ok(document)
-}
-
-/// The transition a spelling asks for, or the refusal an unknown one earns.
-///
-/// `paused` is refused here rather than accepted and ignored: it belongs to the
-/// platform's anomaly gate, and admitting it would let a caller forge a
-/// system-halt provenance on their own fleet.
-fn requested(spelling: &str) -> Result<Requested, Refusal> {
-    match spelling {
-        "active" => Ok(Requested::Active),
-        "stopped" => Ok(Requested::Stopped),
-        "killed" => Ok(Requested::Killed),
-        _reserved_or_unknown => Err(Refusal::malformed(DETAIL_STATUS_INVALID)),
-    }
 }
 
 /// Renders a PATCH failure, carrying the current tag when the source was stale.
