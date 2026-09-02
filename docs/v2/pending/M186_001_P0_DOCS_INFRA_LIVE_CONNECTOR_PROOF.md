@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M186
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS — resumed on Indy's Aug 15, 2026 call after Pull Request (PR) #606 repaired the development acceptance lanes ("merged to main go")
+**Status:** PARKED — **superseded by M187_001.** §1–§5 never ran, and their Files Changed names `src/agentsfleetd/**` CREATE rows that M187_001 §5 deletes. The dimensions moved (§0 → M187_001 §3.1–§3.4 · §2–§4 → §3.5–§3.6 · §5 → §1.4); this file stays as the record. The IN_PROGRESS history below is preserved as history, not as current state.
 
 > **Disposition at close.** **Delivered:** the acceptance harness (green locally), the deployed provider prerequisites, and a unit-coverage batch. **Deferred: §1–§5 entire** — no Dimension marked DONE and no Acceptance Rubric row graded, because the live pass (Slack mention, GitHub delivery, replay, Live Wall) never ran. §4 replays §3's exact delivery, so the five sections are one execution and move together to the follow-up agent; the work-order prompt is in PR #600's Session notes.
 > **Resumed:** the follow-up owns one ordered development-environment pass across §1–§5. No provider mutation begins until the runner heartbeat advances and the workspace, repository, Fleet, grant, and control-Fleet tuple resolves uniquely.
@@ -146,6 +146,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `docs/architecture/scenarios/github-pr-reviewer.md` — local datastore proof defines the event, grant, mint, and replay behavior the external run must match.
+
+> **SUPERSEDED by M187_001 (Indy, Sep 01, 2026).** The sections below never ran,
+> and their Files Changed still names `src/agentsfleetd/http/handlers/connectors/*.zig`
+> CREATE rows — landing those would write Zig into a tree M187_001 deletes.
+> The scope moves rather than repeats: §0's connector repairs become M187_001
+> §3.1–§3.4 against `rustd/crates/afd_connector/**`, and §2–§4's live Slack and
+> GitHub proof becomes M187_001 §3.5–§3.6. §5's Live Wall dimensions become
+> M187_001 §1.4.
+>
+> This file is kept rather than deleted because it carries Indy's dated verbatim
+> quotes and the incident history that produced them — the Aug 14 park, the
+> Aug 15 resume, the `HANDOFF_M136_*` references — and those name events that
+> happened. Rewriting them would falsify the record; pointing at their successor
+> does not.
 
 ## Sections (implementation slices)
 
