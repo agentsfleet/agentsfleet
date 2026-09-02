@@ -68,6 +68,9 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
         "the previous response's `next_cursor` as `starting_after` to ",
         "continue the walk. A null `next_cursor` marks the final page. ",
     ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MemoriesResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -146,6 +149,9 @@ fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
         "fleet, so a key from another fleet is not deleted. Missing keys ",
         "return 404 so an operator can tell a mistyped key from a successful ",
         "forget. ",
+    ),
+    params(
+        afd_http::openapi::path::Memory,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

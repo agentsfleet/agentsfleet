@@ -106,6 +106,14 @@ pub(crate) struct ResolvePath {
         "kind, or status. Cursor pagination over (created_at, id) so ",
         "concurrent inserts don't cause silent skips. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("status" = Option<String>, Query, description = "Defaults to \"pending\". Supply \"approved\", \"denied\", \"timed_out\" to query terminal states."),
+        ("fleet_id" = Option<String>, Query),
+        ("gate_kind" = Option<String>, Query),
+        ("limit" = Option<String>, Query),
+        ("cursor" = Option<String>, Query),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ApprovalsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -144,6 +152,9 @@ pub(crate) async fn list<D: Services>(
         "Drives the dashboard detail page. 404 when the gate doesn't exist or ",
         "belongs to a different workspace. ",
     ),
+    params(
+        afd_http::openapi::path::Gate,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -175,6 +186,9 @@ pub(crate) async fn detail<D: Services>(
         "Approves a pending request. If two callers resolve it, the first ",
         "result wins. Other callers receive 409 with the existing result and ",
         "resolver. ",
+    ),
+    params(
+        afd_http::openapi::path::GateDecision,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

@@ -59,6 +59,8 @@ const DETAIL_DELETE_PUBLISHED: &str =
         "support-file body, or an object-store key. Each row carries an ",
         "`etag` that an editor can send as `If-Match` on PATCH. ",
     ),
+    params(
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = AdminLibrariesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -95,6 +97,10 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         "`etag` to reject stale edits before they can repoint the source or ",
         "unpublish the entry. Omitting the header preserves last-write-wins ",
         "behavior. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
+        ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
@@ -168,6 +174,9 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
         "install it, so unpublish it first. Workspaces that already installed ",
         "the fleet are unaffected: an install snapshots the bundle, so it ",
         "keeps running. Requires the `platform-library:write` scope. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

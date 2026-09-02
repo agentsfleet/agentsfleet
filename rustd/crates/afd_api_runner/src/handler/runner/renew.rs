@@ -44,9 +44,12 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
     summary = "Extend a live lease",
     description = concat!(
         "A run buying more time before its lease expires. The body is ",
-        "optional; a body that will not parse is refused rather than treated ",
-        "as an empty one, because a renewal is an assertion about progress ",
-        "and an unreadable assertion is not one. ",
+        "optional. A body that will not parse is refused rather than read ",
+        "as an empty one. A renewal asserts progress, and an unreadable ",
+        "assertion is not one. ",
+    ),
+    params(
+        afd_http::openapi::path::Lease,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RenewResponse),

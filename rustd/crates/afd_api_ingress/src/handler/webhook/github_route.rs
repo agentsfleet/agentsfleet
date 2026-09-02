@@ -54,6 +54,12 @@ const EVENT_APPEND: &str = "webhook_github_append_failed";
         "failed completed `workflow_run` events create fleet events. A ",
         "delivery identifier remains reserved for 72 hours after acceptance. ",
     ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+        ("X-GitHub-Event" = String, Header, description = "GitHub event type."),
+        ("X-GitHub-Delivery" = String, Header, description = "GitHub-issued delivery UUID. Used as the dedupe key."),
+        ("X-Hub-Signature-256" = String, Header, description = "HMAC-SHA256 of the raw body, prefixed with `sha256=`."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 202, description = afd_http::openapi::ACCEPTED),

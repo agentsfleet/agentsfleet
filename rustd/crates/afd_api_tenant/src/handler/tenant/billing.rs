@@ -47,6 +47,9 @@ pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
         "Returns the balance shared by every workspace in the tenant. The ",
         "response also shows whether the balance is empty. ",
     ),
+    params(
+        afd_http::openapi::query::Page,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = BillingResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -85,6 +88,9 @@ pub(crate) async fn snapshot<D: Services>(
     description = concat!(
         "Returns charge records with the newest record first. Use `limit` and ",
         "`cursor` to read more records. ",
+    ),
+    params(
+        afd_http::openapi::query::Page,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ChargesResponse),

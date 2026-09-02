@@ -168,6 +168,8 @@ impl StructCursor for Cursor {
         "so changing `limit` mid-pagination requires starting from the first ",
         "page again. ",
     ),
+    params(
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -214,6 +216,7 @@ pub(crate) async fn list<D: Services>(
         "reuse one via `/v1/workspaces/{workspace_id}/secrets` first. Does ",
         "not activate the entry; activate via `PUT /v1/tenants/me/provider`. ",
     ),
+    request_body = CreateModelEntryRequest,
     responses(
         (status = 201, description = afd_http::openapi::CREATED),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -278,6 +281,10 @@ pub(crate) async fn create<D: Services>(
         "Model-only change; `secret_ref` is immutable on this endpoint — ",
         "create a new entry to point at a different secret. ",
     ),
+    request_body = UpdateModelEntryRequest,
+    params(
+        afd_http::openapi::path::Id,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -337,6 +344,9 @@ pub(crate) async fn update<D: Services>(
         "Idempotent — deleting an id that doesn't exist (already removed, or ",
         "never existed) still returns 204. The referenced vault secret is ",
         "never touched; sibling entries sharing it survive. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

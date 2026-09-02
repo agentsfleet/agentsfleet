@@ -27,6 +27,14 @@ const EVENT: &str = "runner_events_failed";
         "page_size parameters are refused. Optionally filtered by event type ",
         "and an occurred-at millisecond window. ",
     ),
+    params(
+        afd_http::openapi::path::Runner,
+        ("starting_after" = Option<String>, Query, description = "An opaque cursor from a previous page's `next_cursor`."),
+        ("limit" = Option<String>, Query, description = "Rows per page (1-100)."),
+        ("event_type" = Option<String>, Query, description = "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request."),
+        ("since" = Option<String>, Query, description = "Lower bound on occurred_at, epoch milliseconds (inclusive)."),
+        ("until" = Option<String>, Query, description = "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerEventsResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

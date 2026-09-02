@@ -47,7 +47,7 @@ const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json
     summary = "Poll for the next lease",
     description = concat!(
         "The poll a runner lives on. Answers either a lease to run or a ",
-        "backoff to wait out; the claim, the money, the gates and the policy ",
+        "backoff to wait out. The claim, the money, the gates and the policy ",
         "are all decided before the answer is written. ",
     ),
     responses(

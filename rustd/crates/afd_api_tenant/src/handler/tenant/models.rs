@@ -83,6 +83,9 @@ const VARY_VALUE: &str = "Authorization";
         "handing one tenant's response to another even though the payload is ",
         "identical for every authorized caller. ",
     ),
+    params(
+        afd_http::openapi::query::ModelEntryFilter,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 304, description = afd_http::openapi::NOT_MODIFIED),

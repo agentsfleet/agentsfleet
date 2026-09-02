@@ -49,12 +49,12 @@ pub struct StoreSecretRequest<'a> {
 }
 
 /// `PUT /v1/workspaces/{workspace_id}/secrets/{secret_name}` — replace the body.
-///
-/// The same `data` object create takes, and no merge: a field omitted here is
-/// absent from the stored secret afterwards. Merging cannot express intent on a
-/// resource the caller can never read back — the `PATCH {api_key}` this
-/// replaced added an unused field to any secret not keyed `api_key`, left the
-/// live credential stale, and answered 200.
+//
+// The same `data` object create takes, and no merge: a field omitted here is
+// absent from the stored secret afterwards. Merging cannot express intent on a
+// resource the caller can never read back — the `PATCH {api_key}` this
+// replaced added an unused field to any secret not keyed `api_key`, left the
+// live credential stale, and answered 200.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReplaceSecretRequest<'a> {
@@ -79,10 +79,10 @@ pub struct StoredSecretResponse<'a> {
 }
 
 /// One credential as the list shows it.
-///
-/// `model` is documented as optional in `SecretSummary` and is not emitted:
-/// `vault.secrets` has no column for it, and answering it would mean decrypting
-/// every row on a page that displays no secrets. See `afd_vault::projection`.
+//
+// `model` is documented as optional in `SecretSummary` and is not emitted:
+// `vault.secrets` has no column for it, and answering it would mean decrypting
+// every row on a page that displays no secrets. See `afd_vault::projection`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SecretSummary<'a> {

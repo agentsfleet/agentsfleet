@@ -44,6 +44,8 @@ const DETAIL_IN_USE: &str =
         "Returns every shared model, ordered by provider and model ",
         "identifier. Requires the `model:read` scope. ",
     ),
+    params(
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = AdminModelsResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -128,6 +130,9 @@ pub(crate) async fn create<D: Services>(
         "and are immutable on this endpoint. The rate cache is repopulated on ",
         "success. Requires the `model:admin` scope. ",
     ),
+    params(
+        afd_http::openapi::path::Id,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -177,6 +182,9 @@ pub(crate) async fn update<D: Services>(
     description = concat!(
         "Refuses to remove the active default model. Choose another default ",
         "first. Requires the `model:admin` scope. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

@@ -129,6 +129,9 @@ fn view_of(schedule: &Schedule) -> View<'_> {
         "Lists the hosted schedules for a Fleet. The result is bounded by the ",
         "per-Fleet schedule cap. ",
     ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -177,6 +180,10 @@ pub(crate) async fn list<D: Services>(
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "get_fleet_schedule",
     summary = "Get a hosted schedule",
+    description = "One schedule, as it is currently registered for this fleet.",
+    params(
+        afd_http::openapi::path::Schedule,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -221,6 +228,9 @@ pub(crate) async fn one<D: Services>(
     operation_id = "create_fleet_schedule",
     summary = "Create a hosted schedule",
     description = "Creates a schedule and synchronously registers it in Upstash QStash. ",
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -304,6 +314,9 @@ pub(crate) async fn create<D: Services>(
         "Updates schedule fields and synchronously overwrites the QStash ",
         "registration. ",
     ),
+    params(
+        afd_http::openapi::path::Schedule,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -375,6 +388,9 @@ pub(crate) async fn patch<D: Services>(
         "Deletes the QStash registration before removing the local schedule ",
         "row. ",
     ),
+    params(
+        afd_http::openapi::path::Schedule,
+    ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -424,6 +440,9 @@ pub(crate) async fn purge<D: Services>(
     description = concat!(
         "Idempotently overwrites the QStash registration from the latest ",
         "local generation. ",
+    ),
+    params(
+        afd_http::openapi::path::Schedule,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

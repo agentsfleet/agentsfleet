@@ -77,16 +77,16 @@ pub struct ApprovalSummary<'a> {
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
     /// The evidence behind the proposal, verbatim.
-    ///
-    /// `null` for a row whose stored text will not parse. That cannot happen
-    /// through the park, which writes valid JSON, so a null here is corruption
-    /// — and showing the gate WITHOUT its evidence beats failing the whole
-    /// queue, because an operator can still read what is being asked and deny
-    /// it, where a failed read hides every other gate too.
-    ///
-    /// Serialized it is whatever document the gate was opened with; in Rust it
-    /// is an unparsed slice, which has no schema of its own. `value_type` names
-    /// that difference.
+    //
+    // `null` for a row whose stored text will not parse. That cannot happen
+    // through the park, which writes valid JSON, so a null here is corruption
+    // — and showing the gate WITHOUT its evidence beats failing the whole
+    // queue, because an operator can still read what is being asked and deny
+    // it, where a failed read hides every other gate too.
+    //
+    // Serialized it is whatever document the gate was opened with; in Rust it
+    // is an unparsed slice, which has no schema of its own. `value_type` names
+    // that difference.
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub evidence: Option<&'a RawValue>,
 }

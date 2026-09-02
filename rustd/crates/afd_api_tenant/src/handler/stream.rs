@@ -67,6 +67,9 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "the route returns 503 `UZ-API-002` with `Retry-After`. Read missed ",
         "events before reconnecting. ",
     ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -122,6 +125,9 @@ pub(crate) async fn fleet<D: Services>(
         "refresh. At capacity the route returns 503 `UZ-API-002` with `Retry- ",
         "After`. After a reconnect opens, recover the gap through `GET ",
         "/v1/workspaces/{workspace_id}/events`. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

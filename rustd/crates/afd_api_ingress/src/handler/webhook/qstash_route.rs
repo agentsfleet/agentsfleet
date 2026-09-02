@@ -81,6 +81,11 @@ const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
         "event to the target Fleet. A valid duplicate, missing, inactive, or ",
         "stale fire is accepted without appending an event. ",
     ),
+    params(
+        ("Upstash-Signature" = String, Header, description = "QStash signature over the exact request body and destination URL."),
+        ("Upstash-Schedule-Id" = String, Header, description = "Schedule identifier supplied by QStash."),
+        ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

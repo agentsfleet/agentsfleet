@@ -41,6 +41,13 @@ const EVENT: &str = "runner_leases_failed";
         "happen, not surviving rows. A long-lived runner's `leases_acquired` ",
         "will therefore exceed what this endpoint returns. ",
     ),
+    params(
+        afd_http::openapi::path::Runner,
+        ("starting_after" = Option<String>, Query, description = "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` or `fleet` filters when those filters are set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page."),
+        ("workspace_id" = Option<String>, Query, description = "Narrow the page and total to leases owned by one workspace. A malformed id is refused; an unknown one matches nothing."),
+        ("fleet" = Option<String>, Query, description = "Narrow the page and total to leases run for one fleet, named by its id or its exact name (case-insensitive). Combines with `workspace_id`; the two filters intersect. An empty or over-long value is refused; a value no fleet matches returns nothing."),
+        ("limit" = Option<String>, Query, description = "Rows per page (1-100)."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

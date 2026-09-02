@@ -50,6 +50,12 @@ const EVENT_APPEND: &str = "webhook_svix_append_failed";
         "Receives a signed Svix event for one fleet. A valid new event ",
         "returns 202. A duplicate or an event for a paused fleet returns 200. ",
     ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+        ("svix-id" = String, Header, description = "Svix message identifier (used for deduplication and signature binding)."),
+        ("svix-timestamp" = String, Header, description = "Unix timestamp of the Svix delivery (used for replay protection)."),
+        ("svix-signature" = String, Header, description = "Space-separated list of Svix signatures (v1 scheme)."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 202, description = afd_http::openapi::ACCEPTED),

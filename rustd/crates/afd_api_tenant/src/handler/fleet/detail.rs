@@ -85,6 +85,9 @@ const MAX_MARKDOWN_LEN: usize = 200 * 1024;
         "that value as `If-Match` when saving source changes to avoid ",
         "overwriting another operator's edit. ",
     ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = FleetDetailResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -127,6 +130,10 @@ pub(crate) async fn read<D: Services>(
         "tag in the problem body; omitting the header preserves last-write- ",
         "wins behavior. Status changes require an operator role. Config ",
         "changes require workspace membership. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+        ("If-Match" = Option<String>, Header, description = "Optional source-version tag from GET. Stale values return 412 with the current `etag`."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PatchedFleetResponse),
@@ -189,6 +196,9 @@ pub(crate) async fn patch<D: Services>(
         "keys, and memory. This cannot be undone. Set the fleet status to ",
         "`killed` first. Otherwise the request returns 409. Requires an ",
         "operator role. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

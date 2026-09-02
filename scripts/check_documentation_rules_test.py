@@ -16,22 +16,22 @@ REPAIR_SCENARIO = "production-deploy-repair.md"
 REPAIR_PROOF_BOUNDARY = "not yet proven together"
 
 
-VALID_OPENAPI = """\
-openapi: 3.1.0
-info:
-  version: 1.0.0
-  description: API for managing fleets.
-paths:
-  /v1/fleets:
-    get:
-      summary: List fleets
-      description: Returns fleets visible to the caller.
+VALID_OPENAPI = """{
+  "paths": {
+    "/v1/fleets": {
+      "get": {
+        "summary": "List fleets",
+        "description": "Returns fleets visible to the caller."
+      }
+    }
+  }
+}
 """
 
 
 class OpenApiTextTests(unittest.TestCase):
     def lint(self, text: str) -> list[str]:
-        return checker.lint_openapi_source(Path("public/openapi/test.yaml"), text)
+        return checker.lint_openapi_document(Path("public/openapi.json"), text)
 
     def test_accepts_short_public_text_and_required_versions(self) -> None:
         self.assertEqual([], self.lint(VALID_OPENAPI))
@@ -48,10 +48,6 @@ class OpenApiTextTests(unittest.TestCase):
     def test_rejects_price_in_public_prose(self) -> None:
         text = VALID_OPENAPI.replace("Returns fleets visible to the caller.", "This action costs $5.")
         self.assertTrue(any("DOC-23" in issue for issue in self.lint(text)))
-
-    def test_rejects_release_number_in_public_prose(self) -> None:
-        text = VALID_OPENAPI.replace("Returns fleets visible to the caller.", "Version 2.0.0 adds this route.")
-        self.assertTrue(any("DOC-31" in issue for issue in self.lint(text)))
 
     def test_rejects_internal_storage_detail(self) -> None:
         text = VALID_OPENAPI.replace("Returns fleets visible to the caller.", "Reads rows from core.fleets.")

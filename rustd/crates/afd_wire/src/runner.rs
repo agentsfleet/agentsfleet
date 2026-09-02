@@ -10,8 +10,10 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// Isolation strength the control plane assigns. Only tiers with real
-/// enforcement are members: a tier that cannot be applied must not be assignable.
+/// The isolation strength assigned to a runner.
+//
+// Only tiers with real enforcement are members: a tier that cannot be applied
+// must not be assignable.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,10 +73,10 @@ pub struct ExtraBind<'a> {
     pub note: Cow<'a, str>,
 }
 
-/// The policy the control plane assigns to one runner.
-///
-/// Everything a host was once told through its environment, now delivered with
-/// its identity. The host never declares policy.
+/// The isolation, egress and concurrency settings assigned to one runner.
+//
+// Everything a host was once told through its environment, now delivered with
+// its identity. The host never declares policy.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssignedPolicy<'a> {
@@ -93,12 +95,14 @@ pub struct AssignedPolicy<'a> {
     pub extra_binds: Vec<ExtraBind<'a>>,
 }
 
-/// What this host's kernel can actually enforce, probed at startup and refreshed
-/// per beat. Each field is one enforcement mechanism a degraded reason can name.
+/// What this host can actually enforce.
+//
+// Probed at startup and refreshed per beat. Each field is one enforcement
+// mechanism a degraded reason can name.
 ///
-/// The flags stay separate booleans rather than collapsing into a bitset or an
-/// enum: each names a distinct mechanism a degraded reason quotes back to an
-/// operator, and the shape is the peer's, not this crate's to choose.
+// The flags stay separate booleans rather than collapsing into a bitset or an
+// enum: each names a distinct mechanism a degraded reason quotes back to an
+// operator, and the shape is the peer's, not this crate's to choose.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::struct_excessive_bools,

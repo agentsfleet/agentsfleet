@@ -46,6 +46,9 @@ use crate::services::{Services, WorkspaceConnectors as _};
         "URL in a browser. An unknown provider returns 404 `UZ-CONN-004`. An ",
         "unavailable provider returns 503 `UZ-CONN-001`. ",
     ),
+    params(
+        afd_http::openapi::path::WorkspaceProvider,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

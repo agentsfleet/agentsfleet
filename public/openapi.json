@@ -123,6 +123,17 @@
         "summary": "Delete an unpublished platform Fleet library entry",
         "description": "Removes a catalog entry. Only an entry that is NOT published may be deleted. A live fleet is never taken away from the tenants who can install it, so unpublish it first. Workspaces that already installed the fleet are unaffected: an install snapshots the bundle, so it keeps running. Requires the `platform-library:write` scope. ",
         "operationId": "delete_platform_fleet_library",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -151,6 +162,29 @@
         "summary": "Curate, publish, or unpublish a platform Fleet library entry",
         "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope. Send `If-Match` with the row's `etag` to reject stale edits before they can repoint the source or unpublish the entry. Omitting the header preserves last-write-wins behavior. ",
         "operationId": "update_platform_fleet_library",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Optional catalog row version from the list response. Stale values return 412 with the current `etag`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -243,6 +277,17 @@
         "summary": "Remove a model",
         "description": "Refuses to remove the active default model. Choose another default first. Requires the `model:admin` scope. ",
         "operationId": "delete_admin_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -271,6 +316,17 @@
         "summary": "Update a catalogue row's caps and rates",
         "description": "Rates-only change; `provider` and `model_id` are the row identity and are immutable on this endpoint. The rate cache is repopulated on success. Requires the `model:admin` scope. ",
         "operationId": "update_admin_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -358,6 +414,17 @@
         "summary": "Delete a platform LLM key",
         "description": "Removes a platform-wide LLM provider key. Workspaces without self- managed keys will no longer be able to use this provider. ",
         "operationId": "delete_platform_key",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -382,6 +449,33 @@
         "summary": "List tenant API keys",
         "description": "Returns metadata for every tenant API key visible to the caller, under Stripe-style keyset pagination. The cursor carries the boundary sort value, so every allowlisted sort pages without loss. The retired page and page_size parameters are refused. Results are always scoped to the caller's tenant; `key_hash` is never returned. ",
         "operationId": "list_api_keys",
+        "parameters": [
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "An opaque cursor from a previous page's `next_cursor`, issued under the same sort.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -407,6 +501,16 @@
         "summary": "Mint a tenant API key",
         "description": "Creates a tenant admin key with the `agt_t` prefix. The raw key is returned once. Only its SHA-256 hash is saved. ",
         "operationId": "create_api_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -444,6 +548,17 @@
         "summary": "Delete a revoked tenant API key",
         "description": "Deletes a revoked tenant API key. An active key returns 409 `UZ- APIKEY-008`. ",
         "operationId": "delete_api_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -475,6 +590,27 @@
         "summary": "Revoke a tenant API key",
         "description": "Partial lifecycle update. Body must be `{\"active\": false}` — re- activation is not supported; mint a new key instead. Sets `revoked_at` and `updated_at`. ",
         "operationId": "revoke_api_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -508,6 +644,35 @@
         "summary": "Receive a Clerk account event",
         "description": "Receives signed account events from Clerk. A `user.created` event creates the user's account and default workspace. Repeated events return `created:false`. Unsupported event types return 200 with `status: ignored`. ",
         "operationId": "auth_identity_event_clerk",
+        "parameters": [
+          {
+            "name": "svix-id",
+            "in": "header",
+            "description": "Svix message identifier (used for deduplication and signature binding).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-timestamp",
+            "in": "header",
+            "description": "Unix timestamp of the Svix delivery (used for replay protection).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-signature",
+            "in": "header",
+            "description": "Space-separated list of Svix v1 signatures.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -532,6 +697,16 @@
         "summary": "Start a command-line login session",
         "description": "Starts a command-line sign-in session that lasts 5 minutes. The response includes a URL for approval in a browser. No access token is required. Rate limits may return 429. ",
         "operationId": "create_auth_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -584,6 +759,17 @@
         "summary": "Read a sign-in session",
         "description": "Returns the current sign-in status. No access token is required. Expired, used, or cancelled sessions return 410 with a stable error code. ",
         "operationId": "poll_auth_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "`UUIDv7` of the login session.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -613,6 +799,17 @@
         "summary": "Explicit cancel of a single login session",
         "description": "Used by the dashboard's \"cancel this login\" button and by the future sessions surface. Transitions the named session to `aborted` with `reason=\"explicit_cancel\"`. The Clerk JWT MUST match the session's `clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`); otherwise 403. ",
         "operationId": "delete_auth_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "`UUIDv7` of the login session.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -637,6 +834,27 @@
         "summary": "Approve a sign-in session",
         "description": "Approves a pending command-line sign-in session. The dashboard sends encrypted sign-in data and a six-digit verification code. A second approval for the same session returns 409 `UZ-AUTH-015`. ",
         "operationId": "approve_auth_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "`UUIDv7` of the login session.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -677,6 +895,27 @@
         "summary": "Verify a sign-in session",
         "description": "Checks the six-digit code and returns encrypted sign-in data. The code can be used once. A retry from the same client within 60 seconds returns the same response. Later retries return 410 `UZ- AUTH-012`. `UZ-AUTH-011` means the code did not match. The fifth failed attempt ends the session. `UZ-AUTH-018` means the code was not six digits. `UZ-AUTH-013` means the session ended. `UZ-AUTH-014` means approval is pending. `UZ-AUTH-006` means the session expired after 5 minutes. ",
         "operationId": "verify_auth_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "`UUIDv7` of the login session.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -711,6 +950,16 @@
         "summary": "Mint a command-line credential",
         "description": "Creates a durable credential for one machine, with the `afc_` prefix. The raw credential is returned once. Only its SHA-256 hash is saved, so it cannot be read back later. A credential belongs to a person, not to a team. Call this with a browser session token or with an existing command-line credential. A tenant API key is refused. Minting revokes whatever credential the same machine name already held. One machine holds one live credential at a time. ",
         "operationId": "create_cli_credential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintCliCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created"
@@ -735,6 +984,17 @@
         "summary": "Revoke a command-line credential",
         "description": "Retires one of your credentials. The terminal holding it is refused on its next call, with the code `UZ-AUTH-023`. Running `agentsfleet logout` calls this for the credential on that machine. Browser sessions are untouched, so signing out of a terminal does not sign you out of the dashboard. ",
         "operationId": "revoke_cli_credential",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -762,6 +1022,53 @@
         "summary": "Relay a provider callback to the dashboard",
         "description": "Compatibility URL for provider registrations that still target the API host. It forwards the browser to the dashboard callback with a fixed legacy marker. The authenticated endpoint uses that marker only to echo the old redirect URL during token exchange. This endpoint never exchanges a provider code or changes connector data. New provider registrations use `https://<APP_HOST>/api/connectors/{provider}/callback` for the matching environment. The dashboard posts the current Bearer token to the authenticated callback completion method. ",
         "operationId": "connector_callback",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Signed one-time value supplied through the connection URL.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Authorization code supplied by the provider when required.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "installation_id",
+            "in": "query",
+            "description": "Installation identifier supplied by providers such as GitHub.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "description": "Provider data-center location supplied by multi-region providers such as Zoho.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -787,6 +1094,62 @@
         "summary": "Complete a provider connection",
         "description": "The dashboard calls this endpoint after the provider returns to the browser. The caller needs `connector:write` and must be the same person who started the signed connection state. The signed state binds the workspace, a keyed tag of the starter identity, a nonce, and expiry. The endpoint verifies identity and workspace access before consuming the nonce or exchanging a provider code. ",
         "operationId": "connector_callback_complete",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Signed one-time value supplied through the connection URL.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Authorization code supplied by the provider when required.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "installation_id",
+            "in": "query",
+            "description": "Installation identifier supplied by providers such as GitHub.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "description": "Provider data-center location supplied by multi-region providers such as Zoho.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "callback_source",
+            "in": "query",
+            "description": "Fixed compatibility marker added by the legacy API relay. Browser callers omit it.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -820,6 +1183,35 @@
         "summary": "Receive Slack events",
         "description": "Slack sends signed events to this route. Users do not call this route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp outside 5 minutes returns 401 `UZ-SLK-011`. ",
         "operationId": "slack_events",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Slack-Signature",
+            "in": "header",
+            "description": "Slack request signature. Slack supplies this value.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Slack-Request-Timestamp",
+            "in": "header",
+            "description": "Delivery time in Unix seconds. Values outside 5 minutes are rejected.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -875,6 +1267,26 @@
         "summary": "List fleet runners",
         "description": "Platform-admin operator-plane read of the whole fleet, newest first over the composite (created_at, id) key. Under keyset pagination a runner enrolled mid-traversal never repeats or hides a row. The retired page, page_size and sort parameters are refused. Each row carries a derived `liveness` — never the stored auth state, never the token hash. ",
         "operationId": "list_fleet_runners",
+        "parameters": [
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page (1-100).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -906,6 +1318,17 @@
         "summary": "Get a fleet runner",
         "description": "Platform-admin read of a single runner. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows — never from in-memory metrics. The runner detail page loads from this read. ",
         "operationId": "get_fleet_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "`UUIDv7` of the runner.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -931,6 +1354,27 @@
         "summary": "Administer a fleet runner",
         "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `self_test` moves no state. It records a request for the runner to test its own sandbox. The host picks the request up on its next heartbeat and answers on a later one. The reply is the recorded request, never a verdict. A revoked runner refuses it with 409 `UZ- RUN-018`, since it will never heartbeat again. `assigned_policy` re- assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event. ",
         "operationId": "patch_fleet_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "`UUIDv7` of the runner.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerAdminPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -962,6 +1406,62 @@
         "summary": "List fleet runner events",
         "description": "Platform-admin read of a single runner's append-only history, newest first over the composite (occurred_at, id) key. The retired page and page_size parameters are refused. Optionally filtered by event type and an occurred-at millisecond window. ",
         "operationId": "list_fleet_runner_events",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "`UUIDv7` of the runner.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page (1-100).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Lower bound on occurred_at, epoch milliseconds (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -993,6 +1493,53 @@
         "summary": "List a runner's leases",
         "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`. Settled leases are retained for 30 days. The window is measured from settlement, not from acquisition. A lease acquired long ago and settled yesterday keeps its full window. A background sweep deletes them past that window. A lease still running or renewing is never swept. The per-lease activity records (`lease_acquired`, `lease_released`) are swept on the same 30-day window. Each record ages from when it occurred, not from its lease's settlement. A long run's opening record can therefore be pruned shortly before its lease row. The runner's lifecycle activity is kept at any age, so a long-lived runner's feed never empties. A lease whose runner died without reporting is marked expired once it passes the same window. It then keeps its own window, like any settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected by any of this. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns. ",
         "operationId": "list_fleet_runner_leases",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "`UUIDv7` of the runner.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` or `fleet` filters when those filters are set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "description": "Narrow the page and total to leases owned by one workspace. A malformed id is refused; an unknown one matches nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet",
+            "in": "query",
+            "description": "Narrow the page and total to leases run for one fleet, named by its id or its exact name (case-insensitive). Combines with `workspace_id`; the two filters intersect. An empty or over-long value is refused; a value no fleet matches returns nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page (1-100).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1020,6 +1567,35 @@
         "summary": "Receive a scheduled fire",
         "description": "Receives a signed fire from Upstash QStash and appends a `cron` event to the target Fleet. A valid duplicate, missing, inactive, or stale fire is accepted without appending an event. ",
         "operationId": "ingest_qstash_schedule",
+        "parameters": [
+          {
+            "name": "Upstash-Signature",
+            "in": "header",
+            "description": "QStash signature over the exact request body and destination URL.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Upstash-Schedule-Id",
+            "in": "header",
+            "description": "Schedule identifier supplied by QStash.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Upstash-Message-Id",
+            "in": "header",
+            "description": "QStash delivery identifier used for replay suppression.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1044,6 +1620,44 @@
         "summary": "Receive a provider event",
         "description": "Receives signed events from a connected provider. GitHub is the supported provider. A matching event starts runs for subscribed fleets. Duplicate events do not start another run. Repair pull requests and workflow results update repair evidence without starting another run. A terminal production `deployment_status` records the deployed commit and schedules eligible verification fleets. ",
         "operationId": "ingest_connector_webhook",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "description": "GitHub event type, currently `ping`, `pull_request`, `workflow_run`, or `deployment_status`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "description": "Delivery identifier supplied by GitHub.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "description": "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1077,6 +1691,35 @@
         "summary": "List available models",
         "description": "Returns models available to the tenant. Each item includes its provider, context limit, and usage fields. An empty library returns an empty array. A bounded keyset page ordered by normalized `model_id`, then normalized `provider`, then an opaque row identity. Every comparison runs under `COLLATE \"C\"`, so the order is byte-wise and stable across locales. Follow `next_cursor` to read the whole catalogue; a client that reads only the first page silently loses every model past it. The response is conditionally revalidated. Every answer carries an `ETag` over the exact bytes served, plus `Cache-Control: private, no-cache` and `Vary: Authorization`. Send the tag back as `If-None-Match` and a match answers `304` with no body and the same headers. `private` is what stops a shared proxy handing one tenant's response to another even though the payload is identical for every authorized caller. ",
         "operationId": "get_model_library",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Exact match on the normalized provider. At most 128 bytes once\nnormalized; empty after normalization is treated as absent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque cursor from a previous page's `next_cursor`, bound to the filters\nand page size that produced it. Only the sort boundary is read from it —\nthe filters applied are always the request's.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1162,6 +1805,17 @@
         "summary": "Fetch a fleet's support-file bundle",
         "description": "The canonical tar a runner materialises support files from, addressed by content hash. The daemon proxies it because the runner holds no object-store keys. A hash is not a name anybody can guess, so the snapshot is not scoped to a runner, a fleet or a tenant. ",
         "operationId": "runner_fetch_bundle",
+        "parameters": [
+          {
+            "name": "content_hash",
+            "in": "path",
+            "description": "Content hash of the bundle.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1184,8 +1838,18 @@
           "Runners"
         ],
         "summary": "Mint a credential for a declared tool",
-        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace: the credential is minted against the lease the caller holds, so a runner cannot ask for material outside the run it is executing. ",
+        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace. The credential is minted against the lease the caller holds, so a runner cannot ask for material outside its own run. ",
         "operationId": "runner_mint_credential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -1215,7 +1879,7 @@
           "Runners"
         ],
         "summary": "Report liveness, receive assignment",
-        "description": "Liveness up, configuration down. The assignment rides every reply, so an operator's dashboard change reaches the host within one interval and nobody visits the host. An unreadable body is read as `no report this beat` and the beat still counts: a host must not be able to fail its own liveness by sending nonsense. ",
+        "description": "Liveness up, configuration down. The assignment rides every reply. An operator's dashboard change therefore reaches the host within one interval, and nobody visits the host. An unreadable body is read as `no report this beat` and the beat still counts. A host must not be able to fail its own liveness by sending nonsense. ",
         "operationId": "runner_heartbeat",
         "responses": {
           "200": {
@@ -1239,7 +1903,7 @@
           "Runners"
         ],
         "summary": "Poll for the next lease",
-        "description": "The poll a runner lives on. Answers either a lease to run or a backoff to wait out; the claim, the money, the gates and the policy are all decided before the answer is written. ",
+        "description": "The poll a runner lives on. Answers either a lease to run or a backoff to wait out. The claim, the money, the gates and the policy are all decided before the answer is written. ",
         "operationId": "runner_lease",
         "responses": {
           "200": {
@@ -1265,6 +1929,27 @@
         "summary": "Publish live-tail activity frames",
         "description": "Frames for the workspace event stream. Answers 202 rather than 200: the frame is accepted for publication, and a subscriber reading it is a separate event from this call returning. ",
         "operationId": "runner_publish_activity",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "`UUIDv7` of the lease.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -1287,8 +1972,19 @@
           "Runners"
         ],
         "summary": "Extend a live lease",
-        "description": "A run buying more time before its lease expires. The body is optional; a body that will not parse is refused rather than treated as an empty one, because a renewal is an assertion about progress and an unreadable assertion is not one. ",
+        "description": "A run buying more time before its lease expires. The body is optional. A body that will not parse is refused rather than read as an empty one. A renewal asserts progress, and an unreadable assertion is not one. ",
         "operationId": "runner_renew_lease",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "`UUIDv7` of the lease.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1317,9 +2013,20 @@
         "tags": [
           "Memory"
         ],
-        "summary": "Hydrate what a fleet remembers",
+        "summary": "Load what a fleet remembers",
         "description": "The memory a fleet carries between runs, read at the start of one. The runner names the fleet, and the lease it holds is what makes that name legitimate. ",
         "operationId": "runner_hydrate_memory",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1349,6 +2056,27 @@
         "summary": "Capture what a fleet learned",
         "description": "Writes back what the run decided is worth keeping. The reply names what was stored and what was skipped, so a runner learns which of its entries did not survive the bounds. ",
         "operationId": "runner_capture_memory",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -1378,8 +2106,18 @@
           "Runners"
         ],
         "summary": "Report the result of one run",
-        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing, so a stale writer cannot land a partial finalize on the current holder's run. ",
+        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. ",
         "operationId": "runner_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -1411,6 +2149,26 @@
         "summary": "Read the tenant balance",
         "description": "Returns the balance shared by every workspace in the tenant. The response also shows whether the balance is empty. ",
         "operationId": "get_tenant_billing",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Token from `next_cursor` in the previous response. Omit it for the first page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of records to return. The default is 50. Valid values are 1 through 200.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1442,6 +2200,26 @@
         "summary": "List tenant charges",
         "description": "Returns charge records with the newest record first. Use `limit` and `cursor` to read more records. ",
         "operationId": "get_tenant_billing_charges",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Token from `next_cursor` in the previous response. Omit it for the first page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of records to return. The default is 50. Valid values are 1 through 200.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1498,6 +2276,16 @@
         "summary": "Register a model entry",
         "description": "Creates one `(model_id, secret_ref)` row. `secret_ref` must already name a vault secret in the tenant's primary workspace — store or reuse one via `/v1/workspaces/{workspace_id}/secrets` first. Does not activate the entry; activate via `PUT /v1/tenants/me/provider`. ",
         "operationId": "create_tenant_model_entry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelEntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created"
@@ -1531,6 +2319,17 @@
         "summary": "Remove a model entry",
         "description": "Idempotent — deleting an id that doesn't exist (already removed, or never existed) still returns 204. The referenced vault secret is never touched; sibling entries sharing it survive. ",
         "operationId": "delete_tenant_model_entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -1556,6 +2355,27 @@
         "summary": "Change a model entry's model_id",
         "description": "Model-only change; `secret_ref` is immutable on this endpoint — create a new entry to point at a different secret. ",
         "operationId": "update_tenant_model_entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "`UUIDv7` of the resource.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelEntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -1618,6 +2438,16 @@
         "summary": "Set tenant model provider",
         "description": "Sets the provider mode and model. Self-managed mode requires a `credential_ref` that names an existing secret. If the model entry does not exist, this request creates it. ",
         "operationId": "put_tenant_provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -1671,6 +2501,35 @@
         "summary": "List the tenant's workspaces",
         "description": "Returns a stable oldest-first cursor page of workspaces owned by the caller's authoritative tenant. Pass `starting_after` from `next_cursor` to continue. The optional `name` filter uses exact equality and supports reconciliation after an uncertain workspace- create response. ",
         "operationId": "list_tenant_workspaces",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Exact tenant-scoped workspace name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Cursor returned as `next_cursor` by the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows to return.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1702,6 +2561,44 @@
         "summary": "Receive a signed Svix event",
         "description": "Receives a signed Svix event for one fleet. A valid new event returns 202. A duplicate or an event for a paused fleet returns 200. ",
         "operationId": "receive_svix_webhook",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-id",
+            "in": "header",
+            "description": "Svix message identifier (used for deduplication and signature binding).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-timestamp",
+            "in": "header",
+            "description": "Unix timestamp of the Svix delivery (used for replay protection).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-signature",
+            "in": "header",
+            "description": "Space-separated list of Svix signatures (v1 scheme).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1732,6 +2629,17 @@
         "summary": "Send a signed event to a fleet",
         "description": "Sends a signed event to one fleet. Every request requires a valid provider signature. A new event returns 202. A duplicate within 24 hours returns `status: duplicate`. A paused fleet returns `ignored: fleet_paused`. Send the event again after resuming the fleet. ",
         "operationId": "receive_webhook",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1762,6 +2670,17 @@
         "summary": "Resolve a fleet approval gate",
         "description": "Called by a human (via email link or Slack action) to approve or reject a paused fleet. Body is HMAC-signed by the issuer; the signature is verified against the fleet's webhook secret. ",
         "operationId": "approval_webhook",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1789,6 +2708,44 @@
         "summary": "Receive a signed GitHub event",
         "description": "Verifies the body with the `webhook_secret` field from the workspace's `github` secret. Reviewable `pull_request` events and failed completed `workflow_run` events create fleet events. A delivery identifier remains reserved for 72 hours after acceptance. ",
         "operationId": "github_webhook",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "description": "GitHub event type.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "description": "GitHub-issued delivery UUID. Used as the dedupe key.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "description": "HMAC-SHA256 of the raw body, prefixed with `sha256=`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1822,6 +2779,22 @@
         "summary": "Create a workspace",
         "description": "Creates a named workspace in the caller's tenant. The server assigns the workspace identifier. This operation does not accept a replay key or retry automatically. After an uncertain response, query the tenant's workspaces with the exact name. Retrying the same tenant- unique name cannot create a second row and returns 409 when the first request committed. ",
         "operationId": "create_workspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreateWorkspaceRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -1856,6 +2829,58 @@
         "summary": "List pending approval gates for a workspace",
         "description": "Returns approval gates oldest-first (oldest is most urgent). Each row surfaces the fleet's proposed action, gathered evidence, blast- radius assessment, and timeout countdown. Filter by fleet, gate kind, or status. Cursor pagination over (created_at, id) so concurrent inserts don't cause silent skips. ",
         "operationId": "list_workspace_approvals",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Defaults to \"pending\". Supply \"approved\", \"denied\", \"timed_out\" to query terminal states.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gate_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1890,6 +2915,26 @@
         "summary": "Get a single approval gate by id",
         "description": "Drives the dashboard detail page. 404 when the gate doesn't exist or belongs to a different workspace. ",
         "operationId": "get_workspace_approval",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gate_id",
+            "in": "path",
+            "description": "`UUIDv7` of the approval gate.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1924,6 +2969,35 @@
         "summary": "Approve a pending request",
         "description": "Approves a pending request. If two callers resolve it, the first result wins. Other callers receive 409 with the existing result and resolver. ",
         "operationId": "approve_workspace_approval",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gate_id",
+            "in": "path",
+            "description": "`UUIDv7` of the approval gate.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decision",
+            "in": "path",
+            "description": "What to do with the gate: `approve` or `deny`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1954,6 +3028,17 @@
         "summary": "List connectors for a workspace",
         "description": "Returns the providers available to the workspace. Each item shows whether the provider is ready and connected. Requires the `connector:read` scope. ",
         "operationId": "connector_catalog",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1981,6 +3066,26 @@
         "summary": "Read a connector status",
         "description": "Returns `connected` or `not_connected` for one provider. Requires the `connector:read` scope. An unknown provider returns 404 `UZ- CONN-004`. ",
         "operationId": "connector_status",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2009,6 +3114,26 @@
         "summary": "Disconnect a provider from a workspace",
         "description": "Removes the workspace's connector handle and event-routing records from `agentsfleet`. Provider authorization remains active outside `agentsfleet`. Repeating this request returns 204. Use Connect to authorize the provider again. ",
         "operationId": "connector_disconnect",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -2039,6 +3164,26 @@
         "summary": "Get a provider connection URL",
         "description": "Returns a URL for connecting the workspace to the provider. Open the URL in a browser. An unknown provider returns 404 `UZ-CONN-004`. An unavailable provider returns 503 `UZ-CONN-001`. ",
         "operationId": "connector_connect",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2069,6 +3214,62 @@
         "summary": "List a workspace's aggregate event history",
         "description": "Cursor-paginated list of operator-visible events across every fleet in the workspace, newest first. Replaces the deleted activity endpoint. Optional `fleet_id` filter narrows to one fleet. Same query shape as the per-fleet endpoint - `actor` glob, `since=` (duration or RFC 3339), and a `cursor` mutually exclusive with `since`. ",
         "operationId": "list_workspace_events",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "query",
+            "description": "Drill down to one fleet within the workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Glob filter against the row's actor. `*` is a wildcard.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Lower bound on `created_at`. Accepts Go-style durations (15s/30m/2h/7d) or RFC 3339 timestamps.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows to return.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2100,6 +3301,17 @@
         "summary": "Stream live activity for a whole workspace",
         "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. Control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry- After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. ",
         "operationId": "stream_workspace_events",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2124,6 +3336,35 @@
         "summary": "List the workspace Fleet library gallery",
         "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements and per-credential reason copy; never an object-store key. A bounded keyset page ordered by `created_at DESC, tier ASC, id DESC` across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a client that reads only the first page silently loses every entry past it. The support-file manifest is stored on import but served by no endpoint. ",
         "operationId": "list_workspace_fleet_library",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2156,6 +3397,17 @@
         "summary": "Onboard a tenant Fleet library entry",
         "description": "Onboards a Fleet library entry into the caller's workspace catalog from a GitHub source reference. Requires the `library:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only. ",
         "operationId": "onboard_tenant_fleet_library",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
@@ -2186,6 +3438,35 @@
         "summary": "List fleets in a workspace",
         "description": "Returns visible fleets with the newest fleet first. Omit `starting_after` for the first page. Use the returned `next_cursor` to read the next page. ",
         "operationId": "list_fleets",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.\n",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size. Defaults to 20. Clamped to a maximum of 100.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2221,6 +3502,27 @@
         "summary": "Create a fleet",
         "description": "Creates a fleet from one library entry. Use either `platform_library_id` or `tenant_library_id`. The service creates a default API trigger when the library has no trigger. ",
         "operationId": "create_fleet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallFleetRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -2264,6 +3566,26 @@
         "summary": "Get a fleet",
         "description": "Returns one fleet's editable source, trigger markdown, bundle pin, trigger list, status, and lifetime counters. The response carries an `ETag` header over `source_markdown` and `trigger_markdown`. Send that value as `If-Match` when saving source changes to avoid overwriting another operator's edit. ",
         "operationId": "get_fleet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2299,6 +3621,26 @@
         "summary": "Permanently delete a fleet",
         "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory. This cannot be undone. Set the fleet status to `killed` first. Otherwise the request returns 409. Requires an operator role. ",
         "operationId": "delete_fleet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -2327,6 +3669,38 @@
         "summary": "Update a fleet",
         "description": "Updates fleet files or status. Every request field is optional. `config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed. Source editors can send `If-Match` with the `ETag` from GET. A stale tag returns 412 with the current tag in the problem body; omitting the header preserves last-write- wins behavior. Status changes require an operator role. Config changes require workspace membership. ",
         "operationId": "patch_fleet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Optional source-version tag from GET. Stale values return 412 with the current `etag`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2370,6 +3744,62 @@
         "summary": "List a fleet's event history",
         "description": "Returns fleet events with the newest event first. Filter with `actor` or `since`. You cannot use `since` and `cursor` together. ",
         "operationId": "list_fleet_events",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Glob filter against the row's actor. `*` is a wildcard.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Lower bound on `created_at`. Accepts Go-style durations (15s/30m/2h/7d) or RFC 3339 timestamps.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows to return.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2401,6 +3831,26 @@
         "summary": "Stream live fleet activity",
         "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each message includes `id`, `event`, and `data`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. ",
         "operationId": "stream_fleet_events",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2425,6 +3875,35 @@
         "summary": "Read one fleet event",
         "description": "Returns a single event with its request body and the agent's full answer. The list read beside this one omits both bodies: it returns up to two hundred rows and would carry every payload to render a table. Read the body here, for the one event you are expanding. An event that does not exist and an event belonging to another workspace both answer 404. The two are deliberately indistinguishable. The read is scoped inside its own query, so no caller can probe for events outside its own workspace. ",
         "operationId": "get_fleet_event",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "description": "`UUIDv7` of the event.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2452,6 +3931,26 @@
         "summary": "List integration grants for a fleet",
         "description": "Returns pending, approved, and revoked grants, newest first. ",
         "operationId": "list_integration_grants",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2489,6 +3988,35 @@
         "summary": "Revoke an integration grant",
         "description": "Immediately revokes a grant. A revoked grant blocks the fleet on its next call against the affected service. ",
         "operationId": "revoke_integration_grant",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "grant_id",
+            "in": "path",
+            "description": "`UUIDv7` of the grant.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -2519,6 +4047,26 @@
         "summary": "List or search memory entries for a fleet",
         "description": "Returns memory entries for the fleet, newest-created first. Without `query` this lists entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry). Every shape pages by keyset: pass the previous response's `next_cursor` as `starting_after` to continue the walk. A null `next_cursor` marks the final page. ",
         "operationId": "list_fleet_memories",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2556,6 +4104,35 @@
         "summary": "Forget a fleet memory entry",
         "description": "Deletes one memory entry for this fleet. The key is scoped to the fleet, so a key from another fleet is not deleted. Missing keys return 404 so an operator can tell a mistyped key from a successful forget. ",
         "operationId": "delete_fleet_memory",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Memory entry key.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -2586,6 +4163,43 @@
         "summary": "List a fleet's chat thread with bodies",
         "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest. ",
         "operationId": "list_fleet_messages",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque continuation cursor from a previous page's `next_cursor`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2618,6 +4232,26 @@
         "summary": "Post a chat message to a fleet",
         "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. ",
         "operationId": "post_fleet_message",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "202": {
             "description": "Accepted for publication; a subscriber reading it is a separate event"
@@ -2651,6 +4285,26 @@
         "summary": "List hosted schedules",
         "description": "Lists the hosted schedules for a Fleet. The result is bounded by the per-Fleet schedule cap. ",
         "operationId": "list_fleet_schedules",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2673,6 +4327,26 @@
         "summary": "Create a hosted schedule",
         "description": "Creates a schedule and synchronously registers it in Upstash QStash. ",
         "operationId": "create_fleet_schedule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
@@ -2704,8 +4378,37 @@
           "Schedules"
         ],
         "summary": "Get a hosted schedule",
-        "description": "The read half of the CRUD this section declares, and the one verb of it that\ndid not come across in the port: `public/openapi.json` declares this GET and\nthe published navigation lists it, while the router mounted only PATCH and\nDELETE — so a client following the documented API earned a 405. The Zig\nserves it at `handlers/schedules/api.zig:68`, and the service seam here\nalready carried [`FleetSchedules::one`]; only the handler and its mount were\nmissing.\n\nA schedule belonging to another fleet answers exactly as one that never\nexisted. Telling them apart would confirm a schedule id across a fleet\nboundary, which is the same reason [`FleetSchedules::one`] returns\n`Ok(None)` for both.\n\n# Errors\nReports a datastore that would not answer, and `UZ-SCHED-002` for a schedule\nthis fleet does not hold.",
+        "description": "One schedule, as it is currently registered for this fleet.",
         "operationId": "get_fleet_schedule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "`UUIDv7` of the schedule.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2731,6 +4434,35 @@
         "summary": "Delete a hosted schedule",
         "description": "Deletes the QStash registration before removing the local schedule row. ",
         "operationId": "delete_fleet_schedule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "`UUIDv7` of the schedule.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -2759,6 +4491,35 @@
         "summary": "Update a hosted schedule",
         "description": "Updates schedule fields and synchronously overwrites the QStash registration. ",
         "operationId": "update_fleet_schedule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "`UUIDv7` of the schedule.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2795,6 +4556,35 @@
         "summary": "Sync a hosted schedule",
         "description": "Idempotently overwrites the QStash registration from the latest local generation. ",
         "operationId": "sync_fleet_schedule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "`UUIDv7` of the schedule.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2825,6 +4615,17 @@
         "summary": "Read the workspace's onboarding checklist state",
         "description": "Returns every signal the Getting Started checklist needs in one call. Five signals are derived server-side in a single query. A model is configured, a fleet exists, a credential exists, an event has been processed, and a steer event exists. Three more are the caller's stored UI preferences: dismissed, collapsed, and CLI ticked. This replaces six separate requests with one. ",
         "operationId": "get_workspace_onboarding",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2846,6 +4647,17 @@
         "summary": "Read the caller's dashboard preferences for a workspace",
         "description": "Returns every dashboard preference the calling user has set in this workspace, as an object keyed by preference key. A user who has set nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no preferences\" from \"preferences unavailable\" without branching. Preferences are per user AND per workspace: a second workspace starts its onboarding checklist fresh. ",
         "operationId": "get_workspace_preferences",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2874,6 +4686,26 @@
         "summary": "Write one dashboard preference",
         "description": "Upserts a single preference for the calling user in this workspace and returns the full updated bag. The request body IS the value - any well-formed JavaScript Object Notation (JSON) value up to 1 KiB, stored verbatim and never interpreted by the server. `pref_key` must be one the dashboard declares; anything else is refused with `UZ- PREFS-001` and no row is written. Concurrent writes to one key are last-write-wins by design: a preference is a single toggle, so a lost write costs one click. ",
         "operationId": "put_workspace_preference",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pref_key",
+            "in": "path",
+            "description": "The preference key.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2895,6 +4727,17 @@
         "summary": "List secrets stored for a workspace",
         "description": "Returns secret names and non-secret details. Secret values are never returned. ",
         "operationId": "list_workspace_secrets",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2930,6 +4773,27 @@
         "summary": "Store a workspace secret",
         "description": "Stores an encrypted JSON object. Secret values are never returned. `data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`. Strings, arrays, scalars, and empty objects return `UZ-VAULT-001`. Creating claims a name that is free. A name already held in this workspace returns `UZ-VAULT-005` and nothing is written. Replace the existing secret's whole body with `PUT` on the item route instead. The database decides the winner, so two concurrent creates on one name resolve to one `201` and one `409`. ",
         "operationId": "store_workspace_secret",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -2970,6 +4834,36 @@
         "summary": "Replace a secret's stored body",
         "description": "Replaces the stored object in full. Send the secret you want stored, in the same `data` shape `create` takes — a field you omit is absent from the secret afterwards. Replacement is total by design. A stored secret is never readable, so a partial write cannot be reasoned about by the caller. Every field needed to rebuild the body is already returned by `GET /v1/workspaces/{workspace_id}/secrets`. The secret itself is the one exception, and this call supplies it. The name must already be held. A name this workspace does not have returns `UZ-VAULT-003` and nothing is created — claiming a name is `create`'s job. ",
         "operationId": "replace_workspace_secret",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The name the secret is stored under.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -2998,6 +4892,26 @@
         "summary": "Delete a secret from the workspace vault",
         "description": "Idempotent — returns 204 whether or not the secret existed. ",
         "operationId": "delete_workspace_secret",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The name the secret is stored under.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No content"
@@ -3023,6 +4937,80 @@
   },
   "components": {
     "schemas": {
+      "ActivityFrame": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A tool call began.",
+            "required": [
+              "tool_call_started"
+            ],
+            "properties": {
+              "tool_call_started": {
+                "$ref": "#/components/schemas/ToolCallStarted",
+                "description": "A tool call began."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The fleet produced output.",
+            "required": [
+              "fleet_response_chunk"
+            ],
+            "properties": {
+              "fleet_response_chunk": {
+                "$ref": "#/components/schemas/FleetResponseChunk",
+                "description": "The fleet produced output."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A tool call finished.",
+            "required": [
+              "tool_call_completed"
+            ],
+            "properties": {
+              "tool_call_completed": {
+                "$ref": "#/components/schemas/ToolCallCompleted",
+                "description": "A tool call finished."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A long-running tool is still working.",
+            "required": [
+              "tool_call_progress"
+            ],
+            "properties": {
+              "tool_call_progress": {
+                "$ref": "#/components/schemas/ToolCallProgress",
+                "description": "A long-running tool is still working."
+              }
+            }
+          }
+        ],
+        "description": "One progress frame."
+      },
+      "ActivityRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/activity` request — a batch of frames.\n\nOne frame per request today; the array shape lets a later change coalesce\nwithout a wire change. The reply is `202` with no acknowledgement.",
+        "required": [
+          "frames"
+        ],
+        "properties": {
+          "frames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityFrame"
+            },
+            "description": "The frames being forwarded."
+          }
+        },
+        "additionalProperties": false
+      },
       "AdminLibrariesResponse": {
         "type": "object",
         "description": "Admin Fleet-library list response.",
@@ -3255,7 +5243,7 @@
               "object",
               "null"
             ],
-            "description": "The evidence behind the proposal, verbatim.\n\n`null` for a row whose stored text will not parse. That cannot happen\nthrough the park, which writes valid JSON, so a null here is corruption\n— and showing the gate WITHOUT its evidence beats failing the whole\nqueue, because an operator can still read what is being asked and deny\nit, where a failed read hides every other gate too.\n\nSerialized it is whatever document the gate was opened with; in Rust it\nis an unparsed slice, which has no schema of its own. `value_type` names\nthat difference."
+            "description": "The evidence behind the proposal, verbatim."
           },
           "fleet_id": {
             "type": "string",
@@ -3331,9 +5319,38 @@
           }
         }
       },
+      "ApproveSessionRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/auth/sessions/{session_id}/approve` — a person clicked Approve.",
+        "required": [
+          "dashboard_public_key",
+          "ciphertext",
+          "nonce",
+          "verification_code"
+        ],
+        "properties": {
+          "ciphertext": {
+            "type": "string",
+            "description": "The sealed credential. Relayed; this daemon never opens it."
+          },
+          "dashboard_public_key": {
+            "type": "string",
+            "description": "The dashboard's public key, for the client's key agreement."
+          },
+          "nonce": {
+            "type": "string",
+            "description": "The nonce it was sealed under."
+          },
+          "verification_code": {
+            "type": "string",
+            "description": "The six digits shown to the person, whose digest is what gets stored."
+          }
+        },
+        "additionalProperties": false
+      },
       "ApproveSessionResponse": {
         "type": "object",
-        "description": "What approving answers with.\n\nThe request id and nothing else. An approval has no state worth returning —\nthe dashboard already holds everything it sent — and echoing the session\nback would put the ciphertext on a second response for no reason.",
+        "description": "What approving answers with.",
         "required": [
           "request_id"
         ],
@@ -3346,7 +5363,7 @@
       },
       "AssignedPolicy": {
         "type": "object",
-        "description": "The policy the control plane assigns to one runner.\n\nEverything a host was once told through its environment, now delivered with\nits identity. The host never declares policy.",
+        "description": "The isolation, egress and concurrency settings assigned to one runner.",
         "required": [
           "sandbox_tier",
           "network_policy",
@@ -3387,7 +5404,7 @@
       },
       "BillingResponse": {
         "type": "object",
-        "description": "`GET /v1/tenants/me/billing` — the wallet snapshot.\n\n`is_exhausted` restates `exhausted_at` as a boolean, and both travel:\n`tenant_billing.zig` emits the pair so a dashboard can branch without a\nnull-check, and parity keeps the redundancy. `updated_at` and\n`exhausted_at` are instants in milliseconds; the `_ms` suffix the domain\ntypes carry stops at the wire because the Zig field names are the format.",
+        "description": "`GET /v1/tenants/me/billing` — the wallet snapshot.",
         "required": [
           "balance_nanos",
           "updated_at",
@@ -3428,7 +5445,7 @@
       },
       "CapabilityReport": {
         "type": "object",
-        "description": "What this host's kernel can actually enforce, probed at startup and refreshed\nper beat. Each field is one enforcement mechanism a degraded reason can name.\n\nThe flags stay separate booleans rather than collapsing into a bitset or an\nenum: each names a distinct mechanism a degraded reason quotes back to an\noperator, and the shape is the peer's, not this crate's to choose.",
+        "description": "What this host can actually enforce.\n",
         "required": [
           "landlock",
           "seccomp",
@@ -3552,7 +5569,7 @@
       },
       "ChargesResponse": {
         "type": "object",
-        "description": "`GET /v1/tenants/me/billing/charges` — one page of the ledger.\n\nTwo keys, not [`PageResponse`]'s three: the Zig handler answers\n`{items, next_cursor}` with no `total`, and parity pins the ABSENCE the\nsame way it pins a presence. Folding this into the shared envelope would\nput a key on the wire the daemon being replaced never sent.",
+        "description": "`GET /v1/tenants/me/billing/charges` — one page of the ledger.",
         "required": [
           "items"
         ],
@@ -3570,6 +5587,37 @@
               "null"
             ],
             "description": "Where the next page resumes, or `null` on the last page — emitted\neither way, for the module's null rule."
+          }
+        }
+      },
+      "CreateModelEntryRequest": {
+        "type": "object",
+        "description": "`POST /v1/tenants/me/models` — register a model on a stored credential.\n\nUnknown fields are IGNORED, matching `innerCreateModelEntry`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
+        "required": [
+          "model_id",
+          "secret_ref"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "description": "The model to register."
+          },
+          "secret_ref": {
+            "type": "string",
+            "description": "The credential to back it with. Immutable once the entry exists."
+          }
+        }
+      },
+      "CreateWorkspaceRequest": {
+        "type": "object",
+        "description": "`POST /v1/workspaces` — create one.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the workspace will be called, when the caller cares."
           }
         }
       },
@@ -3617,7 +5665,7 @@
       },
       "EventDetail": {
         "type": "object",
-        "description": "One event as the expanded view renders it — bodies included.\n\nThe sibling of [`EventSummary`], and the two are separate types for the\nreason `fleet_event_detail_store.zig` is a separate file from\n`fleet_events_store.zig`: a page of up to two hundred rows pays for every\ncolumn it selects, and the trigger payload and the agent's full answer are\nwanted one row at a time.\n\nField order is load-bearing here for the same reason it is on\n[`EventSummary`], and the two bodies sit in the MIDDLE of the field set\nrather than at the end — which is why this cannot be [`EventSummary`] plus\ntwo fields, in this language or the one it ports.\n\n`request_json` is the stored payload serialized to TEXT and carried as a\nJSON string, not as an embedded object. That is what `res.json` emits for\nthe Zig row's `[]u8`, and a client parsing the string a second time is the\ncontract already in production.",
+        "description": "One event as the expanded view renders it — bodies included.",
         "required": [
           "fleet_id",
           "event_id",
@@ -3647,7 +5695,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows.\n\n`null` when the event recorded no telemetry — see [`EventSummary`] on\nwhy that is never rendered as a zero charge."
+            "description": "What this event actually cost, summed over its telemetry rows."
           },
           "created_at": {
             "type": "integer",
@@ -3731,7 +5779,7 @@
       },
       "EventSummary": {
         "type": "object",
-        "description": "One event as the operator surface renders it.\n\nField order is load-bearing. `events.zig` hands its `EventRow` straight to\n`res.json(value, .{})`, which emits the struct's field set in DECLARATION\norder, and the tenant parity suite pins key set AND order — a reordering that a\nset comparison would call identical is one a client reading ordered columns\ncan feel. So this declaration mirrors `fleet_events_store.zig`'s `EventRow`\nfield for field.\n\nEvery optional stays on the wire as an explicit `null` rather than being\nskipped, which is this crate's rule everywhere and the reason it declares no\n`skip_serializing_if`: the Zig emitter writes `null` for an absent optional,\nso a dropped key would be a byte mismatch against the daemon still serving.",
+        "description": "One event as the operator surface renders it.",
         "required": [
           "fleet_id",
           "event_id",
@@ -3760,7 +5808,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows.\n\n`null` when the event recorded no telemetry, which the console renders\nas UNKNOWN and never as a zero charge — an unbilled run and a free run\nare different facts. Cost is server truth: a client must not derive it\nfrom `tokens`."
+            "description": "What this event actually cost, summed over its telemetry rows."
           },
           "created_at": {
             "type": "integer",
@@ -3876,6 +5924,23 @@
             "description": "Host path to bind."
           }
         }
+      },
+      "FailureClass": {
+        "type": "string",
+        "description": "Why a run failed, at the granularity the classification site knows.",
+        "enum": [
+          "startup_posture",
+          "policy_deny",
+          "timeout_kill",
+          "oom_kill",
+          "resource_kill",
+          "runner_crash",
+          "transport_loss",
+          "landlock_deny",
+          "lease_expired",
+          "renewal_terminate",
+          "budget_breach"
+        ]
       },
       "FleetBundleItem": {
         "type": "object",
@@ -4019,6 +6084,20 @@
           }
         }
       },
+      "FleetResponseChunk": {
+        "type": "object",
+        "description": "The fleet produced output.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text produced."
+          }
+        },
+        "additionalProperties": false
+      },
       "FleetSummary": {
         "type": "object",
         "description": "One fleet as a list page shows it.",
@@ -4104,7 +6183,7 @@
       },
       "GalleryCard": {
         "type": "object",
-        "description": "One gallery card.\n\n`requirements` is the admin surface's type on purpose rather than by\naccident: the two responses share an `OpenAPI` schema, and the Zig's own note\nrecords that emitting a different shape here made two documented-identical\npayloads disagree about their contents. One type is what stops that.",
+        "description": "One gallery card.",
         "required": [
           "id",
           "name",
@@ -4134,7 +6213,7 @@
             "description": "The display name."
           },
           "required_credentials_reasons": {
-            "description": "Per-credential \"why this fleet needs it\" copy, keyed by name.\n\nAn empty object for a workspace's own entry: that library derives no\nreasons, and the read projects `{}` rather than a null so a client has\none shape to render for both tiers."
+            "description": "Per-credential \"why this fleet needs it\" copy, keyed by name."
           },
           "requirements": {
             "$ref": "#/components/schemas/AdminLibraryRequirements",
@@ -4178,7 +6257,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Always null.\n\nCounting a keyset page costs the scan the pagination exists to avoid,\nand §3 declares null to mean \"not computed\" rather than letting the key\nvanish from the envelope.",
+            "description": "Always null.",
             "minimum": 0
           }
         },
@@ -4186,7 +6265,7 @@
       },
       "GrantSummary": {
         "type": "object",
-        "description": "One grant as the fleet's list shows it.\n\n`approved_at` and `revoked_at` are the two instants a grant's own\ntransitions stamp — the table carries no `updated_at`, because a row-change\ntime would say nothing those two do not already say. Both are `null` on a\npending row and exactly one is set afterwards.",
+        "description": "One grant as the fleet's list shows it.",
         "required": [
           "id",
           "service",
@@ -4236,7 +6315,7 @@
       },
       "GrantsResponse": {
         "type": "object",
-        "description": "`GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants`.\n\n`total` is the length of `items` and not a count of everything stored: the\nlist is unpaged, because a fleet holds at most one grant per service and the\nsupported-service count is what bounds it. Emitted anyway, because the Zig\nhandler emits it and a dashboard reads it.",
+        "description": "`GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants`.",
         "required": [
           "items",
           "total"
@@ -4253,6 +6332,33 @@
             "type": "integer",
             "description": "How many rows `items` carries.",
             "minimum": 0
+          }
+        }
+      },
+      "InstallFleetRequest": {
+        "type": "object",
+        "description": "`POST /v1/workspaces/{workspace_id}/fleets` — install one.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The operator's name for this instance, when they want one.\n\nThe same bundle backs many fleets in a workspace, each with its own name\nand its own webhooks. Absent means the bundle's declared name."
+          },
+          "platform_library_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A published platform entry, by slug."
+          },
+          "tenant_library_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "This workspace's own entry, by identifier."
           }
         }
       },
@@ -4289,7 +6395,7 @@
       },
       "MemoriesResponse": {
         "type": "object",
-        "description": "`GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories` — one page.\n\nExactly three fields, and an integration test pins the count: a page that\ngrew a fourth would be a shape the dashboard's parser did not agree to.",
+        "description": "`GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories` — one page.",
         "required": [
           "items",
           "total"
@@ -4319,7 +6425,7 @@
       },
       "MemoryCaptureResponse": {
         "type": "object",
-        "description": "`POST /v1/runners/me/memory/{fleet_id}` reply — what the write did.\n\nA runner acts on both numbers: `stored` says its memory landed, `skipped`\nsays some was refused for shape and it should look at what it sends. The\nsweep and eviction counts the control plane also computes stay in the log —\nthey are the daemon's housekeeping, not a fact about this request.\n\nDeclared here rather than assembled inline at the handler, which is where it\nused to live. The argument for inline was that no `wire-v2` fixture pins\nthis shape, so a type would claim a frozen contract the corpus does not\ncarry. That confuses two things: `tests/roundtrip.rs` generates its cases\nfrom an explicit fixture ROSTER, so a type absent from that roster is\npinned by nothing and claims nothing. What the inline version did claim was\nthat a response body could be spelled somewhere other than this crate, and\ntwo keys written by hand at a call site are two keys nothing type-checks.",
+        "description": "`POST /v1/runners/me/memory/{fleet_id}` reply — what the write did.",
         "required": [
           "stored",
           "skipped"
@@ -4340,7 +6446,7 @@
       },
       "MemoryDelta": {
         "type": "object",
-        "description": "One durable memory item — the unit of both capture and hydrate.\n\nCarries no scope: the fleet is a path segment, validated server-side against\nthe runner's live lease.",
+        "description": "One durable memory item — the unit of both reading and writing.",
         "required": [
           "key",
           "content",
@@ -4364,7 +6470,7 @@
       },
       "MemoryEntry": {
         "type": "object",
-        "description": "One stored entry as the OPERATOR surface renders it.\n\nA [`MemoryDelta`] plus the instant it was last written. The runner's two\nverbs carry no timestamp — a fleet being seeded with what it knows has no\nuse for one — while a person reading the list is deciding whether a lesson\nis still current, which is the whole question `updated_at` answers.\n\nField order is load-bearing. `memory/handler.zig` hands its `MemoryEntry`\nstraight to `res.json`, which emits the struct's fields in DECLARATION\norder, and a dashboard diffing two responses byte-for-byte would see a\nreorder as a change.",
+        "description": "One stored entry as the OPERATOR surface renders it.",
         "required": [
           "key",
           "content",
@@ -4394,7 +6500,7 @@
       },
       "MemoryHydrateResponse": {
         "type": "object",
-        "description": "`GET /v1/runners/me/memory/{fleet_id}` reply — a compacted hydration window.",
+        "description": "What a fleet remembers, compacted to fit one window.",
         "required": [
           "memory"
         ],
@@ -4405,6 +6511,94 @@
               "$ref": "#/components/schemas/MemoryDelta"
             },
             "description": "The window's items."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryPushRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/memory/{fleet_id}` request.",
+        "required": [
+          "lease_id",
+          "fencing_token",
+          "memory"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic guard; a reclaimed holder is rejected.",
+            "minimum": 0
+          },
+          "lease_id": {
+            "type": "string",
+            "description": "The lease authorizing this write."
+          },
+          "memory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryDelta"
+            },
+            "description": "The items to remember."
+          }
+        }
+      },
+      "MintApiKeyRequest": {
+        "type": "object",
+        "description": "`POST /v1/api-keys` — mint one tenant credential.",
+        "required": [
+          "key_name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text beside it, for whoever reads the list in six months."
+          },
+          "key_name": {
+            "type": "string",
+            "description": "What the key will be called. Unique per tenant."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MintCliCredentialRequest": {
+        "type": "object",
+        "description": "`POST /v1/cli-credentials` — mint this machine's credential.",
+        "required": [
+          "machine_name"
+        ],
+        "properties": {
+          "machine_name": {
+            "type": "string",
+            "description": "The terminal's own label, as an operator will read it back."
+          }
+        }
+      },
+      "MintCredentialRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/credentials/mint` request.\n\nThe runner forwards the sandboxed child's ask verbatim. `lease_id` binds the\nmint to the lease's workspace SERVER-SIDE — the child never names a\nworkspace, so a prompt-injected child cannot mint for another tenant. The\nrequest carries no token.",
+        "required": [
+          "lease_id",
+          "integration"
+        ],
+        "properties": {
+          "integration": {
+            "type": "string",
+            "description": "Which connected integration to mint for."
+          },
+          "lease_id": {
+            "type": "string",
+            "description": "The lease the mint is bound to."
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An integration-specific narrowing the broker may honour."
           }
         },
         "additionalProperties": false
@@ -4473,7 +6667,7 @@
       },
       "OnboardingResponse": {
         "type": "object",
-        "description": "`GET /v1/workspaces/{workspace_id}/onboarding` — the whole checklist.\n\nFive derived signals and three preference reads in one call, which is the\nconsolidation this endpoint exists for: the dashboard used to fetch it as\nsix separate requests.\n\nEight booleans, and `struct_excessive_bools` is right that this usually\nmeans a missing type. Not here: this IS the wire shape, field for field, and\nthe dashboard destructures all eight. Collapsing any of them into an enum\nwould change the JSON a shipped client reads.",
+        "description": "The whole onboarding checklist, in one call.",
         "required": [
           "model_configured",
           "has_fleet",
@@ -4518,6 +6712,47 @@
             "description": "A model resolves — the tenant's own selection, or the platform default."
           }
         }
+      },
+      "OpenSessionRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/sessions` — the command line opens a login.",
+        "required": [
+          "public_key",
+          "token_name"
+        ],
+        "properties": {
+          "public_key": {
+            "type": "string",
+            "description": "The client's public key. Relayed; this daemon runs no curve over it."
+          },
+          "token_name": {
+            "type": "string",
+            "description": "What the credential this login mints will be called."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Outcome": {
+        "type": "string",
+        "description": "The terminal verdict a runner reports.\n\nMirrors the event statuses a RUNNER can produce; the daemon-side statuses are\nnever runner-reported.",
+        "enum": [
+          "processed",
+          "fleet_error"
+        ]
+      },
+      "PatchApiKeyRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/api-keys/{id}` — the only mutation, and only downward.",
+        "required": [
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Must be `false`. A revoked key is never brought back."
+          }
+        },
+        "additionalProperties": false
       },
       "PatchedFleetResponse": {
         "oneOf": [
@@ -4596,7 +6831,7 @@
             }
           }
         ],
-        "description": "What a PATCH answers with — one of three shapes, as `patch.zig` writes them.\n\nAn untagged enum rather than one struct with optional keys, and that is the\nrule this crate already keeps rather than an exception to it: no\n`skip_serializing_if` appears here, because each variant emits exactly the\nkeys its case carries. A config-only edit never wrote a `status` key, and a\nno-op never wrote an `etag` — with one struct those would have to be skipped\nconditionally, which is the thing that silently drops a field somebody adds\nlater.\n\nIt also makes two impossible responses impossible: an `etag` without a\nrevision, and a revision on the no-op."
+        "description": "What a PATCH answers with — one of three shapes."
       },
       "PlatformKeyDeactivateResponse": {
         "type": "object",
@@ -4658,7 +6893,7 @@
       },
       "PollSessionResponse": {
         "type": "object",
-        "description": "`GET /v1/auth/sessions/{session_id}` — where a login has got to.\n\nNever carries ciphertext. The poll is unauthenticated — the id is the only\nthing presented — so anything it returns is readable by whoever holds the\nid, and the sealed credential is released only by `/verify`, against a code\nthat never travelled the same channel.",
+        "description": "`GET /v1/auth/sessions/{session_id}` — where a login has got to.",
         "required": [
           "status",
           "cli_public_key",
@@ -4687,7 +6922,7 @@
       },
       "ProviderMode": {
         "type": "string",
-        "description": "The `mode` a client sends and reads back.\n\nTwo spellings and no third, so a body naming something else is refused by\nserde at the boundary rather than by a string comparison inside a handler.",
+        "description": "The `mode` a client sends and reads back.",
         "enum": [
           "platform",
           "self_managed"
@@ -4708,6 +6943,128 @@
         },
         "additionalProperties": false
       },
+      "ReplaceSecretRequest": {
+        "type": "object",
+        "description": "`PUT /v1/workspaces/{workspace_id}/secrets/{secret_name}` — replace the body.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "The complete replacement body.\n\nOpaque for the same reason create's is: an unparsed slice in Rust, an\nobject on the wire. `value_type` names the difference."
+          }
+        }
+      },
+      "ReportCheckpoint": {
+        "type": "object",
+        "description": "Session resume cursor written to the fleet's stored session context.",
+        "required": [
+          "last_event_id",
+          "last_response"
+        ],
+        "properties": {
+          "last_event_id": {
+            "type": "string",
+            "description": "The last event this session processed."
+          },
+          "last_response": {
+            "type": "string",
+            "description": "The last response it produced."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReportRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/reports` — one batched write keyed by event id.",
+        "required": [
+          "lease_id",
+          "event_id",
+          "fencing_token",
+          "outcome",
+          "failure_detail",
+          "response_text",
+          "tokens",
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens",
+          "telemetry",
+          "checkpoint"
+        ],
+        "properties": {
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative cache-read tokens for the whole run.",
+            "minimum": 0
+          },
+          "checkpoint": {
+            "$ref": "#/components/schemas/ReportCheckpoint",
+            "description": "Where to resume this session."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The event this report is about."
+          },
+          "failure_detail": {
+            "type": "string",
+            "description": "Human-readable cause, stored only on failure."
+          },
+          "failure_reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FailureClass",
+                "description": "The granular cause when the run failed."
+              }
+            ]
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic guard, verified against the fleet's live sequence.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative prompt tokens for the whole run.",
+            "minimum": 0
+          },
+          "lease_id": {
+            "type": "string",
+            "description": "The lease being reported on."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome",
+            "description": "The binary verdict."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative completion tokens for the whole run.",
+            "minimum": 0
+          },
+          "response_text": {
+            "type": "string",
+            "description": "The run's output."
+          },
+          "telemetry": {
+            "$ref": "#/components/schemas/ReportTelemetry",
+            "description": "Latency the runner observed."
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The run's total tokens, for reporting. Billing charges the three\ncumulative fields below, which settle against the usage ledger.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "ReportResponse": {
         "type": "object",
         "description": "`POST /v1/runners/me/reports` reply.",
@@ -4718,6 +7075,29 @@
           "ok": {
             "type": "boolean",
             "description": "Whether the write landed."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReportTelemetry": {
+        "type": "object",
+        "description": "Latency the runner observed for one run.",
+        "required": [
+          "time_to_first_token_ms",
+          "wall_ms"
+        ],
+        "properties": {
+          "time_to_first_token_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Milliseconds until the first token arrived.",
+            "minimum": 0
+          },
+          "wall_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total wall-clock milliseconds.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -4779,6 +7159,46 @@
             "description": "When the row records it stopped working."
           }
         }
+      },
+      "RunnerAdminAction": {
+        "type": "string",
+        "description": "Platform-operator mutation actions.\n\nRotation and self-test are operations rather than state transitions. They\nride the same endpoint because they share the operator scope and the\nexactly-one-of body guard with the transition actions.",
+        "enum": [
+          "cordon",
+          "drain",
+          "revoke",
+          "rotate",
+          "self_test"
+        ]
+      },
+      "RunnerAdminPatchRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/fleets/runners/{id}` body.\n\nExactly one of `action` or `assigned_policy`; both or neither is a `400`.",
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunnerAdminAction",
+                "description": "A state transition, token rotation, or self-test request."
+              }
+            ]
+          },
+          "assigned_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssignedPolicy",
+                "description": "A policy re-assignment, which reaches the host on its next heartbeat."
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "RunnerAdminPatchResponse": {
         "type": "object",
@@ -5029,7 +7449,7 @@
       },
       "SandboxTier": {
         "type": "string",
-        "description": "Isolation strength the control plane assigns. Only tiers with real\nenforcement are members: a tier that cannot be applied must not be assignable.",
+        "description": "The isolation strength assigned to a runner.",
         "enum": [
           "landlock_full",
           "container_nested",
@@ -5038,7 +7458,7 @@
       },
       "SecretSummary": {
         "type": "object",
-        "description": "One credential as the list shows it.\n\n`model` is documented as optional in `SecretSummary` and is not emitted:\n`vault.secrets` has no column for it, and answering it would mean decrypting\nevery row on a page that displays no secrets. See `afd_vault::projection`.",
+        "description": "One credential as the list shows it.",
         "required": [
           "name",
           "created_at",
@@ -5159,6 +7579,24 @@
         },
         "additionalProperties": false
       },
+      "StoreSecretRequest": {
+        "type": "object",
+        "description": "`POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.\n\nUnknown fields are IGNORED, matching `innerStoreSecret`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
+        "required": [
+          "name",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "The object to seal. Opaque to the platform beyond its shape.\n\nThe serialized form is a JSON object; the Rust form is an unparsed\nslice, which is a shape `ToSchema` cannot derive. `value_type` names\nthe difference — the one thing an override is for."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name a fleet interpolates as `${secrets.<name>.<field>}`."
+          }
+        }
+      },
       "StoredSecretResponse": {
         "type": "object",
         "description": "What a create and a replace both answer with.\n\nOne shape for both verbs because both say the same thing — which name now\nholds a secret — and the status code is what distinguishes them.",
@@ -5171,6 +7609,34 @@
             "description": "The name the secret is stored under."
           }
         }
+      },
+      "TenantProviderRequest": {
+        "type": "object",
+        "description": "`PUT /v1/tenants/me/provider`.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ProviderMode",
+            "description": "Whose key to dial with."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model to select, if the tenant is changing it."
+          },
+          "secret_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The credential to dial with, required under self-managed mode."
+          }
+        },
+        "additionalProperties": false
       },
       "TenantProviderResponse": {
         "type": "object",
@@ -5199,7 +7665,7 @@
           },
           "platform_default_available": {
             "type": "boolean",
-            "description": "Whether an active platform-default row exists at all.\n\nIndependent of this tenant's own mode, so the Models page can gate its\n\"Switch to Default\" action BEFORE the click rather than after a failed\nwrite."
+            "description": "Whether an active platform-default row exists at all."
           },
           "provider": {
             "type": "string",
@@ -5210,13 +7676,13 @@
               "string",
               "null"
             ],
-            "description": "The credential dialled under self-managed mode.\n\nOmitted rather than null under platform mode: an absent field and a\nnull one are read differently by enough clients that the wire should\ncarry only one of them, and the daemon's own logfmt rule already says\nabsent."
+            "description": "The credential dialled under self-managed mode."
           }
         }
       },
       "ThreadResponse": {
         "type": "object",
-        "description": "A page of one fleet's chat thread, bodies included.\n\nThe sibling of [`EventsResponse`], and it carries [`EventDetail`] where\nthat carries [`EventSummary`]: the chat view needs the newest turns WITH\ntheir payload and answer, and used to fan out one detail request per turn\nto get them.\n\n# `total` is always null, and is on the wire anyway\n\n`messages_list.zig` writes `.total = null` and has never written anything\nelse — the count would cost a second statement per page for a number the\nview does not render. Dropping the key would be a byte mismatch against\nthe daemon still serving, so it stays, typed as the count it would hold.",
+        "description": "A page of one fleet's chat thread, bodies included.",
         "required": [
           "items"
         ],
@@ -5246,9 +7712,95 @@
           }
         }
       },
+      "ToolCallCompleted": {
+        "type": "object",
+        "description": "A tool call finished.",
+        "required": [
+          "name",
+          "ms"
+        ],
+        "properties": {
+          "ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long it took, in milliseconds."
+          },
+          "name": {
+            "type": "string",
+            "description": "Which tool."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallProgress": {
+        "type": "object",
+        "description": "A long-running tool is still working, so a reader's spinner survives it.",
+        "required": [
+          "name",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long it has been running, in milliseconds."
+          },
+          "name": {
+            "type": "string",
+            "description": "Which tool."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallStarted": {
+        "type": "object",
+        "description": "A tool call began.\n\n`args_redacted` is opaque, pre-stringified JSON built runner-side AFTER\nsubstitution — never the resolved bytes.",
+        "required": [
+          "name",
+          "args_redacted"
+        ],
+        "properties": {
+          "args_redacted": {
+            "type": "string",
+            "description": "The redacted arguments."
+          },
+          "name": {
+            "type": "string",
+            "description": "Which tool."
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateModelEntryRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/tenants/me/models/{id}` — point an entry at another model.",
+        "required": [
+          "model_id"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "description": "The model to point at."
+          }
+        }
+      },
+      "VerifySessionRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/sessions/{session_id}/verify` — the code is presented.",
+        "required": [
+          "verification_code"
+        ],
+        "properties": {
+          "verification_code": {
+            "type": "string",
+            "description": "The six digits a person read out of the browser."
+          }
+        },
+        "additionalProperties": false
+      },
       "VerifySessionResponse": {
         "type": "object",
-        "description": "What a redeemed login hands back.\n\nIdentical for a first redemption and for a repeat inside the replay window,\ndeliberately: a command line asking again after a dropped connection must\nnot be able to learn that its first request landed.",
+        "description": "What a redeemed login hands back.",
         "required": [
           "dashboard_public_key",
           "ciphertext",

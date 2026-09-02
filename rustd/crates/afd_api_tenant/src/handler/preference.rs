@@ -88,6 +88,9 @@ pub(crate) struct PreferencePath {
         "Preferences are per user AND per workspace: a second workspace ",
         "starts its onboarding checklist fresh. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = OnboardingResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -131,6 +134,9 @@ pub(crate) async fn read<D: Services>(
         "PREFS-001` and no row is written. Concurrent writes to one key are ",
         "last-write-wins by design: a preference is a single toggle, so a ",
         "lost write costs one click. ",
+    ),
+    params(
+        afd_http::openapi::path::Preference,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
@@ -183,6 +189,9 @@ pub(crate) async fn write<D: Services>(
         "has been processed, and a steer event exists. Three more are the ",
         "caller's stored UI preferences: dismissed, collapsed, and CLI ",
         "ticked. This replaces six separate requests with one. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),

@@ -27,11 +27,11 @@ use serde_json::Value;
 use crate::admin::AdminLibraryRequirements;
 
 /// One gallery card.
-///
-/// `requirements` is the admin surface's type on purpose rather than by
-/// accident: the two responses share an `OpenAPI` schema, and the Zig's own note
-/// records that emitting a different shape here made two documented-identical
-/// payloads disagree about their contents. One type is what stops that.
+//
+// `requirements` is the admin surface's type on purpose rather than by
+// accident: the two responses share an `OpenAPI` schema, and the Zig's own note
+// records that emitting a different shape here made two documented-identical
+// payloads disagree about their contents. One type is what stops that.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,10 +58,10 @@ pub struct GalleryCard<'a> {
     #[serde(borrow)]
     pub requirements: AdminLibraryRequirements<'a>,
     /// Per-credential "why this fleet needs it" copy, keyed by name.
-    ///
-    /// An empty object for a workspace's own entry: that library derives no
-    /// reasons, and the read projects `{}` rather than a null so a client has
-    /// one shape to render for both tiers.
+    //
+    // An empty object for a workspace's own entry: that library derives no
+    // reasons, and the read projects `{}` rather than a null so a client has
+    // one shape to render for both tiers.
     pub required_credentials_reasons: Value,
 }
 
@@ -74,10 +74,10 @@ pub struct GalleryResponse<'a> {
     #[serde(borrow)]
     pub items: Vec<GalleryCard<'a>>,
     /// Always null.
-    ///
-    /// Counting a keyset page costs the scan the pagination exists to avoid,
-    /// and §3 declares null to mean "not computed" rather than letting the key
-    /// vanish from the envelope.
+    //
+    // Counting a keyset page costs the scan the pagination exists to avoid,
+    // and §3 declares null to mean "not computed" rather than letting the key
+    // vanish from the envelope.
     pub total: Option<u64>,
     /// Where the next page resumes, or null on the last one.
     pub next_cursor: Option<String>,

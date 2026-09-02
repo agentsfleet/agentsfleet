@@ -45,11 +45,11 @@ pub mod status {
 }
 
 /// One grant as the fleet's list shows it.
-///
-/// `approved_at` and `revoked_at` are the two instants a grant's own
-/// transitions stamp — the table carries no `updated_at`, because a row-change
-/// time would say nothing those two do not already say. Both are `null` on a
-/// pending row and exactly one is set afterwards.
+//
+// `approved_at` and `revoked_at` are the two instants a grant's own
+// transitions stamp — the table carries no `updated_at`, because a row-change
+// time would say nothing those two do not already say. Both are `null` on a
+// pending row and exactly one is set afterwards.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantSummary<'a> {
@@ -70,11 +70,11 @@ pub struct GrantSummary<'a> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants`.
-///
-/// `total` is the length of `items` and not a count of everything stored: the
-/// list is unpaged, because a fleet holds at most one grant per service and the
-/// supported-service count is what bounds it. Emitted anyway, because the Zig
-/// handler emits it and a dashboard reads it.
+//
+// `total` is the length of `items` and not a count of everything stored: the
+// list is unpaged, because a fleet holds at most one grant per service and the
+// supported-service count is what bounds it. Emitted anyway, because the Zig
+// handler emits it and a dashboard reads it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantsResponse<'a> {

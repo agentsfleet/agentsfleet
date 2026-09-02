@@ -60,6 +60,9 @@ const DETAIL_NO_TENANT: &str =
         "Creates a tenant admin key with the `agt_t` prefix. The raw key is ",
         "returned once. Only its SHA-256 hash is saved. ",
     ),
+    request_body = MintApiKeyRequest,
+    params(
+    ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = RevokedApiKeyResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -114,6 +117,11 @@ pub(crate) async fn mint<D: Services>(
         "The retired page and page_size parameters are refused. Results are ",
         "always scoped to the caller's tenant; `key_hash` is never returned. ",
     ),
+    params(
+        ("starting_after" = Option<String>, Query, description = "An opaque cursor from a previous page's `next_cursor`, issued under the same sort."),
+        ("limit" = Option<String>, Query),
+        ("sort" = Option<String>, Query),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -153,6 +161,10 @@ pub(crate) async fn list<D: Services>(
         "Partial lifecycle update. Body must be `{\"active\": false}` — re- ",
         "activation is not supported; mint a new key instead. Sets ",
         "`revoked_at` and `updated_at`. ",
+    ),
+    request_body = PatchApiKeyRequest,
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
@@ -198,6 +210,9 @@ pub(crate) async fn revoke<D: Services>(
     description = concat!(
         "Deletes a revoked tenant API key. An active key returns 409 `UZ- ",
         "APIKEY-008`. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

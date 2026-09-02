@@ -174,6 +174,11 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
         "route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp ",
         "outside 5 minutes returns 401 `UZ-SLK-011`. ",
     ),
+    params(
+        afd_http::openapi::path::Provider,
+        ("X-Slack-Signature" = String, Header, description = "Slack request signature. Slack supplies this value."),
+        ("X-Slack-Request-Timestamp" = String, Header, description = "Delivery time in Unix seconds. Values outside 5 minutes are rejected."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

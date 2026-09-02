@@ -130,6 +130,11 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         "most 512 KiB of encoded items. The newest item always ships, even ",
         "alone. Follow `next_cursor` to read the rest. ",
     ),
+    params(
+        afd_http::openapi::path::Fleet,
+        ("starting_after" = Option<String>, Query, description = "Opaque continuation cursor from a previous page's `next_cursor`."),
+        ("limit" = Option<String>, Query),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ThreadResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -169,6 +174,9 @@ pub(crate) async fn thread<D: Services>(
     description = concat!(
         "Starts a fleet run with a chat event. Returns an event identifier ",
         "for tracking in the activity stream. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
     ),
     responses(
         (status = 202, description = afd_http::openapi::ACCEPTED),

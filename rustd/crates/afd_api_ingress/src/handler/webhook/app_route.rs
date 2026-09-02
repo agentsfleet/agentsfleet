@@ -114,6 +114,12 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         "records the deployed commit and schedules eligible verification ",
         "fleets. ",
     ),
+    params(
+        afd_http::openapi::path::Provider,
+        ("X-GitHub-Event" = String, Header, description = "GitHub event type, currently `ping`, `pull_request`, `workflow_run`, or `deployment_status`."),
+        ("X-GitHub-Delivery" = String, Header, description = "Delivery identifier supplied by GitHub."),
+        ("X-Hub-Signature-256" = String, Header, description = "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 202, description = afd_http::openapi::ACCEPTED),

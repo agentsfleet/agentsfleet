@@ -55,6 +55,9 @@ const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static("application/x-ta
         "holds no object-store keys. A hash is not a name anybody can guess, ",
         "so the snapshot is not scoped to a runner, a fleet or a tenant. ",
     ),
+    params(
+        afd_http::openapi::path::Bundle,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

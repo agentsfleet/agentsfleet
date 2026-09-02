@@ -156,6 +156,11 @@ impl IdentityUser {
         "return `created:false`. Unsupported event types return 200 with ",
         "`status: ignored`. ",
     ),
+    params(
+        ("svix-id" = String, Header, description = "Svix message identifier (used for deduplication and signature binding)."),
+        ("svix-timestamp" = String, Header, description = "Unix timestamp of the Svix delivery (used for replay protection)."),
+        ("svix-signature" = String, Header, description = "Space-separated list of Svix v1 signatures."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

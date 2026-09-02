@@ -52,11 +52,11 @@ pub struct OpenSessionResponse<'a> {
 }
 
 /// `GET /v1/auth/sessions/{session_id}` — where a login has got to.
-///
-/// Never carries ciphertext. The poll is unauthenticated — the id is the only
-/// thing presented — so anything it returns is readable by whoever holds the
-/// id, and the sealed credential is released only by `/verify`, against a code
-/// that never travelled the same channel.
+//
+// Never carries ciphertext. The poll is unauthenticated — the id is the only
+// thing presented — so anything it returns is readable by whoever holds the
+// id, and the sealed credential is released only by `/verify`, against a code
+// that never travelled the same channel.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PollSessionResponse<'a> {
@@ -90,10 +90,10 @@ pub struct ApproveSessionRequest<'a> {
 }
 
 /// What approving answers with.
-///
-/// The request id and nothing else. An approval has no state worth returning —
-/// the dashboard already holds everything it sent — and echoing the session
-/// back would put the ciphertext on a second response for no reason.
+//
+// The request id and nothing else. An approval has no state worth returning —
+// the dashboard already holds everything it sent — and echoing the session
+// back would put the ciphertext on a second response for no reason.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApproveSessionResponse<'a> {
@@ -112,10 +112,10 @@ pub struct VerifySessionRequest<'a> {
 }
 
 /// What a redeemed login hands back.
-///
-/// Identical for a first redemption and for a repeat inside the replay window,
-/// deliberately: a command line asking again after a dropped connection must
-/// not be able to learn that its first request landed.
+//
+// Identical for a first redemption and for a repeat inside the replay window,
+// deliberately: a command line asking again after a dropped connection must
+// not be able to learn that its first request landed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VerifySessionResponse<'a> {

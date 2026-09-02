@@ -56,6 +56,10 @@ enum OrdinaryMutation<'a> {
         "heartbeat. Sending the same policy again changes nothing and records ",
         "no event. ",
     ),
+    request_body = RunnerAdminPatchRequest,
+    params(
+        afd_http::openapi::path::Runner,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

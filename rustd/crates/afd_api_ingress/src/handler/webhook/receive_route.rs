@@ -66,6 +66,9 @@ const EVENT_APPEND: &str = "webhook_append_failed";
         "hours returns `status: duplicate`. A paused fleet returns `ignored: ",
         "fleet_paused`. Send the event again after resuming the fleet. ",
     ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 202, description = afd_http::openapi::ACCEPTED),

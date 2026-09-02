@@ -91,6 +91,10 @@ pub struct SecretPath {
         "two concurrent creates on one name resolve to one `201` and one ",
         "`409`. ",
     ),
+    request_body = StoreSecretRequest,
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = SecretsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -141,6 +145,9 @@ pub(crate) async fn store<D: Services>(
         "Returns secret names and non-secret details. Secret values are never ",
         "returned. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -188,6 +195,10 @@ pub(crate) async fn list<D: Services>(
         "name must already be held. A name this workspace does not have ",
         "returns `UZ-VAULT-003` and nothing is created — claiming a name is ",
         "`create`'s job. ",
+    ),
+    request_body = ReplaceSecretRequest,
+    params(
+        afd_http::openapi::path::Secret,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
@@ -239,6 +250,9 @@ pub(crate) async fn replace<D: Services>(
     operation_id = "delete_workspace_secret",
     summary = "Delete a secret from the workspace vault",
     description = "Idempotent — returns 204 whether or not the secret existed. ",
+    params(
+        afd_http::openapi::path::Secret,
+    ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

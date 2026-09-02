@@ -67,6 +67,9 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
         "the `connector:read` scope. An unknown provider returns 404 `UZ- ",
         "CONN-004`. ",
     ),
+    params(
+        afd_http::openapi::path::WorkspaceProvider,
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -112,6 +115,9 @@ pub(crate) async fn read<D: Services>(
         "from `agentsfleet`. Provider authorization remains active outside ",
         "`agentsfleet`. Repeating this request returns 204. Use Connect to ",
         "authorize the provider again. ",
+    ),
+    params(
+        afd_http::openapi::path::WorkspaceProvider,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),

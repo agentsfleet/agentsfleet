@@ -102,6 +102,12 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         "`starting_after` for the first page. Use the returned `next_cursor` ",
         "to read the next page. ",
     ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.
+"),
+        ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
+    ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = FleetsResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -142,6 +148,10 @@ pub(crate) async fn list<D: Services>(
         "Creates a fleet from one library entry. Use either ",
         "`platform_library_id` or `tenant_library_id`. The service creates a ",
         "default API trigger when the library has no trigger. ",
+    ),
+    request_body = InstallFleetRequest,
+    params(
+        afd_http::openapi::path::Workspace,
     ),
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = InstalledFleetResponse),
