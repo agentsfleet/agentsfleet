@@ -35,7 +35,7 @@ use afd_observability::metrics::export::CountingMetricExporter;
 use afd_observability::metrics::instrument::{Instruments, series_ceilings};
 use afd_observability::metrics::registry::Registry;
 use afd_observability::producers::{self, GaugeSources};
-use afd_observability::{CountingExporter, SpanDrops, semconv};
+use afd_observability::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops, semconv};
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
 use opentelemetry_sdk::Resource;
@@ -84,6 +84,8 @@ pub struct Exports {
     spans_lost: SpanDrops,
     /// How many metric collection cycles it has failed to deliver.
     cycles_lost: BatchDrops,
+    /// How many log records it has failed to deliver.
+    records_lost: LogDrops,
 }
 
 impl Exports {
@@ -142,6 +144,20 @@ impl Exports {
     pub fn cycles_lost(&self) -> &BatchDrops {
         &self.cycles_lost
     }
+
+    /// Log records this process failed to deliver.
+    ///
+    /// Records rather than batches, like spans and unlike metric cycles: a log
+    /// record is a discrete thing that either arrived or did not, so the count
+    /// is the quantity missing.
+    ///
+    /// The log exporter is the one that does not also WARN about its losses —
+    /// a warning there is a log record returning to the exporter that just
+    /// failed — so for this signal the number is the whole report.
+    #[must_use]
+    pub fn records_lost(&self) -> &LogDrops {
+        &self.records_lost
+    }
 }
 
 /// Builds every pipeline, installs the process-wide handles, and claims the
@@ -172,13 +188,19 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         .with_batch_exporter(spans)
         .build();
 
-    let logs = opentelemetry_otlp::LogExporter::builder()
-        .with_http()
-        .with_endpoint(signal_endpoint(config, LOGS_PATH))
-        .with_protocol(protocol)
-        .with_timeout(config.timeout)
-        .with_headers(headers.clone())
-        .build()?;
+    // Counted like the other two signals: a failed batch reaches
+    // `agentsfleet_otlp_entries_discarded_total` with `signal="logs"`. The
+    // wrapper does not warn, and `CountingLogExporter` says why.
+    let logs = CountingLogExporter::new(
+        opentelemetry_otlp::LogExporter::builder()
+            .with_http()
+            .with_endpoint(signal_endpoint(config, LOGS_PATH))
+            .with_protocol(protocol)
+            .with_timeout(config.timeout)
+            .with_headers(headers.clone())
+            .build()?,
+    );
+    let records_lost = logs.drops();
     let logger = SdkLoggerProvider::builder()
         .with_resource(resource.clone())
         .with_batch_exporter(logs)
@@ -222,6 +244,7 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         // does not is a collector rejecting a temporality, which the
         // discarded-entries counter names precisely.
         cycles_lost,
+        records_lost,
     })
 }
 

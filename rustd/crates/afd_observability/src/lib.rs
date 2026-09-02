@@ -37,5 +37,5 @@ pub mod semconv;
 
 pub use self::delivery::{Delivery, MAX_RUN};
 pub use self::error::{Error, Result};
-pub use self::export::{CountingExporter, SpanDrops};
+pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
 pub use self::product::{Analytics, Telemetry};

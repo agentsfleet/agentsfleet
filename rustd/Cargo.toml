@@ -615,7 +615,12 @@ opentelemetry-otlp = { version = "0.32.0", default-features = false, features = 
     "trace",
     "metrics",
     "logs",
-    "internal-logs",
+    # `internal-logs` is deliberately NOT taken: it makes the SDK log the
+    # endpoint URL and the collector's response body at debug level, and the
+    # endpoint is read from the same place as the credential beside it. The
+    # same reason `OtlpConfig` has a hand-written `Debug` and preflight faults
+    # by knob name — a value that must not reach stderr must not reach it by
+    # way of a dependency's own diagnostics either.
 ] }
 
 # The bridge that turns this daemon's 97 `tracing` spans into OTLP spans.
@@ -642,6 +647,12 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
     # (`spec_unstable_metrics_views`) — which is why the typed layer, not a
     # View, is what constrains attribute keys here.
     "experimental_metrics_bound_instruments",
+    # Declared rather than inherited. `SdkLoggerProvider` and the `LogExporter`
+    # trait live behind it, and both were reaching this workspace only because
+    # `opentelemetry-otlp`'s own `logs` feature happened to turn it on — so
+    # `cargo` unified it into the binary's graph and NOT into a crate built on
+    # its own. `cargo test -p afd_observability` is where that showed up.
+    "logs",
 ] }
 
 # `CancellationToken`, which is what a supervised task is cancelled BY. Chosen
