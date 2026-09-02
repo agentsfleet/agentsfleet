@@ -143,3 +143,66 @@ pub fn install(env: &dyn EnvSource) -> bool {
     // the boot path reads.
     SIGNALS.set(Signals(handle)).is_ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use core::time::Duration;
+
+    use afd_observability::producers::GaugeSources;
+    use tracing_subscriber::{Registry, reload};
+
+    use super::{Attached, Signals};
+    use crate::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
+    use crate::telemetry::Exports;
+
+    /// A collector nothing is listening on, as `telemetry/tests.rs` spells it.
+    ///
+    /// The bridges are BUILT here and never dialled, so an endpoint that
+    /// resolved would make this depend on the network for nothing.
+    const UNREACHABLE: &str = "http://127.0.0.1:1";
+
+    fn exports() -> Result<Exports, &'static str> {
+        crate::telemetry::install(
+            &OtlpConfig {
+                endpoint: UNREACHABLE.into(),
+                source: OTEL_ENDPOINT_KNOB,
+                headers: Vec::new(),
+                protocol: "http/json".into(),
+                timeout: Duration::from_millis(50),
+            },
+            &GaugeSources::silent(),
+        )
+        .map_err(|_refused| "a well-formed endpoint builds a transport")
+    }
+
+    /// The reload slot takes the bridges, and `Debug` does not unfold it.
+    ///
+    /// Built from a handle of its own rather than through `install`. The
+    /// process-wide slot is won by whoever installs a subscriber FIRST, so a
+    /// test that reached `attach` through `logs::signals()` would reach it only
+    /// when it happened to win that race — and would pass, silently exercising
+    /// nothing, whenever it lost. `integration_telemetry.rs` is written that
+    /// way and its early return is why this seam reads as uncovered.
+    ///
+    /// The `Debug` half is not decoration: a `{:?}` somebody adds later must
+    /// not print a subscriber's innards into a log line.
+    #[tokio::test]
+    async fn the_reload_slot_takes_the_export_bridges() -> Result<(), &'static str> {
+        let (slot, handle) = reload::Layer::<Attached, Registry>::new(Attached::None);
+        let signals = Signals(handle);
+
+        let rendered = format!("{signals:?}");
+        assert!(
+            rendered.contains("Signals") && !rendered.contains("Handle"),
+            "the rendering names the type without unfolding its handle: {rendered}"
+        );
+
+        assert!(
+            signals.attach(&exports()?),
+            "the live slot accepts the span and record bridges"
+        );
+
+        drop(slot);
+        Ok(())
+    }
+}

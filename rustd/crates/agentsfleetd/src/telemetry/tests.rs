@@ -68,6 +68,14 @@ async fn boot_supervises_the_export_under_its_inventoried_name() {
     let config = configured(&[(OTEL_ENDPOINT_KNOB, UNREACHABLE)]);
     let mut supervisor = Supervisor::new();
 
+    // Installed FIRST so `open_telemetry` finds a slot to attach to. Without
+    // it the attach branch is skipped and boot exports through a subscriber
+    // that never carries the bridges — the configuration a deployment never
+    // runs, and the one this test would otherwise be proving. Whether this
+    // call or an earlier test won the process-wide slot does not matter: the
+    // slot is set either way by the time the assertion below reads it.
+    let _installed = crate::logs::install(&MapEnv::default());
+
     open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
         .expect("an endpoint the exporter can parse builds a transport");
 
@@ -189,4 +197,35 @@ fn the_resident_reading_is_a_measurement_or_nothing() {
             "a host with no /proc reports nothing rather than a fabricated size"
         );
     }
+}
+
+/// A freshly built pipeline has lost nothing, on any of the three signals.
+///
+/// These counters are what separates "exporting fine" from "exporting into a
+/// void": they are the numbers `agentsfleet_otlp_entries_discarded_total` is
+/// built from, and nothing else in the daemon reads them. A getter wired to
+/// the wrong field would therefore be caught by nothing — while reporting a
+/// lossy process as healthy, which is the direction that costs an incident.
+///
+/// Three signals rather than one because they count different things: spans
+/// and records are discrete items, metric cycles are moments.
+#[tokio::test]
+async fn a_new_pipeline_reports_no_losses_on_any_signal() {
+    let config = configured(&[(OTEL_ENDPOINT_KNOB, UNREACHABLE)]);
+    let otlp = config.otlp().expect("an endpoint is configured");
+
+    let exports = super::install(otlp, &GaugeSources::silent())
+        .expect("a well-formed endpoint builds every pipeline");
+
+    assert_eq!(
+        exports.spans_lost().count(),
+        0,
+        "a pipeline that has exported nothing has dropped no spans"
+    );
+    assert_eq!(exports.records_lost().count(), 0, "nor any log records");
+    assert_eq!(
+        exports.cycles_lost().failed(),
+        0,
+        "nor any metric collection cycles"
+    );
 }
