@@ -265,3 +265,49 @@ fn an_unmapped_provider_is_omitted_rather_than_exported() {
         "the omission costs one attribute, not the span"
     );
 }
+
+/// Every attribute carries the field it is named for.
+///
+/// The key-set test above proves each declared key is present; it cannot tell
+/// two `KeyValue::new` lines whose keys were swapped from two that were not.
+/// A workspace id filed under the event key is a span that passes every set
+/// comparison and sends an operator to the wrong tenant.
+#[test]
+fn every_attribute_carries_the_field_it_is_named_for() {
+    let delivery = delivery();
+    let span = only_span(recorded(&delivery, settled_at()));
+
+    for (key, expected) in [
+        (semconv::ATTR_USAGE_OUTPUT_TOKENS, "512"),
+        (semconv::ATTR_EXECUTION_POSTURE, delivery.posture),
+        (semconv::ATTR_WORKSPACE_ID, delivery.workspace_id),
+        (semconv::ATTR_EVENT_ID, delivery.event_id),
+        (semconv::ATTR_REQUEST_MODEL, delivery.model),
+    ] {
+        assert_eq!(
+            attribute(&span, key).as_deref(),
+            Some(expected),
+            "`{key}` carried something other than the field it names"
+        );
+    }
+}
+
+/// A count past the signed range saturates rather than wrapping.
+///
+/// The counts are runner-supplied, so the daemon does not get to assume they
+/// are sane. Wrapping would publish a negative token usage, which is a number
+/// every dashboard will happily average.
+#[test]
+fn a_count_past_the_signed_range_saturates_rather_than_wrapping() {
+    let delivery = Delivery {
+        input_tokens: u64::MAX,
+        ..delivery()
+    };
+    let span = only_span(recorded(&delivery, settled_at()));
+
+    assert_eq!(
+        attribute(&span, semconv::ATTR_USAGE_INPUT_TOKENS).as_deref(),
+        Some(i64::MAX.to_string().as_str()),
+        "an absurd count is capped at the largest attribute value, never wrapped"
+    );
+}
