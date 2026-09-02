@@ -72,7 +72,7 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = afd_http::openapi::OK, body = Vec<CatalogueEntry>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

@@ -50,7 +50,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
         afd_http::openapi::path::Lease,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 202, description = afd_http::openapi::ACCEPTED),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

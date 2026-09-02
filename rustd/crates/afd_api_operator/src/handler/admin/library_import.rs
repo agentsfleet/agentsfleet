@@ -37,7 +37,7 @@ const DETAIL_COLLISION: &str = "That bundle's name is already taken by a differe
         "object-store key or support-file content. ",
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

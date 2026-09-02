@@ -65,7 +65,7 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
     params(
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = afd_http::openapi::CREATED, body = MintedCliCredentialResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
