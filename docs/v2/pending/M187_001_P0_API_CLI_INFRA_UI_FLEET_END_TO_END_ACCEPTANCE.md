@@ -107,7 +107,7 @@
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | the proof punch list this spec finally closes. |
 | `src/agentsfleetd/**` | DELETE | §5 — the Zig daemon, once §1–§4 are green. `Dockerfile:39` already ships the Rust binary, so nothing is lost. |
 | `src/runner/**` · `src/build/**` | **UNTOUCHED — not in scope** | These build `agentsfleet-runner`, which stays Zig by Indy's call (Sep 02, 2026). Not a deletion this spec defers — a deletion this spec does not make. Rubric R9 asserts the build still works after §5. |
-| `.github/workflows/{release,deploy-dev}.yml` | EDIT | remove the Zig build and its rollback artifact in the same diff as the tree, so neither outlives the other. |
+| `.github/workflows/{release,deploy-dev}.yml` | EDIT | remove the DAEMON's build and its rollback artifact in the same diff as the tree, so neither outlives the other. The `compile-runner-*` jobs and the runner deploy stages stay — see §5.4. |
 | `docs/v2/pending/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | superseded — its dimensions move here and the file records where they went. |
 
 ## Applicable Rules
@@ -191,9 +191,9 @@ survived it, because a sweep aimed at "the Zig tree" is exactly the kind of
 change that takes the runner with it by accident.
 
 - **Dimension 5.1** — `src/agentsfleetd/**` is removed, and no reference to it survives anywhere in the repository outside `docs/v2/done/` and `docs/v1/` → Test `no path under src/agentsfleetd is referenced after the deletion`
+- **Dimension 5.2** — no workflow step builds or publishes a **daemon** artifact from `src/agentsfleetd`, and M181_006's buildable-rollback invariant is deleted in the same diff. Scoped to the daemon deliberately: the only Zig artifact these workflows build is `agentsfleet-runner`, which §5.4 requires to survive, so a dimension phrased as "no Zig artifact" would mandate deleting `compile-runner-amd64` / `compile-runner-arm64` and contradict 5.4 outright. The first clause is in fact already satisfied — no workflow builds a Zig daemon today (M181_006's premise correction), so the load-bearing half is the rollback invariant → Test `no workflow step builds the zig daemon`
+- **Dimension 5.3** — every gate, make target and playbook whose scope was `src/agentsfleetd` either loses that scope or is removed, and none is left scanning nothing and reporting green. A gate that scanned the daemon **and** the runner narrows rather than dies; only a gate left with an empty scope is removed → Test `no gate reports a vacuous pass over a deleted tree`
 - **Dimension 5.4** — the daemon's removal leaves the runner intact: `build_runner.zig`, `src/runner/**` and `src/build/**` are unmodified, and `compile-runner-amd64` / `compile-runner-arm64` still produce their artifacts → Test `the runner build still produces its artifact after the daemon is deleted`
-- **Dimension 5.2** — the release and deploy workflows no longer build or publish a Zig artifact, and M181_006's buildable-rollback invariant is deleted in the same diff → Test `no workflow step builds the zig daemon`
-- **Dimension 5.3** — every gate, make target and playbook that scanned the Zig tree either loses that scope or is removed, and none is left scanning nothing and reporting green → Test `no gate reports a vacuous pass over a deleted tree`
 
 ## Interfaces
 
