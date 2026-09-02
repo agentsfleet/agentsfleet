@@ -15,6 +15,17 @@ jobs:
   deploy-fly:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The collector hop. The daemon's OTLP endpoint points HERE, and the
+    # collector holds the Grafana Cloud credentials and forwards. Named at job
+    # scope because the address is read by the daemon's staged secret and the
+    # app name by the collector's own deploy, and a repoint that updated one
+    # spelling and not the other would send telemetry to an app that is not
+    # listening.
+    env:
+      OTLP_COLLECTOR_APP: otelcol-dev
+      OTLP_COLLECTOR_DIR: deploy/fly/otelcol-dev
+      OTLP_COLLECTOR_MACHINES: "1"
+      OTLP_COLLECTOR_ENDPOINT: http://otelcol-dev.internal:4318
     steps:
       - uses: actions/checkout@v7
 
@@ -41,6 +52,36 @@ jobs:
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
+      - name: Ensure the OTLP collector is running
+        # The collector must be serving BEFORE the daemon's endpoint is
+        # repointed at it, or the first export after the next deploy lands
+        # nowhere. Same shape as the cloudflared tunnel step in
+        # deploy-dev-verify.yml: sync secrets from the vault, then restart or
+        # deploy from scratch.
+        #
+        # The three GRAFANA_OTLP_* values staged here are the COLLECTOR's
+        # upstream credentials — the real Grafana Cloud endpoint and its Basic
+        # auth pair. The daemon keeps its own copy of the pair but no longer
+        # reaches Grafana with them; it reaches this app, which ignores the
+        # inbound header and re-authenticates upstream with these.
+        #
+        # scripts/ensure_fly_app.sh refuses rather than falling through: a
+        # collector that is not serving takes every dashboard dark at the next
+        # daemon deploy. That is also why the block is a script — it was inline
+        # in both workflows, and the two copies drifted into real defects.
+        run: |
+          flyctl secrets set \
+            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
+            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            OTLP_INGEST_USER="$GRAFANA_OTLP_INSTANCE_ID" \
+            OTLP_INGEST_PASSWORD="$GRAFANA_OTLP_API_KEY" \
+            --app "$OTLP_COLLECTOR_APP"
+          bash scripts/ensure_fly_app.sh \
+            "$OTLP_COLLECTOR_APP" "$OTLP_COLLECTOR_DIR" "$OTLP_COLLECTOR_MACHINES"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
@@ -59,7 +100,7 @@ jobs:
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
-            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
             --stage \
