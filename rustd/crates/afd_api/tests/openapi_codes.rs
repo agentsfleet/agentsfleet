@@ -18,6 +18,8 @@
 //!   * a route with a non-empty scope rung can always refuse a credential that
 //!     lacks it — 403, `AUTH_FORBIDDEN`, from `require_scope`
 //!   * anything that reaches a plane can fail — 500
+//!   * anything that reaches a plane can find it unreachable, and anything the
+//!     admission ceiling sheds is answered the same way — 503
 //!
 //! The probes are the exception to that last one, and not a grudging one: they
 //! answer from process state without touching a service, so `/healthz` can only
@@ -49,6 +51,9 @@ const FORBIDDEN: u16 = 403;
 
 /// The daemon could not answer.
 const INTERNAL: u16 = 500;
+
+/// The daemon could not reach what the answer needs, or is at its ceiling.
+const UNAVAILABLE: u16 = 503;
 
 /// One operation, keyed as both sides spell it.
 type Operation = (String, String);
@@ -183,6 +188,7 @@ fn test_documented_codes_match_refusals() {
             let mut required = Vec::new();
             if meta.class != RouteClass::Ops {
                 required.push(INTERNAL);
+                required.push(UNAVAILABLE);
             }
             if meta.guard != Guard::Open {
                 required.push(UNAUTHORIZED);

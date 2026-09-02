@@ -76,6 +76,7 @@ const EVENT_APPEND: &str = "webhook_append_failed";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn receive<D: Services>(

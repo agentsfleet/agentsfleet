@@ -26,7 +26,8 @@
 
 use afd_wire::preference::PreferencesResponse;
 use afd_wire::secret::{StoreSecretRequest, StoredSecretResponse};
-use utoipa::PartialSchema;
+use afd_wire::{policy, runner};
+use utoipa::{PartialSchema, ToSchema};
 
 /// The schema `T` emits, as JSON a test can read field by field.
 fn schema_of<T: PartialSchema>() -> serde_json::Value {
@@ -87,5 +88,29 @@ fn a_map_of_borrowed_keys_to_raw_values_publishes_as_an_object() {
     assert_eq!(
         schema["properties"]["prefs"]["type"], "object",
         "the preferences bag must publish as an object: {schema}"
+    );
+}
+
+/// The two `NetworkPolicy` types publish under two names.
+///
+/// utoipa keys components by name alone, so two types spelled alike collapse
+/// into one entry and whichever registered second wins. The lease's egress
+/// rules were published as the runner's three-word posture that way, and the
+/// reference-resolves gate could not see it: the name resolved.
+#[test]
+fn the_two_network_policies_publish_under_two_names() {
+    let rules = policy::NetworkPolicy::name();
+    let posture = runner::NetworkPolicy::name();
+
+    assert_ne!(rules, posture, "two shapes under one component name");
+    assert_eq!(
+        schema_of::<policy::NetworkPolicy<'_>>()["type"],
+        "object",
+        "the egress rules are an object"
+    );
+    assert_eq!(
+        schema_of::<runner::NetworkPolicy>()["type"],
+        "string",
+        "the posture is an enum"
     );
 }

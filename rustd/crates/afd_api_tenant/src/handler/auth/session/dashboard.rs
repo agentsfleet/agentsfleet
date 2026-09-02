@@ -58,6 +58,7 @@ use super::{DETAIL_APPROVE_BODY, DETAIL_VERIFY_BODY, EVENT_APPROVE, EVENT_VERIFY
         (status = 410, description = afd_http::openapi::GONE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn approve<D: Services>(
@@ -132,9 +133,11 @@ pub(crate) async fn approve<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = VerifySessionResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::SESSION_EXPIRED),
         (status = 410, description = afd_http::openapi::GONE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn verify<D: Services>(

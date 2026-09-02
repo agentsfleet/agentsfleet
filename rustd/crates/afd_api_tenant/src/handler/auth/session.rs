@@ -63,6 +63,7 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
@@ -112,9 +113,11 @@ pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Byte
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PollSessionResponse),
+        (status = 401, description = afd_http::openapi::SESSION_EXPIRED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 410, description = afd_http::openapi::GONE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn poll<D: Services>(
@@ -153,8 +156,10 @@ pub(crate) async fn poll<D: Services>(
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = "The session was started by somebody else"),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn delete_one<D: Services>(
@@ -200,6 +205,7 @@ pub(crate) async fn delete_one<D: Services>(
         (status = 200, description = afd_http::openapi::OK, body = DeleteAllSessionsResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn delete_all<D: Services>(

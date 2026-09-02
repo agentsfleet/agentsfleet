@@ -66,6 +66,7 @@ const DETAIL_DELETE_PUBLISHED: &str =
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
@@ -111,6 +112,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn patch<D: Services>(
@@ -185,6 +187,7 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn delete<D: Services>(

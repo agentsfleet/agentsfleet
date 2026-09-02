@@ -87,13 +87,13 @@ pub mod field {
 
 /// One event on the wire, flat by convention.
 ///
-/// `request_json` is opaque JSON bytes carried verbatim — the runner re-parses
-/// it for execution and the read endpoints surface it unchanged, so this layer
-/// deliberately does not interpret it.
+/// `request_json` is opaque JSON carried verbatim. The runner parses it to run
+/// the event, and the read endpoints return it unchanged.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventEnvelope<'a> {
-    /// The Redis stream entry identifier, which IS the canonical event id.
+    /// The canonical event identifier, the same on every surface that shows
+    /// the event.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
     /// The fleet this event belongs to.

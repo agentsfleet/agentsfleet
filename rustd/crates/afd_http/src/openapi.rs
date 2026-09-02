@@ -85,6 +85,16 @@ pub const BAD_GATEWAY: &str = "An upstream this route depends on refused";
 /// A dependency this route needs is unreachable.
 pub const UNAVAILABLE: &str = "A dependency this route needs is unreachable";
 
+/// A signature-authenticated delivery that did not prove itself.
+pub const UNVERIFIED: &str =
+    "The signature does not verify, the timestamp is stale, or no signing secret is configured";
+
+/// A device-flow session past its window.
+pub const SESSION_EXPIRED: &str = "The session has expired; start a new one";
+
+/// A credential whose person this tenant does not know.
+pub const UNKNOWN_SUBJECT: &str = "The caller is not a person this tenant knows";
+
 /// The tags an operation is grouped under, as the published document spells them.
 ///
 /// One module rather than free constants: a tag is a name in the CONTRACT, and

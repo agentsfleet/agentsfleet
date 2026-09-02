@@ -68,6 +68,7 @@ const EVENT_APPEND: &str = "webhook_github_append_failed";
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn receive<D: Services>(

@@ -95,6 +95,7 @@ const MAX_MARKDOWN_LEN: usize = 200 * 1024;
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn read<D: Services>(
@@ -144,6 +145,7 @@ pub(crate) async fn read<D: Services>(
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn patch<D: Services>(
@@ -207,6 +209,7 @@ pub(crate) async fn patch<D: Services>(
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn purge<D: Services>(

@@ -27,7 +27,9 @@ pub enum SandboxTier {
 }
 
 /// Egress posture assigned per runner, named so the behaviour reads off the value.
+// Published under its module path; see `policy::NetworkPolicy` on why.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = runner::NetworkPolicy))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkPolicy {

@@ -334,6 +334,41 @@ and `HandshakeEcho` duplicated `afd_wire::ingress::Ignored` and `EchoAnswer`,
 which are what the events route answers; no handler, collector or suite read
 them. Removed with their three tests (RULE NLR, on the file this diff touched).
 
+> Indy (2026-09-02): "Fold in the codes and the collision first" — context:
+> of the four findings the generated document surfaced, the dropped status
+> codes and the `NetworkPolicy` schema collision land in this PR; the
+> `agentsfleetd openapi` subcommand's two output defects (the nameplate on
+> stdout without `--no-banner`, and `println!` panicking on a closed pipe) and
+> the em-dash sweep of published prose are DEFERRED to a follow-up on that
+> same instruction.
+
+**Finding — the dropped codes were one rule short, not thirty annotations short.**
+The hand-written document carried 30 codes the generated one lacked: 15 503s,
+7 502s, 5 401s, 3 403s (its 67 `default` entries were a catch-all, not codes).
+Every plane crate's error maps a datastore outage to `INTERNAL_DB_UNAVAILABLE`,
+the authenticator answers `AUTH_UNAVAILABLE` when its directory is down, and
+the admission ceiling sheds with a 503 too, so a 503 belongs wherever a 500
+does. `test_documented_codes_match_refusals` now requires both off the same
+`RouteClass::Ops` predicate, and 99 annotations gained the line. Of the 502s,
+three are reachable (library onboarding on both planes through
+`FLEET_BUNDLE_FETCH_FAILED`, the callback completion through the connector's
+exchange codes) and one more was reachable and never listed (credential minting
+through `GH_MINT_FAILED`); the four on schedules are stale, because the port
+answers a scheduler that refused with the sync state, not a 502. All five 401s
+are signature verdicts or an expired device session on open routes, and all
+three 403s are the tenant plane refusing a session somebody else started or a
+subject it does not know; each is annotated with the sentence its refusal
+carries.
+
+**Finding — the collision was live.** Publishing the lease response made
+`ExecutionPolicy.network_policy` reference the schema named `NetworkPolicy`,
+and the one utoipa kept was the runner's three-word posture enum, so the
+document said a run's egress rules were a string. Both Rust types keep their
+names, which are the two Zig types' names; the components publish as
+`policy.NetworkPolicy` and `runner.NetworkPolicy` through `schema(as = …)`,
+and two tests pin it: the names differ in `afd_wire`, and the two owners
+resolve to an object and a string in the document.
+
 **Amendment — the unit lane's flake was a latent bug, not this branch's.**
 Four runs failed in `ui/packages/website/src/App.test.tsx` and one in
 `design-system`, always on a different test, always a `React.lazy` route:
