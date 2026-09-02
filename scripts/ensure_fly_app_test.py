@@ -14,9 +14,33 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "ensure_fly_app.sh"
 
-# Two machines started, which satisfies a desired count of 1 or 2.
-STARTED_TWO = '[{"id":"a","state":"started"},{"id":"b","state":"started"}]'
-STOPPED_TWO = '[{"id":"a","state":"stopped"},{"id":"b","state":"stopped"}]'
+def _machine(mid, state, checks):
+    """One machine as `flyctl machine list --json` renders it.
+
+    `checks` is a list of check statuses; Fly reports `passing`, `warning` or
+    `critical`. An empty list is a real shape — a machine with no health check
+    declared — and the script treats it as unproven rather than ready.
+    """
+    body = ",".join('{"name":"health","status":"%s"}' % c for c in checks)
+    return '{"id":"%s","state":"%s","checks":[%s]}' % (mid, state, body)
+
+
+def _machines(*specs):
+    return "[" + ",".join(_machine(*s) for s in specs) + "]"
+
+
+# Two machines started AND health-passing, which satisfies a desired count of
+# 1 or 2. Both halves matter: `started` alone is the state Fly reports before
+# the collector inside binds 4318.
+STARTED_TWO = _machines(("a", "started", ["passing"]), ("b", "started", ["passing"]))
+STOPPED_TWO = _machines(("a", "stopped", []), ("b", "stopped", []))
+# Running, but the collector inside never came up — the race the health check
+# exists to catch, and the one `state == "started"` reads as success.
+STARTED_UNHEALTHY_TWO = _machines(
+    ("a", "started", ["critical"]), ("b", "started", ["critical"])
+)
+# Running with no check declared at all: readiness is unprovable, not proven.
+STARTED_UNCHECKED_TWO = _machines(("a", "started", []), ("b", "started", []))
 NO_MACHINES = "[]"
 
 
@@ -70,6 +94,23 @@ class EnsureFlyAppTest(unittest.TestCase):
                                    machine_list=NO_MACHINES)
         self.assertIn("deploy deploy/fly/otelcol-dev --app otelcol-dev", calls)
 
+    def test_deploys_even_when_the_app_already_has_machines(self):
+        # The regression this pins: deploying only when the app was empty left
+        # config.yml — baked into the image by the Dockerfile's COPY — frozen at
+        # whatever shipped first. Every later change to the receiver, the
+        # authentication policy or the exporter pipeline was built and never
+        # applied, which makes "the backend is a configuration change" false.
+        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                   machine_list=STARTED_TWO)
+        self.assertIn("deploy deploy/fly/otelcol-dev --app otelcol-dev", calls)
+
+    def test_deploy_precedes_the_scale_it_sizes(self):
+        # Ordering, not just presence: scaling a release that the deploy is
+        # about to replace sizes the wrong image.
+        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                   machine_list=STARTED_TWO)
+        self.assertLess(calls.index("deploy "), calls.index("scale count "))
+
     def test_scales_to_the_desired_count(self):
         _, calls = self.run_script("otelcol-prod", "deploy/fly/otelcol-prod", "2",
                                    machine_list=STARTED_TWO)
@@ -88,6 +129,34 @@ class EnsureFlyAppTest(unittest.TestCase):
         proc, _ = self.run_script("otelcol-prod", "deploy/fly/otelcol-prod", "2",
                                   machine_list=one_started)
         self.assertEqual(proc.returncode, 1)
+
+    def test_fails_when_machines_run_but_never_pass_health_checks(self):
+        # Fly reports `started` when the VM is up, which precedes the collector
+        # binding 4318. Gating on state alone would report success here and the
+        # caller would point a daemon at a receiver that is not listening.
+        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                  machine_list=STARTED_UNHEALTHY_TWO)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("passed health checks", proc.stderr)
+
+    def test_fails_when_a_machine_declares_no_health_check(self):
+        # Unprovable is not the same as ready. If fly.toml loses [checks.health]
+        # this must refuse rather than silently return to state-only readiness.
+        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                  machine_list=STARTED_UNCHECKED_TWO)
+        self.assertEqual(proc.returncode, 1)
+
+    def test_the_two_refusals_name_different_causes(self):
+        # "Not running" and "running but never healthy" are different incidents
+        # with different first moves. A single message for both would make the
+        # deploy log say less than it knows.
+        stopped, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                     machine_list=STOPPED_TWO)
+        unhealthy, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                       machine_list=STARTED_UNHEALTHY_TWO)
+        self.assertIn("never reached", stopped.stderr)
+        self.assertNotIn("never reached", unhealthy.stderr)
+        self.assertNotEqual(stopped.stderr, unhealthy.stderr)
 
     def test_rejects_a_non_numeric_count(self):
         proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "two",
