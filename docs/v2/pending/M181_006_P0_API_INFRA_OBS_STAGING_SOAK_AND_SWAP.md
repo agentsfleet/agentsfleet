@@ -30,6 +30,43 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
+> **PREMISE CORRECTION (Sep 02, 2026) — the rollback story below is void, and
+> it is load-bearing.** This spec is written around swapping production from a
+> Zig daemon to a Rust one, keeping the Zig binary warm as the one-move
+> rollback. Both halves are already false:
+>
+> - **The swap has happened at the artifact level.** `Dockerfile:39` copies
+>   `dist/agentsfleetd-rs-linux-${TARGETARCH}`, built by
+>   `cargo build --profile dist --bin agentsfleetd` (`release.yml:110,308`).
+>   Production serves the Rust binary today, so the Goal's "serve the Rust
+>   binary after a staging soak" is already true.
+> - **No Zig daemon is built anywhere.** Every `zig build` in every workflow
+>   passes `--build-file build_runner.zig`, whose only executable is
+>   `agentsfleet-runner` (`build_runner.zig:102`); no Zig daemon artifact
+>   reaches `dist/`. §Discovery's own correction of the parent family — "the
+>   release workflow and the staging deploy workflow each build the Zig binary
+>   today" — is itself wrong, so the rollback story this spec picked rests on
+>   the false half of the two it was choosing between.
+>
+> What that invalidates, specifically: Invariant 2's single documented rollback
+> mechanism and Invariant 3's `test_rollback_artifact_builds` are
+> unsatisfiable, because there is no artifact to keep buildable; and Files
+> Changed's "publish the Zig one as the rollback artifact" would mean creating
+> a build that does not exist, inside a tree M187_001 §5 deletes.
+>
+> **Disposition — recorded, not repaired.** The acceleration was deliberate.
+> At CHORE(open) this spec is rewritten as a soak of the Rust daemon with NO
+> Zig rollback: rollback becomes the previous Rust image digest, which the
+> registry already retains and which `release.yml` already deploys immutably
+> rather than by tag. M187_001's Invariant 1 and its §5 gate read this spec's
+> soak, so they inherit the same correction.
+>
+> > Indy (2026-09-02): "Its not accidental, Indy accelerated it, so just record
+> > it and move on" — context: asked whether the missing Zig daemon build was
+> > an accident that left production without a rollback artifact, or the
+> > cutover having already landed. It is the latter, by intent.
+>
+
 **Goal (testable):** the three production `agentsfleetd` machines serve the Rust binary after a staging soak in which the black-box parity suite, the runner parity lane, the dry lane, and the latency and memory budgets all pass against the Rust daemon — with a rehearsed one-move rollback to the warm Zig binary and metric families continuous across the boundary.
 
 **Problem:** six milestones of parity evidence are per-surface. Cutover needs whole-system proof — all routes at once, sustained load, memory over hours, dashboards continuous — plus an exit that is boring: same schema, same stores, binary swap back.
