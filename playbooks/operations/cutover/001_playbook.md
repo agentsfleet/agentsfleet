@@ -91,7 +91,81 @@ regression and aborts the swap.
 document that declared it, and `make test-parity` reads this table so a declared
 difference does not fail the lane while an undeclared one still does.
 
+## The collector hop in front of the export
+
+**This step changes no binary.** A collector is deployed per environment and the
+daemon's export endpoint is repointed at it by configuration. The collector holds
+the vendor credential and owns the fan-out, so adding or moving a backend later
+is collector configuration rather than a daemon redeploy.
+
+**Order it against the daemon's exporter, not against a binary swap.** An earlier
+draft of this section had the collectors going up under the Zig daemon first, so
+that infrastructure change and binary change stayed separately attributable. That
+premise is dead: the shipped `agentsfleetd` is already the Rust binary
+(`Dockerfile:39`), and it exports nothing until its OTLP work lands. A collector
+in front of a daemon that sends nothing proves nothing, so do this step after the
+exporter exists, not before.
+
+Run per environment, development first. Production follows a development run
+whose panels stayed continuous.
+
+1. Stand the collector up and give it the vendor credentials. The deploy
+   workflow does this on its own (`Ensure the OTLP collector is running`), and
+   a from-scratch stand-up can be forced ahead of a deploy:
+   `flyctl deploy deploy/fly/otelcol-dev --app otelcol-dev --wait-timeout 60`.
+   The positional path is the build context; without it the image's
+   `COPY config.yml` fails.
+2. Confirm the collector accepts all three signals BEFORE the daemon points at
+   it. From a machine on the private network —
+   `flyctl ssh console --app agentsfleetd-dev` — run the probe with
+   `OTLP_COLLECTOR_URL=http://otelcol-dev.internal:4318` plus
+   `OTLP_INGEST_USER` and `OTLP_INGEST_PASSWORD`. The collector's address
+   resolves only inside Fly's 6PN network, so this cannot be run from a laptop
+   and a probe that appears to pass from one is testing something else.
+
+   **The receiver requires Basic auth**, so read a failure carefully: `401` is
+   the gate working and the probe holding the wrong pair, while a connection
+   refusal is the collector not serving. Those are different incidents and the
+   revert below only addresses the second. The pair is the one the daemon
+   already sends, so a 401 from the probe means the daemon would be refused too.
+3. Repoint the daemon. `GRAFANA_OTLP_ENDPOINT` is a staged Fly secret, so it
+   takes effect on the next deploy rather than immediately — the endpoint is
+   the collector's address and the auth pair stays as it is. The collector
+   holds its own copy of the vendor endpoint and forwards there.
+4. Watch every dashboard panel across the deploy. The deliverable is that
+   nothing changes: same families, same labels, same panels. A renamed or
+   missing series is a failure of this step, not a property of it.
+
+**Revert is one configuration edit.** Set `GRAFANA_OTLP_ENDPOINT` back to the
+vendor endpoint the collector is forwarding to and redeploy; the daemon posts
+direct again and the collector becomes an idle app. Nothing else moves — the
+auth pair the daemon carries was never changed, which is what makes the revert
+one line rather than a credential rotation. State this before making the change,
+not after.
+
+**That claim has one dependency, and it is a process one.** Revert is cheap only
+while the daemon's dormant copy of the auth pair still works. After this change
+the collector's copy is the live one, so a routine Grafana key rotation applied
+to the collector alone leaves the daemon holding a stale credential — and the
+revert that was one line becomes the credential rotation it promised to avoid,
+discovered mid-incident. Rotate both, or drop the daemon's copy once the Rust
+daemon (whose OTLP knobs do not require it) is the one serving.
+
+**Abort criterion for this step:** any panel that stops resolving, or any signal
+type whose series stop arriving while the other two continue. A partial
+delivery is the failure mode worth naming separately — a collector can be
+healthy as a process while one pipeline is misconfigured, and liveness alone
+would read that as success.
+
 ## Evidence
 
 `M181_002` records the rehearsal and the swap here: the staging rollback
 rehearsal, the soak numbers against the budgets, and the post-swap probe run.
+
+**The collector hop.** One row per environment, filled at
+the change window:
+
+| Environment | Collector deployed | Endpoint repointed | Panels continuous | Probe run | Notes |
+|---|---|---|---|---|---|
+| development | | | | | |
+| production | | | | | |
