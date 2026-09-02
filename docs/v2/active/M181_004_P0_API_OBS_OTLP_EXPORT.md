@@ -139,12 +139,12 @@ NOT a file-for-file port. Zig's seventeen `http/` emit sites become a small numb
 
 Every `memory_*` family and the remaining `repair_*` families DO have producers — the ledger closed at fourteen rows, not the open-ended set this table first anticipated.
 
-### §3 — The transport, boot, and the knobs
+### §3 — The transport, boot, and the knobs — DONE
 
 The OTLP exporter is a NEW dependency bringing a protocol-encoding and HTTP-client subtree; the default is the published exporter over its HTTP transport, matching the wire path the Zig daemon already posts to, which keeps the gRPC stack out of the tree. The alternative — a small exporter over the workspace's existing HTTP client — is a PLAN decision to surface, not an EXECUTE discovery. **PLAN decision:** the published exporter, HTTP transport, protobuf default with JSON accepted, blocking client on the SDK's batch threads; gRPC is refused at preflight as a knob this build does not carry. The tracing bridges (spans, log records) are two further published crates, pinned to the SDK line already in the lock. Knobs are the OpenTelemetry specification's own names; the Zig daemon's vendor spellings are accepted as aliases through cutover so a rollback keeps exporting, and retire with that daemon.
 
-- **Dimension 3.1** — boot constructs the transport from configuration and supervises the flush loop under the inventoried task name; the daemon's real inventory equals its declared background task set, and the task joins on termination → Test `test_boot_supervises_otlp_export`
-- **Dimension 3.2** — the standard knobs configure endpoint, headers, protocol and timeout, and the vendor spellings still resolve as aliases with the standard name winning when both are set → Test `test_otlp_endpoint_knob_precedence`
+- **Dimension 3.1** — boot constructs the transport from configuration and supervises the flush loop under the inventoried task name; the daemon's real inventory equals its declared background task set, and the task joins on termination → Test `boot_supervises_the_export_under_its_inventoried_name` — **DONE** (`agentsfleetd::telemetry`; the declared-set half stays `test_the_daemon_supervises_what_it_claims`)
+- **Dimension 3.2** — the standard knobs configure endpoint, headers, protocol and timeout, and the vendor spellings still resolve as aliases with the standard name winning when both are set → Test `the_standard_endpoint_outranks_the_vendor_alias` — **DONE** (`preflight::otlp`, with the vendor pair resolving to one basic credential a standard header replaces)
 
 ### §4 — Failure posture and the three signals
 
@@ -197,8 +197,8 @@ No product-analytics changes.
 | 1.1 | unit | `every_census_label_resolves_to_a_constant` | every census label column resolves to a constant and every constant to a column — the diff of the two sets is empty both ways |
 | 1.2 | unit | `the_delivery_span_carries_every_declared_key` | the span carries every declared attribute and no other, retro-dated from the settle by the capped duration, as a root |
 | 2.1 | unit | `every_census_family_has_a_producer` | each declared family is claimed by a producer or excused by name; an excuse for a family that HAS a producer fails too |
-| 3.1 | unit | `test_boot_supervises_otlp_export` | real inventory == declared set; the task joins on shutdown within the drain deadline |
-| 3.2 | unit | `test_otlp_endpoint_knob_precedence` | standard name wins over alias when both set; alias alone still exports |
+| 3.1 | unit | `boot_supervises_the_export_under_its_inventoried_name` | a configured endpoint spawns the flush loop under the inventoried name and it joins on shutdown; an unconfigured one supervises nothing |
+| 3.2 | unit | `the_standard_endpoint_outranks_the_vendor_alias` | the standard name wins over the alias when both are set; the alias alone still exports; an unusable protocol or timeout faults naming its knob |
 | 4.1 | integration | `test_export_absent_and_unreachable` | no endpoint → serving daemon, zero export attempts; unreachable endpoint → drop counter climbs, request latency unchanged |
 | 4.2 | integration | `test_all_three_signals_exported` | a collector fixture receives metrics, spans and logs; log records carry the Zig event names |
 

@@ -36,6 +36,7 @@ use afd_core::env::EnvSource;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
+use afd_observability::producers::GaugeSources;
 use afd_observability::{Analytics, Telemetry};
 use afd_redis::Redis;
 use tokio::net::TcpListener;
@@ -139,7 +140,13 @@ async fn open(
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
     let runtime = open_runtime(&config, &analytics).await?;
-    let router = afd_api::router::build(runtime.plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
+    let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
+    // Before the router takes them: both are the state a gauge reads, and the
+    // clones are handles onto the same semaphore and the same ceiling rather
+    // than second copies that could disagree with what admission decides.
+    let sources = gauge_sources(&admission, &runtime.live);
+    open_telemetry(&config, supervisor, &sources)?;
+    let router = afd_api::router::build(runtime.plane, &admission);
     spawn_background(
         supervisor,
         &config,
@@ -169,6 +176,13 @@ async fn open(
 struct Runtime {
     database: Db,
     queue: Redis,
+    /// The live-stream surface, kept beside the plane it was moved into.
+    ///
+    /// A `Live` is two handles, so this is the same ceiling the routes admit
+    /// against — which is the point: a gauge reading a different value from
+    /// the one that decides admission would report a number no shed agrees
+    /// with.
+    live: afd_sse::Live,
     plane: Shared,
     hub: Option<afd_redis::SubscriptionHub>,
     /// The same key the plane seals with. The outbound worker opens its own
@@ -196,6 +210,7 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
     .await;
     let live = open_live(config.redis(), config.sse_max_streams()).await;
     let hub = live.hub().cloned();
+    let observed = live.clone();
     let plane = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
         database: database.clone(),
         queue: queue.clone(),
@@ -240,6 +255,7 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
     Ok(Runtime {
         database,
         queue,
+        live: observed,
         plane,
         hub,
         kek,
@@ -389,4 +405,59 @@ where
     // dropped only after a shutdown that joined every task reading through them.
     drop(booted);
     Ok(outcome)
+}
+
+/// What the three boot-owned gauges read.
+///
+/// Every one is a lock-free load on a value boot already holds, which is what
+/// makes them safe inside a collection callback: the SDK runs those under its
+/// own pipeline lock, with no timeout, so a reading that could block would
+/// take every family silent at once rather than slow one down.
+fn gauge_sources(admission: &Admission, live: &afd_sse::Live) -> GaugeSources {
+    let requests = admission.clone();
+    let streams = live.clone();
+    GaugeSources {
+        requests_in_flight: Arc::new(move || u64::try_from(requests.in_flight()).ok()),
+        streams_in_flight: Arc::new(move || u64::try_from(streams.carrying()).ok()),
+        resident_memory: Arc::new(crate::telemetry::resident_bytes),
+    }
+}
+
+/// Builds the export pipelines and supervises their flush, where a collector
+/// is configured.
+///
+/// A deployment that named none boots, serves, and exports nothing — which is
+/// every developer's environment and most tests. The task is spawned only in
+/// the configured case, which is why the daemon's inventory carries it
+/// conditionally and `integration_serve.rs` says so.
+pub(crate) fn open_telemetry(
+    config: &BootConfig,
+    supervisor: &mut Supervisor,
+    sources: &GaugeSources,
+) -> Result<(), BootFailure> {
+    let Some(otlp) = config.otlp() else {
+        // The Zig daemon's own event name and reason field, kept: a dashboard
+        // or an alert matching on this line matches it from either binary.
+        tracing::info!(
+            reason = "no endpoint configured",
+            event = "startup_otel_disabled",
+            "telemetry is not exporting"
+        );
+        return Ok(());
+    };
+
+    let exports = crate::telemetry::install(otlp, sources)?;
+    if let Some(signals) = crate::logs::signals() {
+        let attached = signals.attach(&exports);
+        tracing::debug!(attached, event = "telemetry_layers_attached");
+    }
+    supervisor.spawn(crate::OTLP_EXPORT, move |token| async move {
+        token.cancelled().await;
+        // The last thing that happens to telemetry. Every signal the process
+        // still holds is delivered here, before the pools it described are
+        // dropped — which is the same ordering the analytics flush has, and
+        // for the same reason.
+        exports.flush();
+    });
+    Ok(())
 }

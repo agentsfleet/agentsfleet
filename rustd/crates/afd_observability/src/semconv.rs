@@ -31,6 +31,17 @@ pub const SERVICE_NAMESPACE: &str = "agentsfleet";
 /// Resource key for the namespace above.
 pub const RESOURCE_SERVICE_NAMESPACE: &str = "service.namespace";
 
+/// Resource key for the build a signal came from.
+pub const RESOURCE_SERVICE_VERSION: &str = "service.version";
+
+/// Resource key for WHICH replica a signal came from.
+///
+/// Emitted only when a deployment supplies one. A fabricated identity would
+/// multiply every series by the replica count without being trustworthy, and
+/// an absent one leaves replicas publishing cumulative sums under a single
+/// series identity — which a store reads as counter resets.
+pub const RESOURCE_SERVICE_INSTANCE_ID: &str = "service.instance.id";
+
 /// The request method, upper-case, as OpenTelemetry spells it.
 pub const ATTR_HTTP_REQUEST_METHOD: &str = "http.request.method";
 

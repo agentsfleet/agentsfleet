@@ -65,6 +65,14 @@ afd_auth.workspace = true
 # `crate::outbound`.
 afd_outbound.workspace = true
 afd_observability.workspace = true
+# The transport, and the two bridges that feed it this daemon's existing spans
+# and log records. Named HERE and nowhere else: an endpoint is configuration,
+# and the composition root is the one place that reads configuration.
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-appender-tracing.workspace = true
+tracing-opentelemetry.workspace = true
 afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
@@ -95,6 +103,10 @@ object_store.workspace = true
 # key set. Optional at RUNTIME, not at build time — an unconfigured deployment
 # holds the refusing variants rather than a different binary.
 afd_identity.workspace = true
+# The vendor credential pair becomes one basic-auth header, which is base64 by
+# definition of the scheme. Taken here rather than hand-rolled: an encoder that
+# is wrong in the last three bytes fails as a 401 nobody can read.
+base64.workspace = true
 # The command line. Subcommands, `--port`, `--help` and `--version` are all
 # derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
 clap.workspace = true

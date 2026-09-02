@@ -583,6 +583,52 @@ octocrab = { version = "0.54.1", default-features = false, features = [
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
 opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+
+# The transport. A NEW dependency and not a feature flag on one already in the
+# lock: nothing here spoke OTLP before, and this is the encoder and the client
+# that make a signal leave the process.
+#
+# `http-proto` and NOT `grpc-tonic`, deliberately. The wire path is the one the
+# Zig daemon already posts to, which means a collector configured for one
+# binary accepts the other unchanged; taking gRPC would pull tonic, prost's
+# transport half and a second HTTP stack in for a protocol nothing downstream
+# asks for. `http-proto` still brings prost for the protobuf ENCODING, which is
+# the part that is actually needed.
+#
+# `reqwest-blocking-client` is the default and it is kept for a reason that is
+# not laziness. The SDK's periodic metric reader collects on a plain thread
+# with no tokio reactor on it — `otlp_outage_metrics.rs` documents that, having
+# been bitten by it — so an async client awaited there has no driver. The
+# blocking client owns its own, which is what makes one exporter safe on both
+# the span pipeline's tokio task and the reader's bare thread.
+#
+# The version resolves the SAME `reqwest` line this workspace already pins, so
+# the binary carries one HTTP client rather than two.
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = [
+    "http-proto",
+    # Both encodings, because the knob accepts both: a deployment that asked
+    # for `http/json` and got protobuf would be told it was configured and be
+    # wrong, and refusing the value outright would make the specification's own
+    # vocabulary half-supported for the sake of one small dependency.
+    "http-json",
+    "reqwest-blocking-client",
+    "trace",
+    "metrics",
+    "logs",
+    "internal-logs",
+] }
+
+# The bridge that turns this daemon's 97 `tracing` spans into OTLP spans.
+# `default-features = false` drops its `tracing-log` bridge and its own metrics
+# layer: the first would ingest the `log` crate's records, which nothing here
+# emits, and the second is a second metrics pipeline beside the census-built
+# one.
+tracing-opentelemetry = { version = "0.33.0", default-features = false }
+
+# The same bridge for log RECORDS. Its own crate rather than a feature of the
+# one above, upstream's split: a span and an event become different signals and
+# only one of them is a trace.
+opentelemetry-appender-tracing = { version = "0.32.0", default-features = false }
 opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
     "trace",
     "rt-tokio",
@@ -649,7 +695,18 @@ tracing = { version = "0.1.44", default-features = false, features = ["std", "at
 # on every interactive start. It survived because the panic needs a terminal on
 # standard error, which is exactly what a service manager and a container never
 # give it, so the deployed paths were the ones that could not reach it.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "fmt", "std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+    "ansi",
+    "fmt",
+    "std",
+    # The span store the OpenTelemetry bridges read through: a span's fields
+    # are recorded when it opens and read when it closes, and only a registry
+    # keeps them in between.
+    "registry",
+    # NOTE: `reload` — the slot boot fills — needs no feature of its own. It
+    # rides `std`, which is already here, and asking for it by name fails
+    # resolution rather than doing nothing.
+] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level

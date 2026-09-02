@@ -22,6 +22,7 @@ fn instruments() -> Instruments {
     Instruments::new(
         Registry::declared().expect("the compiled-in census reads"),
         provider.meter(semconv::SCOPE_NAME),
+        provider.meter(semconv::SCOPE_NAME),
     )
 }
 

@@ -52,6 +52,7 @@ pub struct BootConfig {
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
     pub(super) posthog: Option<PostHogConfig>,
+    pub(super) otlp: Option<super::OtlpConfig>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -120,6 +121,16 @@ impl BootConfig {
     #[must_use]
     pub const fn posthog(&self) -> Option<&PostHogConfig> {
         self.posthog.as_ref()
+    }
+
+    /// Where this deployment's telemetry goes, when it exports any.
+    ///
+    /// `None` is a daemon that boots, serves, and sends nothing — which is
+    /// every developer's environment and every test, and is why the absence is
+    /// a value here rather than a refusal at boot.
+    #[must_use]
+    pub const fn otlp(&self) -> Option<&super::OtlpConfig> {
+        self.otlp.as_ref()
     }
 
     /// The master key every vault read is decrypted with.
