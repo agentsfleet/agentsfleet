@@ -112,6 +112,7 @@ impl Fleets {
     /// left squatting there by a transport failure on the `DEL` that follows.
     async fn forget_state(&self, fleet: &str) {
         if let Err(failure) = self.ready.force_clear(fleet).await {
+            afd_observability::producers::fleet::ready_write_failed();
             report(fleet, &failure, "purge_readiness_clear_failed");
         }
         if let Err(failure) = self.streams.forget(fleet).await {

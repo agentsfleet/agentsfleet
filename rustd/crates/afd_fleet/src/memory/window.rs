@@ -120,6 +120,27 @@ impl Window<'_> {
 /// prefix semantics are meaningless otherwise.
 #[must_use]
 pub fn select(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
+    let window = select_counted(entries, budget);
+    afd_observability::producers::memory::hydration_window(
+        counted(window.kept.len()),
+        counted(window.dropped.len()),
+        counted(window.dropped_bytes()),
+    );
+    window
+}
+
+/// A count as the width the wire carries.
+///
+/// Saturating rather than truncating: a window past `u64::MAX` entries is not
+/// a state this process can reach, and a wrapping cast would report a large
+/// window as a tiny one.
+fn counted(size: usize) -> u64 {
+    u64::try_from(size).unwrap_or(u64::MAX)
+}
+
+/// [`select`] without the recording, so the window exists before anything is
+/// said about it.
+fn select_counted(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
     let sizes = |pinned: bool| {
         entries
             .iter()

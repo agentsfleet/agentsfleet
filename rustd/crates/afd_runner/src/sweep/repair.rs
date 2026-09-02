@@ -37,6 +37,8 @@ use afd_core::clock::{self, UnixMillis};
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_observability::metrics::label::fleet::{SyntheticEvent, VerifierRun};
+use afd_observability::producers;
 use afd_redis::Redis;
 use afd_redis::streams::{FleetStreams, OnceScope};
 use afd_wire::event::EventType;
@@ -55,6 +57,9 @@ const CONTEXT_COMPLETE: &str = "repair verification completion";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CLEANUP: &str = "repair verification cleanup";
+
+/// Milliseconds per second, for the one conversion this module performs.
+const MILLIS_PER_SECOND: i64 = 1_000;
 
 /// How many intents one pass claims.
 const DUE_BATCH_LIMIT: i64 = 32;
@@ -308,6 +313,13 @@ impl Repairs {
             )
             .await?;
 
+        producers::fleet::repair::event(if appended.replayed {
+            SyntheticEvent::Replayed
+        } else {
+            SyntheticEvent::Emitted
+        });
+        producers::fleet::repair::run(VerifierRun::Queued);
+
         let mut connection = self.database.acquire().await?;
         let recorded = sqlx::query(sql::sweep::COMPLETE_REPAIR_VERIFICATION)
             .bind(intent.id.as_str())
@@ -423,6 +435,7 @@ impl Sweep for Repairs {
         let now = clock::now();
         let token = self.token(now)?;
         let due = self.claim(now, &token).await?;
+        observe_backlog(&due, now);
         let mut dispatched = Dispatched {
             due: due.len(),
             ..Dispatched::default()
@@ -430,14 +443,21 @@ impl Sweep for Repairs {
 
         for intent in &due {
             match self.dispatch(intent, &token, now).await {
-                Ok(true) => dispatched.completed += 1,
+                Ok(true) => {
+                    dispatched.completed += 1;
+                    producers::fleet::repair::run(VerifierRun::Completed);
+                }
                 // The append happened and the completion did not match — this
                 // pass's claim had already lapsed and another replica recorded
                 // it. Counted as failed so the pacing waits, and correct
                 // either way: the event exists exactly once.
-                Ok(false) => dispatched.failed += 1,
+                Ok(false) => {
+                    dispatched.failed += 1;
+                    producers::fleet::repair::dispatch_retried();
+                }
                 Err(failure) => {
                     dispatched.failed += 1;
+                    producers::fleet::repair::dispatch_retried();
                     tracing::warn!(
                         verification_id = intent.id,
                         workspace_id = intent.workspace_id,
@@ -463,3 +483,21 @@ impl Sweep for Repairs {
 
 #[cfg(test)]
 mod tests;
+
+/// Publishes what this pass found waiting, for the two backlog gauges.
+///
+/// The oldest intent's age rather than the newest's: a queue that is moving
+/// has a young head and a stalled one does not, and the batch size alone
+/// cannot tell those apart — a full batch is what a healthy busy pass and a
+/// wedged one both look like.
+fn observe_backlog(due: &[Due], now: UnixMillis) {
+    let oldest = due
+        .iter()
+        .map(|intent| now.as_millis().saturating_sub(intent.verify_after))
+        .max()
+        .unwrap_or_default();
+    producers::fleet::repair_backlog_observed(
+        u64::try_from(due.len()).unwrap_or(u64::MAX),
+        u64::try_from(oldest / MILLIS_PER_SECOND).unwrap_or_default(),
+    );
+}

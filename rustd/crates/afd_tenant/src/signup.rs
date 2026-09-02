@@ -40,6 +40,7 @@
 //! comes back.
 
 use afd_core::clock::UnixMillis;
+use afd_observability::producers;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -225,6 +226,7 @@ impl Signups {
                 "a replay restored a wallet row that had gone missing"
             );
         }
+        producers::fleet::signup_replayed();
         tracing::info!(
             event = "signup_replay",
             "this subject already had an account"
@@ -297,6 +299,7 @@ impl Signups {
 
         transaction.commit().await.map_err(&raise)?;
 
+        producers::fleet::signup_bootstrapped();
         tracing::info!(
             event = "signup_bootstrapped",
             "a personal account was opened"

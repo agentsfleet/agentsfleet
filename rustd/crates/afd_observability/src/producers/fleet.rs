@@ -10,13 +10,14 @@ pub mod runner;
 
 use std::sync::Arc;
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::metrics::Counter;
 
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
 use crate::metrics::label::fleet::SignupFailure;
-use crate::producers::{GaugeSources, installed};
+use crate::metrics::observed::Observed;
+use crate::producers::installed;
 use crate::runner::RunnerMetrics;
 use crate::semconv;
 
@@ -26,6 +27,35 @@ use crate::semconv;
 /// agreeing with the sum of its reasons and an operator goes looking for the
 /// difference rather than for the failure.
 pub(super) const UNMODELLED_REASON: &str = "unknown";
+
+/// How many fleets the last lease poll found holding work.
+///
+/// Published by the poll rather than read from Redis in the callback: the
+/// index is a network round trip, and a collection callback runs under the
+/// SDK's pipeline lock where an await is not available and a stall would take
+/// every family silent at once.
+static READY_DEPTH: Observed = Observed::new();
+
+/// Intents the last repair pass found due.
+static REPAIR_DUE: Observed = Observed::new();
+
+/// How old the oldest undispatched intent was, in seconds.
+static REPAIR_OLDEST: Observed = Observed::new();
+
+/// Publishes what a completed lease poll saw in the readiness index.
+pub fn ready_depth_observed(fleets: u64) {
+    READY_DEPTH.publish(fleets);
+}
+
+/// Publishes what a completed repair pass found waiting.
+///
+/// Both readings together, because they describe one backlog: a batch size
+/// with no age says nothing about whether the queue is moving, and an age with
+/// no size says nothing about how much is behind it.
+pub fn repair_backlog_observed(due: u64, oldest_age_seconds: u64) {
+    REPAIR_DUE.publish(due);
+    REPAIR_OLDEST.publish(oldest_age_seconds);
+}
 
 /// The instruments the runner plane and the sweepers record through.
 #[derive(Debug)]
@@ -39,14 +69,9 @@ pub struct Handles {
     ready_write_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
-    repair_provider_results: Counter<u64>,
-    repair_correlations: Counter<u64>,
-    repair_intents: Counter<u64>,
     repair_retries: Counter<u64>,
     repair_events: Counter<u64>,
     repair_runs: Counter<u64>,
-    repair_to_queue: Histogram<f64>,
-    repair_to_completion: Histogram<f64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
     runner_executions: Counter<u64>,
@@ -66,7 +91,7 @@ impl Handles {
     /// # Errors
     ///
     /// Whatever [`Instruments`] refuses — see [`super::install`].
-    pub(super) fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
+    pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
         let runners = Arc::new(RunnerMetrics::new());
         let handles = Self {
             runners: Arc::clone(&runners),
@@ -83,37 +108,25 @@ impl Handles {
             retention_swept: instruments.counter_u64(declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
-            repair_provider_results: instruments
-                .counter_u64(declared::REPAIR_PROVIDER_RESULTS_TOTAL)?,
-            repair_correlations: instruments.counter_u64(declared::REPAIR_CORRELATIONS_TOTAL)?,
-            repair_intents: instruments
-                .counter_u64(declared::REPAIR_VERIFICATION_INTENTS_CREATED_TOTAL)?,
             repair_retries: instruments.counter_u64(declared::REPAIR_DISPATCH_RETRIED_TOTAL)?,
             repair_events: instruments.counter_u64(declared::REPAIR_SYNTHETIC_EVENTS_TOTAL)?,
             repair_runs: instruments.counter_u64(declared::REPAIR_VERIFIER_RUNS_TOTAL)?,
-            repair_to_queue: instruments
-                .histogram_f64(declared::REPAIR_PRODUCTION_TO_QUEUE_SECONDS)?,
-            repair_to_completion: instruments
-                .histogram_f64(declared::REPAIR_QUEUE_TO_COMPLETION_SECONDS)?,
             runner_failures: instruments.counter_u64(declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
                 .counter_u64(declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
             runner_executions: instruments.counter_u64(declared::RUNNER_EXECUTIONS_TOTAL)?,
         };
 
-        let ready = Arc::clone(&sources.ready_fleets);
-        instruments.gauge_u64(declared::FLEET_READY_DEPTH, move || {
-            ready().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(declared::FLEET_READY_DEPTH, || {
+            READY_DEPTH.load().into_iter().map(Reading::unlabelled).collect()
         })?;
 
-        let due = Arc::clone(&sources.repair_due_batch);
-        instruments.gauge_u64(declared::REPAIR_DISPATCH_DUE_BATCH, move || {
-            due().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(declared::REPAIR_DISPATCH_DUE_BATCH, || {
+            REPAIR_DUE.load().into_iter().map(Reading::unlabelled).collect()
         })?;
 
-        let oldest = Arc::clone(&sources.repair_oldest_age);
-        instruments.gauge_u64(declared::REPAIR_DISPATCH_OLDEST_AGE_SECONDS, move || {
-            oldest().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(declared::REPAIR_DISPATCH_OLDEST_AGE_SECONDS, || {
+            REPAIR_OLDEST.load().into_iter().map(Reading::unlabelled).collect()
         })?;
 
         let seen = Arc::clone(&runners);

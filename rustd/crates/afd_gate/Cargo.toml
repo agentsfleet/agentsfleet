@@ -15,6 +15,10 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# The families this crate produces. The dependency points this way and not the
+# other: telemetry knows nothing about policy, and a readiness mark this crate
+# could not write is a fact only this crate holds.
+afd_observability.workspace = true
 # A gate's spend is priced before it is admitted.
 afd_billing.workspace = true
 # Identifiers, the clock a gate's deadline is measured against, registry codes.

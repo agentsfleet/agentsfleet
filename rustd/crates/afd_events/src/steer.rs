@@ -100,6 +100,7 @@ impl Steer {
         // it: the clear compares it, so a mark written under another value is
         // one nothing can remove.
         if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
+            afd_observability::producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             let reason = unmarked.to_string();
             tracing::warn!(

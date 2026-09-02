@@ -67,7 +67,7 @@ impl Producers {
     pub fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
         Ok(Self {
             http: self::http::Handles::claim(instruments, sources)?,
-            fleet: self::fleet::Handles::claim(instruments, sources)?,
+            fleet: self::fleet::Handles::claim(instruments)?,
             library: self::library::Handles::claim(instruments)?,
             memory: self::memory::Handles::claim(instruments, sources)?,
             cost: self::cost::Handles::claim(instruments)?,
@@ -82,7 +82,18 @@ impl Producers {
 /// several domains in turn — a `Box` could be handed to exactly one of them.
 pub type Reader = Arc<dyn Fn() -> Option<u64> + Send + Sync>;
 
-/// What a gauge reads, supplied by boot because boot owns the state.
+/// What a gauge reads that only BOOT can answer.
+///
+/// Three, and the shortness is the design. A gauge whose value a producer
+/// computes publishes it into a cell beside that producer — the readiness
+/// depth a lease poll saw, the entries a hydration window carried, the backlog
+/// a repair pass found — because the producer is where the number exists and
+/// threading it out to boot and back would be two hops for no reader.
+///
+/// What is left are the three readings that live in values boot owns and
+/// nothing else can see: the admission semaphore, the stream ceiling, and the
+/// process's own resident set. All three are lock-free loads, which is what
+/// makes them safe to take inside a collection callback.
 ///
 /// Every field answers `None` for "no reading to publish", which the SDK turns
 /// into no data point at all. That is the rule [`crate::metrics::observed`]
@@ -93,14 +104,6 @@ pub struct GaugeSources {
     pub requests_in_flight: Reader,
     /// Event streams this instance is carrying.
     pub streams_in_flight: Reader,
-    /// How many fleets the readiness index says hold work.
-    pub ready_fleets: Reader,
-    /// Intents the repair dispatcher found due on its last pass.
-    pub repair_due_batch: Reader,
-    /// How old the oldest undispatched intent was, in seconds.
-    pub repair_oldest_age: Reader,
-    /// Entries the last hydration window carried.
-    pub hydration_window_entries: Reader,
     /// This process's resident set, in bytes.
     pub resident_memory: Reader,
 }
@@ -117,10 +120,6 @@ impl GaugeSources {
         Self {
             requests_in_flight: Arc::new(|| None),
             streams_in_flight: Arc::new(|| None),
-            ready_fleets: Arc::new(|| None),
-            repair_due_batch: Arc::new(|| None),
-            repair_oldest_age: Arc::new(|| None),
-            hydration_window_entries: Arc::new(|| None),
             resident_memory: Arc::new(|| None),
         }
     }

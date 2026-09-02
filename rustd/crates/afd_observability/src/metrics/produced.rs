@@ -45,6 +45,16 @@ pub struct Unproduced {
 const NO_REDIS_POOL: &str =
     "this daemon holds one multiplexed Redis connection; there is no pool to read";
 
+/// Why the first three links of the verification chain have no producer.
+///
+/// The dispatcher and the run are ported and record; what is not is the
+/// ingress that turns a production result into a correlated intent —
+/// `app_route.rs` says so in as many words. These five leave this file with
+/// that handler.
+const NO_REPAIR_INGRESS: &str =
+    "the repair-result ingress has no Rust home yet, so no result is received, \
+     correlated or turned into an intent here";
+
 /// Why nothing feeds the request- and response-erasure counters.
 const NO_ERASURE_PATH: &str =
     "no request- or response-buffer erasure path exists in this daemon";
@@ -62,6 +72,26 @@ pub const UNPRODUCED: &[Unproduced] = &[
         family: fleet::ACCOUNT_TEARDOWN_UNREGISTER_FAILURES_TOTAL.wire_name(),
         why: "account teardown is declared unported — the identity route answers \
               `user.deleted` as an event this daemon serves no rule for",
+    },
+    Unproduced {
+        family: fleet::REPAIR_PROVIDER_RESULTS_TOTAL.wire_name(),
+        why: NO_REPAIR_INGRESS,
+    },
+    Unproduced {
+        family: fleet::REPAIR_CORRELATIONS_TOTAL.wire_name(),
+        why: NO_REPAIR_INGRESS,
+    },
+    Unproduced {
+        family: fleet::REPAIR_VERIFICATION_INTENTS_CREATED_TOTAL.wire_name(),
+        why: NO_REPAIR_INGRESS,
+    },
+    Unproduced {
+        family: fleet::REPAIR_PRODUCTION_TO_QUEUE_SECONDS.wire_name(),
+        why: NO_REPAIR_INGRESS,
+    },
+    Unproduced {
+        family: fleet::REPAIR_QUEUE_TO_COMPLETION_SECONDS.wire_name(),
+        why: NO_REPAIR_INGRESS,
     },
     Unproduced {
         family: http::OTLP_QUEUE_DEPTH.wire_name(),

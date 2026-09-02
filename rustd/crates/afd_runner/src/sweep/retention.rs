@@ -40,6 +40,7 @@ use std::time::Duration;
 use afd_core::clock;
 use afd_core::timing::MAX_RUNTIME_MS;
 use afd_db::Db;
+use afd_observability::producers;
 
 use crate::error::{Result, query};
 
@@ -183,6 +184,22 @@ impl Sweep for Retention {
     }
 
     async fn sweep(&self) -> Result<Swept> {
+        let swept = self.sweep_counted().await;
+        match swept {
+            // `changed` and not `scanned`: an operator watching retention wants
+            // to know history is being removed, and a pass that scanned a
+            // million rows and deleted none has removed nothing.
+            Ok(ref pass) => producers::fleet::retention_swept(pass.changed),
+            Err(ref _failed) => producers::fleet::retention_failed(),
+        }
+        swept
+    }
+}
+
+impl Retention {
+    /// [`Sweep::sweep`] without the recording, so the tally exists before
+    /// anything is said about it.
+    async fn sweep_counted(&self) -> Result<Swept> {
         let now = clock::now().as_millis();
         let cutoff = now.saturating_sub(RETENTION_WINDOW_MS);
 

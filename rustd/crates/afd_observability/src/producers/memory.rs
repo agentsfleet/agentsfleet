@@ -7,7 +7,25 @@ use opentelemetry::metrics::Counter;
 use crate::error::Result;
 use crate::metrics::declared::memory as declared;
 use crate::metrics::instrument::{Instruments, Reading};
+use crate::metrics::observed::Observed;
 use crate::producers::{GaugeSources, installed};
+
+/// Entries the last hydration window carried.
+///
+/// Published where the window is computed, because that is the only place the
+/// number exists — a callback cannot re-derive it without redoing the
+/// selection, under the pipeline lock, against rows it would have to fetch.
+static WINDOW_ENTRIES: Observed = Observed::new();
+
+/// Publishes what a hydration window carried, and what it left behind.
+///
+/// One call for the gauge and both counters, because a window that reported
+/// its size without its drops would say a run was seeded and not that anything
+/// was withheld from it.
+pub fn hydration_window(kept: u64, dropped_entries: u64, dropped_bytes: u64) {
+    WINDOW_ENTRIES.publish(kept);
+    hydration_dropped(dropped_entries, dropped_bytes);
+}
 
 /// The instruments the memory paths record through.
 #[derive(Debug)]
@@ -42,9 +60,8 @@ impl Handles {
             search_zero_hits: instruments.counter_u64(declared::MEMORY_SEARCH_ZERO_HITS_TOTAL)?,
         };
 
-        let window = Arc::clone(&sources.hydration_window_entries);
-        instruments.gauge_u64(declared::MEMORY_HYDRATION_WINDOW_ENTRIES, move || {
-            window().into_iter().map(Reading::unlabelled).collect()
+        instruments.gauge_u64(declared::MEMORY_HYDRATION_WINDOW_ENTRIES, || {
+            WINDOW_ENTRIES.load().into_iter().map(Reading::unlabelled).collect()
         })?;
 
         let resident = Arc::clone(&sources.resident_memory);
