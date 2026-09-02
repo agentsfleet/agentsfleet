@@ -93,6 +93,9 @@ pub(crate) async fn list<D: Services>(
 
 fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
     if zero_hit {
+        // A search path can be perfectly healthy and useless: this is the one
+        // family that says a fleet's memory is not being reached.
+        afd_observability::producers::memory::search_found_nothing();
         let fleet_field = fleet.as_str();
         tracing::debug!(
             fleet_id = fleet_field,

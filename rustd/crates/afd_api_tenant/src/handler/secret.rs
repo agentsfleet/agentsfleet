@@ -216,3 +216,28 @@ fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Result<T, Refusa
     afd_core::json::object_from_slice::<T>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))
 }
+
+#[cfg(test)]
+mod tests {
+    /// The refusal sentence agrees with itself about how many entries there are.
+    ///
+    /// An operator reads this string in a dashboard and then goes and removes
+    /// those entries, so "1 entries" is not a cosmetic problem — it is the one
+    /// number in the sentence, spelled wrong. Both arms are held because the
+    /// singular is the one a plural-by-default `format!` gets wrong.
+    #[test]
+    fn the_referenced_refusal_agrees_with_its_own_count() {
+        assert_eq!(
+            super::referenced_detail(1),
+            "Secret is referenced by 1 model registry entry"
+        );
+        assert_eq!(
+            super::referenced_detail(2),
+            "Secret is referenced by 2 model registry entries"
+        );
+        assert_eq!(
+            super::referenced_detail(0),
+            "Secret is referenced by 0 model registry entries"
+        );
+    }
+}

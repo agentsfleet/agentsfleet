@@ -42,6 +42,10 @@
 //! are decided before one is touched.
 
 use std::sync::Arc;
+use std::time::Instant;
+
+use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
+use afd_observability::producers::library;
 
 use afd_core::error_code;
 use afd_core::paging::struct_cursor::StructCursor;
@@ -154,10 +158,31 @@ pub(crate) async fn list<D: Services>(
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
+    let read = read_registry(&services, &identity, query).await;
+    library::read_finished(
+        SURFACE,
+        read.as_ref()
+            .map_or_else(afd_http::handler::library_outcome, |_served| {
+                ReadOutcome::Ok
+            }),
+    );
+    read
+}
+
+/// The surface this read serves, in the census's own spelling.
+const SURFACE: Surface = Surface::TenantModels;
+
+/// [`list`] without the outcome recording, so there is one place the answer is
+/// produced and one place it is classified.
+async fn read_registry<D: Services>(
+    services: &Arc<D>,
+    identity: &PersonIdentity,
+    query: Option<String>,
+) -> Result<Response, Refusal> {
     let raw = query.unwrap_or_default();
     let limit = requested_limit(&raw)?;
     let tenant = tenant_of(
-        &services,
+        services,
         identity.person(),
         super::DETAIL_TENANT_REQUIRED,
         EVENT_TENANT,
@@ -165,13 +190,23 @@ pub(crate) async fn list<D: Services>(
     .await?;
     let after = resume_from(&raw, &tenant, limit)?;
 
-    let page = services
-        .tenant_providers()
-        .registry_page(&tenant, limit, after.as_ref())
-        .await
-        .map_err(Refusal::at(EVENT_LIST))?;
+    let page = library::timed(
+        SURFACE,
+        Stage::Sql,
+        services
+            .tenant_providers()
+            .registry_page(&tenant, limit, after.as_ref()),
+    )
+    .await
+    .map_err(Refusal::at(EVENT_LIST))?;
 
-    Ok(Json(rendered(&page, &tenant, limit)).into_response())
+    let rows = u64::try_from(page.rows.len()).unwrap_or(u64::MAX);
+    let serializing = Instant::now();
+    let body = Json(rendered(&page, &tenant, limit)).into_response();
+    library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
+    library::read_served(SURFACE, rows);
+
+    Ok(body)
 }
 
 /// `POST /v1/tenants/me/models` — register a model on a stored credential.

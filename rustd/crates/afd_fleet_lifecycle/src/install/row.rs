@@ -290,4 +290,17 @@ mod tests {
         assert_ne!(snapshot_key("abc123"), snapshot_key("abc124"));
         assert!(snapshot_key("abc123").contains("abc123"));
     }
+
+    /// A statement that failed for any other reason is not a name race.
+    ///
+    /// The true arm needs a `DatabaseError` carrying SQLSTATE 23505 AND the
+    /// name constraint, which sqlx only produces from a real driver. The arm
+    /// this holds is the one that decides whether a broken statement gets
+    /// retried as a lost race — answering true there would loop on a fault
+    /// that never clears.
+    #[test]
+    fn a_failure_that_is_not_a_database_error_is_not_a_name_race() {
+        assert!(!super::is_name_conflict(&sqlx::Error::PoolClosed));
+        assert!(!super::is_name_conflict(&sqlx::Error::RowNotFound));
+    }
 }

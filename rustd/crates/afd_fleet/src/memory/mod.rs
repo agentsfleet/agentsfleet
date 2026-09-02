@@ -26,6 +26,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_observability::producers::memory;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta};
 use sqlx::{Acquire as _, Row as _};
 
@@ -73,6 +74,20 @@ pub struct Captured {
     pub swept: u64,
     /// Rows evicted to bring the fleet back under its cap.
     pub evicted: u64,
+}
+
+impl Captured {
+    /// Records what this capture stored and what it would not.
+    ///
+    /// Four families from one tally, because they are four answers to one
+    /// question — what happened to the batch — and a caller recording three of
+    /// them would leave a fleet's memory looking smaller than it is.
+    fn record(&self) {
+        memory::captured(u64::try_from(self.stored).unwrap_or(u64::MAX));
+        memory::capture_skipped(u64::try_from(self.skipped).unwrap_or(u64::MAX));
+        memory::capture_truncated(u64::try_from(self.truncated).unwrap_or(u64::MAX));
+        memory::cap_evicted(self.evicted);
+    }
 }
 
 impl Memories {
@@ -140,6 +155,25 @@ impl Memories {
     /// encoded as an identifier. A delta refused for its shape is counted, not
     /// an error — see [`Captured::skipped`].
     pub async fn capture(
+        &self,
+        fleet_id: &Uuid7,
+        deltas: &[MemoryDelta<'_>],
+        now: UnixMillis,
+    ) -> Result<Captured> {
+        let captured = self.capture_counted(fleet_id, deltas, now).await;
+        match captured {
+            Ok(ref counted) => counted.record(),
+            // A push the datastore refused. Counted here rather than at the
+            // caller because every caller treats it the same way and one of
+            // them would eventually forget.
+            Err(ref _refused) => memory::push_failed(),
+        }
+        captured
+    }
+
+    /// [`Memories::capture`] without the recording, so the tallies exist before
+    /// anything is said about them.
+    async fn capture_counted(
         &self,
         fleet_id: &Uuid7,
         deltas: &[MemoryDelta<'_>],

@@ -99,8 +99,10 @@ pub(crate) async fn workspace<D: Services>(
 
 /// A slot for one stream, or the refusal a full instance answers.
 fn admit(live: &Live) -> Result<Slot, Refusal> {
-    live.admit()
-        .ok_or_else(|| Refusal::at_stream_ceiling(live.carrying(), live.capacity()))
+    live.admit().ok_or_else(|| {
+        afd_observability::producers::http::stream_shed();
+        Refusal::at_stream_ceiling(live.carrying(), live.capacity())
+    })
 }
 
 /// One response body, holding `slot` for as long as it is alive.

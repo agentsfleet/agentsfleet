@@ -29,6 +29,7 @@
 use std::time::Duration;
 
 use afd_db::Db;
+use afd_observability::producers;
 use afd_redis::Redis;
 use afd_redis::streams::FleetStreams;
 use sqlx::Row as _;
@@ -211,6 +212,7 @@ impl Reclaim {
         match self.ready.mark(fleet_id, &self.consumer).await {
             Ok(_token) => true,
             Err(failure) => {
+                producers::fleet::ready_write_failed();
                 tracing::warn!(
                     fleet_id,
                     error = %failure,
