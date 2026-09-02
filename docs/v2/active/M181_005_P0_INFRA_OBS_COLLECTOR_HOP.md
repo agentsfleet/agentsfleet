@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M181_005: Collectors deployed under the Zig daemon, dashboards unbroken
+# M181_005: The collector hop in front of the daemon's OTLP export
 
 **Prototype:** v2.0.0
 **Milestone:** M181
@@ -19,10 +19,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** IN_PROGRESS
 **Priority:** P0 — on the cutover's critical path: continuity across the swap is graded through these collectors
 **Categories:** INFRA | OBS
-**Batch:** B6 — fully parallel: touches deploy configuration only and serves the export path that exists today
-**Branch:** `feat/m181-005-collectors-under-zig`
+**Batch:** B6 — the deploy configuration is independent, but the PROOF is serial behind M181_004: a collector cannot be shown to carry signals nothing is sending
+**Branch:** `feat/m181-005-collectors`
 **Test Baseline:** `unit=6907 integration=not-run` — `make test-unit-all` exit 0 at `ac5a00157` (rustd cargo workspace 2186 + app 2410 + website 175 + cli 1624 + design-system 512). `verify.integration` is not run at CHORE(open): the stage table declares the slow suites only when the branch carries code, and this diff carries none — deploy configuration, a runbook and a probe. It WAS run once at the boundary on Indy's instruction (`349 passed`), recorded in the Test Delta below rather than as a rubric row, since the lane grades no part of this diff.
-**Depends on:** M181_001 (the probe runner this spec's evidence rows ride); nothing in the Rust tree — the Zig daemon's endpoint is already configuration
+**Depends on:** M181_001 (the probe runner this spec's evidence rows ride); **M181_004 merged** for Dimensions 1.1–1.2 — until the Rust daemon has an exporter it emits nothing, and a collector's continuity cannot be graded against an empty pipe. The collector deployment itself depends on neither
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 01, 2026) — §4's collector-first step of M181_002, split out on Indy's parallelization call
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths
 
@@ -30,16 +30,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the collectors serve the Zig daemon's existing export on staging and production with every dashboard panel continuous — before any binary changes anywhere.
+**Goal (testable):** every OTLP signal the daemon exports reaches Grafana Cloud through a collector that refuses an unauthenticated sender, on development and production, with no series renamed, dropped or decorated in transit.
 
-**Problem:** the cutover wants to grade signal continuity across a binary swap. If the collectors and the binary change together, a swap-day anomaly is unattributable: it could be the new infrastructure or the new daemon. The Zig daemon's export endpoint is already configuration, so the collector layer can land first, under the incumbent binary, as its own separately attributable change.
+**Problem:** the daemon posts telemetry direct to a vendor, so vendor identity is spelled into the daemon's own configuration: adding a backend, splitting a signal, or moving vendors becomes a daemon change with a window where both paths are half-configured, and fan-out to two backends is not expressible at all.
 
-**Solution summary:** stand the collectors up in front of the Zig daemon's export; repoint the daemon's endpoint configuration at them; let the collectors' own configuration fan out to the existing backend so no dashboard notices; record the evidence in the cutover runbook's register so M181_006 inherits a proven telemetry path.
+**This spec was drawn on a premise that turned out to be false, and the correction is the reason it exists in this shape.** It was written to stand collectors up under the *Zig* daemon first, so that infrastructure change and binary change would stay separately attributable across the cutover. The shipped `agentsfleetd` is already the Rust binary — `Dockerfile:39` copies `dist/agentsfleetd-rs-linux-${TARGETARCH}`, built by `cargo build --profile dist --bin agentsfleetd` (`release.yml:110,308`); the surviving `zig build` steps produce `agentsfleet-runner`, not the daemon. So there is no incumbent Zig export to stand in front of, the attribution argument that justified going first is void, and the honest ordering is the reverse of the one drawn: the daemon must learn to export before a hop can be proven to carry it.
+
+**Solution summary:** deploy a collector per environment as its own Fly app on the private network, holding the vendor credential and owning the fan-out; repoint the daemon's endpoint at it by configuration, which is one staged string and no daemon source change; require a credential on the receiver, because a credentialed relay reachable by an organisation-wide private network is otherwise an open relay; and record the evidence in the cutover runbook's register so M181_006 inherits a proven telemetry path.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(deploy): collectors in front of the Zig daemon's export
-- **Intent (one sentence):** the telemetry path the cutover will rely on is proven under the incumbent binary, so infrastructure change and binary change stay separately attributable.
+- **PR title (eventual):** feat(deploy): the collector hop in front of the daemon's OTLP export
+- **Intent (one sentence):** the daemon's telemetry leaves through a collector that owns the vendor relationship and refuses an unauthenticated sender, so the backend becomes configuration rather than a daemon change.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
@@ -47,7 +49,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `docs/architecture/observability.md` §The three signal paths — what the daemon exports and where it goes today.
 2. `deploy/**` — the existing staged deploy/verify shape this rides; no new workflow shapes.
 3. `playbooks/operations/cutover/001_playbook.md` — the runbook whose register records this step's evidence; M181_006 reads it.
-4. `src/agentsfleetd/cmd/serve*.zig` knob surface — the vendor-named endpoint configuration being repointed; config only, no Zig edits.
+4. M181_004's spec — the exporter this collector receives from, and the knob names the Rust daemon reads. Nothing here is provable until that lands; read its Interfaces before assuming the vendor-spelled triple survives.
 
 ## Files Changed (blast radius)
 
@@ -56,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `deploy/fly/otelcol-{dev,prod}/**` | CREATE | the collector app per environment — `Dockerfile` + `fly.toml` + `config.yml`, mirroring the `cloudflared-{dev,prod}` sidecar shape |
 | `.github/workflows/deploy-dev-fly.yml` · `.github/workflows/release.yml` | EDIT | **where the endpoint actually lives.** `GRAFANA_OTLP_ENDPOINT` is a Fly secret staged from the vault by these two workflows (`deploy-dev-fly.yml:39,62`, `release.yml:513,539`), not a value in `deploy/`. The repoint is one changed string per environment; the collector's own upstream credentials are staged to the collector app |
 | `docs/architecture/observability.md` | EDIT | §The three signal paths line 38 reads "Direct to Grafana Cloud; **no collector hop**" — the exact claim this spec falsifies. `dispatch/name_architecture.md` is no-override, so the doc is reconciled in the same diff |
-| `playbooks/operations/cutover/001_playbook.md` | EDIT | the evidence row: collectors serving under Zig, dashboards verified continuous |
+| `playbooks/operations/cutover/001_playbook.md` | EDIT | the procedure and the evidence rows: collector serving, endpoint repointed, every signal arriving |
 | `playbooks/operations/cutover/probes.sh` | EDIT | an executable probe for the collector path, tagged to this spec's rubric row |
 | `playbooks/operations/cutover/coverage.tsv` | EDIT | the probe's row tags and this milestone's entry — **lands only in the CHORE(close) commit**, see §1's sequencing note |
 | `playbooks/operations/cutover/probes_test.sh` | EDIT | the runner's self-test covers the new probe; it rides `make lint-all` via `lint-scripts` |
@@ -84,11 +86,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Collectors serving the incumbent export
+### §1 — The collector carries every signal, and only for a caller that authenticates
 
-The collectors deploy first, under the Zig daemon. Standing them up in front of the incumbent binary proves the telemetry path with dashboards intact and nothing else changing. The daemon's endpoint is repointed by configuration; the collectors fan out to the existing backend, chosen in collector configuration with no daemon redeploy.
+One collector app per environment on the private network, holding the vendor credential and owning the fan-out. The daemon's endpoint is repointed by configuration; the backend is chosen in collector configuration with no daemon redeploy. The receiver requires a credential: the private network spans the whole organisation rather than this app pair, so without one the collector is a credentialed relay any workload on that network can post through.
 
-- **Dimension 1.1** — the collectors serve the Zig daemon's export on staging with every dashboard panel continuous → Test `test_collector_path_under_zig`
+- **Dimension 1.1** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
 - **Dimension 1.2** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
 - **Dimension 1.3** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
 
@@ -97,7 +99,7 @@ The collectors deploy first, under the Zig daemon. Standing them up in front of 
 ## Interfaces
 
 ```
-Zig daemon export endpoint      configuration only — repointed at the collectors
+Daemon export endpoint          configuration only — repointed at the collector
 Collector fan-out               backend selection lives in collector config, not the daemon
 playbooks/operations/cutover/   the evidence register and the probe runner
 ```
@@ -113,7 +115,7 @@ playbooks/operations/cutover/   the evidence register and the probe runner
 
 ## Invariants
 
-1. The Zig daemon's binary and flags are untouched — the diff contains no `src/**` path; enforced by rubric R2's Files-Changed check.
+1. No daemon source changes — the diff contains no `src/**` or `rustd/**` path; enforced by rubric R2's Files-Changed check. The repoint is configuration, and the exporter that fills it is M181_004's.
 2. Rollback of this change is one configuration edit, stated in the runbook row before the change is made.
 3. Every rubric row here is probe-tagged or manifest-declared — the probe runner's existing row-coverage assert.
 
@@ -121,7 +123,7 @@ playbooks/operations/cutover/   the evidence register and the probe runner
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| existing families, now through the collectors | ops | unchanged | unchanged | unchanged — the collectors add no attributes | `test_collector_path_under_zig` |
+| every exported family, now through the collector | ops | unchanged | unchanged | unchanged — the collector adds no attributes | `test_collector_path_carries_every_signal` |
 
 No product-analytics changes; no new panels — continuity is the deliverable.
 
@@ -129,7 +131,7 @@ No product-analytics changes; no new panels — continuity is the deliverable.
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | e2e (staging) | `test_collector_path_under_zig` | per-signal series present through the collectors; no renamed series; panel set unchanged |
+| 1.1 | e2e (development) | `test_collector_path_carries_every_signal` | per-signal series present through the collector; no renamed series; panel set unchanged |
 | 1.2 | e2e (production window) | `test_collector_path_production_probe` | same assertion, production; revert path stated before execution |
 | 1.3 | unit | `test_runbook_probes` | row-coverage: this spec's rows are tagged or manifest-declared |
 
@@ -137,7 +139,7 @@ No product-analytics changes; no new panels — continuity is the deliverable.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Collectors serve the Zig export, dashboards continuous (§1) | `bash playbooks/operations/cutover/probes.sh` | exit 0, collector rows green | P0 | ⏳ pending the change window — graded from the rollout, which is Indy's. The probe and its manifest rows land in the same commit, per §1's sequencing note |
+| R1 | The collector carries every signal to Grafana Cloud, authenticated (§1) | `bash playbooks/operations/cutover/probes.sh` | exit 0, collector rows green | P0 | ⏳ blocked, not merely pending — M181_004 must land first (the daemon exports nothing until it does), then graded from the change window, which is Indy's. The probe and its manifest rows land in the same commit, per §1's sequencing note |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table; no `src/**` or `rustd/**` path present | P0 | ✅ 11 paths, every one in the table; no `src/**` or `rustd/**` path, so Invariant 1 holds. Measured against the branch base `ac5a00157`, not `origin/main`, which is one unpushed commit behind and would otherwise attribute that commit's two spec files to this diff |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0 |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — 6907 (rustd 2186 + app 2410 + website 175 + cli 1624 + design-system 512) |
@@ -168,11 +170,11 @@ N/A — no files deleted; the direct-to-backend endpoint configuration is supers
 
 1. **Successful user moment** — an operator watches the same dashboards before and after the repoint and cannot tell anything changed.
 2. **Preserved user behaviour** — everything; the request path is untouched by construction.
-3. **Optimal-way check** — collectors under the incumbent binary first beats collectors-with-the-swap: one ambiguous change becomes two attributable ones. That reasoning is inherited from the parent spec and is the whole point of the split.
+3. **Optimal-way check** — a collector hop beats posting direct to a vendor: the backend becomes configuration applied without redeploying the thing that serves requests, and fan-out to a second destination becomes expressible at all. The ORDERING argument the parent spec used — collectors first, under the incumbent binary — is void, because the incumbent is already the Rust binary and exports nothing.
 4. **Rebuild-vs-iterate** — N/A: pure deployment change.
 5. **What we build** — collector deployment, endpoint repoint, probe, evidence rows.
 6. **What we do NOT build** — daemon changes, dashboards, backend changes.
-7. **Fit with existing features** — rides the existing deploy/verify workflow shape; the Zig release path stays intact as the rollback.
+7. **Fit with existing features** — rides the existing deploy/verify workflow shape, mirroring the `cloudflared-{dev,prod}` sidecar apps already in the tree; the daemon keeps one endpoint, one credential and one failure mode however many backends exist downstream.
 8. **Surface order** — N/A — no user surface.
 9. **Dashboard restraint** — nothing new to show, by design.
 10. **Confused-user next step** — an operator seeing a dark panel reads the runbook row: the revert is one config edit, named there.
@@ -192,7 +194,11 @@ N/A — no files deleted; the direct-to-backend endpoint configuration is supers
     > Indy (2026-09-01): chose "Repo diff, you run the rollout (Recommended)" — context: `deploy/**` and the two workflow files are approved for edit; the Fly and Grafana Cloud rollout is Indy's, and every rubric row here is graded from the output of that run.
   - **The endpoint is not in `deploy/` (Sep 01, 2026) — Files Changed amended.** Read from source rather than assumed: `GRAFANA_OTLP_ENDPOINT` is a Fly secret staged from the vault by `.github/workflows/deploy-dev-fly.yml:39,62` and `.github/workflows/release.yml:513,539`; neither `deploy/fly/agentsfleetd-dev/fly.toml` nor its production twin mentions it. A spec whose blast radius stops at `deploy/**` cannot repoint anything. Both workflows join the table under the approval above.
   - **Architecture consult — the doc this spec falsifies (Sep 01, 2026).** `docs/architecture/observability.md:38` reads "Direct to Grafana Cloud; **no collector hop**". `dispatch/name_architecture.md` carries no override — the doc wins until reconciled — so the line is reconciled in this diff rather than left to contradict the deployment. The one-directional assert in `probes.sh:225` is unaffected: it forbids claiming a scrape path the deployment lacks, and this change adds no `[[metrics]]` block and no pull endpoint. D2 of the register stays true.
-  - **No Zig edit is needed for the repoint, and none is permitted (Sep 01, 2026).** `src/agentsfleetd/observability/otlp/config.zig:60-70` requires all three `GRAFANA_OTLP_*` knobs or `configFromEnv` returns null and all three signals disable; the daemon posts to `{ENDPOINT}/v1/{logs,traces,metrics}` (`otel_logs.zig:18`), which is what an OTLP/HTTP receiver serves on `:4318`. So the repoint changes ONE staged string per environment, instance-id and api-key stay staged, and the collector holds its own upstream credentials. Invariant 1 holds by construction rather than by discipline.
+  - **No daemon edit is needed for the repoint, and none is permitted (Sep 01, 2026).** The repoint changes ONE staged string per environment; the collector holds the vendor credential and forwards. Invariant 1 holds by construction rather than by discipline. The Zig reading that produced this — `src/agentsfleetd/observability/otlp/config.zig:60-70` requiring all three knobs or disabling every signal — described a binary that is not the one deployed; see the premise correction below.
+  - **RESOLVED — the premise was wrong: the shipped daemon is Rust and exports nothing (Sep 02, 2026).** Indy: "Well i donot use the agentsfleetd zig code." Checked rather than assumed: `Dockerfile:39` copies `dist/agentsfleetd-rs-linux-${TARGETARCH}`; `release.yml:110,308` build it with `cargo build --profile dist --bin agentsfleetd`; the surviving `zig build` steps (`release.yml:162,259`) produce `agentsfleet-runner`. And the Rust daemon has no exporter — `git grep GRAFANA_OTLP -- rustd/` returns nothing and `rustd/Cargo.toml` declares no OTLP dependency, which is exactly M181_004's own Problem statement. So the `GRAFANA_OTLP_*` secrets staged onto both Fly apps today are inert, this spec's original goal (continuity of an incumbent Zig export) was ungradeable as written, and the dependency runs opposite to the drawn one. Re-aimed at the Rust daemon; Dimensions 1.1–1.2 now sit behind M181_004.
+    > Indy (2026-09-02): "I think this is aimed at the rust daemon" — context: re-aim approved, and the branch renamed off `under-zig` in the same breath.
+  - **Receiver authentication (Sep 02, 2026).** Review found the OTLP receiver listening with no inbound auth. Fly's 6PN spans the organisation, not the app pair, so any workload on it could post series the collector forwards upstream under the real vendor credential — a boundary that had been "hold the vendor key" quietly became "be on the network". Closed with the `basicauth` extension's server half, which costs no daemon change because the daemon already sends that pair on every export and the collector was discarding it unread.
+    > Indy (2026-09-02): "i will go with basic auth for an otel collector in fly" — context: options were receiver auth, image pinning, collector scale, and factoring the duplicated deploy step; auth chosen.
   - **Rubric S-row renumber (Sep 01, 2026).** Mechanical, applied under gate-flag triage: the letters are read positionally by `coverage.tsv`, this spec's drawing broke two asserts in `probes.sh`, and the fix is the convention every merged sibling already carries. Detail beneath the rubric.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
