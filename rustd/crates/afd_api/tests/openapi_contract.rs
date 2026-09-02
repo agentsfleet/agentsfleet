@@ -33,8 +33,7 @@ const SCHEMA_PREFIX: &str = "#/components/schemas/";
 
 /// The generated document, as the bytes that ship.
 fn document() -> serde_json::Value {
-    serde_json::to_value(afd_api::openapi::document())
-        .expect("the generated document serializes")
+    serde_json::to_value(afd_api::openapi::document()).expect("the generated document serializes")
 }
 
 /// Every `$ref` in the document, wherever it is nested.
@@ -122,9 +121,9 @@ fn test_every_reference_resolves() {
     let mut dangling: Vec<String> = found
         .iter()
         .filter(|target| {
-            target.strip_prefix(SCHEMA_PREFIX).is_none_or(|name| {
-                schemas.is_none_or(|schemas| !schemas.contains_key(name))
-            })
+            target
+                .strip_prefix(SCHEMA_PREFIX)
+                .is_none_or(|name| schemas.is_none_or(|schemas| !schemas.contains_key(name)))
         })
         .cloned()
         .collect();
