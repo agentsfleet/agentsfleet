@@ -28,16 +28,38 @@ fn schema_name<T: ?Sized>() -> &'static str {
         .unwrap_or_default()
 }
 
+/// What a response with no documented `$ref` reads as in a failed assertion.
+const NONE_DOCUMENTED: &str = "(none documented)";
+
+/// What an operation that would not serialize reads as in a failed assertion.
+const UNSERIALIZABLE: &str = "(operation did not serialize)";
+
 /// The schema one documented response refers to.
+///
+/// Walked with `get` rather than indexed: `Value`'s `Index` panics on a missing
+/// key, and every step here is a key this test is asking ABOUT — a response
+/// that documents no body is the finding, not a crash. Both sentinels are
+/// distinct strings so a failure says which of the two happened.
 fn documented(operation: &utoipa::openapi::path::Operation, status: &str) -> String {
-    serde_json::to_value(operation).expect("the operation serializes")["responses"][status]
-        ["content"]["application/json"]["schema"]["$ref"]
-        .as_str()
-        .unwrap_or("(none documented)")
-        .rsplit('/')
-        .next()
-        .unwrap_or_default()
-        .to_owned()
+    let Ok(serialized) = serde_json::to_value(operation) else {
+        return UNSERIALIZABLE.to_owned();
+    };
+    [
+        "responses",
+        status,
+        "content",
+        "application/json",
+        "schema",
+        "$ref",
+    ]
+    .iter()
+    .try_fold(&serialized, |node, key| node.get(key))
+    .and_then(serde_json::Value::as_str)
+    .unwrap_or(NONE_DOCUMENTED)
+    .rsplit('/')
+    .next()
+    .unwrap_or_default()
+    .to_owned()
 }
 
 #[test]
