@@ -93,4 +93,5 @@ impl Repairs {
             .await
             .map_err(query(CONTEXT_CLEANUP))?;
         Ok(())
-    }}
+    }
+}

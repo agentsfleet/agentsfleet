@@ -47,7 +47,10 @@ pub(super) struct Runtime {
     pub(super) kek: Arc<Kek>,
 }
 
-pub(super) async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runtime, BootFailure> {
+pub(super) async fn open_runtime(
+    config: &BootConfig,
+    analytics: &Analytics,
+) -> Result<Runtime, BootFailure> {
     let database = Db::connect(config.api_pool()).await?;
     // Before the router exists, so the first request finds live connections
     // instead of paying a handshake inside an acquire budget sized for a wait.

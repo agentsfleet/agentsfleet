@@ -128,7 +128,8 @@ pub(super) const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
 pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 64;
 
 /// Why a stream ceiling that will not parse refuses boot.
-pub(super) const WHY_SSE_MAX_STREAMS: &str = "a whole number of concurrent event streams, at least 1";
+pub(super) const WHY_SSE_MAX_STREAMS: &str =
+    "a whole number of concurrent event streams, at least 1";
 
 /// The Cloudflare account the Fleet Bundle bucket lives under.
 pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
@@ -175,7 +176,8 @@ pub(super) const WHY_ISSUER: &str =
 pub(super) const WHY_AUDIENCE: &str = "the audience this daemon accepts, checked strictly so a token minted for a sibling service is refused";
 
 /// Why it needs an API base.
-pub(super) const WHY_API_BASE: &str = "the provider API base a subject's capability claim is read from";
+pub(super) const WHY_API_BASE: &str =
+    "the provider API base a subject's capability claim is read from";
 
 /// Why it needs a secret.
 pub(super) const WHY_SECRET: &str = "the provider secret that authorises reading a subject's claim";
