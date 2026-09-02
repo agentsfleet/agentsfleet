@@ -8,9 +8,7 @@ use opentelemetry::metrics::Counter;
 use crate::error::Result;
 use crate::metrics::declared::http as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::http::{
-    DiscardReason, OmissionReason, OmittedAttribute, Signal, TraceSuppression,
-};
+use crate::metrics::label::http::{DiscardReason, OmissionReason, OmittedAttribute, Signal};
 use crate::producers::{GaugeSources, installed};
 use crate::semconv;
 
@@ -28,7 +26,6 @@ pub struct Handles {
     stream_shed: Counter<u64>,
     frames_dropped: Counter<u64>,
     hub_reconnects: Counter<u64>,
-    trace_suppressed: Counter<u64>,
     entries_discarded: Counter<u64>,
     attributes_omitted: Counter<u64>,
 }
@@ -45,7 +42,6 @@ impl Handles {
             stream_shed: instruments.counter_u64(&declared::SSE_BACKPRESSURE_REJECTIONS_TOTAL)?,
             frames_dropped: instruments.counter_u64(&declared::SSE_DROPPED_FRAMES_TOTAL)?,
             hub_reconnects: instruments.counter_u64(&declared::SSE_HUB_RECONNECTS_TOTAL)?,
-            trace_suppressed: instruments.counter_u64(&declared::HTTP_TRACE_SUPPRESSED_TOTAL)?,
             entries_discarded: instruments.counter_u64(&declared::OTLP_ENTRIES_DISCARDED_TOTAL)?,
             attributes_omitted: instruments.counter_u64(&declared::OTEL_ATTRIBUTE_OMITTED_TOTAL)?,
         };
@@ -93,16 +89,6 @@ pub fn frame_dropped() {
 pub fn hub_reconnected() {
     if let Some(producers) = installed() {
         producers.http.hub_reconnects.add(1, &[]);
-    }
-}
-
-/// Records a span the trace budget declined to open.
-pub fn trace_suppressed(reason: TraceSuppression) {
-    if let Some(producers) = installed() {
-        producers
-            .http
-            .trace_suppressed
-            .add(1, &[KeyValue::new(semconv::LABEL_REASON, reason.as_str())]);
     }
 }
 

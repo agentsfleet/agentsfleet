@@ -28,6 +28,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_observability::producers;
 use afd_wire::report::ReportRequest;
 
 use crate::error::{Result, lease_not_found, stale_fence};
@@ -139,6 +140,10 @@ impl Plane {
             "the report won its fence and its final slice was charged"
         );
 
+        // After the fence is won, so a refused report does not decrement a
+        // lease its runner still holds. The counterpart of the increment
+        // `Leases::select` records when the lease was granted.
+        producers::fleet::runner::lease_released(runner_id.as_str());
         self.finalize(runner_id, lease_id, &lease, request, verdict, now)
             .await;
         Ok(Reconciled {

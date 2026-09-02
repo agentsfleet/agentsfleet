@@ -24,7 +24,7 @@
 //! request-erasure path, the ported account teardown — its row leaves this
 //! file in the same commit that adds the producer.
 
-use crate::metrics::declared::{fleet, http, library, memory, redis};
+use crate::metrics::declared::{cost, fleet, http, library, memory, redis};
 
 /// One family this build declines to produce, and the reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +107,17 @@ pub const UNPRODUCED: &[Unproduced] = &[
               daemon invented for it would describe a ring it does not have",
     },
     Unproduced {
+        family: http::HTTP_TRACE_SUPPRESSED_TOTAL.wire_name(),
+        why: "this daemon traces every matched request: there is no head sampler \
+              and no per-class span budget, so nothing is suppressed to count",
+    },
+    Unproduced {
+        family: cost::TELEMETRY_SAMPLES_DROPPED.wire_name(),
+        why: "the ring this counted belongs to the daemon being replaced; the loss \
+              this build can see is the SDK's, already counted per signal and \
+              reason by `agentsfleet_otlp_entries_discarded_total`",
+    },
+    Unproduced {
         family: redis::REDIS_POOL_ACTIVE.wire_name(),
         why: NO_REDIS_POOL,
     },
@@ -151,9 +162,3 @@ pub const UNPRODUCED: &[Unproduced] = &[
         why: NO_ERASURE_PATH,
     },
 ];
-
-/// Whether `family` is one this build declines to produce.
-#[must_use]
-pub fn is_excused(family: &str) -> bool {
-    UNPRODUCED.iter().any(|row| row.family == family)
-}

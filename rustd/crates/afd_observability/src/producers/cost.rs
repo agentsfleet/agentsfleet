@@ -55,7 +55,6 @@ pub struct Handles {
     tokens: Histogram<f64>,
     cache_read: Histogram<f64>,
     credits: Counter<u64>,
-    samples_dropped: Counter<u64>,
 }
 
 impl Handles {
@@ -71,7 +70,6 @@ impl Handles {
             cache_read: instruments
                 .histogram_f64(&declared::INVOKE_AGENT_CACHE_READ_TOKEN_USAGE)?,
             credits: instruments.counter_u64(&declared::BILLING_CREDIT_CONSUMED)?,
-            samples_dropped: instruments.counter_u64(&declared::TELEMETRY_SAMPLES_DROPPED)?,
         })
     }
 }
@@ -132,16 +130,5 @@ pub fn credits_consumed(model: &str, posture: &str, class: ChargeClass, nanocred
                 KeyValue::new(semconv::ATTR_CHARGE_TYPE, class.as_str()),
             ],
         );
-    }
-}
-
-/// Records samples the exporter shed before they could be exported.
-///
-/// Rides the same push it describes, which is why it is not the only account of
-/// telemetry loss: it arrives only if a LATER export succeeds. The
-/// discarded-entries counter beside it is what a dead pipe is caught by.
-pub fn samples_dropped(samples: u64) {
-    if let Some(producers) = installed() {
-        producers.cost.samples_dropped.add(samples, &[]);
     }
 }
