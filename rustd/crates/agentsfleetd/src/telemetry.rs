@@ -33,7 +33,8 @@ use std::time::Duration;
 use afd_observability::metrics::instrument::{Instruments, series_ceilings};
 use afd_observability::metrics::registry::Registry;
 use afd_observability::producers::{self, GaugeSources};
-use afd_observability::{CountingExporter, semconv};
+use afd_observability::metrics::export::BatchDrops;
+use afd_observability::{CountingExporter, SpanDrops, semconv};
 use afd_observability::metrics::export::CountingMetricExporter;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
@@ -84,6 +85,10 @@ pub struct Exports {
     cumulative: SdkMeterProvider,
     delta: SdkMeterProvider,
     logger: SdkLoggerProvider,
+    /// How many spans this process has failed to deliver.
+    spans_lost: SpanDrops,
+    /// How many metric collection cycles it has failed to deliver.
+    cycles_lost: BatchDrops,
 }
 
 impl Exports {
@@ -122,6 +127,26 @@ impl Exports {
     pub const fn tracer(&self) -> &SdkTracerProvider {
         &self.tracer
     }
+
+    /// Spans this process failed to deliver.
+    ///
+    /// The number an operator acts on when a collector is unreachable, and the
+    /// reason the export is allowed to fail quietly: telemetry that is lost
+    /// says so, so nobody has to infer it from an empty dashboard.
+    #[must_use]
+    pub fn spans_lost(&self) -> &SpanDrops {
+        &self.spans_lost
+    }
+
+    /// Metric collection cycles this process failed to deliver.
+    ///
+    /// Cycles rather than data points: losing one loses a MOMENT, not a
+    /// quantity, and the next cycle carries the running total again for every
+    /// cumulative family.
+    #[must_use]
+    pub fn cycles_lost(&self) -> &BatchDrops {
+        &self.cycles_lost
+    }
 }
 
 /// Builds every pipeline, installs the process-wide handles, and claims the
@@ -146,6 +171,7 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
             .with_headers(headers.clone())
             .build()?,
     );
+    let spans_lost = spans.drops();
     let tracer = SdkTracerProvider::builder()
         .with_resource(resource.clone())
         .with_batch_exporter(spans)
@@ -164,8 +190,10 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         .build();
 
     let registry = Registry::declared()?;
-    let cumulative = meter_provider(config, &resource, &registry, Temporality::Cumulative, &headers)?;
-    let delta = meter_provider(config, &resource, &registry, Temporality::Delta, &headers)?;
+    let (cumulative, cycles_lost) =
+        meter_provider(config, &resource, &registry, Temporality::Cumulative, &headers)?;
+    let (delta, _delta_drops) =
+        meter_provider(config, &resource, &registry, Temporality::Delta, &headers)?;
 
     // The globals the recording side reaches through. Set BEFORE the
     // instruments are claimed, so a family built here is built on the provider
@@ -186,6 +214,14 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         cumulative,
         delta,
         logger,
+        spans_lost,
+        // The cumulative provider's, and the delta provider keeps its own.
+        // One number rather than two because the question it answers is
+        // whether the collector is taking metrics at all, and both readers
+        // post to the same endpoint — a run where one succeeds and the other
+        // does not is a collector rejecting a temporality, which the
+        // discarded-entries counter names precisely.
+        cycles_lost,
     })
 }
 
@@ -196,7 +232,7 @@ fn meter_provider(
     registry: &Registry,
     temporality: Temporality,
     headers: &HashMap<String, String>,
-) -> Result<SdkMeterProvider, BootFailure> {
+) -> Result<(SdkMeterProvider, BatchDrops), BootFailure> {
     let exporter = CountingMetricExporter::new(
         opentelemetry_otlp::MetricExporter::builder()
             .with_http()
@@ -207,7 +243,8 @@ fn meter_provider(
             .with_temporality(temporality)
             .build()?,
     );
-    Ok(SdkMeterProvider::builder()
+    let cycles_lost = exporter.drops();
+    let provider = SdkMeterProvider::builder()
         .with_resource(resource.clone())
         .with_reader(
             PeriodicReader::builder(exporter)
@@ -215,7 +252,8 @@ fn meter_provider(
                 .build(),
         )
         .with_view(series_ceilings(registry)?)
-        .build())
+        .build();
+    Ok((provider, cycles_lost))
 }
 
 /// Where one signal is posted.
