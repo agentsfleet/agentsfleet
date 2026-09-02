@@ -143,13 +143,25 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # lane needs the live datastores, and the same provenance rule the 96 was set
 # under applies: the number is the user's reading, recorded rather than
 # re-derived.
-# Raised 97 -> 98 on Indy's call (2026-09-02), during M181_004. This one does
-# NOT follow a measurement the way 96 -> 97 did: the branch that raised it
-# measured 96.7445%, below the floor it was already under. The number is a
-# target Indy set, so the ratchet leads the code here instead of trailing it,
-# and the tests that reach it are the work — not a later adjustment of this
-# line. Lowering it back is the thing the verdict below refuses.
-RUSTD_COVERAGE_FLOOR ?= 98
+# Raised 97 -> 98 on Indy's call (2026-09-02), during M181_004. That raise did
+# NOT follow a measurement the way 96 -> 97 did: it was a target set ahead of
+# the code, so the ratchet led rather than trailed.
+#
+# Returned 98 -> 97 on Indy's call, later the same day, and the distinction
+# matters enough to write down. The rule this file states is that a floor never
+# drops below a number a run ACHIEVED, because that is how a regression gets
+# hidden. 98 was never achieved: the lane measured 97.0409% when the target was
+# set and 97.2041% after the tests written against it. So this is not a floor
+# retreating from its own history — it is an aspiration returning to the
+# measurement, which is where every other number in this list came from.
+#
+# What that costs is honest: the gap to 98 was 295 lines at the last reading,
+# and 97 does not close it. It concedes that reaching 98 is a milestone of its
+# own — 295 lines spread across 240 files, whose cheap seams are spent and
+# whose remainder is untaken-branch bodies and Err paths, one live-datastore
+# fixture apiece. The 100% contract in the header remains authoritative and
+# unchanged; this line is the ratchet, not the goal.
+RUSTD_COVERAGE_FLOOR ?= 97
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
