@@ -70,9 +70,11 @@ jobs:
         # property this whole milestone is graded on.
         run: |
           flyctl secrets set \
-            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
+            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            OTLP_INGEST_USER="$GRAFANA_OTLP_INSTANCE_ID" \
+            OTLP_INGEST_PASSWORD="$GRAFANA_OTLP_API_KEY" \
             --app "$OTLP_COLLECTOR_APP"
           MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
           RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
@@ -88,6 +90,23 @@ jobs:
             for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
               flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
             done
+            # `machine start` returns when the API ACCEPTS the request, not when
+            # the collector is listening on 4318. Falling through here is what
+            # lets the daemon deploy against a collector that is still starting
+            # — the one race this whole step exists to close — so poll, and fail
+            # rather than report a success the next step would rely on. The
+            # from-scratch branch above needs none of this: `flyctl deploy
+            # --wait-timeout` already blocks until the machine is up.
+            for _ in $(seq 1 12); do
+              sleep 5
+              RUNNING="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null \
+                | jq '[.[] | select(.state == "started")] | length')"
+              [ "$RUNNING" -gt 0 ] && break
+            done
+            test "$RUNNING" -gt 0 || {
+              echo "  collector never reached started after restart — refusing to deploy the daemon at it"
+              exit 1
+            }
           else
             echo "  collector is running"
           fi
@@ -112,7 +131,7 @@ jobs:
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
-            GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
+            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
             --stage \
