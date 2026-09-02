@@ -27,22 +27,26 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// `POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.
+// Unknown fields are IGNORED, matching `innerStoreSecret`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+/// Stores one secret under a name you choose.
 ///
-/// Unknown fields are IGNORED, matching `innerStoreSecret`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
+/// agentsfleet ignores fields it does not know, instead of refusing the
+/// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct StoreSecretRequest<'a> {
     /// The name a fleet interpolates as `${secrets.<name>.<field>}`.
     #[serde(borrow)]
     pub name: Cow<'a, str>,
-    /// The object to seal. Opaque to the platform beyond its shape.
+    // The serialized form is a JSON object; the Rust form is an unparsed
+    // slice, which is a shape `ToSchema` cannot derive. `value_type` names the
+    // difference, which is the one thing an override is for.
+    /// The object to seal. agentsfleet reads nothing inside it beyond its
+    /// shape.
     ///
-    /// The serialized form is a JSON object; the Rust form is an unparsed
-    /// slice, which is a shape `ToSchema` cannot derive. `value_type` names
-    /// the difference — the one thing an override is for.
+    /// Send any well-formed JSON object.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     #[serde(borrow)]
     pub data: &'a RawValue,

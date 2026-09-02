@@ -151,6 +151,21 @@ pub enum BootFailure {
     /// The port could not be bound.
     #[error("agentsfleetd cannot listen")]
     Listen(#[from] std::io::Error),
+    /// The telemetry transport would not build from the resolved knobs.
+    ///
+    /// Refuses boot, and that is not over-strictness: preflight already
+    /// accepted every knob, so a failure here is an endpoint the exporter
+    /// cannot parse. A daemon that served on through it would export nothing
+    /// and look exactly like a collector that is down.
+    #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
+    Exporter(#[from] opentelemetry_otlp::ExporterBuildError),
+    /// The metric contract and the code disagree.
+    ///
+    /// A family a producer names and the census does not declare, a kind or a
+    /// number they disagree about, or a series ceiling the SDK refuses. Every
+    /// one is a defect in this build rather than a condition to serve through.
+    #[error("agentsfleetd cannot boot: the metric contract was refused")]
+    Contract(#[from] afd_observability::Error),
 }
 
 impl BootFailure {
@@ -166,6 +181,7 @@ impl BootFailure {
             Self::Database(_) => "database",
             Self::Queue(_) => "queue",
             Self::Listen(_) => "listen",
+            Self::Exporter(_) | Self::Contract(_) => "telemetry",
         }
     }
 
@@ -180,7 +196,9 @@ impl BootFailure {
             Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
             Self::Queue(_) => afd_core::error_code::STARTUP_REDIS_CONNECT,
-            Self::Listen(_) => afd_core::error_code::INTERNAL_OPERATION_FAILED,
+            Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) => {
+                afd_core::error_code::INTERNAL_OPERATION_FAILED
+            }
         }
     }
 }
@@ -203,4 +221,41 @@ pub enum MigrateFailure {
     /// The database would not answer, or the migration itself failed.
     #[error("agentsfleetd cannot migrate: the schema was not applied")]
     Run(#[from] afd_db::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_observability::metrics::registry::Registry;
+
+    use super::BootFailure;
+
+    /// Both telemetry variants report the same boot phase.
+    ///
+    /// `phase` is deliberately exhaustive rather than defaulted, so that a
+    /// variant added later fails the match here instead of being reported as
+    /// one of the old phases. The arm that carries TWO variants is the one
+    /// where that could go unnoticed — a new telemetry failure folded into it
+    /// would inherit "telemetry" silently — so the pair is asserted together
+    /// rather than through whichever of them a test happened to build.
+    #[test]
+    fn a_refused_metric_contract_reports_the_telemetry_phase() -> Result<(), &'static str> {
+        // A row that cannot become a `Family`: the census declares eleven
+        // columns and this offers two, so the refusal comes from the reader
+        // rather than from any vocabulary this test would have to track.
+        let refused = Registry::read("name\tkind\na.family\tcounter\n")
+            .err()
+            .ok_or("a row short of the declared columns does not read clean")?;
+
+        let failure = BootFailure::from(refused);
+        assert_eq!(
+            failure.phase(),
+            "telemetry",
+            "a contract refusal is reported under the telemetry phase"
+        );
+        assert!(
+            !failure.to_string().is_empty(),
+            "and renders a sentence a boot log can carry"
+        );
+        Ok(())
+    }
 }

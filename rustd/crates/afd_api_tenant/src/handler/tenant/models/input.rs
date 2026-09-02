@@ -1,9 +1,9 @@
-//! Everything `GET /v1/models` reads out of the query string.
+//! Reading `GET /v1/models`'s query string: the bounds, the normalized
+//! filter, and the cursor with its two distinct refusals.
 //!
-//! Split out of [`super`], which is at the length cap. All four are pure: a
-//! raw parameter in, a bounded value or a refusal out, nothing fetched. The
-//! refusal vocabulary stays in [`super`], where the handler that answers with
-//! it can be read beside the sentences it sends.
+//! Split from the handler beside it because parsing a request and serving one
+//! are separate concerns that change for separate reasons — and because the
+//! handler had no headroom left for the tests these functions deserve.
 
 use std::borrow::Cow;
 
@@ -12,12 +12,11 @@ use afd_core::id::Uuid7;
 use afd_tenant::models::Boundary;
 use afd_tenant::models::cursor;
 
-use crate::handler::Refusal;
-
 use super::{
     CATALOGUE_LIMIT_DEFAULT, CATALOGUE_LIMIT_MAX, DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED,
     DETAIL_CURSOR_MISMATCH, DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE, PROVIDER_MAX_BYTES,
 };
+use crate::handler::Refusal;
 
 /// The page size the caller asked for — absent OR EMPTY means the default,
 /// and anything else outside `1..=100` earns the library bounds refusal.
@@ -131,4 +130,72 @@ pub(super) fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, s
             DETAIL_QUERY_UNREADABLE,
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{decoded, normalize_provider};
+
+    /// The filter collapses interior runs and lowercases, and empty means absent.
+    ///
+    /// The collapse is what makes `?provider=Anthropic  Claude` and
+    /// `?provider=anthropic claude` ONE cache key and one query rather than
+    /// two, so a run of spaces reaching the catalogue would split a filter that
+    /// is meant to be a single value. The absent cases matter for the opposite
+    /// reason: `?provider=` must mean "no filter", not "match the empty
+    /// provider", which would answer an empty catalogue to a caller who asked
+    /// for everything.
+    #[test]
+    fn a_provider_filter_collapses_interior_runs_and_lowercases() -> Result<(), &'static str> {
+        let bound = |raw| {
+            normalize_provider(Some(Cow::Borrowed(raw)))
+                .map_err(|_refused| "a short filter is inside the byte bound")
+        };
+
+        assert_eq!(
+            bound("  Anthropic \t\r\n  CLAUDE  ")?.as_deref(),
+            Some("anthropic claude"),
+            "every interior run becomes one space, and the ends are trimmed"
+        );
+        assert_eq!(
+            bound("anthropic")?.as_deref(),
+            Some("anthropic"),
+            "a filter with nothing to normalize survives unchanged"
+        );
+
+        for absent in ["", "   ", "\t\r\n"] {
+            assert_eq!(
+                bound(absent)?,
+                None,
+                "whitespace-only is the same request as omitting the filter"
+            );
+        }
+        assert_eq!(
+            normalize_provider(None).map_err(|_refused| "an absent filter never refuses")?,
+            None
+        );
+        Ok(())
+    }
+
+    /// A query string that will not percent-decode refuses, rather than
+    /// silently reading as absent.
+    ///
+    /// The two answers are very different to a caller: a refusal says the
+    /// request was malformed, while `None` says "you did not filter" and
+    /// returns the whole catalogue. Answering the second to a caller who did
+    /// filter is how a truncated or corrupted query becomes a wrong result
+    /// presented as a right one.
+    #[test]
+    fn an_undecodable_query_refuses_rather_than_reading_as_absent() {
+        assert!(
+            decoded("provider=%ZZ", "provider").is_err(),
+            "an invalid percent escape is refused"
+        );
+        assert!(
+            matches!(decoded("provider=anthropic", "provider"), Ok(Some(_))),
+            "a readable query still answers its value"
+        );
+    }
 }

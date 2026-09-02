@@ -67,6 +67,18 @@ impl Refusal {
         move |error| Self(Box::new(refuse(&error, event)))
     }
 
+    /// The status this refusal answers with.
+    ///
+    /// Exposed so a read path can classify how it ended without re-deriving
+    /// the decision the refusal already made. The status is the coarsest
+    /// honest classification available here: a `Refusal` carries a rendered
+    /// response, and reaching into its problem body for the registry code
+    /// would mean parsing bytes this crate just wrote.
+    #[must_use]
+    pub fn status(&self) -> http::StatusCode {
+        self.0.status()
+    }
+
     /// A refusal this daemon wrote itself, with no plane behind it.
     ///
     /// The malformed-input path: a body that will not parse or a path segment

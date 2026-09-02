@@ -57,11 +57,12 @@ pub struct MintCliCredentialRequest<'a> {
     pub machine_name: Cow<'a, str>,
 }
 
-/// The one response that reveals a command-line credential's plaintext.
+// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
+// and nothing else on this surface has a field that could: there is no list
+// verb here at all, so the mint reply is the whole of the exposure.
+/// The only response that returns a command-line credential in plaintext.
 ///
-/// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
-/// and nothing else on this surface has a field that could — there is no list
-/// verb here at all, so the mint reply is the whole of the exposure.
+/// Save the value when you receive it. No later call returns it again.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MintedCliCredentialResponse<'a> {
@@ -195,17 +196,17 @@ pub struct ChargesResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// A page of a keyset-paginated list, in the envelope every list shares.
+// Generic over the item, because the envelope is the same for every paged
+// resource on these planes and a per-resource copy is a per-resource chance
+// for the keys to drift apart. The three keys are pinned to what
+// `api_keys/list.zig` answers and to the integration test that counts them. An
+// earlier shape here said `data` with a `has_more` beside it, which read well
+// and was nobody's wire format: parity is with the daemon being replaced, not
+// with the envelope one would design today.
+/// One page of a list, in the envelope every list on this API shares.
 ///
-/// Generic over the item, because the envelope is the same for every paged
-/// resource on these planes and a per-resource copy is a per-resource chance
-/// for the keys to drift apart.
-///
-/// Exactly three keys, always — `items`, `total`, `next_cursor` — pinned to
-/// what `api_keys/list.zig` answers and to the integration test that counts
-/// them. An earlier shape here said `data` with a `has_more` beside it, which
-/// read well and was nobody's wire format: parity is with the daemon being
-/// replaced, not with the envelope one would design today.
+/// Each page carries three keys: `items`, `total` and `next_cursor`. A
+/// `next_cursor` of `null` means you have reached the last page.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageResponse<'a, T> {

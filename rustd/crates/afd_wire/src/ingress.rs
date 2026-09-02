@@ -85,13 +85,14 @@ pub struct Pong<'a> {
     pub status: Cow<'a, str>,
 }
 
-/// What a gate resolved through the approval callback is answered with.
+// Deliberately NOT [`crate::approval::ResolvedResponse`]. That is the
+// dashboard's shape, carrying the gate id, the outcome and who decided it;
+// this is the shape the callback sender is owed, and the two differ because
+// their readers do.
+/// What the approval callback returns to the sender that resolved a gate.
 ///
-/// Deliberately NOT [`crate::approval::ResolvedResponse`]. That is the
-/// dashboard's shape, carrying the gate id, the outcome and who decided it; this
-/// is the shape the callback sender is owed, and the two differ because their
-/// readers do. A sender gets back what it sent plus a marker, and nothing about
-/// who else may have answered the gate first.
+/// This response repeats what the sender sent, plus a marker. It never reports
+/// who else answered the gate.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Resolved<'a> {

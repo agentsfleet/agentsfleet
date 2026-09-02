@@ -1,8 +1,8 @@
 //! Every `afd_observability` test file, in one test binary.
 //!
 //! cargo runs test BINARIES serially and the tests inside one in parallel, so
-//! each extra binary is a serial stretch re-paying process start. The two files
-//! declared here are halves of ONE claim — a collector that is down costs
+//! each extra binary is a serial stretch re-paying process start. The three files
+//! declared here are thirds of ONE claim — a collector that is down costs
 //! telemetry, never requests — and they share a fixture shape and an assertion
 //! shape, so a binary each would have bought nothing.
 //!
@@ -16,3 +16,9 @@ mod otlp_outage_spans;
 
 #[path = "otlp_outage_metrics.rs"]
 mod otlp_outage_metrics;
+
+#[path = "otlp_outage_logs.rs"]
+mod otlp_outage_logs;
+
+#[path = "producers_drive.rs"]
+mod producers_drive;

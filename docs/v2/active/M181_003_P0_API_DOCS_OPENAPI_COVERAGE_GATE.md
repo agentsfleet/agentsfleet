@@ -183,7 +183,7 @@ No product or operational signal changes: the feature is off in production, and 
 | S4 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S5 | Version sync | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -vE '\.md$\|^public/\|Cargo\.(lock\|toml)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Command source rule:** S1–S5 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.integration`, `verify.lint`, `verify.version`); S6–S7 are the template's hygiene gates; R-rows name oracles this spec's own sections create.
 

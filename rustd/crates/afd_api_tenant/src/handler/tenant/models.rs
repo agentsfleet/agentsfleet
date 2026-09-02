@@ -12,7 +12,10 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Instant;
 
+use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
+use afd_observability::producers::library;
 use afd_tenant::models::cursor::{self, Cursor};
 use afd_tenant::models::{LibraryPage, LibraryRow};
 use afd_wire::models::{CatalogueModel, CatalogueResponse};
@@ -24,10 +27,6 @@ use crate::auth::PersonIdentity;
 use crate::etag;
 use crate::handler::Refusal;
 use crate::services::{ModelCatalogue as _, Services};
-
-mod query;
-
-use query::{decoded, normalize_provider, parse_cursor, parse_limit};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_CATALOGUE: &str = "model_catalogue_failed";
@@ -102,23 +101,59 @@ pub(crate) async fn catalogue<D: Services>(
     headers: HeaderMap,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
+    let read = read_catalogue(&services, &headers, query).await;
+    // On EVERY exit path, and defaulting to the read's own classification of
+    // the refusal rather than to `Ok`: a path that ends without saying how it
+    // ended must surface as something to investigate.
+    library::read_finished(SURFACE, outcome_of(read.as_ref()));
+    read
+}
+
+/// The surface this handler serves, in the census's own spelling.
+const SURFACE: Surface = Surface::GlobalModels;
+
+/// How a finished read is classified for the outcome family.
+fn outcome_of(read: Result<&Response, &Refusal>) -> ReadOutcome {
+    match read {
+        Ok(_served) => ReadOutcome::Ok,
+        Err(refused) => afd_http::handler::library_outcome(refused),
+    }
+}
+
+/// [`catalogue`] without the outcome recording, so there is one place the
+/// answer is produced and one place it is classified.
+async fn read_catalogue<D: Services>(
+    services: &Arc<D>,
+    headers: &HeaderMap,
+    query: Option<String>,
+) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
-    let limit = parse_limit(decoded(&query, "limit")?)?;
-    let provider = normalize_provider(decoded(&query, "provider")?)?;
-    let after = parse_cursor(
-        decoded(&query, "starting_after")?,
+    let limit = input::parse_limit(input::decoded(&query, "limit")?)?;
+    let provider = input::normalize_provider(input::decoded(&query, "provider")?)?;
+    let after = input::parse_cursor(
+        input::decoded(&query, "starting_after")?,
         provider.as_deref(),
         limit,
     )?;
 
-    let page = services
-        .catalogue()
-        .page(provider.as_deref(), after.as_ref(), limit)
-        .await
-        .map_err(Refusal::at(EVENT_CATALOGUE))?;
+    let page = library::timed(
+        SURFACE,
+        Stage::Sql,
+        services
+            .catalogue()
+            .page(provider.as_deref(), after.as_ref(), limit),
+    )
+    .await
+    .map_err(Refusal::at(EVENT_CATALOGUE))?;
 
+    let rows = u64::try_from(page.models.len()).unwrap_or(u64::MAX);
+    let serializing = Instant::now();
     let body = serialize(&page, provider.as_deref(), limit);
-    Ok(respond(&headers, body))
+    library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
+    library::read_served(SURFACE, rows);
+    library::payload_served(SURFACE, u64::try_from(body.len()).unwrap_or(u64::MAX));
+
+    Ok(respond(headers, body))
 }
 
 /// The page, serialized once into the bytes both the tag and the body use.
@@ -224,6 +259,8 @@ const fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
+
+mod input;
 
 #[cfg(test)]
 mod tests {

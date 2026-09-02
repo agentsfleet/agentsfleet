@@ -303,3 +303,13 @@ fn an_actor_missing_one_url_field_fails_the_whole_delivery() {
         "if this ever passes, octocrab loosened Author and the risk note can go"
     );
 }
+
+/// A run with no stated attempt is its first.
+///
+/// The serde default behind `run_attempt`. One rather than zero because GitHub
+/// numbers attempts from one, so a zero here would make the first delivery of a
+/// workflow run look like a retry of something that never ran.
+#[test]
+fn an_unstated_run_attempt_defaults_to_the_first() {
+    assert_eq!(super::one(), 1);
+}

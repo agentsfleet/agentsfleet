@@ -172,3 +172,23 @@ fn read_row(row: &sqlx::postgres::PgRow) -> Result<LibraryRow> {
         updated_at_ms: row.try_get("updated_at").map_err(unreadable_row)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    /// A catalogue row that will not read keeps this walk's context.
+    ///
+    /// `unreadable_row` exists so every `try_get` in the walk reports under one
+    /// context rather than each site inventing its own — so what is worth
+    /// holding is that it lifts a real `sqlx::Error` without dropping the cause
+    /// the operator needs.
+    #[test]
+    fn an_unreadable_catalogue_row_keeps_its_context_and_cause() {
+        use std::error::Error as _;
+
+        let failure = super::unreadable_row(sqlx::Error::PoolClosed);
+
+        assert!(failure.source().is_some(), "the sqlx cause survives");
+        assert!(!failure.to_string().is_empty());
+        assert!(!failure.code().as_str().is_empty());
+    }
+}

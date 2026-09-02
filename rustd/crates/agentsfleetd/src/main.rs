@@ -44,11 +44,15 @@ fn main() -> ExitCode {
         cli.no_banner,
     );
 
-    // Before anything that might have something to say. `install` answers
-    // whether it took the process-wide slot; at boot there is nobody to have
-    // taken it first, and a daemon that could not install a subscriber is
-    // still a daemon that should serve — so the answer is dropped here rather
-    // than turned into a refusal to start.
+    // Before anything that might have something to say, and before a single
+    // knob is read — which is the point: a preflight that refuses has to have
+    // somewhere to say so. `install` answers whether it took the process-wide
+    // slot; at boot there is nobody to have taken it first, and a daemon that
+    // could not install a subscriber is still a daemon that should serve, so
+    // the answer is dropped here rather than turned into a refusal to start.
+    //
+    // The exporter those knobs describe does not exist yet. Boot attaches it
+    // to the slot this leaves behind — see `agentsfleetd::logs::signals`.
     let _installed = agentsfleetd::logs::install(&ProcessEnv);
 
     ExitCode::from(run(

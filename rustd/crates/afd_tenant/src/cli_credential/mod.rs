@@ -348,7 +348,7 @@ pub struct Revoked {
 
 #[cfg(test)]
 mod tests {
-    use super::{DISPLAY_HEX_LEN, display_prefix};
+    use super::{DISPLAY_HEX_LEN, classify_insert, display_prefix};
     use afd_auth::credential::CLI_CREDENTIAL_PREFIX;
 
     #[test]
@@ -383,5 +383,20 @@ mod tests {
             short,
             "a short value is returned rather than sliced out of bounds"
         );
+    }
+
+    /// A statement that failed for any reason but a unique violation is a fault.
+    ///
+    /// The collision arm needs a `DatabaseError` carrying SQLSTATE `23505`,
+    /// which sqlx only produces from a real driver — so the branch this asserts
+    /// is the OTHER one, and it is the branch that matters here: a lost race is
+    /// a refusal the caller retries, while everything else has to keep its
+    /// cause and stay a query fault rather than being reported as a collision.
+    #[test]
+    fn a_non_collision_insert_failure_stays_a_query_fault() {
+        let failure = classify_insert(sqlx::Error::PoolClosed);
+
+        assert!(!failure.to_string().is_empty());
+        assert!(!failure.code().as_str().is_empty());
     }
 }

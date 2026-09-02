@@ -109,7 +109,7 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Redis, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Redis, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
-| span export (`otlp_export`) | boot, and only where a span endpoint is configured — a deployment with none supervises the seven above and no more | the batch span processor's queue | the SDK's own batching; the spans it failed to deliver are counted on an atomic | cancellation → the flush loop ends → joined |
+| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OTLP endpoint is configured — a deployment with none supervises the seven above and no more | the four SDK providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | awaits cancellation, then `Exports::flush` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
 A sweep that fails is reported and retried on the next pass: every pass here is

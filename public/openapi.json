@@ -5346,7 +5346,7 @@
           "Workspaces"
         ],
         "summary": "Write one dashboard preference",
-        "description": "Upserts a single preference for the calling user in this workspace and returns the full updated bag. The request body IS the value - any well-formed JavaScript Object Notation (JSON) value up to 1 KiB, stored verbatim and never interpreted by the server. `pref_key` must be one the dashboard declares; anything else is refused with `UZ- PREFS-001` and no row is written. Concurrent writes to one key are last-write-wins by design: a preference is a single toggle, so a lost write costs one click. ",
+        "description": "Writes a single preference for the calling user in this workspace. The response carries the full updated set. The request body is the value itself: any well-formed JavaScript Object Notation (JSON) value up to 1 KiB. agentsfleet stores it as sent and never reads inside it. `pref_key` must be one the dashboard declares. agentsfleet refuses anything else with `UZ-PREFS-001` and writes no row. Concurrent writes to one key are last-write-wins by design: a preference is a single toggle, so a lost write costs one click. ",
         "operationId": "put_workspace_preference",
         "parameters": [
           {
@@ -6443,7 +6443,7 @@
       },
       "ConnectionView": {
         "type": "object",
-        "description": "`GET …/connectors/{provider}` — one provider's connection.\n\nCarries no token and no expiry. A status read answers whether a person has\nconnected and what it is called; every other field of the stored handle is\nthe broker's business and none of it belongs in a document a browser holds.",
+        "description": "One provider's connection, as a status read returns it.\n\nThis response carries no access token and no expiry. It tells you whether\nsomeone connected this provider, and what the connection is called.",
         "required": [
           "status"
         ],
@@ -6476,7 +6476,7 @@
       },
       "CreateModelEntryRequest": {
         "type": "object",
-        "description": "`POST /v1/tenants/me/models` — register a model on a stored credential.\n\nUnknown fields are IGNORED, matching `innerCreateModelEntry`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
+        "description": "Registers a model against a stored credential.\n\nagentsfleet ignores fields it does not know, instead of refusing the\nrequest.",
         "required": [
           "model_id",
           "secret_ref"
@@ -6521,7 +6521,7 @@
           },
           "request_id": {
             "type": "string",
-            "description": "The correlation token, in the body as `lifecycle.zig` writes it."
+            "description": "The correlation token for this request, repeated in the body."
           },
           "tenant_id": {
             "type": "string",
@@ -6977,7 +6977,7 @@
               "object",
               "null"
             ],
-            "description": "What may wake it, from the stored configuration.\n\n[`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced\nthrough unparsed. `value_type` names the serialized shape, which is the\nonly thing a schema can say about it."
+            "description": "What may wake this Fleet, as stored. agentsfleet returns the document\nunchanged."
           },
           "updated_at": {
             "type": "integer",
@@ -7045,7 +7045,7 @@
               "object",
               "null"
             ],
-            "description": "What may wake it, from the stored configuration.\n\n[`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced\nthrough unparsed. `value_type` names the serialized shape, which is the\nonly thing a schema can say about it."
+            "description": "What may wake this Fleet, as stored. agentsfleet returns the document\nunchanged."
           },
           "updated_at": {
             "type": "integer",
@@ -7078,7 +7078,7 @@
           },
           "total": {
             "type": "integer",
-            "description": "How many are on this page — `list.zig` answers the page length, not the\nworkspace's whole count, and the name is the one that shipped.",
+            "description": "How many Fleets this page carries. The count covers this page only, not\nthe whole workspace.",
             "minimum": 0
           }
         }
@@ -7383,7 +7383,7 @@
           },
           "total": {
             "type": "integer",
-            "description": "How many are on THIS page — not the fleet's whole count. The name is\nthe one that shipped, and `handler.zig` answers the page length too.",
+            "description": "How many memories this page carries. The count covers this page only,\nnot the whole Fleet.",
             "minimum": 0
           }
         },
@@ -7620,7 +7620,7 @@
       },
       "MintedCliCredentialResponse": {
         "type": "object",
-        "description": "The one response that reveals a command-line credential's plaintext.\n\nCarries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,\nand nothing else on this surface has a field that could — there is no list\nverb here at all, so the mint reply is the whole of the exposure.",
+        "description": "The only response that returns a command-line credential in plaintext.\n\nSave the value when you receive it. No later call returns it again.",
         "required": [
           "id",
           "credential",
@@ -7659,7 +7659,7 @@
             "items": {
               "$ref": "#/components/schemas/ModelEntryRow"
             },
-            "description": "The rows, newest first.\n\n`models`, not `items`: renaming a shipped v1 field is what\n`docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and\n`next_cursor` were ADDED beside it, so the page became navigable without\nbreaking a client."
+            "description": "The registered models, newest first."
           },
           "next_cursor": {
             "type": [
@@ -7732,7 +7732,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "The context window the catalogue prices this model at.\n\nAbsent when the catalogue carries no rate for the pair — a blank cell,\nwhich is different from a zero window and must not render as one.",
+            "description": "The context window this model is priced at, in tokens.\n\nAbsent when the catalogue carries no rate for this model. An absent\nvalue does not mean zero.",
             "minimum": 0
           },
           "created_at": {
@@ -7943,7 +7943,7 @@
       },
       "PageResponse_ApiKeySummary": {
         "type": "object",
-        "description": "A page of a keyset-paginated list, in the envelope every list shares.\n\nGeneric over the item, because the envelope is the same for every paged\nresource on these planes and a per-resource copy is a per-resource chance\nfor the keys to drift apart.\n\nExactly three keys, always — `items`, `total`, `next_cursor` — pinned to\nwhat `api_keys/list.zig` answers and to the integration test that counts\nthem. An earlier shape here said `data` with a `has_more` beside it, which\nread well and was nobody's wire format: parity is with the daemon being\nreplaced, not with the envelope one would design today.",
+        "description": "One page of a list, in the envelope every list on this API shares.\n\nEach page carries three keys: `items`, `total` and `next_cursor`. A\n`next_cursor` of `null` means you have reached the last page.",
         "required": [
           "items",
           "total"
@@ -8041,7 +8041,7 @@
                   "null"
                 ],
                 "format": "int64",
-                "description": "Always `null` — the literal `@as(?i64, null)` the Zig answers, kept\nbecause a client distinguishes \"no write\" from a revision by it."
+                "description": "Always `null` on this response. Use it to tell \"no write\" apart\nfrom a revision number."
               },
               "fleet_id": {
                 "type": "string",
@@ -8315,14 +8315,14 @@
       },
       "PreferencesResponse": {
         "type": "object",
-        "description": "`GET /v1/workspaces/{workspace_id}/preferences` and the response every\npreference write answers with.\n\nA write returns the WHOLE bag rather than the one key it set, matching\n`respondWithBag`: the dashboard holds the bag in one piece of state, so\nhanding back a fragment would make it merge on the client instead.",
+        "description": "Every preference you have set in this workspace.\n\nA write returns the whole set, including the keys it did not change.",
         "required": [
           "prefs"
         ],
         "properties": {
           "prefs": {
             "type": "object",
-            "description": "Every key this person has set in this workspace, key-ordered.\n\nA `BTreeMap` so the order is the SQL's `ORDER BY pref_key` and stays\nstable between two captures — object key order is not load-bearing for a\nclient, and is exactly what makes a diff of two responses readable.\n\nThe serialized form is an object of arbitrary JSON values; the Rust form\nmaps borrowed keys to unparsed slices, and `RawValue` has no schema of\nits own. `value_type` names that difference."
+            "description": "Every key you have set in this workspace, ordered by key.\n\nEach value is any well-formed JSON value, returned as it was stored.\nThe order is stable between two reads."
           }
         }
       },
@@ -8534,7 +8534,7 @@
       },
       "Resolved": {
         "type": "object",
-        "description": "What a gate resolved through the approval callback is answered with.\n\nDeliberately NOT [`crate::approval::ResolvedResponse`]. That is the\ndashboard's shape, carrying the gate id, the outcome and who decided it; this\nis the shape the callback sender is owed, and the two differ because their\nreaders do. A sender gets back what it sent plus a marker, and nothing about\nwho else may have answered the gate first.",
+        "description": "What the approval callback returns to the sender that resolved a gate.\n\nThis response repeats what the sender sent, plus a marker. It never reports\nwho else answered the gate.",
         "required": [
           "status",
           "action_id",
@@ -9136,7 +9136,7 @@
       },
       "SelftestReport": {
         "type": "object",
-        "description": "One probe run as it crosses the wire.\n\nThe tier and policy travel WITH the verdict rather than being read from the\nrunner row at render time: a result outlives the assignment that produced it,\nso a reader compares these against the row's live values and labels a\nmismatch stale instead of presenting a verdict on a policy nothing tested.",
+        "description": "One probe run and the verdict it reached.\n\nThe tier and policy travel with the verdict. Compare them against the\nrunner's current values to tell a stale result from a live one.",
         "required": [
           "checks",
           "all_ok",
@@ -9167,7 +9167,7 @@
       },
       "SteerAccepted": {
         "type": "object",
-        "description": "What a steer answers with: 202, and the id the run will be found under.\n\n`event_id` is the stream entry id Redis minted, which IS the canonical\nevent id — the CLI filters the live tail on it to follow the message it\njust sent.",
+        "description": "What a steer returns once agentsfleet accepts the request.\n\nThe response carries the id the run is found under. Filter the live event\ntail on `event_id` to follow the message you just sent.",
         "required": [
           "status",
           "event_id"
@@ -9185,7 +9185,7 @@
       },
       "StoreSecretRequest": {
         "type": "object",
-        "description": "`POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.\n\nUnknown fields are IGNORED, matching `innerStoreSecret`'s\n`.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a\nserde attribute.",
+        "description": "Stores one secret under a name you choose.\n\nagentsfleet ignores fields it does not know, instead of refusing the\nrequest.",
         "required": [
           "name",
           "data"
@@ -9193,7 +9193,7 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "The object to seal. Opaque to the platform beyond its shape.\n\nThe serialized form is a JSON object; the Rust form is an unparsed\nslice, which is a shape `ToSchema` cannot derive. `value_type` names\nthe difference — the one thing an override is for."
+            "description": "The object to seal. agentsfleet reads nothing inside it beyond its\nshape.\n\nSend any well-formed JSON object."
           },
           "name": {
             "type": "string",
@@ -9503,7 +9503,7 @@
           },
           "sync": {
             "type": "string",
-            "description": "How far the external scheduler has been brought in line.\n\nRendered rather than hidden: a schedule that saved and did not register\nis the one state a person needs to see, and a view that showed only the\nintent would report a schedule as live when it fires nowhere."
+            "description": "How far agentsfleet has brought the external scheduler in line.\n\nA schedule can save without registering. This field shows you that\nstate."
           },
           "timezone": {
             "type": "string",

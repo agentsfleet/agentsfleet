@@ -301,11 +301,12 @@ pub struct SteerRequest<'a> {
     pub message: Cow<'a, str>,
 }
 
-/// What a steer answers with: 202, and the id the run will be found under.
+// `event_id` is the stream entry id Redis minted, which IS the canonical
+// event id.
+/// What a steer returns once agentsfleet accepts the request.
 ///
-/// `event_id` is the stream entry id Redis minted, which IS the canonical
-/// event id — the CLI filters the live tail on it to follow the message it
-/// just sent.
+/// The response carries the id the run is found under. Filter the live event
+/// tail on `event_id` to follow the message you just sent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteerAccepted<'a> {

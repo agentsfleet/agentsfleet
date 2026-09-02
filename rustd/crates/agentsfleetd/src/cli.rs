@@ -20,6 +20,8 @@
 //! takes its inputs as parameters, which is why [`RuntimeSource`] is a `fn`
 //! pointer rather than a call.
 
+use std::time::Duration;
+
 use afd_core::env::EnvSource;
 use clap::{Parser, Subcommand};
 
@@ -130,17 +132,42 @@ where
     }
 }
 
+/// How long a finished process waits on blocking work nothing can cancel.
+///
+/// Dropping a runtime WAITS for every running blocking operation, and a
+/// `spawn_blocking` task cannot be cancelled once it has started — dropping
+/// its `JoinHandle` detaches it and nothing else. So a caller that bounded its
+/// own await has bounded only itself: the work runs on, and the drop at the
+/// end of a `block_on` blocks the exit for exactly as long as the caller was
+/// trying not to wait.
+///
+/// The telemetry flush is the case this exists for. It carries its own budget
+/// under the supervisor's join deadline, and past that budget the process has
+/// already decided the signal is lost — so this is a last resort measured in
+/// the time a thread needs to notice, not a second chance for the work.
+const BLOCKING_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+
 /// Runs `body` on a runtime from `runtime`, reporting one that would not build.
 ///
 /// The runtime is built here rather than by `#[tokio::main]` so the paths that
 /// never need one — a usage error, `--help`, a preflight refusal — do not
 /// construct a thread pool on their way to exiting.
+///
+/// The shutdown is bounded rather than implicit. `Runtime`'s `Drop` waits on
+/// the blocking pool with no deadline, so an exporter parked in a synchronous
+/// call would hold the process open after every task above it had already
+/// given up on it — see [`BLOCKING_SHUTDOWN_GRACE`].
 pub fn on_runtime<F>(runtime: RuntimeSource, body: F) -> u8
 where
     F: Future<Output = u8>,
 {
     match runtime() {
-        Ok(runtime) => runtime.block_on(body),
+        Ok(runtime) => {
+            let status = runtime.block_on(body);
+            // Taken by value, so the implicit unbounded drop cannot also run.
+            runtime.shutdown_timeout(BLOCKING_SHUTDOWN_GRACE);
+            status
+        }
         Err(error) => {
             crate::fatal::die(&error);
             FAILURE
