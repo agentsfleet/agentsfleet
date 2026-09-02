@@ -146,3 +146,41 @@ fn test_every_reference_resolves() {
         dangling.join("\n  "),
     );
 }
+
+/// The lease's egress rules and the runner's posture are two schemas.
+///
+/// Both Rust types are named `NetworkPolicy`, after the two Zig types they
+/// port, and utoipa keys components by name alone. Before the aliases the
+/// document said a run's egress rules were a three-word string, and every
+/// reference still resolved.
+#[test]
+fn test_the_run_egress_rules_and_the_runner_posture_are_two_schemas() {
+    let document = document();
+    let schemas = document
+        .get("components")
+        .and_then(|components| components.get("schemas"))
+        .expect("the document carries schemas");
+    let shape_of = |owner: &str| -> Option<serde_json::Value> {
+        schemas
+            .get(owner)?
+            .get("properties")?
+            .get("network_policy")?
+            .get("$ref")?
+            .as_str()?
+            .strip_prefix(SCHEMA_PREFIX)
+            .and_then(|name| schemas.get(name))
+            .and_then(|schema| schema.get("type"))
+            .cloned()
+    };
+
+    assert_eq!(
+        shape_of("ExecutionPolicy"),
+        Some(serde_json::json!("object")),
+        "a run's egress rules are an allow list, not a posture word"
+    );
+    assert_eq!(
+        shape_of("AssignedPolicy"),
+        Some(serde_json::json!("string")),
+        "a runner's posture is one of three words"
+    );
+}

@@ -77,6 +77,7 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn read<D: Services>(
@@ -126,6 +127,7 @@ pub(crate) async fn read<D: Services>(
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn disconnect<D: Services>(

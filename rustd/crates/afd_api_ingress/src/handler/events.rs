@@ -184,6 +184,7 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn receive<D: Services>(

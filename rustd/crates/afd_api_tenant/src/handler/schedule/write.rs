@@ -53,6 +53,7 @@ const RECONCILED: &str = "The schedule as reconciled with the scheduler";
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 422, description = afd_http::openapi::UNPROCESSABLE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn create<D: Services>(
@@ -140,6 +141,7 @@ pub(crate) async fn create<D: Services>(
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 422, description = afd_http::openapi::UNPROCESSABLE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn patch<D: Services>(
@@ -212,6 +214,7 @@ pub(crate) async fn patch<D: Services>(
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn purge<D: Services>(
@@ -265,6 +268,7 @@ pub(crate) async fn purge<D: Services>(
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn sync<D: Services>(

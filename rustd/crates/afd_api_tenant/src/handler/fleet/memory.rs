@@ -78,6 +78,7 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -163,6 +164,7 @@ fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn forget<D: Services>(

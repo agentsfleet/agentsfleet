@@ -115,6 +115,7 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -162,6 +163,7 @@ pub(crate) async fn list<D: Services>(
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 424, description = afd_http::openapi::FAILED_DEPENDENCY),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn install<D: Services>(

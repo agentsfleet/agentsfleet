@@ -155,13 +155,13 @@ pub struct RunnerLeaseItem<'a> {
     pub kind: LeaseKind,
     /// Monotonic holder generation.
     pub fencing_token: i64,
-    /// Provider selected for execution.
+    /// The provider the run used.
     #[serde(borrow)]
     pub provider: Cow<'a, str>,
-    /// Provider-native model selected for execution.
+    /// The provider's own name for the model the run used.
     #[serde(borrow)]
     pub model: Cow<'a, str>,
-    /// Credential posture used for execution.
+    /// The credential posture the run used.
     #[serde(borrow)]
     pub posture: Cow<'a, str>,
     /// Metered non-cached input tokens.

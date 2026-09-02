@@ -38,8 +38,8 @@ pub struct Accepted<'a> {
     pub event_id: Cow<'a, str>,
     /// Whether an earlier delivery already produced it.
     ///
-    /// Reported rather than hidden: a provider debugging a duplicate wants to
-    /// know this daemon SAW the repeat and declined to run twice, which is a
+    /// Reported rather than hidden. A provider debugging a duplicate wants to
+    /// know this daemon saw the repeat and declined to run twice. That is a
     /// different fact from the delivery having been lost.
     pub replayed: bool,
 }
@@ -120,8 +120,9 @@ pub struct Fired<'a> {
 
 /// The echo a connector handshake is answered with.
 ///
-/// A one-key map rather than a struct because the KEY is provider data, and a
-/// struct would fix it at compile time to whichever vendor was ported first.
+/// One key, named by the provider, carrying the value the provider sent.
+// A one-key map rather than a struct because the KEY is provider data, and a
+// struct would fix it at compile time to whichever vendor was ported first.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct EchoAnswer<'a> {

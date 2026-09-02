@@ -44,6 +44,8 @@ const DETAIL_COLLISION: &str = "That bundle's name is already taken by a differe
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn create<D: Services>(

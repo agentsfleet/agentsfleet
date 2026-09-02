@@ -56,6 +56,8 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn handle<D: Services>(

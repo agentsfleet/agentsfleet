@@ -166,8 +166,10 @@ impl IdentityUser {
     responses(
         (status = 200, description = afd_http::openapi::OK, body = Ignored),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn receive<D: Services>(

@@ -50,6 +50,7 @@ const DETAIL_MODEL_UNKNOWN: &str =
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
@@ -80,6 +81,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn set<D: Services>(
@@ -147,6 +149,7 @@ pub(crate) async fn set<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn deactivate<D: Services>(

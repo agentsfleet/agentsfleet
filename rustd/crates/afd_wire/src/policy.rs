@@ -15,9 +15,13 @@ use serde::{Deserialize, Serialize};
 /// drops the base URL.
 pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 
-/// Per-execution egress policy. An outbound request must match an entry in
+/// Per-run egress policy. An outbound request must match an entry in
 /// `allow` by exact hostname; an empty `allow` denies everything.
+// Published under its module path: `runner::NetworkPolicy` is a different
+// shape with the same name, and utoipa keys components by name alone, so the
+// one registered second silently replaced the other in the document.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = policy::NetworkPolicy))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkPolicy<'a> {
@@ -168,7 +172,7 @@ pub struct ContextBudget<'a> {
     pub context_cap_tokens: u32,
 }
 
-/// Everything a single execution is permitted to do.
+/// Everything a single run is permitted to do.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

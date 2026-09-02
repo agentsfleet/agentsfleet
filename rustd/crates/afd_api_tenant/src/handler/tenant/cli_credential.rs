@@ -68,7 +68,9 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
         (status = 201, description = afd_http::openapi::CREATED, body = MintedCliCredentialResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn mint<D: Services>(
@@ -131,8 +133,10 @@ pub(crate) async fn mint<D: Services>(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn revoke<D: Services>(

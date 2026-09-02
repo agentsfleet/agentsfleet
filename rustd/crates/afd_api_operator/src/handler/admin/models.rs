@@ -51,6 +51,7 @@ const DETAIL_IN_USE: &str =
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
@@ -83,6 +84,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn create<D: Services>(
@@ -139,6 +141,7 @@ pub(crate) async fn create<D: Services>(
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn update<D: Services>(
@@ -193,6 +196,7 @@ pub(crate) async fn update<D: Services>(
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn delete<D: Services>(

@@ -70,7 +70,7 @@ pub struct LeasePayload<'a> {
     pub lease_expires_at: i64,
     /// How secrets reached this run.
     pub secret_delivery: SecretDelivery,
-    /// The event to execute.
+    /// The event to run.
     #[serde(borrow)]
     pub event: EventEnvelope<'a>,
     /// What the run is permitted to do.

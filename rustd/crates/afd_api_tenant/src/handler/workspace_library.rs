@@ -138,6 +138,7 @@ impl StructCursor for Cursor {
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -217,6 +218,8 @@ async fn read_gallery<D: Services>(
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn onboard<D: Services>(

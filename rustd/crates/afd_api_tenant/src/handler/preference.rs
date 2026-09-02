@@ -95,6 +95,7 @@ pub(crate) struct PreferencePath {
         (status = 200, description = afd_http::openapi::OK, body = PreferencesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn read<D: Services>(
@@ -143,6 +144,7 @@ pub(crate) async fn read<D: Services>(
         (status = 200, description = "The whole bag as it now reads, the written key included", body = PreferencesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn write<D: Services>(
@@ -198,6 +200,7 @@ pub(crate) async fn write<D: Services>(
         (status = 200, description = afd_http::openapi::OK, body = OnboardingResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn onboarding<D: Services>(

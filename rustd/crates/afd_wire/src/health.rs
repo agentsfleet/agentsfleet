@@ -24,7 +24,7 @@ use serde::Serialize;
 ///
 /// Reports the build and nothing about its dependencies. A liveness answer
 /// that went red when the database blinked would get the process killed and
-/// restarted, which does nothing about the database and drops every request
+/// restarted. That does nothing about the database, and it drops every request
 /// the instance was serving.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -103,6 +103,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -146,6 +149,12 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "502": {
+            "description": "An upstream this route depends on refused"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -192,6 +201,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -261,6 +273,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -297,6 +312,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -334,6 +352,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -380,6 +401,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -428,6 +452,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -464,6 +491,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -498,6 +528,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -545,6 +578,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -611,6 +647,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -661,6 +700,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -710,6 +752,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -774,6 +819,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -834,11 +882,17 @@
           "400": {
             "description": "The request could not be read"
           },
+          "401": {
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
+          },
           "413": {
             "description": "The payload is over this route's ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -881,6 +935,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -910,6 +967,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -949,6 +1009,9 @@
               }
             }
           },
+          "401": {
+            "description": "The session has expired; start a new one"
+          },
           "404": {
             "description": "No such resource, or none this caller may see"
           },
@@ -957,6 +1020,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -986,11 +1052,17 @@
           "401": {
             "description": "No credential, or one this route does not accept"
           },
+          "403": {
+            "description": "The session was started by somebody else"
+          },
           "404": {
             "description": "No such resource, or none this caller may see"
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1057,6 +1129,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1109,6 +1184,9 @@
           "400": {
             "description": "The request could not be read"
           },
+          "401": {
+            "description": "The session has expired; start a new one"
+          },
           "410": {
             "description": "The resource is gone and will not return"
           },
@@ -1117,6 +1195,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -1157,8 +1238,14 @@
           "401": {
             "description": "No credential, or one this route does not accept"
           },
+          "403": {
+            "description": "The caller is not a person this tenant knows"
+          },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1197,11 +1284,17 @@
           "401": {
             "description": "No credential, or one this route does not accept"
           },
+          "403": {
+            "description": "The caller is not a person this tenant knows"
+          },
           "404": {
             "description": "No such resource, or none this caller may see"
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1376,6 +1469,12 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "502": {
+            "description": "An upstream this route depends on refused"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1441,6 +1540,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1477,6 +1579,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1533,6 +1638,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1583,6 +1691,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1638,6 +1749,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1730,6 +1844,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1816,6 +1933,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -1876,11 +1996,17 @@
           "400": {
             "description": "The request could not be read"
           },
+          "401": {
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
+          },
           "429": {
             "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -1956,6 +2082,9 @@
           "400": {
             "description": "The request could not be read"
           },
+          "401": {
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
+          },
           "404": {
             "description": "No such resource, or none this caller may see"
           },
@@ -1967,6 +2096,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": []
@@ -2031,6 +2163,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2070,6 +2205,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2106,6 +2244,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2153,6 +2294,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2199,6 +2343,12 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "502": {
+            "description": "An upstream this route depends on refused"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2235,6 +2385,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2271,6 +2424,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2328,6 +2484,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2375,6 +2534,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2422,6 +2584,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2477,6 +2642,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2523,6 +2691,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2579,6 +2750,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2635,6 +2809,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2674,6 +2851,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2727,6 +2907,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2770,6 +2953,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2834,6 +3020,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2870,6 +3059,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2914,6 +3106,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -2948,6 +3143,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3013,6 +3211,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3100,6 +3301,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3160,6 +3364,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3210,6 +3417,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3300,6 +3510,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3355,6 +3568,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3446,6 +3662,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3505,6 +3724,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3576,6 +3798,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3629,6 +3854,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3691,6 +3919,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3744,6 +3975,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3806,6 +4040,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3898,6 +4135,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -3945,6 +4185,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4013,6 +4256,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4064,6 +4310,12 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "502": {
+            "description": "An upstream this route depends on refused"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4135,6 +4387,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4202,6 +4457,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4264,6 +4522,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4317,6 +4578,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4395,6 +4659,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4487,6 +4754,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4543,6 +4813,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4611,6 +4884,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4673,6 +4949,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4737,6 +5016,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4799,6 +5081,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4863,6 +5148,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -4939,6 +5227,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5002,6 +5293,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5058,6 +5352,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5121,6 +5418,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5189,6 +5489,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5251,6 +5554,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5326,6 +5632,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5397,6 +5706,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5441,6 +5753,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5485,6 +5800,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5538,6 +5856,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5591,6 +5912,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5655,6 +5979,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5727,6 +6054,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5780,6 +6110,9 @@
           },
           "500": {
             "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
           }
         },
         "security": [
@@ -5806,7 +6139,7 @@
           },
           "replayed": {
             "type": "boolean",
-            "description": "Whether an earlier delivery already produced it.\n\nReported rather than hidden: a provider debugging a duplicate wants to\nknow this daemon SAW the repeat and declined to run twice, which is a\ndifferent fact from the delivery having been lost."
+            "description": "Whether an earlier delivery already produced it.\n\nReported rather than hidden. A provider debugging a duplicate wants to\nknow this daemon saw the repeat and declined to run twice. That is a\ndifferent fact from the delivery having been lost."
           }
         }
       },
@@ -6391,7 +6724,7 @@
             "description": "Extra host paths bound into every lease's sandbox."
           },
           "network_policy": {
-            "$ref": "#/components/schemas/NetworkPolicy",
+            "$ref": "#/components/schemas/runner.NetworkPolicy",
             "description": "Egress posture to apply."
           },
           "registry_allowlist": {
@@ -6733,7 +7066,7 @@
       },
       "Connected": {
         "type": "object",
-        "description": "The connect landed and no dashboard page could be named to send the person to.\n\n`POST /v1/connectors/{provider}/callback` answers this as a `200`, and\ndeliberately not as a failure: the grant is sealed and the connection is\nlive by the time this is written, so an error would tell a person their\nconnect did not work when it did, and the next thing they would do is\npress Connect again.",
+        "description": "The connect landed and no dashboard page could be named to send the person to.\n\n`POST /v1/connectors/{provider}/callback` answers this as a `200`, never\nas a failure. The grant is sealed and the connection is live by the time\nthis is written. An error would tell a person their connect did not work\nwhen it did, and the next thing they would do is press Connect again.",
         "required": [
           "status"
         ],
@@ -6893,7 +7226,7 @@
       },
       "EchoAnswer": {
         "type": "object",
-        "description": "The echo a connector handshake is answered with.\n\nA one-key map rather than a struct because the KEY is provider data, and a\nstruct would fix it at compile time to whichever vendor was ported first.",
+        "description": "The echo a connector handshake is answered with.\n\nOne key, named by the provider, carrying the value the provider sent.",
         "additionalProperties": {
           "type": "string",
           "description": "The provider's own challenge field, echoed under its own name."
@@ -7015,7 +7348,7 @@
       },
       "EventEnvelope": {
         "type": "object",
-        "description": "One event on the wire, flat by convention.\n\n`request_json` is opaque JSON bytes carried verbatim — the runner re-parses\nit for execution and the read endpoints surface it unchanged, so this layer\ndeliberately does not interpret it.",
+        "description": "One event on the wire, flat by convention.\n\n`request_json` is opaque JSON carried verbatim. The runner parses it to run\nthe event, and the read endpoints return it unchanged.",
         "required": [
           "event_id",
           "fleet_id",
@@ -7037,7 +7370,7 @@
           },
           "event_id": {
             "type": "string",
-            "description": "The Redis stream entry identifier, which IS the canonical event id."
+            "description": "The canonical event identifier, the same on every surface that shows\nthe event."
           },
           "event_type": {
             "$ref": "#/components/schemas/EventType",
@@ -7207,7 +7540,7 @@
       },
       "ExecutionPolicy": {
         "type": "object",
-        "description": "Everything a single execution is permitted to do.",
+        "description": "Everything a single run is permitted to do.",
         "required": [
           "network_policy",
           "tools",
@@ -7253,7 +7586,7 @@
             "description": "Credentials the run may mint on demand."
           },
           "network_policy": {
-            "$ref": "#/components/schemas/NetworkPolicy",
+            "$ref": "#/components/schemas/policy.NetworkPolicy",
             "description": "Where the run may reach on the network."
           },
           "provider": {
@@ -8009,7 +8342,7 @@
           },
           "event": {
             "$ref": "#/components/schemas/EventEnvelope",
-            "description": "The event to execute."
+            "description": "The event to run."
           },
           "fencing_token": {
             "type": "integer",
@@ -8068,7 +8401,7 @@
       },
       "Liveness": {
         "type": "object",
-        "description": "The process is up and answering HTTP.\n\nReports the build and nothing about its dependencies. A liveness answer\nthat went red when the database blinked would get the process killed and\nrestarted, which does nothing about the database and drops every request\nthe instance was serving.",
+        "description": "The process is up and answering HTTP.\n\nReports the build and nothing about its dependencies. A liveness answer\nthat went red when the database blinked would get the process killed and\nrestarted. That does nothing about the database, and it drops every request\nthe instance was serving.",
         "required": [
           "status",
           "service",
@@ -8571,15 +8904,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "NetworkPolicy": {
-        "type": "string",
-        "description": "Egress posture assigned per runner, named so the behaviour reads off the value.",
-        "enum": [
-          "allow_all",
-          "deny_all_egress",
-          "allow_list_egress"
-        ]
       },
       "OnboardingResponse": {
         "type": "object",
@@ -9851,7 +10175,7 @@
           },
           "model": {
             "type": "string",
-            "description": "Provider-native model selected for execution."
+            "description": "The provider's own name for the model the run used."
           },
           "outcome": {
             "$ref": "#/components/schemas/LeaseOutcome",
@@ -9859,11 +10183,11 @@
           },
           "posture": {
             "type": "string",
-            "description": "Credential posture used for execution."
+            "description": "The credential posture the run used."
           },
           "provider": {
             "type": "string",
-            "description": "Provider selected for execution."
+            "description": "The provider the run used."
           },
           "wall_ms": {
             "type": [
@@ -10575,6 +10899,45 @@
             "description": "Always `null`: the walk never counts, and the key stays because a\nclient may already branch on its presence."
           }
         }
+      },
+      "policy.NetworkPolicy": {
+        "type": "object",
+        "description": "Per-run egress policy. An outbound request must match an entry in\n`allow` by exact hostname; an empty `allow` denies everything.",
+        "required": [
+          "allow",
+          "read_only",
+          "read_post_paths"
+        ],
+        "properties": {
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact hostnames the run may reach."
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "Restrict tool requests to safe reads, keeping a credential from crossing\nto a host other than its own declared endpoint."
+          },
+          "read_post_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact prefixes where a read-only tool may use POST for a query."
+          }
+        },
+        "additionalProperties": false
+      },
+      "runner.NetworkPolicy": {
+        "type": "string",
+        "description": "Egress posture assigned per runner, named so the behaviour reads off the value.",
+        "enum": [
+          "allow_all",
+          "deny_all_egress",
+          "allow_list_egress"
+        ]
       }
     },
     "securitySchemes": {

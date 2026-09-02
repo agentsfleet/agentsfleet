@@ -100,6 +100,7 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -149,6 +150,7 @@ pub(crate) async fn list<D: Services>(
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn create<D: Services>(

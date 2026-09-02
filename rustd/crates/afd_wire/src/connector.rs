@@ -93,11 +93,10 @@ pub struct ConsentRedirect<'a> {
 
 /// The connect landed and no dashboard page could be named to send the person to.
 ///
-/// `POST /v1/connectors/{provider}/callback` answers this as a `200`, and
-/// deliberately not as a failure: the grant is sealed and the connection is
-/// live by the time this is written, so an error would tell a person their
-/// connect did not work when it did, and the next thing they would do is
-/// press Connect again.
+/// `POST /v1/connectors/{provider}/callback` answers this as a `200`, never
+/// as a failure. The grant is sealed and the connection is live by the time
+/// this is written. An error would tell a person their connect did not work
+/// when it did, and the next thing they would do is press Connect again.
 // The value is [`STATUS_CONNECTED`], the word a status read answers once the
 // grant has landed. `callback.zig` answers the same one field for the same
 // reason.
