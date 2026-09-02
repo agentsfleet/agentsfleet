@@ -24,7 +24,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_vault::{Deleted, SecretBody, SecretName, SecretSummary};
+use afd_vault::{Deleted, SecretBody, SecretName};
 use afd_wire::secret::{
     ReplaceSecretRequest, SecretsResponse, StoreSecretRequest, StoredSecretResponse,
 };
@@ -38,6 +38,10 @@ use serde::Deserialize;
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceSecrets as _};
+
+mod support;
+
+use support::{read_body, referenced_detail, summary};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_STORE: &str = "secret_store_failed";
@@ -297,90 +301,5 @@ pub(crate) async fn remove<D: Services>(
     }
 }
 
-/// The sentence a still-referenced delete is refused with.
-///
-/// `secrets.zig`'s wording, plural included, because a dashboard shows this
-/// string to the operator who has to go and remove those entries.
-fn referenced_detail(entries: u32) -> String {
-    let plural = if entries == 1 { "y" } else { "ies" };
-    format!("Secret is referenced by {entries} model registry entr{plural}")
-}
-
-/// One stored projection, as the list emits it.
-fn summary(held: &SecretSummary) -> afd_wire::secret::SecretSummary<'_> {
-    afd_wire::secret::SecretSummary {
-        name: Cow::Borrowed(&held.name),
-        created_at: held.created_at_ms,
-        kind: held.kind().as_str(),
-        provider: held.provider().map(Cow::Borrowed),
-        base_url: held.base_url().map(Cow::Borrowed),
-    }
-}
-
-/// Reads a request body as `T`, refusing anything that is not an object.
-///
-/// Shared by both writing verbs so their two refusals are one sentence. An
-/// EMPTY body is told apart from a malformed one: the fleet install can default
-/// to `{}` because every field there is optional, and here there would be no
-/// secret to store.
-fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Result<T, Refusal> {
-    if body.is_empty() {
-        return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
-    }
-    afd_core::json::object_from_slice::<T>(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))
-}
-
-/// The annotation and the signature describe the same body.
-///
-/// # Why this exists
-///
-/// `#[utoipa::path]` never sees the function it sits on. `body = X` is an
-/// independent assertion, and when a handler returned the erased `Response`
-/// there was nothing to check it against — which is how `store` came to
-/// publish `SecretsResponse` and `list` to publish `StoredSecretResponse`,
-/// each documenting the other's shape.
-///
-/// A typed return gives the check something to stand on. `StoredSecret` is
-/// named in the signature, so changing what the handler answers changes the
-/// alias, and changing the alias fails this test unless the annotation moves
-/// with it. That is the binding no static analysis could provide.
 #[cfg(all(test, feature = "openapi"))]
-mod contract {
-    use utoipa::Path as _;
-
-    use super::StoredSecret;
-
-    /// A Rust type's short name, as utoipa spells it in a `$ref`.
-    fn schema_name<T: ?Sized>() -> &'static str {
-        std::any::type_name::<T>()
-            .rsplit("::")
-            .next()
-            .unwrap_or_default()
-            .split('<')
-            .next()
-            .unwrap_or_default()
-    }
-
-    /// The schema one documented response refers to.
-    fn documented(operation: &utoipa::openapi::path::Operation, status: &str) -> String {
-        serde_json::to_value(operation).expect("the operation serializes")["responses"][status]
-            ["content"]["application/json"]["schema"]["$ref"]
-            .as_str()
-            .unwrap_or("(none documented)")
-            .rsplit('/')
-            .next()
-            .unwrap_or_default()
-            .to_owned()
-    }
-
-    #[test]
-    fn the_documented_created_body_is_the_type_store_returns() {
-        assert_eq!(
-            documented(&super::__path_store::operation(), "201"),
-            schema_name::<StoredSecret>(),
-            "POST /v1/workspaces/{{workspace_id}}/secrets documents a 201 body \
-             that is not the type the handler returns",
-        );
-    }
-}
+mod contract;

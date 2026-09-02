@@ -5,11 +5,13 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 pub use crate::admin_catalogue::{
-    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
-    AdminLibraryPatch, AdminLibraryRequirements, AdminModelCreate, AdminModelCreated,
-    AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem, FleetBundlesResponse,
+    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
     ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
+};
+pub use crate::admin_library::{
+    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
+    AdminLibraryPatch, AdminLibraryRequirements, FleetBundleItem, FleetBundlesResponse,
 };
 use crate::runner::AssignedPolicy;
 
