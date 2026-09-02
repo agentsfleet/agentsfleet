@@ -85,7 +85,7 @@ pub fn document() -> utoipa::openapi::OpenApi {
 ///
 /// The alternative is `security(("BearerAuth" = []))` on all 102
 /// `#[utoipa::path]` blocks, and it rots the day someone adds the 103rd: a
-/// forgotten clause is not a compile error, and under OpenAPI 3.1 an operation
+/// forgotten clause is not a compile error, and under `OpenAPI` 3.1 an operation
 /// with no `security` — in a document with no root `security` — requires NO
 /// authentication. The omission publishes the route as open rather than
 /// leaving it undescribed, so the failure is silent and points the wrong way.
