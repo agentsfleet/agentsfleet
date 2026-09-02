@@ -91,13 +91,20 @@ regression and aborts the swap.
 document that declared it, and `make test-parity` reads this table so a declared
 difference does not fail the lane while an undeclared one still does.
 
-## Collectors in front of the incumbent export
+## The collector hop in front of the export
 
-**This step changes no binary.** The collectors are stood up under the Zig
-daemon and the daemon's export endpoint is repointed at them by configuration.
-Doing it here, rather than with the swap, is what keeps a swap-day dashboard
-anomaly attributable: infrastructure moved on one day and the binary on
-another, so a dark panel names which one it belongs to.
+**This step changes no binary.** A collector is deployed per environment and the
+daemon's export endpoint is repointed at it by configuration. The collector holds
+the vendor credential and owns the fan-out, so adding or moving a backend later
+is collector configuration rather than a daemon redeploy.
+
+**Order it against the daemon's exporter, not against a binary swap.** An earlier
+draft of this section had the collectors going up under the Zig daemon first, so
+that infrastructure change and binary change stayed separately attributable. That
+premise is dead: the shipped `agentsfleetd` is already the Rust binary
+(`Dockerfile:39`), and it exports nothing until its OTLP work lands. A collector
+in front of a daemon that sends nothing proves nothing, so do this step after the
+exporter exists, not before.
 
 Run per environment, development first. Production follows a development run
 whose panels stayed continuous.
@@ -155,7 +162,7 @@ would read that as success.
 `M181_002` records the rehearsal and the swap here: the staging rollback
 rehearsal, the soak numbers against the budgets, and the post-swap probe run.
 
-**Collectors under the incumbent binary.** One row per environment, filled at
+**The collector hop.** One row per environment, filled at
 the change window:
 
 | Environment | Collector deployed | Endpoint repointed | Panels continuous | Probe run | Notes |

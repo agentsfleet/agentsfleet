@@ -299,14 +299,18 @@ new credentials, new configuration, a redeploy, and a window in which the old
 and new paths are both half-configured. Fan-out to two backends at once is not
 expressible at all without teaching the daemon about both.
 
-**The collector was stood up under the Zig daemon, before any binary changed.**
-Deliberately: if the collector layer and the serving binary moved together, a
-swap-day dashboard anomaly would be unattributable — new infrastructure or new
-daemon, no way to tell. The Zig daemon's endpoint is configuration, so the hop
-landed first as its own separately attributable change, with the triple's
-endpoint repointed at `otelcol-{dev,prod}.internal:4318` and the vendor
-credentials moved to the collector. The daemon still posts to
-`{endpoint}/v1/{logs,traces,metrics}`; only the host on the front changed.
+**The collector is a Fly app per environment, reached only on the private
+network.** `otelcol-{dev,prod}` hold the vendor credential and export upstream;
+the daemon's endpoint names them instead of the vendor, and it still posts to
+`{endpoint}/v1/{logs,traces,metrics}` — only the host on the front changed, so
+the repoint is one staged string and no daemon source edit.
+
+**Its receiver requires a credential, and that is not optional.** The private
+network spans the whole organisation rather than this app pair, so an
+unauthenticated receiver in front of the vendor key is a relay any workload on
+that network can post through. The daemon already sends a Basic pair on every
+export; the collector checks it, which is what keeps the boundary where it was
+before the hop existed.
 
 Pointing the daemon at a collector moves that decision out of the binary.
 Adding a backend, splitting one signal to two destinations, or moving a vendor
