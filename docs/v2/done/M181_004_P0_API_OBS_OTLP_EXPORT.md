@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 004
 **Date:** Sep 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the cutover's continuity dimension is unprovable while one side of the boundary exports nothing
 **Categories:** API | OBS
 **Batch:** B6 — runs parallel with M181_002's close; nothing here waits on the route surface except one named producer slice
@@ -208,21 +208,24 @@ No product-analytics changes.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | All three signals leave the daemon (§1–§4) | `cd rustd && cargo test --package agentsfleetd --all-features --test daemon_suite -- --ignored integration_telemetry` | exit 0, 2 passed | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S5 | Version sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep '\.rs$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | All three signals leave the daemon (§1–§4) | `cd rustd && cargo test --package agentsfleetd --all-features --test daemon_suite -- --ignored integration_telemetry` | exit 0, 2 passed | P0 | ✅ 2 passed — `all_three_signals_reach_a_collector`, `an_unreachable_collector_costs_spans_and_not_requests` |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths outside the table (three crates added to it at CHORE(close) — Discovery) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0 at every commit's pre-commit `orly gate work` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — 2243 cargo + 2410 app + 175 website + 1637 agentsfleet + 512 design-system; all coverage gates passed |
+| S3 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ✅ exit 0 — 351 passed |
+| S4 | Lint green | `make lint-all` | exit 0 | P0 | ✅ exit 0 — rustfmt --check + clippy -D warnings both clean |
+| S5 | Version sync | `make check-version` | exit 0 | P0 | ✅ exit 0 — all versions match 0.27.1 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found, 5084 commits scanned |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep '\.rs$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output (row narrowed to `.rs` at CHORE(close) — note above) |
 
 **Command source rule:** R1 was amended at §4 to name the tests that exist: the original filter `otlp_` matched a `test_`-prefixed naming this repository left behind (`docs/architecture/testing.md` §Rust test naming). S1–S5 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.integration`, `verify.lint`, `verify.version`); S6–S7 are the template's hygiene gates. R1 names the oracle this spec's own sections create.
 
 **S7 scope (amended at CHORE(close)):** the row selects `.rs` rather than everything-but-`.md`. As first written it also graded `rustd/Cargo.lock` (4948) and `rustd/Cargo.toml` (861) — a generated lock file and a manifest, neither of which can be split — which is not what a criterion named *No oversize SOURCE file* is asking. Every source file the diff touches is graded, including the four that were already over the cap on `origin/main`.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
+
+
+**Test Delta (VERIFY, 2026-09-02 12:03).** `unit=2186` at CHORE(open) → **2243** cargo workspace, **+57**. Positive on a code-adding diff, as the rule requires. `verify.integration` was not run at CHORE(open) (frontmatter) and closes at **351**. Full chain, one run, in order: `lint-all` 11:53:08, `test-unit-all` 12:01:21, `test-integration-rustd` 12:03:23, `check-version` 12:03:24, `gitleaks` 12:03:31 — every one exit 0.
 
 ## Dead Code Sweep
 
