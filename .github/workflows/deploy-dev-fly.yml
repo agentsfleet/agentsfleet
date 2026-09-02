@@ -24,6 +24,7 @@ jobs:
     env:
       OTLP_COLLECTOR_APP: otelcol-dev
       OTLP_COLLECTOR_DIR: deploy/fly/otelcol-dev
+      OTLP_COLLECTOR_MACHINES: "1"
       OTLP_COLLECTOR_ENDPOINT: http://otelcol-dev.internal:4318
     steps:
       - uses: actions/checkout@v7
@@ -64,10 +65,10 @@ jobs:
         # reaches Grafana with them; it reaches this app, which ignores the
         # inbound header and re-authenticates upstream with these.
         #
-        # A failed deploy here is NOT swallowed, unlike the tunnel step's
-        # `|| true`. A collector that is not serving means every dashboard goes
-        # dark at the next daemon deploy, and continuity across the swap is the
-        # property this whole milestone is graded on.
+        # scripts/ensure_fly_app.sh refuses rather than falling through: a
+        # collector that is not serving takes every dashboard dark at the next
+        # daemon deploy. That is also why the block is a script — it was inline
+        # in both workflows, and the two copies drifted into real defects.
         run: |
           flyctl secrets set \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
@@ -76,40 +77,8 @@ jobs:
             OTLP_INGEST_USER="$GRAFANA_OTLP_INSTANCE_ID" \
             OTLP_INGEST_PASSWORD="$GRAFANA_OTLP_API_KEY" \
             --app "$OTLP_COLLECTOR_APP"
-          MACHINES="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null || echo '[]')"
-          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
-          TOTAL="$(echo "$MACHINES" | jq 'length')"
-          echo "  machines: $RUNNING/$TOTAL running"
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "  no machines found — deploying $OTLP_COLLECTOR_APP from scratch..."
-            # Positional path = build context; without it flyctl uses CWD and
-            # the Dockerfile's `COPY config.yml` fails.
-            flyctl deploy "$OTLP_COLLECTOR_DIR" --app "$OTLP_COLLECTOR_APP" --wait-timeout 60
-          elif [ "$RUNNING" -eq 0 ]; then
-            echo "  no running machines — restarting..."
-            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
-              flyctl machine start "$MID" --app "$OTLP_COLLECTOR_APP" || true
-            done
-            # `machine start` returns when the API ACCEPTS the request, not when
-            # the collector is listening on 4318. Falling through here is what
-            # lets the daemon deploy against a collector that is still starting
-            # — the one race this whole step exists to close — so poll, and fail
-            # rather than report a success the next step would rely on. The
-            # from-scratch branch above needs none of this: `flyctl deploy
-            # --wait-timeout` already blocks until the machine is up.
-            for _ in $(seq 1 12); do
-              sleep 5
-              RUNNING="$(flyctl machine list --app "$OTLP_COLLECTOR_APP" --json 2>/dev/null \
-                | jq '[.[] | select(.state == "started")] | length')"
-              [ "$RUNNING" -gt 0 ] && break
-            done
-            test "$RUNNING" -gt 0 || {
-              echo "  collector never reached started after restart — refusing to deploy the daemon at it"
-              exit 1
-            }
-          else
-            echo "  collector is running"
-          fi
+          bash scripts/ensure_fly_app.sh \
+            "$OTLP_COLLECTOR_APP" "$OTLP_COLLECTOR_DIR" "$OTLP_COLLECTOR_MACHINES"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 

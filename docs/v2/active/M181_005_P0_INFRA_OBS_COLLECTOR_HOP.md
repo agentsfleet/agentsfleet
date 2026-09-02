@@ -62,6 +62,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/cutover/probes.sh` | EDIT | an executable probe for the collector path, tagged to this spec's rubric row |
 | `playbooks/operations/cutover/coverage.tsv` | EDIT | the probe's row tags and this milestone's entry — **lands only in the CHORE(close) commit**, see §1's sequencing note |
 | `playbooks/operations/cutover/probes_test.sh` | EDIT | the runner's self-test covers the new probe; it rides `make lint-all` via `lint-scripts` |
+| `scripts/ensure_fly_app.sh` | CREATE | one parameterised deploy step for both workflows — it was inline in each, and the two copies drifted into two of the review's three critical findings. Owns the scale, the wait, the refusal, and the deployed-digest record |
+| `scripts/ensure_fly_app_test.py` | CREATE | its self-test, discovered by `lint-scripts`; the refusal paths are the cases that matter, so a fake `flyctl` drives them |
+| `scripts/collector_wiring_test.py` | CREATE | pins the wiring three shipped defects got wrong — which endpoint each side stages, and that the collector is ensured before the daemon deploys. Every assertion was made red against the real bug before it was trusted |
 
 ## Applicable Rules
 
@@ -93,6 +96,13 @@ One collector app per environment on the private network, holding the vendor cre
 - **Dimension 1.1** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
 - **Dimension 1.2** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
 - **Dimension 1.3** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
+
+The dimensions above are graded from a change window. The four below are graded by the repository, and they exist because the review found three defects that every mechanical gate had already passed — each one a correctly-spelled variable meaning the wrong thing, or a correctly-formed step in the wrong place. A gate that cannot see those is not a gate for this diff.
+
+- **Dimension 1.4** — **DONE** — the deploy step refuses rather than falling through when the collector never reaches its desired running count, so a daemon is never pointed at an app that is still starting → Tests `test_fails_when_machines_never_start` · `test_fails_when_running_count_is_below_desired` · `test_deploys_from_context_when_no_machines_exist`
+- **Dimension 1.5** — **DONE** — in both environments the daemon's staged endpoint names the collector, the collector's own upstream names the vendor, and the ensure step precedes the deploy that applies the repoint → Tests `test_daemon_endpoint_points_at_the_collector` · `test_collector_upstream_points_at_the_vendor` · `test_collector_is_ensured_before_the_daemon_deploys` · `test_endpoint_names_the_collector_app_it_scales`
+- **Dimension 1.6** — **DONE** — no pipeline carries an attributes, resource, transform or filter processor, and every signal has a pipeline; continuity is the deliverable, so a collector that decorates a series is the defect → Tests `test_collector_adds_no_attributes_to_any_pipeline` · `test_every_signal_has_a_pipeline`
+- **Dimension 1.7** — **DONE** — the receiver refuses an unauthenticated sender, and the authenticator is registered in the service extensions rather than merely declared → Test `test_receiver_requires_authentication`
 
 **Sequencing — the probe and its manifest rows land in the CHORE(close) commit, together, or not at all.** Three facts force this. `probes.sh:75` reads each milestone's rubric rows out of `SPEC_DONE_DIR` (`docs/v2/done`), so a `milestone	M181_005` row resolves to no spec while this one sits in `active/`. `probes.sh:189` fails any probe that declares no rubric row, so the probe cannot land ahead of its `covers` row either. And `make/quality.mk:95` runs `probes.sh --coverage` against the REAL tree inside `lint-all`, so any intermediate state is a red S3 rather than a private inconvenience. The collector app, the workflow repoint, the architecture reconciliation and the runbook rows land at EXECUTE; `probes.sh`, `coverage.tsv` and the spec's move to `done/` land in one commit at CHORE(close). `exclude	M181_005:R2` rides with them — R2 is merge-time diff scope, the same reason `M175_001:R6` and its siblings are already excluded. The self-tests need no new case: `probes_test.sh:33` derives its fixture rows from `coverage.tsv`, so a probe added to the table is covered there automatically.
 
@@ -134,6 +144,10 @@ No product-analytics changes; no new panels — continuity is the deliverable.
 | 1.1 | e2e (development) | `test_collector_path_carries_every_signal` | per-signal series present through the collector; no renamed series; panel set unchanged |
 | 1.2 | e2e (production window) | `test_collector_path_production_probe` | same assertion, production; revert path stated before execution |
 | 1.3 | unit | `test_runbook_probes` | row-coverage: this spec's rows are tagged or manifest-declared |
+| 1.4 | unit | `ensure_fly_app_test.py` (9 cases) | a fake `flyctl` drives the refusal paths: stopped machines, a running count below desired, and a from-scratch deploy that must carry its build context |
+| 1.5 | unit | `collector_wiring_test.py` | each assertion made red against the real shipped defect before it was trusted |
+| 1.6 | unit | `collector_wiring_test.py` | processor sets per pipeline, per environment |
+| 1.7 | unit | `collector_wiring_test.py` | receiver authenticator present and registered |
 
 ## Acceptance Rubric (single scoring surface)
 
