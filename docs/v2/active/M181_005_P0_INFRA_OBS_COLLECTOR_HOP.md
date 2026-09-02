@@ -93,9 +93,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 One collector app per environment on the private network, holding the vendor credential and owning the fan-out. The daemon's endpoint is repointed by configuration; the backend is chosen in collector configuration with no daemon redeploy. The receiver requires a credential: the private network spans the whole organisation rather than this app pair, so without one the collector is a credentialed relay any workload on that network can post through.
 
-- **Dimension 1.1** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
-- **Dimension 1.2** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
-- **Dimension 1.3** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
+- **Dimension 1.1** — **IN_PROGRESS (parked — needs the change window)** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
+- **Dimension 1.2** — **IN_PROGRESS (parked — needs the change window)** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
+- **Dimension 1.3** — **IN_PROGRESS (parked — lands with 1.1)** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
 
 The dimensions above are graded from a change window. The four below are graded by the repository, and they exist because the review found three defects that every mechanical gate had already passed — each one a correctly-spelled variable meaning the wrong thing, or a correctly-formed step in the wrong place. A gate that cannot see those is not a gate for this diff.
 
@@ -103,6 +103,21 @@ The dimensions above are graded from a change window. The four below are graded 
 - **Dimension 1.5** — **DONE** — in both environments the daemon's staged endpoint names the collector, the collector's own upstream names the vendor, and the ensure step precedes the deploy that applies the repoint → Tests `test_daemon_endpoint_points_at_the_collector` · `test_collector_upstream_points_at_the_vendor` · `test_collector_is_ensured_before_the_daemon_deploys` · `test_endpoint_names_the_collector_app_it_scales`
 - **Dimension 1.6** — **DONE** — no pipeline carries an attributes, resource, transform or filter processor, and every signal has a pipeline; continuity is the deliverable, so a collector that decorates a series is the defect → Tests `test_collector_adds_no_attributes_to_any_pipeline` · `test_every_signal_has_a_pipeline`
 - **Dimension 1.7** — **DONE** — the receiver refuses an unauthenticated sender, and the authenticator is registered in the service extensions rather than merely declared → Test `test_receiver_requires_authentication`
+
+**CHORE(close) — PARKED, Sep 02, 2026.** Dimensions 1.4-1.7 are DONE and this
+branch carries them; 1.1-1.3 are graded from a change window that has not run,
+so the milestone parks rather than closing. What that means concretely:
+`Status` stays `IN_PROGRESS`, this spec stays in `active/`, and the closing
+change — the `collector_path` probe, its three `coverage.tsv` rows, and the
+move to `done/` — does NOT ride this PR. It is written and its coverage assert
+is green (65 rubric rows all probed or declared, `probes_test.sh` 9/9), parked
+against the window.
+
+Landing it early would be worse than waiting, and not only as a bookkeeping
+matter: `collector_path` is a LIVE probe against `OTLP_COLLECTOR_URL`, and the
+cutover runner is what an operator executes on swap day. A probe for a
+collector that is not deployed yet turns swap day red for a reason that has
+nothing to do with the swap. It lands when the collector answers.
 
 **Sequencing — the probe and its manifest rows land in the CHORE(close) commit, together, or not at all.** Three facts force this. `probes.sh:75` reads each milestone's rubric rows out of `SPEC_DONE_DIR` (`docs/v2/done`), so a `milestone	M181_005` row resolves to no spec while this one sits in `active/`. `probes.sh:189` fails any probe that declares no rubric row, so the probe cannot land ahead of its `covers` row either. And `make/quality.mk:95` runs `probes.sh --coverage` against the REAL tree inside `lint-all`, so any intermediate state is a red S3 rather than a private inconvenience. The collector app, the workflow repoint, the architecture reconciliation and the runbook rows land at EXECUTE; `probes.sh`, `coverage.tsv` and the spec's move to `done/` land in one commit at CHORE(close). `exclude	M181_005:R2` rides with them — R2 is merge-time diff scope, the same reason `M175_001:R6` and its siblings are already excluded. The self-tests need no new case: `probes_test.sh:33` derives its fixture rows from `coverage.tsv`, so a probe added to the table is covered there automatically.
 
