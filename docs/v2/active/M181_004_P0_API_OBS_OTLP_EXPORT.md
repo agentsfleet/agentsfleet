@@ -104,11 +104,11 @@ The Zig daemon opens spans in exactly two production files. The per-request serv
 - **Dimension 1.1** — the attribute vocabulary is complete: every attribute key the census's label columns name, and every key the delivery span carries, resolves to a `semconv` constant rather than a string literal → Test `every_census_label_resolves_to_a_constant` — **DONE** (`afd_observability::semconv`, with `no_key_is_spelled_twice` and `every_delivery_span_key_is_namespaced` beside it)
 - **Dimension 1.2** — the fleet-delivery span is emitted where a runner reports completion, carrying operation, agent, provider, model, token counts, posture, workspace, tenant and event → Test `the_delivery_span_carries_every_declared_key` — **DONE** (`afd_observability::delivery`, recorded at `afd_api_runner`'s report handler; `the_delivery_span_is_retro_dated_from_the_reported_duration` and `the_delivery_span_is_a_root` carry the shape)
 
-### §2 — The producers
+### §2 — The producers — DONE
 
 NOT a file-for-file port. Zig's seventeen `http/` emit sites become a small number of tower layers where one layer covers every route; the pool families become SDK observable-gauge callbacks reading state `afd_db` and `afd_redis` already expose. Porting the call-site COUNT would import a structure the SDK exists to replace.
 
-- **Dimension 2.1** — every census family has a producer: each family the registry declares is recorded by a call site the daemon actually reaches, and a family with no producer fails naming it → Test `test_every_census_family_has_a_producer`. The seven `agentsfleet_library_*` families' producers live in handlers M181_002 carries; this dimension's tenant-library slice lands only after that branch merges, and the dependency is stated in the frontmatter rather than discovered.
+- **Dimension 2.1** — every census family has a producer: each family the registry declares is recorded by a call site the daemon actually reaches, and a family with no producer fails naming it → Test `every_census_family_has_a_producer` — **DONE** (57 families claimed across eleven crates; 14 excused by name in `metrics::produced`, which the same test reads in both directions). The seven `agentsfleet_library_*` families' producers live in handlers M181_002 carries; this dimension's tenant-library slice lands only after that branch merges, and the dependency is stated in the frontmatter rather than discovered.
 
 **Producer map (PLAN).** Handles are claimed from the census-built instrument layer at boot; a family nobody claims is named by `Instruments::unclaimed`, which is what the test and the boot log both read. Grouped by the site that owns the operation:
 
@@ -132,7 +132,12 @@ NOT a file-for-file port. Zig's seventeen `http/` emit sites become a small numb
 | `sensitive_request_erased_bytes_total` · `sensitive_response_erased_bytes_total` · `sensitive_response_write_failures_total` | no request- or response-buffer erasure path in the Rust daemon |
 | `account_teardown_unregister_failures_total` | the Rust ingress declares `user.deleted` unported (`identity_route.rs`) |
 | `fleet_triggered_total` | the Zig daemon declares the family and never increments it; nothing to carry over |
-| any `memory_*` or `repair_*` row whose operation the Rust path does not perform | named individually in EXECUTE as each site is read; every such row lands in this table, not silently |
+| `agentsfleet_otlp_queue_depth` | the SDK owns the export queue and exposes no depth |
+| `agentsfleet_repair_*` — provider results, correlations, intents created, and both latency histograms | the repair-result ingress has no Rust home; `app_route.rs` says so. The dispatcher and the verification run ARE ported and record |
+| `agentsfleet_library_cache_outcome_total` | the revision-keyed response cache is a declared non-port, so no read consults one |
+| `agentsfleet_library_pool_result_total` | the acquire happens inside the store, where the read path cannot see how it ended |
+
+Every `memory_*` family and the remaining `repair_*` families DO have producers — the ledger closed at fourteen rows, not the open-ended set this table first anticipated.
 
 ### §3 — The transport, boot, and the knobs
 
@@ -191,7 +196,7 @@ No product-analytics changes.
 |---|---|---|---|
 | 1.1 | unit | `every_census_label_resolves_to_a_constant` | every census label column resolves to a constant and every constant to a column — the diff of the two sets is empty both ways |
 | 1.2 | unit | `the_delivery_span_carries_every_declared_key` | the span carries every declared attribute and no other, retro-dated from the settle by the capped duration, as a root |
-| 2.1 | unit | `test_every_census_family_has_a_producer` | each declared family maps to a reachable producer; a seeded orphan family fails naming it |
+| 2.1 | unit | `every_census_family_has_a_producer` | each declared family is claimed by a producer or excused by name; an excuse for a family that HAS a producer fails too |
 | 3.1 | unit | `test_boot_supervises_otlp_export` | real inventory == declared set; the task joins on shutdown within the drain deadline |
 | 3.2 | unit | `test_otlp_endpoint_knob_precedence` | standard name wins over alias when both set; alias alone still exports |
 | 4.1 | integration | `test_export_absent_and_unreachable` | no endpoint → serving daemon, zero export attempts; unreachable endpoint → drop counter climbs, request latency unchanged |
@@ -252,5 +257,6 @@ N/A — no files deleted. The export-task stub that today waits for cancellation
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
+- **Census ceilings corrected** — > Indy (2026-09-02 08:22): "Correct the five rows" — context: six census rows declared a `fixed:` series ceiling BELOW the product of their own closed label sets (trace suppression 4<5, discarded entries 9<18, both library stage families 24<30, read outcomes 16<27, signup failures 4<6). A ceiling under the real count folds live series into `otel.metric.overflow`, the backstop `runner.rs` says must never fire. Corrected in the census with the rule recorded in its own header, and `every_declared_ceiling_admits_its_label_product` fails on any future understatement. The sixth row was found after the decision and corrected under the same rule.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
 - **Verification cadence override** — > Indy (2026-09-02 00:24): "Just run all the clippy, fmt, test-unit-rustd, test-integration-rustd after the code is complete on all the dimension/sections. Avoid running them for every section/dimension since you would end up waiting for the disk space to be pruned and purged" — context: the declared `verify.*` set and the lint pair run ONCE at the milestone boundary; inside a Section the inner loop is `cargo check`/`cargo test -p <crate>` over the crate touched, which proves a package and never satisfies a VERIFY row.
