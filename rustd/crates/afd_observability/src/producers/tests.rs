@@ -119,3 +119,25 @@ fn claiming_twice_adds_no_families() {
         "a repeated claim changed what is outstanding"
     );
 }
+
+/// The gauge sources render without unfolding the closures they hold.
+///
+/// `GaugeSources` is carried through boot and sits in `Debug` structs above it,
+/// so a `{:?}` somebody adds later reaches it. What it holds are closures that
+/// READ live process state — an in-flight request count, a stream count — and
+/// neither has a printable value that would still be true by the time anyone
+/// read the line. So the rendering names the type and stops, and the
+/// `finish_non_exhaustive` ellipsis is what says the stop is deliberate.
+#[test]
+fn the_gauge_sources_render_without_unfolding_their_readers() {
+    let rendered = format!("{:?}", GaugeSources::silent());
+
+    assert!(
+        rendered.starts_with("GaugeSources"),
+        "the rendering names the type: {rendered}"
+    );
+    assert!(
+        rendered.contains(".."),
+        "and marks itself non-exhaustive rather than looking complete: {rendered}"
+    );
+}

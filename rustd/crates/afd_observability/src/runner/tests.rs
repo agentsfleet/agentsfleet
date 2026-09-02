@@ -315,3 +315,43 @@ fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
 
     assert_eq!(attributed, vec![(first, 1), (second, 3)]);
 }
+
+/// A poisoned series lock reads empty rather than propagating the panic.
+///
+/// These readings are pulled by the metrics callback on the SDK's collection
+/// cadence, on a thread that is not the one that recorded anything. A `RwLock`
+/// poisons for the life of the process once any holder panics, so an `unwrap`
+/// here would turn one unrelated panic into a permanent one — failing every
+/// subsequent collection, on a path whose entire job is reporting.
+///
+/// Empty is the honest degradation: a gauge with no data point is a gap, which
+/// is what this crate publishes for an unreadable cell everywhere else, rather
+/// than a zero somebody would read as "no active leases".
+#[test]
+fn a_poisoned_series_lock_reads_empty_rather_than_panicking() {
+    let metrics = Arc::new(RunnerMetrics::new());
+    metrics.admit(&runner(0));
+    assert!(
+        !metrics.active_lease_readings().is_empty(),
+        "the series is readable before anything poisons it"
+    );
+
+    let poisoner = Arc::clone(&metrics);
+    let panicked = std::thread::spawn(move || {
+        let _held = poisoner.series.write();
+        // Ends by panicking, which is what poisons the lock this thread holds.
+        // Spelled as a failing parse rather than `panic!` because the workspace
+        // denies `clippy::panic` — and as a REAL failure rather than a literal
+        // unwrap, which the lint set reads as a mistake rather than an intent.
+        "not-a-number"
+            .parse::<u64>()
+            .expect("this thread ends by panicking, poisoning the lock it holds");
+    })
+    .join();
+    assert!(panicked.is_err(), "the helper thread panicked as intended");
+
+    assert!(
+        metrics.active_lease_readings().is_empty(),
+        "a poisoned lock publishes no data point instead of panicking the collector"
+    );
+}

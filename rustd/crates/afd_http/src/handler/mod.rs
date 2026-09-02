@@ -165,3 +165,37 @@ pub fn library_outcome(refusal: &Refusal) -> ReadOutcome {
         _unclassified => ReadOutcome::InternalError,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ReadOutcome, library_outcome};
+    use crate::handler::refusal::Refusal;
+    use afd_core::error_code;
+
+    /// A status this map does not know is an internal error, never an `Ok`.
+    ///
+    /// The fallthrough is the arm that matters: the family exists to answer
+    /// "what is failing these reads", and a refusal counted as a SUCCESS is one
+    /// that never appears in that answer. So an unmapped status has to land on
+    /// something an operator investigates, and the mapped ones have to keep
+    /// their own classification rather than all falling here.
+    #[test]
+    fn an_unmapped_status_is_an_internal_error_rather_than_a_success() {
+        let internal = Refusal::coded(
+            error_code::INTERNAL_OPERATION_FAILED,
+            "the dependency did not answer",
+        );
+        assert_eq!(
+            library_outcome(&internal),
+            ReadOutcome::InternalError,
+            "a status outside the map is investigated, not counted as served"
+        );
+
+        let not_found = Refusal::coded(error_code::LIBRARY_INPUT_OUT_OF_BOUNDS, "out of bounds");
+        assert_ne!(
+            library_outcome(&not_found),
+            ReadOutcome::InternalError,
+            "a status the map DOES know keeps its own classification"
+        );
+    }
+}
