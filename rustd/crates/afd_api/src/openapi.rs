@@ -12,9 +12,7 @@
 //! missing here fails, and so does the reverse.
 
 use utoipa::OpenApi as _;
-use utoipa::openapi::security::{
-    HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme,
-};
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme};
 
 use crate::Route;
 use crate::route::{Guard, Verb};

@@ -93,7 +93,9 @@ fn credentialed() -> BTreeSet<Operation> {
         security
             .and_then(serde_json::Value::as_array)
             .is_some_and(|requirements| {
-                requirements.iter().any(|one| one.get(BEARER_SCHEME).is_some())
+                requirements
+                    .iter()
+                    .any(|one| one.get(BEARER_SCHEME).is_some())
             })
     };
     if names_bearer(document.get("security")) {
