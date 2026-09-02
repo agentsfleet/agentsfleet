@@ -24,6 +24,10 @@
 //! is a different signal, and the SDK counts it in its own internal metrics
 //! rather than exposing a hook to count it here.
 
+mod logs;
+
+pub use self::logs::{CountingLogExporter, LogDrops};
+
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
