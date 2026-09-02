@@ -44,6 +44,7 @@ afd_admin.workspace = true
 # The schedules plane the composition root assembles: the store, the scheduler
 # client, and the verifier the fire ingress crosses.
 afd_cron.workspace = true
+http.workspace = true
 reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true

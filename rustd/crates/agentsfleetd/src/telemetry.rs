@@ -44,14 +44,12 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 
 use crate::error::BootFailure;
-use crate::preflight::OtlpConfig;
+use crate::preflight::{OtlpConfig, PROTOCOL_JSON};
 
 mod resource;
 
 #[cfg(test)]
 mod tests;
-
-pub use self::resource::{INSTANCE_ID_KNOB, MACHINE_ID_KNOB};
 
 pub(crate) use self::resource::resident_bytes;
 
@@ -70,10 +68,7 @@ const LOGS_PATH: &str = "/v1/logs";
 /// into the same store during the cutover, and a series whose points arrive at
 /// two different cadences is one whose rate changes at the swap for no reason
 /// an operator could act on.
-const COLLECT_INTERVAL: Duration = Duration::from_secs(5);
-
-/// The wire encoding this build sends, as configuration spells it.
-const PROTOCOL_JSON: &str = "http/json";
+pub(crate) const COLLECT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Everything the transport owns, held so shutdown can flush it.
 ///

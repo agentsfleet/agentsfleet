@@ -27,7 +27,7 @@ mod read;
 pub use self::config::{BootConfig, BundleStoreConfig, IdentityConfig, PostHogConfig};
 pub use self::otlp::{
     GRAFANA_API_KEY_KNOB, GRAFANA_ENDPOINT_KNOB, GRAFANA_INSTANCE_KNOB, OTEL_ENDPOINT_KNOB,
-    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
+    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig, PROTOCOL_JSON,
 };
 
 use self::read::{bundle_store, classify, identity, is_set, read_kek, required};

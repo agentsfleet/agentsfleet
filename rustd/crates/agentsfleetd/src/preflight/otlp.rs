@@ -50,7 +50,12 @@ pub const GRAFANA_API_KEY_KNOB: &str = "GRAFANA_OTLP_API_KEY";
 const PROTOCOL_PROTOBUF: &str = "http/protobuf";
 
 /// The JSON encoding, accepted because a collector may prefer it.
-const PROTOCOL_JSON: &str = "http/json";
+///
+/// `pub(crate)` because two modules must agree on it byte for byte: this one
+/// decides what the knob ACCEPTS and `telemetry` decides what it maps to. A
+/// second copy renamed alone posts protobuf to a deployment that asked for
+/// JSON, and nothing would say so.
+pub const PROTOCOL_JSON: &str = "http/json";
 
 /// What an export waits before giving up, when nothing says otherwise.
 ///
@@ -68,12 +73,21 @@ const WHY_PROTOCOL: &str = "http/protobuf or http/json; this build carries no gR
 /// Why a timeout that will not parse refuses boot.
 const WHY_TIMEOUT: &str = "how long one export may take, in whole milliseconds";
 
+/// Why an endpoint no exporter could build refuses boot.
+///
+/// Graded HERE so the refusal names the knob. Left to the exporter it comes
+/// back as `invalid URI <the whole value>`, and that value is read from the
+/// same place as the credential beside it — a rejection that echoed it would
+/// print to stderr and to whatever ships stderr.
+const WHY_ENDPOINT: &str = "an absolute URL the exporter can post to, such as \
+                            https://collector.example:4318";
+
 /// Why a malformed header list refuses boot.
 const WHY_HEADERS: &str = "comma-joined `key=value` pairs; a pair with no `=` \
                            would be sent as a header with no name";
 
 /// What this deployment exports to, when it exports at all.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct OtlpConfig {
     /// The base URL every signal is posted under.
     pub endpoint: Box<str>,
@@ -91,6 +105,31 @@ pub struct OtlpConfig {
     pub timeout: Duration,
 }
 
+impl core::fmt::Debug for OtlpConfig {
+    /// Header NAMES only, and the endpoint by its knob rather than its value.
+    ///
+    /// Derived, this renders a live credential: the first header is the
+    /// vendor pair as `Basic <base64>`, and base64 is an encoding rather than
+    /// a protection. The master key and the session pepper are redacted the
+    /// same way one module over, and for the same reason — a `{:?}` somebody
+    /// adds later must not be the thing that ships a token to a log.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OtlpConfig")
+            .field("source", &self.source)
+            .field("protocol", &self.protocol)
+            .field("timeout", &self.timeout)
+            .field(
+                "headers",
+                &self
+                    .headers
+                    .iter()
+                    .map(|(name, _value)| name.as_str())
+                    .collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
 /// Resolves where telemetry goes, or nothing when this deployment sends none.
 ///
 /// Absent is the ordinary case — every developer's environment, every test —
@@ -98,6 +137,12 @@ pub struct OtlpConfig {
 /// would make a telemetry backend a prerequisite for running the product.
 pub(super) fn otlp<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<OtlpConfig> {
     let (endpoint, source) = endpoint(env)?;
+    if endpoint.parse::<http::Uri>().is_err() {
+        faults.push(Fault::Invalid {
+            knob: source,
+            why: WHY_ENDPOINT.to_owned(),
+        });
+    }
     Some(OtlpConfig {
         endpoint,
         source,

@@ -9,10 +9,10 @@ use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 
 /// An operator-supplied replica identity.
-pub const INSTANCE_ID_KNOB: &str = "OTEL_SERVICE_INSTANCE_ID";
+pub(super) const INSTANCE_ID_KNOB: &str = "OTEL_SERVICE_INSTANCE_ID";
 
 /// The platform's own machine identity, used when the operator supplies none.
-pub const MACHINE_ID_KNOB: &str = "FLY_MACHINE_ID";
+pub(super) const MACHINE_ID_KNOB: &str = "FLY_MACHINE_ID";
 
 /// This process, as every signal describes it.
 pub(super) fn describe() -> Resource {

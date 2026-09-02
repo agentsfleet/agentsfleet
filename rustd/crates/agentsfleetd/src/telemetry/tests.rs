@@ -11,7 +11,6 @@ use afd_observability::producers::GaugeSources;
 
 use opentelemetry_otlp::Protocol;
 
-use crate::error::BootFailure;
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, preflight};
 use crate::serve::open_telemetry;
@@ -160,27 +159,4 @@ fn each_accepted_protocol_maps_to_its_own_encoding() {
         super::protocol_of(default.otlp().expect("configured")),
         Protocol::HttpBinary
     ));
-}
-
-/// An endpoint the exporter cannot parse refuses boot, as telemetry.
-///
-/// Preflight grades the knobs it owns — present, spelled right, in range — and
-/// a URI it accepted can still be one no exporter will build. Serving on
-/// through that produces a daemon exporting nothing that looks exactly like a
-/// collector which is down, so the failure is raised where it is still
-/// attributable and carries the phase an operator greps for.
-#[tokio::test]
-async fn an_endpoint_the_exporter_refuses_refuses_boot() {
-    let config = configured(&[(OTEL_ENDPOINT_KNOB, "http://a space is not a host")]);
-    let mut supervisor = Supervisor::new();
-
-    let failure = open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
-        .expect_err("an endpoint no exporter can build must not boot a dark daemon");
-
-    assert!(matches!(failure, BootFailure::Exporter(_)));
-    assert_eq!(failure.phase(), "telemetry");
-    assert!(
-        supervisor.inventory().is_empty(),
-        "a transport that would not build leaves nothing to supervise"
-    );
 }

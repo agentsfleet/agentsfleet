@@ -134,7 +134,7 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
         input_tokens: u64::from(request.input_tokens),
         cached_input_tokens: u64::from(request.cached_input_tokens),
         output_tokens: u64::from(request.output_tokens),
-        wall: Duration::from_millis(request.telemetry.wall_ms),
+        wall: reported_wall(request),
         error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
     });
 
@@ -171,6 +171,17 @@ fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> D
         model: &settled.model,
         input_tokens: u64::from(request.input_tokens) + u64::from(request.cached_input_tokens),
         output_tokens: u64::from(request.output_tokens),
-        wall: Duration::from_millis(request.telemetry.wall_ms),
+        wall: reported_wall(request),
     }
+}
+
+/// How long the runner says the run took, bounded.
+///
+/// The number is the runner's and nothing validates it upstream, so it is
+/// capped by the same bound the delivery span uses. Uncapped it reaches the
+/// duration histogram's SUM — the value every mean and latency panel divides
+/// by its count — where one absurd report is not an outlier a percentile
+/// absorbs but a total nothing recovers from until the window rolls.
+fn reported_wall(request: &ReportRequest<'_>) -> Duration {
+    Duration::from_millis(request.telemetry.wall_ms).min(afd_observability::MAX_RUN)
 }

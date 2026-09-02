@@ -84,12 +84,8 @@ impl Captured {
     /// them would leave a fleet's memory looking smaller than it is.
     fn record(&self) {
         memory::captured(u64::try_from(self.stored).unwrap_or(u64::MAX));
-        for _skipped in 0..self.skipped {
-            memory::capture_skipped();
-        }
-        for _truncated in 0..self.truncated {
-            memory::capture_truncated();
-        }
+        memory::capture_skipped(u64::try_from(self.skipped).unwrap_or(u64::MAX));
+        memory::capture_truncated(u64::try_from(self.truncated).unwrap_or(u64::MAX));
         memory::cap_evicted(self.evicted);
     }
 }

@@ -795,6 +795,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "clap",
+ "http",
  "hyper",
  "hyper-util",
  "object_store",
