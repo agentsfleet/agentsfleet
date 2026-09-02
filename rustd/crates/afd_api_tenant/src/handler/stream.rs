@@ -44,6 +44,15 @@ use crate::services::{Services, WorkspaceFleets as _};
 
 use super::fleet::detail::{FleetPath, parse_fleet_id};
 
+/// What both streams answer once they are open.
+// Read only by the two annotations, which the default build compiles away.
+#[cfg(feature = "openapi")]
+const STREAM_OPEN: &str = "The stream is open; frames follow as Server-Sent Events";
+
+/// The media type `Sse` writes, named for the document.
+#[cfg(feature = "openapi")]
+const EVENT_STREAM: &str = "text/event-stream";
+
 /// The scoped event each surface's failures are logged under.
 const EVENT_FLEET_STREAM: &str = "fleet_events_stream_failed";
 
@@ -71,7 +80,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -130,7 +139,7 @@ pub(crate) async fn fleet<D: Services>(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

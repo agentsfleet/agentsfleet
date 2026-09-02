@@ -30,9 +30,9 @@ use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use axum::extract::{Path, RawQuery, State};
-use axum::response::{IntoResponse as _, Response};
-use http::{StatusCode, header};
+use axum::response::Response;
 
+use super::landing::{connected, relayed};
 use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
@@ -119,11 +119,11 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         afd_http::openapi::query::ConnectorCallback,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
 pub(crate) async fn relay<D: Services>(
@@ -152,7 +152,7 @@ pub(crate) async fn relay<D: Services>(
     )
     .ok_or_else(unconfigured)?;
 
-    Ok(found(&destination))
+    relayed(&destination)
 }
 
 /// `POST /v1/connectors/{provider}/callback` — the dashboard, completing.
@@ -184,7 +184,7 @@ pub(crate) async fn relay<D: Services>(
         ("callback_source" = Option<String>, Query, description = "Fixed compatibility marker added by the legacy API relay. Browser callers omit it."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_wire::connector::Connected),
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -276,7 +276,7 @@ pub(crate) async fn complete<D: Services>(
         .map_err(Refusal::at(EVENT_WRITE))?;
 
     match landed {
-        Landed::Connected => Ok(connected(&services, &workspace)),
+        Landed::Connected => Ok(connected(services.as_ref(), &workspace)),
         Landed::NotConfigured => Err(unconfigured()),
     }
 }
@@ -308,34 +308,4 @@ fn state_refused(provider: Provider, reason: &'static str) -> Refusal {
     let provider_field = provider.id();
     tracing::debug!(provider = provider_field, reason, event = EVENT_REFUSED);
     Refusal::coded(error_code::CONNECTOR_STATE_INVALID, DETAIL_STATE_INVALID)
-}
-
-/// Where a person lands once the connect has finished.
-///
-/// A 200 when the destination cannot be built, and deliberately not a 500: the
-/// grant IS sealed and the connection IS live by this point, so failing the
-/// request would tell a person their connect did not work when it did — and the
-/// next thing they would do is press Connect again. `callback.zig` reaches the
-/// same conclusion for the same reason.
-fn connected<D: Services>(services: &Arc<D>, workspace: &Uuid7) -> Response {
-    callback::connected_url(services.dashboard(), workspace).map_or_else(
-        || StatusCode::OK.into_response(),
-        |destination| found(&destination),
-    )
-}
-
-/// A redirect to `destination`.
-///
-/// 302 rather than 303: the daemon this ports answers 302 on both callback
-/// legs, and a browser follows either with a GET here because both arrive at a
-/// destination that only serves one.
-fn found(destination: &str) -> Response {
-    // A URL this daemon composed through `url`, so every byte is already in the
-    // header's alphabet. An unparseable value would be a bug in that composer
-    // rather than anything the caller sent, and answering 200 is what the
-    // person needs either way — the connect itself is unaffected.
-    header::HeaderValue::from_str(destination).map_or_else(
-        |_unrenderable| StatusCode::OK.into_response(),
-        |location| (StatusCode::FOUND, [(header::LOCATION, location)]).into_response(),
-    )
 }

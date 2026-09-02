@@ -103,7 +103,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "The entry as it now reads, under its new entity tag", body = AdminLibraryItem),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

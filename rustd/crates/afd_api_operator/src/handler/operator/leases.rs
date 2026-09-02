@@ -49,7 +49,7 @@ const EVENT: &str = "runner_leases_failed";
         ("limit" = Option<String>, Query, description = "Rows per page (1-100)."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "One page of the runner's leases, newest first", body = afd_wire::operator::RunnerLeasesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

@@ -21,6 +21,7 @@
 //! refuse — so the sentences belong beside the table that decides them rather
 //! than in whichever plane happened to need them first.
 
+pub mod body;
 pub mod path;
 pub mod query;
 

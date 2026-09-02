@@ -49,10 +49,10 @@ afd_api_operator.workspace = true
 afd_api_runner.workspace = true
 afd_api_tenant.workspace = true
 afd_http.workspace = true
+afd_wire.workspace = true
 afd_auth.workspace = true
 # The document generator, reachable only under `openapi`.
 utoipa = { workspace = true, optional = true }
-serde_json.workspace = true
 # The attribute vocabulary a span carries. The dependency points this way on
 # purpose: a route template is a fact here and a string there.
 afd_observability.workspace = true
@@ -109,8 +109,8 @@ afd_runner.workspace = true
 afd_sse.workspace = true
 afd_tenant = { workspace = true, features = ["test-util"] }
 afd_vault = { workspace = true, features = ["test-util"] }
-afd_wire.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 # The envelope suite renders through axum's own IntoResponse and reads the body
 # back, and the admission suite needs REAL parallelism to put more requests in
 # flight at once than the ceiling admits.

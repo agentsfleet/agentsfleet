@@ -25,6 +25,11 @@ use super::{
     DETAIL_INVALID_TIMEZONE, DETAIL_NOT_FOUND, DETAIL_TOO_MANY, EVENT_WRITE,
 };
 
+/// What a create and an update both answer: the row as the scheduler now holds it.
+// Read only by the two annotations, which the default build compiles away.
+#[cfg(feature = "openapi")]
+const RECONCILED: &str = "The schedule as reconciled with the scheduler";
+
 /// `POST …/schedules`.
 ///
 /// # Errors
@@ -41,7 +46,7 @@ use super::{
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED),
+        (status = 201, description = RECONCILED, body = afd_wire::schedule::View),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -127,7 +132,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::path::Schedule,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = RECONCILED, body = afd_wire::schedule::View),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -254,7 +259,7 @@ pub(crate) async fn purge<D: Services>(
         afd_http::openapi::path::Schedule,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "The schedule as re-reconciled with the scheduler", body = afd_wire::schedule::View),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

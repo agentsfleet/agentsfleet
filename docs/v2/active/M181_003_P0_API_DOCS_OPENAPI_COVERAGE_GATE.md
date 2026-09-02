@@ -306,6 +306,34 @@ with `/* v8 ignore next */`, the same resolution `website`'s
 `HowItWorks.tsx` already uses for its unreachable defensive invariant, and the
 package's four thresholds go to 100.
 
+> Indy (2026-09-02): "Keep it, fix the 23" — context: the branch added a
+> contract test the spec never asked for, that every 2xx carrying content
+> describes its body. It was red on 23 responses and was the only thing between
+> the branch and a PR. Offered removal or an allowlist; Indy kept the gate and
+> asked for the 23 to be described.
+
+**Finding — the gate caught two port defects, not only missing annotations.**
+Of the 23, twenty were bodies the handler already serialized and the
+annotation did not name: seven pre-serialized upstream (the lease answer, the
+catalogue page under its entity tag, the bundle tar), the six webhook
+acknowledgements, the two Server-Sent Event streams, three schedule views, a
+preference bag and a library entry. The remaining three were the ones the
+checkpoint called "genuinely bare", and they were not: `service_activity.zig`
+answers `202 {"ok":true}` and `callback.zig` answers `200 {"status":"connected"}`
+when the connect landed and no dashboard page can be named, and the port had
+dropped both bodies. Both are restored as wire types (`activity::ActivityAccepted`,
+`connector::Connected`). The relay leg's 200 was an artifact of sharing one
+redirect helper with the completion leg: on the browser leg nothing has landed,
+so an unwritable relay is now the same `UZ-CONN-001` refusal a dashboard base
+that is not a URL already raises, and the annotation drops the 200 it could
+not honestly describe. The probes stop building `serde_json::json!` and answer
+`health::Liveness` and `health::Readiness`, the shapes `health.zig` fixed.
+
+**Sweep — two wire types nothing served.** `afd_wire::connector::DeliveryIgnored`
+and `HandshakeEcho` duplicated `afd_wire::ingress::Ignored` and `EchoAnswer`,
+which are what the events route answers; no handler, collector or suite read
+them. Removed with their three tests (RULE NLR, on the file this diff touched).
+
 **Amendment — the unit lane's flake was a latent bug, not this branch's.**
 Four runs failed in `ui/packages/website/src/App.test.tsx` and one in
 `design-system`, always on a different test, always a `React.lazy` route:

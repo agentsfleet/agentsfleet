@@ -140,7 +140,7 @@ pub(crate) async fn read<D: Services>(
         afd_http::openapi::path::Preference,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "The whole bag as it now reads, the written key included", body = PreferencesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 500, description = afd_http::openapi::INTERNAL),
     ),

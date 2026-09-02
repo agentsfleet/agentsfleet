@@ -70,8 +70,8 @@ const EVENT_APPEND: &str = "webhook_append_failed";
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
-        (status = 202, description = afd_http::openapi::ACCEPTED),
+        (status = 200, description = "A correctly signed delivery this fleet does not act on, and why", body = webhook::Ignored),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

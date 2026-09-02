@@ -51,7 +51,7 @@ const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json
         "are all decided before the answer is written. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "A lease to run, or a backoff to wait out", body = afd_wire::lease::LeaseResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

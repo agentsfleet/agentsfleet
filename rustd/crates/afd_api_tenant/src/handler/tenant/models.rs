@@ -88,7 +88,7 @@ const VARY_VALUE: &str = "Authorization";
         afd_http::openapi::query::ModelEntryFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK),
+        (status = 200, description = "One page of the catalogue, under the entity tag its bytes hash to", body = CatalogueResponse),
         (status = 304, description = afd_http::openapi::NOT_MODIFIED),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

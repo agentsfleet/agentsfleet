@@ -19,7 +19,9 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_library::{LibraryRequirements, PreparedBundle, Requirements};
+use afd_library::{
+    GalleryPage, LibraryRequirements, Onboarded, PreparedBundle, Requirements, SummaryEntry,
+};
 
 use super::*;
 
