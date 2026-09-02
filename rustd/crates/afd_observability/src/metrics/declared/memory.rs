@@ -5,7 +5,7 @@
 //! process-level readings: resident memory, and the bytes a sensitive request
 //! or response had erased from it.
 
-use crate::metrics::family::{Declared, CounterKind, GaugeKind};
+use crate::metrics::family::{CounterKind, Declared, GaugeKind};
 
 /// Durable-memory write volume.
 pub const MEMORY_ENTRIES_CAPTURED_TOTAL: Declared<CounterKind> =

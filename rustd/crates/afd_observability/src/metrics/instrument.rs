@@ -129,8 +129,8 @@ impl Instruments {
     /// [`Error::UnknownFamily`] when the census declares no such name,
     /// [`Error::KindMismatch`] when it declares it something other than a
     /// counter, and [`Error::NumberMismatch`] when it counts in `f64`.
-    pub fn counter_u64<M: CounterFamily>(&self, family: M) -> Result<Counter<u64>> {
-        let declared = self.declared_counter(&family, Number::U64)?;
+    pub fn counter_u64<M: CounterFamily>(&self, family: &M) -> Result<Counter<u64>> {
+        let declared = self.declared_counter(family, Number::U64)?;
         Ok(self
             .meter_for(declared)
             .u64_counter(declared.name.to_string())
@@ -144,8 +144,8 @@ impl Instruments {
     /// # Errors
     ///
     /// As [`Instruments::counter_u64`], with the number check inverted.
-    pub fn counter_f64<M: CounterFamily>(&self, family: M) -> Result<Counter<f64>> {
-        let declared = self.declared_counter(&family, Number::F64)?;
+    pub fn counter_f64<M: CounterFamily>(&self, family: &M) -> Result<Counter<f64>> {
+        let declared = self.declared_counter(family, Number::F64)?;
         Ok(self
             .meter_for(declared)
             .f64_counter(declared.name.to_string())
@@ -165,8 +165,8 @@ impl Instruments {
     /// [`Error::UnknownFamily`], [`Error::KindMismatch`] when the census
     /// declares it something other than a histogram, or
     /// [`Error::NumberMismatch`].
-    pub fn histogram_f64<M: HistogramFamily>(&self, family: M) -> Result<Histogram<f64>> {
-        let declared = self.registry.histogram(&family)?;
+    pub fn histogram_f64<M: HistogramFamily>(&self, family: &M) -> Result<Histogram<f64>> {
+        let declared = self.registry.histogram(family)?;
         check_number(declared, Number::F64)?;
         self.claim(family.name());
         Ok(self
@@ -189,12 +189,12 @@ impl Instruments {
     ///
     /// [`Error::UnknownFamily`], or [`Error::KindMismatch`] when the census
     /// declares it something other than a gauge.
-    pub fn gauge_u64<M, F>(&self, family: M, read: F) -> Result<()>
+    pub fn gauge_u64<M, F>(&self, family: &M, read: F) -> Result<()>
     where
         M: GaugeFamily,
         F: Fn() -> Vec<Reading> + Send + Sync + 'static,
     {
-        let declared = self.registry.gauge(&family)?;
+        let declared = self.registry.gauge(family)?;
         self.claim(family.name());
         let gauge = self
             .meter_for(declared)

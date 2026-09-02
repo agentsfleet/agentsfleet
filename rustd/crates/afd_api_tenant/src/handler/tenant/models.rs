@@ -15,9 +15,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use afd_core::error_code;
+use afd_core::id::Uuid7;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
-use afd_core::id::Uuid7;
 use afd_tenant::models::cursor::{self, Cursor};
 use afd_tenant::models::{Boundary, LibraryPage, LibraryRow};
 use afd_wire::models::{CatalogueModel, CatalogueResponse};
@@ -108,7 +108,9 @@ async fn read_catalogue<D: Services>(
     let page = library::timed(
         SURFACE,
         Stage::Sql,
-        services.catalogue().page(provider.as_deref(), after.as_ref(), limit),
+        services
+            .catalogue()
+            .page(provider.as_deref(), after.as_ref(), limit),
     )
     .await
     .map_err(Refusal::at(EVENT_CATALOGUE))?;

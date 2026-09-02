@@ -50,10 +50,7 @@ fn every_census_family_has_a_producer() {
         .into_iter()
         .map(|family| family.to_string())
         .collect();
-    let excused: BTreeSet<String> = UNPRODUCED
-        .iter()
-        .map(|row| row.family.to_owned())
-        .collect();
+    let excused: BTreeSet<String> = UNPRODUCED.iter().map(|row| row.family.to_owned()).collect();
 
     let unfed: Vec<&String> = unclaimed.difference(&excused).collect();
     assert!(

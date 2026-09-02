@@ -23,7 +23,10 @@ const UNREACHABLE: &str = "http://127.0.0.1:1";
 /// Everything preflight requires before it will answer at all.
 fn required() -> [(&'static str, &'static str); 7] {
     [
-        ("DATABASE_URL_API", "postgres://afd:afd@127.0.0.1:5432/agentsfleet"),
+        (
+            "DATABASE_URL_API",
+            "postgres://afd:afd@127.0.0.1:5432/agentsfleet",
+        ),
         ("REDIS_URL_API", "redis://127.0.0.1:6379"),
         (
             "ENCRYPTION_MASTER_KEY",
@@ -42,7 +45,10 @@ fn required() -> [(&'static str, &'static str); 7] {
 /// A resolved configuration carrying `extra` beside the required knobs.
 fn configured(extra: &[(&str, &str)]) -> crate::preflight::BootConfig {
     let mut pairs: Vec<(&str, &str)> = required().to_vec();
-    pairs.push(("CLERK_SECRET_KEY", "fixture-provider-secret-not-a-credential"));
+    pairs.push((
+        "CLERK_SECRET_KEY",
+        "fixture-provider-secret-not-a-credential",
+    ));
     pairs.extend(extra.iter().copied());
     preflight(&MapEnv::from_pairs(pairs)).expect("the fixture environment resolves")
 }

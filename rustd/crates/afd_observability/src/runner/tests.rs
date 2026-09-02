@@ -12,7 +12,6 @@
 
 use std::sync::Arc;
 
-
 use super::{MAX_SERIES, OVERFLOW_RUNNER, RunnerMetrics, SDK_OVERFLOW_MARKER};
 
 /// The identifier of the `index`-th distinct runner.
@@ -133,7 +132,10 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
     let metrics = RunnerMetrics::default();
     let runner_id = runner(1);
     let label = metrics.admit(&runner_id);
-    assert_eq!(label, runner_id, "a table with room admits the runner itself");
+    assert_eq!(
+        label, runner_id,
+        "a table with room admits the runner itself"
+    );
 
     metrics.seen(&runner_id, 1_760_000_000_000);
     metrics.leased(&runner_id);
@@ -142,15 +144,17 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
 
     let seen = metrics.last_seen_readings();
     assert_eq!(seen.len(), 1, "one admitted runner is one reading");
+    let seen = seen.first().expect("the length was just asserted");
     assert_eq!(
-        seen[0].value, 1_760_000_000,
+        seen.value, 1_760_000_000,
         "the stamp is published in the seconds the census declares, not the \
          milliseconds it is stored in"
     );
 
     let leases = metrics.active_lease_readings();
     assert_eq!(leases.len(), 1);
-    assert_eq!(leases[0].value, 1, "two taken and one given back is one held");
+    let leases = leases.first().expect("the length was just asserted");
+    assert_eq!(leases.value, 1, "two taken and one given back is one held");
 
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);

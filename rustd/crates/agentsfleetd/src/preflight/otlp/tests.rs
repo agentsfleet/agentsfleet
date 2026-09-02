@@ -148,10 +148,16 @@ fn a_standard_header_replaces_the_vendor_credential() {
 fn a_header_list_resolves_every_pair() {
     let config = resolved([
         (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
-        (OTEL_HEADERS_KNOB, "x-scope-org-id=tenant-a, x-extra = spaced "),
+        (
+            OTEL_HEADERS_KNOB,
+            "x-scope-org-id=tenant-a, x-extra = spaced ",
+        ),
     ]);
 
-    assert_eq!(header(&config, "x-scope-org-id").as_deref(), Some("tenant-a"));
+    assert_eq!(
+        header(&config, "x-scope-org-id").as_deref(),
+        Some("tenant-a")
+    );
     assert_eq!(header(&config, "x-extra").as_deref(), Some("spaced"));
 }
 

@@ -126,10 +126,10 @@ impl GaugeSources {
 }
 
 impl core::fmt::Debug for GaugeSources {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Closures carry nothing worth printing, and the count is the only
-        // fact about this type a reader could act on.
-        formatter.debug_struct("GaugeSources").finish_non_exhaustive()
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Closures carry nothing worth printing, and whether a reading is
+        // available is a runtime fact no `Debug` could answer honestly.
+        f.debug_struct("GaugeSources").finish_non_exhaustive()
     }
 }
 
@@ -150,7 +150,9 @@ static INSTALLED: OnceLock<Producers> = OnceLock::new();
 /// disagreement between this file and the contract, which is a defect to fix
 /// rather than a condition to serve through — so boot fails on it.
 pub fn install(instruments: &Instruments, sources: &GaugeSources) -> Result<bool> {
-    Ok(INSTALLED.set(Producers::claim(instruments, sources)?).is_ok())
+    Ok(INSTALLED
+        .set(Producers::claim(instruments, sources)?)
+        .is_ok())
 }
 
 /// The installed handles, or nothing when telemetry was never installed.

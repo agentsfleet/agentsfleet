@@ -5,13 +5,13 @@
 //! `docs/architecture/observability.md` §Metrics stay semantic carries why each
 //! divergence exists: a `ReportRequest` counts tokens cumulatively over a whole
 //! agent run rather than one provider call, so run totals cannot honestly wear
-//! the GenAI client-call names.
+//! the `GenAI` client-call names.
 //!
 //! They are also the only families drawn from the shared cost sub-budget rather
 //! than owning a series ceiling of their own, which is what the census's
 //! `shared:cost` policy says.
 
-use crate::metrics::family::{Declared, CounterKind, HistogramKind};
+use crate::metrics::family::{CounterKind, Declared, HistogramKind};
 
 /// Runner wall time per invocation.
 ///

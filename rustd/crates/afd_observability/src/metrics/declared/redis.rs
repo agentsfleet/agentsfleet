@@ -7,15 +7,13 @@
 //! orphan test reads both sides — a family that stops being declared here, or
 //! stops being excused there, fails.
 
-use crate::metrics::family::{Declared, CounterKind, GaugeKind};
+use crate::metrics::family::{CounterKind, Declared, GaugeKind};
 
 /// Pool utilisation (leased).
-pub const REDIS_POOL_ACTIVE: Declared<GaugeKind> =
-    Declared::new("agentsfleet_redis_pool_active");
+pub const REDIS_POOL_ACTIVE: Declared<GaugeKind> = Declared::new("agentsfleet_redis_pool_active");
 
 /// Pool utilisation (ready).
-pub const REDIS_POOL_IDLE: Declared<GaugeKind> =
-    Declared::new("agentsfleet_redis_pool_idle");
+pub const REDIS_POOL_IDLE: Declared<GaugeKind> = Declared::new("agentsfleet_redis_pool_idle");
 
 /// Dial volume.
 pub const REDIS_POOL_DIALS_TOTAL: Declared<CounterKind> =

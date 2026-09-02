@@ -20,10 +20,10 @@
 //! costs one poll rather than a full TTL of silence on that fleet.
 
 use afd_core::clock::UnixMillis;
-use afd_observability::producers;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
+use afd_observability::producers;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};

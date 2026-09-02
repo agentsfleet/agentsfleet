@@ -62,7 +62,7 @@ pub const ATTR_HTTP_RESPONSE_STATUS_CODE: &str = "http.response.status_code";
 
 /// The span a settled control-plane delivery is recorded under.
 ///
-/// A CUSTOM span, not a GenAI client span: the runner produces none and
+/// A CUSTOM span, not a `GenAI` client span: the runner produces none and
 /// propagates no trace context, so this process cannot honestly claim to be one
 /// half of a distributed agent trace.
 pub const SPAN_FLEET_DELIVERY: &str = "fleet.delivery";

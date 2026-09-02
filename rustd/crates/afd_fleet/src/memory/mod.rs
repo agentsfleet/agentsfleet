@@ -24,9 +24,9 @@ pub mod window;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_observability::producers::memory;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_observability::producers::memory;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta};
 use sqlx::{Acquire as _, Row as _};
 

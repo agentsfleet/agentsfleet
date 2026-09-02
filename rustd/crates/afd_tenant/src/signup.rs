@@ -40,10 +40,10 @@
 //! comes back.
 
 use afd_core::clock::UnixMillis;
-use afd_observability::producers;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_observability::producers;
 
 use crate::sql::signup as sql;
 use crate::workspace::name;

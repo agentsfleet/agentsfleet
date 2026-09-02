@@ -66,11 +66,12 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
         Ok(Self {
-            duration: instruments.histogram_f64(declared::INVOKE_AGENT_DURATION)?,
-            tokens: instruments.histogram_f64(declared::INVOKE_AGENT_TOKEN_USAGE)?,
-            cache_read: instruments.histogram_f64(declared::INVOKE_AGENT_CACHE_READ_TOKEN_USAGE)?,
-            credits: instruments.counter_u64(declared::BILLING_CREDIT_CONSUMED)?,
-            samples_dropped: instruments.counter_u64(declared::TELEMETRY_SAMPLES_DROPPED)?,
+            duration: instruments.histogram_f64(&declared::INVOKE_AGENT_DURATION)?,
+            tokens: instruments.histogram_f64(&declared::INVOKE_AGENT_TOKEN_USAGE)?,
+            cache_read: instruments
+                .histogram_f64(&declared::INVOKE_AGENT_CACHE_READ_TOKEN_USAGE)?,
+            credits: instruments.counter_u64(&declared::BILLING_CREDIT_CONSUMED)?,
+            samples_dropped: instruments.counter_u64(&declared::TELEMETRY_SAMPLES_DROPPED)?,
         })
     }
 }

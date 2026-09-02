@@ -9,7 +9,7 @@
 //! and they answer the same question the shed counters do: what did this
 //! process refuse, and why.
 
-use crate::metrics::family::{Declared, CounterKind, GaugeKind};
+use crate::metrics::family::{CounterKind, Declared, GaugeKind};
 
 /// Any growth: requests shed at the cap.
 pub const API_BACKPRESSURE_REJECTIONS_TOTAL: Declared<CounterKind> =
@@ -36,8 +36,7 @@ pub const SSE_HUB_RECONNECTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_sse_hub_reconnects_total");
 
 /// 0 when the worker should be up.
-pub const WORKER_RUNNING: Declared<GaugeKind> =
-    Declared::new("agentsfleet_worker_running");
+pub const WORKER_RUNNING: Declared<GaugeKind> = Declared::new("agentsfleet_worker_running");
 
 /// Span budget shedding; storms stay visible.
 ///
@@ -48,8 +47,7 @@ pub const HTTP_TRACE_SUPPRESSED_TOTAL: Declared<CounterKind> =
 /// Exporter ring fill per signal.
 ///
 /// Labels: `signal`.
-pub const OTLP_QUEUE_DEPTH: Declared<GaugeKind> =
-    Declared::new("agentsfleet_otlp_queue_depth");
+pub const OTLP_QUEUE_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_otlp_queue_depth");
 
 /// Telemetry loss counted at the source.
 ///

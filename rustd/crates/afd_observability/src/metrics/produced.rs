@@ -51,13 +51,11 @@ const NO_REDIS_POOL: &str =
 /// ingress that turns a production result into a correlated intent —
 /// `app_route.rs` says so in as many words. These five leave this file with
 /// that handler.
-const NO_REPAIR_INGRESS: &str =
-    "the repair-result ingress has no Rust home yet, so no result is received, \
+const NO_REPAIR_INGRESS: &str = "the repair-result ingress has no Rust home yet, so no result is received, \
      correlated or turned into an intent here";
 
 /// Why nothing feeds the request- and response-erasure counters.
-const NO_ERASURE_PATH: &str =
-    "no request- or response-buffer erasure path exists in this daemon";
+const NO_ERASURE_PATH: &str = "no request- or response-buffer erasure path exists in this daemon";
 
 /// Every declared family this build does not produce.
 ///

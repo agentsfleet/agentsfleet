@@ -42,12 +42,12 @@ impl Handles {
     pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
         Ok(Self {
             stage_seconds: instruments
-                .counter_f64(declared::LIBRARY_STAGE_DURATION_SECONDS_TOTAL)?,
+                .counter_f64(&declared::LIBRARY_STAGE_DURATION_SECONDS_TOTAL)?,
             stage_observations: instruments
-                .counter_u64(declared::LIBRARY_STAGE_OBSERVATIONS_TOTAL)?,
-            read_outcomes: instruments.counter_u64(declared::LIBRARY_READ_OUTCOME_TOTAL)?,
-            payload_bytes: instruments.counter_u64(declared::LIBRARY_PAYLOAD_BYTES_TOTAL)?,
-            results: instruments.counter_u64(declared::LIBRARY_RESULTS_TOTAL)?,
+                .counter_u64(&declared::LIBRARY_STAGE_OBSERVATIONS_TOTAL)?,
+            read_outcomes: instruments.counter_u64(&declared::LIBRARY_READ_OUTCOME_TOTAL)?,
+            payload_bytes: instruments.counter_u64(&declared::LIBRARY_PAYLOAD_BYTES_TOTAL)?,
+            results: instruments.counter_u64(&declared::LIBRARY_RESULTS_TOTAL)?,
         })
     }
 }
