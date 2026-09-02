@@ -99,7 +99,14 @@
         "operationId": "onboard_platform_fleet_library",
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLibraryCreated"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -1107,7 +1114,14 @@
         },
         "responses": {
           "201": {
-            "description": "Created"
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MintedCliCredentialResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -1980,7 +1994,14 @@
         "operationId": "register_runner",
         "responses": {
           "201": {
-            "description": "Runner registered; the bearer token is returned exactly once"
+            "description": "Runner registered; the bearer token is returned exactly once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -2219,8 +2240,8 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "OK"
+          "202": {
+            "description": "Accepted for publication; a subscriber reading it is a separate event"
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -3466,7 +3487,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogueEntry"
+                  }
+                }
+              }
+            }
           },
           "400": {
             "description": "The request could not be read"
@@ -6266,6 +6297,39 @@
           }
         }
       },
+      "CatalogueEntry": {
+        "type": "object",
+        "description": "One row of `GET …/connectors`.\n\nNo secret material and no field that could carry any — the whole document is\nfour facts about availability.",
+        "required": [
+          "id",
+          "archetype",
+          "display_name",
+          "configured",
+          "connected"
+        ],
+        "properties": {
+          "archetype": {
+            "type": "string",
+            "description": "Which flow connecting it runs — see [`ARCHETYPE_OAUTH2`]."
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this DEPLOYMENT has been set up to connect it."
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Whether THIS workspace holds a landed grant for it."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The name a card shows."
+          },
+          "id": {
+            "type": "string",
+            "description": "The provider's route segment, which is also its stored id."
+          }
+        }
+      },
       "ChargeSummary": {
         "type": "object",
         "description": "One ledger row as the charges list shows it.\n\nField-for-field the Zig `TelemetryRow`, in its order — the struct is\nserialized straight to JSON there, so the row IS the wire shape.",
@@ -7554,6 +7618,34 @@
           }
         }
       },
+      "MintedCliCredentialResponse": {
+        "type": "object",
+        "description": "The one response that reveals a command-line credential's plaintext.\n\nCarries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,\nand nothing else on this surface has a field that could — there is no list\nverb here at all, so the mint reply is the whole of the exposure.",
+        "required": [
+          "id",
+          "credential",
+          "machine_name",
+          "deployment"
+        ],
+        "properties": {
+          "credential": {
+            "type": "string",
+            "description": "The credential itself. Shown once and never stored in this shape."
+          },
+          "deployment": {
+            "type": "string",
+            "description": "The deployment that minted it — this daemon, never a caller's claim."
+          },
+          "id": {
+            "type": "string",
+            "description": "The credential row's identifier, which the revoke addresses it by."
+          },
+          "machine_name": {
+            "type": "string",
+            "description": "The terminal's label, echoed back as it was stored."
+          }
+        }
+      },
       "ModelEntriesResponse": {
         "type": "object",
         "description": "`GET /v1/tenants/me/models` — one page of the registry.",
@@ -8241,6 +8333,30 @@
           "platform",
           "self_managed"
         ]
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "description": "`POST /v1/runners` reply: the durable identity plus its bearer token.\n\nThe token is returned ONCE — the daemon stores only its hash.",
+        "required": [
+          "runner_id",
+          "runner_token",
+          "assigned_policy"
+        ],
+        "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/AssignedPolicy",
+            "description": "The assignment AS STORED, with the worker count clamped, so the\nenrolling operator sees exactly what the host will apply."
+          },
+          "runner_id": {
+            "type": "string",
+            "description": "The runner's durable identifier."
+          },
+          "runner_token": {
+            "type": "string",
+            "description": "The minted bearer token. Secret — revealed once, never re-readable."
+          }
+        },
+        "additionalProperties": false
       },
       "RenewResponse": {
         "type": "object",

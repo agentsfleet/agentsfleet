@@ -58,7 +58,7 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
         "its own. ",
     ),
     responses(
-        (status = 201, description = "Runner registered; the bearer token is returned exactly once"),
+        (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
