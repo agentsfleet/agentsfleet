@@ -20,6 +20,12 @@ use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
+/// The instant the second and third gates share.
+///
+/// Two rows in one millisecond is the ordinary case — a run parks several tools
+/// at once — and it is the case a cursor carrying only an instant gets wrong.
+const SHARED_INSTANT: i64 = 2;
+
 /// The inbox reads the five parameters the dashboard sends, and pages.
 ///
 /// Before this the handler took no query at all: it passed the default filter,
@@ -33,6 +39,12 @@ async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
     let fixture = Fixture::create_as(LISTING_SUBJECT).await;
     fixture.seed().await;
     let second = fixture.seed_second_gate().await;
+    // A third gate sharing the second's instant: a cursor carrying only the
+    // instant would skip it, and a fixture whose rows all differ cannot tell
+    // that apart from a cursor that resumes correctly.
+    let third = fixture.seed_gate("tool", SHARED_INSTANT).await;
+    let other_fleet = fixture.seed_second_fleet().await;
+    let elsewhere = fixture.seed_gate_for(&other_fleet, "tool", 4).await;
     let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
@@ -44,8 +56,14 @@ async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
     .router();
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
 
-    assert_filters_narrow(&router, &fixture, &collection, &second).await;
-    assert_the_page_resumes(&router, &fixture, &collection, &second).await;
+    assert_filters_narrow(&router, &fixture, &collection, &second, &elsewhere).await;
+    assert_the_page_resumes(
+        &router,
+        &fixture,
+        &collection,
+        &[fixture.gate.clone(), second.clone(), third],
+    )
+    .await;
     assert_unreadable_parameters_refuse(&router, &fixture, &collection).await;
 
     fixture.cleanup().await;
@@ -57,6 +75,7 @@ async fn assert_filters_narrow(
     fixture: &Fixture,
     collection: &str,
     second: &str,
+    elsewhere: &str,
 ) {
     let ids = |page: &Value| -> Vec<String> {
         page.get("items")
@@ -69,11 +88,13 @@ async fn assert_filters_narrow(
     };
 
     let all = read(router, &fixture.token, collection, "").await;
-    assert_eq!(ids(&all).len(), 2, "both pending gates are waiting: {all}");
+    assert_eq!(ids(&all).len(), 4, "every pending gate is waiting: {all}");
 
     let by_kind = read(router, &fixture.token, collection, "?gate_kind=spend").await;
     assert_eq!(ids(&by_kind), vec![second.to_owned()], "{by_kind}");
 
+    // Asserted by EXCLUSION, not by count: a filter that is ignored returns
+    // the unfiltered page, and a count alone cannot tell the two apart.
     let by_fleet = read(
         router,
         &fixture.token,
@@ -81,50 +102,78 @@ async fn assert_filters_narrow(
         &format!("?fleet_id={}", fixture.fleet),
     )
     .await;
-    assert_eq!(ids(&by_fleet).len(), 2, "{by_fleet}");
+    let narrowed = ids(&by_fleet);
+    assert_eq!(narrowed.len(), 3, "{by_fleet}");
+    assert!(
+        !narrowed.iter().any(|gate| gate == elsewhere),
+        "another fleet's gate survived the filter: {by_fleet}"
+    );
 
     // Both gates are pending, so a resolved status selects none of them. An
     // ignored parameter would answer the pending page here and look correct.
     let resolved = read(router, &fixture.token, collection, "?status=approved").await;
     assert!(ids(&resolved).is_empty(), "{resolved}");
+    assert!(
+        resolved.get("next_cursor").is_none_or(Value::is_null),
+        "an empty page points nowhere: {resolved}"
+    );
 
     let explicit_pending = read(router, &fixture.token, collection, "?status=pending").await;
-    assert_eq!(ids(&explicit_pending).len(), 2, "{explicit_pending}");
+    assert_eq!(ids(&explicit_pending).len(), 4, "{explicit_pending}");
 }
 
-/// A full page hands back a cursor, and that cursor resumes after it.
+/// A full page hands back a cursor, and the walk visits every row exactly once.
+///
+/// Asserted as a UNION over pages rather than as "page two differs from page
+/// one": the endpoint promises `(created_at, id)` ordering precisely so gates
+/// sharing a millisecond are not skipped, and two rows that merely differ
+/// cannot show that.
 async fn assert_the_page_resumes(
     router: &axum::Router,
     fixture: &Fixture,
     collection: &str,
-    second: &str,
+    expected: &[String],
 ) {
-    let first = read(router, &fixture.token, collection, "?limit=1").await;
-    assert_eq!(
-        first
+    let mut seen: Vec<String> = Vec::new();
+    let mut query = "?limit=1&fleet_id=".to_owned() + &fixture.fleet;
+    for _page in 0..expected.len() {
+        let page = read(router, &fixture.token, collection, &query).await;
+        let gate = page
             .pointer("/items/0/gate_id")
             .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(fixture.gate.clone()),
-        "oldest first: {first}"
-    );
-    let cursor = first
-        .get("next_cursor")
-        .and_then(Value::as_str)
-        .expect("a full page hands back where it ended")
-        .to_owned();
+            .expect("a page of one carries one gate")
+            .to_owned();
+        seen.push(gate);
+        let cursor = page
+            .get("next_cursor")
+            .and_then(Value::as_str)
+            .expect("a full page hands back where it ended")
+            .to_owned();
+        // Encoded the way a browser sends it: `URLSearchParams` escapes the
+        // colon in the clear wire form, and reading it raw refuses every page
+        // after the first.
+        query = format!(
+            "?limit=1&fleet_id={}&cursor={}",
+            fixture.fleet,
+            cursor.replace(':', "%3A")
+        );
+    }
 
-    let resumed = read(
-        router,
-        &fixture.token,
-        collection,
-        &format!("?limit=1&cursor={cursor}"),
-    )
-    .await;
+    let mut unique = seen.clone();
+    unique.sort_unstable();
+    unique.dedup();
     assert_eq!(
-        resumed.pointer("/items/0/gate_id").and_then(Value::as_str),
-        Some(second),
-        "the second page resumes strictly after the first: {resumed}"
+        unique.len(),
+        seen.len(),
+        "the walk returned a row twice: {seen:?}"
+    );
+    let mut wanted: Vec<String> = expected.to_vec();
+    wanted.sort_unstable();
+    assert_eq!(unique, wanted, "the walk skipped a row: {seen:?}");
+    assert_eq!(
+        seen.first().map(String::as_str),
+        Some(fixture.gate.as_str()),
+        "oldest first"
     );
 
     // The last page is short, so it ends the walk rather than pointing at rows

@@ -24,11 +24,14 @@
 //! refused by name rather than silently answered with the pending page, which
 //! is what an ignored parameter amounts to.
 
+use std::borrow::Cow;
+
 use afd_approval::Decision;
+use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor as CoreCursor, InvalidCursor};
 use afd_wire::approval::status;
 
-use crate::handler::{Refusal, parameter};
+use crate::handler::{Refusal, decoded_parameter, parameter};
 
 /// The parameter names, spelled once each (RULE UFS).
 const QUERY_STATUS: &str = "status";
@@ -53,6 +56,16 @@ const DETAIL_CURSOR: &str = "invalid cursor";
 
 /// The refusal a status outside the served vocabulary earns.
 const DETAIL_STATUS: &str = "status must be pending, approved, denied or timed_out";
+
+/// The refusal a fleet id that is not an identifier earns.
+///
+/// Refused HERE rather than at the statement: `SELECT_GATE_PAGE` casts the
+/// value to `uuid`, so an unparsed one reaches Postgres and comes back as a
+/// cast failure — a 500 and an error log line for a client's typo.
+const DETAIL_FLEET_ID: &str = "fleet_id must be a valid identifier";
+
+/// The refusal a query string this daemon cannot decode earns.
+const DETAIL_QUERY: &str = "malformed query string";
 
 /// Where a page resumes, owned so the handler can borrow it per read.
 ///
@@ -97,15 +110,25 @@ impl Listing {
     ///
     /// The order is the Zig's: `limit`, then `cursor`, then the three filters.
     ///
+    /// # Which parameters are decoded, and why not all of them
+    ///
+    /// `cursor` and `gate_kind` are decoded; `limit`, `status` and `fleet_id`
+    /// are drawn from alphabets RFC 3986 leaves alone, so reading them raw is
+    /// honest. The cursor is the one that MATTERS: its wire form is
+    /// `{millis}:{id}` in the clear, and a browser building the query with
+    /// `URLSearchParams` percent-escapes that colon. Read raw,
+    /// `cursor=1735689600000%3A0192…` finds no separator and every page after
+    /// the first is refused 400 — which is what the dashboard sends.
+    ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused.
     pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
         Ok(Self {
             limit: parse_limit(parameter(query, QUERY_LIMIT))?,
-            cursor: parse_cursor(parameter(query, QUERY_CURSOR))?,
+            cursor: parse_cursor(decoded(query, QUERY_CURSOR)?.as_deref())?,
             status: parse_status(parameter(query, QUERY_STATUS))?,
-            fleet_id: parameter(query, QUERY_FLEET_ID).map(str::to_owned),
-            gate_kind: parameter(query, QUERY_GATE_KIND).map(str::to_owned),
+            fleet_id: parse_fleet_id(parameter(query, QUERY_FLEET_ID))?,
+            gate_kind: decoded(query, QUERY_GATE_KIND)?.map(Cow::into_owned),
         })
     }
 }
@@ -146,6 +169,25 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
     }
 }
 
+/// One parameter, decoded the way a query-string reader decodes every value.
+///
+/// A broken escape refuses the whole REQUEST rather than the parameter, which
+/// is what the event listing does for the same reason: the string parses in one
+/// pass, so a bad escape anywhere in it is a 400.
+fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
+    decoded_parameter(query, name).map_err(|_broken| Refusal::malformed(DETAIL_QUERY))
+}
+
+/// The fleet the page is narrowed to, checked before it reaches the statement.
+fn parse_fleet_id(raw: Option<&str>) -> Result<Option<String>, Refusal> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    Uuid7::parse(raw)
+        .map(|fleet| Some(fleet.as_str().to_owned()))
+        .map_err(|_shape| Refusal::malformed(DETAIL_FLEET_ID))
+}
+
 /// The status filter, as the store expresses it.
 ///
 /// `pending` resolves to ABSENT rather than to a value, because that is how the
@@ -165,104 +207,5 @@ fn parse_status(raw: Option<&str>) -> Result<Option<Decision>, Refusal> {
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "a test asserts by panicking on an unmet precondition"
-    )]
-
-    use super::*;
-
-    /// A cursor in the form `keyset_cursor.zig` writes.
-    const ZIG_CURSOR: &str = "1735689600000:01924f4e-0000-7000-8000-00000000a11e";
-
-    /// The boundary instant that cursor carries.
-    const ZIG_CURSOR_AT: i64 = 1_735_689_600_000;
-
-    /// The boundary gate that cursor carries.
-    const ZIG_CURSOR_GATE: &str = "01924f4e-0000-7000-8000-00000000a11e";
-
-    /// What a refused parse answers.
-    const BAD_REQUEST: u16 = 400;
-
-    fn refusal_status(query: &str) -> u16 {
-        Listing::parse(query)
-            .err()
-            .map_or(0, |refusal| refusal.status().as_u16())
-    }
-
-    fn parsed(query: &str) -> Listing {
-        Listing::parse(query)
-            .ok()
-            .unwrap_or_else(|| panic!("{query} should parse"))
-    }
-
-    #[test]
-    fn an_empty_query_is_the_pending_page_at_the_default_size() {
-        let listing = parsed("");
-        assert_eq!(listing.limit, DEFAULT_LIMIT);
-        assert!(listing.status.is_none(), "absent means pending");
-        assert!(listing.fleet_id.is_none());
-        assert!(listing.gate_kind.is_none());
-        assert!(listing.cursor.is_none());
-    }
-
-    #[test]
-    fn the_three_filters_are_read_off_the_string() {
-        let listing = parsed("status=denied&fleet_id=fleet-7&gate_kind=spend");
-        assert_eq!(listing.status, Some(Decision::Denied));
-        assert_eq!(listing.fleet_id.as_deref(), Some("fleet-7"));
-        assert_eq!(listing.gate_kind.as_deref(), Some("spend"));
-    }
-
-    #[test]
-    fn pending_and_an_absent_status_are_the_same_request() {
-        assert_eq!(parsed("status=pending").status, None);
-        assert_eq!(parsed("").status, None);
-    }
-
-    #[test]
-    fn a_status_no_filter_can_express_is_refused_rather_than_ignored() {
-        // `auto_killed` is a spelling the COLUMN carries and a decision cannot
-        // write. Serving the pending page for it would answer a question the
-        // caller did not ask, and look to them like an empty inbox.
-        assert_eq!(refusal_status("status=auto_killed"), BAD_REQUEST);
-        assert_eq!(refusal_status("status=Approved"), BAD_REQUEST);
-        assert_eq!(refusal_status("status="), BAD_REQUEST);
-    }
-
-    #[test]
-    fn the_page_size_band_is_the_zig_daemons() {
-        assert_eq!(parsed("limit=1").limit, 1);
-        assert_eq!(parsed("limit=200").limit, MAX_LIMIT);
-        for outside in ["limit=0", "limit=201", "limit=-1", "limit=ten", "limit="] {
-            assert_eq!(refusal_status(outside), BAD_REQUEST, "{outside}");
-        }
-    }
-
-    #[test]
-    fn a_cursor_the_zig_daemon_minted_resumes_this_one() {
-        let listing = parsed(&format!("cursor={ZIG_CURSOR}"));
-        let resume = listing.cursor.expect("the cursor parses");
-        let borrowed = resume.borrowed();
-        assert_eq!(borrowed.created_at, ZIG_CURSOR_AT);
-        assert_eq!(borrowed.gate_id, ZIG_CURSOR_GATE);
-    }
-
-    #[test]
-    fn a_cursor_this_endpoint_never_issued_is_refused() {
-        // The text form belongs to a name-ordered walk. This listing orders by
-        // instant alone, so honouring one would resume an ordering it never
-        // served.
-        for unminted in [
-            "cursor=s:bmFtZQ:01924f4e-0000-7000-8000-00000000a11e",
-            "cursor=notacursor",
-            "cursor=1735689600000:",
-            "cursor=abc:01924f4e",
-            "cursor=",
-        ] {
-            assert_eq!(refusal_status(unminted), BAD_REQUEST, "{unminted}");
-        }
-    }
-}
+#[path = "query/tests.rs"]
+mod tests;

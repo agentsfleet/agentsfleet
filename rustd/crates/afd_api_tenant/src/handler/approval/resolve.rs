@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use afd_approval::{Decision, Resolution};
 use afd_core::error_code;
+use afd_http::envelope;
 use afd_wire::approval::{ResolveApprovalRequest, ResolvedResponse};
 use axum::Json;
 use axum::body::Bytes;
@@ -103,16 +104,23 @@ pub(crate) async fn resolve<D: Services>(
             resolved_by: Cow::Owned(row.resolved_by),
         })
         .into_response()),
-        // A 409, and the `current_state` is what makes it useful: the standing
-        // outcome is the one fact the second caller needs, and it tells them to
-        // refetch rather than retry a decision that cannot be changed. The
-        // resolver is NOT interpolated into the sentence — a subject is an
-        // entity value, and the detail rules keep those off the wire — so the
-        // client reads it back off the gate it refetches.
-        Resolution::AlreadyResolved(row) => Err(Refusal::conflict(
+        // A 409 carrying the standing answer, not merely the fact of one.
+        // `current_state` tells a client to stop retrying; the attribution
+        // beside it is what the dashboard renders and what
+        // `approvals/resolve.zig` has always sent. The resolver is not
+        // interpolated into the SENTENCE — a subject is an entity value, and
+        // the detail rules keep those out of `detail` — so it rides the
+        // envelope as an extension instead.
+        Resolution::AlreadyResolved(row) => Err(Refusal::already_resolved(
             error_code::APPROVAL_ALREADY_RESOLVED,
             DETAIL_ALREADY_RESOLVED,
-            &row.status,
+            envelope::Resolution {
+                gate_id: row.gate_id,
+                action_id: row.action_id,
+                outcome: row.status,
+                resolved_at: row.updated_at,
+                resolved_by: row.resolved_by,
+            },
         )),
         Resolution::NotFound => Err(Refusal::coded(
             error_code::APPROVAL_NOT_FOUND,

@@ -39,6 +39,16 @@ pub struct ProblemBody {
     pub etag: Option<String>,
     /// On a 424 only: the credentials this workspace has yet to store.
     pub missing_secrets: Option<Vec<String>>,
+    /// On an answered approval gate's 409 only: the gate that was answered.
+    pub gate_id: Option<String>,
+    /// On that 409 only: the action the gate held.
+    pub action_id: Option<String>,
+    /// On that 409 only: the answer that stands.
+    pub outcome: Option<String>,
+    /// On that 409 only: when the standing answer was given.
+    pub resolved_at: Option<i64>,
+    /// On that 409 only: who gave it.
+    pub resolved_by: Option<String>,
     /// A curated sentence for end users, where the code has one.
     pub user_message: Option<String>,
 }

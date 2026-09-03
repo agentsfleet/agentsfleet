@@ -191,12 +191,18 @@ fn require_the_credential_each_route_guards(document: &mut utoipa::openapi::Open
 fn describe_every_refusal_as_a_problem(document: &mut utoipa::openapi::OpenApi) {
     let body = Ref::from_schema_name(ProblemBody::name());
     for item in document.paths.paths.values_mut() {
+        // Every operation a `PathItem` can carry, not the five this daemon
+        // happens to mount today: a `head` added later would otherwise publish
+        // its refusals bodyless, and nothing would say so.
         let operations = [
             &mut item.get,
             &mut item.post,
             &mut item.put,
             &mut item.patch,
             &mut item.delete,
+            &mut item.head,
+            &mut item.options,
+            &mut item.trace,
         ];
         for operation in operations.into_iter().flatten() {
             for (code, response) in &mut operation.responses.responses {
@@ -220,9 +226,27 @@ fn describe_every_refusal_as_a_problem(document: &mut utoipa::openapi::OpenApi) 
 
 /// Whether a response key names a client or server error.
 ///
-/// `default` and the success and redirect statuses are not refusals; the
-/// envelope writer is never the one answering them.
-fn is_a_refusal(code: &str) -> bool {
-    code.parse::<StatusCode>()
+/// Three spellings, because `OpenAPI` allows three. A status is the common one;
+/// `4XX` and `5XX` are the range keys, which a plane may reach for; and
+/// `default` is the catch-all, which in a document whose every named response
+/// is a success can only be describing a failure. The success and redirect
+/// statuses are not refusals — the envelope writer never answers them — and
+/// the contract test reads this same function so the two cannot disagree.
+#[must_use]
+pub fn is_a_refusal(code: &str) -> bool {
+    matches!(
+        code,
+        RANGE_CLIENT_ERROR | RANGE_SERVER_ERROR | DEFAULT_RESPONSE
+    ) || code
+        .parse::<StatusCode>()
         .is_ok_and(|status| status.is_client_error() || status.is_server_error())
 }
+
+/// The `OpenAPI` range key covering every client error.
+const RANGE_CLIENT_ERROR: &str = "4XX";
+
+/// The `OpenAPI` range key covering every server error.
+const RANGE_SERVER_ERROR: &str = "5XX";
+
+/// The `OpenAPI` catch-all response key.
+const DEFAULT_RESPONSE: &str = "default";

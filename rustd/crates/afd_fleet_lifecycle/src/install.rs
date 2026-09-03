@@ -158,9 +158,11 @@ impl Fleets {
         }
         let held = self.secrets.list(workspace).await?;
         let stored: BTreeSet<&str> = held.iter().map(|secret| secret.name.as_str()).collect();
-        let missing: Vec<String> = declared
-            .iter()
-            .map(ToString::to_string)
+        // A set on both sides: a bundle is free to declare one credential
+        // twice, and a refusal listing it twice reads as two missing secrets.
+        let wanted: BTreeSet<String> = declared.iter().map(ToString::to_string).collect();
+        let missing: Vec<String> = wanted
+            .into_iter()
             .filter(|name| !stored.contains(name.as_str()))
             .collect();
         if missing.is_empty() {
@@ -188,8 +190,16 @@ impl Fleets {
             .resolve(&mut connection, workspace, &request.source)
             .await?;
         let authored = authored::read(entry)?;
+        // Released BEFORE the vault read, and reacquired for the write. The
+        // pre-flight takes a pool connection of its own, so holding this one
+        // across it would let N concurrent installs each hold one and wait for
+        // another — the pool exhausting itself on a check that needs no
+        // transaction, which is the trade the stream setup below already makes
+        // for the same reason.
+        drop(connection);
         self.require_the_declared_credentials(workspace, &authored)
             .await?;
+        let mut connection = self.database.acquire().await?;
 
         let id = self.mint_id(now)?;
         let name = self

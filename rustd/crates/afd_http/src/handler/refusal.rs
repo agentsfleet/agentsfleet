@@ -211,6 +211,23 @@ impl Refusal {
         ))
     }
 
+    /// A 409 on an answered gate, carrying the answer that stands.
+    ///
+    /// The five members `approvals/resolve.zig` writes and the dashboard reads
+    /// off the top level. Without them the operator's alert renders two
+    /// undefined values where the outcome and the resolver belong.
+    #[must_use]
+    pub fn already_resolved(
+        code: afd_core::error_code::ErrorCode,
+        detail: &'static str,
+        resolution: crate::envelope::Resolution,
+    ) -> Self {
+        Self(Box::new(
+            ProblemResponse::already_resolved(code, detail, RequestId::mint(), resolution)
+                .into_response(),
+        ))
+    }
+
     /// A 424 naming the credentials a workspace has yet to store.
     ///
     /// [`Refusal::preconditioned`]'s shape, for the same reason: the remedy is

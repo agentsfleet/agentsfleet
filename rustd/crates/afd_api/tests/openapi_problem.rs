@@ -21,13 +21,20 @@ use std::collections::BTreeSet;
 
 use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 use afd_core::error_code;
+use afd_http::envelope::Resolution;
 use afd_http::openapi::problem::ProblemBody;
 use axum::body::to_bytes;
 use axum::response::IntoResponse;
 use utoipa::ToSchema as _;
 
 /// The verbs a `PathItem` can carry, as the document spells them.
-const METHODS: [&str; 5] = ["get", "post", "put", "patch", "delete"];
+///
+/// All eight, not the five this daemon mounts: the pass under test walks every
+/// one, and a test that walked fewer would share its blind spot rather than
+/// grade it.
+const METHODS: [&str; 8] = [
+    "get", "post", "put", "patch", "delete", "head", "options", "trace",
+];
 
 /// Where a schema reference points when it resolves.
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
@@ -86,7 +93,10 @@ fn test_every_refusal_names_the_problem_body() {
                 .get("responses")
                 .and_then(serde_json::Value::as_object);
             for (code, response) in responses.into_iter().flatten() {
-                if !code.starts_with('4') && !code.starts_with('5') {
+                // The production predicate, not a second spelling of it: a
+                // test that decided "refusal" its own way would pass while the
+                // two disagreed about `default` and the range keys.
+                if !afd_api::openapi::is_a_refusal(code) {
                     continue;
                 }
                 graded += 1;
@@ -117,12 +127,51 @@ fn test_every_refusal_names_the_problem_body() {
 
     assert!(graded > 0, "the document declares no refusals at all");
     assert!(
+        successes_carrying_a_problem_body(&document).is_empty(),
+        "a success carries a refusal body, so the pass has widened past the \
+         statuses the envelope writer actually answers: {:?}",
+        successes_carrying_a_problem_body(&document),
+    );
+    assert!(
         wrong.is_empty(),
         "a refusal does not name the problem body, so a generated client types it \
          as nothing ({} of them):\n  {}",
         wrong.len(),
         wrong.join("\n  "),
     );
+}
+
+/// Every success or redirect that wrongly carries a refusal body.
+///
+/// The negative half of the gate above. Without it a pass widened to every
+/// parseable status would stamp `application/problem+json` onto all thirteen
+/// of the document's 204s and the positive assertion would still be green.
+fn successes_carrying_a_problem_body(document: &serde_json::Value) -> Vec<String> {
+    let mut wrong = Vec::new();
+    let paths = document.get("paths").and_then(serde_json::Value::as_object);
+    for (path, item) in paths.into_iter().flatten() {
+        for method in METHODS {
+            let Some(operation) = item.get(method) else {
+                continue;
+            };
+            let responses = operation
+                .get("responses")
+                .and_then(serde_json::Value::as_object);
+            for (code, response) in responses.into_iter().flatten() {
+                if afd_api::openapi::is_a_refusal(code) {
+                    continue;
+                }
+                if response
+                    .get("content")
+                    .and_then(|content| content.get(CONTENT_TYPE_PROBLEM_JSON))
+                    .is_some()
+                {
+                    wrong.push(format!("{} {path} {code}", method.to_uppercase()));
+                }
+            }
+        }
+    }
+    wrong
 }
 
 /// The schema the document publishes is the envelope the daemon writes.
@@ -179,6 +228,19 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
     for problem in afd_core::problem::entries() {
         sent.extend(wire_keys(ProblemResponse::new(problem.code(), "d", "r")).await);
     }
+    let standing = wire_keys(ProblemResponse::already_resolved(
+        error_code::AUTH_UNAUTHORIZED,
+        "d",
+        "r",
+        Resolution {
+            gate_id: "g".to_owned(),
+            action_id: "a".to_owned(),
+            outcome: "approved".to_owned(),
+            resolved_at: 1,
+            resolved_by: "someone".to_owned(),
+        },
+    ))
+    .await;
     let short_a_credential = wire_keys(ProblemResponse::missing_secrets(
         error_code::AUTH_UNAUTHORIZED,
         "d",
@@ -189,6 +251,7 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
     sent.extend(conflict.iter().cloned());
     sent.extend(precondition.iter().cloned());
     sent.extend(short_a_credential.iter().cloned());
+    sent.extend(standing.iter().cloned());
 
     assert_eq!(required, base, "required is what every refusal carries");
     assert_eq!(
@@ -197,4 +260,16 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
     );
     assert!(conflict.contains("current_state") && precondition.contains("etag"));
     assert!(short_a_credential.contains("missing_secrets"));
+    for member in [
+        "gate_id",
+        "action_id",
+        "outcome",
+        "resolved_at",
+        "resolved_by",
+    ] {
+        assert!(
+            standing.contains(member),
+            "{member} is what the dashboard renders off an answered gate"
+        );
+    }
 }
