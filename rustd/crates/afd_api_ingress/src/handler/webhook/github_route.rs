@@ -54,6 +54,7 @@ const EVENT_APPEND: &str = "webhook_github_append_failed";
         "failed completed `workflow_run` events create fleet events. A ",
         "delivery identifier remains reserved for 72 hours after acceptance. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         afd_http::openapi::path::FleetOnly,
         ("X-GitHub-Event" = String, Header, description = "GitHub event type."),
@@ -61,12 +62,13 @@ const EVENT_APPEND: &str = "webhook_github_append_failed";
         ("X-Hub-Signature-256" = String, Header, description = "HMAC-SHA256 of the raw body, prefixed with `sha256=`."),
     ),
     responses(
-        (status = 200, description = "A correctly signed delivery this fleet does not act on, and why", body = webhook::Ignored),
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
         (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

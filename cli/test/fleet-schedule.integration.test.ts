@@ -17,9 +17,8 @@ const row = {
   cron: "0 9 * * *",
   timezone: "Asia/Kolkata",
   message: "summarize",
-  desired_status: "active",
-  sync_status: "synced",
-  generation: 1,
+  status: "active",
+  sync: "synced",
 };
 
 describe("schedule commands", () => {
@@ -66,7 +65,7 @@ describe("schedule commands", () => {
 
   test("`schedule list` emits JSON when stdout is redirected", async () => {
     await authedScope(async () => {
-      const envelope = { items: [row], total: 1, next_cursor: null };
+      const envelope = { schedules: [row] };
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules`]: () => jsonResponse(200, envelope),
       };
@@ -87,7 +86,7 @@ describe("schedule commands", () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`PATCH /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
-          () => jsonResponse(200, { ...row, desired_status: "paused" }),
+          () => jsonResponse(200, { ...row, status: "paused" }),
         [`DELETE /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
           () => jsonResponse(204, {}),
       };

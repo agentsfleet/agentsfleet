@@ -90,6 +90,13 @@ pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-0
 /// operator plane, so naming the missing resource is safe and actionable.
 pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
 
+/// A runner still in service cannot have its record retired.
+///
+/// `ERR_RUNNER_MUST_REVOKE_FIRST` in the Zig registry. The destructive step is
+/// the revoke; deleting merely retires a row the revoke already made inert, so
+/// a delete that arrives first is refused rather than escalated.
+pub const RUNNER_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-RUN-016");
+
 /// A fleet has reached a spend ceiling its own author declared.
 ///
 /// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared

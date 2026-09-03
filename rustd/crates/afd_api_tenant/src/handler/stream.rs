@@ -81,6 +81,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
     ),
     responses(
         (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -132,8 +133,8 @@ pub(crate) async fn fleet<D: Services>(
         "0 for each connection. The route ignores `Last-Event-ID`. The ",
         "connection adjusts its fan-in as fleets appear or disappear. A ",
         "caller whose workspace access is revoked stops receiving on the next ",
-        "refresh. At capacity the route returns 503 `UZ-API-002` with `Retry- ",
-        "After`. After a reconnect opens, recover the gap through `GET ",
+        "refresh. At capacity the route returns 503 `UZ-API-002` with ",
+        "`Retry-After`. After a reconnect opens, recover the gap through `GET ",
         "/v1/workspaces/{workspace_id}/events`. ",
     ),
     params(
@@ -141,6 +142,7 @@ pub(crate) async fn fleet<D: Services>(
     ),
     responses(
         (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 500, description = afd_http::openapi::INTERNAL),

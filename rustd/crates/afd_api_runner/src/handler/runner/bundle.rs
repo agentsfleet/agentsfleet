@@ -65,6 +65,7 @@ const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static(TAR);
         (status = 200, description = "The canonical tar, byte for byte as it was imported", body = afd_http::openapi::body::Binary, content_type = TAR),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

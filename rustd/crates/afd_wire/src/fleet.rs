@@ -74,10 +74,11 @@ pub struct InstalledFleetResponse<'a> {
     pub name: Cow<'a, str>,
     /// Where it stands. `active`: the stream exists, so it is already leasable.
     pub status: Cow<'a, str>,
-    /// One entry per webhook trigger the bundle declared, keyed by source.
+    /// One entry per webhook trigger the bundle declared, each naming its
+    /// source and the URL the provider is pointed at.
     ///
-    /// An empty object where the fleet declares none, never `null`: a client
-    /// iterating the map should not have to branch on its absence first.
+    /// An empty array where the fleet declares none, never `null`: a client
+    /// iterating it should not have to branch on its absence first.
     pub webhook_urls: Vec<WebhookUrl<'a>>,
 }
 
@@ -173,8 +174,8 @@ pub struct FleetDetailResponse<'a> {
 ///
 /// Every field is optional and presence-based; an empty body is a no-op that
 /// touches no row. `config_json` and `trigger_markdown` both drive the stored
-/// configuration and are mutually exclusive — sent together they are refused at
-/// the door, because there is no answer to which one wins.
+/// configuration and are mutually exclusive. Sent together they are refused,
+/// because there is no answer to which one wins.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct PatchFleetRequest<'a> {

@@ -174,6 +174,7 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
         "route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp ",
         "outside 5 minutes returns 401 `UZ-SLK-011`. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         afd_http::openapi::path::Provider,
         ("X-Slack-Signature" = String, Header, description = "Slack request signature. Slack supplies this value."),
@@ -181,8 +182,9 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
     ),
     responses(
         (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = EventsAnswer),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

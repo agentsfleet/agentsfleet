@@ -70,7 +70,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_http/**` | EDIT | the `openapi` feature and the shared vocabulary every plane's annotations name: response sentences, tags, and the document-only path, query and body shapes |
 | `rustd/Cargo.toml` | EDIT | the workspace utoipa dependency, pinned, default-features off |
 | `public/openapi.json` | EDIT | regenerated from the build; hand-written prose reconciled into annotations where it survives |
-| `make/quality.mk` or CI workflow | NOT NEEDED | `test-unit-rustd` and `lint-rustd` already pass `--all-features`, so the feature, the gate and the artifact diff are graded by lanes that exist — no new target, no workflow edit, no approval needed |
+| `make/quality.mk` | EDIT | `lint-rustd` gains a `cargo check` of the shipping configuration, no features: every other lane turns `openapi` on, and an import that exists only for an annotation broke the production build once with every lane green (`/review`, Discovery) |
+| `.github/workflows/{deploy-dev-build,release,test}.yml` | EDIT | the daemon build steps carry `GIT_COMMIT` so `/healthz` reports the commit rather than `unknown` (Indy: "I want the unknown to be fixed with the commit hash") |
+| `cli/src/commands/{fleet_schedule,fleet_install,fleet_install_source}.ts` · `cli/test/**` | EDIT | the two consumers of shapes the port changed on main follow the daemon: the schedule row and list envelope, the paused flag, the webhook URL array (Indy: "the api change must propagate to the consumer who ever is using the api") |
+| `rustd/crates/afd_runner/**` · `afd_core/src/{error_code,problem}/**` · `afd_api_operator/**` · `afd_http/src/route/runner_ops.rs` | EDIT | `DELETE /v1/fleets/runners/{runner_id}` ported from `runner_delete.zig` with its `UZ-RUN-016` refusal (Indy: "DELETE runner can be implemented"); `afd_http::route::Guard::PayloadSigned` for the three handler-verified routes |
+| `rustd/crates/afd_vault/src/secret.rs` | EDIT | `SecretName::into_string`, so the secret store answers its name by move rather than copy (Indy: "Fold both in") |
 | `scripts/check_documentation_rules*.py` · `docs/REST_API_DESIGN_GUIDELINES.md` · `docs/EXECUTE_DOC_READS.md` | EDIT | Dead Code Sweep: the lint globbed the deleted `public/openapi/` tree and therefore checked nothing; §6 still called that tree the source of truth |
 | `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` · `ui/packages/design-system/vitest.config.ts` | EDIT | the TypeScript coverage floor goes to 100% on Indy's in-session call; the package sat at 99.78% on one unreachable ref guard, excluded the way `website/src/components/HowItWorks.tsx` already excludes its defensive invariant |
@@ -346,10 +350,10 @@ them. Removed with their three tests (RULE NLR, on the file this diff touched).
 **Finding — the dropped codes were one rule short, not thirty annotations short.**
 The hand-written document carried 30 codes the generated one lacked: 15 503s,
 7 502s, 5 401s, 3 403s (its 67 `default` entries were a catch-all, not codes).
-Every plane crate's error maps a datastore outage to `INTERNAL_DB_UNAVAILABLE`,
-the authenticator answers `AUTH_UNAVAILABLE` when its directory is down, and
-the admission ceiling sheds with a 503 too, so a 503 belongs wherever a 500
-does. `test_documented_codes_match_refusals` now requires both off the same
+Every plane crate's error maps a datastore outage to `INTERNAL_DB_UNAVAILABLE`
+and the authenticator answers `AUTH_UNAVAILABLE` when its directory is down, so
+a 503 belongs wherever a 500 does. (The admission ceiling sheds with a 429; only
+the stream ceiling answers 503, and the SSE routes carry it either way.) `test_documented_codes_match_refusals` now requires both off the same
 `RouteClass::Ops` predicate, and 99 annotations gained the line. Of the 502s,
 three are reachable (library onboarding on both planes through
 `FLEET_BUNDLE_FETCH_FAILED`, the callback completion through the connector's
@@ -361,14 +365,90 @@ three 403s are the tenant plane refusing a session somebody else started or a
 subject it does not know; each is annotated with the sentence its refusal
 carries.
 
+**Finding — five payload-signed routes were published as bearer routes.**
+The document derived each operation's `security` from a two-way split of
+`RouteMeta::guard`, so the HMAC, signature and Svix guards landed under the
+bearer scheme and told every integrator to send a JWT no handler reads. The
+authenticator layer already treats those three guards as `Open`
+(`afd_http/src/auth/mod.rs`); the derivation and the credential gate now match
+on the same four, in both directions, and the five routes' 401 carries the
+signature sentence. Surfaced by the security pass of `/review`.
+
+**Review — what the API-contract pass of `/review` found, and what landed.**
+The body gate proves a 2xx describes SOME body, never that it describes the
+one the handler writes; three ingress routes had the wrong one (`Pong` on a
+202 that answers `FannedOut`, `Fired` on a 200 that answers `Ignored`, and the
+Clerk route's `AccountOpened` unnamed), each now published through the type
+the handler returns, two of them through untagged answers like the events
+route. Twenty-seven writes published no request body; twenty-three now name
+the wire type they parse (the two schedule parsers gained schema derives under
+the names the hand-written contract used, `ScheduleWrite` and `SchedulePatch`;
+the eight webhook receivers and the preference write name a free JSON document)
+and a contract test lists the four that read none with their reason. The
+admission shed answers 429 on every metered route and five documented it; the
+derived-code test now requires it off `admission::is_metered`, and 93
+annotations gained the line. Runner tokens were published under the tenant
+scheme's "sign in through the CLI" sentence; they have their own
+`RunnerBearerAuth` scheme, and the credential gate grades each guard against
+the scheme it should name. The events answer's `oneOf` was unsatisfiable for
+an ignored delivery, since the echo is a free-form object that also matches
+it; the schema is written by hand as `anyOf`. Two listings parsed paging and
+filter parameters they never published; both do now. The poll's prose said an
+expired session answers 410 while its table said 401; the prose was wrong.
+
+> Indy (2026-09-03): "I want to the payload change if it helps in rust, and
+> the api change must propagate to the consumer who ever is using the api.
+> (this is for GET, POST), DELETE runner can be implemented" — context: the
+> three wire divergences from the Zig daemon that the generated document made
+> visible, all already on `origin/main`. The Rust shapes stay (the schedule row
+> and its `{schedules}` envelope, the webhook URL array), and every consumer
+> follows: the CLI's schedule command read `desired_status`/`sync_status`, the
+> `items` envelope and sent `desired_status` on PATCH where the daemon reads
+> `paused`; its install command read `webhook_urls` as an object. No dashboard
+> page and no docs page names either shape. `DELETE /v1/fleets/runners/{id}`
+> is ported rather than recorded as unserved.
+
+> Indy (2026-09-03): "Fold both in" — context: the two code findings outside
+> the Files Changed table: `SecretName::into_string` for the copy on the
+> secret-store path, and `Guard::PayloadSigned` so the three routes that verify
+> a signature in the handler are graded like the five the layer verifies.
+
+**Port — the runner record's retirement.** `runner_delete.zig` deletes only a
+revoked runner's row, in one statement, so a concurrent revoke cannot fall
+between the check and the delete; the port keeps the statement, answers 204,
+`UZ-RUN-014` for an unknown id and the newly declared `UZ-RUN-016` (409) for a
+runner still in service. Route-level tests prove the scope rung and the shape
+refusal; the datastore test proves the three outcomes in order.
+
+**Red team — what the seventh pass found after the six.** The runner PATCH
+answered 400, 404 and 409 it never published, and nine more operations
+answered a 400 (a malformed identifier) or a 404 the derived gate cannot see;
+all ten gained their rows by hand. Two more refusals are now derived instead:
+the ownership layer answers 400 for a malformed workspace id and 403 for
+somebody else's workspace on every `{workspace_id}` route, and every body
+extractor answers 413 over its limit, so `test_documented_codes_match_refusals`
+reads `RouteMeta::ownership` and the document's own `requestBody` and 52
+annotations gained the lines. Four code spans were split by a `concat!` piece
+wrapped at a hyphen (`UZ- RUN-018` and three more); rewrapped, and the doc
+linter now refuses a split span under DOC-01. The runner delete refuses a
+revoked runner that still holds an active lease (`RunnerStillLeased`, the same
+`UZ-RUN-016`), because the lease row is what the liveness sweep releases the
+fleet's slot through. The open-route invariant in `route_meta_total.rs` now
+uses the auth layer's own `plane_of`, so a guard added later cannot slip past
+it. The two derived `oneOf` answers gained byte-identity and disjointness
+tests. The Zig union folds the runner delete into its patch member, so the
+route-count test names that as a verb split rather than moving the Zig count.
+
 **Finding — the collision was live.** Publishing the lease response made
 `ExecutionPolicy.network_policy` reference the schema named `NetworkPolicy`,
 and the one utoipa kept was the runner's three-word posture enum, so the
 document said a run's egress rules were a string. Both Rust types keep their
-names, which are the two Zig types' names; the components publish as
-`policy.NetworkPolicy` and `runner.NetworkPolicy` through `schema(as = …)`,
-and two tests pin it: the names differ in `afd_wire`, and the two owners
-resolve to an object and a string in the document.
+names, which are the two Zig types' names; the runner's posture publishes as
+`RunnerNetworkPolicy` through `schema(as = …)`, the name the hand-written
+contract gave it, and the run's rules keep the bare name. Three tests pin it:
+the names differ in `afd_wire`, no two derives in that crate publish under one
+name (a source scan, since the generator merges duplicates without a word),
+and the two owners resolve to an object and a string in the document.
 
 **Amendment — the unit lane's flake was a latent bug, not this branch's.**
 Four runs failed in `ui/packages/website/src/App.test.tsx` and one in

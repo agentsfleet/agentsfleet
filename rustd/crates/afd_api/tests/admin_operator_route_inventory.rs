@@ -23,6 +23,7 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/fleets/runners", Verb::Get),
     ("/v1/fleets/runners/{runner_id}", Verb::Get),
     ("/v1/fleets/runners/{runner_id}", Verb::Patch),
+    ("/v1/fleets/runners/{runner_id}", Verb::Delete),
     ("/v1/fleets/runners/{runner_id}/events", Verb::Get),
     ("/v1/fleets/runners/{runner_id}/leases", Verb::Get),
     // `/v1/fleets/streams` is absent on purpose. The Zig serves it; this

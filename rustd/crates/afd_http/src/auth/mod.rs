@@ -151,6 +151,10 @@ pub const fn plane_of(guard: Guard) -> Option<Plane> {
         // presents no credential at all; a signed delivery carries its proof in
         // the body and its own signature header, which this layer is the wrong
         // place to verify. Both are an absence with a reason, not a gap.
-        Guard::Open | Guard::WebhookHmac | Guard::WebhookSignature | Guard::Svix => None,
+        Guard::Open
+        | Guard::WebhookHmac
+        | Guard::WebhookSignature
+        | Guard::Svix
+        | Guard::PayloadSigned => None,
     }
 }

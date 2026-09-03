@@ -49,6 +49,7 @@ use serde::Deserialize;
 
 use crate::handler::Refusal;
 use crate::services::{NewAccount, Services, Signups as _, personal_tenant_name};
+use afd_wire::ingress::IdentityAnswer;
 
 use super::verify::{header, wall};
 use super::{Ignored, within_cap};
@@ -158,16 +159,18 @@ impl IdentityUser {
         "return `created:false`. Unsupported event types return 200 with ",
         "`status: ignored`. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         ("svix-id" = String, Header, description = "Svix message identifier (used for deduplication and signature binding)."),
         ("svix-timestamp" = String, Header, description = "Unix timestamp of the Svix delivery (used for replay protection)."),
         ("svix-signature" = String, Header, description = "Space-separated list of Svix v1 signatures."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = Ignored),
+        (status = 200, description = "The account the event opened or found, or a delivery not acted on", body = afd_wire::ingress::IdentityAnswer),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -221,9 +224,9 @@ pub(crate) async fn receive<D: Services>(
         // it in the provider's retry queue forever.
         return Ok((
             StatusCode::OK,
-            Json(Ignored {
+            Json(IdentityAnswer::Ignored(Ignored {
                 ignored: event.kind.as_str().into(),
-            }),
+            })),
         )
             .into_response());
     }
@@ -266,11 +269,11 @@ pub(crate) async fn receive<D: Services>(
     // change into its retry queue forever.
     Ok((
         StatusCode::OK,
-        Json(afd_wire::ingress::AccountOpened {
+        Json(IdentityAnswer::Opened(afd_wire::ingress::AccountOpened {
             workspace_id: opened.workspace_id.into(),
             workspace_name: opened.workspace_name.into(),
             created: opened.created,
-        }),
+        })),
     )
         .into_response())
 }

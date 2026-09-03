@@ -58,6 +58,7 @@ use crate::handler::paging::requested_limit;
 use crate::handler::{Refusal, library_onboard, parameter};
 use crate::services::Services;
 
+mod render;
 use self::render::{created, rendered};
 
 // A sentence the catalogue page already owns, imported rather than respelled
@@ -137,6 +138,7 @@ impl StructCursor for Cursor {
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -208,6 +210,7 @@ async fn read_gallery<D: Services>(
         "bytes converges on one `(workspace_id, content_hash)` row. The ",
         "response carries metadata only. ",
     ),
+    request_body = afd_wire::admin::AdminLibraryImport,
     params(
         afd_http::openapi::path::Workspace,
     ),
@@ -217,6 +220,7 @@ async fn read_gallery<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 502, description = afd_http::openapi::BAD_GATEWAY),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
@@ -278,8 +282,6 @@ fn resume_from(raw: &str, workspace: &str, limit: u32) -> Result<Option<Position
         id: cursor.id,
     }))
 }
-
-mod render;
 
 #[cfg(test)]
 mod tests;

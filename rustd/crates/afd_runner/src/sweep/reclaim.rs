@@ -42,7 +42,7 @@ use crate::sweep::{Sweep, Swept};
 const CONTEXT_FLEETS: &str = "reclaim active fleets";
 
 /// The fleet status whose streams are worth sweeping.
-const STATUS_ACTIVE: &str = "active";
+pub(crate) const STATUS_ACTIVE: &str = "active";
 
 /// How many fleets one pass reaches.
 const BATCH_LIMIT: i64 = 100;

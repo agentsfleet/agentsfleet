@@ -95,7 +95,8 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
 /// callback carrying no state or a query this daemon cannot decode, and
-/// `UZ-CONN-001` for a dashboard base that is not a URL.
+/// `UZ-CONN-001` for a dashboard base that is not a URL, or a destination that
+/// cannot be written as a `Location` header.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/v1/connectors/{provider}/callback",
@@ -122,6 +123,7 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -190,6 +192,7 @@ pub(crate) async fn relay<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 502, description = afd_http::openapi::BAD_GATEWAY),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),

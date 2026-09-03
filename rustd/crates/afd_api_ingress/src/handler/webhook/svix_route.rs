@@ -50,6 +50,7 @@ const EVENT_APPEND: &str = "webhook_svix_append_failed";
         "Receives a signed Svix event for one fleet. A valid new event ",
         "returns 202. A duplicate or an event for a paused fleet returns 200. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         afd_http::openapi::path::FleetOnly,
         ("svix-id" = String, Header, description = "Svix message identifier (used for deduplication and signature binding)."),
@@ -57,11 +58,13 @@ const EVENT_APPEND: &str = "webhook_svix_append_failed";
         ("svix-signature" = String, Header, description = "Space-separated list of Svix signatures (v1 scheme)."),
     ),
     responses(
-        (status = 200, description = "A correctly signed delivery this fleet does not act on, and why", body = webhook::Ignored),
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
         (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

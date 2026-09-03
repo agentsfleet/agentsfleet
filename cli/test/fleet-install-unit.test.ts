@@ -97,7 +97,7 @@ const libraryResponse = (
   visibility: string,
   requirements: Record<string, unknown> | undefined,
   createName: string,
-  webhookUrls: Record<string, string> = {},
+  webhookUrls: ReadonlyArray<{ source: string; url: string }> = [],
 ) => ({
   items: [{ id, name: createName, visibility, ...(requirements ? { requirements } : {}) }],
   fleet_id: LIBRARY_FLEET_ID,
@@ -200,7 +200,7 @@ describe("installEffectFromFlags — template webhook URLs", () => {
       installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests,
           libraryResponse("t1", "platform", { trigger_present: true }, "t1",
-            { github: "https://api.example/webhooks/github" }))),
+            [{ source: "github", url: "https://api.example/webhooks/github" }]))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);

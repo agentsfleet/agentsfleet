@@ -33,6 +33,18 @@ impl Fixtures {
             .map(|row| row.try_get(0).expect("the column must be readable as text"))
     }
 
+    /// Expires one lease in place, as the liveness sweep would once its holder
+    /// stopped renewing.
+    pub(crate) async fn expire_lease(&self, lease: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("UPDATE fleet.runner_leases SET status = $2::text WHERE id = $1::uuid")
+            .bind(lease)
+            .bind("expired")
+            .execute(&mut *connection)
+            .await
+            .expect("the lease write must run");
+    }
+
     /// Stands a metering cursor up mid-slice, as a dying holder would leave it.
     pub(crate) async fn set_metered_input(&self, fleet: &str, tokens: i64) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");

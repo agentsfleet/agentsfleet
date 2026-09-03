@@ -148,9 +148,9 @@ pub struct RenewResponse {
 
 /// `POST /v1/runners/me/leases/{lease_id}/renew` request.
 ///
-/// CUMULATIVE token counts for the run so far, not deltas. The control plane
-/// charges the difference since the lease's last-metered cursor, so a fail-safe
-/// retry re-sending the same cumulatives charges approximately nothing.
+/// Cumulative token counts for the run so far, never deltas. Only the
+/// difference since the last renewal is charged, so a retry that re-sends the
+/// same totals charges nothing new.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct RenewRequest {

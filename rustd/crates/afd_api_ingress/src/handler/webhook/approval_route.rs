@@ -101,14 +101,17 @@ struct Answer {
         "reject a paused fleet. Body is HMAC-signed by the issuer; the ",
         "signature is verified against the fleet's webhook secret. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = Resolved),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

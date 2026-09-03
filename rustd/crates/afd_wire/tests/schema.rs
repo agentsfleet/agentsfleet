@@ -24,6 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_wire::ingress::{AppIngressAnswer, IdentityAnswer};
 use afd_wire::preference::PreferencesResponse;
 use afd_wire::secret::{StoreSecretRequest, StoredSecretResponse};
 use afd_wire::{policy, runner};
@@ -113,4 +114,62 @@ fn the_two_network_policies_publish_under_two_names() {
         "string",
         "the posture is an enum"
     );
+}
+
+/// A `oneOf` over two documents is exact only while their required keys are
+/// disjoint.
+///
+/// The derive publishes the untagged answers as `oneOf`, which a strict client
+/// reads as "exactly one branch matches". That holds while each branch has a
+/// required key the other lacks; a field made optional later would make an
+/// `Ignored` answer match both branches, and nothing but this would notice.
+#[test]
+fn the_derived_one_of_answers_have_disjoint_required_keys() {
+    /// The component a branch names, resolved to the keys it requires.
+    fn required_keys(branch: &serde_json::Value) -> Vec<String> {
+        let component = branch["$ref"]
+            .as_str()
+            .and_then(|target| target.rsplit('/').next())
+            .expect("a branch is a reference to a component");
+        let schema = match component {
+            "Pong" => schema_of::<afd_wire::ingress::Pong<'_>>(),
+            "Ignored" => schema_of::<afd_wire::ingress::Ignored<'_>>(),
+            "AccountOpened" => schema_of::<afd_wire::ingress::AccountOpened<'_>>(),
+            _unknown => serde_json::Value::Null,
+        };
+        schema["required"]
+            .as_array()
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    for (name, schema) in [
+        ("AppIngressAnswer", schema_of::<AppIngressAnswer<'_>>()),
+        ("IdentityAnswer", schema_of::<IdentityAnswer<'_>>()),
+    ] {
+        let branches = schema["oneOf"]
+            .as_array()
+            .expect("an untagged answer publishes a oneOf");
+        let resolved: Vec<Vec<String>> = branches.iter().map(required_keys).collect();
+
+        assert_eq!(resolved.len(), 2, "{name} has two branches: {schema}");
+        assert!(
+            resolved.iter().all(|keys| !keys.is_empty()),
+            "{name}: every branch requires at least one key, and this test \
+             knows every branch: {resolved:?}"
+        );
+        let shared: Vec<&String> = resolved[0]
+            .iter()
+            .filter(|key| resolved[1].contains(key))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "{name}: a key required by both branches makes the oneOf ambiguous: {shared:?}"
+        );
+    }
 }

@@ -103,9 +103,9 @@ pub struct ApprovalsResponse<'a> {
 
 /// The body a decision may carry.
 ///
-/// Every field optional, and the whole body optional with it: a decision is
-/// complete without a note, and demanding one would make the common answer the
-/// awkward one.
+/// Every field is optional, and so is the whole body. A decision is complete
+/// without a note, and demanding one would make the common answer the awkward
+/// one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ResolveApprovalRequest<'a> {

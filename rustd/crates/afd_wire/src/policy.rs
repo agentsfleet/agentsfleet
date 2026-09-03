@@ -17,11 +17,10 @@ pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 
 /// Per-run egress policy. An outbound request must match an entry in
 /// `allow` by exact hostname; an empty `allow` denies everything.
-// Published under its module path: `runner::NetworkPolicy` is a different
-// shape with the same name, and utoipa keys components by name alone, so the
-// one registered second silently replaced the other in the document.
+// Keeps the bare name: `runner::NetworkPolicy` is a different shape with the
+// same Rust name and publishes as `RunnerNetworkPolicy`, the name the
+// hand-written contract gave it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "openapi", schema(as = policy::NetworkPolicy))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkPolicy<'a> {

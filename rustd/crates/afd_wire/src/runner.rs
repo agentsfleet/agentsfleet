@@ -27,9 +27,12 @@ pub enum SandboxTier {
 }
 
 /// Egress posture assigned per runner, named so the behaviour reads off the value.
-// Published under its module path; see `policy::NetworkPolicy` on why.
+// Published as `RunnerNetworkPolicy`, the name the hand-written contract gave
+// it: `policy::NetworkPolicy` is a different shape with the same Rust name,
+// and utoipa keys components by name alone, so the one registered second
+// silently replaced the other in the document.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "openapi", schema(as = runner::NetworkPolicy))]
+#[cfg_attr(feature = "openapi", schema(as = RunnerNetworkPolicy))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkPolicy {

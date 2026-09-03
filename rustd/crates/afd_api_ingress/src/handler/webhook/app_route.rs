@@ -48,7 +48,7 @@ use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 use super::github::{Ingest, Policy, classify};
 /// The two bodies this route answers with. Public wire, so `afd_wire` owns
 /// the shape and this route names it.
-use afd_wire::ingress::{FannedOut, Pong};
+use afd_wire::ingress::{AppIngressAnswer, FannedOut, Pong};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "app_ingress_append_failed";
@@ -114,6 +114,7 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         "records the deployed commit and schedules eligible verification ",
         "fleets. ",
     ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         afd_http::openapi::path::Provider,
         ("X-GitHub-Event" = String, Header, description = "GitHub event type, currently `ping`, `pull_request`, `workflow_run`, or `deployment_status`."),
@@ -121,8 +122,8 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         ("X-Hub-Signature-256" = String, Header, description = "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = Pong),
-        (status = 202, description = afd_http::openapi::ACCEPTED, body = Pong),
+        (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = afd_wire::ingress::AppIngressAnswer),
+        (status = 202, description = "The delivery fanned out to the fleets it matched", body = FannedOut),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -169,9 +170,9 @@ pub(crate) async fn receive<D: Services>(
     if event == EVENT_PING {
         return Ok((
             StatusCode::OK,
-            Json(Pong {
+            Json(AppIngressAnswer::Pong(Pong {
                 status: STATUS_PONG.into(),
-            }),
+            })),
         )
             .into_response());
     }
@@ -320,9 +321,9 @@ fn dropped(event: &str, reason: &str) -> Response {
     );
     (
         StatusCode::OK,
-        Json(webhook::Ignored {
+        Json(AppIngressAnswer::Ignored(webhook::Ignored {
             ignored: reason.into(),
-        }),
+        })),
     )
         .into_response()
 }
