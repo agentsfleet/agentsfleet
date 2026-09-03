@@ -10,6 +10,7 @@ use crate::harness;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -93,6 +94,10 @@ async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &s
         Some(SUBJECT)
     );
 
+    // The second answer is a 409 rather than a 200 reporting the first. Both
+    // tell the caller the gate is resolved; only the conflict tells them it was
+    // not resolved BY THEM, which is the difference between an audit trail and
+    // a dashboard that credits the wrong person for a denial.
     let repeated = send(
         router,
         Method::POST,
@@ -101,14 +106,23 @@ async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &s
         "",
     )
     .await;
-    assert_eq!(repeated.status(), StatusCode::OK);
+    let status = repeated.status();
+    let refused = json_body(repeated).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
     assert_eq!(
-        json_body(repeated)
-            .await
-            .get("outcome")
-            .and_then(Value::as_str),
+        refused.get("error_code").and_then(Value::as_str),
+        Some(error_code::APPROVAL_ALREADY_RESOLVED.as_str())
+    );
+    assert_eq!(
+        refused.get("current_state").and_then(Value::as_str),
         Some("approved"),
-        "a later answer reports the standing decision"
+        "the conflict names the standing outcome, so the caller refetches \
+         rather than retrying a decision that cannot change"
+    );
+    assert!(
+        !refused.to_string().contains(SUBJECT),
+        "the resolver is an entity value and belongs on the gate, not in a \
+         refusal sentence"
     );
 }
 
