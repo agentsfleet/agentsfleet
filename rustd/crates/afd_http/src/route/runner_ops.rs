@@ -26,6 +26,8 @@ pub enum RunnerOpsRoute {
     Get,
     /// Cordon or patch one runner.
     Patch,
+    /// Retire one revoked runner's record.
+    Delete,
     /// One runner's events.
     Events,
     /// One runner's leases.
@@ -47,6 +49,7 @@ impl RunnerOpsRoute {
         Self::List,
         Self::Get,
         Self::Patch,
+        Self::Delete,
         Self::Events,
         Self::Leases,
     ];
@@ -58,6 +61,7 @@ impl RunnerOpsRoute {
             Self::Register => &[Verb::Post],
             Self::List | Self::Get | Self::Events | Self::Leases => &[Verb::Get],
             Self::Patch => &[Verb::Patch],
+            Self::Delete => &[Verb::Delete],
         }
     }
 
@@ -73,7 +77,7 @@ impl RunnerOpsRoute {
             // These identities share one axum path. Both carry the same
             // method-sensitive metadata so merging them cannot retain a
             // cheaper GET-only gate for PATCH.
-            Self::Get | Self::Patch => (
+            Self::Get | Self::Patch | Self::Delete => (
                 fleet_runner_path!(""),
                 Scopes::rw(RUNNER_READ, RUNNER_WRITE),
             ),

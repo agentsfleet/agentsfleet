@@ -36,6 +36,7 @@ const DETAIL_COLLISION: &str = "That bundle's name is already taken by a differe
         "keyed by content hash; the response carries metadata only — never an ",
         "object-store key or support-file content. ",
     ),
+    request_body = afd_wire::admin::AdminLibraryImport,
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -43,6 +44,7 @@ const DETAIL_COLLISION: &str = "That bundle's name is already taken by a differe
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 502, description = afd_http::openapi::BAD_GATEWAY),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),

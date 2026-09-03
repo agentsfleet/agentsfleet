@@ -161,6 +161,37 @@ WITH current_runner AS (
 )
 SELECT admin_state, EXISTS (SELECT 1 FROM updated) AS changed FROM current_runner";
 
+/// Retire one runner's record, but only from the terminal state and only once
+/// no lease of its is still active.
+///
+/// One statement rather than a SELECT then a DELETE, so an operator revoking
+/// concurrently cannot slip between the check and the write. The row's
+/// leases and events cascade and its affinity clears, all declared in schema;
+/// the daemon deletes nothing else by hand. A lease still active would take
+/// with it the row the liveness sweep releases the fleet's slot through, so
+/// the delete waits for the sweep or the lease's expiry. The single result row
+/// says which of the three things happened, and its absence says there was no
+/// such runner.
+pub const DELETE_RUNNER_IF_IN_STATE: &str = "\
+WITH current_row AS (
+  SELECT id, admin_state,
+         EXISTS (
+           SELECT 1 FROM fleet.runner_leases l
+           WHERE l.runner_id = fleet.runners.id AND l.status = $3::text
+         ) AS leased
+  FROM fleet.runners WHERE id = $1::uuid
+), deleted AS (
+  DELETE FROM fleet.runners r
+  USING current_row c
+  WHERE r.id = c.id AND c.admin_state = $2::text AND NOT c.leased
+  RETURNING r.id::text
+)
+SELECT d.id, TRUE AS changed, FALSE AS leased FROM deleted d
+UNION ALL
+SELECT c.id::text, FALSE AS changed, c.leased FROM current_row c
+WHERE NOT EXISTS (SELECT 1 FROM deleted)
+LIMIT 1";
+
 /// The heartbeat's policy read.
 ///
 /// Assignment, stored capability, and the prior verdict, so every beat

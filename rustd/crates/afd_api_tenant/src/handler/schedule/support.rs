@@ -19,15 +19,17 @@ use crate::handler::Refusal;
 use super::{DETAIL_HELD, DETAIL_NOT_FOUND};
 
 /// What a caller sends to create a schedule.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = ScheduleWrite))]
 #[derive(Debug, Deserialize)]
 pub(super) struct Create {
     /// The expression it fires on.
     pub(super) cron: String,
-    /// The zone that expression is read in.
-    ///
-    /// Absent means [`afd_cron::model::DEFAULT_TIMEZONE`] — a schedule with no
-    /// stated zone is not an error, it is one written by somebody who did not
-    /// think about zones, and UTC is the answer that surprises them least.
+    /// The zone that expression is read in. Absent means UTC.
+    // A schedule with no stated zone is not an error, it is one written by
+    // somebody who did not think about zones, and UTC (the default in
+    // `afd_cron::model::DEFAULT_TIMEZONE`) is the answer that surprises them
+    // least.
     pub(super) timezone: Option<String>,
     /// What the fleet is asked to do when it fires.
     pub(super) message: String,
@@ -37,6 +39,8 @@ pub(super) struct Create {
 ///
 /// Every field optional, and an absent one is left alone — see
 /// [`afd_cron::Change`] on why a partial edit is not a whole replacement.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = SchedulePatch))]
 #[derive(Debug, Deserialize)]
 pub(super) struct Patch {
     /// A new expression.

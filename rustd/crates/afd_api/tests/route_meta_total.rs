@@ -41,8 +41,15 @@ const ZIG_ROUTE_COUNT: usize = 81;
 /// test, which is the whole reason the count is pinned.
 const DECLARED_DIVERGENCES: usize = 1;
 
+/// Verbs the Zig union folds into one member that this union spells apart.
+///
+/// One: the runner record's retirement. `routes.zig` dispatches `DELETE
+/// /v1/fleets/runners/{id}` inside `fleet_runner_patch`, so it is no member of
+/// that union, and here it is `RunnerOpsRoute::Delete` with its own meta.
+const VERB_SPLITS: usize = 1;
+
 /// What this daemon's union must carry.
-const RUST_ROUTE_COUNT: usize = ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES;
+const RUST_ROUTE_COUNT: usize = ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -115,9 +122,10 @@ fn test_every_template_is_a_low_cardinality_literal() {
 
 /// A route's identity is not its template.
 ///
-/// Four pairs share a path and differ by method or guard — the connector
-/// callback a browser is redirected to and the one the dashboard completes,
-/// the runner memory read and write, and so on. Asserting templates were
+/// Five templates are shared by routes that differ by method or guard — the
+/// connector callback a browser is redirected to and the one the dashboard
+/// completes, the runner memory read and write, the operator's runner read,
+/// patch and delete, and so on. Asserting templates were
 /// unique would look like a tightening and would actually be false; what must
 /// be unique is the route, which the walk above already holds.
 #[test]
@@ -130,7 +138,7 @@ fn test_templates_may_repeat_but_the_pairs_are_known() {
 
     assert_eq!(
         shared.len(),
-        4,
+        5,
         "the set of routes sharing a template changed: {shared:?}. That is not \
          automatically wrong — two methods on one path are two routes — but it \
          is a thing to have decided, not to discover."
@@ -204,10 +212,9 @@ fn test_no_read_rung_outranks_its_write_rung() {
 fn test_open_routes_carry_no_capability() {
     for route in Route::all() {
         let meta = route.meta();
-        let signature_authed = matches!(
-            meta.guard,
-            Guard::Open | Guard::WebhookHmac | Guard::WebhookSignature | Guard::Svix
-        );
+        // The layer's own definition of "no bearer to classify", so a guard
+        // added later cannot slip past this invariant by omission.
+        let signature_authed = afd_api::auth::plane_of(meta.guard).is_none();
         if signature_authed {
             assert!(
                 meta.scopes.required(&Method::GET).is_empty()

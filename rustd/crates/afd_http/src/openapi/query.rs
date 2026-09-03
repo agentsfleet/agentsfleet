@@ -34,6 +34,34 @@ pub struct TenantPage {
     pub limit: Option<String>,
 }
 
+/// A keyset page, as the operator collections spell it.
+///
+/// The tenant spelling with the operator's bound: a platform-admin read pages
+/// at most a hundred rows, and the sentence says so where the tenant one does
+/// not.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct OperatorPage {
+    /// An opaque cursor from a previous page's `next_cursor`.
+    pub starting_after: Option<String>,
+    /// Rows per page (1-100).
+    pub limit: Option<String>,
+}
+
+/// What a fleet's memory listing is narrowed by, and how it pages.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct MemoryFilter {
+    /// Free text the entries are searched by.
+    pub query: Option<String>,
+    /// Keep only the entries in one category.
+    pub category: Option<String>,
+    /// Cursor returned as `next_cursor` by the previous page.
+    pub starting_after: Option<String>,
+    /// How many rows to return; a positive integer.
+    pub limit: Option<String>,
+}
+
 /// What an event history is narrowed by.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]

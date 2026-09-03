@@ -55,6 +55,12 @@ pub const MAX_DATA_BYTES: usize = 4 * 1024;
 pub struct SecretName(Box<str>);
 
 impl SecretName {
+    /// The name as an owned string, without a copy.
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0.into_string()
+    }
+
     /// Reads a name, refusing an empty one and one past the bound.
     ///
     /// # Errors

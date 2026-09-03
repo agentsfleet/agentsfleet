@@ -17,12 +17,24 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement
 use crate::Route;
 use crate::route::{Guard, Verb};
 
-/// The scheme name every bearer-guarded operation refers to.
+/// The scheme name every tenant-plane operation refers to.
 const BEARER_SCHEME: &str = "BearerAuth";
 
-/// How a caller obtains the bearer this API is read with.
+/// How a caller obtains the bearer the tenant plane is read with.
 const BEARER_DESCRIPTION: &str =
     "Obtain a token via the CLI auth flow (POST /v1/auth/sessions) or GitHub OAuth";
+
+/// The scheme name every runner-plane operation refers to.
+///
+/// A second scheme rather than one shared with the tenant plane: a runner's
+/// `agt_r` token is an opaque credential minted at enrolment, not a JWT a
+/// person signs in for, and a document that described it under the tenant
+/// scheme told a runner author to go through the CLI auth flow.
+const RUNNER_SCHEME: &str = "RunnerBearerAuth";
+
+/// How a runner obtains its bearer.
+const RUNNER_DESCRIPTION: &str =
+    "The opaque agt_r token minted when the runner enrols (POST /v1/runners)";
 
 /// The published base URL.
 const PRODUCTION_URL: &str = "https://api.agentsfleet.net";
@@ -62,19 +74,27 @@ pub fn document() -> utoipa::openapi::OpenApi {
             .description(Some(PRODUCTION_DESCRIPTION))
             .build(),
     ]);
-    document
-        .components
-        .get_or_insert_with(Default::default)
-        .add_security_scheme(
-            BEARER_SCHEME,
-            SecurityScheme::Http(
-                HttpBuilder::new()
-                    .scheme(HttpAuthScheme::Bearer)
-                    .bearer_format("JWT")
-                    .description(Some(BEARER_DESCRIPTION))
-                    .build(),
-            ),
-        );
+    let components = document.components.get_or_insert_with(Default::default);
+    components.add_security_scheme(
+        BEARER_SCHEME,
+        SecurityScheme::Http(
+            HttpBuilder::new()
+                .scheme(HttpAuthScheme::Bearer)
+                .bearer_format("JWT")
+                .description(Some(BEARER_DESCRIPTION))
+                .build(),
+        ),
+    );
+    components.add_security_scheme(
+        RUNNER_SCHEME,
+        SecurityScheme::Http(
+            HttpBuilder::new()
+                .scheme(HttpAuthScheme::Bearer)
+                .bearer_format("agt_r")
+                .description(Some(RUNNER_DESCRIPTION))
+                .build(),
+        ),
+    );
     require_the_credential_each_route_guards(&mut document);
     document
 }
@@ -101,16 +121,30 @@ pub fn document() -> utoipa::openapi::OpenApi {
 /// not the same as omitting it. A webhook authenticated by its payload
 /// signature is deliberately open; a bearer route that says nothing is a bug.
 /// Emitting the empty list keeps those two apart in the published document.
+///
+/// # Why the split is bearer-or-not, and not open-or-not
+///
+/// Four guards are not `Open` and still take no bearer: the HMAC, signature
+/// and Svix guards prove a delivery by its payload, and the authenticator
+/// layer treats them exactly as it treats `Open`. Publishing them under the
+/// bearer scheme told every integrator to send a JWT that no handler reads.
 fn require_the_credential_each_route_guards(document: &mut utoipa::openapi::OpenApi) {
     for route in Route::all() {
         let meta = route.meta();
-        let required = if meta.guard == Guard::Open {
-            Vec::new()
-        } else {
-            vec![SecurityRequirement::new(
+        let required = match meta.guard {
+            Guard::Bearer => vec![SecurityRequirement::new(
                 BEARER_SCHEME,
                 Vec::<String>::new(),
-            )]
+            )],
+            Guard::RunnerBearer => vec![SecurityRequirement::new(
+                RUNNER_SCHEME,
+                Vec::<String>::new(),
+            )],
+            Guard::Open
+            | Guard::WebhookHmac
+            | Guard::WebhookSignature
+            | Guard::Svix
+            | Guard::PayloadSigned => Vec::new(),
         };
         let Some(item) = document.paths.paths.get_mut(meta.template) else {
             continue; // the coverage gate owns a route the document is missing

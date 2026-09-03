@@ -48,6 +48,7 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
         "as an empty one. A renewal asserts progress, and an unreadable ",
         "assertion is not one. ",
     ),
+    request_body = Option<RenewRequest>,
     params(
         afd_http::openapi::path::Lease,
     ),
@@ -55,6 +56,8 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
         (status = 200, description = afd_http::openapi::OK, body = RenewResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

@@ -82,7 +82,7 @@
           "Fleet library"
         ],
         "summary": "List the platform Fleet library catalog",
-        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform- library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key. Each row carries an `etag` that an editor can send as `If-Match` on PATCH. ",
+        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key. Each row carries an `etag` that an editor can send as `If-Match` on PATCH. ",
         "operationId": "list_platform_fleet_library",
         "responses": {
           "200": {
@@ -100,6 +100,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -121,6 +124,16 @@
         "summary": "Onboard a platform Fleet library entry",
         "description": "Onboards a Fleet library entry into the global platform catalog from a GitHub source reference. Requires the `platform-library:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content. ",
         "operationId": "onboard_platform_fleet_library",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLibraryImport"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -146,6 +159,9 @@
           },
           "413": {
             "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -199,6 +215,9 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -242,6 +261,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLibraryPatch"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The entry as it now reads, under its new entity tag",
@@ -270,6 +299,12 @@
           },
           "412": {
             "description": "The precondition the caller supplied does not hold"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -310,6 +345,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -330,6 +368,16 @@
         "summary": "Add a priced model to the catalogue",
         "description": "Creates one catalogue row. `(provider, model_id)` is the row's immutable identity — change either by deleting and re-adding. The rate cache is repopulated on success, so a new price is live with no restart. Requires the `model:admin` scope. ",
         "operationId": "create_admin_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminModelCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -349,6 +397,12 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -399,6 +453,9 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -430,6 +487,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelRates"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -449,6 +516,12 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -489,6 +562,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -509,6 +585,16 @@
         "summary": "Set a platform LLM key",
         "description": "Configures a platform-wide LLM provider key by referencing a workspace that has a self-managed key stored. The platform key proxies through the referenced workspace's credential. ",
         "operationId": "put_platform_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformKeyPut"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -525,6 +611,12 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -546,7 +638,7 @@
           "Admin"
         ],
         "summary": "Delete a platform LLM key",
-        "description": "Removes a platform-wide LLM provider key. Workspaces without self- managed keys will no longer be able to use this provider. ",
+        "description": "Removes a platform-wide LLM provider key. Workspaces without self-managed keys will no longer be able to use this provider. ",
         "operationId": "delete_platform_key",
         "parameters": [
           {
@@ -575,6 +667,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -645,6 +740,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -698,6 +796,12 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -718,7 +822,7 @@
           "API Keys"
         ],
         "summary": "Delete a revoked tenant API key",
-        "description": "Deletes a revoked tenant API key. An active key returns 409 `UZ- APIKEY-008`. ",
+        "description": "Deletes a revoked tenant API key. An active key returns 409 `UZ-APIKEY-008`. ",
         "operationId": "delete_api_key",
         "parameters": [
           {
@@ -749,6 +853,9 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -817,6 +924,12 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -868,13 +981,22 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The account the event opened or found, or a delivery not acted on",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ignored"
+                  "$ref": "#/components/schemas/IdentityAnswer"
                 }
               }
             }
@@ -887,6 +1009,9 @@
           },
           "413": {
             "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -930,6 +1055,9 @@
           "400": {
             "description": "The request could not be read"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
           "429": {
             "description": "The instance is at its ceiling"
           },
@@ -949,7 +1077,7 @@
           "Authentication"
         ],
         "summary": "Bulk-abort every in-flight login session for the caller",
-        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs — Clerk revocation is a separate problem; an active CLI continues to work until its short-lived JWT expires. This endpoint clears in- flight login sessions only. ",
+        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs — Clerk revocation is a separate problem; an active CLI continues to work until its short-lived JWT expires. This endpoint clears in-flight login sessions only. ",
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {
@@ -964,6 +1092,9 @@
           },
           "401": {
             "description": "No credential, or one this route does not accept"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -985,7 +1116,7 @@
           "Authentication"
         ],
         "summary": "Read a sign-in session",
-        "description": "Returns the current sign-in status. No access token is required. Expired, used, or cancelled sessions return 410 with a stable error code. ",
+        "description": "Returns the current sign-in status. No access token is required. An expired session returns 401 with a stable error code; a used or cancelled one returns 410. ",
         "operationId": "poll_auth_session",
         "parameters": [
           {
@@ -1017,6 +1148,9 @@
           },
           "410": {
             "description": "The resource is gone and will not return"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1057,6 +1191,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1124,6 +1261,9 @@
           "410": {
             "description": "The resource is gone and will not return"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
           "429": {
             "description": "The instance is at its ceiling"
           },
@@ -1147,7 +1287,7 @@
           "Authentication"
         ],
         "summary": "Verify a sign-in session",
-        "description": "Checks the six-digit code and returns encrypted sign-in data. The code can be used once. A retry from the same client within 60 seconds returns the same response. Later retries return 410 `UZ- AUTH-012`. `UZ-AUTH-011` means the code did not match. The fifth failed attempt ends the session. `UZ-AUTH-018` means the code was not six digits. `UZ-AUTH-013` means the session ended. `UZ-AUTH-014` means approval is pending. `UZ-AUTH-006` means the session expired after 5 minutes. ",
+        "description": "Checks the six-digit code and returns encrypted sign-in data. The code can be used once. A retry from the same client within 60 seconds returns the same response. Later retries return 410 `UZ-AUTH-012`. `UZ-AUTH-011` means the code did not match. The fifth failed attempt ends the session. `UZ-AUTH-018` means the code was not six digits. `UZ-AUTH-013` means the session ended. `UZ-AUTH-014` means approval is pending. `UZ-AUTH-006` means the session expired after 5 minutes. ",
         "operationId": "verify_auth_session",
         "parameters": [
           {
@@ -1189,6 +1329,9 @@
           },
           "410": {
             "description": "The resource is gone and will not return"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
           },
           "429": {
             "description": "The instance is at its ceiling"
@@ -1241,6 +1384,12 @@
           "403": {
             "description": "The caller is not a person this tenant knows"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -1289,6 +1438,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1368,6 +1520,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1467,6 +1622,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -1521,6 +1679,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "A handshake echoed, or a delivery acknowledged and not acted on",
@@ -1533,10 +1700,13 @@
             }
           },
           "401": {
-            "description": "No credential, or one this route does not accept"
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
           },
           "413": {
             "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1545,11 +1715,7 @@
             "description": "A dependency this route needs is unreachable"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/fleets/bundles": {
@@ -1576,6 +1742,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1630,11 +1799,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1680,6 +1855,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -1688,6 +1866,62 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
+          "500": {
+            "description": "The daemon failed to answer"
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Fleet"
+        ],
+        "summary": "Retire a revoked runner's record",
+        "description": "Deletes the record of a runner that has already been revoked. A runner still in service is refused: revoke it first with `PATCH {\"action\":\"revoke\"}`, which is the step that takes it out of service. A revoked runner still holding an active lease is refused too, until the lease is released or expires. Retiring the record then removes its leases and its events and clears any fleet affinity, so the next assignment picks freely. ",
+        "operationId": "delete_fleet_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "`UUIDv7` of the runner.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "The request could not be read"
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept"
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires"
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see"
+          },
+          "409": {
+            "description": "The runner is still in service; revoke it first"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1707,7 +1941,7 @@
           "Fleet"
         ],
         "summary": "Administer a fleet runner",
-        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `self_test` moves no state. It records a request for the runner to test its own sandbox. The host picks the request up on its next heartbeat and answers on a later one. The reply is the recorded request, never a verdict. A revoked runner refuses it with 409 `UZ- RUN-018`, since it will never heartbeat again. `assigned_policy` re- assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event. ",
+        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `self_test` moves no state. It records a request for the runner to test its own sandbox. The host picks the request up on its next heartbeat and answers on a later one. The reply is the recorded request, never a verdict. A revoked runner refuses it with 409 `UZ-RUN-018`, since it will never heartbeat again. `assigned_policy` reassigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event. ",
         "operationId": "patch_fleet_runner",
         "parameters": [
           {
@@ -1741,11 +1975,26 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see"
+          },
+          "409": {
+            "description": "The runner is revoked, so the request can never be honoured"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1836,11 +2085,20 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -1931,6 +2189,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -1982,9 +2243,28 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "A correctly signed delivery this fleet does not act on, and why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ignored"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The schedule fired, or already had for this delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1998,6 +2278,9 @@
           },
           "401": {
             "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
           },
           "429": {
             "description": "The instance is at its ceiling"
@@ -2058,23 +2341,32 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "A handshake echoed, or a delivery acknowledged and not acted on",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Pong"
+                  "$ref": "#/components/schemas/AppIngressAnswer"
                 }
               }
             }
           },
           "202": {
-            "description": "Accepted for publication; a subscriber reading it is a separate event",
+            "description": "The delivery fanned out to the fleets it matched",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Pong"
+                  "$ref": "#/components/schemas/FannedOut"
                 }
               }
             }
@@ -2161,6 +2453,9 @@
           "401": {
             "description": "No credential, or one this route does not accept"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2183,6 +2478,16 @@
         "summary": "Register a runner",
         "description": "Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (Clerk JWT or `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own. ",
         "operationId": "register_runner",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Runner registered; the bearer token is returned exactly once",
@@ -2202,6 +2507,12 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2242,6 +2553,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2251,7 +2565,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2292,6 +2606,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2301,7 +2618,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2335,11 +2652,20 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2353,7 +2679,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2366,6 +2692,22 @@
         "summary": "Report liveness, receive assignment",
         "description": "Liveness up, configuration down. The assignment rides every reply. An operator's dashboard change therefore reaches the host within one interval, and nobody visits the host. An unreadable body is read as `no report this beat` and the beat still counts. A host must not be able to fail its own liveness by sending nonsense. ",
         "operationId": "runner_heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HeartbeatRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -2383,6 +2725,12 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2392,7 +2740,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2422,6 +2770,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2431,7 +2782,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2482,6 +2833,12 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2491,7 +2848,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2515,6 +2872,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RenewRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -2532,6 +2905,12 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2541,7 +2920,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2576,11 +2955,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2591,7 +2976,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       },
@@ -2634,11 +3019,20 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2649,7 +3043,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2689,6 +3083,12 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2698,7 +3098,7 @@
         },
         "security": [
           {
-            "BearerAuth": []
+            "RunnerBearerAuth": []
           }
         ]
       }
@@ -2747,6 +3147,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2807,6 +3210,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2829,6 +3235,26 @@
         "summary": "List the tenant's model registry",
         "description": "One entry per configured model; two entries can share a `secret_ref`. Each entry is joined to its secret's non-secret metadata (provider, kind, base_url, has_key) — `api_key` is never serialised. `active` is computed against the tenant's current provider selection (`GET /v1/tenants/me/provider`). The response is a bounded page ordered by `created_at` descending, then `id` descending. Page forward by sending the response's `next_cursor` back as `starting_after`; a `null` `next_cursor` is the last page. Cursors are bound to the tenant and the `limit` that produced them, so changing `limit` mid-pagination requires starting from the first page again. ",
         "operationId": "list_tenant_model_entries",
+        "parameters": [
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Cursor returned as `next_cursor` by the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows to return.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2848,6 +3274,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -2905,6 +3334,12 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -2950,6 +3385,9 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3018,6 +3456,12 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -3056,6 +3500,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3098,11 +3545,20 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3140,6 +3596,9 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3209,6 +3668,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -3269,6 +3731,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "A correctly signed delivery this fleet does not act on, and why",
@@ -3294,10 +3765,16 @@
             "description": "The request could not be read"
           },
           "401": {
-            "description": "No credential, or one this route does not accept"
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3306,11 +3783,7 @@
             "description": "A dependency this route needs is unreachable"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/webhooks/{fleet_id}": {
@@ -3332,6 +3805,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "A correctly signed delivery this fleet does not act on, and why",
@@ -3357,10 +3839,16 @@
             "description": "The request could not be read"
           },
           "401": {
-            "description": "No credential, or one this route does not accept"
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3369,11 +3857,7 @@
             "description": "A dependency this route needs is unreachable"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/webhooks/{fleet_id}/approval": {
@@ -3395,6 +3879,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -3410,10 +3903,16 @@
             "description": "The request could not be read"
           },
           "401": {
-            "description": "No credential, or one this route does not accept"
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3422,11 +3921,7 @@
             "description": "A dependency this route needs is unreachable"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/webhooks/{fleet_id}/github": {
@@ -3475,6 +3970,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The provider's delivery, verbatim; read only once its signature verifies",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "A correctly signed delivery this fleet does not act on, and why",
@@ -3500,13 +4004,16 @@
             "description": "The request could not be read"
           },
           "401": {
-            "description": "No credential, or one this route does not accept"
+            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured"
           },
           "404": {
             "description": "No such resource, or none this caller may see"
           },
           "413": {
             "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3515,11 +4022,7 @@
             "description": "A dependency this route needs is unreachable"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/workspaces": {
@@ -3528,7 +4031,7 @@
           "Workspaces"
         ],
         "summary": "Create a workspace",
-        "description": "Creates a named workspace in the caller's tenant. The server assigns the workspace identifier. This operation does not accept a replay key or retry automatically. After an uncertain response, query the tenant's workspaces with the exact name. Retrying the same tenant- unique name cannot create a second row and returns 409 when the first request committed. ",
+        "description": "Creates a named workspace in the caller's tenant. The server assigns the workspace identifier. This operation does not accept a replay key or retry automatically. After an uncertain response, query the tenant's workspaces with the exact name. Retrying the same tenant-unique name cannot create a second row and returns 409 when the first request committed. ",
         "operationId": "create_workspace",
         "requestBody": {
           "content": {
@@ -3557,6 +4060,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -3565,6 +4071,12 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3586,7 +4098,7 @@
           "Approvals"
         ],
         "summary": "List pending approval gates for a workspace",
-        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row surfaces the fleet's proposed action, gathered evidence, blast- radius assessment, and timeout countdown. Filter by fleet, gate kind, or status. Cursor pagination over (created_at, id) so concurrent inserts don't cause silent skips. ",
+        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row surfaces the fleet's proposed action, gathered evidence, blast-radius assessment, and timeout countdown. Filter by fleet, gate kind, or status. Cursor pagination over (created_at, id) so concurrent inserts don't cause silent skips. ",
         "operationId": "list_workspace_approvals",
         "parameters": [
           {
@@ -3660,6 +4172,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -3713,6 +4228,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -3721,6 +4239,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3773,6 +4294,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -3783,6 +4314,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The request could not be read"
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -3795,6 +4329,12 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3852,6 +4392,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -3872,7 +4415,7 @@
           "Connectors"
         ],
         "summary": "Read a connector status",
-        "description": "Returns `connected` or `not_connected` for one provider. Requires the `connector:read` scope. An unknown provider returns 404 `UZ- CONN-004`. ",
+        "description": "Returns `connected` or `not_connected` for one provider. Requires the `connector:read` scope. An unknown provider returns 404 `UZ-CONN-004`. ",
         "operationId": "connector_status",
         "parameters": [
           {
@@ -3916,6 +4459,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -3972,6 +4518,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4037,6 +4586,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4127,11 +4679,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4153,7 +4711,7 @@
           "Workspaces"
         ],
         "summary": "Stream live activity for a whole workspace",
-        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. Control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry- After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. ",
+        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. Control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. ",
         "operationId": "stream_workspace_events",
         "parameters": [
           {
@@ -4176,6 +4734,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The request could not be read"
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4254,6 +4815,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -4285,6 +4849,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLibraryImport"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Created",
@@ -4307,6 +4881,9 @@
           },
           "413": {
             "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4385,6 +4962,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -4452,8 +5032,14 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
           "424": {
             "description": "A dependency of this request failed"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4520,6 +5106,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -4564,6 +5153,9 @@
           "204": {
             "description": "No content"
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -4575,6 +5167,9 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4628,6 +5223,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PatchFleetRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -4656,6 +5267,12 @@
           },
           "412": {
             "description": "The precondition the caller supplied does not hold"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4746,11 +5363,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4804,6 +5427,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The request could not be read"
           },
           "401": {
             "description": "No credential, or one this route does not accept"
@@ -4873,6 +5499,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -4881,6 +5510,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -4946,6 +5578,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5014,6 +5649,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -5054,6 +5692,42 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Free text the entries are searched by.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Keep only the entries in one category.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Cursor returned as `next_cursor` by the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows to return; a positive integer.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5078,6 +5752,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5145,6 +5822,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5225,6 +5905,9 @@
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -5265,6 +5948,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteerRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "202": {
             "description": "Accepted for publication; a subscriber reading it is a separate event",
@@ -5290,6 +5983,12 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5344,11 +6043,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5390,6 +6095,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleWrite"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "The schedule as reconciled with the scheduler",
@@ -5413,8 +6128,14 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
           "422": {
             "description": "The request was read and its content cannot be acted on"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5478,6 +6199,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -5486,6 +6210,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5540,6 +6267,9 @@
           "204": {
             "description": "No content"
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -5551,6 +6281,9 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5601,6 +6334,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchedulePatch"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The schedule as reconciled with the scheduler",
@@ -5627,8 +6370,14 @@
           "409": {
             "description": "The request conflicts with the resource's current state"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
           "422": {
             "description": "The request was read and its content cannot be acted on"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5692,6 +6441,9 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
           },
@@ -5703,6 +6455,9 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5748,8 +6503,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5795,8 +6559,17 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5840,6 +6613,15 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The preference's value, as any JSON document",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The whole bag as it now reads, the written key included",
@@ -5851,8 +6633,20 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read"
+          },
           "401": {
             "description": "No credential, or one this route does not accept"
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5909,6 +6703,9 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -5976,6 +6773,12 @@
           },
           "409": {
             "description": "The request conflicts with the resource's current state"
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
           },
           "500": {
             "description": "The daemon failed to answer"
@@ -6052,6 +6855,12 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "413": {
+            "description": "The payload is over this route's ceiling"
+          },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -6108,6 +6917,9 @@
           "404": {
             "description": "No such resource, or none this caller may see"
           },
+          "429": {
+            "description": "The instance is at its ceiling"
+          },
           "500": {
             "description": "The daemon failed to answer"
           },
@@ -6140,6 +6952,29 @@
           "replayed": {
             "type": "boolean",
             "description": "Whether an earlier delivery already produced it.\n\nReported rather than hidden. A provider debugging a duplicate wants to\nknow this daemon saw the repeat and declined to run twice. That is a\ndifferent fact from the delivery having been lost."
+          }
+        }
+      },
+      "AccountOpened": {
+        "type": "object",
+        "description": "What a signup event is answered with.\n\nThe workspace rather than the person. An operator reads the provider's\ndelivery log to ask whether the signup landed. The workspace is what they\ncan then go and look at. The subject is already in the request.",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "created"
+        ],
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "`true` on a fresh account, `false` when this delivery was a replay."
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "The default workspace the account was opened with."
+          },
+          "workspace_name": {
+            "type": "string",
+            "description": "What that workspace is called."
           }
         }
       },
@@ -6282,6 +7117,57 @@
         },
         "additionalProperties": false
       },
+      "AdminLibraryImport": {
+        "type": "object",
+        "description": "Platform Fleet-library onboarding request.",
+        "properties": {
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional GitHub branch, tag, or commit.",
+            "default": null
+          },
+          "replace": {
+            "type": "boolean",
+            "description": "Explicitly permits replacing a slug owned by another source.",
+            "default": false
+          },
+          "skill_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Inline root document for uploads.",
+            "default": null
+          },
+          "source_kind": {
+            "type": "string",
+            "description": "`upload`, `github`, or first-party `template`.",
+            "default": ""
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "Repository, template id, or upload provenance.",
+            "default": ""
+          },
+          "support_files": {
+            "type": "array",
+            "items": {},
+            "description": "Attachments are fetched from repositories; inline uploads reject these.",
+            "default": []
+          },
+          "trigger_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional inline trigger document for uploads.",
+            "default": null
+          }
+        }
+      },
       "AdminLibraryItem": {
         "type": "object",
         "description": "One metadata-only platform Fleet-library row.",
@@ -6348,6 +7234,55 @@
         },
         "additionalProperties": false
       },
+      "AdminLibraryPatch": {
+        "type": "object",
+        "description": "Partial operator edit for one Fleet-library row.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement description.",
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement display name.",
+            "default": null
+          },
+          "published": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Publish or withdraw.",
+            "default": null
+          },
+          "required_credentials_reasons": {
+            "description": "Operator-authored reason copy."
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement branch or tag.",
+            "default": null
+          },
+          "source_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement GitHub owner/repository.",
+            "default": null
+          }
+        }
+      },
       "AdminLibraryRequirements": {
         "type": "object",
         "description": "Content-free requirements shown on one Fleet-library row.",
@@ -6385,6 +7320,32 @@
           }
         },
         "additionalProperties": false
+      },
+      "AdminModelCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ModelRates",
+            "description": "Rates and context cap flattened on the existing wire."
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider",
+              "model_id"
+            ],
+            "properties": {
+              "model_id": {
+                "type": "string",
+                "description": "Provider-native model identity."
+              },
+              "provider": {
+                "type": "string",
+                "description": "Provider identity."
+              }
+            }
+          }
+        ],
+        "description": "`POST /v1/admin/models` input."
       },
       "AdminModelCreated": {
         "allOf": [
@@ -6539,6 +7500,19 @@
             "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
           }
         }
+      },
+      "AppIngressAnswer": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Pong",
+            "description": "The handshake, answered with the word the provider expects."
+          },
+          {
+            "$ref": "#/components/schemas/Ignored",
+            "description": "A delivery this daemon deliberately did not act on, and why."
+          }
+        ],
+        "description": "What `POST /v1/ingress/{provider}` answers with a 200.\n\nA handshake is answered with the provider's own word. A delivery that\nwakes nothing is answered with its reason. Both are correct outcomes for a\ncorrectly signed request."
       },
       "ApprovalSummary": {
         "type": "object",
@@ -6724,7 +7698,7 @@
             "description": "Extra host paths bound into every lease's sandbox."
           },
           "network_policy": {
-            "$ref": "#/components/schemas/runner.NetworkPolicy",
+            "$ref": "#/components/schemas/RunnerNetworkPolicy",
             "description": "Egress posture to apply."
           },
           "registry_allowlist": {
@@ -7503,17 +8477,15 @@
         ]
       },
       "EventsAnswer": {
-        "oneOf": [
+        "anyOf": [
           {
-            "$ref": "#/components/schemas/EchoAnswer",
-            "description": "The provider's challenge, echoed under the field name it arrived in."
+            "$ref": "#/components/schemas/EchoAnswer"
           },
           {
-            "$ref": "#/components/schemas/Ignored",
-            "description": "A delivery this daemon deliberately did not act on, and why."
+            "$ref": "#/components/schemas/Ignored"
           }
         ],
-        "description": "What `POST /v1/connectors/{provider}/events` answers with a 200.\n\nOne status, two documents: a handshake is echoed and a delivery that wakes\nnothing is acknowledged with its reason. Both are 200 because both are\ncorrect outcomes for a correctly signed request, and a sender treats\nanything else as a retry."
+        "description": "A handshake echoed under the provider's own field name, or a delivery acknowledged and not acted on, with the reason"
       },
       "EventsResponse": {
         "type": "object",
@@ -7586,7 +8558,7 @@
             "description": "Credentials the run may mint on demand."
           },
           "network_policy": {
-            "$ref": "#/components/schemas/policy.NetworkPolicy",
+            "$ref": "#/components/schemas/NetworkPolicy",
             "description": "Where the run may reach on the network."
           },
           "provider": {
@@ -7656,6 +8628,26 @@
           "renewal_terminate",
           "budget_breach"
         ]
+      },
+      "FannedOut": {
+        "type": "object",
+        "description": "What an accepted App delivery is answered with.\n\nWider than a single acknowledgement, because one App delivery is many\nappends. A sender debugging its integration wants to know how many fleets\nthis installation woke, and no single event id can show that number.",
+        "required": [
+          "matched",
+          "enqueued"
+        ],
+        "properties": {
+          "enqueued": {
+            "type": "integer",
+            "description": "How many of them this delivery actually appended an event for.\n\nLower than `matched` when a fleet already ran this delivery. The claim\nis per fleet. A retry that reaches a wider set than the first attempt\nappends only for the fleets that had not seen it.",
+            "minimum": 0
+          },
+          "matched": {
+            "type": "integer",
+            "description": "How many fleets subscribed to this delivery.",
+            "minimum": 0
+          }
+        }
       },
       "Fired": {
         "type": "object",
@@ -8068,6 +9060,34 @@
           }
         }
       },
+      "HeartbeatRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/heartbeats` request.\n\nThe capability report rides the first beat and any beat where the probe\nresult changed. Both fields default to absent so an older runner's empty body\nstill parses.",
+        "properties": {
+          "capability_report": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CapabilityReport",
+                "description": "What this host can enforce, when the probe result is being reported."
+              }
+            ]
+          },
+          "selftest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SelftestReport",
+                "description": "A verdict produced since the last beat, by request or by startup probe."
+              }
+            ]
+          }
+        }
+      },
       "HeartbeatResponse": {
         "type": "object",
         "description": "`POST /v1/runners/me/heartbeats` reply.\n\nCarries the current assignment on EVERY beat, so a dashboard change reaches\nthe host within one interval. A null assignment means a row predating the\npolicy columns: the runner then fails closed and refuses to lease.",
@@ -8226,6 +9246,19 @@
         },
         "additionalProperties": false
       },
+      "IdentityAnswer": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AccountOpened",
+            "description": "The workspace the event opened, or the one it already had."
+          },
+          {
+            "$ref": "#/components/schemas/Ignored",
+            "description": "A delivery this daemon deliberately did not act on, and why."
+          }
+        ],
+        "description": "What `POST /v1/auth/identity-events/clerk` answers with a 200.\n\nAn event that opened or found an account names it; one that changes nothing\nsays why."
+      },
       "Ignored": {
         "type": "object",
         "description": "What a delivery this daemon deliberately dropped is answered with.\n\n`200` and a reason, never a 4xx. Every one of these is a real,\ncorrectly-signed delivery that simply does not wake this fleet — a green\nbuild, a label edit, a paused fleet. Answering an error would put it in the\nsender's retry queue forever, and retrying changes none of them.",
@@ -8293,7 +9326,7 @@
             "items": {
               "$ref": "#/components/schemas/WebhookUrl"
             },
-            "description": "One entry per webhook trigger the bundle declared, keyed by source.\n\nAn empty object where the fleet declares none, never `null`: a client\niterating the map should not have to branch on its absence first."
+            "description": "One entry per webhook trigger the bundle declared, each naming its\nsource and the URL the provider is pointed at.\n\nAn empty array where the fleet declares none, never `null`: a client\niterating it should not have to branch on its absence first."
           }
         }
       },
@@ -8905,6 +9938,36 @@
         },
         "additionalProperties": false
       },
+      "NetworkPolicy": {
+        "type": "object",
+        "description": "Per-run egress policy. An outbound request must match an entry in\n`allow` by exact hostname; an empty `allow` denies everything.",
+        "required": [
+          "allow",
+          "read_only",
+          "read_post_paths"
+        ],
+        "properties": {
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact hostnames the run may reach."
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "Restrict tool requests to safe reads, keeping a credential from crossing\nto a host other than its own declared endpoint."
+          },
+          "read_post_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact prefixes where a read-only tool may use POST for a query."
+          }
+        },
+        "additionalProperties": false
+      },
       "OnboardingResponse": {
         "type": "object",
         "description": "The whole onboarding checklist, in one call.",
@@ -9104,6 +10167,40 @@
         },
         "additionalProperties": false
       },
+      "PatchFleetRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — a partial update.\n\nEvery field is optional and presence-based; an empty body is a no-op that\ntouches no row. `config_json` and `trigger_markdown` both drive the stored\nconfiguration and are mutually exclusive. Sent together they are refused,\nbecause there is no answer to which one wins.",
+        "properties": {
+          "config_json": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A configuration document, replacing the stored one directly."
+          },
+          "source_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A replacement `SKILL.md`, cross-checked against the name."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The transition asked for: `active`, `stopped` or `killed`.\n\n`paused` is refused — it belongs to the platform's anomaly gate, and\naccepting it here would let a caller forge a system-halt provenance."
+          },
+          "trigger_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An authored `TRIGGER.md`, reparsed into the configuration and the name."
+          }
+        }
+      },
       "PatchedFleetResponse": {
         "oneOf": [
           {
@@ -9293,6 +10390,37 @@
         },
         "additionalProperties": false
       },
+      "PlatformKeyPut": {
+        "type": "object",
+        "description": "`PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.",
+        "required": [
+          "provider",
+          "source_workspace_id",
+          "model"
+        ],
+        "properties": {
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Custom endpoint for the compatible-provider mode."
+          },
+          "model": {
+            "type": "string",
+            "description": "Priced model selected as platform default."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider and vault-row name."
+          },
+          "source_workspace_id": {
+            "type": "string",
+            "description": "Workspace holding that vault row."
+          }
+        },
+        "additionalProperties": false
+      },
       "PlatformKeySetResponse": {
         "type": "object",
         "description": "Successful platform-default activation.",
@@ -9435,6 +10563,33 @@
           }
         }
       },
+      "RegisterRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners` request. Authorized by an existing operator credential,\nnot an enrollment token. The operator ASSIGNS the policy; the host never\ndeclares one.",
+        "required": [
+          "host_id",
+          "assigned_policy",
+          "labels"
+        ],
+        "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/AssignedPolicy",
+            "description": "The policy the operator assigns to it."
+          },
+          "host_id": {
+            "type": "string",
+            "description": "Stable identifier for the host being enrolled."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Operator labels for placement and filtering."
+          }
+        },
+        "additionalProperties": false
+      },
       "RegisterResponse": {
         "type": "object",
         "description": "`POST /v1/runners` reply: the durable identity plus its bearer token.\n\nThe token is returned ONCE — the daemon stores only its hash.",
@@ -9458,6 +10613,35 @@
           }
         },
         "additionalProperties": false
+      },
+      "RenewRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/renew` request.\n\nCumulative token counts for the run so far, never deltas. Only the\ndifference since the last renewal is charged, so a retry that re-sends the\nsame totals charges nothing new.",
+        "required": [
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens"
+        ],
+        "properties": {
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative cache-read tokens.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative prompt tokens.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative completion tokens.",
+            "minimum": 0
+          }
+        }
       },
       "RenewResponse": {
         "type": "object",
@@ -9667,6 +10851,19 @@
           }
         },
         "additionalProperties": false
+      },
+      "ResolveApprovalRequest": {
+        "type": "object",
+        "description": "The body a decision may carry.\n\nEvery field is optional, and so is the whole body. A decision is complete\nwithout a note, and demanding one would make the common answer the awkward\none.",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The operator's note, stored as the gate's `detail`."
+          }
+        }
       },
       "Resolved": {
         "type": "object",
@@ -10244,6 +11441,15 @@
           "offline"
         ]
       },
+      "RunnerNetworkPolicy": {
+        "type": "string",
+        "description": "Egress posture assigned per runner, named so the behaviour reads off the value.",
+        "enum": [
+          "allow_all",
+          "deny_all_egress",
+          "allow_list_egress"
+        ]
+      },
       "RunnersResponse": {
         "type": "object",
         "description": "A keyset page of runner list rows.",
@@ -10282,6 +11488,65 @@
           "container_nested",
           "dev_none"
         ]
+      },
+      "SchedulePatch": {
+        "type": "object",
+        "description": "What a caller sends to change one.\n\nEvery field optional, and an absent one is left alone — see\n[`afd_cron::Change`] on why a partial edit is not a whole replacement.",
+        "properties": {
+          "cron": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A new expression."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A new message."
+          },
+          "paused": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether it should be firing."
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A new zone."
+          }
+        }
+      },
+      "ScheduleWrite": {
+        "type": "object",
+        "description": "What a caller sends to create a schedule.",
+        "required": [
+          "cron",
+          "message"
+        ],
+        "properties": {
+          "cron": {
+            "type": "string",
+            "description": "The expression it fires on."
+          },
+          "message": {
+            "type": "string",
+            "description": "What the fleet is asked to do when it fires."
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The zone that expression is read in. Absent means UTC."
+          }
+        }
       },
       "SecretDelivery": {
         "type": "string",
@@ -10484,6 +11749,19 @@
           "status": {
             "type": "string",
             "description": "Always `accepted`. A field rather than an implied 202, because that is\nwhat the daemon this ports writes."
+          }
+        }
+      },
+      "SteerRequest": {
+        "type": "object",
+        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nOne field, and unknown ones are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "What to say to the fleet."
           }
         }
       },
@@ -10899,45 +12177,6 @@
             "description": "Always `null`: the walk never counts, and the key stays because a\nclient may already branch on its presence."
           }
         }
-      },
-      "policy.NetworkPolicy": {
-        "type": "object",
-        "description": "Per-run egress policy. An outbound request must match an entry in\n`allow` by exact hostname; an empty `allow` denies everything.",
-        "required": [
-          "allow",
-          "read_only",
-          "read_post_paths"
-        ],
-        "properties": {
-          "allow": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Exact hostnames the run may reach."
-          },
-          "read_only": {
-            "type": "boolean",
-            "description": "Restrict tool requests to safe reads, keeping a credential from crossing\nto a host other than its own declared endpoint."
-          },
-          "read_post_paths": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Exact prefixes where a read-only tool may use POST for a query."
-          }
-        },
-        "additionalProperties": false
-      },
-      "runner.NetworkPolicy": {
-        "type": "string",
-        "description": "Egress posture assigned per runner, named so the behaviour reads off the value.",
-        "enum": [
-          "allow_all",
-          "deny_all_egress",
-          "allow_list_egress"
-        ]
       }
     },
     "securitySchemes": {
@@ -10946,6 +12185,12 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "description": "Obtain a token via the CLI auth flow (POST /v1/auth/sessions) or GitHub OAuth"
+      },
+      "RunnerBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "agt_r",
+        "description": "The opaque agt_r token minted when the runner enrols (POST /v1/runners)"
       }
     }
   }

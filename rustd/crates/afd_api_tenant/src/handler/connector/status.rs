@@ -64,8 +64,8 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
     summary = "Read a connector status",
     description = concat!(
         "Returns `connected` or `not_connected` for one provider. Requires ",
-        "the `connector:read` scope. An unknown provider returns 404 `UZ- ",
-        "CONN-004`. ",
+        "the `connector:read` scope. An unknown provider returns 404 ",
+        "`UZ-CONN-004`. ",
     ),
     params(
         afd_http::openapi::path::WorkspaceProvider,
@@ -76,6 +76,7 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -126,6 +127,7 @@ pub(crate) async fn read<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

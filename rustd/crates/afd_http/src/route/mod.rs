@@ -217,6 +217,11 @@ pub enum Guard {
     WebhookSignature,
     /// A Svix-signed delivery.
     Svix,
+    /// A delivery the handler verifies by its payload signature, because the
+    /// secret it needs is looked up per provider or per deployment and the
+    /// layer cannot hold it. The layer classifies no plane, exactly as for
+    /// `Open`; the difference is published: such a route can answer 401.
+    PayloadSigned,
 }
 
 /// What happens to a request when the instance is at its ceiling.

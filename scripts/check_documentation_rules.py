@@ -144,8 +144,19 @@ def public_json_text(source: str) -> list[PublicText]:
     return values
 
 
+# A backticked span that contains a hyphen followed by a space.
+SPLIT_CODE_SPAN = re.compile(r"`[^`\s]*- [^`]*`")
+
+
 def lint_openapi_document(path: Path, source: str) -> list[str]:
-    """The generated document's prose, held to the same rules the YAML was."""
+    """The generated document's prose, held to the same rules the YAML was.
+
+    The YAML linter also refused release numbers in prose under the label
+    DOC-31. That label names a different rule (the required version fields on
+    a page), and no rule in DOCUMENTATION_RULES.md forbids a release number in
+    API prose, so the check is retired here rather than carried under a name
+    it never had. A rule that wants it back declares it first.
+    """
     problems: list[str] = []
     for field in public_json_text(source):
         problems.extend(lint_wording(path, field.line, field.value))
@@ -155,6 +166,11 @@ def lint_openapi_document(path: Path, source: str) -> list[str]:
             problems.append(
                 issue("DOC-22", path, field.line, "state customer behavior, not implementation details")
             )
+        # A `concat!` piece wrapped at a hyphen leaves "`UZ- RUN-018`" in the
+        # document: a code span nobody can grep for. The first-day reader rule
+        # is the one it breaks, since the identifier no longer reads as one.
+        if SPLIT_CODE_SPAN.search(field.value):
+            problems.append(issue("DOC-01", path, field.line, "code span is split by a wrapped hyphen"))
     return problems
 
 
@@ -164,11 +180,14 @@ def lint_repository() -> list[str]:
     # Linting the emitted artifact keeps the prose graded; the annotations that
     # produce it are where a violation is FIXED.
     document = ROOT / "public/openapi.json"
+    relative = document.relative_to(ROOT)
     if document.exists():
         source = document.read_text(encoding="utf-8")
-        relative = document.relative_to(ROOT)
         problems.extend(lint_openapi_document(relative, source))
         problems.extend(lint_removed_commands(relative, source))
+    else:
+        # A missing artifact is a failure, not a document with nothing to grade.
+        problems.append(issue("DOC-01", relative, 0, "the published document is missing"))
     for path in sorted((ROOT / "cli/src/program").rglob("*.ts")):
         relative = path.relative_to(ROOT)
         source = path.read_text(encoding="utf-8")

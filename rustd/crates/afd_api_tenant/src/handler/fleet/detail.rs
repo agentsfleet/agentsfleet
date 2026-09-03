@@ -29,7 +29,14 @@ use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceFleets as _};
 pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 
+// The refusal sentences live beside the parser that produces them and are
+// re-exported here because the tests and the siblings address them as
+// `detail::DETAIL_*`, the path they were published under.
 use super::detail_request::read_patch;
+pub use super::detail_request::{
+    DETAIL_CONFIG_AMBIGUOUS, DETAIL_CONFIG_REQUIRED, DETAIL_MALFORMED_JSON, DETAIL_SOURCE_BOUNDS,
+    DETAIL_STATUS_INVALID, DETAIL_TRIGGER_BOUNDS,
+};
 use super::triggers;
 
 /// The scoped events each verb's failures are logged under.
@@ -37,29 +44,11 @@ const EVENT_READ: &str = "fleet_read_failed";
 const EVENT_PATCH: &str = "fleet_patch_failed";
 const EVENT_PURGE: &str = "fleet_purge_failed";
 
-/// The refusal a PATCH body this daemon cannot read earns.
-pub const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
-
-/// The refusal a PATCH naming both configuration sources earns.
-pub const DETAIL_CONFIG_AMBIGUOUS: &str = "config_json and trigger_markdown are mutually exclusive";
-
-/// The refusal an empty `config_json` earns.
-pub const DETAIL_CONFIG_REQUIRED: &str = "config_json is required";
-
-/// The refusal a status outside the operator-targetable set earns.
-pub const DETAIL_STATUS_INVALID: &str = "status must be one of \"active\", \"stopped\", \"killed\"";
-
 /// The refusal a conditional PATCH that asks for nothing earns.
 ///
 /// An `If-Match` with no field to write is a caller expecting a compare that
 /// cannot happen — answering 200 would tell them their edit landed.
 pub const DETAIL_CONDITIONAL_EMPTY: &str = "A conditional fleet update requires at least one field";
-
-/// The refusal a document outside its length bounds earns.
-pub const DETAIL_TRIGGER_BOUNDS: &str = "trigger_markdown must be 1..64KiB";
-
-/// The refusal a source document outside its length bounds earns.
-pub const DETAIL_SOURCE_BOUNDS: &str = "source_markdown must be 1..64KiB";
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — one fleet, whole.
 ///
@@ -88,6 +77,7 @@ pub const DETAIL_SOURCE_BOUNDS: &str = "source_markdown must be 1..64KiB";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -126,6 +116,7 @@ pub(crate) async fn read<D: Services>(
         "wins behavior. Status changes require an operator role. Config ",
         "changes require workspace membership. ",
     ),
+    request_body = Option<afd_wire::fleet::PatchFleetRequest>,
     params(
         afd_http::openapi::path::Fleet,
         ("If-Match" = Option<String>, Header, description = "Optional source-version tag from GET. Stale values return 412 with the current `etag`."),
@@ -138,6 +129,8 @@ pub(crate) async fn read<D: Services>(
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -198,10 +191,12 @@ pub(crate) async fn patch<D: Services>(
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

@@ -37,7 +37,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// developer's working copy has no honest answer to give.
 ///
 /// `GIT_COMMIT` is `make/build.mk`'s own variable, exported — the same one the
-/// image tag is built from, so the two cannot disagree.
+/// image tag is built from, so the two cannot disagree. The release workflows
+/// build with `cargo` directly and pass the same seven characters in.
 const COMMIT: &str = match option_env!("GIT_COMMIT") {
     Some(commit) => commit,
     None => "unknown",

@@ -54,8 +54,8 @@ impl WebhookRoute {
             Self::GitHub => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}/github"),
             Self::Approval => (Guard::WebhookHmac, "/v1/webhooks/{fleet_id}/approval"),
             Self::ReceiveSvix => (Guard::Svix, "/v1/webhooks/svix/{fleet_id}"),
-            Self::AppIngress => (Guard::Open, "/v1/ingress/{provider}"),
-            Self::QstashSchedules => (Guard::Open, "/v1/ingress/qstash/schedules"),
+            Self::AppIngress => (Guard::PayloadSigned, "/v1/ingress/{provider}"),
+            Self::QstashSchedules => (Guard::PayloadSigned, "/v1/ingress/qstash/schedules"),
         };
         RouteMeta::new(guard, RouteClass::Api, template, Scopes::Always(NONE))
     }

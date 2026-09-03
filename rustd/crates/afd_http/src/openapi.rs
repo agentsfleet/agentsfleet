@@ -95,6 +95,13 @@ pub const SESSION_EXPIRED: &str = "The session has expired; start a new one";
 /// A credential whose person this tenant does not know.
 pub const UNKNOWN_SUBJECT: &str = "The caller is not a person this tenant knows";
 
+/// A correctly signed delivery this fleet does not act on, and the reason.
+pub const IGNORED: &str = "A correctly signed delivery this fleet does not act on, and why";
+
+/// What a webhook receiver reads: the provider's own document.
+pub const DELIVERY: &str =
+    "The provider's delivery, verbatim; read only once its signature verifies";
+
 /// The tags an operation is grouped under, as the published document spells them.
 ///
 /// One module rather than free constants: a tag is a name in the CONTRACT, and

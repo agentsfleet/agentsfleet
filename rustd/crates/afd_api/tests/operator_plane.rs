@@ -207,6 +207,52 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
     assert_runner_patch_policy(&writer).await;
 }
 
+/// Retiring a runner's record sits behind `runner:write`, and a segment that
+/// cannot be a runner id is refused before any store is asked.
+#[tokio::test]
+async fn runner_delete_is_mounted_behind_runner_write_and_rejects_shape_before_io() {
+    let reader = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::RunnerRead]),
+        )
+        .router();
+    let denied = send(
+        &reader,
+        Method::DELETE,
+        &format!("/v1/fleets/runners/{RUNNER}"),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    let writer = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::RunnerWrite]),
+        )
+        .router();
+    let malformed = send(
+        &writer,
+        Method::DELETE,
+        "/v1/fleets/runners/not-a-runner-id",
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(malformed)
+            .await
+            .get("error_code")
+            .and_then(serde_json::Value::as_str),
+        Some("UZ-REQ-001")
+    );
+}
+
 async fn assert_runner_patch_shapes(writer: &axum::Router) {
     for body in [
         "",

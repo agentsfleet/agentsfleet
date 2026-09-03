@@ -54,10 +54,13 @@ const EVENT: &str = "runner_heartbeat_failed";
         "`no report this beat` and the beat still counts. A host must not be ",
         "able to fail its own liveness by sending nonsense. ",
     ),
+    request_body = Option<HeartbeatRequest>,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = HeartbeatResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

@@ -60,9 +60,9 @@ pub struct Ignored<'a> {
 
 /// What an accepted App delivery is answered with.
 ///
-/// Wider than [`Accepted`] because one App delivery is many appends: a sender
-/// debugging its integration wants to know how many fleets this installation
-/// actually woke, which is the number no single event id can show.
+/// Wider than a single acknowledgement, because one App delivery is many
+/// appends. A sender debugging its integration wants to know how many fleets
+/// this installation woke, and no single event id can show that number.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FannedOut {
@@ -70,8 +70,8 @@ pub struct FannedOut {
     pub matched: usize,
     /// How many of them this delivery actually appended an event for.
     ///
-    /// Lower than `matched` when a fleet already ran this delivery — the claim
-    /// is per fleet, so a retry that reaches a wider set than the first attempt
+    /// Lower than `matched` when a fleet already ran this delivery. The claim
+    /// is per fleet. A retry that reaches a wider set than the first attempt
     /// appends only for the fleets that had not seen it.
     pub enqueued: usize,
 }
@@ -139,13 +139,85 @@ pub struct EchoAnswer<'a> {
 /// anything else as a retry.
 // Untagged, so the bytes are exactly the inner document's. The enum exists so
 // the published contract can say "one of these two" where a single `body =`
-// could only name one, and so the handler's two exits are one type.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+// could only name one, and so the handler's two exits are one type. The schema
+// is written by hand below rather than derived: the derive publishes `oneOf`,
+// and the echo is a free-form object that ALSO matches `{"ignored": …}`, so a
+// strict client would refuse every ignored answer as ambiguous. `anyOf` is the
+// claim that is true.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum EventsAnswer<'a> {
     /// The provider's challenge, echoed under the field name it arrived in.
     Echo(EchoAnswer<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::PartialSchema for EventsAnswer<'_> {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::ToSchema as _;
+        utoipa::openapi::RefOr::T(utoipa::openapi::schema::Schema::AnyOf(
+            utoipa::openapi::schema::AnyOfBuilder::new()
+                .item(utoipa::openapi::Ref::from_schema_name(EchoAnswer::name()))
+                .item(utoipa::openapi::Ref::from_schema_name(Ignored::name()))
+                .description(Some(
+                    "A handshake echoed under the provider's own field name, or a \
+                     delivery acknowledged and not acted on, with the reason",
+                ))
+                .build(),
+        ))
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for EventsAnswer<'_> {
+    fn name() -> Cow<'static, str> {
+        Cow::Borrowed("EventsAnswer")
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::PartialSchema as _;
+        schemas.push((EchoAnswer::name().into_owned(), EchoAnswer::schema()));
+        schemas.push((Ignored::name().into_owned(), Ignored::schema()));
+        EchoAnswer::schemas(schemas);
+        Ignored::schemas(schemas);
+    }
+}
+
+/// What `POST /v1/ingress/{provider}` answers with a 200.
+///
+/// A handshake is answered with the provider's own word. A delivery that
+/// wakes nothing is answered with its reason. Both are correct outcomes for a
+/// correctly signed request.
+// Untagged, so the bytes are exactly the inner document's; the two shapes are
+// disjoint (one requires `status`, the other `ignored`), so `oneOf` is exact.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum AppIngressAnswer<'a> {
+    /// The handshake, answered with the word the provider expects.
+    Pong(Pong<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+/// What `POST /v1/auth/identity-events/clerk` answers with a 200.
+///
+/// An event that opened or found an account names it; one that changes nothing
+/// says why.
+// Untagged and disjoint, as [`AppIngressAnswer`].
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum IdentityAnswer<'a> {
+    /// The workspace the event opened, or the one it already had.
+    Opened(AccountOpened<'a>),
     /// A delivery this daemon deliberately did not act on, and why.
     Ignored(Ignored<'a>),
 }
@@ -228,9 +300,9 @@ pub struct PullRequestDigest<'a> {
 
 /// What a signup event is answered with.
 ///
-/// The workspace rather than the person: a provider's delivery log is read by
-/// an operator asking "did this signup land", and the workspace is the thing
-/// they can then go and look at. The subject is already in the request.
+/// The workspace rather than the person. An operator reads the provider's
+/// delivery log to ask whether the signup landed. The workspace is what they
+/// can then go and look at. The subject is already in the request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountOpened<'a> {
@@ -248,7 +320,9 @@ pub struct AccountOpened<'a> {
 mod tests {
     use std::borrow::Cow;
 
-    use super::{EchoAnswer, EventsAnswer, Ignored};
+    use super::{
+        AccountOpened, AppIngressAnswer, EchoAnswer, EventsAnswer, IdentityAnswer, Ignored, Pong,
+    };
 
     /// The untagged answer is bytes-identical to the document it wraps.
     ///
@@ -270,6 +344,37 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ignored).ok().as_deref(),
             Some(r#"{"ignored":"fleet_paused"}"#),
+        );
+    }
+
+    /// The other two untagged answers add no bytes either.
+    #[test]
+    fn test_the_ingress_and_identity_answers_add_no_bytes_around_their_documents() {
+        let pong = AppIngressAnswer::Pong(Pong {
+            status: Cow::Borrowed("ok"),
+        });
+        let dropped = AppIngressAnswer::Ignored(Ignored {
+            ignored: Cow::Borrowed("fleet_paused"),
+        });
+        let opened = IdentityAnswer::Opened(AccountOpened {
+            workspace_id: Cow::Borrowed("01924f4e-0000-7000-8000-000000000001"),
+            workspace_name: Cow::Borrowed("acme"),
+            created: true,
+        });
+
+        assert_eq!(
+            serde_json::to_string(&pong).ok().as_deref(),
+            Some(r#"{"status":"ok"}"#)
+        );
+        assert_eq!(
+            serde_json::to_string(&dropped).ok().as_deref(),
+            Some(r#"{"ignored":"fleet_paused"}"#)
+        );
+        assert_eq!(
+            serde_json::to_string(&opened).ok().as_deref(),
+            Some(
+                r#"{"workspace_id":"01924f4e-0000-7000-8000-000000000001","workspace_name":"acme","created":true}"#
+            )
         );
     }
 }

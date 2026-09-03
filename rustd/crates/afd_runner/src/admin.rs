@@ -7,7 +7,7 @@ use afd_wire::runner::AssignedPolicy;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{
-    Result, admin_state_malformed, query, rejected, runner_not_found, selftest_refused,
+    Error, Result, admin_state_malformed, query, rejected, runner_not_found, selftest_refused,
 };
 use crate::sql;
 use crate::store::Runners;
@@ -15,8 +15,10 @@ use crate::store::Runners;
 const CONTEXT_TRANSITION: &str = "runner admin transition";
 const CONTEXT_POLICY: &str = "runner policy assignment";
 const CONTEXT_SELFTEST: &str = "runner self-test request";
+const CONTEXT_DELETE: &str = "runner record retirement";
 const COLUMN_ADMIN_STATE: &str = "admin_state";
 const COLUMN_CHANGED: &str = "changed";
+const COLUMN_LEASED: &str = "leased";
 const DETAIL_ACTION_REQUIRED: &str = "runner action does not change administrative state";
 const DETAIL_REVOKED_TERMINAL: &str =
     "revoked runners cannot transition back to cordoned or draining";
@@ -109,6 +111,35 @@ impl Runners {
             row.try_get(COLUMN_CHANGED),
             target,
         )
+    }
+
+    /// Retires a revoked runner's record.
+    ///
+    /// The destructive step is the revoke; this deletes a row the revoke has
+    /// already made inert, so a runner still in service is refused rather
+    /// than escalated. The terminal-state check and the delete are one
+    /// statement, so a concurrent revoke cannot fall between them.
+    ///
+    /// # Errors
+    /// Returns a typed refusal for a missing runner, a runner not yet revoked,
+    /// a runner still holding an active lease, or an unavailable datastore.
+    pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
+        let mut connection = self.pool().acquire().await?;
+        let row = sqlx::query(sql::runner::DELETE_RUNNER_IF_IN_STATE)
+            .bind(runner.as_str())
+            .bind(state_wire(AdminState::Revoked))
+            .bind(super::sweep::reclaim::STATUS_ACTIVE)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_DELETE))?
+            .ok_or_else(runner_not_found)?;
+        let changed: bool = row.try_get(COLUMN_CHANGED).map_err(query(CONTEXT_DELETE))?;
+        let leased: bool = row.try_get(COLUMN_LEASED).map_err(query(CONTEXT_DELETE))?;
+        match (changed, leased) {
+            (true, _) => Ok(()),
+            (false, true) => Err(Error::RunnerStillLeased),
+            (false, false) => Err(Error::RunnerNotRevoked),
+        }
     }
 
     /// Replaces a runner's assignment and reconciles its placement verdict in

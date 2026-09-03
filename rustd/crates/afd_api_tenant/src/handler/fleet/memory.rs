@@ -70,6 +70,7 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
     ),
     params(
         afd_http::openapi::path::Fleet,
+        afd_http::openapi::query::MemoryFilter,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MemoriesResponse),
@@ -77,6 +78,7 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
@@ -163,6 +165,7 @@ fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),

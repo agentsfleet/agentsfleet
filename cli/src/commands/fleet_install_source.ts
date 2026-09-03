@@ -9,10 +9,16 @@ import { Output } from "../services/output.ts";
 import { ValidationError } from "../errors/index.ts";
 import type { LoadedSkill } from "../lib/load-skill-from-path.ts";
 
+/** One webhook trigger the bundle declared, and the URL the provider is pointed at. */
+export interface WebhookUrl {
+  readonly source: string;
+  readonly url: string;
+}
+
 export interface InstallResponse {
   readonly fleet_id?: string;
   readonly name?: string;
-  readonly webhook_urls?: Record<string, string>;
+  readonly webhook_urls?: ReadonlyArray<WebhookUrl>;
 }
 
 export interface UpdateResponse {

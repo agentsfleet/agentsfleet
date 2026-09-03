@@ -18,6 +18,9 @@ mod memory_shapes;
 // Ungated: what it asserts is a property of the build WITHOUT the feature.
 #[path = "manifest.rs"]
 mod manifest;
+// Ungated for the same reason: it reads the sources, not the schemas.
+#[path = "names.rs"]
+mod names;
 #[path = "redaction.rs"]
 mod redaction;
 // Gated with the feature it grades: without `openapi` there are no schemas to
