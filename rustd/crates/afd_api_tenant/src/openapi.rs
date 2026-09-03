@@ -26,7 +26,7 @@ use utoipa::OpenApi as _;
 #[openapi(paths(
     crate::handler::approval::detail,
     crate::handler::approval::list,
-    crate::handler::approval::resolve,
+    crate::handler::approval::resolve::resolve,
     crate::handler::auth::session::dashboard::approve,
     crate::handler::auth::session::dashboard::verify,
     crate::handler::auth::session::delete_all,
