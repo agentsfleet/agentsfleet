@@ -23,6 +23,33 @@ const VISIBILITY_PLATFORM: &str = "platform";
 const DETAIL_COLLISION: &str = "That bundle's name is already taken by a different repository. Rename the bundle, or retry with replace to overwrite it.";
 
 /// Fetches or accepts one bundle, validates it, and stages its row as draft.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/admin/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "onboard_platform_fleet_library",
+    summary = "Onboard a platform Fleet library entry",
+    description = concat!(
+        "Onboards a Fleet library entry into the global platform catalog from ",
+        "a GitHub source reference. Requires the `platform-library:write` ",
+        "scope. The canonical bundle is written to internal object storage ",
+        "keyed by content hash; the response carries metadata only — never an ",
+        "object-store key or support-file content. ",
+    ),
+    request_body = afd_wire::admin::AdminLibraryImport,
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

@@ -53,6 +53,36 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
 /// One page, newest first, of everything the fleet remembers — or of one
 /// category, or of what a free-text search matched. Which of the three is
 /// [`Read::view`]'s answer, resolved once from the query string.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories",
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "list_fleet_memories",
+    summary = "List or search memory entries for a fleet",
+    description = concat!(
+        "Returns memory entries for the fleet, newest-created first. Without ",
+        "`query` this lists entries (optionally filtered by `category`). With ",
+        "`query`, performs case-insensitive LIKE search across both `key` and ",
+        "`content` (LIKE metacharacters in `query` are escaped — a query of ",
+        "`%` does NOT return every entry). Every shape pages by keyset: pass ",
+        "the previous response's `next_cursor` as `starting_after` to ",
+        "continue the walk. A null `next_cursor` marks the final page. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+        afd_http::openapi::query::MemoryFilter,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = MemoriesResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -114,6 +144,32 @@ fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
 /// refusal being preserved rather than a preference — see
 /// [`super::memory_request`] on what an extractor absorbs before the handler
 /// can refuse it.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}",
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "delete_fleet_memory",
+    summary = "Forget a fleet memory entry",
+    description = concat!(
+        "Deletes one memory entry for this fleet. The key is scoped to the ",
+        "fleet, so a key from another fleet is not deleted. Missing keys ",
+        "return 404 so an operator can tell a mistyped key from a successful ",
+        "forget. ",
+    ),
+    params(
+        afd_http::openapi::path::Memory,
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn forget<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

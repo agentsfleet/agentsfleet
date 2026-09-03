@@ -39,6 +39,26 @@ const EVENT: &str = "runner_lease_failed";
 const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
 
 /// Hands the runner its next lease, or a backoff.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/leases",
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_lease",
+    summary = "Poll for the next lease",
+    description = concat!(
+        "The poll a runner lives on. Answers either a lease to run or a ",
+        "backoff to wait out. The claim, the money, the gates and the policy ",
+        "are all decided before the answer is written. ",
+    ),
+    responses(
+        (status = 200, description = "A lease to run, or a backoff to wait out", body = afd_wire::lease::LeaseResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

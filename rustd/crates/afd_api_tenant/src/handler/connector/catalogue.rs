@@ -57,6 +57,30 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
 ///
 /// # Errors
 /// Reports a datastore that would not answer.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/connectors",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_catalog",
+    summary = "List connectors for a workspace",
+    description = concat!(
+        "Returns the providers available to the workspace. Each item shows ",
+        "whether the provider is ready and connected. Requires the ",
+        "`connector:read` scope. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = Vec<CatalogueEntry>),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

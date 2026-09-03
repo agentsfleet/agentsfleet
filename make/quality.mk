@@ -68,6 +68,11 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
+	@# The configuration that ships: no features at all. Every other lane turns
+	@# `openapi` and `test-util` on, so an import that exists only for an
+	@# annotation broke the production build once without any lane noticing.
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
+	  cargo check -p agentsfleetd --bin agentsfleetd
 
 # Every scripts/*_test.py, discovered rather than listed.
 #

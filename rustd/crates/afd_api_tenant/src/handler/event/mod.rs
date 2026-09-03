@@ -92,6 +92,35 @@ pub(crate) struct EventPath {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/events` — the whole workspace's history.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/events",
+    tag = afd_http::openapi::tag::WORKSPACES,
+    operation_id = "list_workspace_events",
+    summary = "List a workspace's aggregate event history",
+    description = concat!(
+        "Cursor-paginated list of operator-visible events across every fleet ",
+        "in the workspace, newest first. Replaces the deleted activity ",
+        "endpoint. Optional `fleet_id` filter narrows to one fleet. Same ",
+        "query shape as the per-fleet endpoint - `actor` glob, `since=` ",
+        "(duration or RFC 3339), and a `cursor` mutually exclusive with ",
+        "`since`. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("fleet_id" = Option<String>, Query, description = "Drill down to one fleet within the workspace."),
+        afd_http::openapi::query::EventFilter,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn workspace_list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -114,6 +143,30 @@ pub(crate) async fn workspace_list<D: Services>(
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events` — one fleet's.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "list_fleet_events",
+    summary = "List a fleet's event history",
+    description = concat!(
+        "Returns fleet events with the newest event first. Filter with ",
+        "`actor` or `since`. You cannot use `since` and `cursor` together. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+        afd_http::openapi::query::EventFilter,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn fleet_list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -138,6 +191,36 @@ pub(crate) async fn fleet_list<D: Services>(
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}`.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "get_fleet_event",
+    summary = "Read one fleet event",
+    description = concat!(
+        "Returns a single event with its request body and the agent's full ",
+        "answer. The list read beside this one omits both bodies: it returns ",
+        "up to two hundred rows and would carry every payload to render a ",
+        "table. Read the body here, for the one event you are expanding. An ",
+        "event that does not exist and an event belonging to another ",
+        "workspace both answer 404. The two are deliberately ",
+        "indistinguishable. The read is scoped inside its own query, so no ",
+        "caller can probe for events outside its own workspace. ",
+    ),
+    params(
+        afd_http::openapi::path::Event,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = EventDetail),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

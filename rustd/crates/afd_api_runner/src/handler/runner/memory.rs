@@ -39,6 +39,30 @@ const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 const DETAIL_MALFORMED: &str = "Malformed memory body";
 
 /// Seeds a run with its fleet's memory window.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/runners/me/memory/{fleet_id}",
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_hydrate_memory",
+    summary = "Load what a fleet remembers",
+    description = concat!(
+        "The memory a fleet carries between runs, read at the start of one. ",
+        "The runner names the fleet, and the lease it holds is what makes ",
+        "that name legitimate. ",
+    ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = MemoryHydrateResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn hydrate<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
@@ -58,6 +82,32 @@ pub(crate) async fn hydrate<D: Services>(
 }
 
 /// Persists what a run learned.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/memory/{fleet_id}",
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_capture_memory",
+    summary = "Capture what a fleet learned",
+    description = concat!(
+        "Writes back what the run decided is worth keeping. The reply names ",
+        "what was stored and what was skipped, so a runner learns which of ",
+        "its entries did not survive the bounds. ",
+    ),
+    request_body = MemoryPushRequest,
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = MemoryCaptureResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn capture<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

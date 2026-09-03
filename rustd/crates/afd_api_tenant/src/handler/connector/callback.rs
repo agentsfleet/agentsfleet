@@ -30,9 +30,9 @@ use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use axum::extract::{Path, RawQuery, State};
-use axum::response::{IntoResponse as _, Response};
-use http::{StatusCode, header};
+use axum::response::Response;
 
+use super::landing::{connected, relayed};
 use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
@@ -95,7 +95,39 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
 /// callback carrying no state or a query this daemon cannot decode, and
-/// `UZ-CONN-001` for a dashboard base that is not a URL.
+/// `UZ-CONN-001` for a dashboard base that is not a URL, or a destination that
+/// cannot be written as a `Location` header.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/connectors/{provider}/callback",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_callback",
+    summary = "Relay a provider callback to the dashboard",
+    description = concat!(
+        "Compatibility URL for provider registrations that still target the ",
+        "API host. It forwards the browser to the dashboard callback with a ",
+        "fixed legacy marker. The authenticated endpoint uses that marker ",
+        "only to echo the old redirect URL during token exchange. This ",
+        "endpoint never exchanges a provider code or changes connector data. ",
+        "New provider registrations use ",
+        "`https://<APP_HOST>/api/connectors/{provider}/callback` for the ",
+        "matching environment. The dashboard posts the current Bearer token ",
+        "to the authenticated callback completion method. ",
+    ),
+    params(
+        afd_http::openapi::path::Provider,
+        afd_http::openapi::query::ConnectorState,
+        afd_http::openapi::query::ConnectorCallback,
+    ),
+    responses(
+        (status = 302, description = afd_http::openapi::FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn relay<D: Services>(
     State(services): State<Arc<D>>,
     Path(provider_segment): Path<String>,
@@ -122,7 +154,7 @@ pub(crate) async fn relay<D: Services>(
     )
     .ok_or_else(unconfigured)?;
 
-    Ok(found(&destination))
+    relayed(&destination)
 }
 
 /// `POST /v1/connectors/{provider}/callback` — the dashboard, completing.
@@ -133,6 +165,39 @@ pub(crate) async fn relay<D: Services>(
 /// else's, `UZ-AUTH-003` for a caller who does not hold the workspace the state
 /// names, `UZ-CONN-001` for a provider this deployment configured no app for,
 /// and the vendor and datastore failures the exchange can raise.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/connectors/{provider}/callback",
+    tag = afd_http::openapi::tag::CONNECTORS,
+    operation_id = "connector_callback_complete",
+    summary = "Complete a provider connection",
+    description = concat!(
+        "The dashboard calls this endpoint after the provider returns to the ",
+        "browser. The caller needs `connector:write` and must be the same ",
+        "person who started the signed connection state. The signed state ",
+        "binds the workspace, a keyed tag of the starter identity, a nonce, ",
+        "and expiry. The endpoint verifies identity and workspace access ",
+        "before consuming the nonce or exchanging a provider code. ",
+    ),
+    params(
+        afd_http::openapi::path::Provider,
+        afd_http::openapi::query::ConnectorState,
+        afd_http::openapi::query::ConnectorCallback,
+        ("callback_source" = Option<String>, Query, description = "Fixed compatibility marker added by the legacy API relay. Browser callers omit it."),
+    ),
+    responses(
+        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_wire::connector::Connected),
+        (status = 302, description = afd_http::openapi::FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn complete<D: Services>(
     State(services): State<Arc<D>>,
     Acting(principal): Acting,
@@ -216,7 +281,7 @@ pub(crate) async fn complete<D: Services>(
         .map_err(Refusal::at(EVENT_WRITE))?;
 
     match landed {
-        Landed::Connected => Ok(connected(&services, &workspace)),
+        Landed::Connected => Ok(connected(services.as_ref(), &workspace)),
         Landed::NotConfigured => Err(unconfigured()),
     }
 }
@@ -248,34 +313,4 @@ fn state_refused(provider: Provider, reason: &'static str) -> Refusal {
     let provider_field = provider.id();
     tracing::debug!(provider = provider_field, reason, event = EVENT_REFUSED);
     Refusal::coded(error_code::CONNECTOR_STATE_INVALID, DETAIL_STATE_INVALID)
-}
-
-/// Where a person lands once the connect has finished.
-///
-/// A 200 when the destination cannot be built, and deliberately not a 500: the
-/// grant IS sealed and the connection IS live by this point, so failing the
-/// request would tell a person their connect did not work when it did — and the
-/// next thing they would do is press Connect again. `callback.zig` reaches the
-/// same conclusion for the same reason.
-fn connected<D: Services>(services: &Arc<D>, workspace: &Uuid7) -> Response {
-    callback::connected_url(services.dashboard(), workspace).map_or_else(
-        || StatusCode::OK.into_response(),
-        |destination| found(&destination),
-    )
-}
-
-/// A redirect to `destination`.
-///
-/// 302 rather than 303: the daemon this ports answers 302 on both callback
-/// legs, and a browser follows either with a GET here because both arrive at a
-/// destination that only serves one.
-fn found(destination: &str) -> Response {
-    // A URL this daemon composed through `url`, so every byte is already in the
-    // header's alphabet. An unparseable value would be a bug in that composer
-    // rather than anything the caller sent, and answering 200 is what the
-    // person needs either way — the connect itself is unaffected.
-    header::HeaderValue::from_str(destination).map_or_else(
-        |_unrenderable| StatusCode::OK.into_response(),
-        |location| (StatusCode::FOUND, [(header::LOCATION, location)]).into_response(),
-    )
 }

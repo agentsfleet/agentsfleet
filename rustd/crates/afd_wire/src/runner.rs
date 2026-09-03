@@ -10,8 +10,11 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// Isolation strength the control plane assigns. Only tiers with real
-/// enforcement are members: a tier that cannot be applied must not be assignable.
+/// The isolation strength assigned to a runner.
+//
+// Only tiers with real enforcement are members: a tier that cannot be applied
+// must not be assignable.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxTier {
@@ -24,6 +27,12 @@ pub enum SandboxTier {
 }
 
 /// Egress posture assigned per runner, named so the behaviour reads off the value.
+// Published as `RunnerNetworkPolicy`, the name the hand-written contract gave
+// it: `policy::NetworkPolicy` is a different shape with the same Rust name,
+// and utoipa keys components by name alone, so the one registered second
+// silently replaced the other in the document.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = RunnerNetworkPolicy))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkPolicy {
@@ -42,6 +51,7 @@ pub enum NetworkPolicy {
 pub const FAIL_CLOSED_DEFAULT: NetworkPolicy = NetworkPolicy::AllowListEgress;
 
 /// Whether an operator-added bind is writable.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BindMode {
@@ -55,6 +65,7 @@ pub enum BindMode {
 ///
 /// An operator may ADD a path a host needs; never remove or re-mode one the
 /// sandbox depends on.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtraBind<'a> {
     /// Host path to bind.
@@ -67,10 +78,11 @@ pub struct ExtraBind<'a> {
     pub note: Cow<'a, str>,
 }
 
-/// The policy the control plane assigns to one runner.
-///
-/// Everything a host was once told through its environment, now delivered with
-/// its identity. The host never declares policy.
+/// The isolation, egress and concurrency settings assigned to one runner.
+//
+// Everything a host was once told through its environment, now delivered with
+// its identity. The host never declares policy.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssignedPolicy<'a> {
     /// Isolation strength to apply.
@@ -88,12 +100,15 @@ pub struct AssignedPolicy<'a> {
     pub extra_binds: Vec<ExtraBind<'a>>,
 }
 
-/// What this host's kernel can actually enforce, probed at startup and refreshed
-/// per beat. Each field is one enforcement mechanism a degraded reason can name.
+/// What this host can actually enforce.
+//
+// Probed at startup and refreshed per beat. Each field is one enforcement
+// mechanism a degraded reason can name.
 ///
-/// The flags stay separate booleans rather than collapsing into a bitset or an
-/// enum: each names a distinct mechanism a degraded reason quotes back to an
-/// operator, and the shape is the peer's, not this crate's to choose.
+// The flags stay separate booleans rather than collapsing into a bitset or an
+// enum: each names a distinct mechanism a degraded reason quotes back to an
+// operator, and the shape is the peer's, not this crate's to choose.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "wire shape fixed by the peer; each flag is a separately reported mechanism"
@@ -117,6 +132,7 @@ pub struct CapabilityReport<'a> {
 ///
 /// `detail` is prose even when `ok`: every passing check carries a line, and a
 /// whitespace-free cause reads to an operator as a leaked internal identifier.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelftestCheck<'a> {
     /// What was checked.
@@ -129,12 +145,15 @@ pub struct SelftestCheck<'a> {
     pub detail: Cow<'a, str>,
 }
 
-/// One probe run as it crosses the wire.
+// The tier and policy travel WITH the verdict rather than being read from the
+// runner row at render time: a result outlives the assignment that produced
+// it, so a reader labels a mismatch stale instead of presenting a verdict on a
+// policy nothing tested.
+/// One probe run and the verdict it reached.
 ///
-/// The tier and policy travel WITH the verdict rather than being read from the
-/// runner row at render time: a result outlives the assignment that produced it,
-/// so a reader compares these against the row's live values and labels a
-/// mismatch stale instead of presenting a verdict on a policy nothing tested.
+/// The tier and policy travel with the verdict. Compare them against the
+/// runner's current values to tell a stale result from a live one.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelftestReport<'a> {
     /// Every check the probe ran.
@@ -152,6 +171,7 @@ pub struct SelftestReport<'a> {
 
 /// Derived runtime liveness, computed by the fleet read and NEVER stored —
 /// storing it would drift from the values it is derived from.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerLiveness {
@@ -166,6 +186,7 @@ pub enum RunnerLiveness {
 }
 
 /// Heartbeat reply status.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HeartbeatStatus {
@@ -180,6 +201,7 @@ pub enum HeartbeatStatus {
 /// `POST /v1/runners` request. Authorized by an existing operator credential,
 /// not an enrollment token. The operator ASSIGNS the policy; the host never
 /// declares one.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterRequest<'a> {
@@ -197,6 +219,7 @@ pub struct RegisterRequest<'a> {
 /// `POST /v1/runners` reply: the durable identity plus its bearer token.
 ///
 /// The token is returned ONCE — the daemon stores only its hash.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterResponse<'a> {
@@ -217,6 +240,7 @@ pub struct RegisterResponse<'a> {
 /// The capability report rides the first beat and any beat where the probe
 /// result changed. Both fields default to absent so an older runner's empty body
 /// still parses.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeartbeatRequest<'a> {
     /// What this host can enforce, when the probe result is being reported.
@@ -232,6 +256,7 @@ pub struct HeartbeatRequest<'a> {
 /// Carries the current assignment on EVERY beat, so a dashboard change reaches
 /// the host within one interval. A null assignment means a row predating the
 /// policy columns: the runner then fails closed and refuses to lease.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeartbeatResponse<'a> {
@@ -254,6 +279,7 @@ pub struct HeartbeatResponse<'a> {
 ///
 /// Reading this does NOT bump liveness, so inspecting a host can never mask a
 /// dead runner.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SelfResponse<'a> {

@@ -15,8 +15,12 @@ use serde::{Deserialize, Serialize};
 /// drops the base URL.
 pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 
-/// Per-execution egress policy. An outbound request must match an entry in
+/// Per-run egress policy. An outbound request must match an entry in
 /// `allow` by exact hostname; an empty `allow` denies everything.
+// Keeps the bare name: `runner::NetworkPolicy` is a different shape with the
+// same Rust name and publishes as `RunnerNetworkPolicy`, the name the
+// hand-written contract gave it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkPolicy<'a> {
@@ -32,6 +36,7 @@ pub struct NetworkPolicy<'a> {
 }
 
 /// Methods a daemon-authored request rule may express.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpMethod {
@@ -44,6 +49,7 @@ pub enum HttpMethod {
 }
 
 /// Whether a request path must equal the authored bytes or begin with them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpPathMatch {
@@ -54,6 +60,7 @@ pub enum HttpPathMatch {
 }
 
 /// One required top-level JSON field, with exactly one expected value set.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpJsonFieldRule<'a> {
@@ -71,6 +78,7 @@ pub struct HttpJsonFieldRule<'a> {
 ///
 /// JSON rules lock selected fields; any field the rules do not name stays
 /// available for request-specific content.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpRequestRule<'a> {
@@ -87,6 +95,7 @@ pub struct HttpRequestRule<'a> {
 }
 
 /// The provider-neutral request boundary for one exact host.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpOriginPolicy<'a> {
@@ -105,6 +114,7 @@ pub struct HttpOriginPolicy<'a> {
 ///
 /// Carries the integration id ONLY — never a stored handle and never a token.
 /// The child mints a short-lived token at the tool boundary through the runner.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Mintable<'a> {
@@ -117,6 +127,7 @@ pub struct Mintable<'a> {
 }
 
 /// Whether a bound repository may be written or only read.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RepositoryAccess {
@@ -127,6 +138,7 @@ pub enum RepositoryAccess {
 }
 
 /// The repositories a run is bound to, and how it may use them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RepositoryBinding<'a> {
@@ -142,6 +154,7 @@ pub struct RepositoryBinding<'a> {
 
 /// Context-budget knobs. `model` and `context_cap_tokens` are upstream-populated
 /// passthrough — the runner does not interpret `model`.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextBudget<'a> {
@@ -158,7 +171,8 @@ pub struct ContextBudget<'a> {
     pub context_cap_tokens: u32,
 }
 
-/// Everything a single execution is permitted to do.
+/// Everything a single run is permitted to do.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionPolicy<'a> {

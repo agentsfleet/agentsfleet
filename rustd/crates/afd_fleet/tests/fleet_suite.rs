@@ -56,6 +56,8 @@ mod integration_runner_admin;
 mod integration_runner_beat;
 #[path = "integration_runner_maintenance.rs"]
 mod integration_runner_maintenance;
+#[path = "integration_runner_retire.rs"]
+mod integration_runner_retire;
 #[path = "integration_runner_row.rs"]
 mod integration_runner_row;
 #[path = "integration_runner_views.rs"]

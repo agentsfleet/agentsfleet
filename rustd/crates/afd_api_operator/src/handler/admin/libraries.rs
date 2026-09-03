@@ -4,12 +4,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_library::{
-    DeleteLibrary, LibraryItem, LibraryPatch, PatchLibrary, Repository, valid_revision,
-};
-use afd_wire::admin::{
-    AdminLibrariesResponse, AdminLibraryItem, AdminLibraryPatch, AdminLibraryRequirements,
-};
+use afd_library::{DeleteLibrary, LibraryItem, PatchLibrary};
+use afd_wire::admin::{AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -22,21 +18,10 @@ use crate::handler::{refuse, reject};
 use crate::request_id::RequestId;
 use crate::services::Services;
 
+use super::libraries_request::patch_request;
+
 const DETAIL_ID_REQUIRED: &str = "A catalog id is required";
-const DETAIL_BODY_REQUIRED: &str = "A request body is required";
-const DETAIL_MALFORMED_JSON: &str = "The request body is not valid JSON";
 const DETAIL_NOT_FOUND: &str = "No fleet library entry has that catalog id";
-const DETAIL_NAME_INVALID: &str = "A name is required, and must be at most 200 characters";
-const DETAIL_REPO_INVALID: &str =
-    "A repository must be owner/repo, using letters, digits, '.', '-' or '_'";
-const DETAIL_REF_INVALID: &str =
-    "A ref must be a branch or tag name, using letters, digits, '.', '-' or '_'";
-const DETAIL_REASONS_INVALID: &str =
-    "required_credentials_reasons must be an object mapping credential names to strings";
-const DETAIL_REASONS_TOO_MANY: &str =
-    "required_credentials_reasons carries more entries than a fleet may declare credentials";
-const DETAIL_REASON_TOO_LONG: &str =
-    "A credential name, or its reason copy, is longer than the install gate accepts";
 const DETAIL_NO_BUNDLE: &str =
     "This entry has no bundle. Fetch it from its repository first, then publish.";
 const DETAIL_STALE: &str = "This catalog entry changed since you loaded it. Refresh to see the latest, then re-apply your edit.";
@@ -44,6 +29,32 @@ const DETAIL_DELETE_PUBLISHED: &str =
     "This fleet is published. Unpublish it first, then delete it.";
 
 /// Lists every platform row, including drafts and entries with no bundle.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/admin/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "list_platform_fleet_library",
+    summary = "List the platform Fleet library catalog",
+    description = concat!(
+        "Lists every entry in the global platform catalog. Published, draft, ",
+        "and entries whose bundle was never fetched all appear. Unlike the ",
+        "workspace gallery, this operator view hides nothing: it shows what ",
+        "is live and what still needs work. Requires the ",
+        "`platform-library:write` scope. Metadata only — never bundle markdown, a ",
+        "support-file body, or an object-store key. Each row carries an ",
+        "`etag` that an editor can send as `If-Match` on PATCH. ",
+    ),
+    params(
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = AdminLibrariesResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
     match services.libraries().list().await {
         Ok(entries) => Json(AdminLibrariesResponse {
@@ -55,6 +66,44 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
 }
 
 /// Curates, publishes, or withdraws one platform row.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/admin/fleet-libraries/{id}",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "update_platform_fleet_library",
+    summary = "Curate, publish, or unpublish a platform Fleet library entry",
+    description = concat!(
+        "Partial update. `description` and `required_credentials_reasons` are ",
+        "the two fields no bundle can supply, so they are operator-owned: a ",
+        "later bundle refetch never overwrites them. `published` moves the ",
+        "entry between `draft` (stored, invisible to every tenant) and ",
+        "`public` (live in every workspace gallery and installable). ",
+        "Publishing an entry whose bundle was never fetched is refused — a ",
+        "published entry always has something to install. Requires the ",
+        "`platform-library:write` scope. Send `If-Match` with the row's ",
+        "`etag` to reject stale edits before they can repoint the source or ",
+        "unpublish the entry. Omitting the header preserves last-write-wins ",
+        "behavior. ",
+    ),
+    request_body = afd_wire::admin::AdminLibraryPatch,
+    params(
+        afd_http::openapi::path::Id,
+        ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),
+    ),
+    responses(
+        (status = 200, description = "The entry as it now reads, under its new entity tag", body = AdminLibraryItem),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -104,6 +153,33 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
 }
 
 /// Deletes one draft; public entries must be withdrawn first.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/admin/fleet-libraries/{id}",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "delete_platform_fleet_library",
+    summary = "Delete an unpublished platform Fleet library entry",
+    description = concat!(
+        "Removes a catalog entry. Only an entry that is NOT published may be ",
+        "deleted. A live fleet is never taken away from the tenants who can ",
+        "install it, so unpublish it first. Workspaces that already installed ",
+        "the fleet are unaffected: an install snapshots the bundle, so it ",
+        "keeps running. Requires the `platform-library:write` scope. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -131,66 +207,6 @@ pub(crate) async fn delete<D: Services>(
         .into_response(),
         Err(error) => refuse(&error, "admin_library_delete_failed"),
     }
-}
-
-fn patch_request(body: &[u8]) -> Result<LibraryPatch, (error_code::ErrorCode, &'static str)> {
-    if body.is_empty() {
-        return Err((error_code::INVALID_REQUEST, DETAIL_BODY_REQUIRED));
-    }
-    let request = afd_core::json::object_from_slice::<AdminLibraryPatch<'_>>(body)
-        .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
-    if request
-        .name
-        .as_ref()
-        .is_some_and(|name| name.is_empty() || name.len() > 200)
-    {
-        return Err((error_code::INVALID_REQUEST, DETAIL_NAME_INVALID));
-    }
-    if request
-        .source_repo
-        .as_deref()
-        .is_some_and(|repo| Repository::parse(repo).is_err())
-    {
-        return Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_REPO_INVALID));
-    }
-    if request
-        .source_ref
-        .as_deref()
-        .is_some_and(|revision| !valid_revision(revision))
-    {
-        return Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_REF_INVALID));
-    }
-    validate_reasons(request.required_credentials_reasons.as_ref())?;
-    Ok(LibraryPatch::new(
-        request.name.map(Cow::into_owned),
-        request.description.map(Cow::into_owned),
-        request.source_repo.map(Cow::into_owned),
-        request.source_ref.map(Cow::into_owned),
-        request.required_credentials_reasons,
-        request.published,
-    ))
-}
-
-fn validate_reasons(
-    reasons: Option<&serde_json::Value>,
-) -> Result<(), (error_code::ErrorCode, &'static str)> {
-    if let Some(reasons) = reasons {
-        let Some(reasons) = reasons.as_object() else {
-            return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
-        };
-        if reasons.len() > 32 {
-            return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_TOO_MANY));
-        }
-        for (credential, reason) in reasons {
-            let Some(reason) = reason.as_str() else {
-                return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
-            };
-            if credential.len() > 200 || reason.len() > 500 {
-                return Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG));
-            }
-        }
-    }
-    Ok(())
 }
 
 fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
@@ -227,38 +243,5 @@ fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
         required_credentials_reasons: entry.required_credentials_reasons().clone(),
         updated_at: entry.updated_at().as_millis(),
         etag: Cow::Owned(entry.etag().to_owned()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn patch_validation_covers_identity_and_reason_bounds() {
-        assert_eq!(
-            patch_request(br#"{"description":"new"}"#).map(|_patch| ()),
-            Ok(())
-        );
-        assert_eq!(
-            patch_request(b""),
-            Err((error_code::INVALID_REQUEST, DETAIL_BODY_REQUIRED))
-        );
-        assert_eq!(
-            patch_request(br#"{"source_repo":"owner/repo/extra"}"#),
-            Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_REPO_INVALID))
-        );
-        assert_eq!(
-            patch_request(br#"{"source_ref":"../main"}"#),
-            Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_REF_INVALID))
-        );
-        assert_eq!(
-            patch_request(br#"{"required_credentials_reasons":[]}"#),
-            Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID))
-        );
-        assert_eq!(
-            patch_request(br#"{"required_credentials_reasons":{"github":42}}"#),
-            Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID))
-        );
     }
 }

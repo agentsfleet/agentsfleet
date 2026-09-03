@@ -46,6 +46,35 @@ const DETAIL_MINT_BODY: &str = "Malformed JSON body";
 const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
 
 /// `POST /v1/cli-credentials` — mint this machine's credential, revealing it once.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/cli-credentials",
+    tag = afd_http::openapi::tag::CLI_CREDENTIALS,
+    operation_id = "create_cli_credential",
+    summary = "Mint a command-line credential",
+    description = concat!(
+        "Creates a durable credential for one machine, with the `afc_` ",
+        "prefix. The raw credential is returned once. Only its SHA-256 hash ",
+        "is saved, so it cannot be read back later. A credential belongs to a ",
+        "person, not to a team. Call this with a browser session token or ",
+        "with an existing command-line credential. A tenant API key is ",
+        "refused. Minting revokes whatever credential the same machine name ",
+        "already held. One machine holds one live credential at a time. ",
+    ),
+    request_body = MintCliCredentialRequest,
+    params(
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = MintedCliCredentialResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
     identity: FreshSession,
@@ -86,6 +115,33 @@ pub(crate) async fn mint<D: Services>(
 ///
 /// Scoped to the owner in the statement itself, so a guessed identifier
 /// belonging to somebody else revokes nothing and reads as not found.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/cli-credentials/{id}",
+    tag = afd_http::openapi::tag::CLI_CREDENTIALS,
+    operation_id = "revoke_cli_credential",
+    summary = "Revoke a command-line credential",
+    description = concat!(
+        "Retires one of your credentials. The terminal holding it is refused ",
+        "on its next call, with the code `UZ-AUTH-023`. Running `agentsfleet ",
+        "logout` calls this for the credential on that machine. Browser ",
+        "sessions are untouched, so signing out of a terminal does not sign ",
+        "you out of the dashboard. ",
+    ),
+    params(
+        afd_http::openapi::path::Id,
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
     identity: HumanIdentity,

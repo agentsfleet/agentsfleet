@@ -30,6 +30,7 @@
 mod authored;
 mod row;
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
@@ -130,6 +131,53 @@ pub struct Installed {
 }
 
 impl Fleets {
+    /// Refuses a write whose configuration names credentials this workspace
+    /// lacks.
+    ///
+    /// # Why before the row and not after
+    ///
+    /// A fleet whose configuration names a credential nobody stored is a row
+    /// that exists and cannot run: the first lease reaches for the secret, and
+    /// the operator meets the failure at run time with the fleet already in
+    /// their list. `create_fleet_bundle.zig` decides the same thing in the same
+    /// place.
+    ///
+    /// # Why both writes ask
+    ///
+    /// The install is not the only door. `PATCH` takes a replacement
+    /// `TRIGGER.md`, and that document declares credentials too, so a check on
+    /// the install alone leaves the same unrunnable fleet one `fleet update`
+    /// away. This is `pub(crate)` for exactly that reason.
+    ///
+    /// # Why the names and not the values
+    ///
+    /// The vault is asked what it HOLDS, never what those secrets are. The
+    /// answer this needs is a set difference over names, and reading a value to
+    /// compute it would put plaintext in a path that has no use for it.
+    pub(crate) async fn require_the_stored_credentials(
+        &self,
+        workspace: &Uuid7,
+        declared: &[String],
+    ) -> Result<()> {
+        if declared.is_empty() {
+            return Ok(());
+        }
+        let held = self.secrets.list(workspace).await?;
+        let stored: BTreeSet<&str> = held.iter().map(|secret| secret.name.as_str()).collect();
+        // A set on both sides: a document is free to declare one credential
+        // twice, and a refusal listing it twice reads as two missing secrets.
+        let wanted: BTreeSet<&str> = declared.iter().map(String::as_str).collect();
+        let missing: Vec<String> = wanted
+            .into_iter()
+            .filter(|name| !stored.contains(name))
+            .map(ToOwned::to_owned)
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(ErrorKind::BundleSecretsMissing { missing }.into())
+    }
+
     /// Installs one fleet into `workspace`, stream and all.
     ///
     /// # Errors
@@ -149,6 +197,23 @@ impl Fleets {
             .resolve(&mut connection, workspace, &request.source)
             .await?;
         let authored = authored::read(entry)?;
+        // Released BEFORE the vault read, and reacquired for the write. The
+        // pre-flight takes a pool connection of its own, so holding this one
+        // across it would let N concurrent installs each hold one and wait for
+        // another — the pool exhausting itself on a check that needs no
+        // transaction, which is the trade the stream setup below already makes
+        // for the same reason.
+        drop(connection);
+        let declared: Vec<String> = authored
+            .trigger
+            .config()
+            .credentials()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        self.require_the_stored_credentials(workspace, &declared)
+            .await?;
+        let mut connection = self.database.acquire().await?;
 
         let id = self.mint_id(now)?;
         let name = self

@@ -255,6 +255,31 @@ impl Lane {
         .expect("seeding a library entry");
     }
 
+    /// Stores one credential NAME in this lane's workspace.
+    ///
+    /// The envelope columns take placeholder bytes: the pre-flight this seeds
+    /// for reads names and never opens a secret, so a real sealed value would
+    /// be ceremony proving nothing. A test that decrypted would belong to the
+    /// vault's own suite.
+    pub(crate) async fn seed_secret(&self, key_name: &str) {
+        sqlx::query(
+            "INSERT INTO vault.secrets \
+               (id, workspace_id, key_name, kek_version, \
+                encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, \
+                created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, 1, \
+                     '\\x00', '\\x00', '\\x00', '\\x00', '\\x00', '\\x00', \
+                     $4, $4)",
+        )
+        .bind(afd_db::test_util::mint_id())
+        .bind(self.workspace.as_str())
+        .bind(key_name)
+        .bind(NOW_MS)
+        .execute(&mut *self.connection().await)
+        .await
+        .expect("seeding a workspace secret");
+    }
+
     /// The instant this suite stamps writes with.
     pub(crate) const fn now() -> UnixMillis {
         UnixMillis::from_millis(NOW_MS)

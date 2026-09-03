@@ -37,7 +37,9 @@ use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
+
 use self::row::{read_gate, read_resolved};
+use crate::gate_status::GateStatus;
 
 use crate::decision::Decision;
 use crate::sql;
@@ -122,7 +124,7 @@ impl Inbox {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::SELECT_GATE_PAGE)
             .bind(workspace.as_str())
-            .bind(filter.status.map_or(status::PENDING, Decision::as_str))
+            .bind(filter.status.map_or(status::PENDING, GateStatus::as_str))
             .bind(filter.fleet_id.unwrap_or(NO_FILTER))
             .bind(filter.gate_kind.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())

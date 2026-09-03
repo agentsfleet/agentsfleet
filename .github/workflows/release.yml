@@ -103,6 +103,7 @@ jobs:
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
             -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e GIT_COMMIT="${GITHUB_SHA::7}" \
             -w /w/rustd \
             "$BUILDER" \
             sh -c '
@@ -305,7 +306,13 @@ jobs:
 
       - name: Build
         working-directory: rustd
-        run: cargo build --profile dist --bin agentsfleetd
+        # The same seven characters make/build.mk exports, so /healthz names
+        # the commit the image tag names.
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: |
+          export GIT_COMMIT="${GIT_COMMIT:0:7}"
+          cargo build --profile dist --bin agentsfleetd
 
       - name: Package
         run: |

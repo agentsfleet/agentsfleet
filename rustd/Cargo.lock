@@ -108,6 +108,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "utoipa",
 ]
 
 [[package]]
@@ -138,6 +139,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -155,6 +157,7 @@ dependencies = [
  "http",
  "serde_json",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -171,6 +174,7 @@ dependencies = [
  "http",
  "serde_json",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -205,6 +209,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -429,6 +434,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_observability",
  "afd_redis",
+ "afd_vault",
  "backon",
  "moka",
  "redis",
@@ -520,6 +526,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -758,6 +765,7 @@ version = "0.27.1"
 dependencies = [
  "serde",
  "serde_json",
+ "utoipa",
 ]
 
 [[package]]
@@ -2299,6 +2307,8 @@ checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -4464,6 +4474,29 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "utoipa"
+version = "5.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bde15df68e80b16c7d16b9616e80770ad158988daa56a27dccd1e55558b0160"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "utoipa-gen",
+]
+
+[[package]]
+name = "utoipa-gen"
+version = "5.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ba0b99ee52df3028635d93840c797102da61f8a7bb3cf751032455895b52ef8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "uuid"

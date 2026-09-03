@@ -48,7 +48,7 @@ use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 use super::github::{Ingest, Policy, classify};
 /// The two bodies this route answers with. Public wire, so `afd_wire` owns
 /// the shape and this route names it.
-use afd_wire::ingress::{FannedOut, Pong};
+use afd_wire::ingress::{AppIngressAnswer, FannedOut, Pong};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "app_ingress_append_failed";
@@ -99,6 +99,40 @@ const ACTOR_APP_GITHUB: &str = "github-app";
 /// a body past the cap, the wall's own refusals, `UZ-WH-002` for a verified
 /// body that is not the event its header claims, and `UZ-WH-022` for a delivery
 /// matching more fleets than one event may wake.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/ingress/{provider}",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "ingest_connector_webhook",
+    summary = "Receive a provider event",
+    description = concat!(
+        "Receives signed events from a connected provider. GitHub is the ",
+        "supported provider. A matching event starts runs for subscribed ",
+        "fleets. Duplicate events do not start another run. Repair pull ",
+        "requests and workflow results update repair evidence without ",
+        "starting another run. A terminal production `deployment_status` ",
+        "records the deployed commit and schedules eligible verification ",
+        "fleets. ",
+    ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
+    params(
+        afd_http::openapi::path::Provider,
+        ("X-GitHub-Event" = String, Header, description = "GitHub event type, currently `ping`, `pull_request`, `workflow_run`, or `deployment_status`."),
+        ("X-GitHub-Delivery" = String, Header, description = "Delivery identifier supplied by GitHub."),
+        ("X-Hub-Signature-256" = String, Header, description = "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`."),
+    ),
+    responses(
+        (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = afd_wire::ingress::AppIngressAnswer),
+        (status = 202, description = "The delivery fanned out to the fleets it matched", body = FannedOut),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(provider): Path<String>,
@@ -136,9 +170,9 @@ pub(crate) async fn receive<D: Services>(
     if event == EVENT_PING {
         return Ok((
             StatusCode::OK,
-            Json(Pong {
+            Json(AppIngressAnswer::Pong(Pong {
                 status: STATUS_PONG.into(),
-            }),
+            })),
         )
             .into_response());
     }
@@ -287,9 +321,9 @@ fn dropped(event: &str, reason: &str) -> Response {
     );
     (
         StatusCode::OK,
-        Json(webhook::Ignored {
+        Json(AppIngressAnswer::Ignored(webhook::Ignored {
             ignored: reason.into(),
-        }),
+        })),
     )
         .into_response()
 }

@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use serde::Serialize;
 
 /// One schedule, as the tenant surface renders it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct View<'s> {
     /// Its identity.
@@ -28,11 +29,13 @@ pub struct View<'s> {
     /// What the operator wants it to be doing.
     #[serde(borrow)]
     pub status: Cow<'s, str>,
-    /// How far the external scheduler has been brought in line.
+    // Rendered rather than hidden: a schedule that saved and did not register
+    // is the one state a person needs to see, and a view that showed only the
+    // intent would report a schedule as live when it fires nowhere.
+    /// How far agentsfleet has brought the external scheduler in line.
     ///
-    /// Rendered rather than hidden: a schedule that saved and did not register
-    /// is the one state a person needs to see, and a view that showed only the
-    /// intent would report a schedule as live when it fires nowhere.
+    /// A schedule can save without registering. This field shows you that
+    /// state.
     #[serde(borrow)]
     pub sync: Cow<'s, str>,
     /// Why the last push failed, when one did.
@@ -45,6 +48,7 @@ pub struct View<'s> {
 }
 
 /// A page of schedules.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Page<'s> {
     /// The fleet's schedules, oldest first.

@@ -83,6 +83,13 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::RUNNER_MUST_REVOKE_FIRST,
+        status: 409,
+        title: "Active runner must be revoked before deletion",
+        hint: "Revoke the runner first with `PATCH /v1/fleets/runners/{runner_id}` body `{\"action\": \"revoke\"}`, then retry DELETE.",
+        user_message: Some("This runner is still live. Revoke it first, then delete it."),
+    },
+    Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
         // 402, and the status is load-bearing rather than decorative: the stock
         // runner classifies a renew refusal by BOTH status and code, and
@@ -256,6 +263,15 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "No installable library entry or stored snapshot matches the request in this workspace.",
         user_message: Some(
             "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library.",
+        ),
+    },
+    Problem {
+        code: error_code::FLEET_BUNDLE_SECRETS_MISSING,
+        status: 424,
+        title: "Fleet Bundle secrets missing",
+        hint: "Add the missing workspace secrets before installing this Fleet Bundle.",
+        user_message: Some(
+            "This Fleet Bundle needs secrets this workspace doesn't have yet. Add the missing secrets, then install again.",
         ),
     },
     Problem {

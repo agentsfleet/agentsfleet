@@ -47,6 +47,7 @@ mod sql;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_redis::{FleetStreams, ReadyIndex, Redis};
+use afd_vault::Directory;
 
 pub use self::edit::{ConfigSource, Patch, Patched, Requested};
 pub use self::error::{Error, Result};
@@ -70,6 +71,14 @@ pub struct Fleets {
     /// One enumeration per workspace per tick, shared by every viewer of it.
     /// See [`live_set`] for why this read is cached where the others are not.
     live_sets: live_set::LiveSets,
+    /// The workspace's stored credential NAMES, for the install's pre-flight.
+    ///
+    /// Built here from the pool this store already holds rather than taken as a
+    /// fourth argument: which reads this crate needs is its own business, and a
+    /// composition root assembling the pair would be edited every time that
+    /// answer changed — the same argument [`Self::new`] makes about the two
+    /// Redis views.
+    secrets: Directory,
 }
 
 impl Fleets {
@@ -82,11 +91,12 @@ impl Fleets {
     #[must_use]
     pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
         Self {
-            database,
+            database: database.clone(),
             streams: FleetStreams::new(queue.clone()),
             ready: ReadyIndex::new(queue),
             entropy,
             live_sets: live_set::live_sets(),
+            secrets: Directory::new(database),
         }
     }
 }

@@ -19,32 +19,40 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::value::RawValue;
 
-/// `GET /v1/workspaces/{workspace_id}/preferences` and the response every
-/// preference write answers with.
+// A write returns the WHOLE bag rather than the one key it set, matching
+// `respondWithBag`: the dashboard holds the bag in one piece of state, so
+// handing back a fragment would make it merge on the client instead.
+/// Every preference you have set in this workspace.
 ///
-/// A write returns the WHOLE bag rather than the one key it set, matching
-/// `respondWithBag`: the dashboard holds the bag in one piece of state, so
-/// handing back a fragment would make it merge on the client instead.
+/// A write returns the whole set, including the keys it did not change.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PreferencesResponse<'a> {
-    /// Every key this person has set in this workspace, key-ordered.
+    // A `BTreeMap` so the order is the SQL's `ORDER BY pref_key` and stays
+    // stable between two captures: object key order is not load-bearing for a
+    // client, and is exactly what makes a diff of two responses readable. The
+    // serialized form is an object of arbitrary JSON values; the Rust form maps
+    // borrowed keys to unparsed slices, and `RawValue` has no schema of its
+    // own. `value_type` names that difference.
+    /// Every key you have set in this workspace, ordered by key.
     ///
-    /// A `BTreeMap` so the order is the SQL's `ORDER BY pref_key` and stays
-    /// stable between two captures — object key order is not load-bearing for a
-    /// client, and is exactly what makes a diff of two responses readable.
+    /// Each value is any well-formed JSON value, returned as it was stored.
+    /// The order is stable between two reads.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub prefs: BTreeMap<&'a str, &'a RawValue>,
 }
 
-/// `GET /v1/workspaces/{workspace_id}/onboarding` — the whole checklist.
-///
-/// Five derived signals and three preference reads in one call, which is the
-/// consolidation this endpoint exists for: the dashboard used to fetch it as
-/// six separate requests.
-///
-/// Eight booleans, and `struct_excessive_bools` is right that this usually
-/// means a missing type. Not here: this IS the wire shape, field for field, and
-/// the dashboard destructures all eight. Collapsing any of them into an enum
-/// would change the JSON a shipped client reads.
+/// The whole onboarding checklist, in one call.
+//
+// Five derived signals and three preference reads in one call, which is the
+// consolidation this endpoint exists for: the dashboard used to fetch it as
+// six separate requests.
+//
+// Eight booleans, and `struct_excessive_bools` is right that this usually
+// means a missing type. Not here: this IS the wire shape, field for field, and
+// the dashboard destructures all eight. Collapsing any of them into an enum
+// would change the JSON a shipped client reads.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "this struct IS the documented response body; see above"

@@ -8,6 +8,7 @@ use crate::admin::AdminState;
 use crate::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
 /// One runner in the newest-first operator list.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerItem<'a> {
@@ -45,6 +46,7 @@ pub struct RunnerItem<'a> {
 }
 
 /// A keyset page of runner list rows.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnersResponse<'a> {
@@ -59,6 +61,7 @@ pub struct RunnersResponse<'a> {
 }
 
 /// One runner with its live and lifetime counters.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerDetail<'a> {
@@ -87,6 +90,7 @@ pub struct RunnerDetail<'a> {
 }
 
 /// Server-derived outcome of one runner lease.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LeaseOutcome {
@@ -103,6 +107,7 @@ pub enum LeaseOutcome {
 }
 
 /// Whether the lease was the event's first claim or a later reclaim.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LeaseKind {
@@ -113,6 +118,7 @@ pub enum LeaseKind {
 }
 
 /// One lease in a runner's newest-first operator history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerLeaseItem<'a> {
@@ -149,13 +155,13 @@ pub struct RunnerLeaseItem<'a> {
     pub kind: LeaseKind,
     /// Monotonic holder generation.
     pub fencing_token: i64,
-    /// Provider selected for execution.
+    /// The provider the run used.
     #[serde(borrow)]
     pub provider: Cow<'a, str>,
-    /// Provider-native model selected for execution.
+    /// The provider's own name for the model the run used.
     #[serde(borrow)]
     pub model: Cow<'a, str>,
-    /// Credential posture used for execution.
+    /// The credential posture the run used.
     #[serde(borrow)]
     pub posture: Cow<'a, str>,
     /// Metered non-cached input tokens.
@@ -173,6 +179,7 @@ pub struct RunnerLeaseItem<'a> {
 }
 
 /// A keyset page of one runner's lease history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerLeasesResponse<'a> {

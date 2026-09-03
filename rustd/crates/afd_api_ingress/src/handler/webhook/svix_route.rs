@@ -40,6 +40,35 @@ const EVENT_APPEND: &str = "webhook_svix_append_failed";
 /// # Errors
 /// The wall's refusals, and `UZ-WH-002` for a verified body that is not the
 /// JSON document a fleet's prose can reason over.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/webhooks/svix/{fleet_id}",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "receive_svix_webhook",
+    summary = "Receive a signed Svix event",
+    description = concat!(
+        "Receives a signed Svix event for one fleet. A valid new event ",
+        "returns 202. A duplicate or an event for a paused fleet returns 200. ",
+    ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
+    params(
+        afd_http::openapi::path::FleetOnly,
+        ("svix-id" = String, Header, description = "Svix message identifier (used for deduplication and signature binding)."),
+        ("svix-timestamp" = String, Header, description = "Unix timestamp of the Svix delivery (used for replay protection)."),
+        ("svix-signature" = String, Header, description = "Space-separated list of Svix signatures (v1 scheme)."),
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

@@ -12,6 +12,7 @@ pub use afd_state::sql::{
 };
 
 pub mod runner;
+pub mod runner_admin;
 pub mod runner_view;
 pub mod sweep;
 

@@ -15,7 +15,7 @@
 //!
 //! # Extensions ride the base envelope, they do not replace it
 //!
-//! Two status-specific fields exist (section 3.2 of that RFC), and each appears only on
+//! Three status-specific fields exist (section 3.2 of that RFC), and each appears only on
 //! the status that mandates it: `current_state` on a 409, naming the state that
 //! forbade the transition, and `etag` on a 412, so a client can refetch and
 //! rebase rather than guess what it raced with. Both are omitted from the wire
@@ -38,6 +38,29 @@ pub struct ProblemResponse {
     request_id: String,
     current_state: Option<String>,
     etag: Option<String>,
+    missing_secrets: Option<Vec<String>>,
+    resolution: Option<Resolution>,
+}
+
+/// The standing answer a 409 on an approval gate reports.
+///
+/// Five members rather than one nested object, because that is what
+/// `approvals/resolve.zig` writes and what the dashboard already reads off the
+/// body — it renders the outcome and the resolver from the top level,
+/// so nesting them would leave a client that predates this daemon showing two
+/// undefined values.
+#[derive(Debug, Clone)]
+pub struct Resolution {
+    /// The gate that was answered.
+    pub gate_id: String,
+    /// The action it gated.
+    pub action_id: String,
+    /// The answer that stands.
+    pub outcome: String,
+    /// When it was given.
+    pub resolved_at: i64,
+    /// Who gave it.
+    pub resolved_by: String,
 }
 
 impl ProblemResponse {
@@ -55,6 +78,8 @@ impl ProblemResponse {
             request_id: request_id.into(),
             current_state: None,
             etag: None,
+            missing_secrets: None,
+            resolution: None,
         }
     }
 
@@ -72,6 +97,46 @@ impl ProblemResponse {
     ) -> Self {
         Self {
             current_state: Some(current_state.into()),
+            ..Self::new(code, detail, request_id)
+        }
+    }
+
+    /// A 409 on an answered gate, carrying the answer that stands.
+    ///
+    /// [`Self::conflict`] plus the attribution: `current_state` tells a client
+    /// to stop retrying, and these five tell it WHAT the standing answer was
+    /// and who gave it, so the operator reads a sentence rather than
+    /// refetching to build one.
+    #[must_use]
+    pub fn already_resolved(
+        code: ErrorCode,
+        detail: impl Into<String>,
+        request_id: impl Into<String>,
+        resolution: Resolution,
+    ) -> Self {
+        Self {
+            current_state: Some(resolution.outcome.clone()),
+            resolution: Some(resolution),
+            ..Self::new(code, detail, request_id)
+        }
+    }
+
+    /// A 424, naming the credentials this workspace has yet to store.
+    ///
+    /// The names are the whole remedy. A caller told only that "secrets are
+    /// missing" has to diff the bundle's declared list against their own vault
+    /// by hand, which is work this daemon has already done to raise the
+    /// refusal. `create_fleet_bundle.zig` carries the same list for the same
+    /// reason.
+    #[must_use]
+    pub fn missing_secrets(
+        code: ErrorCode,
+        detail: impl Into<String>,
+        request_id: impl Into<String>,
+        missing: Vec<String>,
+    ) -> Self {
+        Self {
+            missing_secrets: Some(missing),
             ..Self::new(code, detail, request_id)
         }
     }
@@ -124,6 +189,19 @@ impl ProblemResponse {
         }
         if let Some(etag) = &self.etag {
             body.insert("etag".to_owned(), etag.clone().into());
+        }
+        if let Some(missing) = &self.missing_secrets {
+            body.insert("missing_secrets".to_owned(), missing.clone().into());
+        }
+        if let Some(standing) = &self.resolution {
+            body.insert("gate_id".to_owned(), standing.gate_id.clone().into());
+            body.insert("action_id".to_owned(), standing.action_id.clone().into());
+            body.insert("outcome".to_owned(), standing.outcome.clone().into());
+            body.insert("resolved_at".to_owned(), standing.resolved_at.into());
+            body.insert(
+                "resolved_by".to_owned(),
+                standing.resolved_by.clone().into(),
+            );
         }
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());

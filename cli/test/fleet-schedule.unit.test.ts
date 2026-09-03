@@ -103,9 +103,8 @@ const scheduleRow = {
   cron: "0 9 * * *",
   timezone: "Asia/Kolkata",
   message: "summarize",
-  desired_status: "active",
-  sync_status: "synced",
-  generation: 1,
+  status: "active",
+  sync: "synced",
 };
 
 describe("schedule add/list/update/rm/sync effects", () => {
@@ -138,7 +137,7 @@ describe("schedule add/list/update/rm/sync effects", () => {
   test("list renders table for terminal output and JSON for redirected output", async () => {
     const cap = newCapture();
     const calls: HttpRequestInput[] = [];
-    const envelope = { items: [scheduleRow], total: 1, next_cursor: null };
+    const envelope = { schedules: [scheduleRow] };
     const tableExit = await Effect.runPromiseExit(
       provide(scheduleListEffectFromArgs(FLEET_ID, {}), cap, calls, envelope),
     );
@@ -165,13 +164,20 @@ describe("schedule add/list/update/rm/sync effects", () => {
         }),
         cap,
         calls,
-        { ...scheduleRow, message: "again", desired_status: "paused" },
+        { ...scheduleRow, message: "again", status: "paused" },
       ),
     );
     expect(Exit.isSuccess(ok)).toBe(true);
     expect(calls[0]?.method).toBe("PATCH");
     expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`);
-    expect(calls[0]?.body).toEqual({ message: "again", desired_status: "paused" });
+    expect(calls[0]?.body).toEqual({ message: "again", paused: true });
+
+    const resumed: HttpRequestInput[] = [];
+    const resume = await Effect.runPromiseExit(
+      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "active" }), newCapture(), resumed, scheduleRow),
+    );
+    expect(Exit.isSuccess(resume)).toBe(true);
+    expect(resumed[0]?.body).toEqual({ paused: false });
 
     const empty = await Effect.runPromiseExit(
       provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, {}), newCapture(), [], scheduleRow),
