@@ -91,7 +91,7 @@ impl Runners {
         let event_id = self.admin_event_id(now)?;
         let target_wire = state_wire(target);
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner::TRANSITION_RUNNER_ADMIN_STATE)
+        let row = sqlx::query(sql::runner_admin::TRANSITION_RUNNER_ADMIN_STATE)
             .bind(runner.as_str())
             .bind(target_wire)
             .bind(now.as_millis())
@@ -125,7 +125,7 @@ impl Runners {
     /// a runner still holding an active lease, or an unavailable datastore.
     pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner::DELETE_RUNNER_IF_IN_STATE)
+        let row = sqlx::query(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner.as_str())
             .bind(state_wire(AdminState::Revoked))
             .bind(super::sweep::reclaim::STATUS_ACTIVE)
@@ -168,7 +168,7 @@ impl Runners {
 
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_POLICY))?;
-        let row = sqlx::query(sql::runner::SELECT_RUNNER_PATCH_STATE)
+        let row = sqlx::query(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
             .bind(runner.as_str())
             .fetch_optional(&mut *transaction)
             .await
@@ -184,7 +184,7 @@ impl Runners {
         let capability = super::policy::capability(capability_json.as_deref());
         let verdict = super::reconcile::reconcile(Some(&stored), capability.as_ref());
 
-        sqlx::query(sql::runner::PATCH_RUNNER_ASSIGNED_POLICY)
+        sqlx::query(sql::runner_admin::PATCH_RUNNER_ASSIGNED_POLICY)
             .bind(runner.as_str())
             .bind(super::spelling::tier_wire(stored.sandbox_tier))
             .bind(super::spelling::policy_wire(stored.network_policy))
@@ -224,7 +224,7 @@ impl Runners {
         now: UnixMillis,
     ) -> Result<SelftestRequested> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner::PATCH_RUNNER_SELFTEST_REQUEST)
+        let row = sqlx::query(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
             .bind(runner.as_str())
             .bind(now.as_millis())
             .fetch_optional(&mut *connection)

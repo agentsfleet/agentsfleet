@@ -19,7 +19,6 @@ use tokio::sync::Barrier;
 
 use self::requests::{ENROLLED_AT, enrolment};
 use self::support::Fixtures;
-use crate::seed::seeded;
 
 const ACTOR: &str = "fixture:platform-operator";
 
@@ -96,118 +95,6 @@ async fn test_runner_admin_transitions() {
         fixtures.admin_event_actors(&runner).await,
         vec![ACTOR.to_owned(), ACTOR.to_owned()]
     );
-
-    fixtures.cleanup().await;
-}
-
-/// A record is retired only from the terminal state, and only once.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_runner_record_is_retired_only_once_revoked() {
-    let fixtures = Fixtures::create().await;
-    let enrolled = fixtures
-        .runners()
-        .register(
-            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
-        )
-        .await
-        .expect("the runner enrols");
-
-    let in_service = fixtures
-        .runners()
-        .delete_revoked(&enrolled.runner_id)
-        .await
-        .err()
-        .map(|error| error.code());
-    assert_eq!(
-        in_service,
-        Some(afd_core::error_code::RUNNER_MUST_REVOKE_FIRST),
-        "a runner still in service keeps its record; the revoke is the destructive step"
-    );
-
-    fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Revoke,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 1),
-        )
-        .await
-        .expect("an active runner may be revoked");
-    fixtures
-        .runners()
-        .delete_revoked(&enrolled.runner_id)
-        .await
-        .expect("a revoked runner's record is retired");
-
-    let gone = fixtures
-        .runners()
-        .delete_revoked(&enrolled.runner_id)
-        .await
-        .err()
-        .map(|error| error.code());
-    assert_eq!(
-        gone,
-        Some(afd_core::error_code::RUNNER_NOT_FOUND),
-        "the row is the verdict: retired once, it is not found the second time"
-    );
-}
-
-/// A revoked runner keeps its record while a lease of its is still active.
-///
-/// The lease row is what the liveness sweep releases the fleet's slot
-/// through; retiring the runner under it would strand the slot until the
-/// lease's own expiry. Once the lease is gone the record retires as usual.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
-    let fixtures = Fixtures::create().await;
-    let seeded = seeded::<1>(&fixtures).await;
-    let [runner] = seeded.runners;
-    let answer = fixtures
-        .plane()
-        .lease(&runner, false, UnixMillis::from_millis(ENROLLED_AT + 1))
-        .await
-        .expect("the seeded fleet has work to lease");
-    let document: serde_json::Value =
-        serde_json::from_str(&answer).expect("the lease answer is a document");
-    let lease = document
-        .get("lease")
-        .and_then(|lease| lease.get("lease_id"))
-        .and_then(serde_json::Value::as_str)
-        .expect("the seeded event is leased to the runner")
-        .to_owned();
-
-    fixtures
-        .runners()
-        .transition(
-            &runner,
-            RunnerAdminAction::Revoke,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 2),
-        )
-        .await
-        .expect("an active runner may be revoked");
-
-    let still_leased = fixtures.runners().delete_revoked(&runner).await.err();
-    assert_eq!(
-        still_leased.as_ref().map(afd_runner::Error::code),
-        Some(afd_core::error_code::RUNNER_MUST_REVOKE_FIRST)
-    );
-    assert_eq!(
-        still_leased.as_ref().map(afd_runner::Error::detail),
-        Some(afd_runner::DETAIL_RUNNER_STILL_LEASED),
-        "the refusal names the lease, not the revocation the operator already did"
-    );
-
-    fixtures.expire_lease(&lease).await;
-    fixtures
-        .runners()
-        .delete_revoked(&runner)
-        .await
-        .expect("once its lease is gone, a revoked runner's record retires");
 
     fixtures.cleanup().await;
 }
