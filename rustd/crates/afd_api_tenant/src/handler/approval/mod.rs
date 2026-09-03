@@ -26,63 +26,47 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_approval::{Decision, Filter, GateRow, Resolution};
+use afd_approval::{Filter, GateRow};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_wire::approval::{
-    ApprovalSummary, ApprovalsResponse, ResolveApprovalRequest, ResolvedResponse,
-};
+use afd_core::paging::Cursor as CoreCursor;
+use afd_wire::approval::{ApprovalSummary, ApprovalsResponse};
 use axum::Json;
-use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use crate::auth::{PersonIdentity, WorkspaceContext};
+use self::query::{Listing, Resume};
+use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceApprovals as _};
+
+mod query;
+pub(crate) mod resolve;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "approval_list_failed";
 const EVENT_DETAIL: &str = "approval_detail_failed";
-const EVENT_RESOLVE: &str = "approval_resolve_failed";
+pub(super) const EVENT_RESOLVE: &str = "approval_resolve_failed";
 
 /// The refusal a gate this workspace does not hold earns.
 ///
 /// `MSG_APPROVAL_NOT_FOUND`, kept verbatim, and it says "or already resolved"
 /// on purpose: the two are one answer to a caller, so the sentence must not
 /// promise to tell them apart.
-const DETAIL_NOT_FOUND: &str = "Approval action not found or already resolved";
-
-/// The refusal a decision the path does not spell earns.
-const DETAIL_UNKNOWN_DECISION: &str = "decision must be approve or deny";
+pub(super) const DETAIL_NOT_FOUND: &str = "Approval action not found or already resolved";
 
 /// The refusal a gate somebody already answered earns.
 ///
 /// It names the channels rather than the person: which of them answered is in
 /// `current_state` and on the gate itself, and a subject spelled here would be
 /// an entity value in a sentence the detail rules keep clear of them.
-const DETAIL_ALREADY_RESOLVED: &str = "Approval gate already resolved by another channel";
-
-/// The refusal an over-long note earns.
-const DETAIL_REASON_TOO_LONG: &str = "reason exceeds max length";
-
-/// The refusal a body this daemon cannot read earns.
-const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
+pub(super) const DETAIL_ALREADY_RESOLVED: &str =
+    "Approval gate already resolved by another channel";
 
 /// How long an operator's note may be.
 ///
-/// `REASON_MAX`, mirrored: the column is unbounded text and a note is a
-/// sentence, so the cap is what keeps a decision from becoming storage.
-const REASON_MAX_BYTES: usize = 4096;
-
-/// How many gates one page holds.
-///
-/// Fixed rather than client-chosen: the inbox is a human queue, and a caller
-/// asking for ten thousand rows is not a person reading them.
-const PAGE_LIMIT: i64 = 50;
-
 /// The two segments the item templates carry beside the workspace.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ApprovalPath {
@@ -134,20 +118,48 @@ pub(crate) struct ResolvePath {
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
+    let asked = Listing::parse(&query.unwrap_or_default())?;
+    let resume = asked.cursor.as_ref().map(Resume::borrowed);
     let gates = services
         .approvals()
-        .page(&owned.workspace, Filter::default(), None, PAGE_LIMIT)
+        .page(
+            &owned.workspace,
+            Filter {
+                status: asked.status,
+                fleet_id: asked.fleet_id.as_deref(),
+                gate_kind: asked.gate_kind.as_deref(),
+            },
+            resume,
+            asked.limit,
+        )
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
 
     Ok(Json(ApprovalsResponse {
         items: gates.iter().map(summary).collect(),
-        // One page for now: the queue is bounded by what a person will read,
-        // and a cursor nothing issues would be a field a client could not use.
-        next_cursor: None,
+        next_cursor: next_cursor(&gates, asked.limit).map(Cow::Owned),
     })
     .into_response())
+}
+
+/// Where the next page resumes, or nothing on the last one.
+///
+/// A short page is the last page, so it hands back no cursor: issuing one would
+/// send a client back for rows the store already said were not there. A FULL
+/// page is not proof that more exist — the boundary case answers an empty page
+/// next — and that is the same trade `approvals/list.zig` makes, deliberately,
+/// because the alternative is reading one row further on every request.
+fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
+    let last = gates.last()?;
+    (i64::try_from(gates.len()).is_ok_and(|read| read == limit)).then(|| {
+        CoreCursor::Timestamp {
+            at_ms: last.created_at,
+            id: last.gate_id.clone(),
+        }
+        .to_string()
+    })
 }
 
 /// `GET /v1/workspaces/{workspace_id}/approvals/{gate_id}` — one gate.
@@ -184,95 +196,8 @@ pub(crate) async fn detail<D: Services>(
     Ok(Json(summary(&gate)).into_response())
 }
 
-/// `POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}`.
-///
-/// Two segments where the Zig daemon spelled one — see the route table on why
-/// the decision moved out of the gate id's segment.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post,
-    path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
-    tag = afd_http::openapi::tag::APPROVALS,
-    operation_id = "approve_workspace_approval",
-    summary = "Approve a pending request",
-    description = concat!(
-        "Approves a pending request. If two callers resolve it, the first ",
-        "result wins. Other callers receive 409 with the existing result and ",
-        "resolver. ",
-    ),
-    request_body = ResolveApprovalRequest,
-    params(
-        afd_http::openapi::path::GateDecision,
-    ),
-    responses(
-        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
-    ),
-))]
-pub(crate) async fn resolve<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    person: PersonIdentity,
-    Path(ResolvePath { gate_id, decision }): Path<ResolvePath>,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let outcome = parse_decision(&decision)?;
-    let reason = read_reason(&body)?;
-
-    // The read is the workspace scoping AND the source of the action id the
-    // decision keys on. A resolve that took the gate id straight from the path
-    // would answer without ever proving the gate is this workspace's.
-    let gate = read_gate(&services, &owned.workspace, &gate_id, EVENT_RESOLVE).await?;
-
-    let resolution = services
-        .approvals()
-        .resolve(
-            &gate.action_id,
-            outcome,
-            person.subject(),
-            reason.as_ref(),
-            Some(&gate.fleet_id),
-            services.now(),
-        )
-        .await
-        .map_err(Refusal::at(EVENT_RESOLVE))?;
-
-    match resolution {
-        Resolution::Resolved(row) => Ok(Json(ResolvedResponse {
-            gate_id: Cow::Owned(row.gate_id),
-            action_id: Cow::Owned(row.action_id),
-            outcome: Cow::Owned(row.status),
-            resolved_at: row.updated_at,
-            resolved_by: Cow::Owned(row.resolved_by),
-        })
-        .into_response()),
-        // A 409, and the `current_state` is what makes it useful: the standing
-        // outcome is the one fact the second caller needs, and it tells them to
-        // refetch rather than retry a decision that cannot be changed. The
-        // resolver is NOT interpolated into the sentence — a subject is an
-        // entity value, and the detail rules keep those off the wire — so the
-        // client reads it back off the gate it refetches.
-        Resolution::AlreadyResolved(row) => Err(Refusal::conflict(
-            error_code::APPROVAL_ALREADY_RESOLVED,
-            DETAIL_ALREADY_RESOLVED,
-            &row.status,
-        )),
-        Resolution::NotFound => Err(Refusal::coded(
-            error_code::APPROVAL_NOT_FOUND,
-            DETAIL_NOT_FOUND,
-        )),
-    }
-}
-
 /// One gate inside this workspace, or the refusal for none.
-async fn read_gate<D: Services>(
+pub(super) async fn read_gate<D: Services>(
     services: &Arc<D>,
     workspace: &Uuid7,
     gate_id: &str,
@@ -287,37 +212,6 @@ async fn read_gate<D: Services>(
         .await
         .map_err(Refusal::at(event))?
         .ok_or_else(|| Refusal::coded(error_code::APPROVAL_NOT_FOUND, DETAIL_NOT_FOUND))
-}
-
-/// The status the path's verb resolves to.
-fn parse_decision(decision: &str) -> Result<Decision, Refusal> {
-    match decision {
-        "approve" => Ok(Decision::Approved),
-        "deny" => Ok(Decision::Denied),
-        _unknown => Err(Refusal::malformed(DETAIL_UNKNOWN_DECISION)),
-    }
-}
-
-/// The operator's note, or an empty one.
-///
-/// An absent body and an absent `reason` are the same answer: a decision is
-/// complete without a note, and demanding one would make the common case the
-/// awkward one.
-fn read_reason(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
-    if body.is_empty() {
-        return Ok(Cow::Borrowed(""));
-    }
-    let request: ResolveApprovalRequest<'_> = afd_core::json::object_from_slice(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-
-    // Plain JSON strings borrow from `body`; escaped strings necessarily own
-    // their decoded value. Carrying the `Cow` through the await accepts both
-    // without cloning either one.
-    let reason = request.reason.unwrap_or(Cow::Borrowed(""));
-    if reason.len() > REASON_MAX_BYTES {
-        return Err(Refusal::malformed(DETAIL_REASON_TOO_LONG));
-    }
-    Ok(reason)
 }
 
 /// One stored gate, as the wire shows it.
