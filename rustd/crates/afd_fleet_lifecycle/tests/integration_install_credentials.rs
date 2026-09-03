@@ -18,7 +18,7 @@
 )]
 
 use afd_core::error_code;
-use afd_fleet_lifecycle::{Install, LibrarySource};
+use afd_fleet_lifecycle::{ConfigSource, Install, LibrarySource, Patch};
 
 use crate::support::Lane;
 
@@ -30,6 +30,12 @@ const DECLARED_CREDENTIAL: &str = "github";
 
 /// A credential the workspace holds and the bundle never asked for.
 const UNRELATED_CREDENTIAL: &str = "postmark";
+
+/// A credential only the EDITED configuration names.
+const SECOND_CREDENTIAL: &str = "stripe";
+
+/// A replacement `TRIGGER.md` declaring the stored credential and one more.
+const TRIGGER_MD_SECOND_SECRET: &str = "---\nname: credential-demanding\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  credentials:\n    - github\n    - stripe\n  budget:\n    daily_dollars: 1.0\n---\n";
 
 /// That bundle's `SKILL.md`.
 const SKILL_MD: &str = "---\nname: credential-demanding\nversion: 1.0.0\ndescription: needs a credential\n---\n\n# Body\n";
@@ -126,6 +132,48 @@ async fn the_same_install_succeeds_once_the_credential_is_stored() {
     assert_eq!(
         lane.fleet_column(&installed.id, "status").await.as_deref(),
         Some("active")
+    );
+
+    lane.cleanup().await;
+}
+
+/// The edit door asks the same question the install door does.
+///
+/// A replacement `TRIGGER.md` declares credentials, so an edit that skipped the
+/// check would land exactly the fleet the install refuses — by the other door,
+/// and on a fleet the operator can already see.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn an_edit_naming_a_credential_the_workspace_lacks_is_refused_too() {
+    let lane = Lane::create().await;
+    lane.seed_library_entry(LIBRARY_ID_DEMANDING, SKILL_MD, Some(TRIGGER_MD))
+        .await;
+    lane.seed_secret(DECLARED_CREDENTIAL).await;
+    let installed = lane
+        .fleets
+        .install(&lane.workspace, &request(), Lane::now())
+        .await
+        .expect("the install goes through while the credential is stored");
+
+    let refused = lane
+        .fleets
+        .patch(
+            &lane.workspace,
+            &installed.id,
+            &Patch {
+                config: Some(ConfigSource::Trigger(TRIGGER_MD_SECOND_SECRET.to_owned())),
+                ..Patch::default()
+            },
+            Lane::now(),
+        )
+        .await
+        .expect_err("an edit naming an unstored credential must not land");
+
+    assert_eq!(refused.code(), error_code::FLEET_BUNDLE_SECRETS_MISSING);
+    assert_eq!(
+        refused.missing_secrets(),
+        Some([SECOND_CREDENTIAL.to_owned()].as_slice()),
+        "the stored one is not missing; only the newly declared one is"
     );
 
     lane.cleanup().await;

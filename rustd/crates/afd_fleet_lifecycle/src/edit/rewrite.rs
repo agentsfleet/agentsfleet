@@ -45,6 +45,13 @@ pub(super) struct Rewrite {
     pub(super) name: Option<String>,
     /// The placement tags to store, re-derived from a replacement `SKILL.md`.
     pub(super) required_tags: Option<Vec<String>>,
+    /// The credentials the configuration WILL declare, when this write replaces
+    /// it.
+    ///
+    /// Carried out of the parse rather than reparsed later: the document is
+    /// already open here, and a second parse is a second chance for the two to
+    /// disagree about what the row is going to say.
+    pub(super) declared_credentials: Option<Vec<String>>,
 }
 
 impl Rewrite {
@@ -107,6 +114,14 @@ impl Rewrite {
             required_tags: skill
                 .as_ref()
                 .map(|replacement| replacement.tags().iter().map(ToString::to_string).collect()),
+            declared_credentials: trigger.as_ref().map(|reparsed| {
+                reparsed
+                    .config()
+                    .credentials()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect()
+            }),
         })
     }
 

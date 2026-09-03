@@ -16,20 +16,23 @@
 //! on either daemon. So this reads [`afd_core::paging::Cursor`], which is the
 //! type that spells the Zig form.
 //!
-//! # The status vocabulary is what a filter can express, not what a row can be
+//! # The status vocabulary is every state a row can be in
 //!
-//! A gate's column carries five spellings; [`Decision`] carries the three an
-//! operator WRITES, and the store reads an absent filter as pending. So four
-//! values are served — `pending` and the three decisions — and a fifth is
-//! refused by name rather than silently answered with the pending page, which
-//! is what an ignored parameter amounts to.
+//! A gate's column carries five spellings, and all five are served. The store
+//! reads an absent filter as pending, so `pending` and absent are one request.
+//! A value outside those five is refused by name rather than silently answered
+//! with the pending page, which is what an ignored parameter amounts to.
+//!
+//! The filter reads [`GateStatus`] and not `Decision` for that reason:
+//! `Decision` is the three arms an operator WRITES, and routing the filter
+//! through it left `auto_killed` — a state a row really is in, and one the
+//! dashboard's own type declares — unreachable through this listing.
 
 use std::borrow::Cow;
 
-use afd_approval::Decision;
+use afd_approval::GateStatus;
 use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor as CoreCursor, InvalidCursor};
-use afd_wire::approval::status;
 
 use crate::handler::{Refusal, decoded_parameter, parameter};
 
@@ -54,8 +57,11 @@ const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "invalid cursor";
 
-/// The refusal a status outside the served vocabulary earns.
-const DETAIL_STATUS: &str = "status must be pending, approved, denied or timed_out";
+/// The refusal a status no row can be in earns.
+///
+/// Every spelling the column holds is served, so this names a value that is
+/// not one of them rather than one the filter merely cannot express.
+const DETAIL_STATUS: &str = "status must be pending, approved, denied, timed_out or auto_killed";
 
 /// The refusal a fleet id that is not an identifier earns.
 ///
@@ -94,7 +100,7 @@ impl Resume {
 #[derive(Debug)]
 pub(super) struct Listing {
     /// The status the page is narrowed to; pending when absent.
-    pub(super) status: Option<Decision>,
+    pub(super) status: Option<GateStatus>,
     /// The fleet the page is narrowed to.
     pub(super) fleet_id: Option<String>,
     /// The gate family the page is narrowed to.
@@ -193,16 +199,18 @@ fn parse_fleet_id(raw: Option<&str>) -> Result<Option<String>, Refusal> {
 /// `pending` resolves to ABSENT rather than to a value, because that is how the
 /// statement spells it: an absent filter binds the pending status. The two are
 /// the same request, so they parse to the same thing.
-fn parse_status(raw: Option<&str>) -> Result<Option<Decision>, Refusal> {
+///
+/// Every other spelling the column holds is served, including the killer's:
+/// `auto_killed` is a state a row is really in, and a filter that refused it
+/// left those gates unreachable through the only listing that shows them.
+fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
-    match raw {
-        status::PENDING => Ok(None),
-        status::APPROVED => Ok(Some(Decision::Approved)),
-        status::DENIED => Ok(Some(Decision::Denied)),
-        status::TIMED_OUT => Ok(Some(Decision::TimedOut)),
-        _unserved => Err(Refusal::malformed(DETAIL_STATUS)),
+    match GateStatus::parse(raw) {
+        Some(GateStatus::Pending) => Ok(None),
+        Some(state) => Ok(Some(state)),
+        None => Err(Refusal::malformed(DETAIL_STATUS)),
     }
 }
 
