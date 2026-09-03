@@ -288,3 +288,25 @@ fn test_migrate_refuses_a_database_that_will_not_answer() {
 
     assert_eq!(status, FAILURE, "a migration that could not run exits 1");
 }
+
+/// `openapi` answers from the route table, not from the environment.
+///
+/// The dispatch arm is behind `#[cfg(feature = "openapi")]`, so losing it is not
+/// a compile error: the parse still succeeds and `run` falls through to
+/// `None => check(env)`. An empty environment separates the two. `check` cannot
+/// resolve a datastore and exits 1, so SUCCESS is reachable only through the arm
+/// that writes the document — which is also the subcommand's own claim, that it
+/// needs no datastore and no runtime to answer.
+#[cfg(feature = "openapi")]
+#[test]
+fn test_the_openapi_subcommand_answers_without_an_environment() {
+    let status = status(
+        &["agentsfleetd", "openapi"],
+        &MapEnv::from_pairs(std::iter::empty()),
+    );
+
+    assert_eq!(
+        status, SUCCESS,
+        "the document is a function of the route table, so an empty environment still answers"
+    );
+}

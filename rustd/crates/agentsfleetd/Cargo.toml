@@ -36,6 +36,11 @@ test-util = [
     "afd_redis/test-util",
 ]
 
+# The document emitter. NOT default, and NOT reachable from the shipped binary:
+# `cargo build --profile dist` names no feature, so an operator cannot ask a
+# running daemon what it serves. CI builds with this to regenerate the artifact.
+openapi = ["afd_api/openapi"]
+
 [dependencies]
 afd_admin.workspace = true
 # The client every credential exchange is posted through. Built here rather than

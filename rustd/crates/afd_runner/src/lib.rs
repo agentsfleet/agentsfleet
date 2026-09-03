@@ -40,7 +40,8 @@ pub mod view;
 pub use self::admin::{PolicyAssigned, SelftestRequested};
 pub use self::error::{
     DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RUNNER_NOT_FOUND, DETAIL_SELFTEST_REFUSED, Error, Result,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_LEASED,
+    DETAIL_SELFTEST_REFUSED, Error, Result,
 };
 pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};

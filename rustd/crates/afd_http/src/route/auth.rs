@@ -62,7 +62,7 @@ impl AuthRoute {
             Self::CreateSession => (Guard::Open, "/v1/auth/sessions"),
             Self::PollSession => (Guard::Open, "/v1/auth/sessions/{session_id}"),
             Self::VerifySession => (Guard::Open, "/v1/auth/sessions/{session_id}/verify"),
-            Self::IdentityEventClerk => (Guard::Open, "/v1/auth/identity-events/clerk"),
+            Self::IdentityEventClerk => (Guard::PayloadSigned, "/v1/auth/identity-events/clerk"),
             Self::ApproveSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}/approve"),
             Self::DeleteSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}"),
             Self::DeleteAllSessions => (Guard::Bearer, "/v1/auth/sessions/all"),

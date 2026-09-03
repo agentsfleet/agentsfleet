@@ -194,6 +194,15 @@ pub(super) const REQUEST: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::APPROVAL_ALREADY_RESOLVED,
+        status: 409,
+        title: "Approval already resolved",
+        hint: "Already resolved by Slack, the dashboard, or a timeout. The response body carries the outcome and resolver.",
+        user_message: Some(
+            "Someone already resolved this. Refresh to see the outcome and who resolved it.",
+        ),
+    },
+    Problem {
         code: error_code::PREF_KEY_UNKNOWN,
         status: 400,
         title: "Unknown preference key",

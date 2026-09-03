@@ -161,6 +161,14 @@ impl Fleets {
         let guard = stale_check(request.if_match.as_deref(), &current)?;
 
         let rewrite = Rewrite::read(request, &current)?;
+        // The second door. A replacement `TRIGGER.md` declares credentials just
+        // as a bundle does, so an edit that skipped this check would land the
+        // same unrunnable fleet the install refuses — a row whose first lease
+        // reaches for a secret nobody stored.
+        if let Some(declared) = &rewrite.declared_credentials {
+            self.require_the_stored_credentials(workspace, declared)
+                .await?;
+        }
         let updated = self
             .apply(workspace, fleet, request, &rewrite, guard.as_ref(), now)
             .await?;

@@ -90,6 +90,13 @@ pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-0
 /// operator plane, so naming the missing resource is safe and actionable.
 pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
 
+/// A runner still in service cannot have its record retired.
+///
+/// `ERR_RUNNER_MUST_REVOKE_FIRST` in the Zig registry. The destructive step is
+/// the revoke; deleting merely retires a row the revoke already made inert, so
+/// a delete that arrives first is refused rather than escalated.
+pub const RUNNER_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-RUN-016");
+
 /// A fleet has reached a spend ceiling its own author declared.
 ///
 /// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
@@ -273,6 +280,15 @@ pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
 /// cannot tell them apart and does not need to, and distinguishing them would
 /// make the endpoint an oracle for which snapshots exist.
 pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002");
+
+/// A bundle whose declared credentials this workspace does not all hold.
+///
+/// `ERR_FLEET_BUNDLE_SECRETS_MISSING` (`error_entries.zig:184`). Raised BEFORE
+/// the fleet row is written, so a workspace short a credential ends with no
+/// fleet rather than an installed one that cannot run. A 424 rather than a 400:
+/// the request is well formed and the workspace is not ready for it, and the
+/// body names which credentials to add.
+pub const FLEET_BUNDLE_SECRETS_MISSING: ErrorCode = ErrorCode::declare("UZ-BUNDLE-003");
 
 /// An external Fleet Bundle source could not be fetched.
 ///

@@ -50,3 +50,12 @@ pub const LIBRARY_ENTRY_MISSING: &str = "library entry not found or not installa
 
 /// `create.zig`'s placement-tag bounds.
 pub const REQUIRED_TAGS_INVALID: &str = "required tags: max 32 tags, each 1..64 chars";
+
+/// The refusal an install into a workspace short a credential earns.
+///
+/// The Zig's sentence, kept verbatim: it is already on the wire. The names
+/// themselves ride the envelope's `missing_secrets`, not this string — a
+/// detail that interpolated them would be an entity value in a sentence the
+/// refusal rules keep clear of them.
+pub const BUNDLE_SECRETS_MISSING: &str =
+    "Fleet Bundle requires workspace secrets that are not present";

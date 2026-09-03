@@ -27,31 +27,46 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// `POST /v1/workspaces/{workspace_id}/secrets` — store one under a free name.
+// Unknown fields are IGNORED, matching `innerStoreSecret`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+/// Stores one secret under a name you choose.
 ///
-/// Unknown fields are IGNORED, matching `innerStoreSecret`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
+/// agentsfleet ignores fields it does not know, instead of refusing the
+/// request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct StoreSecretRequest<'a> {
     /// The name a fleet interpolates as `${secrets.<name>.<field>}`.
     #[serde(borrow)]
     pub name: Cow<'a, str>,
-    /// The object to seal. Opaque to the platform beyond its shape.
+    // The serialized form is a JSON object; the Rust form is an unparsed
+    // slice, which is a shape `ToSchema` cannot derive. `value_type` names the
+    // difference, which is the one thing an override is for.
+    /// The object to seal. agentsfleet reads nothing inside it beyond its
+    /// shape.
+    ///
+    /// Send any well-formed JSON object.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     #[serde(borrow)]
     pub data: &'a RawValue,
 }
 
 /// `PUT /v1/workspaces/{workspace_id}/secrets/{secret_name}` — replace the body.
-///
-/// The same `data` object create takes, and no merge: a field omitted here is
-/// absent from the stored secret afterwards. Merging cannot express intent on a
-/// resource the caller can never read back — the `PATCH {api_key}` this
-/// replaced added an unused field to any secret not keyed `api_key`, left the
-/// live credential stale, and answered 200.
+//
+// The same `data` object create takes, and no merge: a field omitted here is
+// absent from the stored secret afterwards. Merging cannot express intent on a
+// resource the caller can never read back — the `PATCH {api_key}` this
+// replaced added an unused field to any secret not keyed `api_key`, left the
+// live credential stale, and answered 200.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReplaceSecretRequest<'a> {
     /// The complete replacement body.
+    ///
+    /// Opaque for the same reason create's is: an unparsed slice in Rust, an
+    /// object on the wire. `value_type` names the difference.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     #[serde(borrow)]
     pub data: &'a RawValue,
 }
@@ -60,6 +75,7 @@ pub struct ReplaceSecretRequest<'a> {
 ///
 /// One shape for both verbs because both say the same thing — which name now
 /// holds a secret — and the status code is what distinguishes them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StoredSecretResponse<'a> {
     /// The name the secret is stored under.
@@ -67,10 +83,11 @@ pub struct StoredSecretResponse<'a> {
 }
 
 /// One credential as the list shows it.
-///
-/// `model` is documented as optional in `SecretSummary` and is not emitted:
-/// `vault.secrets` has no column for it, and answering it would mean decrypting
-/// every row on a page that displays no secrets. See `afd_vault::projection`.
+//
+// `model` is documented as optional in `SecretSummary` and is not emitted:
+// `vault.secrets` has no column for it, and answering it would mean decrypting
+// every row on a page that displays no secrets. See `afd_vault::projection`.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SecretSummary<'a> {
     /// The name the secret is stored and interpolated under.
@@ -88,6 +105,7 @@ pub struct SecretSummary<'a> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/secrets` — every secret the workspace holds.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SecretsResponse<'a> {
     /// The rows, by name.

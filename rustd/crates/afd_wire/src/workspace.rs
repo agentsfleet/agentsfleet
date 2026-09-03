@@ -15,11 +15,12 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// `POST /v1/workspaces` — create one.
-///
-/// Unknown fields are IGNORED, like the command-line credential mint and for
-/// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
-/// and the parity is kept by the ABSENCE of a serde attribute. `name` is
-/// optional twice over — absent, `null`, or blank all mean "name it for me".
+//
+// Unknown fields are IGNORED, like the command-line credential mint and for
+// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
+// and the parity is kept by the ABSENCE of a serde attribute. `name` is
+// optional twice over — absent, `null`, or blank all mean "name it for me".
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct CreateWorkspaceRequest<'a> {
     /// What the workspace will be called, when the caller cares.
@@ -28,19 +29,22 @@ pub struct CreateWorkspaceRequest<'a> {
 }
 
 /// What creating answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CreatedWorkspaceResponse<'a> {
     /// The new workspace's identifier.
     pub workspace_id: Cow<'a, str>,
     /// Its name — echoed when chosen, revealed when generated.
     pub name: Cow<'a, str>,
-    /// The correlation token, in the body as `lifecycle.zig` writes it.
+    // In the body as `lifecycle.zig` writes it.
+    /// The correlation token for this request, repeated in the body.
     pub request_id: Cow<'a, str>,
     /// The tenant it was created in — the daemon's resolution, never a claim.
     pub tenant_id: Cow<'a, str>,
 }
 
 /// One workspace as the list shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspaceSummary<'a> {
     /// The workspace's identifier.
@@ -53,6 +57,7 @@ pub struct WorkspaceSummary<'a> {
 }
 
 /// `GET /v1/tenants/me/workspaces` — one page of the tenant's workspaces.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspacesResponse<'a> {
     /// The rows on this page, oldest first.

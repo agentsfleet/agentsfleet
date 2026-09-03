@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 005
 **Date:** Sep 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — on the cutover's critical path: continuity across the swap is graded through these collectors
 **Categories:** INFRA | OBS
 **Batch:** B6 — the deploy configuration is independent, but the PROOF is serial behind M181_004: a collector cannot be shown to carry signals nothing is sending
@@ -93,9 +93,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 One collector app per environment on the private network, holding the vendor credential and owning the fan-out. The daemon's endpoint is repointed by configuration; the backend is chosen in collector configuration with no daemon redeploy. The receiver requires a credential: the private network spans the whole organisation rather than this app pair, so without one the collector is a credentialed relay any workload on that network can post through.
 
-- **Dimension 1.1** — **IN_PROGRESS (parked — needs the change window)** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
-- **Dimension 1.2** — **IN_PROGRESS (parked — needs the change window)** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
-- **Dimension 1.3** — **IN_PROGRESS (parked — lands with 1.1)** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
+- **Dimension 1.1** — **DEFERRED (change window)** — every signal the daemon exports arrives at Grafana Cloud through the development collector, with no series renamed, dropped or decorated → Test `test_collector_path_carries_every_signal`
+- **Dimension 1.2** — **DEFERRED (change window)** — the same, on production, as a change window with a stated revert (point the endpoint back) → Test `test_collector_path_production_probe`
+- **Dimension 1.3** — **DEFERRED (lands with 1.1)** — the runbook's register records the evidence, and the probe runner covers this spec's rubric row — an uncovered row is a red run → Test `test_runbook_probes` (the existing row-coverage assert, extended by the new tagged probe)
 
 The dimensions above are graded from a change window. The four below are graded by the repository, and they exist because the review found three defects that every mechanical gate had already passed — each one a correctly-spelled variable meaning the wrong thing, or a correctly-formed step in the wrong place. A gate that cannot see those is not a gate for this diff.
 
@@ -105,7 +105,17 @@ The dimensions above are graded from a change window. The four below are graded 
 - **Dimension 1.7** — **DONE** — the receiver refuses an unauthenticated sender, and the authenticator is registered in the service extensions rather than merely declared → Test `test_receiver_requires_authentication`
 - **Dimension 1.8** — **DONE** — every run deploys the collector from its build context, so a change to `config.yml` reaches the running app. `config.yml` is baked into the image by the Dockerfile's `COPY`, so deploying only when the app had no machines froze the receiver, the authentication policy and the exporter pipeline at whatever shipped first — which would make this spec's central claim ("the backend is chosen in collector configuration") false for every change after the first → Tests `test_deploys_even_when_the_app_already_has_machines` · `test_deploy_precedes_the_scale_it_sizes`
 
-**CHORE(close) — PARKED, Sep 02, 2026.** Dimensions 1.4-1.7 are DONE and this
+**CHORE(close) — CLOSED, Sep 02, 2026.** Indy's call, verbatim: *"M181_005 is
+finished — move it to done/"*. Dimensions 1.4-1.8 are DONE and this branch
+carries them. Dimensions 1.1-1.3 are DEFERRED, not delivered: they are graded
+from a change window that has not run, and the `collector_path` probe and its
+`coverage.tsv` rows are not in the tree — `git grep collector_path` finds
+nothing and `coverage.tsv` carries no M181_005 row. Moving the spec is safe on
+its own: `probes.sh --coverage` reports 57 rubric rows all probed or declared
+with this file in `active/` or in `done/`. The paragraph below is the parking
+note as it stood, kept because it records why those three wait.
+
+**The parking note, as written Sep 02, 2026.** Dimensions 1.4-1.7 are DONE and this
 branch carries them; 1.1-1.3 are graded from a change window that has not run,
 so the milestone parks rather than closing. What that means concretely:
 `Status` stays `IN_PROGRESS`, this spec stays in `active/`, and the closing

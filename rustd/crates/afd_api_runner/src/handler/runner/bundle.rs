@@ -40,9 +40,36 @@ const EVENT: &str = "runner_bundle_fetch_failed";
 
 /// What a canonical snapshot is, and it is not negotiable — `importer.zig`
 /// writes one shape and this serves it.
-const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static("application/x-tar");
+const TAR: &str = "application/x-tar";
+
+/// [`TAR`], as the response header carries it.
+const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static(TAR);
 
 /// Serves one bundle's canonical tar by content hash.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/runners/me/bundles/{content_hash}",
+    tag = afd_http::openapi::tag::FLEET_BUNDLES,
+    operation_id = "runner_fetch_bundle",
+    summary = "Fetch a fleet's support-file bundle",
+    description = concat!(
+        "The canonical tar a runner materialises support files from, ",
+        "addressed by content hash. The daemon proxies it because the runner ",
+        "holds no object-store keys. A hash is not a name anybody can guess, ",
+        "so the snapshot is not scoped to a runner, a fleet or a tenant. ",
+    ),
+    params(
+        afd_http::openapi::path::Bundle,
+    ),
+    responses(
+        (status = 200, description = "The canonical tar, byte for byte as it was imported", body = afd_http::openapi::body::Binary, content_type = TAR),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     // Bound and immediately dropped. The extractor is what PROVES a runner is

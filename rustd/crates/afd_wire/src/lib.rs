@@ -49,6 +49,7 @@
 pub mod activity;
 pub mod admin;
 mod admin_catalogue;
+mod admin_library;
 pub mod approval;
 pub mod auth;
 pub mod connector;
@@ -56,6 +57,7 @@ pub mod credentials;
 pub mod event;
 pub mod fleet;
 pub mod grant;
+pub mod health;
 pub mod ingress;
 pub mod lease;
 pub mod memory;

@@ -32,6 +32,28 @@ const DETAIL_MODEL_UNKNOWN: &str =
     "model is not a priced catalogue row for this provider; add it to /admin/models first";
 
 /// Lists all active and inactive metadata without reading vault bytes.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/admin/platform-keys",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "list_platform_keys",
+    summary = "List platform LLM keys",
+    description = concat!(
+        "Lists all configured platform-wide LLM provider keys. These are ",
+        "shared keys that workspaces fall back to when no self-managed key is ",
+        "configured. ",
+    ),
+    params(
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeysResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
     match services.platform_keys().list().await {
         Ok(keys) => Json(PlatformKeysResponse {
@@ -44,6 +66,28 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
 }
 
 /// Activates one provider/model pair as the sole platform default.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/v1/admin/platform-keys",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "put_platform_key",
+    summary = "Set a platform LLM key",
+    description = concat!(
+        "Configures a platform-wide LLM provider key by referencing a ",
+        "workspace that has a self-managed key stored. The platform key ",
+        "proxies through the referenced workspace's credential. ",
+    ),
+    request_body = PlatformKeyPut,
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn set<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
@@ -91,6 +135,28 @@ pub(crate) async fn set<D: Services>(
 }
 
 /// Deactivates a provider whether or not it currently has a row.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/admin/platform-keys/{provider}",
+    tag = afd_http::openapi::tag::ADMIN,
+    operation_id = "delete_platform_key",
+    summary = "Delete a platform LLM key",
+    description = concat!(
+        "Removes a platform-wide LLM provider key. Workspaces without ",
+        "self-managed keys will no longer be able to use this provider. ",
+    ),
+    params(
+        afd_http::openapi::path::Provider,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn deactivate<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,

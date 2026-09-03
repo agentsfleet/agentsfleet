@@ -79,6 +79,27 @@ pub(crate) struct GrantPath {
 /// and `revoked` rows the runner plane is blind to. That breadth is the point
 /// of the surface: an operator is being shown what a person has and has not
 /// answered, which is exactly the distinction a mint must not be able to make.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants",
+    tag = afd_http::openapi::tag::INTEGRATION_GRANTS,
+    operation_id = "list_integration_grants",
+    summary = "List integration grants for a fleet",
+    description = "Returns pending, approved, and revoked grants, newest first. ",
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = GrantsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -104,6 +125,30 @@ pub(crate) async fn list<D: Services>(
 /// A 204 and no body, matching `hx.noContent()`. What the revoke leaves behind
 /// is a row, not an absence — the grant keeps its `approved_at`, so the history
 /// still records that somebody once said yes.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
+    tag = afd_http::openapi::tag::INTEGRATION_GRANTS,
+    operation_id = "revoke_integration_grant",
+    summary = "Revoke an integration grant",
+    description = concat!(
+        "Immediately revokes a grant. A revoked grant blocks the fleet on its ",
+        "next call against the affected service. ",
+    ),
+    params(
+        afd_http::openapi::path::Grant,
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

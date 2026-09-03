@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /// mint to the lease's workspace SERVER-SIDE — the child never names a
 /// workspace, so a prompt-injected child cannot mint for another tenant. The
 /// request carries no token.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MintCredentialRequest<'a> {
@@ -25,6 +26,7 @@ pub struct MintCredentialRequest<'a> {
 }
 
 /// `POST /v1/runners/me/credentials/mint` reply.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MintCredentialResponse<'a> {

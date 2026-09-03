@@ -14,6 +14,7 @@
 //! acting in — never a handler deciding whether it may.
 
 pub mod detail;
+mod detail_request;
 pub mod memory;
 mod memory_request;
 pub mod message;
@@ -91,6 +92,34 @@ pub const DETAIL_TENANT_LIBRARY_ID: &str = "tenant_library_id must be a valid UU
 const EMPTY_OBJECT: &[u8] = b"{}";
 
 /// `GET /v1/workspaces/{workspace_id}/fleets` — one page, newest first.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "list_fleets",
+    summary = "List fleets in a workspace",
+    description = concat!(
+        "Returns visible fleets with the newest fleet first. Omit ",
+        "`starting_after` for the first page. Use the returned `next_cursor` ",
+        "to read the next page. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.
+"),
+        ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = FleetsResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -112,6 +141,35 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleets",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "create_fleet",
+    summary = "Create a fleet",
+    description = concat!(
+        "Creates a fleet from one library entry. Use either ",
+        "`platform_library_id` or `tenant_library_id`. The service creates a ",
+        "default API trigger when the library has no trigger. ",
+    ),
+    request_body = InstallFleetRequest,
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = InstalledFleetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 424, description = afd_http::openapi::FAILED_DEPENDENCY),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn install<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -133,12 +191,27 @@ pub(crate) async fn install<D: Services>(
         .fleets()
         .install(&owned.workspace, &Install { source, name }, services.now())
         .await
-        .map_err(Refusal::at(EVENT_INSTALL))?;
+        .map_err(short_a_credential_or(EVENT_INSTALL))?;
     Ok((
         StatusCode::CREATED,
         Json(installed_response(&installed, services.deployment())),
     )
         .into_response())
+}
+
+/// Renders an install failure, listing the credentials when that is the cause.
+///
+/// [`super::detail`]'s `stale_or` in the other direction: a 424 whose body
+/// names the secrets this workspace has yet to store, so an operator adds
+/// exactly those rather than reading the bundle's manifest to work out which
+/// of its declared names they are short.
+fn short_a_credential_or(
+    event: &'static str,
+) -> impl FnOnce(afd_fleet_lifecycle::Error) -> Refusal {
+    move |error| match error.missing_secrets() {
+        Some(missing) => Refusal::missing_secrets(error.code(), error.detail(), missing.to_vec()),
+        None => Refusal::at(event)(error),
+    }
 }
 
 /// Which library tier this install draws from, or the refusal it earns.
@@ -260,68 +333,4 @@ fn installed_response<'a>(
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::indexing_slicing,
-        clippy::panic,
-        reason = "fixed test fixtures fail loudly when their contract changes"
-    )]
-
-    use super::*;
-    use afd_fleet_lifecycle::FleetStatus;
-
-    fn fleet_id() -> Uuid7 {
-        Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
-            .unwrap_or_else(|error| panic!("fixture id is canonical: {error}"))
-    }
-
-    #[test]
-    fn a_page_cursor_names_the_last_returned_row() {
-        let id = fleet_id().to_string();
-        let page = FleetPage {
-            rows: vec![FleetRow {
-                id: id.clone(),
-                name: "reviewer".to_owned(),
-                status: FleetStatus::Active,
-                created_at_ms: 42,
-                updated_at_ms: 43,
-                triggers: None,
-                events_processed: 7,
-                budget_used_nanos: 11,
-            }],
-            more: true,
-        };
-
-        let response = page_response(&page);
-
-        assert_eq!(response.total, 1);
-        assert_eq!(response.items[0].id, id);
-        let parsed = parse_cursor(response.next_cursor.as_deref())
-            .unwrap_or_else(|error| panic!("emitted cursor parses: {error:?}"))
-            .unwrap_or_else(|| panic!("a page with more rows emits a cursor"));
-        assert_eq!(parsed.created_at_ms, 42);
-        assert_eq!(parsed.id.as_str(), id);
-    }
-
-    #[test]
-    fn an_install_reply_builds_each_webhook_from_the_deployment() {
-        let installed = Installed {
-            id: fleet_id(),
-            name: "reviewer".to_owned(),
-            status: FleetStatus::Active,
-            webhook_sources: vec!["github".into(), "slack".into()],
-        };
-
-        let response = installed_response(&installed, "https://api.example.test");
-
-        assert_eq!(response.fleet_id, installed.id.as_str());
-        assert_eq!(response.webhook_urls.len(), 2);
-        assert_eq!(
-            response.webhook_urls[0].url,
-            format!(
-                "https://api.example.test/v1/webhooks/{}/github",
-                installed.id.as_str()
-            )
-        );
-    }
-}
+mod tests;

@@ -13,7 +13,11 @@
 
 pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
 
-mod handler;
+pub(crate) mod handler;
+
+// The document generator, compiled only when it is asked for.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 
 pub use handler::webhook::BUFFER_CEILING;
 pub use handler::webhook::verify_platform::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};

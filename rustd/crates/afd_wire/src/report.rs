@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Mirrors the event statuses a RUNNER can produce; the daemon-side statuses are
 /// never runner-reported.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
@@ -34,6 +35,7 @@ impl Outcome {
 }
 
 /// Why a run failed, at the granularity the classification site knows.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureClass {
@@ -69,6 +71,7 @@ pub enum FailureClass {
 /// `{"completed":null}` where the wire carries `{"completed":{}}`.
 /// `test_wire_roundtrip_all_fixtures` fails on that change, which is what makes
 /// this reason checkable rather than asserted.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[expect(
     clippy::empty_structs_with_brackets,
     reason = "the empty braces are the wire encoding; a unit struct serializes as null"
@@ -81,6 +84,7 @@ pub struct Completed {}
 ///
 /// `class` is null only when the peer reported a failure without classifying it.
 /// A cause is never guessed from a bare failure.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Failure<'a> {
@@ -92,6 +96,7 @@ pub struct Failure<'a> {
 }
 
 /// The run's verdict. `Completed` carries no cause because a clean run has none.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultOutcome<'a> {
@@ -103,6 +108,7 @@ pub enum ResultOutcome<'a> {
 }
 
 /// The terminal stage result the runner produces and the report consumes.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionResult<'a> {
@@ -132,6 +138,7 @@ pub struct ExecutionResult<'a> {
 ///
 /// The authoritative new kill deadline. A non-`200` means stop renewing and kill
 /// the child — the run is over.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenewResponse {
@@ -141,9 +148,10 @@ pub struct RenewResponse {
 
 /// `POST /v1/runners/me/leases/{lease_id}/renew` request.
 ///
-/// CUMULATIVE token counts for the run so far, not deltas. The control plane
-/// charges the difference since the lease's last-metered cursor, so a fail-safe
-/// retry re-sending the same cumulatives charges approximately nothing.
+/// Cumulative token counts for the run so far, never deltas. Only the
+/// difference since the last renewal is charged, so a retry that re-sends the
+/// same totals charges nothing new.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct RenewRequest {
     /// Cumulative prompt tokens.
@@ -154,7 +162,8 @@ pub struct RenewRequest {
     pub output_tokens: u32,
 }
 
-/// Latency telemetry the runner observed for one execution.
+/// Latency the runner observed for one run.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportTelemetry {
@@ -165,6 +174,7 @@ pub struct ReportTelemetry {
 }
 
 /// Session resume cursor written to the fleet's stored session context.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportCheckpoint<'a> {
@@ -177,17 +187,18 @@ pub struct ReportCheckpoint<'a> {
 }
 
 /// `POST /v1/runners/me/reports` — one batched write keyed by event id.
-///
-/// The fencing token is echoed and verified: a reclaimed holder carrying a token
-/// below the fleet's live sequence is refused. No runner id — the token owns the
-/// identity.
+//
+// The fencing token is echoed and verified: a reclaimed holder carrying a token
+// below the fleet's live sequence is refused. No runner id — the token owns the
+// identity.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportRequest<'a> {
     /// The lease being reported on.
     #[serde(borrow)]
     pub lease_id: Cow<'a, str>,
-    /// The event that was executed.
+    /// The event this report is about.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
     /// Monotonic guard, verified against the fleet's live sequence.
@@ -196,7 +207,7 @@ pub struct ReportRequest<'a> {
     pub outcome: Outcome,
     /// The granular cause when the run failed.
     pub failure_reason: Option<FailureClass>,
-    /// Human-readable cause, persisted only on failure.
+    /// Human-readable cause, stored only on failure.
     #[serde(borrow)]
     pub failure_detail: Cow<'a, str>,
     /// The run's output.
@@ -219,6 +230,7 @@ pub struct ReportRequest<'a> {
 }
 
 /// `POST /v1/runners/me/reports` reply.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportResponse {

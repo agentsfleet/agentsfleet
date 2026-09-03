@@ -232,6 +232,12 @@ export function DataTableView<T extends DataTableRowData>({
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
+    // The ref is attached to a div this component renders unconditionally, and a
+    // layout effect runs only once that div is in the DOM — so React cannot make
+    // this null case true; it is a type-narrowing formality. Excluded from the
+    // 100% coverage gate for the same reason as any unreachable defensive branch
+    // (cf. website/src/components/HowItWorks.tsx).
+    /* v8 ignore next */
     if (!viewport) return;
     if (typeof viewport.scrollTo === "function") viewport.scrollTo({ top: 0 });
     else viewport.scrollTop = 0;

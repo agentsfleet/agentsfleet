@@ -154,7 +154,7 @@ const createAndRender = (
       yield* output.printJson({
         status: "installed",
         fleet_id: res.fleet_id,
-        webhook_urls: res.webhook_urls ?? {},
+        webhook_urls: res.webhook_urls ?? [],
         name: displayName,
         generated_trigger: generatedTrigger,
       });
@@ -166,12 +166,11 @@ const createAndRender = (
       yield* output.info("  Generated default API wake because TRIGGER.md was not present.");
     }
     if (res.fleet_id) yield* output.info(`  Fleet ID: ${res.fleet_id}`);
-    const urls = res.webhook_urls ?? {};
-    const sources = Object.keys(urls);
-    if (sources.length > 0) {
+    const urls = res.webhook_urls ?? [];
+    if (urls.length > 0) {
       yield* output.info("  Webhook URLs (register on the upstream provider):");
-      for (const source of sources) {
-        yield* output.info(`    ${source}: ${urls[source]}`);
+      for (const { source, url } of urls) {
+        yield* output.info(`    ${source}: ${url}`);
       }
     }
   });

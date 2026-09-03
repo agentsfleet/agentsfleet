@@ -31,8 +31,8 @@ const FIELD_FLEET_ID = "fleet_id" as const;
 const FIELD_CRON = "cron" as const;
 const FIELD_TIMEZONE = "timezone" as const;
 const FIELD_MESSAGE = "message" as const;
-const FIELD_DESIRED_STATUS = "desired_status" as const;
-const FIELD_SYNC_STATUS = "sync_status" as const;
+const FIELD_STATUS = "status" as const;
+const FIELD_SYNC = "sync" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
 const METHOD_POST = "POST" as const;
 
@@ -50,22 +50,18 @@ const isString = (value: unknown): value is string => typeof value === TYPE_STRI
 interface ScheduleRow {
   readonly schedule_id?: string | null;
   readonly fleet_id?: string | null;
-  readonly source?: string | null;
   readonly cron?: string | null;
   readonly timezone?: string | null;
   readonly message?: string | null;
-  readonly desired_status?: string | null;
-  readonly sync_status?: string | null;
-  readonly generation?: number | null;
+  readonly status?: string | null;
+  readonly sync?: string | null;
   readonly last_error?: string | null;
   readonly created_at?: number | null;
   readonly updated_at?: number | null;
 }
 
 interface ScheduleListResponse {
-  readonly items?: ReadonlyArray<ScheduleRow>;
-  readonly total?: number;
-  readonly next_cursor?: string | null;
+  readonly schedules?: ReadonlyArray<ScheduleRow>;
 }
 
 interface ScheduleCommonFlags {
@@ -156,7 +152,7 @@ const printSchedule = (
   machineOutput(config, stdoutIsTty)
     ? output.printJson(row)
     : output.success(
-        `${verb} ${scheduleIdOf(row)} (${row.desired_status ?? "-"}, sync=${row.sync_status ?? "-"})`,
+        `${verb} ${scheduleIdOf(row)} (${row.status ?? "-"}, sync=${row.sync ?? "-"})`,
       );
 
 const scheduleContext = (
@@ -209,7 +205,7 @@ export const scheduleListEffectFromArgs = (
       yield* ctx.output.printJson(res);
       return;
     }
-    const items = Array.isArray(res.items) ? res.items : [];
+    const items = Array.isArray(res.schedules) ? res.schedules : [];
     if (items.length === 0) {
       yield* ctx.output.info("No schedules for this Fleet.");
       return;
@@ -219,16 +215,16 @@ export const scheduleListEffectFromArgs = (
         { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
         { key: FIELD_CRON, label: "CRON" },
         { key: FIELD_TIMEZONE, label: "TIMEZONE" },
-        { key: FIELD_DESIRED_STATUS, label: "DESIRED" },
-        { key: FIELD_SYNC_STATUS, label: "SYNC" },
+        { key: FIELD_STATUS, label: "STATUS" },
+        { key: FIELD_SYNC, label: "SYNC" },
         { key: FIELD_MESSAGE, label: "MESSAGE" },
       ],
       items.map((row) => ({
         [FIELD_SCHEDULE_ID]: row.schedule_id ?? "",
         [FIELD_CRON]: row.cron ?? "",
         [FIELD_TIMEZONE]: row.timezone ?? "",
-        [FIELD_DESIRED_STATUS]: row.desired_status ?? "",
-        [FIELD_SYNC_STATUS]: row.sync_status ?? "",
+        [FIELD_STATUS]: row.status ?? "",
+        [FIELD_SYNC]: row.sync ?? "",
         [FIELD_MESSAGE]: row.message ?? "",
       })),
     );
@@ -247,7 +243,7 @@ export const scheduleUpdateEffectFromArgs = (
       ...(flags.cron !== undefined ? { cron: flags.cron } : {}),
       ...(flags.timezone !== undefined ? { timezone: flags.timezone } : {}),
       ...(flags.message !== undefined ? { message: flags.message } : {}),
-      ...(desiredStatus !== undefined ? { desired_status: desiredStatus } : {}),
+      ...(desiredStatus !== undefined ? { paused: desiredStatus === STATUS_PAUSED } : {}),
     };
     if (Object.keys(body).length === 0) {
       return yield* Effect.fail(new ValidationError({ detail: "no schedule fields provided", suggestion: USAGE_UPDATE }));

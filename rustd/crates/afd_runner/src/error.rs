@@ -19,6 +19,11 @@ pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
 /// `runner_patch.zig`'s refusal when a terminal runner cannot collect an ask.
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
+/// The refusal a delete of a runner still in service earns.
+pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
+/// The refusal a delete of a runner still holding a lease earns.
+pub const DETAIL_RUNNER_STILL_LEASED: &str =
+    "runner still holds an active lease; retry once it is released";
 
 /// Every way enrolling, proving or sweeping a runner can fail.
 #[derive(Debug, thiserror::Error)]
@@ -62,6 +67,22 @@ pub enum Error {
     /// holds. They answer different registry codes for that reason.
     #[error("no runner matches the operator-supplied id")]
     RunnerNotFound,
+
+    /// A runner still in service was asked to retire its record.
+    ///
+    /// The revoke is the destructive step and the delete only retires a row
+    /// the revoke already made inert, so a delete that arrives first is a
+    /// refusal the operator resolves by revoking, never an escalation.
+    #[error("a runner still in service cannot have its record retired")]
+    RunnerNotRevoked,
+
+    /// A revoked runner still holds an active lease and was asked to retire.
+    ///
+    /// The lease row is what the liveness sweep releases the fleet's slot
+    /// through; retiring the runner under it would strand the slot until the
+    /// lease's own expiry. The sweep clears it on its next pass.
+    #[error("a runner still holding an active lease cannot have its record retired")]
+    RunnerStillLeased,
 
     /// A revoked runner was asked to collect a self-test.
     ///
@@ -144,6 +165,8 @@ impl Error {
         match self {
             Self::Rejected { detail } => detail,
             Self::RunnerVanished | Self::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            Self::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
+            Self::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
             Self::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             // The four datastore-shaped failures — a statement that reached
             // Postgres, and three rows this build cannot read — all answer
@@ -187,6 +210,9 @@ impl Error {
             Self::Rejected { .. } => error_code::INVALID_REQUEST,
             Self::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
             Self::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
+            Self::RunnerNotRevoked | Self::RunnerStillLeased => {
+                error_code::RUNNER_MUST_REVOKE_FIRST
+            }
             Self::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
             Self::Query { .. }
             | Self::RowMalformed { .. }

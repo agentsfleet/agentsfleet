@@ -44,6 +44,15 @@ use crate::services::{Services, WorkspaceFleets as _};
 
 use super::fleet::detail::{FleetPath, parse_fleet_id};
 
+/// What both streams answer once they are open.
+// Read only by the two annotations, which the default build compiles away.
+#[cfg(feature = "openapi")]
+const STREAM_OPEN: &str = "The stream is open; frames follow as Server-Sent Events";
+
+/// The media type `Sse` writes, named for the document.
+#[cfg(feature = "openapi")]
+const EVENT_STREAM: &str = "text/event-stream";
+
 /// The scoped event each surface's failures are logged under.
 const EVENT_FLEET_STREAM: &str = "fleet_events_stream_failed";
 
@@ -54,6 +63,31 @@ const EVENT_WORKSPACE_STREAM: &str = "workspace_events_stream_failed";
 const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream`.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "stream_fleet_events",
+    summary = "Stream live fleet activity",
+    description = concat!(
+        "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each ",
+        "message includes `id`, `event`, and `data`. Identifiers restart at 0 ",
+        "for each connection. The route ignores `Last-Event-ID`. At capacity, ",
+        "the route returns 503 `UZ-API-002` with `Retry-After`. Read missed ",
+        "events before reconnecting. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
+    responses(
+        (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn fleet<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -77,6 +111,44 @@ pub(crate) async fn fleet<D: Services>(
 }
 
 /// `GET /v1/workspaces/{workspace_id}/events/stream`.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/events/stream",
+    tag = afd_http::openapi::tag::WORKSPACES,
+    operation_id = "stream_workspace_events",
+    summary = "Stream live activity for a whole workspace",
+    description = concat!(
+        "Opens ONE Server-Sent Events (SSE) stream carrying live activity for ",
+        "every fleet the caller can read in the workspace. It is the Fleets ",
+        "Wall's single connection, replacing one stream per tile. The first ",
+        "frame is `event: hello`. Its `data` is ",
+        "`{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet ",
+        "set. Activity frame `data` contains the publisher payload with ",
+        "`fleet_id` added as the leading field. The client routes each frame ",
+        "by that tag. A stalled client can overflow its bounded server queue. ",
+        "The server then sends `event: catching_up` with ",
+        "`{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop ",
+        "count since the previous signal. Control frames use identifier 0 and ",
+        "do not advance the activity sequence. Activity identifiers start at ",
+        "0 for each connection. The route ignores `Last-Event-ID`. The ",
+        "connection adjusts its fan-in as fleets appear or disappear. A ",
+        "caller whose workspace access is revoked stops receiving on the next ",
+        "refresh. At capacity the route returns 503 `UZ-API-002` with ",
+        "`Retry-After`. After a reconnect opens, recover the gap through `GET ",
+        "/v1/workspaces/{workspace_id}/events`. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
+    responses(
+        (status = 200, description = STREAM_OPEN, body = String, content_type = EVENT_STREAM),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn workspace<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,

@@ -6,7 +6,11 @@
 
 pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
 
-mod handler;
+pub(crate) mod handler;
+
+// The document generator, compiled only when it is asked for.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 pub use handler::{fleet, secret, tenant, workspace_library};
 
 use std::sync::Arc;
@@ -78,7 +82,7 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::Preference => Some(put(handler::preference::write::<D>)),
         WorkspaceRoute::Approvals => Some(get(handler::approval::list::<D>)),
         WorkspaceRoute::Approval => Some(get(handler::approval::detail::<D>)),
-        WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::<D>)),
+        WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
         WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
         WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
         WorkspaceRoute::FleetLibrary => Some(

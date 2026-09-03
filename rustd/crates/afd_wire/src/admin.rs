@@ -5,16 +5,19 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 pub use crate::admin_catalogue::{
-    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
-    AdminLibraryPatch, AdminLibraryRequirements, AdminModelCreate, AdminModelCreated,
-    AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem, FleetBundlesResponse,
+    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
     ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
+};
+pub use crate::admin_library::{
+    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
+    AdminLibraryPatch, AdminLibraryRequirements, FleetBundleItem, FleetBundlesResponse,
 };
 use crate::runner::AssignedPolicy;
 
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
 /// every other value rejects one.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminState {
@@ -35,6 +38,7 @@ pub enum AdminState {
 /// Rotation and self-test are operations rather than state transitions. They
 /// ride the same endpoint because they share the operator scope and the
 /// exactly-one-of body guard with the transition actions.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerAdminAction {
@@ -54,6 +58,7 @@ pub enum RunnerAdminAction {
 ///
 /// The replacement token is returned once. The daemon stores only its digest,
 /// so no later read can recover this value.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerTokenRotatedResponse<'a> {
@@ -68,6 +73,7 @@ pub struct RunnerTokenRotatedResponse<'a> {
 /// `PATCH /v1/fleets/runners/{id}` body.
 ///
 /// Exactly one of `action` or `assigned_policy`; both or neither is a `400`.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerAdminPatchRequest<'a> {
@@ -79,6 +85,7 @@ pub struct RunnerAdminPatchRequest<'a> {
 }
 
 /// `PATCH /v1/fleets/runners/{id}` reply.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerAdminPatchResponse<'a> {
@@ -99,6 +106,7 @@ pub struct RunnerAdminPatchResponse<'a> {
 }
 
 /// Append-only runner history values.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerEventType {
@@ -158,6 +166,7 @@ pub const PER_LEASE_EVENT_TYPES: [RunnerEventType; 2] = [
 ];
 
 /// One row of runner history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerEventItem<'a> {
@@ -176,6 +185,7 @@ pub struct RunnerEventItem<'a> {
 }
 
 /// A page of runner history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerEventsResponse<'a> {
@@ -190,6 +200,7 @@ pub struct RunnerEventsResponse<'a> {
 }
 
 /// One live Server-Sent Events connection visible to platform operators.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetStreamItem<'a> {
@@ -204,6 +215,7 @@ pub struct FleetStreamItem<'a> {
 }
 
 /// The instance-local live stream overview.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetStreamsResponse<'a> {

@@ -3,7 +3,8 @@
 //!
 //! Split by what a route DOES rather than by provider: [`catalogue`] lists what
 //! could be connected, [`connect`] starts a round-trip, [`callback`] finishes
-//! one, and [`status`] reads or forgets what landed. Per-provider difference
+//! one, [`landing`] says where the person goes afterwards, and [`status`]
+//! reads or forgets what landed. Per-provider difference
 //! lives in `afd_connector`'s registry and nowhere here — adding a connector is
 //! an arm in that crate's matches, never a file in this directory. The Zig
 //! daemon carries `connectors/slack/`, `connectors/jira/`, `connectors/zoho/`,
@@ -30,6 +31,7 @@
 pub(crate) mod callback;
 pub(crate) mod catalogue;
 pub(crate) mod connect;
+mod landing;
 pub(crate) mod status;
 
 use std::sync::Arc;

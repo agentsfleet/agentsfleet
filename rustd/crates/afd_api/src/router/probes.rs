@@ -10,11 +10,14 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
+use afd_wire::health::{Liveness, Readiness};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use http::StatusCode;
-use serde_json::json;
+
+/// The one word a live process answers.
+const STATUS_OK: &str = "ok";
 
 /// The name this service reports as.
 const SERVICE: &str = "agentsfleetd";
@@ -34,7 +37,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// developer's working copy has no honest answer to give.
 ///
 /// `GIT_COMMIT` is `make/build.mk`'s own variable, exported — the same one the
-/// image tag is built from, so the two cannot disagree.
+/// image tag is built from, so the two cannot disagree. The release workflows
+/// build with `cargo` directly and pass the same seven characters in.
 const COMMIT: &str = match option_env!("GIT_COMMIT") {
     Some(commit) => commit,
     None => "unknown",
@@ -82,18 +86,33 @@ pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
 /// `GET /healthz` — the process is up and answering.
 ///
 /// Reads no state, touches no dependency. That is the whole contract.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/healthz",
+    tag = afd_http::openapi::tag::HEALTH,
+    operation_id = "healthz",
+    summary = "Liveness check",
+    description = concat!(
+        "Returns 200 as long as the process is alive and able to serve ",
+        "HTTP. Does not probe dependencies — use /readyz for readiness ",
+        "(database + queue). ",
+    ),
+    responses(
+        (status = 200, description = "The process is alive", body = Liveness),
+    ),
+))]
 pub(super) async fn healthz() -> Response {
     // `trace`: an orchestrator hits this every few seconds per instance, so at
     // any level a person leaves on it would be the loudest event in the log
     // and would say nothing. It exists for the case where someone needs to
     // prove the probe is arriving at all.
     tracing::trace!(event = "liveness_probed", "liveness probed");
-    Json(json!({
-        "status": "ok",
-        "service": SERVICE,
-        "version": VERSION,
-        "commit": COMMIT,
-    }))
+    Json(Liveness {
+        status: STATUS_OK.into(),
+        service: SERVICE.into(),
+        version: VERSION.into(),
+        commit: COMMIT.into(),
+    })
     .into_response()
 }
 
@@ -102,6 +121,23 @@ pub(super) async fn healthz() -> Response {
 /// Answers 503 when it is not, so an orchestrator takes the instance out of
 /// rotation rather than restarting it — the process is fine, its dependencies
 /// are not.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/readyz",
+    tag = afd_http::openapi::tag::HEALTH,
+    operation_id = "readyz",
+    summary = "Readiness probe",
+    description = concat!(
+        "Returns 200 when the database and event queue are available, and ",
+        "503 when either is not. Never shed: an orchestrator that cannot ",
+        "reach this because the instance is busy learns nothing it can act ",
+        "on. ",
+    ),
+    responses(
+        (status = 200, description = "Every dependency this instance needs is reachable", body = Readiness),
+        (status = 503, description = "A dependency this instance needs is unreachable", body = Readiness),
+    ),
+))]
 pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) -> Response {
     let inputs = dependencies.probe().await;
     let ready = ready_decision(inputs);
@@ -133,11 +169,11 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
 
     (
         status,
-        Json(json!({
-            "ready": ready,
-            "database": inputs.database,
-            "queue": inputs.queue,
-        })),
+        Json(Readiness {
+            ready,
+            database: inputs.database,
+            queue: inputs.queue,
+        }),
     )
         .into_response()
 }

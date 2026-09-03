@@ -89,6 +89,7 @@ jobs:
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
             -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e GIT_COMMIT="${GITHUB_SHA::7}" \
             -w /w/rustd \
             "$BUILDER" \
             sh -c '

@@ -30,6 +30,8 @@ mod fleet_messages_input;
 mod fleet_streams;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
+#[path = "integration_fleet_install_credentials.rs"]
+mod integration_fleet_install_credentials;
 #[path = "integration_fleet_lifecycle.rs"]
 mod integration_fleet_lifecycle;
 #[path = "integration_fleet_memories.rs"]
@@ -46,6 +48,8 @@ mod integration_tenant_models;
 mod integration_tenant_money;
 #[path = "integration_workspace_approvals.rs"]
 mod integration_workspace_approvals;
+#[path = "integration_workspace_approvals_listing.rs"]
+mod integration_workspace_approvals_listing;
 #[path = "integration_workspace_preferences.rs"]
 mod integration_workspace_preferences;
 #[path = "tenant_api_keys.rs"]

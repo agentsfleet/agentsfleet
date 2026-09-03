@@ -19,6 +19,10 @@ test-util = [
   "afd_tenant/test-util",
   "afd_vault/test-util",
 ]
+# Generates this plane's half of the OpenAPI document. NOT default: the shipped
+# daemon compiles no annotation, no schema string and no collector — the whole
+# of it is a build-time tool, and CI is where its compile cost belongs.
+openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
 
 [dependencies]
 afd_webhook.workspace = true
@@ -43,6 +47,9 @@ afd_sse.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_wire.workspace = true
+# The document generator, reachable only under `openapi`. Optional at every
+# member that names it, so the default resolve is unchanged.
+utoipa = { workspace = true, optional = true }
 axum = { workspace = true, features = ["json", "query"] }
 futures-util.workspace = true
 http.workspace = true

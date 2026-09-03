@@ -38,15 +38,16 @@ use serde_json::value::RawValue;
 pub type Triggers = Option<Box<RawValue>>;
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
-///
-/// Unknown fields are IGNORED, matching `create.zig`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
-///
-/// Exactly one library id is required. Both fields are optional HERE because
-/// the refusal for neither and the refusal for both are different sentences,
-/// and a `#[serde(untagged)]` enum would collapse them into one parse failure
-/// the caller could not act on.
+//
+// Unknown fields are IGNORED, matching `create.zig`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+//
+// Exactly one library id is required. Both fields are optional HERE because
+// the refusal for neither and the refusal for both are different sentences,
+// and a `#[serde(untagged)]` enum would collapse them into one parse failure
+// the caller could not act on.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct InstallFleetRequest<'a> {
     /// A published platform entry, by slug.
@@ -64,6 +65,7 @@ pub struct InstallFleetRequest<'a> {
 }
 
 /// What an install answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstalledFleetResponse<'a> {
     /// The new fleet's identifier.
@@ -72,14 +74,16 @@ pub struct InstalledFleetResponse<'a> {
     pub name: Cow<'a, str>,
     /// Where it stands. `active`: the stream exists, so it is already leasable.
     pub status: Cow<'a, str>,
-    /// One entry per webhook trigger the bundle declared, keyed by source.
+    /// One entry per webhook trigger the bundle declared, each naming its
+    /// source and the URL the provider is pointed at.
     ///
-    /// An empty object where the fleet declares none, never `null`: a client
-    /// iterating the map should not have to branch on its absence first.
+    /// An empty array where the fleet declares none, never `null`: a client
+    /// iterating it should not have to branch on its absence first.
     pub webhook_urls: Vec<WebhookUrl<'a>>,
 }
 
 /// Where one declared webhook trigger is delivered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WebhookUrl<'a> {
     /// The provider that sends it.
@@ -89,6 +93,7 @@ pub struct WebhookUrl<'a> {
 }
 
 /// One fleet as a list page shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetSummary<'a> {
     /// The fleet's identifier.
@@ -101,7 +106,12 @@ pub struct FleetSummary<'a> {
     pub created_at: i64,
     /// When it last changed.
     pub updated_at: i64,
-    /// What may wake it, from the stored configuration.
+    // [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    // through unparsed. `value_type` names the serialized shape, which is the
+    // only thing a schema can say about it.
+    /// What may wake this Fleet, as stored. agentsfleet returns the document
+    /// unchanged.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count. Server truth, never client arithmetic.
     pub events_processed: i64,
@@ -110,12 +120,14 @@ pub struct FleetSummary<'a> {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets` — one page, newest first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetsResponse<'a> {
     /// The fleets on this page.
     pub items: Vec<FleetSummary<'a>>,
-    /// How many are on this page — `list.zig` answers the page length, not the
-    /// workspace's whole count, and the name is the one that shipped.
+    // `list.zig` answers the page length, and the name is the one that shipped.
+    /// How many Fleets this page carries. The count covers this page only, not
+    /// the whole workspace.
     pub total: usize,
     /// Where the next page resumes, or `null` on the last one.
     pub next_cursor: Option<Cow<'a, str>>,
@@ -126,6 +138,7 @@ pub struct FleetsResponse<'a> {
 /// The list row's fields plus the editable surface. Flattened rather than
 /// nested under a `summary` key, because that is the shape the source editor
 /// already reads.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FleetDetailResponse<'a> {
     /// The fleet's identifier.
@@ -140,7 +153,12 @@ pub struct FleetDetailResponse<'a> {
     pub trigger_markdown: Option<Cow<'a, str>>,
     /// The bundle a runner materialises support files from.
     pub bundle_content_hash: Option<Cow<'a, str>>,
-    /// What may wake it, from the stored configuration.
+    // [`Triggers`] is `Option<Box<RawValue>>`: a stored document spliced
+    // through unparsed. `value_type` names the serialized shape, which is the
+    // only thing a schema can say about it.
+    /// What may wake this Fleet, as stored. agentsfleet returns the document
+    /// unchanged.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub triggers: Triggers,
     /// Lifetime event count.
     pub events_processed: i64,
@@ -156,8 +174,9 @@ pub struct FleetDetailResponse<'a> {
 ///
 /// Every field is optional and presence-based; an empty body is a no-op that
 /// touches no row. `config_json` and `trigger_markdown` both drive the stored
-/// configuration and are mutually exclusive — sent together they are refused at
-/// the door, because there is no answer to which one wins.
+/// configuration and are mutually exclusive. Sent together they are refused,
+/// because there is no answer to which one wins.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct PatchFleetRequest<'a> {
     /// A configuration document, replacing the stored one directly.
@@ -177,18 +196,19 @@ pub struct PatchFleetRequest<'a> {
     pub source_markdown: Option<Cow<'a, str>>,
 }
 
-/// What a PATCH answers with — one of three shapes, as `patch.zig` writes them.
-///
-/// An untagged enum rather than one struct with optional keys, and that is the
-/// rule this crate already keeps rather than an exception to it: no
-/// `skip_serializing_if` appears here, because each variant emits exactly the
-/// keys its case carries. A config-only edit never wrote a `status` key, and a
-/// no-op never wrote an `etag` — with one struct those would have to be skipped
-/// conditionally, which is the thing that silently drops a field somebody adds
-/// later.
-///
-/// It also makes two impossible responses impossible: an `etag` without a
-/// revision, and a revision on the no-op.
+/// What a PATCH answers with — one of three shapes.
+//
+// An untagged enum rather than one struct with optional keys, and that is the
+// rule this crate already keeps rather than an exception to it: no
+// `skip_serializing_if` appears here, because each variant emits exactly the
+// keys its case carries. A config-only edit never wrote a `status` key, and a
+// no-op never wrote an `etag` — with one struct those would have to be skipped
+// conditionally, which is the thing that silently drops a field somebody adds
+// later.
+//
+// It also makes two impossible responses impossible: an `etag` without a
+// revision, and a revision on the no-op.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum PatchedFleetResponse<'a> {
@@ -196,8 +216,10 @@ pub enum PatchedFleetResponse<'a> {
     Unchanged {
         /// The fleet the request named.
         fleet_id: Cow<'a, str>,
-        /// Always `null` — the literal `@as(?i64, null)` the Zig answers, kept
-        /// because a client distinguishes "no write" from a revision by it.
+        // The literal `@as(?i64, null)` the Zig answers, kept because a
+        // client distinguishes "no write" from a revision by it.
+        /// Always `null` on this response. Use it to tell "no write" apart
+        /// from a revision number.
         config_revision: Option<i64>,
     },
     /// A configuration or source edit, with no transition asked for.

@@ -5,7 +5,11 @@
 
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
 
-mod handler;
+pub(crate) mod handler;
+
+// The document generator, compiled only when it is asked for.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 
 use std::sync::Arc;
 
@@ -20,6 +24,7 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
         RunnerOpsRoute::List => Some(get(handler::operator::runners::list::<D>)),
         RunnerOpsRoute::Get => Some(get(handler::operator::runners::detail::<D>)),
         RunnerOpsRoute::Patch => Some(patch(handler::operator::runner_patch::handle::<D>)),
+        RunnerOpsRoute::Delete => Some(delete(handler::operator::runner_delete::handle::<D>)),
         RunnerOpsRoute::Events => Some(get(handler::operator::events::list::<D>)),
         RunnerOpsRoute::Leases => Some(get(handler::operator::leases::list::<D>)),
     }

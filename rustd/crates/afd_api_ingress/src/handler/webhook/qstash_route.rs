@@ -70,6 +70,34 @@ const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
 /// # Errors
 /// `UZ-WH-030` for a body past the cap, and `UZ-WH-010` for a callback that did
 /// not prove itself.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/ingress/qstash/schedules",
+    tag = afd_http::openapi::tag::SCHEDULES,
+    operation_id = "ingest_qstash_schedule",
+    summary = "Receive a scheduled fire",
+    description = concat!(
+        "Receives a signed fire from Upstash QStash and appends a `cron` ",
+        "event to the target Fleet. A valid duplicate, missing, inactive, or ",
+        "stale fire is accepted without appending an event. ",
+    ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
+    params(
+        ("Upstash-Signature" = String, Header, description = "QStash signature over the exact request body and destination URL."),
+        ("Upstash-Schedule-Id" = String, Header, description = "Schedule identifier supplied by QStash."),
+        ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
+        (status = 202, description = "The schedule fired, or already had for this delivery", body = Fired),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn receive<D: Services>(
     State(services): State<Arc<D>>,
     headers: HeaderMap,

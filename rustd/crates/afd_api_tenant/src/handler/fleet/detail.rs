@@ -16,8 +16,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{ConfigSource, FleetDetail, Patch, Requested};
-use afd_wire::fleet::{FleetDetailResponse, PatchFleetRequest, PatchedFleetResponse};
+use afd_fleet_lifecycle::{FleetDetail, Patch};
+use afd_wire::fleet::{FleetDetailResponse, PatchedFleetResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -29,6 +29,14 @@ use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceFleets as _};
 pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 
+// The refusal sentences live beside the parser that produces them and are
+// re-exported here because the tests and the siblings address them as
+// `detail::DETAIL_*`, the path they were published under.
+use super::detail_request::read_patch;
+pub use super::detail_request::{
+    DETAIL_CONFIG_AMBIGUOUS, DETAIL_CONFIG_REQUIRED, DETAIL_MALFORMED_JSON, DETAIL_SOURCE_BOUNDS,
+    DETAIL_STATUS_INVALID, DETAIL_TRIGGER_BOUNDS,
+};
 use super::triggers;
 
 /// The scoped events each verb's failures are logged under.
@@ -36,42 +44,44 @@ const EVENT_READ: &str = "fleet_read_failed";
 const EVENT_PATCH: &str = "fleet_patch_failed";
 const EVENT_PURGE: &str = "fleet_purge_failed";
 
-/// The refusal a PATCH body this daemon cannot read earns.
-pub const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
-
-/// The refusal a PATCH naming both configuration sources earns.
-pub const DETAIL_CONFIG_AMBIGUOUS: &str = "config_json and trigger_markdown are mutually exclusive";
-
-/// The refusal an empty `config_json` earns.
-pub const DETAIL_CONFIG_REQUIRED: &str = "config_json is required";
-
-/// The refusal a status outside the operator-targetable set earns.
-pub const DETAIL_STATUS_INVALID: &str = "status must be one of \"active\", \"stopped\", \"killed\"";
-
 /// The refusal a conditional PATCH that asks for nothing earns.
 ///
 /// An `If-Match` with no field to write is a caller expecting a compare that
 /// cannot happen — answering 200 would tell them their edit landed.
 pub const DETAIL_CONDITIONAL_EMPTY: &str = "A conditional fleet update requires at least one field";
 
-/// The refusal a document outside its length bounds earns.
-pub const DETAIL_TRIGGER_BOUNDS: &str = "trigger_markdown must be 1..64KiB";
-
-/// The refusal a source document outside its length bounds earns.
-pub const DETAIL_SOURCE_BOUNDS: &str = "source_markdown must be 1..64KiB";
-
-/// The most bytes an authored document may carry.
-///
-/// The sentences above say 64KiB and this says two hundred. The mismatch is in
-/// the Zig too, and it is the NUMBER that is load-bearing — ported as-is,
-/// because a client sitting between the two would change class if either moved.
-const MAX_MARKDOWN_LEN: usize = 200 * 1024;
-
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — one fleet, whole.
 ///
 /// Carries an `ETag` over the editable surface, which the source editor sends
 /// back as `If-Match`. A read that could not attach one would leave that editor
 /// unable to save safely, so there is no tagless success here.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "get_fleet",
+    summary = "Get a fleet",
+    description = concat!(
+        "Returns one fleet's editable source, trigger markdown, bundle pin, ",
+        "trigger list, status, and lifetime counters. The response carries an ",
+        "`ETag` header over `source_markdown` and `trigger_markdown`. Send ",
+        "that value as `If-Match` when saving source changes to avoid ",
+        "overwriting another operator's edit. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = FleetDetailResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -91,6 +101,40 @@ pub(crate) async fn read<D: Services>(
 }
 
 /// `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — a partial update.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    patch,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "patch_fleet",
+    summary = "Update a fleet",
+    description = concat!(
+        "Updates fleet files or status. Every request field is optional. ",
+        "`config_json` and `trigger_markdown` cannot be used together. A ",
+        "killed fleet cannot be changed. Source editors can send `If-Match` ",
+        "with the `ETag` from GET. A stale tag returns 412 with the current ",
+        "tag in the problem body; omitting the header preserves last-write- ",
+        "wins behavior. Status changes require an operator role. Config ",
+        "changes require workspace membership. ",
+    ),
+    request_body = Option<afd_wire::fleet::PatchFleetRequest>,
+    params(
+        afd_http::openapi::path::Fleet,
+        ("If-Match" = Option<String>, Header, description = "Optional source-version tag from GET. Stale values return 412 with the current `etag`."),
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = PatchedFleetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::PRECONDITION_FAILED),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -130,6 +174,33 @@ pub(crate) async fn patch<D: Services>(
 }
 
 /// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — purge a killed fleet.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    delete,
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    tag = afd_http::openapi::tag::FLEETS,
+    operation_id = "delete_fleet",
+    summary = "Permanently delete a fleet",
+    description = concat!(
+        "Permanently deletes the fleet, events, runs, approvals, grants, ",
+        "keys, and memory. This cannot be undone. Set the fleet status to ",
+        "`killed` first. Otherwise the request returns 409. Requires an ",
+        "operator role. ",
+    ),
+    params(
+        afd_http::openapi::path::Fleet,
+    ),
+    responses(
+        (status = 204, description = afd_http::openapi::NO_CONTENT),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn purge<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -142,71 +213,6 @@ pub(crate) async fn purge<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_PURGE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// The PATCH the body asks for, or the refusal it earns.
-///
-/// Every ambiguity is resolved HERE, once, into a type that cannot hold it: the
-/// two configuration sources become one [`ConfigSource`], and the status becomes
-/// a [`Requested`] that cannot spell `paused`.
-fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch, Refusal> {
-    if body.is_empty() {
-        return Ok(Patch {
-            if_match,
-            ..Patch::default()
-        });
-    }
-    let sent = afd_core::json::object_from_slice::<PatchFleetRequest<'_>>(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-
-    let config = match (
-        sent.config_json.as_deref(),
-        sent.trigger_markdown.as_deref(),
-    ) {
-        // Both drive `core.fleets.config_json`, so there is no answer to which
-        // one wins — refused at the door rather than resolved by precedence.
-        (Some(_json), Some(_document)) => return Err(Refusal::malformed(DETAIL_CONFIG_AMBIGUOUS)),
-        (Some(""), None) => return Err(Refusal::malformed(DETAIL_CONFIG_REQUIRED)),
-        (Some(json), None) => Some(ConfigSource::Json(json.to_owned())),
-        (None, Some(document)) => Some(ConfigSource::Trigger(
-            bounded(document, DETAIL_TRIGGER_BOUNDS)?.to_owned(),
-        )),
-        (None, None) => None,
-    };
-    let source_markdown = sent
-        .source_markdown
-        .as_deref()
-        .map(|document| bounded(document, DETAIL_SOURCE_BOUNDS).map(str::to_owned))
-        .transpose()?;
-
-    Ok(Patch {
-        config,
-        status: sent.status.as_deref().map(requested).transpose()?,
-        source_markdown,
-        if_match,
-    })
-}
-
-/// The document, if it is one this daemon will store.
-fn bounded<'a>(document: &'a str, detail: &'static str) -> Result<&'a str, Refusal> {
-    if document.is_empty() || document.len() > MAX_MARKDOWN_LEN {
-        return Err(Refusal::malformed(detail));
-    }
-    Ok(document)
-}
-
-/// The transition a spelling asks for, or the refusal an unknown one earns.
-///
-/// `paused` is refused here rather than accepted and ignored: it belongs to the
-/// platform's anomaly gate, and admitting it would let a caller forge a
-/// system-halt provenance on their own fleet.
-fn requested(spelling: &str) -> Result<Requested, Refusal> {
-    match spelling {
-        "active" => Ok(Requested::Active),
-        "stopped" => Ok(Requested::Stopped),
-        "killed" => Ok(Requested::Killed),
-        _reserved_or_unknown => Err(Refusal::malformed(DETAIL_STATUS_INVALID)),
-    }
 }
 
 /// Renders a PATCH failure, carrying the current tag when the source was stale.

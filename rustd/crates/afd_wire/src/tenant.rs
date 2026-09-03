@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 /// `POST /v1/api-keys` — mint one tenant credential.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MintApiKeyRequest<'a> {
@@ -26,6 +27,7 @@ pub struct MintApiKeyRequest<'a> {
 }
 
 /// The one response that reveals a key's plaintext.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MintedApiKeyResponse<'a> {
     /// The key's identifier, which every later call addresses it by.
@@ -39,14 +41,15 @@ pub struct MintedApiKeyResponse<'a> {
 }
 
 /// `POST /v1/cli-credentials` — mint this machine's credential.
-///
-/// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
-/// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
-/// with `.ignore_unknown_fields = true`, and a client that has been sending a
-/// field this daemon does not read would start receiving a 400 the moment an
-/// attribute were added here for tidiness. Serde ignores by default, so the
-/// parity is kept by the ABSENCE of an attribute — which is exactly why it is
-/// written down.
+//
+// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
+// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
+// with `.ignore_unknown_fields = true`, and a client that has been sending a
+// field this daemon does not read would start receiving a 400 the moment an
+// attribute were added here for tidiness. Serde ignores by default, so the
+// parity is kept by the ABSENCE of an attribute — which is exactly why it is
+// written down.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MintCliCredentialRequest<'a> {
     /// The terminal's own label, as an operator will read it back.
@@ -54,11 +57,13 @@ pub struct MintCliCredentialRequest<'a> {
     pub machine_name: Cow<'a, str>,
 }
 
-/// The one response that reveals a command-line credential's plaintext.
+// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
+// and nothing else on this surface has a field that could: there is no list
+// verb here at all, so the mint reply is the whole of the exposure.
+/// The only response that returns a command-line credential in plaintext.
 ///
-/// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
-/// and nothing else on this surface has a field that could — there is no list
-/// verb here at all, so the mint reply is the whole of the exposure.
+/// Save the value when you receive it. No later call returns it again.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MintedCliCredentialResponse<'a> {
     /// The credential row's identifier, which the revoke addresses it by.
@@ -72,6 +77,7 @@ pub struct MintedCliCredentialResponse<'a> {
 }
 
 /// `PATCH /v1/api-keys/{id}` — the only mutation, and only downward.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PatchApiKeyRequest {
@@ -80,6 +86,7 @@ pub struct PatchApiKeyRequest {
 }
 
 /// What revoking answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RevokedApiKeyResponse<'a> {
     /// The key's identifier.
@@ -92,6 +99,7 @@ pub struct RevokedApiKeyResponse<'a> {
 }
 
 /// One key as a list shows it: metadata, never a secret.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiKeySummary<'a> {
     /// The key's identifier.
@@ -115,12 +123,13 @@ pub struct ApiKeySummary<'a> {
 }
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
-///
-/// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
-/// `tenant_billing.zig` emits the pair so a dashboard can branch without a
-/// null-check, and parity keeps the redundancy. `updated_at` and
-/// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
-/// types carry stops at the wire because the Zig field names are the format.
+//
+// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
+// `tenant_billing.zig` emits the pair so a dashboard can branch without a
+// null-check, and parity keeps the redundancy. `updated_at` and
+// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
+// types carry stops at the wire because the Zig field names are the format.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
     /// What remains, in nanos — one thousand-millionth of a dollar.
@@ -138,6 +147,7 @@ pub struct BillingResponse {
 ///
 /// Field-for-field the Zig `TelemetryRow`, in its order — the struct is
 /// serialized straight to JSON there, so the row IS the wire shape.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargeSummary<'a> {
     /// The ledger row's identifier.
@@ -171,11 +181,12 @@ pub struct ChargeSummary<'a> {
 }
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
-///
-/// Two keys, not [`PageResponse`]'s three: the Zig handler answers
-/// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
-/// same way it pins a presence. Folding this into the shared envelope would
-/// put a key on the wire the daemon being replaced never sent.
+//
+// Two keys, not [`PageResponse`]'s three: the Zig handler answers
+// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
+// same way it pins a presence. Folding this into the shared envelope would
+// put a key on the wire the daemon being replaced never sent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargesResponse<'a> {
     /// The rows on this page, newest first.
@@ -185,17 +196,18 @@ pub struct ChargesResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// A page of a keyset-paginated list, in the envelope every list shares.
+// Generic over the item, because the envelope is the same for every paged
+// resource on these planes and a per-resource copy is a per-resource chance
+// for the keys to drift apart. The three keys are pinned to what
+// `api_keys/list.zig` answers and to the integration test that counts them. An
+// earlier shape here said `data` with a `has_more` beside it, which read well
+// and was nobody's wire format: parity is with the daemon being replaced, not
+// with the envelope one would design today.
+/// One page of a list, in the envelope every list on this API shares.
 ///
-/// Generic over the item, because the envelope is the same for every paged
-/// resource on these planes and a per-resource copy is a per-resource chance
-/// for the keys to drift apart.
-///
-/// Exactly three keys, always — `items`, `total`, `next_cursor` — pinned to
-/// what `api_keys/list.zig` answers and to the integration test that counts
-/// them. An earlier shape here said `data` with a `has_more` beside it, which
-/// read well and was nobody's wire format: parity is with the daemon being
-/// replaced, not with the envelope one would design today.
+/// Each page carries three keys: `items`, `total` and `next_cursor`. A
+/// `next_cursor` of `null` means you have reached the last page.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageResponse<'a, T> {
     /// The rows on this page, in the requested order.

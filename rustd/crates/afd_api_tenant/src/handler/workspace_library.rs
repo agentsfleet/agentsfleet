@@ -29,7 +29,6 @@
 //! one workspace from seeking inside another. Nothing is trusted from the token
 //! except the sort boundary — the workspace read is always the path's.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -39,9 +38,14 @@ use afd_observability::producers::library;
 use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor::{self, StructCursor};
-use afd_library::{Destination, GalleryPage, Onboarded, Position, SummaryEntry, Tier};
-use afd_wire::admin::AdminLibraryRequirements;
-use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
+use afd_library::{Destination, Position, Tier};
+/// Named only by the `body =` clause of this module's `utoipa::path`
+/// annotations, which the default build compiles away — so the import has to
+/// go with them or the feature-off build fails on an unused name.
+#[cfg(feature = "openapi")]
+use afd_wire::admin::AdminLibraryCreated;
+#[cfg(feature = "openapi")]
+use afd_wire::workspace_library::GalleryResponse;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -53,6 +57,9 @@ use crate::auth::WorkspaceContext;
 use crate::handler::paging::requested_limit;
 use crate::handler::{Refusal, library_onboard, parameter};
 use crate::services::Services;
+
+mod render;
+use self::render::{created, rendered};
 
 // A sentence the catalogue page already owns, imported rather than respelled
 // (RULE UFS): an unissued token is the same fact here, and a caller told two
@@ -104,6 +111,38 @@ impl StructCursor for Cursor {
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleet-libraries` — one page of the gallery.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "list_workspace_fleet_library",
+    summary = "List the workspace Fleet library gallery",
+    description = concat!(
+        "Returns the union of the platform Fleet library catalog and this ",
+        "workspace's own tenant entries — and nothing from another workspace. ",
+        "Each entry carries identity, source, requirements and per-credential ",
+        "reason copy; never an object-store key. A bounded keyset page ",
+        "ordered by `created_at DESC, tier ASC, id DESC` across BOTH ",
+        "catalogs. Follow `next_cursor` to read the whole gallery; a client ",
+        "that reads only the first page silently loses every entry past it. ",
+        "The support-file manifest is stored on import but served by no ",
+        "endpoint. ",
+    ),
+    params(
+        afd_http::openapi::path::Workspace,
+        ("limit" = Option<String>, Query, description = "Rows per page, 1..100. Defaults to 50."),
+        ("starting_after" = Option<String>, Query, description = "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page."),
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = GalleryResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -158,6 +197,35 @@ async fn read_gallery<D: Services>(
 /// The same body, the same refusals and the same pipeline as the operator's
 /// catalogue — see [`library_onboard`], which both planes parse through. What
 /// this verb chooses is the destination.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fleet-libraries",
+    tag = afd_http::openapi::tag::FLEET_LIBRARY,
+    operation_id = "onboard_tenant_fleet_library",
+    summary = "Onboard a tenant Fleet library entry",
+    description = concat!(
+        "Onboards a Fleet library entry into the caller's workspace catalog ",
+        "from a GitHub source reference. Requires the `library:write` scope ",
+        "plus ownership of the target workspace. Re-onboarding identical ",
+        "bytes converges on one `(workspace_id, content_hash)` row. The ",
+        "response carries metadata only. ",
+    ),
+    request_body = afd_wire::admin::AdminLibraryImport,
+    params(
+        afd_http::openapi::path::Workspace,
+    ),
+    responses(
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 502, description = afd_http::openapi::BAD_GATEWAY),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn onboard<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
@@ -213,86 +281,6 @@ fn resume_from(raw: &str, workspace: &str, limit: u32) -> Result<Option<Position
         tier,
         id: cursor.id,
     }))
-}
-
-/// The page, rendered.
-fn rendered<'p>(page: &'p GalleryPage, workspace: &str, limit: u32) -> GalleryResponse<'p> {
-    GalleryResponse {
-        items: page.items.iter().map(card).collect(),
-        // Always null: counting a keyset page costs the scan this pagination
-        // exists to avoid, and the key stays present rather than vanishing.
-        total: None,
-        next_cursor: page.next.as_ref().map(|position| {
-            struct_cursor::render(&Cursor {
-                v: struct_cursor::VERSION,
-                created_at: position.created_at_ms,
-                tier_rank: position.tier.rank(),
-                id: position.id.clone(),
-                workspace_uuid: workspace.to_owned(),
-                limit,
-            })
-        }),
-    }
-}
-
-/// One card, rendered.
-///
-/// `visibility` is the TIER's label — see [`afd_wire::workspace_library`] on why
-/// that field name carries a different fact here than on the admin surface.
-fn card(entry: &SummaryEntry) -> GalleryCard<'_> {
-    GalleryCard {
-        id: Cow::Borrowed(&entry.id),
-        name: Cow::Borrowed(&entry.name),
-        description: Cow::Borrowed(&entry.description),
-        visibility: Cow::Borrowed(entry.tier.label()),
-        source_ref: Cow::Borrowed(&entry.source_ref),
-        created_at: entry.created_at_ms,
-        requirements: requirements(&entry.requirements),
-        required_credentials_reasons: entry.required_credentials_reasons.clone(),
-    }
-}
-
-/// What a bundle declares it needs, rendered.
-///
-/// Every name is BORROWED onto the wire. A page is up to a hundred cards and
-/// each carries three lists, so copying them would be the one allocation on
-/// this path that scales with the page.
-fn requirements(declared: &afd_library::LibraryRequirements) -> AdminLibraryRequirements<'_> {
-    AdminLibraryRequirements {
-        credentials: borrowed(declared.credentials()),
-        tools: borrowed(declared.tools()),
-        network_hosts: borrowed(declared.network_hosts()),
-        trigger_present: declared.trigger_present(),
-    }
-}
-
-/// One declared list, borrowed rather than copied.
-fn borrowed(names: &[String]) -> Vec<Cow<'_, str>> {
-    names
-        .iter()
-        .map(|name| Cow::Borrowed(name.as_str()))
-        .collect()
-}
-
-/// The onboarded entry, rendered.
-///
-/// The same shape the operator's catalogue answers with, because both verbs say
-/// the same thing — which entry now stands — and the tier is what differs.
-fn created(onboarded: Onboarded) -> afd_wire::admin::AdminLibraryCreated<'static> {
-    let bundle = onboarded.bundle;
-    let declared = bundle.requirements;
-    afd_wire::admin::AdminLibraryCreated {
-        id: Cow::Owned(onboarded.id),
-        name: Cow::Owned(bundle.name),
-        visibility: Cow::Borrowed(Tier::Tenant.label()),
-        content_hash: Cow::Owned(bundle.content_hash),
-        requirements: AdminLibraryRequirements {
-            credentials: declared.credentials.into_iter().map(Cow::Owned).collect(),
-            tools: declared.tools.into_iter().map(Cow::Owned).collect(),
-            network_hosts: declared.network_hosts.into_iter().map(Cow::Owned).collect(),
-            trigger_present: declared.trigger_present,
-        },
-    }
 }
 
 #[cfg(test)]

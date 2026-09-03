@@ -36,6 +36,32 @@ const EVENT: &str = "runner_renew_failed";
 const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
 
 /// Extends one live lease's deadline.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/leases/{lease_id}/renew",
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_renew_lease",
+    summary = "Extend a live lease",
+    description = concat!(
+        "A run buying more time before its lease expires. The body is ",
+        "optional. A body that will not parse is refused rather than read ",
+        "as an empty one. A renewal asserts progress, and an unreadable ",
+        "assertion is not one. ",
+    ),
+    request_body = Option<RenewRequest>,
+    params(
+        afd_http::openapi::path::Lease,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = RenewResponse),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,

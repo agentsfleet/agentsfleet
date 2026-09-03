@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `id` is the entry's own identity — the `{id}` the item route takes — and not
 /// the model's. The model is `model_id`, which is what a provider spells.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntryRow<'a> {
     /// The entry's identity.
@@ -49,10 +50,12 @@ pub struct ModelEntryRow<'a> {
     pub base_url: Option<&'a str>,
     /// Whether a key is stored under that name. Never the key.
     pub has_key: bool,
-    /// The context window the catalogue prices this model at.
+    // A blank cell, which is different from a zero window and must not render
+    // as one.
+    /// The context window this model is priced at, in tokens.
     ///
-    /// Absent when the catalogue carries no rate for the pair — a blank cell,
-    /// which is different from a zero window and must not render as one.
+    /// Absent when the catalogue carries no rate for this model. An absent
+    /// value does not mean zero.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_cap_tokens: Option<u32>,
     /// The input rate, in nanos per million tokens.
@@ -71,6 +74,7 @@ pub struct ModelEntryRow<'a> {
 }
 
 /// The deployment's platform default, as the page's Default row shows it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformDefaultRow<'a> {
     /// The provider the default belongs to.
@@ -91,23 +95,23 @@ pub struct PlatformDefaultRow<'a> {
 }
 
 /// `GET /v1/tenants/me/models` — one page of the registry.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntriesResponse<'a> {
-    /// The rows, newest first.
-    ///
-    /// `models`, not `items`: renaming a shipped v1 field is what
-    /// `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and
-    /// `next_cursor` were ADDED beside it, so the page became navigable without
-    /// breaking a client.
+    // `models`, not `items`: renaming a shipped v1 field is what
+    // `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and
+    // `next_cursor` were ADDED beside it, so the page became navigable without
+    // breaking a client.
+    /// The registered models, newest first.
     pub models: Vec<ModelEntryRow<'a>>,
     /// Always null — see the module note.
     pub total: Option<u64>,
     /// Where the next page resumes, or null on the last one.
     pub next_cursor: Option<String>,
     /// Whether an active platform-default row exists at all.
-    ///
-    /// Derived from the same read as `platform_default`, so the two cannot
-    /// disagree about whether there is one.
+    //
+    // Derived from the same read as `platform_default`, so the two cannot
+    // disagree about whether there is one.
     pub platform_default_available: bool,
     /// The default's identity, when there is one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,6 +122,7 @@ pub struct ModelEntriesResponse<'a> {
 ///
 /// One shape for both verbs because both say the same thing — which entry now
 /// stands — and the status code is what distinguishes them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StoredModelEntry<'a> {
     /// The entry's identity.
@@ -130,11 +135,14 @@ pub struct StoredModelEntry<'a> {
     pub created_at: i64,
 }
 
-/// `POST /v1/tenants/me/models` — register a model on a stored credential.
+// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
+// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
+// serde attribute.
+/// Registers a model against a stored credential.
 ///
-/// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
-/// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-/// serde attribute.
+/// agentsfleet ignores fields it does not know, instead of refusing the
+/// request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
@@ -144,10 +152,11 @@ pub struct CreateModelEntryRequest {
 }
 
 /// `PATCH /v1/tenants/me/models/{id}` — point an entry at another model.
-///
-/// There is no `secret_ref` field and adding one would be a different verb: the
-/// same model on a different credential is a DIFFERENT entry, which is what the
-/// table's domain key says.
+//
+// There is no `secret_ref` field and adding one would be a different verb: the
+// same model on a different credential is a DIFFERENT entry, which is what the
+// table's domain key says.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.

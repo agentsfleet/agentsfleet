@@ -43,6 +43,32 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
                                      network_policy, registry_allowlist[], worker_count}, labels[])";
 
 /// Enrols a host, answering its identity and its one-time credential.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners",
+    tag = afd_http::openapi::tag::FLEET,
+    operation_id = "register_runner",
+    summary = "Register a runner",
+    description = concat!(
+        "Enrolls a runner into the fleet and assigns its policy. Requires ",
+        "an existing operator credential (Clerk JWT or `agt_t` API key ",
+        "with admin role); there is no enrollment token. Mints a durable ",
+        "`agt_r` runner token, returned once, and stores only its SHA-256 ",
+        "hash. The host applies the policy assigned here and never declares ",
+        "its own. ",
+    ),
+    request_body = RegisterRequest,
+    responses(
+        (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn handle<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
     if body.is_empty() {
         return reject(DETAIL_BODY_REQUIRED);

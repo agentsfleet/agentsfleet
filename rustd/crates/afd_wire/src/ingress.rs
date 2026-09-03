@@ -27,9 +27,10 @@ use serde::Serialize;
 ///
 /// `202`, and the event id, so a provider's delivery log carries the identifier
 /// an operator can search the fleet's history by. A replayed delivery answers
-/// the FIRST attempt's id rather than a new one — that is the whole point of
+/// the FIRST attempt's id rather than a new one. That is the whole point of
 /// the at-most-once claim, and a sender comparing two responses should see the
 /// same event both times.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Accepted<'a> {
     /// The event the fleet will run, or already ran.
@@ -37,8 +38,8 @@ pub struct Accepted<'a> {
     pub event_id: Cow<'a, str>,
     /// Whether an earlier delivery already produced it.
     ///
-    /// Reported rather than hidden: a provider debugging a duplicate wants to
-    /// know this daemon SAW the repeat and declined to run twice, which is a
+    /// Reported rather than hidden. A provider debugging a duplicate wants to
+    /// know this daemon saw the repeat and declined to run twice. That is a
     /// different fact from the delivery having been lost.
     pub replayed: bool,
 }
@@ -49,6 +50,7 @@ pub struct Accepted<'a> {
 /// correctly-signed delivery that simply does not wake this fleet — a green
 /// build, a label edit, a paused fleet. Answering an error would put it in the
 /// sender's retry queue forever, and retrying changes none of them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Ignored<'a> {
     /// Which rule dropped it.
@@ -58,22 +60,24 @@ pub struct Ignored<'a> {
 
 /// What an accepted App delivery is answered with.
 ///
-/// Wider than [`Accepted`] because one App delivery is many appends: a sender
-/// debugging its integration wants to know how many fleets this installation
-/// actually woke, which is the number no single event id can show.
+/// Wider than a single acknowledgement, because one App delivery is many
+/// appends. A sender debugging its integration wants to know how many fleets
+/// this installation woke, and no single event id can show that number.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FannedOut {
     /// How many fleets subscribed to this delivery.
     pub matched: usize,
     /// How many of them this delivery actually appended an event for.
     ///
-    /// Lower than `matched` when a fleet already ran this delivery — the claim
-    /// is per fleet, so a retry that reaches a wider set than the first attempt
+    /// Lower than `matched` when a fleet already ran this delivery. The claim
+    /// is per fleet. A retry that reaches a wider set than the first attempt
     /// appends only for the fleets that had not seen it.
     pub enqueued: usize,
 }
 
 /// What a `ping` is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Pong<'a> {
     /// The pong marker this deployment answers with.
@@ -81,13 +85,15 @@ pub struct Pong<'a> {
     pub status: Cow<'a, str>,
 }
 
-/// What a gate resolved through the approval callback is answered with.
+// Deliberately NOT [`crate::approval::ResolvedResponse`]. That is the
+// dashboard's shape, carrying the gate id, the outcome and who decided it;
+// this is the shape the callback sender is owed, and the two differ because
+// their readers do.
+/// What the approval callback returns to the sender that resolved a gate.
 ///
-/// Deliberately NOT [`crate::approval::ResolvedResponse`]. That is the
-/// dashboard's shape, carrying the gate id, the outcome and who decided it; this
-/// is the shape the callback sender is owed, and the two differ because their
-/// readers do. A sender gets back what it sent plus a marker, and nothing about
-/// who else may have answered the gate first.
+/// This response repeats what the sender sent, plus a marker. It never reports
+/// who else answered the gate.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Resolved<'a> {
     /// The resolved marker this route answers with.
@@ -102,6 +108,7 @@ pub struct Resolved<'a> {
 }
 
 /// What an accepted schedule fire is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Fired<'a> {
     /// The event the fleet will run, or already ran.
@@ -113,8 +120,10 @@ pub struct Fired<'a> {
 
 /// The echo a connector handshake is answered with.
 ///
-/// A one-key map rather than a struct because the KEY is provider data, and a
-/// struct would fix it at compile time to whichever vendor was ported first.
+/// One key, named by the provider, carrying the value the provider sent.
+// A one-key map rather than a struct because the KEY is provider data, and a
+// struct would fix it at compile time to whichever vendor was ported first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct EchoAnswer<'a> {
     /// The provider's own challenge field, echoed under its own name.
@@ -122,10 +131,65 @@ pub struct EchoAnswer<'a> {
     pub field: BTreeMap<&'a str, &'a str>,
 }
 
+/// What `POST /v1/connectors/{provider}/events` answers with a 200.
+///
+/// One status, two documents: a handshake is echoed and a delivery that wakes
+/// nothing is acknowledged with its reason. Both are 200 because both are
+/// correct outcomes for a correctly signed request, and a sender treats
+/// anything else as a retry.
+// Untagged, so the bytes are exactly the inner document's. The enum exists so
+// the published contract can say "one of these two" where a single `body =`
+// could only name one, and so the handler's two exits are one type. The schema
+// is written by hand below rather than derived: the derive publishes `oneOf`,
+// and the echo is a free-form object that ALSO matches `{"ignored": …}`, so a
+// strict client would refuse every ignored answer as ambiguous. `anyOf` is the
+// claim that is true.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum EventsAnswer<'a> {
+    /// The provider's challenge, echoed under the field name it arrived in.
+    Echo(EchoAnswer<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+/// What `POST /v1/ingress/{provider}` answers with a 200.
+///
+/// A handshake is answered with the provider's own word. A delivery that
+/// wakes nothing is answered with its reason. Both are correct outcomes for a
+/// correctly signed request.
+// Untagged, so the bytes are exactly the inner document's; the two shapes are
+// disjoint (one requires `status`, the other `ignored`), so `oneOf` is exact.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum AppIngressAnswer<'a> {
+    /// The handshake, answered with the word the provider expects.
+    Pong(Pong<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+/// What `POST /v1/auth/identity-events/clerk` answers with a 200.
+///
+/// An event that opened or found an account names it; one that changes nothing
+/// says why.
+// Untagged and disjoint, as [`AppIngressAnswer`].
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum IdentityAnswer<'a> {
+    /// The workspace the event opened, or the one it already had.
+    Opened(AccountOpened<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
 /// The flat object a `workflow_run` becomes on the stream.
 ///
 /// Field names and order are `normalizer/github.zig`'s `Normalized`, kept
 /// exactly: a fleet's prose reads them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowRunDigest<'a> {
     /// The run's page on the forge.
@@ -158,6 +222,7 @@ pub struct WorkflowRunDigest<'a> {
 /// The flat object a `pull_request` becomes on the stream.
 ///
 /// `github_app.zig`'s `PullRequest`, field for field.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PullRequestDigest<'a> {
     /// What happened to the pull request.
@@ -198,9 +263,10 @@ pub struct PullRequestDigest<'a> {
 
 /// What a signup event is answered with.
 ///
-/// The workspace rather than the person: a provider's delivery log is read by
-/// an operator asking "did this signup land", and the workspace is the thing
-/// they can then go and look at. The subject is already in the request.
+/// The workspace rather than the person. An operator reads the provider's
+/// delivery log to ask whether the signup landed. The workspace is what they
+/// can then go and look at. The subject is already in the request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountOpened<'a> {
     /// The default workspace the account was opened with.
@@ -212,3 +278,11 @@ pub struct AccountOpened<'a> {
     /// `true` on a fresh account, `false` when this delivery was a replay.
     pub created: bool,
 }
+
+#[cfg(feature = "openapi")]
+#[path = "ingress/schema.rs"]
+mod schema;
+
+#[cfg(test)]
+#[path = "ingress/tests.rs"]
+mod tests;
