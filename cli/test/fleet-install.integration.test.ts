@@ -121,7 +121,7 @@ describe("install — JSON-mode success", () => {
       const routes: MockRoutes = {
         ...galleryRoute(TEMPLATE_ID, "json-mode-fleet"),
         [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
-          jsonResponse(201, { fleet_id: FLEET_ID, name: "json-mode-fleet", webhook_urls: {} }),
+          jsonResponse(201, { fleet_id: FLEET_ID, name: "json-mode-fleet", webhook_urls: [] }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
@@ -133,12 +133,12 @@ describe("install — JSON-mode success", () => {
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as {
           status?: string; fleet_id?: string; name?: string;
-          webhook_urls?: Record<string, string>;
+          webhook_urls?: ReadonlyArray<{ source: string; url: string }>;
         };
         expect(parsed.status).toBe("installed");
         expect(parsed.fleet_id).toBe(FLEET_ID);
         expect(parsed.name).toBe("json-mode-fleet");
-        expect(parsed.webhook_urls).toEqual({});
+        expect(parsed.webhook_urls).toEqual([]);
       });
     });
   });
@@ -154,7 +154,7 @@ describe("install — webhook URL output", () => {
         [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
           jsonResponse(201, {
             fleet_id: FLEET_ID, name: "webhook-fleet",
-            webhook_urls: { github: "https://hook.agentsfleet.net/gh/abc123" },
+            webhook_urls: [{ source: "github", url: "https://hook.agentsfleet.net/gh/abc123" }],
           }),
       };
       await withMockApi(routes, async (apiUrl) => {

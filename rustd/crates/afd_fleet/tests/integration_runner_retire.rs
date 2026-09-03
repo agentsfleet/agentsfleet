@@ -10,11 +10,13 @@
 )]
 
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_fleet::lease::Billed;
 use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::{ENROLLED_AT, enrolment};
-use crate::seed::seeded;
+use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
 /// The operator every retirement here is attributed to.
@@ -83,22 +85,41 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
-    let fixtures = Fixtures::create().await;
-    let seeded = seeded::<1>(&fixtures).await;
-    let [runner] = seeded.runners;
-    let answer = fixtures
-        .plane()
-        .lease(&runner, false, UnixMillis::from_millis(ENROLLED_AT + 1))
+    // With a queue: this is the one retirement test that takes a lease, and
+    // the lease path publishes to it.
+    let fixtures = Fixtures::create_with_queue().await;
+    let Seeded {
+        runners: [runner],
+        tenant,
+        ..
+    } = seeded::<1>(&fixtures).await;
+    let now = UnixMillis::from_millis(ENROLLED_AT + 1);
+    // Select finds the work; issue writes the row. The retirement predicate
+    // reads the row, so both steps are needed, as `integration_lease_issue`
+    // does them.
+    let held = fixtures
+        .leases()
+        .select(&runner, now)
         .await
-        .expect("the seeded fleet has work to lease");
-    let document: serde_json::Value =
-        serde_json::from_str(&answer).expect("the lease answer is a document");
-    let lease = document
-        .get("lease")
-        .and_then(|lease| lease.get("lease_id"))
-        .and_then(serde_json::Value::as_str)
-        .expect("the seeded event is leased to the runner")
-        .to_owned();
+        .expect("the assignment pass must not fault")
+        .expect("a ready fleet holding an event is leasable");
+    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let issued = fixtures
+        .leases()
+        .issue(
+            &runner,
+            &held,
+            Billed {
+                tenant_id: &tenant_id,
+                posture: POSTURE,
+                provider: PROVIDER,
+                model: MODEL,
+            },
+            now,
+        )
+        .await
+        .expect("the lease row must be written");
+    let lease = issued.lease_id.as_str().to_owned();
 
     fixtures
         .runners()
