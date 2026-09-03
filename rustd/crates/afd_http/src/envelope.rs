@@ -15,7 +15,7 @@
 //!
 //! # Extensions ride the base envelope, they do not replace it
 //!
-//! Two status-specific fields exist (section 3.2 of that RFC), and each appears only on
+//! Three status-specific fields exist (section 3.2 of that RFC), and each appears only on
 //! the status that mandates it: `current_state` on a 409, naming the state that
 //! forbade the transition, and `etag` on a 412, so a client can refetch and
 //! rebase rather than guess what it raced with. Both are omitted from the wire
@@ -38,6 +38,7 @@ pub struct ProblemResponse {
     request_id: String,
     current_state: Option<String>,
     etag: Option<String>,
+    missing_secrets: Option<Vec<String>>,
 }
 
 impl ProblemResponse {
@@ -55,6 +56,7 @@ impl ProblemResponse {
             request_id: request_id.into(),
             current_state: None,
             etag: None,
+            missing_secrets: None,
         }
     }
 
@@ -72,6 +74,26 @@ impl ProblemResponse {
     ) -> Self {
         Self {
             current_state: Some(current_state.into()),
+            ..Self::new(code, detail, request_id)
+        }
+    }
+
+    /// A 424, naming the credentials this workspace has yet to store.
+    ///
+    /// The names are the whole remedy. A caller told only that "secrets are
+    /// missing" has to diff the bundle's declared list against their own vault
+    /// by hand, which is work this daemon has already done to raise the
+    /// refusal. `create_fleet_bundle.zig` carries the same list for the same
+    /// reason.
+    #[must_use]
+    pub fn missing_secrets(
+        code: ErrorCode,
+        detail: impl Into<String>,
+        request_id: impl Into<String>,
+        missing: Vec<String>,
+    ) -> Self {
+        Self {
+            missing_secrets: Some(missing),
             ..Self::new(code, detail, request_id)
         }
     }
@@ -124,6 +146,9 @@ impl ProblemResponse {
         }
         if let Some(etag) = &self.etag {
             body.insert("etag".to_owned(), etag.clone().into());
+        }
+        if let Some(missing) = &self.missing_secrets {
+            body.insert("missing_secrets".to_owned(), missing.clone().into());
         }
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());

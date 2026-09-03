@@ -281,6 +281,15 @@ pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
 /// make the endpoint an oracle for which snapshots exist.
 pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002");
 
+/// A bundle whose declared credentials this workspace does not all hold.
+///
+/// `ERR_FLEET_BUNDLE_SECRETS_MISSING` (`error_entries.zig:184`). Raised BEFORE
+/// the fleet row is written, so a workspace short a credential ends with no
+/// fleet rather than an installed one that cannot run. A 424 rather than a 400:
+/// the request is well formed and the workspace is not ready for it, and the
+/// body names which credentials to add.
+pub const FLEET_BUNDLE_SECRETS_MISSING: ErrorCode = ErrorCode::declare("UZ-BUNDLE-003");
+
 /// An external Fleet Bundle source could not be fetched.
 ///
 /// `ERR_FLEET_BUNDLE_FETCH_FAILED` in the Zig registry.

@@ -51,6 +51,12 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
+    #[error("the credential directory the install checks would not answer")]
+    Vault {
+        #[source]
+        source: afd_vault::Error,
+    },
+
     #[error("the queue backing the fleet lifecycle would not answer")]
     Queue {
         #[source]
@@ -130,12 +136,23 @@ pub(crate) enum ErrorKind {
 
     #[error("the placement tags are outside the bounds a lease can match on")]
     RequiredTagsInvalid,
+
+    #[error("the bundle declares credentials this workspace has not stored")]
+    BundleSecretsMissing {
+        /// The names, so the refusal can list what to add.
+        missing: Vec<String>,
+    },
 }
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
-    const fn answer(&self) -> (ErrorCode, &'static str) {
-        match self.inner.kind {
+    ///
+    /// Not `const`: the vault answers for its own failures, and reading its
+    /// table means holding a borrow the compiler will not evaluate at compile
+    /// time. Deciding a code for it here instead would be this table claiming
+    /// to know whether the directory was unreachable or merely refused.
+    fn answer(&self) -> (ErrorCode, &'static str) {
+        match &self.inner.kind {
             // One code for both stores; their sentences identify the datastore.
             ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
@@ -145,6 +162,11 @@ impl Error {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::QUEUE_UNAVAILABLE,
             ),
+            // The directory answers for itself. An outage there is the same
+            // 503 an outage here is, and a failed read is the same 500 — so
+            // the code and the sentence come from the vault's own table
+            // rather than being decided a second time in this one.
+            ErrorKind::Vault { source } => (source.code(), source.detail()),
             // Four internal failures, one fixed sentence: a failed statement, an
             // unreadable row, a clock that cannot name an instant and a host
             // short of entropy are all this process's problem, and naming which
@@ -201,18 +223,22 @@ impl Error {
             ErrorKind::RequiredTagsInvalid => {
                 (error_code::INVALID_REQUEST, detail::REQUIRED_TAGS_INVALID)
             }
+            ErrorKind::BundleSecretsMissing { .. } => (
+                error_code::FLEET_BUNDLE_SECRETS_MISSING,
+                detail::BUNDLE_SECRETS_MISSING,
+            ),
         }
     }
 
     /// The registry code this failure answers with.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> ErrorCode {
         self.answer().0
     }
 
     /// The sentence the caller is told.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
+    pub fn detail(&self) -> &'static str {
         self.answer().1
     }
 
@@ -222,11 +248,28 @@ impl Error {
     /// problem to report as a 503, where every other failure here is the
     /// caller's to correct (RULE ECL).
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(
-            self.inner.kind,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. }
-        )
+    pub fn is_datastore_unavailable(&self) -> bool {
+        match &self.inner.kind {
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
+            // The directory is a datastore too, and only it knows whether this
+            // was an outage or a read that failed.
+            ErrorKind::Vault { source } => source.is_datastore_unavailable(),
+            _reachable => false,
+        }
+    }
+
+    /// The credentials this workspace has yet to store, when that is why an
+    /// install refused.
+    ///
+    /// `Some` for exactly one kind, like [`Self::stale_tag`]. The 424's body
+    /// carries them so an operator is told WHICH secrets to add rather than
+    /// diffing the bundle against their own vault by hand.
+    #[must_use]
+    pub fn missing_secrets(&self) -> Option<&[String]> {
+        match &self.inner.kind {
+            ErrorKind::BundleSecretsMissing { missing } => Some(missing),
+            _not_missing => None,
+        }
     }
 
     /// The tag the row holds now, when this is a stale-source refusal.

@@ -211,6 +211,24 @@ impl Refusal {
         ))
     }
 
+    /// A 424 naming the credentials a workspace has yet to store.
+    ///
+    /// [`Refusal::preconditioned`]'s shape, for the same reason: the remedy is
+    /// a list the daemon already computed to raise the refusal, and an operator
+    /// told only that "secrets are missing" would diff the bundle against their
+    /// own vault by hand to rediscover it.
+    #[must_use]
+    pub fn missing_secrets(
+        code: afd_core::error_code::ErrorCode,
+        detail: &'static str,
+        missing: Vec<String>,
+    ) -> Self {
+        Self(Box::new(
+            ProblemResponse::missing_secrets(code, detail, RequestId::mint(), missing)
+                .into_response(),
+        ))
+    }
+
     /// Renders `error` as `event`'s refusal, naming the state a 409 carries.
     ///
     /// Curried like [`Refusal::at`], and used INSTEAD of it by the one arm
@@ -265,74 +283,5 @@ impl IntoResponse for Refusal {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use http::StatusCode;
-
-    #[derive(Debug)]
-    struct DomainRefusal;
-
-    impl Refusable for DomainRefusal {
-        fn code(&self) -> afd_core::error_code::ErrorCode {
-            error_code::AGENTSFLEET_PAUSED_INGRESS
-        }
-
-        fn detail(&self) -> &'static str {
-            "the fleet is paused"
-        }
-
-        fn is_datastore_unavailable(&self) -> bool {
-            false
-        }
-
-        fn reason(&self) -> String {
-            "fixture refusal".to_owned()
-        }
-    }
-
-    #[test]
-    fn constructors_preserve_each_refusal_status_and_header() {
-        let cases = [
-            (Refusal::at("fixture")(DomainRefusal), StatusCode::CONFLICT),
-            (Refusal::malformed("malformed"), StatusCode::BAD_REQUEST),
-            (
-                Refusal::coded(error_code::INVALID_REQUEST, "coded"),
-                StatusCode::BAD_REQUEST,
-            ),
-            (
-                Refusal::conflict(error_code::AGENTSFLEET_PAUSED_INGRESS, "paused", "paused"),
-                StatusCode::CONFLICT,
-            ),
-            (Refusal::forbidden("forbidden"), StatusCode::FORBIDDEN),
-            (
-                Refusal::unauthorized("unauthorized"),
-                StatusCode::UNAUTHORIZED,
-            ),
-            (
-                Refusal::preconditioned(error_code::AGENTSFLEET_SOURCE_STALE, "stale", "tag"),
-                StatusCode::PRECONDITION_FAILED,
-            ),
-            (
-                Refusal::conflict_at("fixture", "paused")(DomainRefusal),
-                StatusCode::CONFLICT,
-            ),
-            (
-                Refusal::conflict_detailed("fixture", "counted conflict".to_owned(), "paused")(
-                    DomainRefusal,
-                ),
-                StatusCode::CONFLICT,
-            ),
-        ];
-
-        for (refusal, expected) in cases {
-            assert_eq!(refusal.into_response().status(), expected);
-        }
-
-        let ceiling = Refusal::at_stream_ceiling(2, 2).into_response();
-        assert_eq!(ceiling.status(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            ceiling.headers().get(header::RETRY_AFTER),
-            Some(&HeaderValue::from_static("1"))
-        );
-    }
-}
+#[path = "refusal/tests.rs"]
+mod tests;

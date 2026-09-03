@@ -10,6 +10,7 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_redis::Error => Queue,
+    afd_vault::Error => Vault,
     afd_core::error::Error => Mint,
     afd_crypto::error::Error => Entropy,
     afd_fleet_runtime::Error => Config,

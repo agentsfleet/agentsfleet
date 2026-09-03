@@ -37,6 +37,8 @@ pub struct ProblemBody {
     pub current_state: Option<String>,
     /// On a 412 only: the resource's current entity tag, to refetch and retry.
     pub etag: Option<String>,
+    /// On a 424 only: the credentials this workspace has yet to store.
+    pub missing_secrets: Option<Vec<String>>,
     /// A curated sentence for end users, where the code has one.
     pub user_message: Option<String>,
 }

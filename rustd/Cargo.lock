@@ -434,6 +434,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_observability",
  "afd_redis",
+ "afd_vault",
  "backon",
  "moka",
  "redis",

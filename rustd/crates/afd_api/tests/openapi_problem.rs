@@ -179,8 +179,16 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
     for problem in afd_core::problem::entries() {
         sent.extend(wire_keys(ProblemResponse::new(problem.code(), "d", "r")).await);
     }
+    let short_a_credential = wire_keys(ProblemResponse::missing_secrets(
+        error_code::AUTH_UNAUTHORIZED,
+        "d",
+        "r",
+        vec!["github".to_owned()],
+    ))
+    .await;
     sent.extend(conflict.iter().cloned());
     sent.extend(precondition.iter().cloned());
+    sent.extend(short_a_credential.iter().cloned());
 
     assert_eq!(required, base, "required is what every refusal carries");
     assert_eq!(
@@ -188,4 +196,5 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
         "the schema promises the fields the writer sends, and no others"
     );
     assert!(conflict.contains("current_state") && precondition.contains("etag"));
+    assert!(short_a_credential.contains("missing_secrets"));
 }
