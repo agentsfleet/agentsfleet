@@ -87,7 +87,7 @@
 1. `ui/packages/app/tests/e2e/acceptance/` — the 41 journeys that exist; `login-install-lifecycle.spec.ts` is the closest walk and `runner-detail.spec.ts` is the only one that reaches a lease.
 2. `.github/workflows/deploy-dev-acceptance.yml` — the `qa` / `acceptance-e2e` / `acceptance-cli` / `results` jobs this spec extends, and the gate they report into.
 3. `make/acceptance.mk` — `acceptance-e2e` and `cli-acceptance`, the local twins CI runs.
-4. `docs/v2/pending/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` — the dimensions §3 ports; read its §0 setup-drift list before assuming the environment is clean.
+4. `docs/v2/done/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` — the dimensions §3 ports; read its §0 setup-drift list before assuming the environment is clean. It sits in `done/` as a superseded record, not as work — nothing in it is scheduled.
 5. `docs/architecture/runner_fleet.md` — the online-heartbeat prerequisite and the execution boundary a lease crosses.
 6. `docs/architecture/data_flow.md` — one workspace stream, fleet-tagged frames, reconnect backfill.
 7. `docs/v2/pending/M181_006_P0_API_INFRA_OBS_STAGING_SOAK_AND_SWAP.md` §Dead Code Sweep — the rollback window this spec closes, and why the deletion waits for it.
@@ -108,7 +108,7 @@
 | `src/agentsfleetd/**` | DELETE | §5 — the Zig daemon, once §1–§4 are green. `Dockerfile:39` already ships the Rust binary, so nothing is lost. |
 | `src/runner/**` · `src/build/**` | **UNTOUCHED — not in scope** | These build `agentsfleet-runner`, which stays Zig by Indy's call (Sep 02, 2026). Not a deletion this spec defers — a deletion this spec does not make. Rubric R9 asserts the build still works after §5. |
 | `.github/workflows/{release,deploy-dev}.yml` | EDIT | remove the DAEMON's build and its rollback artifact in the same diff as the tree, so neither outlives the other. The `compile-runner-*` jobs and the runner deploy stages stay — see §5.4. |
-| `docs/v2/pending/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | superseded — its dimensions move here and the file records where they went. |
+| `docs/v2/done/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | DONE (Sep 03, 2026) | superseded — its dimensions moved here and the file records where they went; closed to `done/` on main ahead of this spec's CHORE(open), so no edit rides this milestone's diff. |
 
 ## Applicable Rules
 
