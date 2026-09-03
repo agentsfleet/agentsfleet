@@ -11,10 +11,14 @@
 //! coverage gate is what holds this document to it: a route mounted there and
 //! missing here fails, and so does the reverse.
 
-use utoipa::OpenApi as _;
+use afd_http::openapi::problem::ProblemBody;
+use http::StatusCode;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme};
+use utoipa::openapi::{Content, Ref, RefOr};
+use utoipa::{OpenApi as _, ToSchema as _};
 
 use crate::Route;
+use crate::envelope::CONTENT_TYPE_PROBLEM_JSON;
 use crate::route::{Guard, Verb};
 
 /// The scheme name every tenant-plane operation refers to.
@@ -51,7 +55,8 @@ const PRODUCTION_DESCRIPTION: &str = "Production";
         description = "API for managing workspaces, fleets, triggers, and runs.",
         contact(name = "agentsfleet", url = "https://agentsfleet.net"),
     ),
-    paths(crate::router::probes::healthz, crate::router::probes::readyz,)
+    paths(crate::router::probes::healthz, crate::router::probes::readyz,),
+    components(schemas(ProblemBody))
 )]
 struct Root;
 
@@ -96,6 +101,7 @@ pub fn document() -> utoipa::openapi::OpenApi {
         ),
     );
     require_the_credential_each_route_guards(&mut document);
+    describe_every_refusal_as_a_problem(&mut document);
     document
 }
 
@@ -162,4 +168,61 @@ fn require_the_credential_each_route_guards(document: &mut utoipa::openapi::Open
             }
         }
     }
+}
+
+/// Publishes, on every refusal, the body the envelope writer sends.
+///
+/// # Why this is derived and not annotated
+///
+/// The same argument as the credential: every 4xx and 5xx this daemon writes
+/// goes through one writer with one shape, and saying so at each of the
+/// several hundred `responses(...)` clauses is several hundred chances to
+/// forget. Before this pass, one refusal in the document carried a body and
+/// the rest carried a sentence, so every generated client typed a refusal as
+/// nothing and the `error_code` a caller switches on was unreachable.
+///
+/// # Why a refusal that already describes a body is left alone
+///
+/// `/readyz` answers 503 with its readiness report, not with a refusal: it
+/// never touches the envelope writer, and its body is the one the probe
+/// annotation names. A response that already says what it carries is telling
+/// the truth about a different shape, and overwriting it would publish a
+/// problem body the probe never sends.
+fn describe_every_refusal_as_a_problem(document: &mut utoipa::openapi::OpenApi) {
+    let body = Ref::from_schema_name(ProblemBody::name());
+    for item in document.paths.paths.values_mut() {
+        let operations = [
+            &mut item.get,
+            &mut item.post,
+            &mut item.put,
+            &mut item.patch,
+            &mut item.delete,
+        ];
+        for operation in operations.into_iter().flatten() {
+            for (code, response) in &mut operation.responses.responses {
+                if !is_a_refusal(code) {
+                    continue;
+                }
+                let RefOr::T(response) = response else {
+                    continue; // a shared response object describes itself
+                };
+                if !response.content.is_empty() {
+                    continue;
+                }
+                response.content.insert(
+                    CONTENT_TYPE_PROBLEM_JSON.to_owned(),
+                    Content::new(Some(body.clone())),
+                );
+            }
+        }
+    }
+}
+
+/// Whether a response key names a client or server error.
+///
+/// `default` and the success and redirect statuses are not refusals; the
+/// envelope writer is never the one answering them.
+fn is_a_refusal(code: &str) -> bool {
+    code.parse::<StatusCode>()
+        .is_ok_and(|status| status.is_client_error() || status.is_server_error())
 }

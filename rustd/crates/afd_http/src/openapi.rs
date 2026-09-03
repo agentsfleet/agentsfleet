@@ -23,6 +23,7 @@
 
 pub mod body;
 pub mod path;
+pub mod problem;
 pub mod query;
 
 /// A read or an update answered.
