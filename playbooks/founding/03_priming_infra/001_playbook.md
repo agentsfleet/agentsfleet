@@ -28,7 +28,7 @@ deploy application code or claim that the public domains are ready.
 | Order | Executor | Action | Verifier | Required evidence |
 |---|---|---|---|---|
 | 1 | Human | Confirm provider billing and account access. | Human | Named accounts and organizations recorded. |
-| 2 | Agent | Create four Fly.io apps. | Fly command-line query | All four app names resolve in the intended organization. |
+| 2 | Agent | Create six Fly.io apps. | Fly command-line query | All six app names resolve in the intended organization. |
 | 3 | Human | Create two PlanetScale and two Upstash resources; store role-separated values. | Deployment gate | Both environments pass and database roles differ. |
 | 4 | Human | Create two Cloudflare tunnels, route API domains, and store tokens. | Agent | Tunnel identifiers and DNS routes recorded without token values. |
 | 5 | Human | Configure Clerk session claims. | Pipeline | Authenticated development acceptance passes after deployment. |
@@ -41,8 +41,10 @@ deploy application code or claim that the public domains are ready.
 ```bash
 fly apps create agentsfleetd-dev --org agentsfleet
 fly apps create cloudflared-dev --org agentsfleet
+fly apps create otelcol-dev --org agentsfleet
 fly apps create agentsfleetd-prod --org agentsfleet
 fly apps create cloudflared-prod --org agentsfleet
+fly apps create otelcol-prod --org agentsfleet
 ```
 
 The checked-in deployment definitions are canonical:
@@ -51,6 +53,16 @@ The checked-in deployment definitions are canonical:
 - `deploy/fly/agentsfleetd-prod/fly.toml`
 - `deploy/fly/cloudflared-dev/`
 - `deploy/fly/cloudflared-prod/`
+- `deploy/fly/otelcol-dev/`
+- `deploy/fly/otelcol-prod/`
+
+The two collector apps carry the OTLP hop the daemon exports through: the
+daemon addresses `http://otelcol-<env>.internal:4318` and the collector holds
+the Grafana Cloud credentials and forwards. They are listed here because the
+deploy workflows DEPLOY them but never CREATE them — `flyctl secrets set --app
+otelcol-dev` is the first thing that addresses the app, and it fails on an app
+that does not exist. Omitting these two lines is what leaves the development
+deploy red at "Ensure the OTLP collector is running".
 
 The release workflow sets the production API app to exactly three machines and
 fails unless all three are running before it checks the tunnel and public API.
@@ -155,7 +167,7 @@ allows the first control-plane deployment to run before either runner exists.
 
 ## Required result
 
-- The four Fly.io apps exist in the `agentsfleet` organization.
+- The six Fly.io apps exist in the `agentsfleet` organization.
 - Development and production databases and Redis resources are distinct.
 - Both Cloudflare tunnels exist and hold the intended API route.
 - Clerk claim audiences match the workflow literals.

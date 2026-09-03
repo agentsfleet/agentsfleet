@@ -28,6 +28,10 @@ ENVIRONMENTS = [
 ENSURE_STEP = "Ensure the OTLP collector is running"
 STAGE_STEP = "Stage Fly secrets from vault"
 
+# The priming playbook is the only place an app is CREATED. Every other step in
+# every workflow addresses an app it assumes already exists.
+PRIMING_PLAYBOOK = REPO / "playbooks" / "founding" / "03_priming_infra" / "001_playbook.md"
+
 
 def steps_of(workflow, job):
     doc = yaml.safe_load((WORKFLOWS / workflow).read_text())
@@ -114,6 +118,51 @@ class CollectorWiringTest(unittest.TestCase):
                 self.assertEqual(
                     set(cfg["service"]["pipelines"]), {"logs", "traces", "metrics"}
                 )
+
+
+class PrimingCoverageTest(unittest.TestCase):
+    """The apps the deploy workflows address must be apps something creates.
+
+    otelcol-dev and otelcol-prod shipped with fly.toml, Dockerfile, config.yml
+    and two workflow steps, and were never added to the priming playbook. The
+    dev deploy failed at `flyctl secrets set --app otelcol-dev` — an app that
+    does not exist — and no gate caught it, because every gate was reading the
+    workflows and none was comparing them against the playbook that primes an
+    environment.
+
+    Derived from the filesystem rather than a list, so the next app added under
+    deploy/fly/ fails here until the playbook grows its line.
+    """
+
+    def fly_apps(self):
+        return sorted(d.name for d in (REPO / "deploy" / "fly").iterdir() if d.is_dir())
+
+    def test_every_fly_app_is_created_by_the_priming_playbook(self):
+        playbook = PRIMING_PLAYBOOK.read_text()
+        for app in self.fly_apps():
+            with self.subTest(app):
+                # assertTrue, not assertIn: assertIn's failure message renders
+                # the whole playbook, which buries the one name that matters.
+                self.assertTrue(
+                    f"fly apps create {app} --org" in playbook,
+                    f"{app} has a deploy/fly/ definition but the priming "
+                    f"playbook never creates it",
+                )
+
+    def test_the_playbook_counts_the_apps_it_creates(self):
+        # The step summary said "four Fly.io apps" while the block created four
+        # of six. A count in prose that disagrees with the commands below it is
+        # how a reader concludes the list is complete when it is not.
+        playbook = PRIMING_PLAYBOOK.read_text()
+        created = playbook.count("fly apps create ")
+        self.assertEqual(
+            created,
+            len(self.fly_apps()),
+            f"the playbook creates {created} apps; deploy/fly/ defines "
+            f"{len(self.fly_apps())}: {', '.join(self.fly_apps())}",
+        )
+        for stale in ("four Fly.io apps", "All four app names", "The four Fly.io apps"):
+            self.assertNotIn(stale, playbook)
 
 
 if __name__ == "__main__":

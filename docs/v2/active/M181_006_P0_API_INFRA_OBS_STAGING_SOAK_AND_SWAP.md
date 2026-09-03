@@ -173,7 +173,7 @@ the failure exactly where it is.
 deploy-gate fix). The playbook edit is docs and proceeds; the workflow, script
 and any `fly apps create` wait.
 
-- **Dimension 0.1** — the priming playbook creates the collector apps alongside the other four, and its step summary counts them → Test `test_priming_playbook_creates_every_fly_app`
+- **Dimension 0.1** — **DONE** — the priming playbook creates the collector apps alongside the other four, and its step summary counts them. The test derives the expected set from `deploy/fly/*/` rather than a list, so the next app added without a playbook line fails here → Tests `test_every_fly_app_is_created_by_the_priming_playbook` · `test_the_playbook_counts_the_apps_it_creates`
 - **Dimension 0.2** — `ensure_fly_app.sh` creates an app that does not exist rather than failing, and still refuses when creation itself fails → Tests `an absent app is created before deploy` · `a failed creation refuses rather than falling through`
 - **Dimension 0.3** — the collector stand-up survives a first run: no step addresses the app before it can exist → Test `test_collector_standup_is_order_safe`
 - **Dimension 0.4** — the development deploy reaches green, and M181_005's R1 — closed ungraded — is graded from that run → Test `test_collector_carries_every_signal`
@@ -291,7 +291,7 @@ No product-analytics changes.
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 0.1 | unit | `test_priming_playbook_creates_every_fly_app` | every `deploy/fly/<app>/` directory has a matching `fly apps create` line, and the step summary's count matches |
+| 0.1 | unit | `test_every_fly_app_is_created_by_the_priming_playbook` · `test_the_playbook_counts_the_apps_it_creates` | every `deploy/fly/<app>/` directory has a matching `fly apps create` line, and the prose count equals the number of create commands |
 | 0.2 | unit | `an absent app is created before deploy` · `a failed creation refuses rather than falling through` | a fake `flyctl` reporting no such app leads to `apps create` then `deploy`; a creation that exits non-zero aborts |
 | 0.3 | unit | `test_collector_standup_is_order_safe` | no workflow step addresses `$OTLP_COLLECTOR_APP` before the step that can create it |
 | 0.4 | e2e (dev) | `test_collector_carries_every_signal` | metrics, traces and logs all arrive at Grafana Cloud through the collector; a partial pipeline fails |
