@@ -35,11 +35,13 @@
 
 mod decision;
 mod error;
+mod gate_status;
 mod grant;
 mod inbox;
 mod sql;
 
 pub use self::decision::Decision;
 pub use self::error::{Error, Result};
+pub use self::gate_status::GateStatus;
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};

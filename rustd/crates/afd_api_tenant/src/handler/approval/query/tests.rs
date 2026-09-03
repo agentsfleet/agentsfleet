@@ -53,7 +53,7 @@ fn the_three_filters_are_read_off_the_string() {
     let listing = parsed(&format!(
         "status=denied&fleet_id={ZIG_CURSOR_GATE}&gate_kind=spend"
     ));
-    assert_eq!(listing.status, Some(Decision::Denied));
+    assert_eq!(listing.status, Some(GateStatus::Denied));
     assert_eq!(listing.fleet_id.as_deref(), Some(ZIG_CURSOR_GATE));
     assert_eq!(listing.gate_kind.as_deref(), Some("spend"));
 }
@@ -63,9 +63,12 @@ fn every_served_status_maps_to_the_decision_it_names() {
     // All four, not the two the other cases happen to reach: `approved`
     // and `timed_out` could be swapped and the integration case that reads
     // an empty page would pass either way.
-    assert_eq!(parsed("status=approved").status, Some(Decision::Approved));
-    assert_eq!(parsed("status=denied").status, Some(Decision::Denied));
-    assert_eq!(parsed("status=timed_out").status, Some(Decision::TimedOut));
+    assert_eq!(parsed("status=approved").status, Some(GateStatus::Approved));
+    assert_eq!(parsed("status=denied").status, Some(GateStatus::Denied));
+    assert_eq!(
+        parsed("status=timed_out").status,
+        Some(GateStatus::TimedOut)
+    );
     assert_eq!(parsed("status=pending").status, None);
 }
 

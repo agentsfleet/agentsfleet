@@ -12,7 +12,7 @@
 use sqlx::Row as _;
 
 use super::CONTEXT_RESOLVE;
-use crate::decision::Decision;
+use crate::gate_status::GateStatus;
 use crate::{Result, error};
 
 /// One gate as the inbox shows it.
@@ -71,7 +71,12 @@ pub struct Cursor<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Filter<'a> {
     /// Only gates at this status; pending when absent.
-    pub status: Option<Decision>,
+    ///
+    /// [`GateStatus`] and not [`Decision`]: a filter names states a row can BE
+    /// in, and the writer's vocabulary has three arms because two of the five
+    /// states are not decisions anyone makes. Routing the filter through it
+    /// left `auto_killed` unreachable.
+    pub status: Option<GateStatus>,
     /// Only gates raised by this fleet.
     pub fleet_id: Option<&'a str>,
     /// Only gates of this kind.

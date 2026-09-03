@@ -120,6 +120,15 @@ async fn assert_filters_narrow(
 
     let explicit_pending = read(router, &fixture.token, collection, "?status=pending").await;
     assert_eq!(ids(&explicit_pending).len(), 4, "{explicit_pending}");
+
+    // The killer's verdict is a state a row is really in, and this listing is
+    // the only place it shows. A filter that could not name it left those
+    // gates unreachable rather than merely unfiltered.
+    let killed = read(router, &fixture.token, collection, "?status=auto_killed").await;
+    assert!(
+        ids(&killed).is_empty(),
+        "nothing was auto-killed in this fixture: {killed}"
+    );
 }
 
 /// A full page hands back a cursor, and the walk visits every row exactly once.

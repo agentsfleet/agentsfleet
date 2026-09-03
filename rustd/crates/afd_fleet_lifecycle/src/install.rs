@@ -131,39 +131,46 @@ pub struct Installed {
 }
 
 impl Fleets {
-    /// Refuses an install whose bundle names credentials this workspace lacks.
+    /// Refuses a write whose configuration names credentials this workspace
+    /// lacks.
     ///
     /// # Why before the row and not after
     ///
-    /// A fleet installed short a credential is a row that exists and cannot
-    /// run: the first lease reaches for a secret nobody stored, and the
-    /// operator meets the failure at run time with a fleet already in their
-    /// list. `create_fleet_bundle.zig` decides the same thing in the same place
-    /// — the difference here is that the refusal cannot be skipped by a second
-    /// call site, because there is only one install.
+    /// A fleet whose configuration names a credential nobody stored is a row
+    /// that exists and cannot run: the first lease reaches for the secret, and
+    /// the operator meets the failure at run time with the fleet already in
+    /// their list. `create_fleet_bundle.zig` decides the same thing in the same
+    /// place.
+    ///
+    /// # Why both writes ask
+    ///
+    /// The install is not the only door. `PATCH` takes a replacement
+    /// `TRIGGER.md`, and that document declares credentials too, so a check on
+    /// the install alone leaves the same unrunnable fleet one `fleet update`
+    /// away. This is `pub(crate)` for exactly that reason.
     ///
     /// # Why the names and not the values
     ///
     /// The vault is asked what it HOLDS, never what those secrets are. The
     /// answer this needs is a set difference over names, and reading a value to
     /// compute it would put plaintext in a path that has no use for it.
-    async fn require_the_declared_credentials(
+    pub(crate) async fn require_the_stored_credentials(
         &self,
         workspace: &Uuid7,
-        authored: &authored::Authored,
+        declared: &[String],
     ) -> Result<()> {
-        let declared = authored.trigger.config().credentials();
         if declared.is_empty() {
             return Ok(());
         }
         let held = self.secrets.list(workspace).await?;
         let stored: BTreeSet<&str> = held.iter().map(|secret| secret.name.as_str()).collect();
-        // A set on both sides: a bundle is free to declare one credential
+        // A set on both sides: a document is free to declare one credential
         // twice, and a refusal listing it twice reads as two missing secrets.
-        let wanted: BTreeSet<String> = declared.iter().map(ToString::to_string).collect();
+        let wanted: BTreeSet<&str> = declared.iter().map(String::as_str).collect();
         let missing: Vec<String> = wanted
             .into_iter()
-            .filter(|name| !stored.contains(name.as_str()))
+            .filter(|name| !stored.contains(name))
+            .map(ToOwned::to_owned)
             .collect();
         if missing.is_empty() {
             return Ok(());
@@ -197,7 +204,14 @@ impl Fleets {
         // transaction, which is the trade the stream setup below already makes
         // for the same reason.
         drop(connection);
-        self.require_the_declared_credentials(workspace, &authored)
+        let declared: Vec<String> = authored
+            .trigger
+            .config()
+            .credentials()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        self.require_the_stored_credentials(workspace, &declared)
             .await?;
         let mut connection = self.database.acquire().await?;
 
