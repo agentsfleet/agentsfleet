@@ -15357,6 +15357,16 @@
             ],
             "description": "On a 412 only: the resource's current entity tag, to refetch and retry."
           },
+          "missing_secrets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "On a 424 only: the credentials this workspace has yet to store."
+          },
           "request_id": {
             "type": "string",
             "description": "The request this refusal answers, for support."

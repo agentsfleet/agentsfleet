@@ -191,12 +191,27 @@ pub(crate) async fn install<D: Services>(
         .fleets()
         .install(&owned.workspace, &Install { source, name }, services.now())
         .await
-        .map_err(Refusal::at(EVENT_INSTALL))?;
+        .map_err(short_a_credential_or(EVENT_INSTALL))?;
     Ok((
         StatusCode::CREATED,
         Json(installed_response(&installed, services.deployment())),
     )
         .into_response())
+}
+
+/// Renders an install failure, listing the credentials when that is the cause.
+///
+/// [`super::detail`]'s `stale_or` in the other direction: a 424 whose body
+/// names the secrets this workspace has yet to store, so an operator adds
+/// exactly those rather than reading the bundle's manifest to work out which
+/// of its declared names they are short.
+fn short_a_credential_or(
+    event: &'static str,
+) -> impl FnOnce(afd_fleet_lifecycle::Error) -> Refusal {
+    move |error| match error.missing_secrets() {
+        Some(missing) => Refusal::missing_secrets(error.code(), error.detail(), missing.to_vec()),
+        None => Refusal::at(event)(error),
+    }
 }
 
 /// Which library tier this install draws from, or the refusal it earns.

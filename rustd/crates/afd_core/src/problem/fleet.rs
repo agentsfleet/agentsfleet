@@ -266,6 +266,15 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_SECRETS_MISSING,
+        status: 424,
+        title: "Fleet Bundle secrets missing",
+        hint: "Add the missing workspace secrets before installing this Fleet Bundle.",
+        user_message: Some(
+            "This Fleet Bundle needs secrets this workspace doesn't have yet. Add the missing secrets, then install again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_FETCH_FAILED,
         status: 502,
         title: "Fleet Bundle fetch failed",

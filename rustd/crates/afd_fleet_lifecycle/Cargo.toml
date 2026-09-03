@@ -32,6 +32,9 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# The workspace's credential names, read before an install writes a row: a
+# bundle declaring a secret nobody stored installs a fleet that cannot run.
+afd_vault.workspace = true
 # The per-fleet event stream and its consumer group. The install's whole
 # guarantee is that both exist before the 201, so this is not an optional edge:
 # it is the reason this crate is not a pure Postgres store.

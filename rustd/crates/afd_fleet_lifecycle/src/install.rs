@@ -30,6 +30,7 @@
 mod authored;
 mod row;
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
@@ -130,6 +131,44 @@ pub struct Installed {
 }
 
 impl Fleets {
+    /// Refuses an install whose bundle names credentials this workspace lacks.
+    ///
+    /// # Why before the row and not after
+    ///
+    /// A fleet installed short a credential is a row that exists and cannot
+    /// run: the first lease reaches for a secret nobody stored, and the
+    /// operator meets the failure at run time with a fleet already in their
+    /// list. `create_fleet_bundle.zig` decides the same thing in the same place
+    /// — the difference here is that the refusal cannot be skipped by a second
+    /// call site, because there is only one install.
+    ///
+    /// # Why the names and not the values
+    ///
+    /// The vault is asked what it HOLDS, never what those secrets are. The
+    /// answer this needs is a set difference over names, and reading a value to
+    /// compute it would put plaintext in a path that has no use for it.
+    async fn require_the_declared_credentials(
+        &self,
+        workspace: &Uuid7,
+        authored: &authored::Authored,
+    ) -> Result<()> {
+        let declared = authored.trigger.config().credentials();
+        if declared.is_empty() {
+            return Ok(());
+        }
+        let held = self.secrets.list(workspace).await?;
+        let stored: BTreeSet<&str> = held.iter().map(|secret| secret.name.as_str()).collect();
+        let missing: Vec<String> = declared
+            .iter()
+            .map(ToString::to_string)
+            .filter(|name| !stored.contains(name.as_str()))
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(ErrorKind::BundleSecretsMissing { missing }.into())
+    }
+
     /// Installs one fleet into `workspace`, stream and all.
     ///
     /// # Errors
@@ -149,6 +188,8 @@ impl Fleets {
             .resolve(&mut connection, workspace, &request.source)
             .await?;
         let authored = authored::read(entry)?;
+        self.require_the_declared_credentials(workspace, &authored)
+            .await?;
 
         let id = self.mint_id(now)?;
         let name = self
