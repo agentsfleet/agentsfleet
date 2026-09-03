@@ -58,6 +58,13 @@ const DETAIL_NOT_FOUND: &str = "Approval action not found or already resolved";
 /// The refusal a decision the path does not spell earns.
 const DETAIL_UNKNOWN_DECISION: &str = "decision must be approve or deny";
 
+/// The refusal a gate somebody already answered earns.
+///
+/// It names the channels rather than the person: which of them answered is in
+/// `current_state` and on the gate itself, and a subject spelled here would be
+/// an entity value in a sentence the detail rules keep clear of them.
+const DETAIL_ALREADY_RESOLVED: &str = "Approval gate already resolved by another channel";
+
 /// The refusal an over-long note earns.
 const DETAIL_REASON_TOO_LONG: &str = "reason exceeds max length";
 
@@ -238,19 +245,25 @@ pub(crate) async fn resolve<D: Services>(
         .map_err(Refusal::at(EVENT_RESOLVE))?;
 
     match resolution {
-        // Both arms answer 200 with the same shape. The second caller asked for
-        // the gate to be resolved and it is; what they must not be told is that
-        // THEY resolved it, which is why `resolved_by` is read off the row.
-        Resolution::Resolved(row) | Resolution::AlreadyResolved(row) => {
-            Ok(Json(ResolvedResponse {
-                gate_id: Cow::Owned(row.gate_id),
-                action_id: Cow::Owned(row.action_id),
-                outcome: Cow::Owned(row.status),
-                resolved_at: row.updated_at,
-                resolved_by: Cow::Owned(row.resolved_by),
-            })
-            .into_response())
-        }
+        Resolution::Resolved(row) => Ok(Json(ResolvedResponse {
+            gate_id: Cow::Owned(row.gate_id),
+            action_id: Cow::Owned(row.action_id),
+            outcome: Cow::Owned(row.status),
+            resolved_at: row.updated_at,
+            resolved_by: Cow::Owned(row.resolved_by),
+        })
+        .into_response()),
+        // A 409, and the `current_state` is what makes it useful: the standing
+        // outcome is the one fact the second caller needs, and it tells them to
+        // refetch rather than retry a decision that cannot be changed. The
+        // resolver is NOT interpolated into the sentence — a subject is an
+        // entity value, and the detail rules keep those off the wire — so the
+        // client reads it back off the gate it refetches.
+        Resolution::AlreadyResolved(row) => Err(Refusal::conflict(
+            error_code::APPROVAL_ALREADY_RESOLVED,
+            DETAIL_ALREADY_RESOLVED,
+            &row.status,
+        )),
         Resolution::NotFound => Err(Refusal::coded(
             error_code::APPROVAL_NOT_FOUND,
             DETAIL_NOT_FOUND,

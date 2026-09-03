@@ -106,6 +106,17 @@ pub const WEBHOOK_PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-WH-030")
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 
+/// A gate somebody else answered before this caller reached it.
+///
+/// `ERR_APPROVAL_ALREADY_RESOLVED` (`error_entries_runtime.zig:41`). Not a
+/// failure of the request — the gate IS resolved, which is what the operator
+/// wanted — but not this person's decision either, and a route that reported
+/// it as theirs would attribute an answer to the wrong human. The dashboard
+/// route is the one that says so; the delivery webhook answers the standing
+/// decision instead, because a sender that retries every non-2xx would turn a
+/// conflict into a retry storm that cannot change the outcome.
+pub const APPROVAL_ALREADY_RESOLVED: ErrorCode = ErrorCode::declare("UZ-APPROVAL-006");
+
 /// No schedule under that identifier belongs to this fleet.
 ///
 /// `ERR_SCHEDULE_NOT_FOUND` (`error_registry.zig:100`). One answer for a
