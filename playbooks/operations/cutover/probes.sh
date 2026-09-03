@@ -118,6 +118,29 @@ probe tenant_surface   -- make test-integration-rustd
 probe operator_surface -- make test-integration-rustd
 probe scaffold         -- make test-unit-all
 
+# Each command is its own rubric row's Verify line, run verbatim — a probe that
+# paraphrases the row it grades is grading something else. `integration` exists
+# because two merged milestones put the integration lane in the hygiene tail
+# position the rest give to lint; coverage.tsv carries which, since row
+# identifiers are milestone identifiers and those stay out of source.
+probe integration      -- make test-integration-rustd
+probe ingress_signature -- 'cd rustd && cargo test signature'
+probe ingress_replay   -- make test-integration-rustd
+probe connector_flows  -- 'cd rustd && cargo test connector && cargo test outbound'
+probe ingress_routes   -- 'cd rustd && cargo test test_route_inventory_matches_interfaces'
+probe ci_runtime       -- 'actionlint && bash audits/gh-actions-runtime.sh'
+probe dist_daemons     -- make _dist-daemons
+probe metric_registry  -- 'cd rustd && cargo test --package afd_observability metric_'
+probe lane_self_tests  -- 'make test-parity-self-test && make bench-cutover-self-test'
+# Not recursive: check-cutover-probes runs this script with --coverage, which
+# asserts and returns without executing a single probe.
+probe probe_coverage   -- make check-cutover-probes
+probe route_verbs      -- 'cd rustd && cargo test -p afd_api --all-features --test http_substrate route_verbs'
+probe openapi_coverage -- 'cd rustd && cargo test --workspace --all-features coverage_gate'
+probe openapi_artifact -- 'cd rustd && cargo test --workspace --all-features openapi_build_is_the_source'
+probe openapi_absent_from_runtime -- 'test "$(cd rustd && cargo tree -p afd_wire | grep -c utoipa)" = 0'
+probe otlp_export      -- 'cd rustd && cargo test --package agentsfleetd --all-features --test daemon_suite -- --ignored'
+
 # ---------------------------------------------------------------------------
 # The exclusion manifest. Printed on EVERY run — a skip that becomes invisible
 # by being old is the failure this format prevents. One row per line:

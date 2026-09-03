@@ -236,7 +236,7 @@ of the manifest turns 0 failures into **26**, spread `M180_001` 5, `M181_001` 7,
 excluded with a reason — the manifest prints on every run, so a skip cannot
 become invisible by ageing.
 
-- **Dimension 3.1** — every merged milestone through M181 is declared, and each of its rubric rows is probed or carries an exclusion reason → Test `test_probe_runner_row_coverage` (existing, over the widened roster)
+- **Dimension 3.1** — **DONE** — every merged milestone through M181 is declared, and each of its rubric rows is probed or carries an exclusion reason. 57 rows → **119**, with seventeen new probes running each row's own Verify line verbatim → Test `test_probe_runner_row_coverage` (existing, over the widened roster)
 - **Dimension 3.2** — the runbook's three sections tagged `M181_002` name the milestone that actually owns them; M181_002 closed having explicitly moved that work here → Test `test_runbook_has_no_orphan_owner_tag`
 - **Dimension 3.3** — the runbook's evidence tables are filled from real runs, not left as empty rows → Test `test_runbook_probes`
 
@@ -389,4 +389,10 @@ family by default.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
+- **The hygiene S-letters drifted, and the manifest keys on them (Sep 04, 2026).** Widening `coverage.tsv` surfaced a real trap rather than a clerical one. `expand_rows` expands `*:S3` by LETTER, which was safe while all nine earlier milestones used the same six-row tail — conform, unit, lint, version, secrets, oversize. M181_003 and M181_004 use a seven-row tail with the integration lane at S3, pushing lint, version and secrets down one and oversize to S7. Declaring them under the old wildcards would have tagged the `lint` probe onto an integration row and the `secrets` probe onto a version row: every row "covered", each by the wrong command, and the assert would have reported green. M181_005 predicted exactly this class — "the S-row letters are positional, not free" — and the prediction came true two milestones later.
+
+  Fixed by enumeration: `*` survives only for S1 and S2, whose meaning agrees across all eleven. **The durable fix is to key hygiene rows by MEANING rather than letter**, which is a `probes.sh` schema change and is NOT made here — widening a green gate's data and changing its code in one step leaves nothing to bisect when the result is red. Named here so the follow-up is findable rather than rediscovered by the next milestone.
+
+- **M181_005:R1 is excluded, not probed, and the distinction matters.** It asserts signals ARRIVE at Grafana Cloud. No repository or deploy command can observe a vendor's ingest, so it is outside the probe runner's reach by construction rather than by neglect. The exclusion names §0.4 as its owner and the manifest prints it on every run, so it cannot go quiet by ageing.
+
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
