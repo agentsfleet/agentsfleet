@@ -30,6 +30,8 @@ mod fleet_messages_input;
 mod fleet_streams;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
+#[path = "integration_fleet_install_credentials.rs"]
+mod integration_fleet_install_credentials;
 #[path = "integration_fleet_lifecycle.rs"]
 mod integration_fleet_lifecycle;
 #[path = "integration_fleet_memories.rs"]

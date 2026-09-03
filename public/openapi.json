@@ -15331,6 +15331,13 @@
           "request_id"
         ],
         "properties": {
+          "action_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On that 409 only: the action the gate held."
+          },
           "current_state": {
             "type": [
               "string",
@@ -15357,6 +15364,13 @@
             ],
             "description": "On a 412 only: the resource's current entity tag, to refetch and retry."
           },
+          "gate_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On an answered approval gate's 409 only: the gate that was answered."
+          },
           "missing_secrets": {
             "type": [
               "array",
@@ -15367,9 +15381,31 @@
             },
             "description": "On a 424 only: the credentials this workspace has yet to store."
           },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On that 409 only: the answer that stands."
+          },
           "request_id": {
             "type": "string",
             "description": "The request this refusal answers, for support."
+          },
+          "resolved_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "On that 409 only: when the standing answer was given."
+          },
+          "resolved_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On that 409 only: who gave it."
           },
           "title": {
             "type": "string",

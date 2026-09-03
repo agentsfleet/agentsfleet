@@ -249,12 +249,33 @@ impl Error {
     /// caller's to correct (RULE ECL).
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
+        // Every variant is named rather than falling through a catch-all: a
+        // future datastore-backed kind would otherwise classify itself as a
+        // 500 in silence, where here it is a compile error until somebody
+        // decides. `answer()` above is exhaustive for the same reason.
         match &self.inner.kind {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
             // The directory is a datastore too, and only it knows whether this
             // was an outage or a read that failed.
             ErrorKind::Vault { source } => source.is_datastore_unavailable(),
-            _reachable => false,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Config { .. }
+            | ErrorKind::Skill { .. }
+            | ErrorKind::SkillRejected
+            | ErrorKind::TriggerRejected
+            | ErrorKind::NameMismatch
+            | ErrorKind::NameExists
+            | ErrorKind::NotFound
+            | ErrorKind::TransitionRefused
+            | ErrorKind::MustKillFirst
+            | ErrorKind::SourceStale { .. }
+            | ErrorKind::InstallRolledBack
+            | ErrorKind::LibraryEntryMissing
+            | ErrorKind::RequiredTagsInvalid
+            | ErrorKind::BundleSecretsMissing { .. } => false,
         }
     }
 

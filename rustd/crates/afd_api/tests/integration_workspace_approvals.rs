@@ -51,7 +51,7 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
     let item = format!("{collection}/{}", fixture.gate);
     assert_approval_reads(&router, &fixture, &collection, &item).await;
-    assert_approval_resolution(&router, &fixture.token, &item).await;
+    assert_approval_resolution(&router, &fixture.token, &item, &fixture.gate).await;
     fixture.cleanup().await;
 }
 
@@ -80,7 +80,7 @@ async fn assert_approval_reads(
     );
 }
 
-async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &str) {
+async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &str, gate: &str) {
     let resolved = send(
         router,
         Method::POST,
@@ -126,10 +126,35 @@ async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &s
         "the conflict names the standing outcome, so the caller refetches \
          rather than retrying a decision that cannot change"
     );
+    // The resolver rides the envelope as an extension and stays OUT of the
+    // sentence: a subject is an entity value, and the detail rules keep those
+    // out of `detail`. `approvals/resolve.zig` draws the same line.
     assert!(
-        !refused.to_string().contains(SUBJECT),
-        "the resolver is an entity value and belongs on the gate, not in a \
-         refusal sentence"
+        !refused
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains(SUBJECT),
+        "the resolver was interpolated into the refusal sentence: {refused}"
+    );
+    assert_eq!(
+        refused.get("resolved_by").and_then(Value::as_str),
+        Some(SUBJECT),
+        "the dashboard renders who resolved it off the body: {refused}"
+    );
+    assert_eq!(
+        refused.get("outcome").and_then(Value::as_str),
+        Some("approved"),
+        "and what the standing answer was: {refused}"
+    );
+    assert_eq!(
+        refused.get("gate_id").and_then(Value::as_str),
+        Some(gate),
+        "the conflict names the gate it is about: {refused}"
+    );
+    assert!(
+        refused.get("resolved_at").and_then(Value::as_i64).is_some(),
+        "when it was answered: {refused}"
     );
 }
 
@@ -229,6 +254,20 @@ impl Fixture {
     /// One row cannot show a filter narrowing or a page resuming: both look
     /// identical to an unfiltered single-row read.
     pub(crate) async fn seed_second_gate(&self) -> String {
+        self.seed_gate("spend", 2).await
+    }
+
+    /// One more pending gate, of `kind`, raised at `created_at`.
+    ///
+    /// The instant is a parameter because the tie-break needs two rows sharing
+    /// one: a cursor that carried only the instant would skip the second, and a
+    /// fixture whose rows all differ cannot tell that apart from a correct one.
+    pub(crate) async fn seed_gate(&self, kind: &str, created_at: i64) -> String {
+        self.seed_gate_for(&self.fleet, kind, created_at).await
+    }
+
+    /// The same, under a fleet the caller names.
+    pub(crate) async fn seed_gate_for(&self, fleet: &str, kind: &str, created_at: i64) -> String {
         let second = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -236,20 +275,43 @@ impl Fixture {
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
                 proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'stripe', 'charge', 'spend', \
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'stripe', 'charge', $7, \
                      'refund a customer', '{}', 'one account', $6, '', 'pending', \
-                     '', 2, NULL, $5, 0, 32)",
+                     '', $8, NULL, $5, 0, 32)",
         )
         .bind(&second)
-        .bind(&self.fleet)
+        .bind(fleet)
         .bind(self.workspace.as_str())
         .bind(mint_id())
         .bind(mint_id())
         .bind(GATE_TIMEOUT_AT)
+        .bind(kind)
+        .bind(created_at)
         .execute(&mut *connection)
         .await
         .expect("the second approval gate seeds");
         second
+    }
+
+    /// A second fleet in this workspace, so a fleet filter has something to
+    /// exclude rather than merely something to match.
+    pub(crate) async fn seed_second_fleet(&self) -> String {
+        let other = mint_id();
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.fleets \
+               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
+                status, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'approval-other', '# fixture', '{}', \
+                     'active', 1, 1)",
+        )
+        .bind(&other)
+        .bind(self.workspace.as_str())
+        .bind(&self.tenant)
+        .execute(&mut *connection)
+        .await
+        .expect("the second fleet seeds");
+        other
     }
 
     pub(crate) async fn cleanup(self) {

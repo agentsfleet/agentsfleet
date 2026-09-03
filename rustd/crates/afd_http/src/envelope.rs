@@ -39,6 +39,28 @@ pub struct ProblemResponse {
     current_state: Option<String>,
     etag: Option<String>,
     missing_secrets: Option<Vec<String>>,
+    resolution: Option<Resolution>,
+}
+
+/// The standing answer a 409 on an approval gate reports.
+///
+/// Five members rather than one nested object, because that is what
+/// `approvals/resolve.zig` writes and what the dashboard already reads off the
+/// body — it renders the outcome and the resolver from the top level,
+/// so nesting them would leave a client that predates this daemon showing two
+/// undefined values.
+#[derive(Debug, Clone)]
+pub struct Resolution {
+    /// The gate that was answered.
+    pub gate_id: String,
+    /// The action it gated.
+    pub action_id: String,
+    /// The answer that stands.
+    pub outcome: String,
+    /// When it was given.
+    pub resolved_at: i64,
+    /// Who gave it.
+    pub resolved_by: String,
 }
 
 impl ProblemResponse {
@@ -57,6 +79,7 @@ impl ProblemResponse {
             current_state: None,
             etag: None,
             missing_secrets: None,
+            resolution: None,
         }
     }
 
@@ -74,6 +97,26 @@ impl ProblemResponse {
     ) -> Self {
         Self {
             current_state: Some(current_state.into()),
+            ..Self::new(code, detail, request_id)
+        }
+    }
+
+    /// A 409 on an answered gate, carrying the answer that stands.
+    ///
+    /// [`Self::conflict`] plus the attribution: `current_state` tells a client
+    /// to stop retrying, and these five tell it WHAT the standing answer was
+    /// and who gave it, so the operator reads a sentence rather than
+    /// refetching to build one.
+    #[must_use]
+    pub fn already_resolved(
+        code: ErrorCode,
+        detail: impl Into<String>,
+        request_id: impl Into<String>,
+        resolution: Resolution,
+    ) -> Self {
+        Self {
+            current_state: Some(resolution.outcome.clone()),
+            resolution: Some(resolution),
             ..Self::new(code, detail, request_id)
         }
     }
@@ -149,6 +192,16 @@ impl ProblemResponse {
         }
         if let Some(missing) = &self.missing_secrets {
             body.insert("missing_secrets".to_owned(), missing.clone().into());
+        }
+        if let Some(standing) = &self.resolution {
+            body.insert("gate_id".to_owned(), standing.gate_id.clone().into());
+            body.insert("action_id".to_owned(), standing.action_id.clone().into());
+            body.insert("outcome".to_owned(), standing.outcome.clone().into());
+            body.insert("resolved_at".to_owned(), standing.resolved_at.into());
+            body.insert(
+                "resolved_by".to_owned(),
+                standing.resolved_by.clone().into(),
+            );
         }
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());
