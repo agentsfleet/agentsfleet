@@ -59,15 +59,21 @@ fn the_three_filters_are_read_off_the_string() {
 }
 
 #[test]
-fn every_served_status_maps_to_the_decision_it_names() {
-    // All four, not the two the other cases happen to reach: `approved`
-    // and `timed_out` could be swapped and the integration case that reads
-    // an empty page would pass either way.
+fn every_state_a_row_can_be_in_maps_to_the_status_it_names() {
+    // All five, not the two the other cases happen to reach: `approved` and
+    // `timed_out` could be swapped and the integration case that reads an
+    // empty page would pass either way. `auto_killed` is the one that was
+    // unreachable — a state the column really holds, which the filter refused
+    // because it routed through the WRITER's three-arm vocabulary.
     assert_eq!(parsed("status=approved").status, Some(GateStatus::Approved));
     assert_eq!(parsed("status=denied").status, Some(GateStatus::Denied));
     assert_eq!(
         parsed("status=timed_out").status,
         Some(GateStatus::TimedOut)
+    );
+    assert_eq!(
+        parsed("status=auto_killed").status,
+        Some(GateStatus::AutoKilled)
     );
     assert_eq!(parsed("status=pending").status, None);
 }
@@ -110,12 +116,12 @@ fn pending_and_an_absent_status_are_the_same_request() {
 }
 
 #[test]
-fn a_status_no_filter_can_express_is_refused_rather_than_ignored() {
-    // `auto_killed` is a spelling the COLUMN carries and a decision cannot
-    // write. Serving the pending page for it would answer a question the
-    // caller did not ask, and look to them like an empty inbox.
-    assert_eq!(refusal_status("status=auto_killed"), BAD_REQUEST);
+fn a_status_no_row_can_be_in_is_refused_rather_than_ignored() {
+    // Every spelling the column holds is served, so this refuses values that
+    // are not states at all. Serving the pending page for one would answer a
+    // question the caller did not ask, and read to them as an empty inbox.
     assert_eq!(refusal_status("status=Approved"), BAD_REQUEST);
+    assert_eq!(refusal_status("status=elsewhere"), BAD_REQUEST);
     assert_eq!(refusal_status("status="), BAD_REQUEST);
 }
 
