@@ -74,6 +74,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/{deploy-dev-build,release,test}.yml` | EDIT | the daemon build steps carry `GIT_COMMIT` so `/healthz` reports the commit rather than `unknown` (Indy: "I want the unknown to be fixed with the commit hash") |
 | `cli/src/commands/{fleet_schedule,fleet_install,fleet_install_source}.ts` · `cli/test/**` | EDIT | the two consumers of shapes the port changed on main follow the daemon: the schedule row and list envelope, the paused flag, the webhook URL array (Indy: "the api change must propagate to the consumer who ever is using the api") |
 | `rustd/crates/afd_runner/**` · `afd_core/src/{error_code,problem}/**` · `afd_api_operator/**` · `afd_http/src/route/runner_ops.rs` | EDIT | `DELETE /v1/fleets/runners/{runner_id}` ported from `runner_delete.zig` with its `UZ-RUN-016` refusal (Indy: "DELETE runner can be implemented"); `afd_http::route::Guard::PayloadSigned` for the three handler-verified routes |
+| `rustd/crates/afd_fleet/tests/{integration_runner_admin,integration_runner_retire,fleet_suite}.rs` · `tests/support/fleet_lease_reads.rs` | EDIT | the datastore proof of the ported DELETE: the three outcomes in order, and the lease refusal in front of them. Added to this table at CHORE(close) — the port landed after PLAN drew the blast radius |
+| `rustd/Cargo.lock` | EDIT | the utoipa lockfile entries the optional dependency adds |
 | `rustd/crates/afd_vault/src/secret.rs` | EDIT | `SecretName::into_string`, so the secret store answers its name by move rather than copy (Indy: "Fold both in") |
 | `scripts/check_documentation_rules*.py` · `docs/REST_API_DESIGN_GUIDELINES.md` · `docs/EXECUTE_DOC_READS.md` | EDIT | Dead Code Sweep: the lint globbed the deleted `public/openapi/` tree and therefore checked nothing; §6 still called that tree the source of truth |
 | `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
@@ -129,6 +131,16 @@ The served set (`Route::all()` × `Route::verbs()`) and the documented set (the 
 - **Dimension 3.1** — DONE — served ∖ documented = ∅ and documented ∖ served = ∅, and a seeded removal fails naming the route, the method and the direction → Test `test_coverage_gate_rust_source`
 - **Dimension 3.2** — DONE — the feature build's emitter writes the document, and the committed `public/openapi.json` equals what it emits — regenerated, never hand-patched → Test `test_openapi_build_is_the_source`
 - **Dimension 3.3** — DONE — the gate and the diff run where lint runs, and the production build path never enables the feature → Tests `test_release_build_excludes_openapi` + `test_the_release_invocations_are_still_release_invocations`
+
+### §4 — What the gate's first run found, and Indy's calls on it
+
+The generated document made a three-way audit possible for the first time: every documented operation read against the Zig handler that defines it and the Rust handler that ships. Of 103 operations, 22 agree on all three; 81 carry a gap. The full table is the audit page in Session Notes. Indy triaged the P0s on 2026-09-03; these five land in this PR, in this order, cheapest first. Item 7 (the nineteen undeclared 400s and the runner plane's domain refusals) was NOT selected and stays in the follow-up.
+
+- **Dimension 4.1** — IN_PROGRESS — every 4xx and 5xx response in the document carries the problem body the daemon actually sends (`application/problem+json`: `code`, `title`, `status`, `detail`, `request_id`, plus `current_state` on 409 and `etag` on 412). One `ProblemBody` schema type; one merge-time injection in `afd_api/src/openapi.rs` beside `require_the_credential_each_route_guards`; the artifact regenerates. Today 685 of 795 declared responses are refusals and exactly one carries a schema → Test: a contract test that every 4xx/5xx response in the merged document references the problem schema (red today).
+- **Dimension 4.2** — IN_PROGRESS — the second resolver of an approval gate is answered 409 `UZ-APPROVAL-006`, carrying the standing outcome and resolver, on both the tenant route (`handler/approval.rs:244`, where `Resolved | AlreadyResolved` share one 200 arm) and the webhook route (`approval_route.rs:175`). Register the code in `afd_core` with the Zig title "Approval already resolved" and its dashboard sentence "Someone already resolved this. Refresh to see the outcome and who resolved it." (`error_entries_runtime.zig:41`; the registry parity test enforces both strings). `integration_approval_webhook.rs:115` asserts the 200 arm today and flips → Tests: a route test for the tenant 409 with `current_state` = the standing outcome; the flipped webhook test.
+- **Dimension 4.3** — IN_PROGRESS — the approvals list reads the five parameters the document already declares and the dashboard already sends (`ui/packages/app/lib/api/approvals.ts:69-73`: `status`, `fleet_id`, `gate_kind`, `cursor`, `limit`) and returns a real `next_cursor`. Today `handler/approval.rs:127-143` takes no query extractor, passes `Filter::default(), None, PAGE_LIMIT` and hard-codes `next_cursor: None`; the service `page()` already accepts all three. Pattern: `handler/event/query.rs`. Limit 1..200 default 50 as Zig (`approvals/list.zig:148-153`). File cap: the parser lands in `approval_query.rs` → Tests: each filter narrows; cursor round-trips past a page; out-of-bounds limit and a bad cursor refuse 400.
+- **Dimension 4.4** — IN_PROGRESS — installing a fleet refuses 424 `UZ-BUNDLE-003` when the bundle's required credentials are not all in the workspace vault, BEFORE the row is inserted, listing the missing names. Zig: `create_fleet_bundle.zig:97-115` (`ensureBundleCredentials` → `store.missingSecretNames`), body carries `missing_secrets`. Rust `afd_fleet_lifecycle/src/install.rs:141` resolves the entry, then inserts; the crate holds no vault handle today, so one is plumbed in. Register the code in `afd_core` with the Zig title "Fleet Bundle secrets missing" (`error_entries.zig:184`). The annotation at `fleet/mod.rs:167` already declares 424. Add a `missing_secrets` extension to `ProblemResponse` so the dashboard can list them → Tests: the name diff (unit); the refusal against the vault and the successful install once the secret exists (integration).
+- **Dimension 4.5** — IN_PROGRESS — the regenerated `public/openapi.json` reflects 4.1–4.4 and `test_openapi_build_is_the_source` holds; the boundary lanes run once more at the end.
 
 ## Interfaces
 
@@ -331,7 +343,10 @@ dropped both bodies. Both are restored as wire types (`activity::ActivityAccepte
 redirect helper with the completion leg: on the browser leg nothing has landed,
 so an unwritable relay is now the same `UZ-CONN-001` refusal a dashboard base
 that is not a URL already raises, and the annotation drops the 200 it could
-not honestly describe. The probes stop building `serde_json::json!` and answer
+not honestly describe. **Corrected at CHORE(close):** the earlier wording here
+said Zig answered 200 in that condition. It does not — `callback.zig:64-71`
+answers 500 `UZ-INTERNAL-001`. The port's 200 was the port's own, and the
+change is 500 → 503, not 200 → 503. The probes stop building `serde_json::json!` and answer
 `health::Liveness` and `health::Readiness`, the shapes `health.zig` fixed.
 
 **Sweep — two wire types nothing served.** `afd_wire::connector::DeliveryIgnored`
@@ -449,6 +464,36 @@ contract gave it, and the run's rules keep the bare name. Three tests pin it:
 the names differ in `afd_wire`, no two derives in that crate publish under one
 name (a source scan, since the generator merges duplicates without a word),
 and the two owners resolve to an object and a string in the document.
+
+**Finding — the LENGTH GATE has no mechanical enforcer, and four files crossed it.**
+`make harness-verify` runs nine audits and none of them measures a file, so the
+350-line cap is model-enforced by the end-of-turn self-audit alone. It caught
+four files this branch had carried over the cap after the last commit was
+already made: `afd_wire/src/ingress.rs` (380), `afd_fleet/tests/integration_runner_admin.rs`
+(417), `afd_runner/src/sql/runner.rs` (363) and `afd_api_operator/.../admin/libraries.rs`
+(355). All four were under it on `origin/main`; the annotations, the ported
+DELETE and its tests are what added the lines. Each is split at a seam the
+codebase already uses — schema-and-tests siblings as in this crate's `admin`,
+`event` and `report`; a by-CALLER SQL module as `sql/sweep.rs` explains; a
+request parser as `fleet/detail_request.rs`; and the retirement tests by
+outcome. No behavior moves and the regenerated document is byte-identical.
+
+**Surface — what the published document gained, lost and renamed.**
+Measured between `origin/main:public/openapi.json` and the generated artifact:
+paths 69 → 76, operations 95 → 103. `GET /metrics` is GONE, and nothing serves
+it: no route in the Rust workspace and none in the Zig tree answers that path,
+and no Prometheus exposition exists in either. It was a documented endpoint
+that never existed, which is the drift this milestone closes, pointing the
+other way. Ten runner-plane operations are newly published (`/v1/runners/me`
+and its bundles, credentials, heartbeats, leases, memory and reports) — served
+all along, absent from the hand-written document. Four templates are renamed to
+what the daemon actually matches: `/v1/fleets/runners/{id}` → `{runner_id}` on
+three paths, `/secrets/{secret_name}` → `{name}`, the approvals pair
+`/approve` and `/deny` → `/{decision}`, and the literal
+`/v1/connectors/slack/events` → `/v1/connectors/{provider}/events`. The one
+operation the old document declared and the Rust daemon did not serve was
+`DELETE` on the runner path; it is ported here rather than deleted, on Indy's
+instruction quoted above.
 
 **Amendment — the unit lane's flake was a latent bug, not this branch's.**
 Four runs failed in `ui/packages/website/src/App.test.tsx` and one in

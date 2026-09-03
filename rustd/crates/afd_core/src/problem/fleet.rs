@@ -85,9 +85,9 @@ pub(super) const FLEET: &[Problem] = &[
     Problem {
         code: error_code::RUNNER_MUST_REVOKE_FIRST,
         status: 409,
-        title: "Runner must be revoked first",
-        hint: "Only a revoked runner's record can be deleted. Revoke it with PATCH {\"action\":\"revoke\"}, then delete.",
-        user_message: Some("Revoke this runner before removing it."),
+        title: "Active runner must be revoked before deletion",
+        hint: "Revoke the runner first with `PATCH /v1/fleets/runners/{runner_id}` body `{\"action\": \"revoke\"}`, then retry DELETE.",
+        user_message: Some("This runner is still live. Revoke it first, then delete it."),
     },
     Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
