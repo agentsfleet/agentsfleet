@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 003
 **Date:** Sep 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the served-versus-documented direction is unguarded on both daemons until this lands
 **Categories:** API | DOCS
 **Batch:** B7 — serial after M181_002 merges: every annotation sits on a handler that branch carries
@@ -81,6 +81,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/workspace-client.test.ts` | EDIT | pinned a claim the daemon never honoured — `name` required on create; corrected with Indy's approval, quoted in Discovery |
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` · `ui/packages/design-system/vitest.config.ts` | EDIT | the TypeScript coverage floor goes to 100% on Indy's in-session call; the package sat at 99.78% on one unreachable ref guard, excluded the way `website/src/components/HowItWorks.tsx` already excludes its defensive invariant |
 | `ui/packages/website/src/App.test.tsx` | EDIT | the unit lane's flake: four `React.lazy` routes asserted with `findByRole`, whose own 1s timeout is independent of the suite's 20s one; observed failures all landed 1367-1709ms, just past the default. The bound is now stated rather than inherited |
+| `rustd/crates/afd_http/src/openapi/problem.rs` · `afd_http/src/openapi.rs` · `afd_api/src/openapi.rs` · `afd_api/tests/openapi_problem.rs` | ADD/EDIT | §4.1 — the `ProblemBody` schema, the merge-time pass that attaches it to every refusal, and the two contract tests over it |
+| `rustd/crates/afd_core/src/{error_code,error_code/request,problem/request}.rs` · `afd_api_tenant/src/handler/approval/**` · `afd_api/tests/integration_workspace_approvals*.rs` | ADD/EDIT | §4.2/§4.3 — `UZ-APPROVAL-006` and the tenant 409; the listing's query parser and real cursor. `approval.rs` became a directory (`mod`, `query`, `resolve`) at the file cap |
+| `rustd/crates/afd_fleet_lifecycle/**` · `afd_core/src/{error_code,error_code/fleet,problem/fleet}.rs` · `afd_http/src/{envelope,handler/refusal}.rs` · `afd_http/src/handler/refusal/tests.rs` · `afd_api_tenant/src/handler/fleet/mod.rs` | ADD/EDIT | §4.4 — `UZ-BUNDLE-003`, the install's credential pre-flight and the vault handle it reads through, the `missing_secrets` envelope extension, and the refusal that carries it. `refusal.rs`'s inline tests moved to a sibling at the file cap |
+| `cli/test/{fleet-install.integration,fleet-update.integration}.test.ts` · `cli/test/helpers-fleet-install.ts` | EDIT/ADD | §4.5 — the install suite was 400 lines against a 350-line cap and split along the verb its describes already grouped by; the shared fixtures moved to a helper. No behaviour change |
 
 ## Applicable Rules
 
@@ -146,7 +150,7 @@ The generated document made a three-way audit possible for the first time: every
 - **Dimension 4.4** — DONE — installing a fleet refuses 424 `UZ-BUNDLE-003` when the bundle's declared credentials are not all in the workspace vault, BEFORE the row is inserted, listing the missing names. `install.rs` gained `require_the_declared_credentials`, called between `authored::read` and `mint_id`; the names come from the parsed trigger's own config, and the vault is asked what it HOLDS — a set difference over names, never a decrypt. `Fleets` now holds an `afd_vault::Directory` built inside `new` from the pool it already takes, so no call site or composition root changed. The vault's error lifts into a new `Vault` variant the way `afd_connector` and `afd_ingress` already lift it, and it answers with the vault's OWN code and sentence, which is what keeps an outage a 503 and a failed read a 500; `answer()`, `code()`, `detail()` and `is_datastore_unavailable()` stopped being `const` to allow it.
   The code is registered with the Zig title "Fleet Bundle secrets missing" (`error_entries.zig:184`) at 424 and its dashboard sentence, and declared in `REGISTRY`. `ProblemResponse::missing_secrets` adds the third status-specific extension beside `current_state` and `etag`; `ProblemBody` and the §4.1 contract test follow it, so the schema still equals exactly what the writer sends. The handler maps it through `short_a_credential_or`, which mirrors `stale_or` in `fleet/detail.rs`. The annotation at `fleet/mod.rs` already declared 424. `refusal.rs` crossed the file cap and its inline tests moved to a sibling, the convention's first cut.
   → Tests (`integration_install_credentials.rs`, live Postgres): a workspace short the credential is refused with the name listed AND `core.fleets` unchanged, which is the ordering claim a fake vault could not make; an unrelated stored credential does not satisfy the declared one, which a count-based check would pass; and the same install succeeds once the credential is stored, so the gate is a gate and not a wall. The lane gained `seed_secret`.
-- **Dimension 4.5** — IN_PROGRESS — the regenerated `public/openapi.json` reflects 4.1–4.4 and `test_openapi_build_is_the_source` holds; the boundary lanes run once more at the end.
+- **Dimension 4.5** — DONE — the regenerated `public/openapi.json` reflects 4.1–4.4 and `test_openapi_build_is_the_source` holds; the boundary lanes ran twice. The document gained the problem body on 684 of its 685 refusals — the 685th is `GET /readyz`, which answers its readiness report — and the `ProblemBody` schema with its three status-specific extensions. The oversize row also fired on `cli/test/fleet-install.integration.test.ts` (400 lines), which split along the verb its describes already grouped by.
 
 ## Interfaces
 
@@ -196,17 +200,21 @@ No product or operational signal changes: the feature is off in production, and 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Served set equals documented set, both directions (§3) | `cd rustd && cargo test --workspace --features openapi coverage_gate` | exit 0 | P0 | |
-| R2 | Committed artifact equals the build's emission (§3) | `cd rustd && cargo test --workspace --features openapi openapi_build_is_the_source` | exit 0 | P0 | |
-| R3 | Production carries none of it (§1, §3) | `cd rustd && cargo tree -p afd_wire \| grep -c utoipa` | `0` | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S5 | Version sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -vE '\.md$\|^public/\|Cargo\.(lock\|toml)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Served set equals documented set, both directions (§3) | `cd rustd && cargo test --workspace --all-features coverage_gate` | exit 0 | P0 | ✅ 1 passed (feature amended at CHORE(close) — note below) |
+| R2 | Committed artifact equals the build's emission (§3) | `cd rustd && cargo test --workspace --all-features openapi_build_is_the_source` | exit 0 | P0 | ✅ 1 passed (feature amended at CHORE(close)) |
+| R3 | Production carries none of it (§1, §3) | `cd rustd && cargo tree -p afd_wire \| grep -c utoipa` | `0` | P0 | ✅ `0` |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ every path covered; §4 rows added at CHORE(close) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ cargo 2318 passed · CLI 1637 run / 0 failed · coverage gates green |
+| S3 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ✅ 359 passed |
+| S4 | Lint green | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S5 | Version sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.27.1 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.(rs\|ts\|tsx\|js\|jsx\|py\|sh\|sql\|zig)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output (row narrowed to source extensions — note below) |
+
+**R1/R2 feature (amended at CHORE(close)):** both rows named `--features openapi`, which does not compile the plane suites: `afd_api`'s test harness reaches `afd_webhook::test_util`, so the target fails to build before either gate runs. `--all-features` is what the declared unit lane (`.oracle/orly.json` `verify.unit` → `cargo test --workspace --all-features`) already uses, and it is what these rows now name. The omission predates this milestone's §4 and is not a regression.
+
+**S7 scope (amended at CHORE(close)):** the row selects the extensions the repository's own LENGTH GATE self-audit selects (`dispatch/write_any.md` §Self-audit) rather than everything-but-`.md`. As first written it also graded `.github/workflows/release.yml` — 894 lines on `origin/main`, 901 here after the build steps gained `GIT_COMMIT`. A GitHub Actions workflow is one file by the format's own rule: the only way to shorten it is to factor steps into composite actions, which is a change to the deployment pipeline rather than a change to a source file, and it is out of this milestone's scope. That is not what a criterion named *No oversize SOURCE file* is asking, and it is the same reason M181_004 took its generated lock file and manifest out of this row's scope. Every source file the diff touches is still graded, including any already over the cap on `origin/main`. Indy approved the bye in session (2026-09-03): "what is the release workflow file? can you ensure this is given a bye or pass".
 
 **Command source rule:** S1–S5 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.unit`, `verify.integration`, `verify.lint`, `verify.version`); S6–S7 are the template's hygiene gates; R-rows name oracles this spec's own sections create.
 
