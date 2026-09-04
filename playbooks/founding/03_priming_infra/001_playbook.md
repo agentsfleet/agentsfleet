@@ -39,13 +39,31 @@ deploy application code or claim that the public domains are ready.
 ## 1. Create Fly.io apps
 
 ```bash
-fly apps create agentsfleetd-dev --org agentsfleet
-fly apps create cloudflared-dev --org agentsfleet
-fly apps create otelcol-dev --org agentsfleet
-fly apps create agentsfleetd-prod --org agentsfleet
-fly apps create cloudflared-prod --org agentsfleet
-fly apps create otelcol-prod --org agentsfleet
+fly orgs create agentsfleet-dev
+fly orgs create agentsfleet-prod
+
+fly apps create agentsfleetd-dev --org agentsfleet-dev
+fly apps create cloudflared-dev --org agentsfleet-dev
+fly apps create otelcol-dev --org agentsfleet-dev
+fly apps create agentsfleetd-prod --org agentsfleet-prod
+fly apps create cloudflared-prod --org agentsfleet-prod
+fly apps create otelcol-prod --org agentsfleet-prod
 ```
+
+**One organisation per environment, and the split is the point.** Production
+and development bill separately, and an access grant to one is not a grant to
+the other. Each new organisation starts on Pay As You Go and **refuses to
+deploy until a card is added** — `https://fly.io/dashboard/<org>/billing` —
+so priming an environment includes that step or the first deploy fails for a
+reason no log in this repository explains.
+
+These lines read `--org agentsfleet` until Sep 04, 2026, naming an
+organisation that has never existed: `fly orgs list` returned exactly one
+organisation, `personal`, and all four apps that existed were created there
+regardless of what this page said. Anyone running the commands verbatim would
+have been refused. The six apps were moved into the two organisations above on
+Sep 04, 2026; `personal` is now empty and Fly does not allow it to be renamed
+or removed, which is why it is not named here.
 
 The checked-in deployment definitions are canonical:
 

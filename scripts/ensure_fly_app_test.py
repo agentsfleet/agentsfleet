@@ -46,7 +46,7 @@ NO_MACHINES = "[]"
 
 class EnsureFlyAppTest(unittest.TestCase):
     def run_script(self, *args, machine_list, record=None,
-                   app_exists=True, create_ok=True):
+                   app_exists=True, create_ok=True, fly_org="agentsfleet-dev"):
         """Run the script with a fake flyctl that prints `machine_list`.
 
         `app_exists` drives what `flyctl status` returns, which is how the
@@ -74,7 +74,8 @@ class EnsureFlyAppTest(unittest.TestCase):
             )
             fake.chmod(0o755)
             env = dict(os.environ, FLYCTL=str(fake), PATH=os.environ["PATH"],
-                       POLL_ATTEMPTS="2", POLL_SLEEP_SECONDS="0")
+                       POLL_ATTEMPTS="2", POLL_SLEEP_SECONDS="0",
+                       FLY_ORG=fly_org)
             proc = subprocess.run(
                 ["bash", str(SCRIPT), *args],
                 capture_output=True,
@@ -241,6 +242,26 @@ class CreateIfAbsentTest(unittest.TestCase):
     def test_create_only_rejects_a_wrong_argument_count(self):
         proc, _ = self.run_script("--create-only", machine_list=NO_MACHINES)
         self.assertEqual(proc.returncode, 2)
+
+    def test_an_absent_app_with_no_org_refuses_rather_than_guessing(self):
+        # Development and production are separate Fly organisations, so there
+        # is no default that is right for both. Creating a production app in
+        # the development org is not an error Fly reports — it is one somebody
+        # finds later, which is why this refuses instead of picking.
+        proc, calls = self.run_script("otelcol-prod", "deploy/fly/otelcol-prod", "1",
+                                      machine_list=STARTED_TWO,
+                                      app_exists=False, fly_org="")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("FLY_ORG is unset", proc.stderr)
+        self.assertNotIn("apps create", calls)
+
+    def test_an_existing_app_deploys_without_an_org(self):
+        # Only the create path needs FLY_ORG. Demanding it up front would break
+        # every caller that never creates anything.
+        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                  machine_list=STARTED_TWO,
+                                  app_exists=True, fly_org="")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 if __name__ == "__main__":

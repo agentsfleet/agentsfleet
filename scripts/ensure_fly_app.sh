@@ -36,10 +36,17 @@ POLL_ATTEMPTS="${POLL_ATTEMPTS:-12}"
 POLL_SLEEP_SECONDS="${POLL_SLEEP_SECONDS:-5}"
 readonly POLL_ATTEMPTS POLL_SLEEP_SECONDS
 
-# The organisation new apps are created in. Overridable so a fork or a test
-# never has to reach the real one; the default is the org every checked-in
-# fly.toml already belongs to.
-FLY_ORG="${FLY_ORG:-agentsfleet}"
+# The organisation new apps are created in. NO DEFAULT, deliberately.
+# Development and production live in separate Fly organisations
+# (`agentsfleet-dev` and `agentsfleet-prod`), so there is no single value that
+# is right for both callers, and a default would be silently wrong for one of
+# them — creating a production app inside the development organisation is not
+# an error Fly reports, it is an error somebody finds later.
+#
+# An earlier revision of this file defaulted to `agentsfleet`, an organisation
+# that has never existed. Refusing beats guessing: the caller knows which
+# environment it is deploying and can say so.
+FLY_ORG="${FLY_ORG:-}"
 readonly FLY_ORG
 
 usage() {
@@ -59,6 +66,14 @@ ensure_app_exists() {
   if "$FLYCTL" status --app "$app" >/dev/null 2>&1; then
     printf '%s already exists\n' "$app"
     return 0
+  fi
+  if [ -z "$FLY_ORG" ]; then
+    # Only the create path needs the org, so this refuses HERE rather than at
+    # the top of the script: an existing app deploys fine without it, and
+    # demanding it up front would break every caller that never creates.
+    printf '%s does not exist and FLY_ORG is unset — refusing to guess which organisation to create it in\n' \
+      "$app" >&2
+    return 1
   fi
   printf '%s does not exist — creating it in %s\n' "$app" "$FLY_ORG"
   if ! "$FLYCTL" apps create "$app" --org "$FLY_ORG"; then
