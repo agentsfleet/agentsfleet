@@ -81,6 +81,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     request_body = PlatformKeyPut,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -124,9 +125,10 @@ pub(crate) async fn set<D: Services>(
             })
             .into_response()
         }
-        Ok(SetPlatformKey::WorkspaceNotFound) => {
-            reject(error_code::INVALID_REQUEST, DETAIL_WORKSPACE_UNKNOWN)
-        }
+        Ok(SetPlatformKey::WorkspaceNotFound) => reject(
+            error_code::PROVIDER_SOURCE_WORKSPACE_NOT_FOUND,
+            DETAIL_WORKSPACE_UNKNOWN,
+        ),
         Ok(SetPlatformKey::ModelNotFound) => reject(
             error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
             DETAIL_MODEL_UNKNOWN,

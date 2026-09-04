@@ -594,6 +594,14 @@ const ZIG_ENTRIES: &[ZigEntry] = &[
         ),
     },
     ZigEntry {
+        code: "UZ-PROVIDER-011",
+        status: ".bad_request",
+        title: "Source workspace not found",
+        user_message: Some(
+            "That workspace doesn't exist. Pick one from your workspace list and try again.",
+        ),
+    },
+    ZigEntry {
         code: "UZ-MODELS-001",
         status: ".conflict",
         title: "Cannot delete the active model entry",
