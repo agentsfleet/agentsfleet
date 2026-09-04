@@ -52,6 +52,15 @@ async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
     )
     .await;
     assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    // The status alone never distinguished this from a malformed body. An id
+    // that parses but names no workspace is not the caller mistyping something,
+    // and telling them to re-check their input sends them looking at a value
+    // that was already correct.
+    assert_eq!(
+        json_body(unknown).await.get("code").and_then(Value::as_str),
+        Some("UZ-PROVIDER-011"),
+        "an absent workspace must not read back as an invalid request"
+    );
 
     let set = send(
         router,
