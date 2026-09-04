@@ -79,11 +79,70 @@ pub mod field {
     /// Who or what produced the event.
     pub const ACTOR: &str = "actor";
     /// How the event entered the system.
-    pub const EVENT_TYPE: &str = "event_type";
+    ///
+    /// The constant is named for the concept and its VALUE is the wire
+    /// spelling, which are deliberately different words. `event_envelope.zig`
+    /// shipped `type`, entries written under that name are what a stream can
+    /// still hold, and a reader is not free to prefer a nicer name — the pair
+    /// below is the same shape for the same reason.
+    pub const EVENT_TYPE: &str = "type";
     /// The workspace the fleet belongs to.
     pub const WORKSPACE_ID: &str = "workspace_id";
-    /// The trigger payload, carried verbatim.
-    pub const REQUEST_JSON: &str = "request_json";
+    /// The trigger payload, carried verbatim. See [`EVENT_TYPE`] on the
+    /// name/value split.
+    pub const REQUEST_JSON: &str = "request";
+    /// The producer's instant, in milliseconds since the epoch.
+    ///
+    /// Written by the producer rather than derived from the entry id, because
+    /// the lease path bills against it: a value the ingress stamped is the one
+    /// a tenant is charged for, and Redis assigning a second opinion at append
+    /// time would make the charge depend on queue latency.
+    pub const CREATED_AT: &str = "created_at";
+}
+
+/// Every field a fleet-stream entry carries, assembled in one place.
+///
+/// The reason this type exists rather than an array spelled at each producer:
+/// the reader refuses an entry missing ANY of these, so a producer that writes
+/// four of five appends work nothing can lease — silently, because the entry
+/// is durable, delivered, and undecodable. That is not hypothetical. It shipped:
+/// the producers wrote `event_type`/`request_json` and no `created_at` while
+/// the reader asked for `type`/`request`/`created_at`, and every event appended
+/// after the cutover was unleasable until this type made the set indivisible.
+///
+/// Named fields rather than positional arguments, because five strings in a row
+/// is a swap waiting to happen and an actor written into the type field is a
+/// refusal that names the wrong thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entry<'a> {
+    /// Who or what produced the event.
+    pub actor: &'a str,
+    /// How the event entered the system — an [`EventType`] spelling.
+    pub event_type: &'a str,
+    /// The workspace the fleet belongs to.
+    pub workspace_id: &'a str,
+    /// The trigger payload, already serialized.
+    pub request_json: &'a str,
+    /// The producer's instant, already rendered as milliseconds.
+    pub created_at: &'a str,
+}
+
+/// How many fields an entry carries. One number, so a reader counting them and
+/// a producer writing them cannot disagree.
+pub const ENTRY_FIELD_COUNT: usize = 5;
+
+impl<'a> Entry<'a> {
+    /// The field pairs an append writes, in wire order.
+    #[must_use]
+    pub const fn pairs(&self) -> [(&'static str, &'a str); ENTRY_FIELD_COUNT] {
+        [
+            (field::ACTOR, self.actor),
+            (field::EVENT_TYPE, self.event_type),
+            (field::WORKSPACE_ID, self.workspace_id),
+            (field::REQUEST_JSON, self.request_json),
+            (field::CREATED_AT, self.created_at),
+        ]
+    }
 }
 
 /// One event on the wire, flat by convention.

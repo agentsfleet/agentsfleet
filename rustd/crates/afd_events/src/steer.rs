@@ -22,7 +22,7 @@
 
 use afd_core::error_code;
 use afd_redis::{FleetStreams, ReadyIndex, Redis};
-use afd_wire::event::{EventType, field};
+use afd_wire::event::{Entry, EventType};
 
 use crate::error::Result;
 
@@ -71,15 +71,18 @@ impl Steer {
         actor: &str,
         request_json: &str,
     ) -> Result<String> {
+        let created_at = afd_core::clock::now().as_millis().to_string();
         let appended = FleetStreams::new(self.queue.clone())
             .append(
                 fleet,
-                &[
-                    (field::ACTOR, actor),
-                    (field::EVENT_TYPE, EventType::Chat.as_str()),
-                    (field::WORKSPACE_ID, workspace),
-                    (field::REQUEST_JSON, request_json),
-                ],
+                &Entry {
+                    actor,
+                    event_type: EventType::Chat.as_str(),
+                    workspace_id: workspace,
+                    request_json,
+                    created_at: &created_at,
+                }
+                .pairs(),
             )
             .await?;
 
