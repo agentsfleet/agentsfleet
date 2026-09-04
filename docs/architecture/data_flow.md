@@ -237,7 +237,7 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
                   User reads it.
 ```
 
-The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `src/agentsfleetd/fleet/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
+The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `rustd/crates/afd_api_runner/src/handler/runner/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
 
 ## The three durable stores: who owns what
 
