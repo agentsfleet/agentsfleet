@@ -3,7 +3,7 @@
 **Owners:** 🤠 Indy authorizes the swap and types the target; 🦉 Orly executes and verifies.
 **Scope:** one environment per run. Staging rehearses; production follows a green rehearsal.
 **Status:** SKELETON. This half carries the shape, the register and the rollback
-rule. The swap milestone fills the rows marked `M181_002` and records evidence.
+rule. The swap milestone fills the rows marked `M181_006` and records evidence.
 
 Every step below is a command, not a description, and every step carries a probe
 tag. `playbooks/operations/cutover/probes.sh` runs the probes and refuses when a rubric row
@@ -19,7 +19,7 @@ Files Changed is what makes it true, and the SCHEMA GUARD is what keeps it true.
 
 ## Drain order
 
-`M181_002` fills the per-machine sequence. The ORDER is fixed here because it is
+`M181_006` fills the per-machine sequence. The ORDER is fixed here because it is
 the part a swap-day decision must not re-derive:
 
 1. Remove the machine from the load balancer and wait for in-flight requests to
@@ -37,7 +37,7 @@ the part a swap-day decision must not re-derive:
 ## Abort criteria
 
 Abort is a decision made BEFORE the swap, so that swap-day judgment is a lookup
-rather than an argument. `M181_002` sets the thresholds from a measured
+rather than an argument. `M181_006` sets the thresholds from a measured
 baseline; the criteria themselves are fixed:
 
 - Any parity differ against a route not in the register below.
@@ -159,7 +159,7 @@ would read that as success.
 
 ## Evidence
 
-`M181_002` records the rehearsal and the swap here: the staging rollback
+`M181_006` records the rehearsal and the swap here: the staging rollback
 rehearsal, the soak numbers against the budgets, and the post-swap probe run.
 
 **The collector hop.** One row per environment, filled at
