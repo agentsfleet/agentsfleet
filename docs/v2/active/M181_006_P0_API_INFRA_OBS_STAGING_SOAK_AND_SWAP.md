@@ -125,6 +125,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/ensure_fly_app.sh` · `scripts/ensure_fly_app_test.py` | EDIT | §0 — create-if-absent, so the script's contract covers a first deploy instead of assuming someone ran `fly apps create` by hand; the self-test covers the new branch |
 | `playbooks/founding/03_priming_infra/001_playbook.md` | EDIT | §0 — the two `fly apps create otelcol-{dev,prod}` lines that were never added, and the step summary that still says "four Fly.io apps" |
 | `playbooks/operations/cutover/coverage.tsv` | EDIT | §3 — declare M180_001 and M181_001–005 and cover or exclude their 26 rubric rows, so Invariant 7 grades M175–M181 as it claims rather than M175–M179 |
+| `rustd/crates/{afd_crypto,afd_core,afd_auth,afd_identity,afd_redis}/tests/**` | EDIT | §4.1 — eight parity tests read the Zig tree from disk; expectations frozen inline and proven green BEFORE the deletion |
+| `src/agentsfleetd/**` | DELETE | §4.2 — the Zig daemon. `Dockerfile:39` ships the Rust binary and no workflow builds this tree |
+| `build.zig` | EDIT | §4.3 — six references die with the tree, including `S_SRC_MAIN_ZIG` and the `test-auth` target |
+| `src/build/auth_tests.zig` | DELETE | §4.3 — the `test-auth` gate's support file; its only scope was the deleted daemon's auth directory |
+| `rustd/crates/**` · `cli/**` · `docs/**` · `audits/**` · `dispatch/**` · `playbooks/**` | EDIT | §4.2 — the reference sweep: 92 files name the deleted tree, most citing it as canon in prose |
+| `src/runner/**` · `build_runner.zig` | **UNTOUCHED — asserted, not assumed** | §4.5 grades that the deletion did not take the runner with it |
 | `rustd/crates/agentsfleetd/**` | EDIT | only what the soak proves it needs — a startup or shutdown ordering fix the drain-swap surfaces, a budget-driven change the latency or memory dimension forces. No feature work: a soak that changes the daemon it is measuring has measured nothing |
 
 ## Applicable Rules
@@ -241,6 +247,42 @@ become invisible by ageing.
 - **Dimension 3.3** — the runbook's evidence tables are filled from real runs, not left as empty rows → Test `test_runbook_probes`
 
 
+### §4 — The Zig daemon is sunset
+
+Moved here from M187_001 on Indy's call (Sep 04, 2026). That spec gated the
+deletion on end-to-end fleet acceptance because the tree was the rollback; the
+tree stopped being the rollback at the acceleration, so the gate was protecting
+a property that no longer existed. What remains is a reference implementation,
+and Indy keeps a clone outside the repository for that. M187_001 keeps the live
+fleet verification, which is what it is actually for.
+
+**The blast radius is 92 files, not one directory.** Measured with
+`git grep -l "src/agentsfleetd"` under M187_001's own R8 exclusions: 27 Rust
+files, 15 CLI files, 12 docs, 4 gates, 3 skill trees, `build.zig`, and the rest
+across playbooks and root. M187_001's Files Changed named the directory and the
+workflows and nothing else, which is why this is a section rather than a line.
+
+**Eight of those are load-bearing, and they decide the order.** Rust parity
+tests read the Zig source FROM DISK at test time — `read_to_string(...).unwrap()`
+against `crypto_primitives.zig`, `error_registry.zig`, `queue/constants.zig`
+and five more. They panic on a missing file, so deleting the tree first turns
+`make test-unit-all` red for a reason unrelated to whatever else the diff did.
+They are converted BEFORE the deletion, and proven green while the tree still
+stands, or the conversion is not proven faithful — only compiling.
+
+Those tests are not deleted with the tree. They pin crypto primitives, error
+codes, scope catalogues and Redis keys; the Zig file was where the expectation
+came from, not what made it worth asserting. Once Zig is gone Rust is canon, so
+the expectation is frozen inline and the assertion survives. Deleting them
+would trade a dangling dependency for a coverage hole.
+
+- **Dimension 4.1** — every Rust test that read the Zig tree from disk asserts the same values from a frozen expectation, and is green with the tree still present → Tests the eight converted files, run before §4.2 lands
+- **Dimension 4.2** — `src/agentsfleetd/**` is removed and no reference survives outside `docs/v2/done/` and `docs/v1/` → Test `no path under src/agentsfleetd is referenced after the deletion`
+- **Dimension 4.3** — `build.zig` loses its daemon targets and still builds what it should: six references die with the tree, including `S_SRC_MAIN_ZIG` and the `test-auth` gate that reaches the daemon's auth through `src/build/auth_tests.zig`. A support file left addressing a deleted directory is removed with its caller rather than left orphaned → Test `the default build file declares no daemon target`
+- **Dimension 4.4** — every gate, make target and playbook whose scope was the daemon either narrows or is removed, and none is left scanning nothing and reporting green. A gate covering daemon AND runner narrows; only an empty scope is deleted → Test `no gate reports a vacuous pass over a deleted tree`
+- **Dimension 4.5** — the runner is untouched and still ships: `build_runner.zig` and `src/runner/**` unmodified, `compile-runner-amd64` and `compile-runner-arm64` still declared and still in the release job's `needs`, deploy stages still consuming `agentsfleet-runner-linux-amd64`. Zig does not leave this repository — the runner stays Zig by Indy's Sep 02 call, so a sweep that greps for `.zig` and expects zero is wrong by construction → Tests `the runner build still produces its artifact` · `the release workflow still builds and ships the runner`
+
+
 ## Interfaces
 
 ```
@@ -276,6 +318,8 @@ make bench-cutover · make dry-app-rustd   the budget and dry lanes M181_001 shi
 5. Every declared divergence is in the register before cutover, and the parity oracles read it — a declared divergence never surfaces as a regression and an undeclared one always does.
 6. Every runbook step carries an executable probe — `test_runbook_probes`.
 7. Cutover cannot proceed with any M175–M181 rubric row ungraded or red — the probe runner's row-coverage assert: covered by a tagged probe, or named in the printed exclusion manifest; anything else is a red run.
+8. No Rust test reads the Zig tree from disk after §4.1, and none loses an assertion getting there — a frozen expectation replaces a file read, never a deletion. §4.1 is green BEFORE §4.2 lands, so a red suite after the deletion is a real regression rather than a missing file.
+9. Zig does not leave this repository. The runner stays, so `src/runner/**` and `build_runner.zig` are graded as survivors — a sweep that greps `.zig` and expects zero is wrong by construction.
 
 ## Metrics & Observability
 
@@ -318,7 +362,11 @@ No product-analytics changes.
 | R2 | Budgets hold (§1) | `make bench-cutover` | exit 0 | P0 | |
 | R3 | Handoff bidirectional (§1) | `make test-parity BASE_URL=<previous-digest> COMPARE_URL=<current>` in each direction | exit 0 both runs | P0 | |
 | R4 | Rollback rehearsed and probes green (§2) | `bash playbooks/operations/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R5 | The daemon tree is gone (§4.2) | `test ! -d src/agentsfleetd` | exit 0 | P0 | |
+| R6 | Nothing references it (§4.2) | `git grep -l "src/agentsfleetd" -- ':!docs/v2/done' ':!docs/v1'` | no output | P0 | |
+| R7 | The runner still builds after it (§4.5) | `zig build --build-file build_runner.zig -Doptimize=ReleaseSafe && test -x zig-out/bin/agentsfleet-runner` | exit 0 | P0 | |
+| R8 | The runner still ships (§4.5) | `grep -c compile-runner- .github/workflows/release.yml` | at least 3 | P0 | |
+| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
@@ -332,21 +380,30 @@ No product-analytics changes.
 
 ## Dead Code Sweep
 
-N/A — no files deleted. The Zig daemon's retirement is a separate milestone.
-Note that the REASON has changed and the conclusion has not: `src/agentsfleetd`
-is not deleted here, but no longer because it is the rollback — it stopped being
-the rollback at the acceleration, and the previous image digest is what
-Invariant 2 names. It stays because M187_001 §5 owns its deletion and gates that
-on end-to-end acceptance, which is a stronger reason than this spec needing it.
+**This spec IS the sweep.** `src/agentsfleetd/**` is deleted in §4, with the 92
+references that name it and the `build.zig` targets rooted at it.
 
-**The retirement is gated on M187_001, not on this spec** (Indy, Sep 01, 2026).
-That is later than cutover on purpose: `src/agentsfleetd` stays the rollback
-through the soak here, and it is M187's end-to-end fleet acceptance — the full
-journey against the Rust daemon, human eyeball included — that earns the
-deletion. Recording the trigger is the point: this section previously said only
-"a separate post-cutover milestone", which named no milestone, no number and no
-condition, so the promise was unfalsifiable and the tree would have outlived the
-family by default.
+The gate moved because the reason for it dissolved. M187_001 held the deletion
+behind end-to-end fleet acceptance on the stated ground that the tree was the
+rollback; it stopped being the rollback at the acceleration, and the previous
+image digest is what Invariant 2 names. A gate protecting a property that no
+longer exists is ceremony, and the tree would have outlived the family on the
+strength of it.
+
+> Indy (2026-09-04): "I think i prefer to process the sunset in this and keep
+> 187_001 for a live fleet verification? Since there is no point keeping it. I
+> will clone a copy and keep in another folder for reference." — context: asked
+> whether this milestone sunsets the daemon; it did not, and M187_001's gate no
+> longer had a live justification. The reference clone answers the one remaining
+> reason to keep the tree in-repo, and M187_001 keeps the verification it is
+> named for.
+
+**Not swept, deliberately:** `src/runner/**`, `src/build/main.zig` and
+`build_runner.zig` compile `agentsfleet-runner`, which `release.yml` builds,
+requires and deploys, and which stays Zig. `src/build/auth_tests.zig` IS swept —
+it supports the `test-auth` gate whose only scope is the deleted daemon's auth
+directory, making it a caller-less support file rather than runner
+infrastructure.
 
 ## Out of Scope
 
