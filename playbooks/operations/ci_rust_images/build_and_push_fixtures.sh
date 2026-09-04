@@ -19,11 +19,20 @@ readonly REAL_SCRIPT="$FIXTURES_DIR/build_and_push.sh"
 # Every fixture lives under ONE parent, so cleanup is a single removal that a
 # Ctrl-C also gets. `fixture` runs inside a command substitution — a subshell —
 # so anything it appended to an array in there would never reach the suite;
-# a parent directory sidesteps that entirely. Single-quoted so $ROOT expands at
-# signal time rather than being baked into the trap body.
+# a parent directory sidesteps that entirely.
+#
+# The signals terminate rather than share the EXIT handler, for the same reason
+# `build_and_push.sh` does: a trap that merely returns lets the shell RESUME, so
+# a Ctrl-C mid-suite would delete the fixture tree and then run the remaining
+# tests against a directory that is no longer there — a screenful of misleading
+# failures instead of a stop.
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/build-push-test.XXXXXX")"
 readonly ROOT
-trap 'rm -rf "$ROOT"' EXIT INT TERM
+fixtures_cleanup() { rm -rf "$ROOT"; return 0; }
+fixtures_on_signal() { fixtures_cleanup; trap - EXIT; exit "$1"; }
+trap fixtures_cleanup EXIT
+trap 'fixtures_on_signal 130' INT
+trap 'fixtures_on_signal 143' TERM
 
 sha_of_string() {
   if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'
