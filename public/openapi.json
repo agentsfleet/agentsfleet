@@ -1040,6 +1040,16 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No credential, or one this route does not accept",
             "content": {
