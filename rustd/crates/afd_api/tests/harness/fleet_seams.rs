@@ -280,6 +280,26 @@ impl Fleet {
     }
 
     /// The production router, over this instance.
+    /// The writeback log, shared with the router this fleet builds.
+    ///
+    /// Taken BEFORE `router` consumes the fleet: the seam holds an `Arc`, so
+    /// the handle a case keeps and the one the handler writes through are the
+    /// same log.
+    pub(crate) fn signup_writebacks(&self) -> super::RecordingWriteback {
+        self.signup_writeback.clone()
+    }
+
+    /// A writeback seam the case chose — the one that refuses, when a case has
+    /// to prove the delivery is still answered after the provider would not
+    /// take the write.
+    ///
+    /// Taken as a value rather than a flag so the log a case reads back is the
+    /// one it handed in: build the seam, keep a clone, pass the other here.
+    pub(crate) fn with_signup_writeback(mut self, seam: super::RecordingWriteback) -> Self {
+        self.signup_writeback = seam;
+        self
+    }
+
     pub(crate) fn router(self) -> Router {
         let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
         build(Arc::new(self), &admission)

@@ -13,10 +13,12 @@ paths = [
   '''(^|/)app/\.next/.*''',
   # Zig test files (deterministic fixtures, not real credentials)
   '''(^|/).*_test\.zig$''',
-  # Shared test-fixture helpers (deterministic seeds, not real credentials)
+  # Shared test-fixture helpers (deterministic seeds, not real credentials).
+  # Both files went with the Zig daemon, but a full-history scan still reads the
+  # blobs, so the entries stay: removing them surfaced 21 findings from history.
   '''(^|/)test_fixtures\.zig$''',
-  # Centralized persona auth fixtures — deterministic offline test JWTs minted by
-  # scripts/mint-scope-personas.mjs against a throwaway committed test key.
+  # Centralized persona auth fixtures — deterministic offline test JWTs, minted
+  # against a throwaway committed test key by a script retired with the tree.
   '''(^|/)test_scope_tokens\.zig$''',
   # Zig build/cache directories
   '''(^|/)\.tmp/''',

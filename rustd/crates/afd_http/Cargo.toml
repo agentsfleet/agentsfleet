@@ -34,6 +34,7 @@ afd_db.workspace = true
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_ops.workspace = true
+afd_identity.workspace = true
 afd_library.workspace = true
 afd_observability.workspace = true
 afd_runner.workspace = true

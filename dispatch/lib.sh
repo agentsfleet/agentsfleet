@@ -53,7 +53,10 @@ DISPATCH_RC=0
 # Rule-code gloss map — canonical short expansions (full text in RULES.md legend).
 # Keep in sync with RULES.md; dispatch-coverage.sh fails on a code with no
 # gloss entry. snake-of-record: CODE → "Short Gloss".
-declare -A DISPATCH_GLOSS=(
+# A heredoc of `[CODE]="Gloss"` lines, not declare -A: associative arrays are
+# bash 4+ and macOS ships 3.2. The line shape is load-bearing —
+# evals/dispatch/coverage.sh greps lib.sh for it (checks f and g).
+DISPATCH_GLOSS="$(cat <<'GLOSS'
   [NDC]="No Dead Code"
   [NLR]="No Legacy Retained (touch-it-fix-it)"
   [NLG]="No Legacy compat shims (pre-v2.0.0)"
@@ -83,10 +86,17 @@ declare -A DISPATCH_GLOSS=(
   [ERR-RS]="Rust ERror discipline (one type per crate, Result alias, no stringified cause)"
   [GRP]="GREptile rule audit (diff vs greptile-learnings/RULES.md codes)"
   [LDC]="Legacy-Design Consult (A remove / B patch / C keep)"
-)
+GLOSS
+)"
 
 # Look up a gloss; empty string if the code is unknown (audit will catch it).
-dispatch_gloss() { printf '%s' "${DISPATCH_GLOSS[$1]:-}"; }
+# Pure parameter expansion — no fork per finding. `[` is escaped so the code
+# is matched literally, not as a glob class.
+dispatch_gloss() {
+  local rest; rest="${DISPATCH_GLOSS#*\[$1\]=\"}"
+  [[ "$rest" == "$DISPATCH_GLOSS" ]] && return 0
+  printf '%s' "${rest%%\"*}"
+}
 
 dispatch_init() {
   DISPATCH_LANG="$1"; shift

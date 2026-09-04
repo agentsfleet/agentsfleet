@@ -82,6 +82,15 @@ pub const PROVIDER_PLATFORM_KEY_MISSING: ErrorCode = ErrorCode::declare("UZ-PROV
 /// nowhere for the key to be.
 pub const TENANT_NO_PRIMARY_WORKSPACE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-010");
 
+/// The `source_workspace_id` a platform-key write named does not exist.
+///
+/// Distinct from `INVALID_REQUEST`, which this shared until the split. The
+/// id was well-formed and the caller is told to re-check what they typed, when
+/// nothing they typed was wrong — the workspace is simply not there. Its
+/// sibling refusal on the same handler, `PROVIDER_MODEL_NOT_IN_CATALOGUE`,
+/// already draws that line for the model half of the same body.
+pub const PROVIDER_SOURCE_WORKSPACE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-PROVIDER-011");
+
 /// The entry a tenant asked to remove is the one currently selected.
 ///
 /// `ERR_MODELS_DELETE_ACTIVE` (`error_registry.zig:138`). Refused rather than

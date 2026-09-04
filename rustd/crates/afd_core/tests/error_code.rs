@@ -1,26 +1,200 @@
 //! The registry is a checked subset of the Zig one, not a second source of truth.
 #![expect(
     clippy::unwrap_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use afd_core::error_code::{self, ErrorCode, REGISTRY};
 
-/// The Zig file that is the registry of record for the whole product.
-const ZIG_REGISTRY: &str = "src/agentsfleetd/errors/error_registry.zig";
-
-fn repo_root() -> PathBuf {
-    // <repo>/rustd/crates/afd_core -> <repo>
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf()
-}
+/// Every code the retired daemon's `errors/error_registry.zig` declared at sunset.
+///
+/// FROZEN, not read. The Zig registry was the registry of record and this test
+/// read it from disk; the tree is deleted in this milestone, so the values it
+/// carried are pinned here and the assertion below is unchanged. That the Zig
+/// file was where the expectation came from is not what made it worth
+/// asserting: a Rust code outside this set is one the product never shipped,
+/// and adding it is a public-contract decision, not a typo to wave through.
+///
+/// Recorded from the tree while it still stood (169 codes).
+const ZIG_DECLARED: &[&str] = &[
+    "UZ-AGT-003",
+    "UZ-AGT-004",
+    "UZ-AGT-006",
+    "UZ-AGT-008",
+    "UZ-AGT-009",
+    "UZ-AGT-010",
+    "UZ-AGT-011",
+    "UZ-AGT-012",
+    "UZ-AGT-013",
+    "UZ-AGT-014",
+    "UZ-AGT-015",
+    "UZ-API-001",
+    "UZ-API-002",
+    "UZ-APIKEY-001",
+    "UZ-APIKEY-003",
+    "UZ-APIKEY-004",
+    "UZ-APIKEY-005",
+    "UZ-APIKEY-006",
+    "UZ-APIKEY-007",
+    "UZ-APIKEY-008",
+    "UZ-APPROVAL-001",
+    "UZ-APPROVAL-002",
+    "UZ-APPROVAL-003",
+    "UZ-APPROVAL-004",
+    "UZ-APPROVAL-005",
+    "UZ-APPROVAL-006",
+    "UZ-AUTH-001",
+    "UZ-AUTH-002",
+    "UZ-AUTH-003",
+    "UZ-AUTH-004",
+    "UZ-AUTH-005",
+    "UZ-AUTH-006",
+    "UZ-AUTH-011",
+    "UZ-AUTH-012",
+    "UZ-AUTH-013",
+    "UZ-AUTH-014",
+    "UZ-AUTH-015",
+    "UZ-AUTH-016",
+    "UZ-AUTH-017",
+    "UZ-AUTH-018",
+    "UZ-AUTH-019",
+    "UZ-AUTH-020",
+    "UZ-AUTH-022",
+    "UZ-AUTH-023",
+    "UZ-AUTH-024",
+    "UZ-AUTH-025",
+    "UZ-BUNDLE-001",
+    "UZ-BUNDLE-002",
+    "UZ-BUNDLE-003",
+    "UZ-BUNDLE-004",
+    "UZ-BUNDLE-005",
+    "UZ-CATALOG-001",
+    "UZ-CATALOG-002",
+    "UZ-CATALOG-003",
+    "UZ-CATALOG-004",
+    "UZ-CATALOG-005",
+    "UZ-CONN-001",
+    "UZ-CONN-002",
+    "UZ-CONN-003",
+    "UZ-CONN-004",
+    "UZ-CONN-006",
+    "UZ-CONN-007",
+    "UZ-CONN-008",
+    "UZ-CRED-001",
+    "UZ-CRED-002",
+    "UZ-EXEC-003",
+    "UZ-EXEC-004",
+    "UZ-EXEC-005",
+    "UZ-EXEC-006",
+    "UZ-EXEC-007",
+    "UZ-EXEC-008",
+    "UZ-EXEC-009",
+    "UZ-EXEC-010",
+    "UZ-EXEC-011",
+    "UZ-EXEC-012",
+    "UZ-EXEC-013",
+    "UZ-EXEC-014",
+    "UZ-EXEC-015",
+    "UZ-EXEC-016",
+    "UZ-EXEC-017",
+    "UZ-GH-001",
+    "UZ-GH-002",
+    "UZ-GRANT-001",
+    "UZ-GRANT-002",
+    "UZ-GRANT-003",
+    "UZ-INTERNAL-001",
+    "UZ-INTERNAL-002",
+    "UZ-INTERNAL-003",
+    "UZ-LIBRARY-001",
+    "UZ-LIBRARY-002",
+    "UZ-LIBRARY-003",
+    "UZ-LIBRARY-004",
+    "UZ-LIBRARY-005",
+    "UZ-LIBRARY-006",
+    "UZ-LIBRARY-008",
+    "UZ-MEM-002",
+    "UZ-MEM-003",
+    "UZ-MEM-004",
+    "UZ-MODELS-001",
+    "UZ-MODELS-002",
+    "UZ-MODELS-003",
+    "UZ-MODELS-004",
+    "UZ-PREFS-001",
+    "UZ-PREFS-002",
+    "UZ-PROVIDER-001",
+    "UZ-PROVIDER-002",
+    "UZ-PROVIDER-003",
+    "UZ-PROVIDER-004",
+    "UZ-PROVIDER-005",
+    "UZ-PROVIDER-006",
+    "UZ-PROVIDER-007",
+    "UZ-PROVIDER-008",
+    "UZ-PROVIDER-009",
+    "UZ-PROVIDER-010",
+    "UZ-REPAIR-010",
+    "UZ-REPAIR-011",
+    "UZ-REPAIR-012",
+    "UZ-REPAIR-013",
+    "UZ-REPAIR-014",
+    "UZ-REQ-001",
+    "UZ-REQ-002",
+    "UZ-RUN-001",
+    "UZ-RUN-005",
+    "UZ-RUN-006",
+    "UZ-RUN-009",
+    "UZ-RUN-010",
+    "UZ-RUN-011",
+    "UZ-RUN-012",
+    "UZ-RUN-013",
+    "UZ-RUN-014",
+    "UZ-RUN-015",
+    "UZ-RUN-016",
+    "UZ-RUN-017",
+    "UZ-RUN-018",
+    "UZ-SCHED-001",
+    "UZ-SCHED-002",
+    "UZ-SCHED-003",
+    "UZ-SCHED-004",
+    "UZ-SCHED-005",
+    "UZ-SCHED-006",
+    "UZ-SCHED-007",
+    "UZ-SCHED-008",
+    "UZ-SLK-010",
+    "UZ-SLK-011",
+    "UZ-SLK-020",
+    "UZ-SLK-022",
+    "UZ-SLK-030",
+    "UZ-STARTUP-001",
+    "UZ-STARTUP-002",
+    "UZ-STARTUP-003",
+    "UZ-STARTUP-004",
+    "UZ-STARTUP-005",
+    "UZ-STARTUP-006",
+    "UZ-TOOL-005",
+    "UZ-UUIDV7-009",
+    "UZ-VAULT-001",
+    "UZ-VAULT-002",
+    "UZ-VAULT-003",
+    "UZ-VAULT-004",
+    "UZ-VAULT-005",
+    "UZ-WH-001",
+    "UZ-WH-002",
+    "UZ-WH-010",
+    "UZ-WH-011",
+    "UZ-WH-020",
+    "UZ-WH-021",
+    "UZ-WH-022",
+    "UZ-WH-030",
+    "UZ-WORKSPACE-001",
+    // The one code the Zig registry never declared. Added to split an absent
+    // workspace from a malformed request on the platform-key write, where the
+    // two shared UZ-REQ-001 and the caller could not tell them apart. Declared
+    // here deliberately, which is what this list asks of a public-contract
+    // addition.
+    "UZ-PROVIDER-011",
+];
 
 /// Catches a code declared twice under two names, or a typo'd spelling that
 /// would reach a client as an unmatched code.
@@ -109,19 +283,14 @@ fn assert_registry_spelling(code: ErrorCode) {
 }
 
 /// Catches the drift this port is most exposed to: the Rust daemon reporting a
-/// code the Zig daemon never emits, or the same failure under two spellings.
-/// Zig stays the registry of record; this asserts the subset relation holds.
+/// code the Zig daemon never emitted, or the same failure under two spellings.
 #[test]
 fn should_declare_only_codes_the_zig_registry_also_declares() {
-    let path = repo_root().join(ZIG_REGISTRY);
-    let zig = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
     for code in REGISTRY {
-        let declaration = format!("\"{}\"", code.as_str());
         assert!(
-            zig.contains(&declaration),
-            "{} is not declared in {ZIG_REGISTRY}; Zig is the registry of record",
+            ZIG_DECLARED.contains(&code.as_str()),
+            "{} is outside the registry the product shipped; adding a code is a \
+             public-contract decision — declare it in ZIG_DECLARED deliberately",
             code.as_str()
         );
     }

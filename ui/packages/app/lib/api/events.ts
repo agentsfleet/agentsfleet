@@ -173,9 +173,14 @@ export async function listWorkspaceEvents(
 }
 
 // Live progress frames published on `fleet:{id}:activity` (Redis pub/sub),
-// fanned out to subscribers as SSE messages by the backend handler. The
-// backend authoritatively shapes these — keep `FRAME_KIND` in sync with
-// the KIND_* constants in src/agentsfleetd/fleet_runtime/activity_publisher.zig.
+// fanned out to subscribers as SSE messages by the backend handler. Two
+// names here are the daemon's own — `hello` and `catching_up`, KIND_HELLO
+// and KIND_CATCHING_UP in rustd/crates/afd_sse/src/frame.rs. The four run
+// frames are the `Published` enum in
+// rustd/crates/afd_fleet/src/lease/activity.rs, which is the seam where the
+// runner's wire vocabulary becomes this one; keep them in sync with it.
+// Everything else below is declared nowhere on the server — the SSE layer
+// reads a payload's leading `kind` and forwards whatever it finds.
 export const FRAME_KIND = {
   EVENT_RECEIVED: "event_received",
   TOOL_CALL_STARTED: "tool_call_started",
@@ -183,11 +188,14 @@ export const FRAME_KIND = {
   CHUNK: "chunk",
   TOOL_CALL_COMPLETED: "tool_call_completed",
   EVENT_COMPLETE: "event_complete",
-  // Synthetic install-progression frames the create path emits on a deferred
-  // tick post-201. The InstallStates surface advances its rendered step off
-  // these; `install:ready` is the signal the fleet has flipped installing→active
-  // on the server. Mirror the KIND_INSTALL_* constants in
-  // src/agentsfleetd/fleet_runtime/activity_publisher.zig verbatim.
+  // Synthetic install-progression frames. The retired daemon published these
+  // from a thread that slept after the 201 and then flipped
+  // installing→active; the current install does that flip inside its own
+  // pipeline and emits no `install:*` frame at all
+  // (rustd/crates/afd_fleet_lifecycle/src/install.rs). The InstallStates
+  // surface still advances its rendered step off these names, so they stay
+  // here as the client's own vocabulary rather than a mirror of a server
+  // constant — nothing on the server declares them.
   INSTALL_CREATING: "install:creating",
   INSTALL_PROVISIONING: "install:provisioning",
   INSTALL_READY: "install:ready",

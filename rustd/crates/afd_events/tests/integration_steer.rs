@@ -16,7 +16,7 @@
 //! Dimension 5.3 was written as "duplicate → idempotent per the documented
 //! dedup". There is no such dedup, in either daemon or in the contract:
 //!
-//! - `src/agentsfleetd/http/handlers/fleets/messages.zig:119` calls
+//! - the retired daemon's `http/handlers/fleets/messages.zig:119` called
 //!   `xaddFleetEvent` unconditionally — one append per request, no key
 //!   consulted, no prior request remembered;
 //! - `public/openapi/paths/fleet-messages.yaml` documents a 202 carrying a

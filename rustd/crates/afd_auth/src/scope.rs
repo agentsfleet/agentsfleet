@@ -1,6 +1,6 @@
 //! The `resource:action` capability vocabulary.
 //!
-//! Mirrors `src/agentsfleetd/auth/scopes.zig`, which is canon. One explicit
+//! Mirrors what the retired daemon's `auth/scopes.zig` declared, which was canon. One explicit
 //! scope per capability, and the `read < write < admin` hierarchy stored as
 //! DATA in [`HIERARCHY`] rather than inferred from the string — Sentry's
 //! `SENTRY_SCOPE_HIERARCHY_MAPPING` shape. A held scope is expanded to its

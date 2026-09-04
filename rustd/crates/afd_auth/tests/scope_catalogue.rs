@@ -1,6 +1,6 @@
 //! Dimensions 4.3 and 4.4 — the ladder, and what a gate does with it.
 //!
-//! Every assertion `src/agentsfleetd/auth/scopes_test.zig` makes, run against
+//! Every assertion the retired daemon's `auth/scopes_test.zig` made, run against
 //! the Rust catalogue with the same inputs. The Zig suite is the oracle for the
 //! same reason it is in `afd_crypto` and `afd_db`: it encodes what the deployed
 //! daemon already enforces, so re-running its claims proves more than a fixture

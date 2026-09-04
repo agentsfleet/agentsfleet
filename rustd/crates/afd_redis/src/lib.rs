@@ -4,7 +4,7 @@
 //! # One connection does the work of a pool
 //!
 //! The Zig daemon hand-rolls a connection pool, RESP framing and a reconnect
-//! loop across roughly three thousand lines under `src/agentsfleetd/queue/`,
+//! loop across roughly three thousand lines under the retired daemon's `queue/`,
 //! because a blocking client can only have one command in flight per socket.
 //! An async client has no such limit: [`client::Redis`] holds one multiplexed
 //! connection that carries concurrent commands and routes each reply back to

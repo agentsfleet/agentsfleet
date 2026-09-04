@@ -1,6 +1,6 @@
 //! What a client is told about an error, beyond its code.
 //!
-//! Mirrors `src/agentsfleetd/errors/error_entries.zig`, which pairs every
+//! Mirrors what the retired daemon's `errors/error_entries.zig` paired: every
 //! registry code with the status it answers, a title, a hint written for an
 //! integrator, and — where the dashboard renders it — a sentence written for a
 //! person. §5's `application/problem+json` envelope is assembled from exactly

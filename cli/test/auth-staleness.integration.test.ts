@@ -14,9 +14,10 @@
 //       field, wrong 0644 perms) — graceful typed error, non-zero, no crash,
 //       and the user's bytes are NOT silently rewritten or wiped.
 //
-// Codes are the real ones from the Zig registry
-// (src/agentsfleetd/errors/error_entries.zig):
-//   UZ-AUTH-003  (401, token expired)  error_entries.zig:62
+// Codes are the real ones from the daemon's registry
+// (rustd/crates/afd_core/src/error_code/auth.rs, paired with the status and
+// prose a client is told in rustd/crates/afd_core/src/problem/auth.rs):
+//   UZ-AUTH-003  (401, token expired)  AUTH_TOKEN_EXPIRED
 //
 // Transport contract verified live against api-dev: an HTTP 401 surfaces as a
 // ServerError → exit 3 with the UZ code on stderr; the retry classifier treats

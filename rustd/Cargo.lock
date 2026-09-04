@@ -116,6 +116,7 @@ name = "afd_api_ingress"
 version = "0.27.1"
 dependencies = [
  "afd_approval",
+ "afd_auth",
  "afd_connector",
  "afd_core",
  "afd_cron",
@@ -154,6 +155,7 @@ dependencies = [
  "afd_runner",
  "afd_wire",
  "axum",
+ "garde",
  "http",
  "serde_json",
  "tracing",
@@ -204,6 +206,7 @@ dependencies = [
  "afd_wire",
  "axum",
  "futures-util",
+ "garde",
  "http",
  "serde",
  "serde_json",
@@ -510,6 +513,7 @@ dependencies = [
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
+ "afd_identity",
  "afd_ingress",
  "afd_library",
  "afd_observability",
@@ -583,6 +587,7 @@ dependencies = [
  "bytes",
  "flate2",
  "futures-util",
+ "garde",
  "headers",
  "hex",
  "object_store",
@@ -672,6 +677,7 @@ dependencies = [
  "afd_redis",
  "afd_state",
  "afd_wire",
+ "garde",
  "serde",
  "serde_json",
  "sqlx",
@@ -763,6 +769,7 @@ dependencies = [
 name = "afd_wire"
 version = "0.27.1"
 dependencies = [
+ "garde",
  "serde",
  "serde_json",
  "utoipa",

@@ -21,6 +21,7 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
 [dependencies]
 afd_admin.workspace = true
 afd_core.workspace = true
+garde.workspace = true
 afd_credential.workspace = true
 afd_http.workspace = true
 afd_library.workspace = true

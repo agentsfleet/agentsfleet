@@ -55,6 +55,38 @@ pub enum Error {
     /// A capability claim did not come back.
     #[error(transparent)]
     Claim(#[from] ClaimUnavailable),
+    /// A signup's tenant never reached the identity provider.
+    #[error(transparent)]
+    Metadata(#[from] MetadataUnwritten),
+}
+
+/// Why a signup's tenant did not reach the identity provider.
+///
+/// Its own type for the reason [`ClaimUnavailable`] is: a caller
+/// DISCRIMINATES on it. The writeback is best-effort — the tenant row is
+/// already committed when it runs, so a provider outage must not turn signup
+/// into a 500 — and what separates "this deployment is misconfigured" from
+/// "the provider is having a bad minute" is exactly what an operator reading
+/// the log needs, because only one of them is theirs to fix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum MetadataUnwritten {
+    /// The provider could not be reached, or answered a status with no other
+    /// reading.
+    #[error("the identity provider could not be written to")]
+    Unreachable,
+    /// The provider refused this daemon's own credential.
+    ///
+    /// Distinct because it is never transient and never the provider's fault:
+    /// `CLERK_SECRET_KEY` is wrong or has lost the permission to write
+    /// metadata, and retrying forever would only hide that.
+    #[error("the identity provider refused this daemon's credential")]
+    Unauthorized,
+    /// The provider does not know the subject the event was about.
+    ///
+    /// The person was deleted between the event and this write. Nothing to
+    /// repair and nothing to retry.
+    #[error("the identity provider does not know this subject")]
+    UnknownSubject,
 }
 
 /// Why a claim did not come back.

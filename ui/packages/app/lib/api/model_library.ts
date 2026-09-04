@@ -1,5 +1,6 @@
 // The model library catalogue (core.model_library), read through the
-// authenticated GET /v1/models — see src/agentsfleetd/http/handlers/model_library.zig
+// authenticated GET /v1/models — see
+// rustd/crates/afd_api_tenant/src/handler/tenant/models.rs
 // for the wire shape. The dashboard fetches it once per session through a
 // token-minting Server Action (settings/models/actions.ts → getModelLibraryAction),
 // so the token never reaches the browser. The only static client-side model
@@ -9,8 +10,8 @@
 
 import { request } from "./client";
 
-// Route path — mirrors MODEL_LIBRARY_PATH in
-// src/agentsfleetd/http/handlers/model_library.zig (shared verbatim).
+// Route path — mirrors the `ModelLibrary` row of the route table in
+// rustd/crates/afd_http/src/route/tenant.rs (shared verbatim).
 const MODEL_LIBRARY_PATH = "/v1/models";
 
 export interface LibraryModel {

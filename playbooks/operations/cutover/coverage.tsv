@@ -11,16 +11,35 @@
 #   milestone <id>                    a merged milestone whose rubric rows must be covered
 #   covers    <probe name>            space-separated rows; `*` expands to every milestone
 #   exclude   <milestone:row>         the reason it is deliberately not probed
+# THE S-LETTERS DRIFTED, so hygiene rows below are enumerated rather than
+# wildcarded. `*` expands by LETTER (probes.sh expand_rows), which was safe
+# while every milestone used the same six-row tail. M181_003 and M181_004 put
+# the integration lane at S3 and pushed lint, version and secrets down one, so
+# `covers lint *:S3` would have tagged the lint probe onto an integration row —
+# covered on paper, proven by the wrong command. Only S1 and S2 still agree
+# across all eleven and still use the wildcard.
+#
+# The durable fix is to key hygiene rows by MEANING rather than letter, which
+# is a probes.sh schema change; it is named in M181_006's Discovery rather than
+# made here, because widening a green gate's code and its data in one step
+# leaves nothing to bisect if the result is red.
 milestone	M175_001
 milestone	M176_001
 milestone	M177_001
 milestone	M178_001
 milestone	M179_001
+milestone	M180_001
+milestone	M181_001
+milestone	M181_002
+milestone	M181_003
+milestone	M181_004
+milestone	M181_005
 covers	conform	*:S1
 covers	unit	*:S2
-covers	lint	*:S3
-covers	version	*:S4
-covers	secrets	*:S5
+covers	lint	M175_001:S3 M176_001:S3 M177_001:S3 M178_001:S3 M179_001:S3 M180_001:S3 M181_001:S3 M181_002:S3 M181_005:S3 M181_003:S4 M181_004:S4
+covers	version	M175_001:S4 M176_001:S4 M177_001:S4 M178_001:S4 M179_001:S4 M180_001:S4 M181_001:S4 M181_002:S4 M181_005:S4 M181_003:S5 M181_004:S5
+covers	secrets	M175_001:S5 M176_001:S5 M177_001:S5 M178_001:S5 M179_001:S5 M180_001:S5 M181_001:S5 M181_002:S5 M181_005:S5 M181_003:S6 M181_004:S6
+covers	integration	M181_003:S3 M181_004:S3
 covers	boot_ready	M176_001:R1 M176_001:R4
 covers	route_contract	M176_001:R6
 covers	substrate_suite	M176_001:R2 M176_001:R3 M176_001:R5
@@ -28,8 +47,41 @@ covers	runner_plane	M177_001:R1 M177_001:R2 M177_001:R3 M177_001:R4
 covers	tenant_surface	M178_001:R1 M178_001:R2 M178_001:R3 M178_001:R4
 covers	operator_surface	M179_001:R1 M179_001:R2 M179_001:R3 M179_001:R4
 covers	scaffold	M175_001:R1 M175_001:R2 M175_001:R3 M175_001:R4 M175_001:R5
-exclude	*:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+covers	ingress_signature	M180_001:R1
+covers	ingress_replay	M180_001:R2
+covers	connector_flows	M180_001:R3
+covers	ingress_routes	M180_001:R4
+covers	ci_runtime	M181_001:R1
+covers	dist_daemons	M181_001:R2
+covers	metric_registry	M181_001:R4
+covers	lane_self_tests	M181_001:R5
+covers	probe_coverage	M181_001:R6
+covers	route_contract	M181_001:R3 M181_002:R1
+covers	route_verbs	M181_002:R2
+covers	substrate_suite	M181_002:R3
+covers	openapi_coverage	M181_003:R1
+covers	openapi_artifact	M181_003:R2
+covers	openapi_absent_from_runtime	M181_003:R3
+covers	otlp_export	M181_004:R1
+exclude	M175_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M176_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M177_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M178_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M179_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M180_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M181_001:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M181_002:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M181_005:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M181_003:S7	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M181_004:S7	merge-time diff scope; the oversize sweep grades a diff, not a daemon
 exclude	M175_001:R6	merge-time diff scope, not a property of a deployed environment
 exclude	M177_001:R5	merge-time diff scope, not a property of a deployed environment
 exclude	M178_001:R5	merge-time diff scope, not a property of a deployed environment
 exclude	M179_001:R5	merge-time diff scope, not a property of a deployed environment
+exclude	M180_001:R5	merge-time diff scope, not a property of a deployed environment
+exclude	M181_001:R7	merge-time diff scope, not a property of a deployed environment
+exclude	M181_002:R4	merge-time diff scope, not a property of a deployed environment
+exclude	M181_003:R4	merge-time diff scope, not a property of a deployed environment
+exclude	M181_004:R2	merge-time diff scope, not a property of a deployed environment
+exclude	M181_005:R2	merge-time diff scope, not a property of a deployed environment
+exclude	M181_005:R1	asserts arrival at Grafana Cloud, which no repository or deploy command can observe; graded live at the change window by M181_006 §0.4

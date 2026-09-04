@@ -3,8 +3,8 @@
  *
  * TS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/svix.ts`. Mirrors
  * agentsfleetd's identity-events handler
- * (src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig) and the Svix
- * spec:
+ * (rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs) and the
+ * Svix spec:
  *   signed_input = `${id}.${timestamp}.${body}`
  *   signature    = base64( HMAC_SHA256(decode_base64(secret_after_whsec_prefix), signed_input) )
  *   header value = `v1,${signature}`

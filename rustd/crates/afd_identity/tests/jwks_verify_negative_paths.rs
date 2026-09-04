@@ -2,7 +2,7 @@
 //! refuse, and a key-id miss triggers EXACTLY ONE refresh.
 //!
 //! Every token here is one the Zig daemon signs and verifies. The fixtures are
-//! copied from `src/agentsfleetd/auth/jwks_test_fixtures.zig` and pinned to it
+//! copied from the retired daemon's `auth/jwks_test_fixtures.zig` and pinned to it
 //! by `test_the_fixtures_are_the_zig_daemons`, so these are real RS256
 //! signatures over a real 2048-bit key — not a Rust-side key pair that would
 //! only prove this implementation agrees with itself.
@@ -13,7 +13,6 @@
 //! a number rather than inferences from a trace.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -440,37 +439,18 @@ fn test_the_key_set_url_is_derived_from_the_issuer() {
 
 // ── Parity ───────────────────────────────────────────────────────────────
 
-/// Every fixture above is the Zig daemon's, byte for byte.
+/// The shared key really is 2048-bit, so the floor this daemon enforces is not
+/// being dodged by the fixture that proves the happy path.
 ///
-/// Without this the signatures would only prove this implementation agrees with
-/// itself. With it, a Rust verification failure over these bytes is a real
-/// divergence from the binary in production.
+/// This stood beside a byte-for-byte comparison against
+/// the retired daemon's `auth/jwks_test_fixtures.zig`, which the tree's deletion
+/// takes with it: once there is no second implementation, "my fixtures equal
+/// theirs" has nothing to compare against and freezing it would assert a
+/// constant against itself. The fixtures above ARE those bytes, copied while
+/// the tree stood and recorded as such in this file's header; what survives is
+/// the property that made them worth sharing.
 #[test]
-fn test_the_fixtures_are_the_zig_daemons() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("the crate sits three levels under the repository root")
-        .join("src/agentsfleetd/auth/jwks_test_fixtures.zig");
-    let zig = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
-    for (name, value) in [
-        ("TEST_RSA_N", TEST_RSA_N),
-        ("TEST_KID", TEST_KID),
-        ("TEST_HEADER", TEST_HEADER),
-        ("TEST_PAYLOAD_VALID", TEST_PAYLOAD_VALID),
-        ("TEST_PAYLOAD_EXPIRED", TEST_PAYLOAD_EXPIRED),
-        ("TEST_SIG_VALID", TEST_SIG_VALID),
-        ("TEST_SIG_EXPIRED", TEST_SIG_EXPIRED),
-    ] {
-        assert!(
-            zig.contains(&format!("{name} = \"{value}\"")),
-            "{name} does not match jwks_test_fixtures.zig"
-        );
-    }
-    // And the key really is 2048-bit, so the floor this daemon enforces is not
-    // being dodged by the fixture that proves the happy path.
+fn test_the_shared_key_meets_the_modulus_floor() {
     let modulus = URL_SAFE_NO_PAD
         .decode(TEST_RSA_N)
         .expect("the fixture modulus decodes");

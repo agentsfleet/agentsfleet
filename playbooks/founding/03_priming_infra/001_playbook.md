@@ -28,7 +28,7 @@ deploy application code or claim that the public domains are ready.
 | Order | Executor | Action | Verifier | Required evidence |
 |---|---|---|---|---|
 | 1 | Human | Confirm provider billing and account access. | Human | Named accounts and organizations recorded. |
-| 2 | Agent | Create four Fly.io apps. | Fly command-line query | All four app names resolve in the intended organization. |
+| 2 | Agent | Create six Fly.io apps. | Fly command-line query | All six app names resolve in the intended organization. |
 | 3 | Human | Create two PlanetScale and two Upstash resources; store role-separated values. | Deployment gate | Both environments pass and database roles differ. |
 | 4 | Human | Create two Cloudflare tunnels, route API domains, and store tokens. | Agent | Tunnel identifiers and DNS routes recorded without token values. |
 | 5 | Human | Configure Clerk session claims. | Pipeline | Authenticated development acceptance passes after deployment. |
@@ -39,11 +39,82 @@ deploy application code or claim that the public domains are ready.
 ## 1. Create Fly.io apps
 
 ```bash
-fly apps create agentsfleetd-dev --org agentsfleet
-fly apps create cloudflared-dev --org agentsfleet
-fly apps create agentsfleetd-prod --org agentsfleet
-fly apps create cloudflared-prod --org agentsfleet
+fly orgs create agentsfleet-dev
+fly orgs create agentsfleet-prod
+
+fly apps create agentsfleetd-dev --org agentsfleet-dev
+fly apps create cloudflared-dev --org agentsfleet-dev
+fly apps create otelcol-dev --org agentsfleet-dev
+fly apps create agentsfleetd-prod --org agentsfleet-prod
+fly apps create cloudflared-prod --org agentsfleet-prod
+fly apps create otelcol-prod --org agentsfleet-prod
 ```
+
+**One organisation per environment, and the split buys access separation, not
+separate bills.** An access grant to one environment is not a grant to the
+other; that is the whole reason for the split. Billing is the opposite — see
+below.
+
+**Billing is pooled, and it has to be set up before the first deploy.** A new
+organisation starts on Pay As You Go and **refuses to deploy until it can
+pay**. Two ways to satisfy that: put a card on each organisation, or make one
+organisation the **Billing Organization** and link the others to it, which
+pools that organisation's prepaid credits across all of them. This project
+took the second route on Sep 04, 2026 — `personal` holds the credits and both
+`agentsfleet-dev` and `agentsfleet-prod` are linked to it, from
+`https://fly.io/dashboard/<org>/billing` → *Link billing to another
+Organization*.
+
+> **`personal` is now load-bearing. Do not delete it.** It is empty of apps,
+> which makes it look disposable, and it is the payer for both environments.
+> Linking is **irreversible** — Fly does not support detaching a linked
+> organisation — so removing the billing organisation cannot be undone by
+> relinking.
+
+**Each environment needs its own org-scoped deploy token, and moving an app
+between organisations invalidates the old one.** A Fly deploy token is scoped
+to the organisation it was minted in, and billing linkage does NOT grant
+access — linked organisations share credits and nothing else. So the moment
+the apps left `personal`, the `personal`-scoped token the pipelines read went
+blind and every deploy failed with `Could not find App "<name>"`, an error
+that names the app and says nothing about the token, which is what makes it
+expensive to diagnose.
+
+Mint one token per organisation and store it in that environment's vault:
+
+```bash
+fly tokens create org --org agentsfleet-dev  --name agentsfleet-dev-ci  --expiry 8760h
+fly tokens create org --org agentsfleet-prod --name agentsfleet-prod-ci --expiry 8760h
+```
+
+`--org` is a flag, not a positional argument. `fly tokens create org
+agentsfleet-dev` is accepted and mints against the DEFAULT organisation, so the
+token looks fine and is scoped to the wrong place — the same failure this
+section exists to prevent.
+
+| Vault | Item and field | Organisation |
+|---|---|---|
+| `ZMB_CD_DEV` | `fly-api-token/credential` | `agentsfleet-dev` |
+| `ZMB_CD_PROD` | `fly-api-token/credential` | `agentsfleet-prod` |
+
+Write each value straight into 1Password from the command's output; it is
+shown once and belongs in no log, shell history or file. Revoke the superseded
+token with `fly tokens revoke <id>` — `fly tokens list --org personal --scope
+org` names it — once both pipelines are green, not before.
+
+These lines read `--org agentsfleet` until Sep 04, 2026, naming an
+organisation that has never existed: `fly orgs list` returned exactly one
+organisation, `personal`, and all four apps that existed were created there
+regardless of what this page said. Anyone running the commands verbatim would
+have been refused.
+
+**Fly organisations cannot be renamed — any of them.** The six apps were
+therefore moved into the two organisations above rather than `personal` being
+renamed. This is Fly's own prescribed workaround, not a local invention:
+create the organisation, `fly apps move` the apps, delete the old one. Skip
+that last step here, for the billing reason above. A replacement organisation
+is always created as `SHARED`, so the `PERSONAL` type cannot be re-minted
+either — another reason `personal` is not named in the commands above.
 
 The checked-in deployment definitions are canonical:
 
@@ -51,6 +122,16 @@ The checked-in deployment definitions are canonical:
 - `deploy/fly/agentsfleetd-prod/fly.toml`
 - `deploy/fly/cloudflared-dev/`
 - `deploy/fly/cloudflared-prod/`
+- `deploy/fly/otelcol-dev/`
+- `deploy/fly/otelcol-prod/`
+
+The two collector apps carry the OTLP hop the daemon exports through: the
+daemon addresses `http://otelcol-<env>.internal:4318` and the collector holds
+the Grafana Cloud credentials and forwards. They are listed here because the
+deploy workflows DEPLOY them but never CREATE them — `flyctl secrets set --app
+otelcol-dev` is the first thing that addresses the app, and it fails on an app
+that does not exist. Omitting these two lines is what leaves the development
+deploy red at "Ensure the OTLP collector is running".
 
 The release workflow sets the production API app to exactly three machines and
 fails unless all three are running before it checks the tunnel and public API.
@@ -155,7 +236,7 @@ allows the first control-plane deployment to run before either runner exists.
 
 ## Required result
 
-- The four Fly.io apps exist in the `agentsfleet` organization.
+- The six Fly.io apps exist in the `agentsfleet` organization.
 - Development and production databases and Redis resources are distinct.
 - Both Cloudflare tunnels exist and hold the intended API route.
 - Clerk claim audiences match the workflow literals.

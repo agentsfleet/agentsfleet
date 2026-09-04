@@ -39,10 +39,10 @@ Run this checklist as part of `CHORE(close)` (per `~/.claude/CLAUDE.md` lifecycl
 - [ ] **Error responses** use the registry; `detail` follows hygiene rules (no IDs, no SQL, no paths, ≤200 chars) (§5)
 - [ ] **OpenAPI document** regenerated from the build, not hand-edited; the coverage gate is green (§6)
 - [ ] **Route registered** in all six places (§7)
-- [ ] **Handler signature** matches `inner*(hx: Hx, req: *httpz.Request, ...)` (§8)
+- [ ] **Handler signature** takes only the extractors it reads and returns `Result<Response, Refusal>` (§8)
 - [ ] **Middleware policy** picked from the table; raw handlers carry first-10-lines comment (§7)
 - [ ] **Versioning** — added/renamed/removed surface listed in PR description; deprecation uses `Deprecation` + `Sunset` headers; new response fields declare `x-stability` (§9)
-- [ ] **Tests** — happy path + one error per `hx.fail` + idempotency double-PATCH + `Idempotency-Key` replay (where applicable) + ETag mismatch (§10)
+- [ ] **Tests** — happy path + one error per refusal + idempotency double-PATCH + `Idempotency-Key` replay (where applicable) + ETag mismatch (§10)
 - [ ] **Logging** — sensitive ID values are DEBUG-only or carry `// log-id-allowed:` comment; secret-shaped fields are write-only or one-time-read (§11)
 - [ ] **The repository's declared `verify.unit` command is clean** — the route-scope table's exhaustive match and its tests cover the auth gate matrix (§10)
 - [ ] **No file over 350 lines** (§10)
@@ -215,7 +215,7 @@ GET /products?status=active&sort=-created_at&starting_after=01HZQ...&limit=50
   - **Time ranges:** `?created_after=<ts_ms>&created_before=<ts_ms>`. Bracket grammar (`?created_at[gte]=...`) is forbidden.
   - **No boolean explosions.** Don't add `?include_x=true&include_y=true` — use `?include=x,y` with a documented enum of legal values, OR don't expose a knob.
 - **Sorting:** `sort=field` ascending; `sort=-field` descending. Single sort key per request — no multi-key.
-- **Pagination — Stripe-style keyset only.** Request: `?starting_after=<resource_id>&limit=<int>`. Response: `next_cursor: <resource_id> | null` (the field is named `next_cursor` even though the request param is `starting_after`). Cursor encode/decode goes through the shared `src/agentsfleetd/fleet_runtime/keyset_cursor.zig` (`parse()`/`format()`) — mirror `fleets/list.zig`'s usage. `limit` parsing is currently per-handler (no shared query-parsing helper exists yet for this shape); mirror `fleets/list.zig`'s local `parseLimitFromQs`. Default `limit=50`, max `limit=100`. To page forward, send the response's `next_cursor` value back as the next request's `starting_after`. **Forbidden:** page-based `?page=&page_size=` (the `api_keys/list.zig` shape, backed by `pagination.zig::parsePageParams`, is legacy — do not copy it for new endpoints); custom request-side `?cursor=` names (the `approvals/list.zig` keyset shape predates this rule — do not copy it).
+- **Pagination — Stripe-style keyset only.** Request: `?starting_after=<resource_id>&limit=<int>`. Response: `next_cursor: <resource_id> | null` (the field is named `next_cursor` even though the request param is `starting_after`). Cursor encode/decode goes through `afd_core::paging::cursor`, and both the parameter name and the bounds are constants there: `QUERY_STARTING_AFTER`, `DEFAULT_LIMIT` (50) and `MAX_LIMIT` (100). Read the limit through that module rather than parsing the query string in a handler. To page forward, send the response's `next_cursor` value back as the next request's `starting_after`. **Forbidden:** page-based `?page=&page_size=`, and custom request-side `?cursor=` names. Both spellings predate this rule where they survive; do not copy either into a new endpoint.
 - **Sparse fieldsets / `?include=` / `?fields=`:** not supported in v1. If you need to slim a payload, design a smaller endpoint. Don't invent.
 
 ### Bulk operations
@@ -250,15 +250,18 @@ This rule is binding on responses AND requests. SDK consumers branch on `field =
 
 ## §4 — Response shape
 
-### Success — use `hx.ok`
+### Success — return the wire type
 
-```zig
-hx.ok(.ok, .{ .agent_id = id, .status = "active" });
-hx.ok(.created, .{ .agent_id = id, .key = raw_key });
-hx.ok(.accepted, .{ .status = "accepted", .event_id = event_id });
+```rust
+Ok(Json(FleetDetailResponse::from(&detail)).into_response())
+Ok((StatusCode::CREATED, Json(CreatedResponse { id, key })).into_response())
+Ok(StatusCode::NO_CONTENT.into_response())
 ```
 
-The `Hx` helper writes the JSON response with the right status code and content-type. Never call `hx.res.json(...)` directly except for SSE streams (and Slack's "ack-and-drop" pattern).
+The wire type owns the field names and `IntoResponse` writes the status and
+content-type. A response shape belongs in `afd_wire`, not spelled inline in a
+handler, so the same struct is what the OpenAPI document is generated from.
+Build a response by hand only for a Server-Sent Events stream.
 
 ### Status codes
 
@@ -320,15 +323,17 @@ For any resource where concurrent edits are realistic (anything mutable that two
 
 ### Use the error registry
 
-The error-code registry (`src/agentsfleetd/errors/error_entries.zig`) owns the HTTP status, RFC 7807 `title`, and `docs_uri`. Your handler supplies only the code and a human-readable `detail`:
+The error-code registry (`rustd/crates/afd_core/src/error_code.rs` and the family modules beside it) owns the HTTP status, RFC 7807 `title`, and `docs_uri`. Your handler supplies only the code and a human-readable `detail`:
 
-```zig
-hx.fail(ec.ERR_INVALID_REQUEST, "workspace_id must be a valid UUIDv7");
-hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-hx.fail(ec.ERR_AGENT_NOT_FOUND, ec.MSG_AGENT_NOT_FOUND);
+```rust
+Refusal::malformed(DETAIL_WORKSPACE_ID)          // the sentence is a constant
+Refusal::coded(FLEET_NOT_FOUND, DETAIL_NOT_FOUND)
+Refusal::preconditioned(error.code(), error.detail(), current)
 ```
 
-NOT `common.errorResponse(hx.res, "...", "...", req_id)`. NOT `hx.res.status = 400; hx.res.body = "{...}"`.
+Never assemble a `Problem` by hand and never write a status and body directly:
+the status, title and documentation link come from the registry entry, and a
+hand-built body is how two spellings of one error reach clients.
 
 If you need an error code that doesn't exist:
 
@@ -356,7 +361,7 @@ The title must be safe to render verbatim in a UI toast — think "what would I 
 5. **Ban list — `detail` MUST NOT contain any of these substrings, even when paraphrased:**
    - Internal table/column names: `pg_`, `pg.`, table names from `schema/*.sql`, column names not exposed in the OpenAPI response.
    - SQL fragments: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WHERE`, `JOIN`, `CONSTRAINT`, `relation does not exist`, `duplicate key value violates`.
-   - Code internals: `panic`, `unreachable`, `error.`, `.zig`, `src/`, `*.zig` line numbers, file paths starting with `/`, allocator names, struct names from non-public modules.
+   - Code internals: `panic`, `unwrap`, `error.`, a source path, a file extension, a line number, file paths starting with `/`, allocator names, struct names from non-public modules.
    - Stack traces, addresses (`0x...`), thread IDs, request-internal pointer values.
    - Secret-shaped strings: anything matching `sk_`, `pk_`, `Bearer `, `eyJ` (JWT), `op://`, hex blobs >16 chars.
    - Entity values: literal UUIDs, emails, raw bearer tokens, vault key names, file paths from the workspace.
@@ -366,19 +371,19 @@ The title must be safe to render verbatim in a UI toast — think "what would I 
    - State: `"<noun> already exists"` / `"<noun> not found"` / `"<noun> expired"` — `Agent name already exists`, `token expired`.
    - Format help: `"<param>: use <format>"` — `invalid_since_format: use Go-style duration (15s, 30m, 2h, 7d) or RFC 3339 (YYYY-MM-DDTHH:MM:SSZ)`.
 
-When you write a new `hx.fail`, find the closest existing call site in `src/agentsfleetd/http/handlers/**` and copy its shape. Don't freelance.
+When you write a new refusal, find the closest existing call site under `rustd/crates/afd_api_*/src/handler/**` and copy its shape. Don't freelance.
 
 ### Internal 500s — direct calls
 
-For DB / pool / operation failures, use the helpers directly:
+A datastore or service failure is not a sentence a handler writes. Lift it with
+`Refusal::at`, naming the operation that failed:
 
-```zig
-common.internalDbUnavailable(hx.res, hx.req_id);   // pool.acquire failed
-common.internalDbError(hx.res, hx.req_id);         // query failed
-common.internalOperationError(hx.res, "detail", hx.req_id);
+```rust
+services.fleet_detail(&context, fleet_id).await.map_err(Refusal::at(FLEET_READ))?
 ```
 
-These are NOT wrapped on `Hx`.
+The operation constant is what identifies the failure in logs and telemetry;
+the caller gets the registry's 500 and no internal detail.
 
 ### Error response body (RFC 7807)
 
@@ -446,124 +451,122 @@ it, which the document does not carry.
 
 ## §7 — Registering a route
 
-Six places, in order. Steps 1–5 fail loudly at build/runtime; step 6 is reviewer-enforced — see §6 for the parity rule.
+**The router is built FROM the route table, not beside it.** `Route::all()` is
+walked once at startup and every template it yields is mounted, so a path
+cannot be served under a spelling the table does not carry, and it cannot be
+served under a guard its own row does not declare. Adding an endpoint is
+therefore a table edit plus a handler, in three places.
+
+1. **`rustd/crates/afd_http/src/route/<family>.rs`** — add a variant to the
+   family enum (`FleetRoute`, `TenantRoute`, `AdminRoute`, `WebhookRoute`,
+   `WorkspaceRoute`, `ConnectorRoute`, `RunnerRoute`, `RunnerOpsRoute`,
+   `AuthRoute`, `OpsRoute`) **and to that family's `ALL` array**. `ALL` is what
+   `Route::all()` iterates; a variant missing from it compiles and is never
+   mounted.
+
+2. **The same file's `meta()`** — return a `RouteMeta` for the variant:
+
+   ```rust
+   Self::MyEndpoint => (
+       RouteClass::Api,
+       fleet_path!("/my-endpoint"),
+       Scopes::rw(FLEET_READ, FLEET_WRITE),
+   ),
+   ```
+
+   `RouteMeta::new(guard, class, template, scopes)` closes over four of the five
+   facts; the fifth, `ownership`, is derived from the template by
+   `Ownership::of` and is not yours to pass.
+
+3. **The plane crate** — write the handler under
+   `rustd/crates/afd_api_{tenant,operator,ingress,runner}/src/handler/**`, then
+   return it from that plane's `*_handler_for` arm (`fleet_handler_for`,
+   `admin_handler_for`, and their siblings in each plane's `lib.rs`).
+   `afd_api/src/router/mount.rs` dispatches families to planes with a total
+   match, so a new family cannot silently inherit another plane's
+   authentication.
+
+4. **`public/openapi.json`** — add `#[cfg_attr(feature = "openapi", utoipa::path(…))]`
+   beside the handler and regenerate (§6).
 
 | Skipped step | Failure mode |
 |---|---|
-| 1 (`Route` variant) | Compile error in `route_table.zig::specFor()` — the `.my_endpoint` arm references an undefined enum variant. |
-| 2 (`match()` arm) | Runtime — your URL returns 404 even though the rest is wired; no compile error. |
-| 3 (`route_table.zig::specFor()`) | Compile error — exhaustive switch on `Route` union is missing your arm. |
-| 4 (`route_scopes.zig::requiredScopes()`) | Compile error — exhaustive switch on `Route` is missing your arm; the route can't be assigned a capability requirement until you do. |
-| 5 (invoke shim) | Compile error — `specFor` references `invoke.invokeMyEndpoint` which doesn't exist. |
-| 6 (the document) | `test_coverage_gate_rust_source` fails, naming the route, the method and which side is missing it (§6). |
+| 1, the enum variant | Compile error — `meta()` is an exhaustive match over the family. |
+| 1, the `ALL` entry | **Silent.** The route compiles, is never walked, and answers 404. Nothing fails. Test the URL after wiring. |
+| 2 (`meta()` arm) | Compile error — the match is not total without it. |
+| 3 (`*_handler_for` arm) | The route is tabled and unmounted, so it answers 404 by design. `handler_for` returning `None` is the honest answer for a verb this binary does not serve; a 501 would claim the endpoint exists here. |
+| 4 (the document) | `test_coverage_gate_rust_source` fails, naming the route, the method and which side is missing it (§6). |
 
-If you only see #2's silent-404 failure mode, you've forgotten the matcher even though the route compiles. Test the URL after wiring.
+### Templates are low-cardinality, always
 
-1. **`src/agentsfleetd/http/routes.zig`** — add a variant to the `Route` union (with path params). `router.zig` re-exports it as `router.Route`; every other consumer imports through that re-export unchanged.
-2. **`src/agentsfleetd/http/router.zig::match()`** — add the path parser that returns your variant.
-3. **`src/agentsfleetd/http/route_table.zig::specFor()`** — map the variant to a `RouteSpec`:
+`RouteMeta.template` is the `http.route` span attribute as well as the mount
+path. It carries `{workspace_id}`, `{fleet_id}` and their siblings as
+parameters and never a concrete value — a real path would put tenant identity
+into span attributes and give the tracing backend one route value per request.
 
-   ```zig
-   .my_endpoint => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeMyEndpoint },
-   ```
+`matchit`, the router underneath axum, **refuses a literal after a parameter
+inside one segment**, so a custom verb cannot be spelled `{id}:sync`. Where the
+Zig daemon and the shipped clients used that form, the Rust table spells it as
+its own segment (`/schedules/{schedule_id}/sync`) and the change travels with
+its clients in the same diff.
 
-4. **`src/agentsfleetd/http/route_scopes.zig::requiredScopes()`** — assign the capability requirement (an empty slice for authenticated-only, or `&NONE`/never-runs for a `none`-policy route):
+### The five facts a route row carries
 
-   ```zig
-   .my_endpoint => &MY_RESOURCE_WRITE,
-   ```
+| Fact | Type | What it decides |
+|---|---|---|
+| `guard` | `Guard` | What must be presented before a handler runs. |
+| `class` | `RouteClass` | `Ops` never sheds, `Stream` is capped separately because one Server-Sent Events connection is held for minutes, `Api` is subject to the in-flight ceiling. |
+| `template` | `&'static str` | The mount path and the `http.route` attribute. |
+| `scopes` | `Scopes` | `Always(&[…])` for one requirement, or `ByMethod { get, otherwise }` where reads are cheaper than writes. `otherwise` is always the more privileged of the pair, so a method nobody considered can only be refused too often. |
+| `ownership` | `Ownership` | Derived from the template. Which object named in the path must belong to the caller. |
 
-5. **The invoke shim** — add `pub fn invokeMyEndpoint` to `route_table_invoke.zig` or the sibling file for your domain (`route_table_invoke_<domain>.zig`; each keeps `route_table_invoke.zig` under the RULE FLL line cap and is imported + re-exported from there):
+**Ownership is the half of authorization a handler used to have to remember.**
+Capability and ownership are independent questions — may you do this kind of
+thing, and is this particular thing yours. The Zig daemon answered the first in
+its route table and the second by calling `authorizeWorkspace` by hand at the
+top of every workspace handler, where forgetting it was a cross-tenant read
+with nothing failing. Here it is mounted from the route's own template, so
+forgetting is not a thing a handler can do.
 
-   ```zig
-   pub fn invokeMyEndpoint(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-       if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-       my_handler.innerMyEndpoint(hx.*, req, route.my_endpoint);
-   }
-   ```
+### Guard — pick one at step 2
 
-6. **`public/openapi.json`** — regenerate it from the build (§6).
-
-### Matcher style — segment-based, not substring-based
-
-All path matchers operate on a canonical `Path` view: a stack-allocated array
-of segments parsed once at the dispatch boundary. The matcher functions
-themselves live in `src/agentsfleetd/http/route_matchers.zig` plus sibling
-per-domain files (`route_matchers_connectors.zig`, `route_matchers_fleet.zig`,
-`route_matchers_runner.zig`, `route_matchers_billing.zig`,
-`route_matchers_webhook.zig`) — same RULE FLL split as the invoke shims.
-Matchers compare by **segment count + segment[i] equality**. Disambiguation is
-shape-driven, not order-driven.
-
-**Pattern (mandatory for any new matcher):**
-
-```zig
-pub fn matchMyEndpoint(p: Path) ?MyRoute {
-    if (p.segs.len != N) return null;        // exact segment count
-    if (!p.eq(0, "literal-1")) return null;  // literal slots
-    if (!p.eq(2, "literal-2")) return null;
-    const id_a = p.param(1) orelse return null;  // path-param slots: param() rejects empty
-    const id_b = p.param(3) orelse return null;
-    return .{ .field_a = id_a, .field_b = id_b };
-}
-```
-
-**Banned in new matchers:**
-- `std.mem.startsWith` / `endsWith` / `indexOf` on the path string.
-- Suffix-driven dispatch (`if endsWith(path, "/foo")`).
-- Implicit segment boundaries via offset arithmetic.
-- Reservations encoded as call-site ordering ("must run matcher A before B").
-
-**Required properties of a matcher set:**
-- **Mutual exclusivity by structure.** Any two matchers must be reject-incompatible
-  by segment count or segment-equality predicates. If two matchers can both
-  fire on the same path, one of them needs a tighter predicate (e.g. an explicit
-  `if (p.eq(i, RESERVED)) return null` exclusion). Order in `match()` must not
-  decide correctness.
-- **Empty-segment safety.** `Path.parse` preserves empty segments from `//` and
-  trailing slashes. Matchers extract path-parameter slots via `param(idx)`,
-  which returns null on empty — empty IDs reject at the matcher, not the
-  handler.
-- **Semantic-named typed structs.** Each `Route` enum variant gets its own
-  struct with semantic field names (`credential_name`, `agent_id`, `grant_id`,
-  `memory_key`, `gate_id`, …). Parsing logic may be shared via a private
-  helper, but the public surface stays type-distinct.
-
-**Single API-version site.** The dispatcher in `router.zig::match()` calls
-`Path.parse(...)` once, checks `segs[0]` against the API version, then hands
-`p.tail(1)` to the version-specific matchers (`matchV1`, future `matchV2`).
-The string `"v1"` lives in exactly one place — that dispatch line. No matcher
-body checks the API version.
-
-### Middleware policy table — pick one at step 3
-
-The registry exposes exactly these six policies (`src/agentsfleetd/auth/middleware/mod.zig::MiddlewareRegistry`). Admin/operator capability is no longer a separate policy — it's data in the route→scope table (step 4), enforced by the single `require_scope` middleware that every authenticated chain composes with.
-
-| Policy | Use for |
+| Guard | Use for |
 |--------|---------|
-| `auth_mw.MiddlewareRegistry.none` | Public endpoint; no auth, OR handler does its own (OAuth/connector callbacks, webhook receivers, Slack events ingress) |
-| `registry.bearer()` | Standard user-facing endpoint; Bearer token or `agt_t` API key + capability gate. The former bearer/admin/operator/platformAdmin chains collapsed into this one policy — `route_scopes.zig::requiredScopes()` decides what the principal must hold |
-| `registry.runnerBearer()` | Runner-token (`agt_r`) machine principal + capability gate; used by the `/v1/runners/me/*` self-plane, which requires `runner:self` |
-| `registry.webhookHmac()` | Approval webhook (HMAC-signed body) |
-| `registry.webhookSig()` | Per-agent HMAC signature for webhooks routed to a fleet (no Bearer fallback) |
-| `registry.svix()` | Svix v1 multi-sig HMAC (Clerk) |
+| `Guard::Open` | A probe, or a route authenticated by its own payload: the device-flow session endpoints, the connector callback, every webhook. |
+| `Guard::Bearer` | The standard tenant-plane credential — session bearer, `agt_t`, or `afc_`. The capability the principal must hold is the row's `scopes`, not a second guard. |
+| `Guard::RunnerBearer` | A runner-plane credential (`agt_r`). Refused for tenant callers by `afd_auth::Plane`, which is data rather than which router mounted it. |
+| `Guard::WebhookHmac` | An HMAC over the request body, keyed per fleet. |
+| `Guard::WebhookSignature` | The per-fleet webhook signature header. |
+| `Guard::Svix` | A Svix-signed delivery. |
 
-Middleware runs BEFORE your handler: token verification, `hx.principal` population, and 401/403 short-circuits are already done when your `inner*` runs. For `none` policy routes, `hx.principal` is zero-valued — do not read it.
+The layers run outside your handler and in a fixed order: **admission**
+outermost, because a shed must stay cheaper than the work it refuses;
+**authentication and the capability gate** next, so a handler never runs for a
+caller who should not reach it; **ownership** innermost, because it is the only
+one of the three that runs a statement. A caller who is over the ceiling or
+short a capability is refused before this daemon reaches Postgres for them.
 
-### Raw-handler exceptions
+Each layer is decided while the router is BUILT, not per request: a route that
+is not metered has no admission layer in its stack to consult, and a route with
+no guard has no authenticator in its stack to reach.
 
-Some endpoints register with the `none` middleware policy (step 3) and verify — or deliberately don't need to verify — inside the handler itself, instead of through a bearer/runner/HMAC chain. Each must carry an explanatory comment at the top of the file:
+### `Guard::Open` routes verify their own callers
 
-| File | Reason | Comment |
-|------|--------|---------|
-| `src/agentsfleetd/http/handlers/health.zig` (`healthz`/`readyz`/`metrics`) | Unauthenticated by design — health/metrics | `// unauthenticated — health` (or equivalent) |
-| `src/agentsfleetd/http/handlers/auth/sessions.zig` | Per-function (create/poll/verify public; approve/delete are `registry.bearer()`-authed Clerk JWT, not raw) | per-function comments |
-| `src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig` | Svix-signed `user.created` event, verified inline against `CLERK_WEBHOOK_SECRET` | `// Svix-verified — does not use bearer/HMAC middleware` |
-| `src/agentsfleetd/http/handlers/connectors/callback.zig` (+ provider hooks `src/agentsfleetd/http/handlers/connectors/github/callback.zig`, `src/agentsfleetd/http/handlers/connectors/slack/callback.zig`) | Generic OAuth-callback dispatcher; verifies the signed `state` param inline before delegating to the provider hook | `// OAuth callback — verifies signed state, not bearer` |
-| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | Slack Events API ingress; Slack v0 request signature only (no Bearer fallback) | `// Slack v0 signature-verified — mirrors the webhook plane` |
-| `src/agentsfleetd/http/handlers/ingress/qstash.zig` | QStash schedule ingress; QStash JSON Web Token signature only (no Bearer fallback) | `// QStash signature-verified — no bearer or generic webhook fallback` |
+An open route is not an unauthenticated one, except for the probes. The proof
+is the body or a signed parameter, which is why it cannot be checked before the
+body is read — and why those routes carry a buffer cap the bearer-proven ones
+do not need.
 
-If you write a new raw handler, add it to this table AND add a first-10-lines comment in the file explaining why it's registered with `none` and what verifies the caller instead. A `none`-policy handler file lacking either its own verification call OR an explanatory comment in its first 10 lines is a bug — not an oversight.
+| Route family | What verifies the caller instead |
+|------|------|
+| `OpsRoute` (`/healthz`, `/readyz`) | Nothing. Unauthenticated by design — an orchestrator that cannot reach these has no other way to ask. |
+| `AuthRoute::{CreateSession, PollSession, VerifySession}` | The device-flow code itself; approve and delete are `Guard::Bearer`. |
+| `WebhookRoute`, every variant | A signature over the body — per-fleet HMAC, the fleet signature header, or Svix. |
+| `ConnectorRoute` callback and events | A signed `state` parameter verified inline before the provider hook runs, or the provider's own request signature. |
+
+A new `Guard::Open` route states in its module documentation what verifies the
+caller instead. One that verifies nothing and says nothing is a bug, not an
+oversight.
 
 ### Reference implementations
 
@@ -571,74 +574,58 @@ When in doubt, mirror an existing handler:
 
 | Pattern | Look at |
 |---------|---------|
-| Simple list/get | `src/agentsfleetd/http/handlers/fleets/list.zig::innerListFleets` |
-| POST with body + validation | `src/agentsfleetd/http/handlers/fleets/create.zig::innerCreateFleet` |
-| DELETE with idempotency | `src/agentsfleetd/http/handlers/fleets/delete.zig::innerDeleteFleet` |
-| Admin-only | `src/agentsfleetd/http/handlers/admin/platform_keys.zig::innerGetAdminPlatformKeys` |
-| Multi-method on one path (GET/POST/PATCH/DELETE) | `src/agentsfleetd/http/handlers/fleets/secrets.zig` |
-| Workspace auth + tenant context | `src/agentsfleetd/http/handlers/workspaces/events.zig::innerListWorkspaceEvents` |
-| Webhook with inline auth | `src/agentsfleetd/http/handlers/webhooks/fleet.zig::innerReceiveWebhook` |
-| Streaming (SSE) | `src/agentsfleetd/http/handlers/fleets/events_stream.zig::innerEventsStream` |
-
----
+| Read, edit and purge one resource | `rustd/crates/afd_api_tenant/src/handler/fleet/detail.rs` |
+| Request parsing and its refusal sentences | `rustd/crates/afd_api_tenant/src/handler/fleet/detail_request.rs` |
+| Keyset pagination | `rustd/crates/afd_api_tenant/src/handler/tenant/models.rs` |
+| Platform plane, operator-held | `rustd/crates/afd_api_operator/src/handler/admin/platform_keys.rs` |
+| Streaming (Server-Sent Events) | `rustd/crates/afd_api_tenant/src/handler/stream.rs` |
+| Signature-proven ingress | `rustd/crates/afd_api_ingress/src/handler/webhook/receive_route.rs` |
+| A runner speaking for itself | `rustd/crates/afd_api_runner/src/handler/runner/lease.rs` |
 
 ## §8 — Handler signature rule
 
-Every HTTP handler in `agentsfleetd` follows this shape. Enforced by the repository's declared `verify.lint` command and by the dispatcher in `src/agentsfleetd/http/server.zig::dispatchMatchedRoute()`, which builds the per-request arena, runs the middleware chain, constructs `Hx`, and calls the route's invoke shim (§7) — a handler never constructs any of this itself.
+A handler is an axum handler. The router built it into a stack that has already
+admitted the request, proven the caller, checked the capability and confirmed
+ownership, so a handler receives what it needs as extractors and constructs
+none of it.
 
-```zig
-pub fn innerMyEndpoint(hx: Hx, req: *httpz.Request, ...path_params) void {
-    // 1. validate inputs
-    // 2. db / state work (acquire via hx.ctx.pool.acquire(), release via hx.ctx.pool.release())
-    // 3. respond via hx.ok(...) or hx.fail(...)
+```rust
+pub async fn my_endpoint<D: Services>(
+    State(services): State<Arc<D>>,
+    context: WorkspaceContext,
+    Path(path): Path<FleetPath>,
+    Json(body): Json<MyRequest>,
+) -> Result<Response, Refusal> {
+    // 1. parse and bound the inputs
+    // 2. call the service
+    // 3. return the wire type
 }
 ```
 
 ### Rules
 
-- **Name prefix `inner`** (never `handle`). The `invokeXxx` shim (§7 step 5) is the only public entry — your function is the inner implementation it calls after middleware has populated `hx`.
-- **First parameter: `hx: Hx`** — never `ctx: *Context`, `res: *Response`, `req_id: []const u8`, or an arena allocator. All of those live inside `hx`.
-- **Second parameter: `req: *httpz.Request`** — only if you actually read it (body, query, headers). Drop it if you only need path params.
-- **Path params come after `req`** — order matches the `Route` variant in `routes.zig` (§7 step 1).
-- **Return `void`.** Errors are written to the response; never return a Zig error.
+- **Take what you read, and nothing else.** `State` for services, the auth
+  context for the caller, `Path` for identifiers, `Json` or `Bytes` for a body.
+  A handler that does not read the body does not extract one.
+- **Return `Result<Response, Refusal>`**, or a wire type that implements
+  `IntoResponse`. `Refusal` carries the error code and the sentence; the
+  envelope is built for you.
+- **Bounds are declared on the request type**, with `garde`, not re-spelled per
+  handler. The refusal sentence a field earns is mapped from the path `garde`
+  reports.
+- **Never authenticate inside a handler.** The guard on the route's row did it.
+  Never call an ownership check by hand either; the template mounted it.
+- **Refusal sentences live beside the parser that produces them**, as
+  constants, so the test that asserts one reads it from the same place.
 
 ### What NOT to do
 
-- ❌ `handleMyEndpoint(ctx, req, res)` — old signature; don't add new ones.
-- ❌ Building an `ArenaAllocator` inside the handler — `hx.alloc` is already request-scoped (the dispatcher owns its lifetime).
-- ❌ `common.errorResponse(hx.res, ...)` — use `hx.fail(...)`.
-- ❌ `hx.res.json(body, .{})` or `res.status = 200; res.body = "{}"` — use `hx.ok(.ok, body)`. Acceptable only for SSE streams and Slack ack-and-drop.
-- ❌ Returning a Zig error from the handler — write to `hx.res` and return void.
-
-### `Hx` struct reference
-
-`Hx` is defined in `src/agentsfleetd/http/handlers/hx.zig`. Five fields, passed by value; three methods, each wrapping a distinct wire shape:
-
-```zig
-pub const Hx = struct {
-    alloc:     std.mem.Allocator,       // request-scoped arena, built by the dispatcher
-    principal: common.AuthPrincipal,    // populated by bearer/runner middleware; zero-value for none-policy routes
-    req_id:    []const u8,              // unique request ID
-    ctx:       *common.Context,         // pool, queue, oidc, telemetry, app_url
-    res:       *httpz.Response,         // response writer
-
-    pub fn ok(self: Self, status: std.http.Status, body: anytype) void;      // JSON envelope
-    pub fn fail(self: Self, code: []const u8, detail: []const u8) void;      // RFC 7807 error
-    pub fn noContent(self: Self) void;                                       // spec-compliant empty-body 204
-};
-```
-
-There is no `hx.db()`/`hx.releaseDb()`/`hx.redis()` — acquire the DB pool directly via `hx.ctx.pool.acquire()` / `hx.ctx.pool.release(conn)` (mirror `fleets/list.zig::innerListFleets`); for internal-500s and body-size checks call `common.internalDbError(hx.res, hx.req_id)` etc. directly (§5).
-
-Auth is 100% middleware-chain-driven (§7) — there are no `authenticated()`/`authenticatedWithParam()` comptime wrappers to pick between by path-param count. Every handler, regardless of how many path params it takes, receives its populated `Hx` the same way: the dispatcher builds it after the middleware chain runs and passes it to the invoke shim.
-
-### Guardrails on `hx.zig`
-
-- `hx.zig` stays small — methods are one-liners delegating to `common.zig`. No business logic in `hx.zig`.
-- A new method on `Hx` is justified only when ≥2 in-tree call sites exist **at merge time** — both verifiable by `rg` from `main`. The PR description MUST list both call sites as `path/to/file.zig:line`. "Two handlers will need this soon" is not a justification; ship the second caller in the same PR or keep the helper local.
-- Zero `ArenaAllocator.init` calls in handler files — the dispatcher (`server.zig::dispatchMatchedRoute()`) is the only place that owns the per-request arena's lifetime.
-
----
+- ❌ Reading a query string directly for `limit` or `starting_after` — use
+  `afd_core::paging`.
+- ❌ Building a `Problem` by hand — construct it from the declared error code so
+  the status, title and documentation link come from the registry (§5).
+- ❌ A second unique spelling of a capability check inside the handler body.
+- ❌ Re-parsing a path parameter the extractor already typed.
 
 ## §9 — Versioning
 
@@ -717,7 +704,7 @@ Before opening a PR touching any handler:
 - [ ] Cross-compile: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 - [ ] the declared `verify.lint` command passes — every language gate the repository declares
 - [ ] Handler file ≤ 350 lines; split if it grows
-- [ ] Integration test covers the happy path AND at least one error path per `hx.fail` call in the handler
+- [ ] Integration test covers the happy path AND at least one error path per refusal the handler can return
 - [ ] PATCH endpoints have an idempotency test: same body issued twice → identical 200 + identical row state. Skip only if the spec's "Failure Modes" explicitly declares non-idempotent PATCH with a reason (§2)
 - [ ] POST endpoints accepting `Idempotency-Key` have a replay test: same key + same body → cached response; same key + different body → 4xx (§2)
 - [ ] Mutable resources have an ETag/`If-Match` test: stale `If-Match` → 412 with current `etag` returned (§4)

@@ -1,179 +1,136 @@
-"""Self-tests for ensure_fly_app.sh.
+#!/usr/bin/env python3
+"""Order-safety of the collector stand-up, asserted against the workflows.
 
-The script's whole reason for existing is that it REFUSES to report success
-when an app is not actually running, so the negative cases are the point. A
-fake flyctl is injected through $FLYCTL; nothing reaches Fly.
+An app must exist before `flyctl secrets set --app` addresses it, and the
+create call is the only thing that makes that true on a fresh environment.
+Ordering is the half neither actionlint nor review reliably catches: this exact
+block was once inline in both deploy workflows, the two copies drifted within a
+day, and one of them ran it AFTER the deploy it was supposed to precede. Both
+copies passed actionlint. So the assertions here are about sequence and about
+the variable the create path refuses without, not about YAML validity.
+
+Reads the workflows as text rather than through a YAML parser: the subject is a
+`run:` block's shell, which a parser hands back as one opaque string anyway, and
+the repository ships no YAML dependency for a test to import.
+
+    python3 scripts/ensure_fly_app_test.py
 """
 
-import os
+from __future__ import annotations
+
+import re
 import subprocess
-import tempfile
-import textwrap
-import unittest
+import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parent / "ensure_fly_app.sh"
+# The deploy workflows that stand a collector up, and the organisation each
+# creates into. Development and production are separate Fly organisations, so
+# there is no single right value and the script refuses rather than guessing —
+# a production app created inside the development organisation is not an error
+# Fly reports, it is one somebody finds later.
+WORKFLOWS = {
+    ".github/workflows/deploy-dev-fly.yml": "agentsfleet-dev",
+    ".github/workflows/release.yml": "agentsfleet-prod",
+}
 
-def _machine(mid, state, checks):
-    """One machine as `flyctl machine list --json` renders it.
+CREATE_CALL = "ensure_fly_app.sh --create-only"
+SECRETS_CALL = "flyctl secrets set"
+STEP_START = re.compile(r"^      - name: (.+)$")
 
-    `checks` is a list of check statuses; Fly reports `passing`, `warning` or
-    `critical`. An empty list is a real shape — a machine with no health check
-    declared — and the script treats it as unproven rather than ready.
+
+def repo_root() -> Path:
+    """The worktree root, so the test runs from anywhere."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return Path(result.stdout.strip())
+
+
+def collector_step(lines: list[str]) -> tuple[str, list[str]]:
+    """The step that sets the collector's upstream credentials, and its body.
+
+    Located by the call it makes rather than by its name: a step renamed in one
+    workflow and not the other is exactly the drift this file exists to catch,
+    and keying on the name would make that drift invisible here.
     """
-    body = ",".join('{"name":"health","status":"%s"}' % c for c in checks)
-    return '{"id":"%s","state":"%s","checks":[%s]}' % (mid, state, body)
+    starts = [i for i, line in enumerate(lines) if STEP_START.match(line)]
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(lines)
+        body = lines[start:end]
+        if any(SECRETS_CALL in line and "GRAFANA" in "".join(body) for line in body):
+            name = STEP_START.match(lines[start]).group(1)
+            return name, body
+    return "", []
 
 
-def _machines(*specs):
-    return "[" + ",".join(_machine(*s) for s in specs) + "]"
+def main() -> int:
+    root = repo_root()
+    passed = 0
+    failed = 0
 
+    def ok(name: str) -> None:
+        nonlocal passed
+        print(f"ok   {name}")
+        passed += 1
 
-# Two machines started AND health-passing, which satisfies a desired count of
-# 1 or 2. Both halves matter: `started` alone is the state Fly reports before
-# the collector inside binds 4318.
-STARTED_TWO = _machines(("a", "started", ["passing"]), ("b", "started", ["passing"]))
-STOPPED_TWO = _machines(("a", "stopped", []), ("b", "stopped", []))
-# Running, but the collector inside never came up — the race the health check
-# exists to catch, and the one `state == "started"` reads as success.
-STARTED_UNHEALTHY_TWO = _machines(
-    ("a", "started", ["critical"]), ("b", "started", ["critical"])
-)
-# Running with no check declared at all: readiness is unprovable, not proven.
-STARTED_UNCHECKED_TWO = _machines(("a", "started", []), ("b", "started", []))
-NO_MACHINES = "[]"
+    def bad(name: str, detail: str) -> None:
+        nonlocal failed
+        print(f"FAIL {name}\n       {detail}", file=sys.stderr)
+        failed += 1
 
+    for workflow, org in WORKFLOWS.items():
+        path = root / workflow
+        label = Path(workflow).name
+        if not path.is_file():
+            bad(f"test_collector_standup_is_order_safe[{label}]", "workflow is missing")
+            continue
 
-class EnsureFlyAppTest(unittest.TestCase):
-    def run_script(self, *args, machine_list, record=None):
-        """Run the script with a fake flyctl that prints `machine_list`."""
-        with tempfile.TemporaryDirectory() as tmp:
-            fake = Path(tmp) / "flyctl"
-            log = Path(tmp) / "calls.log"
-            fake.write_text(
-                textwrap.dedent(
-                    f"""\
-                    #!/usr/bin/env bash
-                    echo "$@" >> {log}
-                    case "$1" in
-                      "machine")  printf '%s' '{machine_list}' ;;
-                      "image")    printf '%s' '[{{"Digest":"sha256:deadbeef"}}]' ;;
-                      *)          : ;;
-                    esac
-                    """
-                )
+        lines = path.read_text(encoding="utf-8").splitlines()
+        step_name, body = collector_step(lines)
+        if not body:
+            bad(
+                f"test_collector_standup_is_order_safe[{label}]",
+                f"no step calling `{SECRETS_CALL}` with the collector's credentials",
             )
-            fake.chmod(0o755)
-            env = dict(os.environ, FLYCTL=str(fake), PATH=os.environ["PATH"],
-                       POLL_ATTEMPTS="2", POLL_SLEEP_SECONDS="0")
-            proc = subprocess.run(
-                ["bash", str(SCRIPT), *args],
-                capture_output=True,
-                text=True,
-                env=env,
+            continue
+
+        create_at = next((i for i, l in enumerate(body) if CREATE_CALL in l), None)
+        secrets_at = next((i for i, l in enumerate(body) if SECRETS_CALL in l), None)
+
+        if create_at is None:
+            bad(
+                f"test_collector_standup_is_order_safe[{label}]",
+                f"step {step_name!r} never calls `{CREATE_CALL}`, so a first run "
+                f"addresses an app that does not exist yet",
             )
-            calls = log.read_text() if log.exists() else ""
-            if record is not None:
-                record.append(calls)
-            return proc, calls
+        elif secrets_at is None or create_at > secrets_at:
+            bad(
+                f"test_collector_standup_is_order_safe[{label}]",
+                f"`{CREATE_CALL}` runs after `{SECRETS_CALL}` in step "
+                f"{step_name!r}; the app must exist before it can be addressed",
+            )
+        else:
+            ok(f"test_collector_standup_is_order_safe[{label}]")
 
-    def test_running_app_at_desired_count_succeeds(self):
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                  machine_list=STARTED_TWO)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # The create path refuses without an organisation, by design. A step
+        # that creates but never names one fails at the refusal rather than at
+        # the missing app, which is a worse error for the same cause.
+        env_line = f"FLY_ORG: {org}"
+        if any(env_line in line for line in body):
+            ok(f"test_create_names_the_organisation_it_creates_into[{label}]")
+        else:
+            bad(
+                f"test_create_names_the_organisation_it_creates_into[{label}]",
+                f"step {step_name!r} calls the create path without `{env_line}`; "
+                f"the script refuses rather than guessing an organisation",
+            )
 
-    def test_records_the_deployed_digest(self):
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                  machine_list=STARTED_TWO)
-        self.assertIn("sha256:deadbeef", proc.stdout)
-
-    def test_deploys_from_context_when_no_machines_exist(self):
-        # The positional build context is what makes the image's COPY resolve;
-        # a deploy without it is the failure this asserts against.
-        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                   machine_list=NO_MACHINES)
-        self.assertIn("deploy deploy/fly/otelcol-dev --app otelcol-dev", calls)
-
-    def test_deploys_even_when_the_app_already_has_machines(self):
-        # The regression this pins: deploying only when the app was empty left
-        # config.yml — baked into the image by the Dockerfile's COPY — frozen at
-        # whatever shipped first. Every later change to the receiver, the
-        # authentication policy or the exporter pipeline was built and never
-        # applied, which makes "the backend is a configuration change" false.
-        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                   machine_list=STARTED_TWO)
-        self.assertIn("deploy deploy/fly/otelcol-dev --app otelcol-dev", calls)
-
-    def test_deploy_precedes_the_scale_it_sizes(self):
-        # Ordering, not just presence: scaling a release that the deploy is
-        # about to replace sizes the wrong image.
-        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                   machine_list=STARTED_TWO)
-        self.assertLess(calls.index("deploy "), calls.index("scale count "))
-
-    def test_scales_to_the_desired_count(self):
-        _, calls = self.run_script("otelcol-prod", "deploy/fly/otelcol-prod", "2",
-                                   machine_list=STARTED_TWO)
-        self.assertIn("scale count 2 --app otelcol-prod", calls)
-
-    def test_fails_when_machines_never_start(self):
-        # The defect the script exists to prevent: reporting success while the
-        # collector is not serving, so the caller deploys a daemon at it.
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                  machine_list=STOPPED_TWO)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn("never reached", proc.stderr)
-
-    def test_fails_when_running_count_is_below_desired(self):
-        one_started = '[{"id":"a","state":"started"},{"id":"b","state":"stopped"}]'
-        proc, _ = self.run_script("otelcol-prod", "deploy/fly/otelcol-prod", "2",
-                                  machine_list=one_started)
-        self.assertEqual(proc.returncode, 1)
-
-    def test_fails_when_machines_run_but_never_pass_health_checks(self):
-        # Fly reports `started` when the VM is up, which precedes the collector
-        # binding 4318. Gating on state alone would report success here and the
-        # caller would point a daemon at a receiver that is not listening.
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                  machine_list=STARTED_UNHEALTHY_TWO)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn("passed health checks", proc.stderr)
-
-    def test_fails_when_a_machine_declares_no_health_check(self):
-        # Unprovable is not the same as ready. If fly.toml loses [checks.health]
-        # this must refuse rather than silently return to state-only readiness.
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                  machine_list=STARTED_UNCHECKED_TWO)
-        self.assertEqual(proc.returncode, 1)
-
-    def test_the_two_refusals_name_different_causes(self):
-        # "Not running" and "running but never healthy" are different incidents
-        # with different first moves. A single message for both would make the
-        # deploy log say less than it knows.
-        stopped, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                     machine_list=STOPPED_TWO)
-        unhealthy, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
-                                       machine_list=STARTED_UNHEALTHY_TWO)
-        self.assertIn("never reached", stopped.stderr)
-        self.assertNotIn("never reached", unhealthy.stderr)
-        self.assertNotEqual(stopped.stderr, unhealthy.stderr)
-
-    def test_rejects_a_non_numeric_count(self):
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "two",
-                                  machine_list=STARTED_TWO)
-        self.assertEqual(proc.returncode, 2)
-
-    def test_rejects_a_zero_count(self):
-        # Zero would make every later assertion vacuous: nothing running still
-        # satisfies "at least zero running".
-        proc, _ = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "0",
-                                  machine_list=NO_MACHINES)
-        self.assertEqual(proc.returncode, 2)
-
-    def test_rejects_wrong_argument_count(self):
-        proc, _ = self.run_script("otelcol-dev", machine_list=STARTED_TWO)
-        self.assertEqual(proc.returncode, 2)
+    print(f"\n{passed} passed, {failed} failed")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(main())

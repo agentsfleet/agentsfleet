@@ -148,7 +148,7 @@ export async function requestWithEtag<T>(
 
   // Error bodies are RFC 7807 problem+json: `{ docs_uri, title, detail,
   // error_code, request_id, user_message?, etag? }` (see
-  // src/agentsfleetd/http/handlers/common.zig errorResponse). `user_message`
+  // rustd/crates/afd_http/src/envelope.rs, ProblemResponse). `user_message`
   // (when present) is the curated dashboard-safe sentence for this code —
   // preferred over `detail`/`title`, which are written for the CLI/API
   // audience and often carry internal nouns a dashboard user can't act on.

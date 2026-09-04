@@ -21,7 +21,7 @@
 // One module = one mental model. The uuidv7 check + EXAMPLE_UUIDV7 literal
 // live exactly once: isValidId is the impl; parseIdOption + validateRequiredId
 // both call it. Single source of truth: server ids are uuidv7
-// (`src/agentsfleetd/types/id_format.zig → allocUuidV7`); the CLI rejects a
+// (`rustd/crates/afd_core/src/id.rs → Uuid7::encode`); the CLI rejects a
 // malformed shape client-side to save a round-trip. `uuid` npm package
 // (Apache-2.0, no postinstall, single dep tree) is vetted supply-chain posture
 // for runtime.
@@ -262,7 +262,7 @@ export function isValidId(value: unknown): value is string {
   // `uuid`'s validate is case-insensitive, but server ids are canonical
   // lowercase: an uppercase alias is the same row in Postgres and a different
   // key in Redis/cache, so the server rejects it too. Keep the two runtimes
-  // agreeing — see `src/agentsfleetd/types/id_format.zig`.
+  // agreeing — see `rustd/crates/afd_core/src/id.rs`.
   if (value !== value.toLowerCase()) return false;
   if (!isValidUuid(value)) return false;
   return uuidVersion(value) === 7;

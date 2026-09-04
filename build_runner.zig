@@ -60,7 +60,7 @@ pub fn build(b: *std.Build) void {
 
     // The shared `/v1/runners` wire contract (src/lib/contract), reached as a
     // named module — the runner's ONLY shared surface beyond `log`. This is the
-    // entire reason it compiles the protocol without crossing into src/agentsfleetd/.
+    // entire reason it compiles the protocol on its own rather than through a daemon graph.
     // `pg`/`httpz`/`redis` remain deliberately absent.
     const contract_mod = deps.protocol;
 

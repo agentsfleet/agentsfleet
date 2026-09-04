@@ -7,13 +7,14 @@ use afd_admin::{PlatformKey, PlatformKeyInput, SetPlatformKey};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::admin::{
-    PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut, PlatformKeySetResponse,
-    PlatformKeysResponse,
+    KEY_PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
+    PlatformKeySetResponse, PlatformKeysResponse,
 };
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 
 use crate::auth::PersonIdentity;
 use crate::handler::{refuse, reject};
@@ -80,6 +81,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     request_body = PlatformKeyPut,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -123,9 +125,10 @@ pub(crate) async fn set<D: Services>(
             })
             .into_response()
         }
-        Ok(SetPlatformKey::WorkspaceNotFound) => {
-            reject(error_code::INVALID_REQUEST, DETAIL_WORKSPACE_UNKNOWN)
-        }
+        Ok(SetPlatformKey::WorkspaceNotFound) => reject(
+            error_code::PROVIDER_SOURCE_WORKSPACE_NOT_FOUND,
+            DETAIL_WORKSPACE_UNKNOWN,
+        ),
         Ok(SetPlatformKey::ModelNotFound) => reject(
             error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
             DETAIL_MODEL_UNKNOWN,
@@ -162,7 +165,10 @@ pub(crate) async fn deactivate<D: Services>(
     identity: PersonIdentity,
     Path(provider): Path<String>,
 ) -> Response {
-    if provider.is_empty() || provider.len() > 32 {
+    if provider.is_empty() || provider.len() > KEY_PROVIDER_MAX_BYTES {
+        // A PATH segment, not a body field: there is no deserialised struct
+        // here for a derive to hang off, so the same bound is spelled against
+        // the same constant the wire type declares.
         return reject(error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN);
     }
     match services
@@ -187,6 +193,28 @@ pub(crate) async fn deactivate<D: Services>(
     }
 }
 
+/// The sentence a caller is told, for the bound their body broke.
+///
+/// The wording is a public contract the dashboard renders, so the bound moves
+/// onto the wire type and the sentence stays here, keyed by the path that
+/// broke — rather than both living in an `if` that has to be kept in step with
+/// the schema.
+fn detail_for(report: &garde::Report) -> &'static str {
+    report
+        .iter()
+        .next()
+        .map_or(DETAIL_MALFORMED_JSON, |(path, _message)| {
+            if path.to_string() == FIELD_PROVIDER {
+                DETAIL_PROVIDER_LEN
+            } else {
+                DETAIL_MODEL_LEN
+            }
+        })
+}
+
+/// The path `garde` reports a provider-length break under.
+const FIELD_PROVIDER: &str = "provider";
+
 #[derive(Debug, PartialEq, Eq)]
 struct Validated<'a> {
     provider: Cow<'a, str>,
@@ -201,12 +229,9 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
     }
     let request = afd_core::json::object_from_slice::<PlatformKeyPut<'_>>(body)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
-    if request.provider.is_empty() || request.provider.len() > 32 {
-        return Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN));
-    }
-    if request.model.is_empty() || request.model.len() > 256 {
-        return Err((error_code::INVALID_REQUEST, DETAIL_MODEL_LEN));
-    }
+    request
+        .validate()
+        .map_err(|report| (error_code::INVALID_REQUEST, detail_for(&report)))?;
     let source_workspace_id = Uuid7::parse(&request.source_workspace_id)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_WORKSPACE_ID))?;
     afd_credential::provider::validate_endpoint_pair(
@@ -277,5 +302,45 @@ mod tests {
             request(credential_url.as_bytes()),
             Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
         );
+    }
+
+    /// The sentence names the field whose bound broke, keyed by the path
+    /// `garde` reports — the wording is a public contract the dashboard
+    /// renders, so each of the two bounds must earn its own sentence.
+    #[test]
+    fn a_broken_bound_is_told_as_the_field_that_broke_it() {
+        // The caps are read from the wire type that DECLARES them, never
+        // copied: a local number would let the bound move while these cases
+        // asserted the old one and still passed.
+        let provider_past_cap = format!(
+            r#"{{"provider":"{}","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#,
+            "p".repeat(KEY_PROVIDER_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            request(provider_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
+        );
+
+        let provider_empty = format!(
+            r#"{{"provider":"","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#
+        );
+        assert_eq!(
+            request(provider_empty.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
+        );
+
+        let model_past_cap = format!(
+            r#"{{"provider":"anthropic","source_workspace_id":"{WORKSPACE}","model":"{}","base_url":null}}"#,
+            "m".repeat(afd_wire::admin::MODEL_ID_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            request(model_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_MODEL_LEN))
+        );
+
+        // A report with nothing in it cannot name a field. `validate` never
+        // produces one, so the default is driven directly: the fallback must
+        // stay a refusal rather than a sentence blaming a field that passed.
+        assert_eq!(detail_for(&garde::Report::new()), DETAIL_MALFORMED_JSON);
     }
 }

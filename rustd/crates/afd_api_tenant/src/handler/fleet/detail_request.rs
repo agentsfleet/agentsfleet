@@ -9,6 +9,8 @@ use afd_fleet_lifecycle::{ConfigSource, Patch, Requested};
 use afd_wire::fleet::PatchFleetRequest;
 use axum::body::Bytes;
 
+use garde::Validate as _;
+
 use crate::handler::Refusal;
 
 /// The refusal a PATCH body this daemon cannot read earns.
@@ -29,14 +31,6 @@ pub const DETAIL_TRIGGER_BOUNDS: &str = "trigger_markdown must be 1..64KiB";
 /// The refusal a source document outside its length bounds earns.
 pub const DETAIL_SOURCE_BOUNDS: &str = "source_markdown must be 1..64KiB";
 
-/// The most bytes an authored document may carry.
-///
-/// [`DETAIL_TRIGGER_BOUNDS`] and [`DETAIL_SOURCE_BOUNDS`] say 64KiB and this says
-/// two hundred. The mismatch is in the Zig too, and it is the NUMBER that is
-/// load-bearing — ported as-is,
-/// because a client sitting between the two would change class if either moved.
-const MAX_MARKDOWN_LEN: usize = 200 * 1024;
-
 /// The PATCH the body asks for, or the refusal it earns.
 ///
 /// Every ambiguity is resolved HERE, once, into a type that cannot hold it: the
@@ -52,7 +46,11 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
     let sent = afd_core::json::object_from_slice::<PatchFleetRequest<'_>>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
 
-    let config = match (
+    // Which SOURCES were named is settled before how long they are. Both
+    // questions refuse the same request, and this one is about the PAIR — no
+    // per-field bound can express it, and a caller who sent both needs that
+    // answer rather than a length.
+    let sources = match (
         sent.config_json.as_deref(),
         sent.trigger_markdown.as_deref(),
     ) {
@@ -60,17 +58,18 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
         // one wins — refused at the door rather than resolved by precedence.
         (Some(_json), Some(_document)) => return Err(Refusal::malformed(DETAIL_CONFIG_AMBIGUOUS)),
         (Some(""), None) => return Err(Refusal::malformed(DETAIL_CONFIG_REQUIRED)),
-        (Some(json), None) => Some(ConfigSource::Json(json.to_owned())),
-        (None, Some(document)) => Some(ConfigSource::Trigger(
-            bounded(document, DETAIL_TRIGGER_BOUNDS)?.to_owned(),
-        )),
-        (None, None) => None,
+        named => named,
     };
-    let source_markdown = sent
-        .source_markdown
-        .as_deref()
-        .map(|document| bounded(document, DETAIL_SOURCE_BOUNDS).map(str::to_owned))
-        .transpose()?;
+    sent.validate().map_err(|report| detail_for(&report))?;
+
+    let config = match sources {
+        (Some(json), None) => Some(ConfigSource::Json(json.to_owned())),
+        (None, Some(document)) => Some(ConfigSource::Trigger(document.to_owned())),
+        // Both-named and an empty `config_json` returned above; what is left is
+        // the patch that changes neither.
+        _neither => None,
+    };
+    let source_markdown = sent.source_markdown.as_deref().map(str::to_owned);
 
     Ok(Patch {
         config,
@@ -80,13 +79,30 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
     })
 }
 
-/// The document, if it is one this daemon will store.
-fn bounded<'a>(document: &'a str, detail: &'static str) -> Result<&'a str, Refusal> {
-    if document.is_empty() || document.len() > MAX_MARKDOWN_LEN {
-        return Err(Refusal::malformed(detail));
-    }
-    Ok(document)
+/// The sentence a caller is told, for the bound their body broke.
+///
+/// The BOUND lives on [`PatchFleetRequest`]; what stays here is which of the
+/// two sentences a break earns, because `trigger_markdown` and
+/// `source_markdown` share one cap and answer different copy. `garde` reports a
+/// PATH and a message — the path picks the wording, and the message is
+/// discarded, because these two sentences are a public contract and garde's are
+/// not.
+fn detail_for(report: &garde::Report) -> Refusal {
+    let detail = report
+        .iter()
+        .next()
+        .map_or(DETAIL_TRIGGER_BOUNDS, |(path, _message)| {
+            if path.to_string() == FIELD_SOURCE_MARKDOWN {
+                DETAIL_SOURCE_BOUNDS
+            } else {
+                DETAIL_TRIGGER_BOUNDS
+            }
+        });
+    Refusal::malformed(detail)
 }
+
+/// The path `garde` reports a `source_markdown` break under.
+const FIELD_SOURCE_MARKDOWN: &str = "source_markdown";
 
 /// The transition a spelling asks for, or the refusal an unknown one earns.
 ///
@@ -108,9 +124,14 @@ mod tests {
     use axum::response::IntoResponse as _;
     use http::StatusCode;
 
+    // The cap is read from the type that DECLARES it, never copied: a local
+    // number would let the bound move on `PatchFleetRequest` while these cases
+    // asserted the old one and still passed.
+    use afd_wire::fleet::FLEET_MARKDOWN_MAX_BYTES as MAX_MARKDOWN_LEN;
+
     use super::{
-        DETAIL_CONFIG_REQUIRED, DETAIL_SOURCE_BOUNDS, DETAIL_STATUS_INVALID, DETAIL_TRIGGER_BOUNDS,
-        MAX_MARKDOWN_LEN, read_patch,
+        ConfigSource, DETAIL_CONFIG_REQUIRED, DETAIL_SOURCE_BOUNDS, DETAIL_STATUS_INVALID,
+        DETAIL_TRIGGER_BOUNDS, read_patch,
     };
 
     /// The refusal a body earns, as its status and the sentence a caller reads.
@@ -163,6 +184,30 @@ mod tests {
         assert_eq!(
             refused(&past_cap).await,
             Some((StatusCode::BAD_REQUEST, DETAIL_TRIGGER_BOUNDS.to_owned()))
+        );
+    }
+
+    /// Each configuration source alone resolves to its own [`ConfigSource`],
+    /// carrying the document the caller sent — a `TRIGGER.md` is reparsed
+    /// downstream, a JSON document replaces the stored one directly, and the
+    /// edge must not confuse the two.
+    #[test]
+    fn test_each_configuration_source_alone_resolves_to_its_own_variant() {
+        let trigger = read_patch(
+            &Bytes::from_static(br#"{"trigger_markdown":"Nightly triage"}"#),
+            None,
+        );
+        // `.ok()` rather than comparing the `Result`: a `Refusal` is a
+        // response, and renders rather than compares.
+        assert_eq!(
+            trigger.ok().map(|patch| patch.config),
+            Some(Some(ConfigSource::Trigger("Nightly triage".to_owned())))
+        );
+
+        let json = read_patch(&Bytes::from_static(br#"{"config_json":"{}"}"#), None);
+        assert_eq!(
+            json.ok().map(|patch| patch.config),
+            Some(Some(ConfigSource::Json("{}".to_owned())))
         );
     }
 

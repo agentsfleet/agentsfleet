@@ -1,7 +1,7 @@
 //! Which database a role connects to, and with what limits.
 //!
 //! Every knob name here is the Zig daemon's, spelled identically
-//! (`src/agentsfleetd/db/pool.zig`): a deployment moves between the two
+//! (the retired daemon's `db/pool.zig`): a deployment moves between the two
 //! binaries without touching its environment, or the port is not a port.
 //!
 //! The TLS posture a URL resolves to lives in [`tls`], with the history that

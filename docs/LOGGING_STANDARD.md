@@ -35,7 +35,7 @@ Documented honestly, not aspirationally. Pre-M62 baseline (the fix-pass converge
 
 - The named module `log` (source: `src/lib/logging/mod.zig`) exposes `scoped(.tag)` returning a logger struct with `.err` / `.warn` / `.info` / `.debug` methods. M62 removed the older free-function helpers (`logErr` / `logErrWithHint` / `logWarnErr`) — there is no compat shim.
 - TypeScript (`cli/src/**`) calls `console.log`/`console.error` directly. No structure. No scope. No severity beyond err vs out.
-- Error-code embedding (`UZ-XXX-NNN`) appears on some `err` lines but not others. The registry (`src/agentsfleetd/errors/error_registry.zig`) is the source of truth, but enforcement is voluntary.
+- Error-code embedding (`UZ-XXX-NNN`) appears on some `err` lines but not others. The registry (`rustd/crates/afd_core/src/error_code.rs`) is the source of truth, but enforcement is voluntary.
 - No collector-friendly format. Logs are a mix of free-form English and ad-hoc `key={value}` fragments.
 
 The proposed standard below is what every new emit must conform to and what the fix-pass converges existing emits toward.
@@ -168,7 +168,7 @@ Log the source (`source=env:OPENAI_API_KEY`), never the value, at every level.
 
 > [DETERMINISTIC → LOG]
 
-Every `err` and `warn` record that maps to a domain error MUST carry `error_code=UZ-XXX-NNN` where `UZ-XXX-NNN` is declared in `src/agentsfleetd/errors/error_registry.zig`.
+Every `err` and `warn` record that maps to a domain error MUST carry `error_code=UZ-XXX-NNN` where `UZ-XXX-NNN` is declared in `rustd/crates/afd_core/src/error_code.rs`.
 
 - **Used-but-undeclared** (`UZ-FAKE-999` appearing in code, no entry in registry): **blocking** in `make lint`.
 - **Declared-but-unreferenced** (registry has `UZ-LEGACY-007`, no code references it): **informational**. Deletion may be deferred to a sweep milestone.

@@ -12,7 +12,7 @@ vi.mock("./client", () => ({ request: requestMock }));
 import { getModelLibrary, modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model_library";
 
 // Mirrors the GET /v1/models wire shape from
-// src/agentsfleetd/http/handlers/model_library.zig.
+// rustd/crates/afd_api_tenant/src/handler/tenant/models.rs.
 const LIBRARY_OK: ModelLibrary = {
   version: "2026-04-29",
   models: [

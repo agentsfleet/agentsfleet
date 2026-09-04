@@ -25,6 +25,11 @@ afd_db.workspace = true
 afd_fleet_runtime.workspace = true
 bytes.workspace = true
 flate2.workspace = true
+# The workspace's validation crate. The bundle bounds are DECLARED on the
+# types they guard rather than hand-written as `if` chains, the same choice
+# `afd_fleet_runtime::config::raw` made, so a bound is read where the field
+# is and a refusal names the exact path it refused.
+garde.workspace = true
 futures-util.workspace = true
 headers.workspace = true
 hex.workspace = true

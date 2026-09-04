@@ -2,8 +2,8 @@ import { request } from "./client";
 
 // Client for GET /v1/workspaces/{ws}/preferences and
 // PUT …/preferences/{pref_key}. Mirrors the server registry in
-// src/agentsfleetd/state/user_preferences.zig — the keys ARE the wire strings,
-// so this const and the Zig enum must stay in lockstep.
+// rustd/crates/afd_tenant/src/preference/mod.rs — the keys ARE the wire
+// strings, so this const and that `PrefKey` must stay in lockstep.
 export const PREFERENCE_KEY = {
   DISMISSED: "getting_started_dismissed",
   COLLAPSED: "getting_started_collapsed",

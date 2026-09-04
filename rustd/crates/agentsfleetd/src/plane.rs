@@ -66,7 +66,7 @@ use afd_cron::{Fire, QStash, ScheduleService, Schedules, SigningKeys};
 use afd_ingress::Ingress;
 use afd_vault::Vault as SecretVault;
 
-use crate::identity::{Capabilities, Sessions};
+use crate::identity::{Capabilities, Sessions, SignupWriteback};
 use crate::probes::LiveDependencies;
 
 /// The authenticator this daemon serves both planes through.
@@ -80,6 +80,7 @@ pub type Authenticator = Planes<Credentials, Capabilities, Sessions>;
 #[derive(Debug)]
 pub struct ServingPlane {
     probes: LiveDependencies,
+    signup_writeback: SignupWriteback,
     authenticator: Authenticator,
     runners: Runners,
     leases: Plane,
@@ -154,6 +155,7 @@ impl ServingPlane {
             kek,
             capabilities,
             sessions,
+            signup_writeback,
             stores,
             broker,
             platform_admin_workspace,
@@ -183,6 +185,7 @@ impl ServingPlane {
             None => LibraryImports::without_store(database.clone(), Entropy::new()),
         };
         Self {
+            signup_writeback,
             bundles,
             library_imports,
             platform_admin_workspace,

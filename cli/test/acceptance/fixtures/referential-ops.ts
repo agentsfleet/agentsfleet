@@ -11,16 +11,16 @@
  * comment for the refused-versus-cascades rule it pins.
  *
  * Auth boundary worth knowing before adding a bearer-swap test here: an
- * `agt_a…` fleet key is NOT a control-plane credential. The standard
- * `bearer()` middleware
- * (`src/agentsfleetd/auth/middleware/bearer_or_api_key.zig`) accepts only an
- * OpenID Connect (OIDC) JSON Web Token (JWT) or a tenant `agt_t` key and
- * answers 401 otherwise; `agt_a` keys are recognised exclusively on the
- * fleet-self integration-grant path
- * (`src/agentsfleetd/http/handlers/integration_grants/handler.zig`, which has
- * no read-only Command-Line Interface (CLI) command). So every control-plane
- * CLI read performed with an `agt_a` bearer is rejected at the auth boundary —
- * before AND after the key is revoked.
+ * `agt_a…` fleet key is NOT a control-plane credential. The tenant plane
+ * (`rustd/crates/afd_auth/src/plane.rs`, whose `accepts` table is fed by the
+ * prefix table in `credential.rs`) admits only an OpenID Connect (OIDC) JSON
+ * Web Token (JWT), a tenant `agt_t` key or an `afc_` CLI credential, and
+ * answers 401 otherwise; `agt_a` is not a class the daemon knows at all — it
+ * was recognised only on the retired daemon's fleet-self integration-grant
+ * path, which had no read-only Command-Line Interface (CLI) command and has
+ * no successor here. So every control-plane CLI read performed with an
+ * `agt_a` bearer is rejected at the auth boundary — before AND after the key
+ * is revoked.
  */
 
 import assert from "node:assert/strict";

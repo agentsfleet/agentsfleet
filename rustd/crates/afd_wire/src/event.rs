@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// How an event entered the system.
@@ -294,12 +295,23 @@ pub struct ThreadResponse<'a> {
 /// a field this build does not read is not making a mistake it needs telling
 /// about.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct SteerRequest<'a> {
     /// What to say to the fleet.
+    ///
+    /// Bounded on the decoded bytes, which is what reaches the stream. The
+    /// escaped form a client sends is not what counts against the limit.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES))]
     pub message: Cow<'a, str>,
 }
+
+/// The longest thing anyone may say to a fleet in one steer.
+///
+/// `MAX_MESSAGE_LEN`, mirrored. A steer is a sentence a person typed; past
+/// this it is a payload, and the fleet's own trigger surface is where a
+/// payload belongs.
+pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 
 // `event_id` is the stream entry id Redis minted, which IS the canonical
 // event id.

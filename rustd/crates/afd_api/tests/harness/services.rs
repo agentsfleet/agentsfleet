@@ -39,10 +39,14 @@ use afd_vault::Vault as SecretVault;
 use super::HarnessProviders;
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
-use super::{DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, SCHEDULE_DESTINATION};
+use super::{
+    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, RecordingWriteback,
+    SCHEDULE_DESTINATION,
+};
 
 impl Services for Fleet {
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
+    type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;
     type Sessions = Logins;
     type Workspaces = OneWorkspace;
@@ -60,6 +64,10 @@ impl Services for Fleet {
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
+    }
+
+    fn signup_metadata(&self) -> &Self::SignupMetadata {
+        &self.signup_writeback
     }
 
     fn runners(&self) -> &Runners {

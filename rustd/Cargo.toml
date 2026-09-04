@@ -411,8 +411,8 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # rather than on unification holding.
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
 # Redis. The crate replaces roughly three thousand lines of hand-rolled RESP
-# parsing, connection pooling and pub/sub plumbing under `src/agentsfleetd/
-# queue/`. `connection-manager` is the piece that earns it: one multiplexed
+# parsing, connection pooling and pub/sub plumbing under the retired Zig daemon's
+# `queue/`. `connection-manager` is the piece that earns it: one multiplexed
 # connection that reconnects itself, where the Zig side maintained a pool of
 # request/reply sockets behind a mutex.
 #
@@ -426,7 +426,7 @@ redis = { version = "1.6.0", default-features = false, features = [
     "streams",
     "script",
 ] }
-# The HTTP shell. axum replaces `src/agentsfleetd/http/router.zig` and the ten
+# The HTTP shell. axum replaces the retired Zig daemon's `http/router.zig` and the ten
 # hand-rolled `route_matchers_*.zig` files with a router that matches paths and
 # extracts parameters for us — roughly a thousand lines of matching logic that
 # stops being ours to keep correct.

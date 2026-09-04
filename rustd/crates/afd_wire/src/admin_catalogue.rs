@@ -2,24 +2,36 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformKeyPut<'a> {
     /// Provider and vault-row name.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES))]
     pub provider: Cow<'a, str>,
     /// Workspace holding that vault row.
     #[serde(borrow)]
+    // Unbounded here: it is PARSED as a `Uuid7` downstream, and a parse is a
+    // stricter proof than any length — a bound would only refuse earlier with
+    // a vaguer sentence.
+    #[garde(skip)]
     pub source_workspace_id: Cow<'a, str>,
     /// Priced model selected as platform default.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
     pub model: Cow<'a, str>,
     /// Custom endpoint for the compatible-provider mode.
     #[serde(borrow)]
+    // Its legality depends on the PROVIDER beside it — a custom endpoint is
+    // required for one mode and refused for the others — so it is proven by
+    // `validate_endpoint_pair`, which can see both, not by a bound that can
+    // only see one.
+    #[garde(skip)]
     pub base_url: Option<Cow<'a, str>>,
 }
 
@@ -94,32 +106,64 @@ pub struct PlatformKeyDeactivateResponse<'a> {
 
 /// Mutable rate fields shared by admin model create and patch.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ModelRates {
     /// Maximum context tokens.
+    #[garde(range(min = CONTEXT_CAP_MIN))]
     pub context_cap_tokens: i32,
     /// Input-token nanos per million tokens.
+    #[garde(range(min = RATE_NANOS_MIN))]
     pub input_nanos_per_mtok: i64,
     /// Cached-input nanos per million tokens.
+    #[garde(range(min = RATE_NANOS_MIN))]
     pub cached_input_nanos_per_mtok: i64,
     /// Output-token nanos per million tokens.
+    #[garde(range(min = RATE_NANOS_MIN))]
     pub output_nanos_per_mtok: i64,
 }
 
+/// The longest provider name a platform key may carry.
+///
+/// Shorter than the catalogue's [`PROVIDER_MAX_BYTES`] on purpose: this one is
+/// also a VAULT ROW NAME, and the vault's key space is the tighter of the two.
+pub const KEY_PROVIDER_MAX_BYTES: usize = 32;
+
+/// The smallest usable context ceiling.
+///
+/// A model priced with a cap of zero can serve no request at all, so the row is
+/// refused rather than stored and discovered later by a run that cannot start.
+pub const CONTEXT_CAP_MIN: i32 = 1;
+
+/// The floor a price may not go under.
+///
+/// Zero is legal — a free model is a real thing — and negative is not: a
+/// negative rate credits a tenant for spending, which the ledger has no reading
+/// for.
+pub const RATE_NANOS_MIN: i64 = 0;
+
+/// The longest provider identity the catalogue stores.
+pub const PROVIDER_MAX_BYTES: usize = 64;
+
+/// The longest provider-native model identity the catalogue stores.
+pub const MODEL_ID_MAX_BYTES: usize = 256;
+
 /// `POST /v1/admin/models` input.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelCreate<'a> {
     /// Provider identity.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = PROVIDER_MAX_BYTES))]
     pub provider: Cow<'a, str>,
     /// Provider-native model identity.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
     pub model_id: Cow<'a, str>,
     /// Rates and context cap flattened on the existing wire.
     #[serde(flatten)]
+    #[garde(dive)]
     pub rates: ModelRates,
 }
 

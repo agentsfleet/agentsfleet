@@ -3,7 +3,7 @@
 //! The envelope is a contract with clients that already exist: the dashboard
 //! reads `user_message`, the CLI reads `error_code`, and support reads
 //! `request_id` off a screenshot. Every assertion here is against
-//! `src/agentsfleetd/http/handlers/problem_response.zig` and its test file, so
+//! the retired daemon's `http/handlers/problem_response.zig` and its test file, so
 //! a change that looks harmless from inside Rust fails here rather than in
 //! somebody's browser.
 #![cfg(feature = "test-util")]

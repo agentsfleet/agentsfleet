@@ -3,7 +3,7 @@
 //! # The script lives here, and is proven identical to the Zig one
 //!
 //! `session/verify_consume.lua` is this crate's own copy, included from this
-//! crate's own tree — because M181 deletes `src/agentsfleetd/` at cutover, and
+//! crate's own tree — because M181 deleted the Zig daemon tree at cutover, and
 //! a crate that reaches into a directory scheduled for deletion stops building
 //! the day it goes. Reaching across was the first shape and it was wrong for
 //! exactly that reason.

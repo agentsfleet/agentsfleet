@@ -39,7 +39,7 @@ metrics="$(
 while IFS= read -r metric; do
   [ -n "$metric" ] || continue
   if ! grep -RFq -- "$metric" \
-    "$REPO_ROOT/src/agentsfleetd"; then
+    "$REPO_ROOT/rustd/crates"; then
     echo "ERROR: Grafana asset references an unowned metric: $metric" >&2
     exit 1
   fi
