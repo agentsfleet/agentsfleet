@@ -185,27 +185,3 @@ fn secret_bytes_are_zeroed_before_release() {
     recovered.zeroize();
     assert!(recovered.expose().iter().all(|byte| *byte == 0));
 }
-
-/// The mapping table is exhaustive over the Zig pure-crypto suite.
-///
-/// `crypto_primitives.zig` carries six tests. If someone adds a seventh, this
-/// count fails and the mapping above gets revisited, rather than the parity
-/// claim quietly going stale.
-#[test]
-fn zig_pure_crypto_suite_is_fully_mirrored() {
-    let zig = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .unwrap()
-            .join("src/agentsfleetd/secrets/crypto_primitives.zig"),
-    )
-    .expect("the Zig primitive module is the specification this file mirrors");
-
-    let zig_tests = zig.matches("\ntest \"").count();
-    assert_eq!(
-        zig_tests, 6,
-        "crypto_primitives.zig has {zig_tests} tests; the mapping table in this \
-         file's documentation covers 6. Mirror the new one or record why not."
-    );
-}

@@ -299,8 +299,8 @@ pub struct ThreadResponse<'a> {
 pub struct SteerRequest<'a> {
     /// What to say to the fleet.
     ///
-    /// Bounded on the DECODED bytes, which is what reaches the stream and what
-    /// the runner reads — not on the escaped form a client happened to send.
+    /// Bounded on the decoded bytes, which is what reaches the stream. The
+    /// escaped form a client sends is not what counts against the limit.
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES))]
     pub message: Cow<'a, str>,
