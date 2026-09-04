@@ -143,6 +143,13 @@ pub(super) const AUTH: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED,
+        status: 401,
+        title: "Credential exchange failed",
+        hint: "The browser session could not be exchanged for a CLI credential — usually an expired session. The CLI emits this itself when no server code arrives; run `agentsfleet login` again.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
         status: 404,
         title: "Command-line credential not found",

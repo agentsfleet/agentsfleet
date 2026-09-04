@@ -1,13 +1,13 @@
 //! The `UZ-*` codes a client matches on, declared once each.
 //!
-//! The Zig daemon single-sources every code in
-//! `src/agentsfleetd/errors/error_registry.zig`, and that file stays the
-//! registry of record for the whole product: `audits/error-codes.sh` greps it
-//! alone, so a code declared anywhere else reads as an orphan at every use
-//! site. This module is a CHECKED SUBSET of it — the codes the Rust port has
-//! actually reached — not a second registry. `test_error_registry_matches_zig`
-//! reads the Zig file and fails if a code here is spelled differently or is
-//! absent there, so the two cannot drift apart silently while the port runs.
+//! Until the Zig daemon retired, its `errors/error_registry.zig` was the
+//! registry of record and this module was a checked subset of it — the codes
+//! the port had reached. That tree is gone, and this is now the registry of
+//! record for the whole product. The set the Zig registry declared at sunset
+//! is frozen in the tests as `ZIG_DECLARED`, and
+//! `should_declare_only_codes_the_zig_registry_also_declares` pins every code
+//! here against it — so a new code is a deliberate public-contract addition,
+//! declared there on purpose, never a drift.
 //!
 //! Codes are added here as the milestone that emits them lands, never
 //! speculatively: an unreferenced code is dead code that looks like coverage.
@@ -159,6 +159,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     AUTH_UNAVAILABLE,
     AUTH_CLI_CREDENTIAL_REVOKED,
     AUTH_CLI_CREDENTIAL_NOT_FOUND,
+    AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED,
     APIKEY_REVOKED,
     APIKEY_NOT_FOUND,
     APIKEY_NAME_TAKEN,
