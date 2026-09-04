@@ -30,20 +30,6 @@ the integration row plus the whole-branch and spec criteria, and is what
 CHORE(close) fires — it skips the fast rows because `git.pushed` proves HEAD is
 the commit pre-push already graded.
 
-**The two Rust lanes run TWICE before a PR (user's standing rule).** `make
-test-unit-rustd` and `make test-integration-rustd` each run twice at the
-boundary, and both pairs must be green. One green run is a sample; two is the
-cheapest evidence that the result is the code's and not the scheduler's. The
-rule was set after a milestone closed on a single green lane run that three
-later runs contradicted, each failing a different test — the lane was sharing a
-Redis consumer group and a fixed workspace across concurrent tests, and one run
-could not have told anyone. A second run costs a lane and buys the difference
-between "it passed" and "it passes".
-
-Report both runs in the done message; a pair that disagrees is a red lane, not a
-retry — investigate the disagreement rather than running a third for a better
-answer.
-
 One lane needs live datastores, and only one. `make/test-infra.mk` brings up
 docker compose Postgres and Redis for `test-integration-rustd`; `make
 test-unit-all` stays datastore-free, because every Rust test needing one is
