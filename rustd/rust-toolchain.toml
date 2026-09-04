@@ -1,15 +1,27 @@
 # Pins the toolchain the lanes, the hooks, and Continuous Integration (CI) all
 # compile with, so "works on my machine" cannot mean a different compiler.
 #
-# 1.98.0 matches the repository's mise-managed Rust (`rust = "1.98.0"` in the
-# mise tools config), so a developer shell and a CI container resolve the same
-# compiler with no second source of truth. Moving this pin means moving that one
-# in the same change, or a developer silently compiles against a different rustc.
+# THIS file is the pin. rustup reads it from the working directory, so `cargo`
+# run anywhere under `rustd/` compiles with the channel below whatever the
+# machine's default toolchain is.
+#
+# A developer whose mise config also names a Rust version should keep it equal to
+# this one. mise exports `RUSTUP_TOOLCHAIN`, which OVERRIDES this file rather
+# than deferring to it, so a mismatch means the shell and the lanes quietly
+# disagree. That config lives in the developer's home directory and is not
+# something this repository can hold to the pin — the gate that can is
+# `build_and_push.sh`, which refuses to build the CI image when `RUST_VERSION`
+# in the image playbook disagrees with the channel below.
+#
+# Moving this pin means moving `RUST_VERSION` in
+# `playbooks/operations/ci_rust_images/versions.env` and `rust-version` in
+# `rustd/Cargo.toml` in the same change. The image playbook's
+# `Moving the Rust version` section is the checklist.
 #
 # `rustfmt` and `clippy` are components rather than assumptions: `make lint-all`
 # runs both, and a toolchain missing either fails the lane loudly instead of
 # skipping the check. `llvm-tools` backs cargo-llvm-cov's coverage lane.
 [toolchain]
-channel = "1.98.0"
+channel = "1.98.1"
 components = ["rustfmt", "clippy", "llvm-tools"]
 profile = "minimal"

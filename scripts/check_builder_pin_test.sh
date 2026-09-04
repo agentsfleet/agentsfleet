@@ -56,7 +56,7 @@ YAML
 test_should_fail_even_when_the_literal_is_currently_correct() {
   local name="test_should_fail_even_when_the_literal_is_currently_correct" dir
   dir="$(workdir)"; mkdir -p "$dir/wf"
-  printf 'image: ghcr.io/agentsfleet/ci-rust-alpine:1.98.0-alpine3.24\n' > "$dir/wf/a.yml"
+  printf 'image: ghcr.io/agentsfleet/ci-rust-alpine:1.98.1-alpine3.24\n' > "$dir/wf/a.yml"
   if bash "$GUARD" "$dir/wf" >/dev/null 2>&1; then
     bad "$name" "a correct-today literal passed — it is the one that rots at the bump"
   else ok "$name"; fi
