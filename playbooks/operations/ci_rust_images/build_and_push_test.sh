@@ -17,101 +17,18 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-readonly REAL_SCRIPT="$SCRIPT_DIR/build_and_push.sh"
 FAILURES=0
 RUN=0
-
-# Every fixture lives under ONE parent, so cleanup is a single removal that a
-# Ctrl-C also gets. `fixture` runs inside a command substitution — a subshell —
-# so anything it appended to an array in there would never reach this shell;
-# a parent directory sidesteps that entirely. Single-quoted so $ROOT expands at
-# signal time rather than being baked into the trap body.
-ROOT="$(mktemp -d "${TMPDIR:-/tmp}/build-push-test.XXXXXX")"
-readonly ROOT
-trap 'rm -rf "$ROOT"' EXIT INT TERM
 
 ok()  { printf 'ok   %s\n' "$1"; RUN=$((RUN + 1)); }
 bad() { printf 'FAIL %s\n     %s\n' "$1" "$2"; FAILURES=$((FAILURES + 1)); RUN=$((RUN + 1)); }
 
-sha_of_string() {
-  if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'
-  else printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; fi
-}
-
-# A tree shaped the way the script resolves paths: it reads versions.env beside
-# itself, and rust-toolchain.toml plus Cargo.toml three directories up.
-fixture() {
-  local dir pinned="${1:-1.98.1}" rust="${2:-1.98.1}" floor="${3:-1.98.1}"
-  dir="$(mktemp -d "$ROOT/case.XXXXXX")"
-  mkdir -p "$dir/playbooks/operations/ci_rust_images" "$dir/rustd" "$dir/bin"
-  cp "$REAL_SCRIPT" "$dir/playbooks/operations/ci_rust_images/"
-  printf '[toolchain]\nchannel = "%s"\n' "$pinned" > "$dir/rustd/rust-toolchain.toml"
-  printf '[workspace.package]\nrust-version = "%s"\n' "$floor" > "$dir/rustd/Cargo.toml"
-  cat > "$dir/playbooks/operations/ci_rust_images/versions.env" <<EOF
-# Prose that must survive a rewrite.
-RUST_VERSION=$rust
-ALPINE_SERIES=3.24
-
-# More prose.
-RUSTUP_VERSION=1.29.0
-RUSTUP_SHA256_X86_64_MUSL=1111111111111111111111111111111111111111111111111111111111111111
-RUSTUP_SHA256_AARCH64_MUSL=2222222222222222222222222222222222222222222222222222222222222222
-EOF
-  printf '%s\n' "$dir"
-}
-
-env_file() { printf '%s/playbooks/operations/ci_rust_images/versions.env' "$1"; }
-
-# Records its argv instead of building anything.
-stub_docker() {
-  cat > "$1/bin/docker" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$@" > "$STUB_ARGS"
-STUB
-  chmod +x "$1/bin/docker"
-}
-
-# MODE=ok        bytes and published checksum agree, and differ per architecture
-# MODE=mismatch  published checksum does not describe the bytes served
-# MODE=halfway   aarch64 fails outright, so x86_64 has already succeeded
-stub_curl() {
-  cat > "$1/bin/curl" <<'STUB'
-#!/usr/bin/env bash
-out=""; url=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -o) out="$2"; shift 2 ;;
-    --max-time) shift 2 ;;
-    -*) shift ;;
-    *) url="$1"; shift ;;
-  esac
-done
-base="${url%.sha256}"
-case "$base" in
-  *aarch64*) body="rustup-init-aarch64" ;;
-  *x86_64*)  body="rustup-init-x86_64" ;;
-  *)         body="rustup-init-unknown" ;;
-esac
-[ "${MODE:-ok}" = "halfway" ] && case "$base" in *aarch64*) exit 22 ;; esac
-sum() {
-  if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'
-  else printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; fi
-}
-if [ "$url" != "$base" ]; then
-  [ "${MODE:-ok}" = "mismatch" ] && body="something-else-entirely"
-  printf '%s *./rustup-init\n' "$(sum "$body")"
-else
-  printf '%s' "$body" > "$out"
-fi
-STUB
-  chmod +x "$1/bin/curl"
-}
-
-run_script() {
-  local dir="$1"; shift
-  ( cd "$dir" && PATH="$dir/bin:$PATH" STUB_ARGS="$dir/args" \
-      bash "$dir/playbooks/operations/ci_rust_images/build_and_push.sh" "$@" ) 2>&1
-}
+# The fixtures and stubs live next door; this file is the assertions.
+# `source-path=SCRIPTDIR` resolves the sibling relative to THIS file rather than
+# the caller's working directory, so `shellcheck -x` follows it from anywhere.
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=build_and_push_fixtures.sh
+. "$SCRIPT_DIR/build_and_push_fixtures.sh"
 
 test_should_refuse_when_the_pin_and_versions_env_disagree() {
   local name="${FUNCNAME[0]}" dir out status=0
@@ -281,6 +198,34 @@ test_fetch_shas_should_leave_every_other_line_intact() {
   else bad "$name" "the refresh destroyed content it was not asked to change"; fi
 }
 
+# A trap that merely returns lets the shell RESUME after the interrupted
+# command, so a cancelled refresh would delete its scratch directory and then
+# carry on writing into it. Cancellation has to read as cancellation.
+test_should_stop_rather_than_resume_when_cancelled() {
+  local name="${FUNCNAME[0]}" dir before status=0 pid marker i=0
+  dir="$(fixture)"; stub_curl_slow "$dir"
+  before="$(cat "$(env_file "$dir")")"
+  marker="$dir/started"
+  # `exec` matters: without it the recorded pid is the wrapper subshell, which
+  # dies on SIGTERM all by itself and returns 143 no matter what the script does.
+  # The signal has to reach the script, so the wrapper becomes the script.
+  PATH="$dir/bin:$PATH" MARKER="$marker" bash -c \
+    'cd "$1" && exec bash "$1/playbooks/operations/ci_rust_images/build_and_push.sh" fetch-shas' \
+    _ "$dir" >/dev/null 2>&1 &
+  pid=$!
+  while [ ! -f "$marker" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done
+  kill -TERM "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null || status=$?
+  # 143 exactly, not merely non-zero: a shared returning trap ALSO exits non-zero,
+  # because the resumed download writes into the scratch directory cleanup just
+  # deleted and dies as a download failure. Only the status distinguishes
+  # "cancelled" from "carried on and then broke".
+  if [ ! -f "$marker" ]; then bad "$name" "the stub never ran — the test proved nothing"
+  elif [ "$status" -ne 143 ]; then bad "$name" "cancellation exited $status, not 143 — the shell resumed instead of stopping"
+  elif [ "$before" != "$(cat "$(env_file "$dir")")" ]; then bad "$name" "a cancelled refresh still rewrote versions.env"
+  else ok "$name"; fi
+}
+
 test_should_refuse_an_unknown_argument() {
   local name="${FUNCNAME[0]}" dir status=0
   dir="$(fixture)"; stub_docker "$dir"
@@ -316,6 +261,7 @@ test_fetch_shas_should_refuse_when_the_published_checksum_disagrees
 test_fetch_shas_should_write_the_installer_version_it_fetched
 test_fetch_shas_should_not_half_write_when_one_architecture_fails
 test_fetch_shas_should_leave_every_other_line_intact
+test_should_stop_rather_than_resume_when_cancelled
 test_should_refuse_an_unknown_argument
 test_should_refuse_when_the_versions_file_is_absent
 

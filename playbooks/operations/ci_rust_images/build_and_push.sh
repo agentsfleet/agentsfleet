@@ -43,10 +43,20 @@ readonly PLATFORMS="linux/amd64,linux/arm64"
 # trap-installation time, so no path ever lands inside the trap body.
 SCRATCH=""
 # `return 0` is load-bearing: an EXIT trap's status becomes the script's, so a
-# bare `[ -n "$SCRATCH" ] && rm -rf ...` made every successful build exit 1 on
-# the path that never allocates a scratch directory.
+# bare `[ -n "$SCRATCH" ] && rm -rf ...` would make every successful build exit 1
+# on the path that never allocates a scratch directory.
+#
+# The signals get their OWN handlers rather than sharing the EXIT one. A trap
+# that merely returns lets the shell RESUME after the interrupted command, so a
+# Ctrl-C during `fetch-shas` would delete SCRATCH and then carry on writing into
+# the directory it just removed, and a Ctrl-C during a build would still report
+# the image as pushed. These clear the EXIT trap and exit with the signal's own
+# status, so cancellation reads as cancellation.
 cleanup() { [ -n "$SCRATCH" ] && rm -rf "$SCRATCH"; return 0; }
-trap cleanup EXIT INT TERM
+on_signal() { cleanup; trap - EXIT; exit "$1"; }
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 log()   { printf '  %s\n' "$*"; }
 ok()    { printf '  ✓ %s\n' "$*"; }
