@@ -21,6 +21,7 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
@@ -177,22 +178,31 @@ pub struct FleetDetailResponse<'a> {
 /// configuration and are mutually exclusive. Sent together they are refused,
 /// because there is no answer to which one wins.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Validate)]
 pub struct PatchFleetRequest<'a> {
     /// A configuration document, replacing the stored one directly.
     #[serde(borrow, default)]
+    // Unbounded here: it is PARSED as configuration downstream, which is a
+    // stricter proof than any length, and it is mutually exclusive with
+    // `trigger_markdown` — a pairing only the handler can see.
+    #[garde(skip)]
     pub config_json: Option<Cow<'a, str>>,
     /// The transition asked for: `active`, `stopped` or `killed`.
     ///
     /// `paused` is refused — it belongs to the platform's anomaly gate, and
     /// accepting it here would let a caller forge a system-halt provenance.
     #[serde(borrow, default)]
+    // A closed vocabulary, not a size: matched against the three spellings the
+    // lifecycle admits, which no bound can express.
+    #[garde(skip)]
     pub status: Option<Cow<'a, str>>,
     /// An authored `TRIGGER.md`, reparsed into the configuration and the name.
     #[serde(borrow, default)]
+    #[garde(inner(length(bytes, min = 1, max = FLEET_MARKDOWN_MAX_BYTES)))]
     pub trigger_markdown: Option<Cow<'a, str>>,
     /// A replacement `SKILL.md`, cross-checked against the name.
     #[serde(borrow, default)]
+    #[garde(inner(length(bytes, min = 1, max = FLEET_MARKDOWN_MAX_BYTES)))]
     pub source_markdown: Option<Cow<'a, str>>,
 }
 
@@ -243,3 +253,12 @@ pub enum PatchedFleetResponse<'a> {
         etag: Cow<'a, str>,
     },
 }
+
+/// The largest authored document a fleet patch may carry.
+///
+/// Two hundred KiB, while the refusal SENTENCE this route answers with says
+/// 64KiB. The mismatch is in the Zig too and it is the NUMBER that is
+/// load-bearing: a client sitting between the two would change class if either
+/// moved, so both are ported as they stand. Do not reconcile them without a
+/// decision about that client.
+pub const FLEET_MARKDOWN_MAX_BYTES: usize = 200 * 1024;

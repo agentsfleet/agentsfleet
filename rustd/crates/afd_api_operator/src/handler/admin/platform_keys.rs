@@ -7,13 +7,14 @@ use afd_admin::{PlatformKey, PlatformKeyInput, SetPlatformKey};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::admin::{
-    PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut, PlatformKeySetResponse,
-    PlatformKeysResponse,
+    KEY_PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
+    PlatformKeySetResponse, PlatformKeysResponse,
 };
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 
 use crate::auth::PersonIdentity;
 use crate::handler::{refuse, reject};
@@ -162,7 +163,10 @@ pub(crate) async fn deactivate<D: Services>(
     identity: PersonIdentity,
     Path(provider): Path<String>,
 ) -> Response {
-    if provider.is_empty() || provider.len() > 32 {
+    if provider.is_empty() || provider.len() > KEY_PROVIDER_MAX_BYTES {
+        // A PATH segment, not a body field: there is no deserialised struct
+        // here for a derive to hang off, so the same bound is spelled against
+        // the same constant the wire type declares.
         return reject(error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN);
     }
     match services
@@ -187,6 +191,28 @@ pub(crate) async fn deactivate<D: Services>(
     }
 }
 
+/// The sentence a caller is told, for the bound their body broke.
+///
+/// The wording is a public contract the dashboard renders, so the bound moves
+/// onto the wire type and the sentence stays here, keyed by the path that
+/// broke — rather than both living in an `if` that has to be kept in step with
+/// the schema.
+fn detail_for(report: &garde::Report) -> &'static str {
+    report
+        .iter()
+        .next()
+        .map_or(DETAIL_MALFORMED_JSON, |(path, _message)| {
+            if path.to_string() == FIELD_PROVIDER {
+                DETAIL_PROVIDER_LEN
+            } else {
+                DETAIL_MODEL_LEN
+            }
+        })
+}
+
+/// The path `garde` reports a provider-length break under.
+const FIELD_PROVIDER: &str = "provider";
+
 #[derive(Debug, PartialEq, Eq)]
 struct Validated<'a> {
     provider: Cow<'a, str>,
@@ -201,12 +227,9 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
     }
     let request = afd_core::json::object_from_slice::<PlatformKeyPut<'_>>(body)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
-    if request.provider.is_empty() || request.provider.len() > 32 {
-        return Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN));
-    }
-    if request.model.is_empty() || request.model.len() > 256 {
-        return Err((error_code::INVALID_REQUEST, DETAIL_MODEL_LEN));
-    }
+    request
+        .validate()
+        .map_err(|report| (error_code::INVALID_REQUEST, detail_for(&report)))?;
     let source_workspace_id = Uuid7::parse(&request.source_workspace_id)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_WORKSPACE_ID))?;
     afd_credential::provider::validate_endpoint_pair(

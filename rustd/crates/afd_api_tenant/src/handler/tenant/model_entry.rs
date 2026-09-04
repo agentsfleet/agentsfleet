@@ -113,13 +113,6 @@ pub const DETAIL_ENTRY_NOT_FOUND: &str = "Model entry not found";
 pub const DETAIL_DELETE_ACTIVE: &str =
     "This entry is the tenant's active selection; switch to another entry first";
 
-/// The longest model identifier this surface accepts.
-///
-/// One rule and two call sites, so the bound cannot hold on the create and not
-/// on the change — which is exactly how `model_id` ended up bounded on the
-/// catalogue route and unbounded on this one.
-pub(super) const MODEL_ID_MAX: usize = 256;
-
 /// This page's cursor payload, in the Zig's fixed key order.
 ///
 /// `tenant_uuid` and `limit` ride beside the sort key because a cursor is bound

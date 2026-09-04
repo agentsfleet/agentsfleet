@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// Platform Fleet-library onboarding request.
@@ -164,23 +165,51 @@ pub struct FleetBundlesResponse<'a> {
 
 /// Partial operator edit for one Fleet-library row.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(default)]
 pub struct AdminLibraryPatch<'a> {
     /// Replacement display name.
     #[serde(borrow)]
+    // `inner` reaches through the `Option`: absent means "leave it alone" on
+    // a PATCH, and only a name that was SENT is bounded.
+    #[garde(inner(length(bytes, min = 1, max = LIBRARY_NAME_MAX_BYTES)))]
     pub name: Option<Cow<'a, str>>,
     /// Replacement description.
     #[serde(borrow)]
+    #[garde(skip)]
     pub description: Option<Cow<'a, str>>,
     /// Replacement GitHub owner/repository.
     #[serde(borrow)]
+    // PARSED rather than bounded — `Repository::parse` proves an `owner/repo`
+    // shape that no length can — and it answers a different public code than a
+    // length break does, which a report cannot carry.
+    #[garde(skip)]
     pub source_repo: Option<Cow<'a, str>>,
     /// Replacement branch or tag.
     #[serde(borrow)]
+    // Proven by `valid_revision` for the reason `source_repo` is: a git
+    // reference is a grammar, not a size.
+    #[garde(skip)]
     pub source_ref: Option<Cow<'a, str>>,
     /// Operator-authored reason copy.
+    // Free-form JSON whose keys are credential NAMES an operator chose, so
+    // there are no fields for a derive to hang bounds off. Walked by
+    // `validate_reasons` against the two caps below.
+    #[garde(skip)]
     pub required_credentials_reasons: Option<serde_json::Value>,
     /// Publish or withdraw.
+    #[garde(skip)]
     pub published: Option<bool>,
 }
+
+/// The longest display name a library row carries.
+pub const LIBRARY_NAME_MAX_BYTES: usize = 200;
+
+/// How many credentials one library may explain.
+pub const REASONS_MAX: usize = 32;
+
+/// The longest credential name a reason may be filed under.
+pub const REASON_CREDENTIAL_MAX_BYTES: usize = 200;
+
+/// The longest reason copy an operator may author.
+pub const REASON_MAX_BYTES: usize = 500;

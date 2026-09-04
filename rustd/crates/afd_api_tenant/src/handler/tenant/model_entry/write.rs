@@ -19,6 +19,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 use http::StatusCode;
 
 use crate::auth::PersonIdentity;
@@ -30,12 +31,11 @@ use crate::handler::tenant::provider::{DETAIL_MALFORMED_BODY, DETAIL_NO_PRIMARY_
 use crate::handler::tenant::{DETAIL_TENANT_REQUIRED, tenant_of};
 use crate::services::{Services, TenantModelEntries as _};
 
-use super::input::{bounded_model, parse_entry_id};
+use super::input::{entry_detail, parse_entry_id};
 use super::render::stored;
 use super::{
     DETAIL_DELETE_ACTIVE, DETAIL_DUPLICATE_ENTRY, DETAIL_ENTRY_NOT_FOUND,
-    DETAIL_SECRET_REF_REQUIRED, DETAIL_SECRET_REF_UNKNOWN, EVENT_CREATE, EVENT_DELETE,
-    EVENT_TENANT, EVENT_UPDATE,
+    DETAIL_SECRET_REF_UNKNOWN, EVENT_CREATE, EVENT_DELETE, EVENT_TENANT, EVENT_UPDATE,
 };
 
 /// `POST /v1/tenants/me/models` — register a model on a stored credential.
@@ -72,10 +72,10 @@ pub(crate) async fn create<D: Services>(
 ) -> Result<Response, Refusal> {
     let request: CreateModelEntryRequest = afd_core::json::object_from_slice(&body)
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let model = bounded_model(&request.model_id)?;
-    if request.secret_ref.is_empty() {
-        return Err(Refusal::malformed(DETAIL_SECRET_REF_REQUIRED));
-    }
+    request
+        .validate()
+        .map_err(|report| entry_detail(&report, &request.model_id))?;
+    let model = request.model_id.as_str();
 
     let tenant = tenant_of(
         &services,
@@ -145,7 +145,10 @@ pub(crate) async fn update<D: Services>(
     let entry = parse_entry_id(&entry_id)?;
     let request: UpdateModelEntryRequest = afd_core::json::object_from_slice(&body)
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let model = bounded_model(&request.model_id)?;
+    request
+        .validate()
+        .map_err(|report| entry_detail(&report, &request.model_id))?;
+    let model = request.model_id.as_str();
 
     let tenant = tenant_of(
         &services,

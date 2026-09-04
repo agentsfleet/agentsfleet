@@ -21,7 +21,7 @@ use crate::handler::{Refusal, parameter};
 
 use super::{
     Cursor, DETAIL_CURSOR_MISMATCH, DETAIL_ENTRY_ID, DETAIL_MODEL_ID_REQUIRED,
-    DETAIL_MODEL_ID_TOO_LONG, MODEL_ID_MAX,
+    DETAIL_MODEL_ID_TOO_LONG, DETAIL_SECRET_REF_REQUIRED,
 };
 
 /// The boundary this request resumes from, or nothing for the first page.
@@ -69,17 +69,30 @@ pub(super) fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_ENTRY_ID))
 }
 
-/// A model name within its bound, or the refusal it earns.
+/// The sentence a caller is told, for the bound their body broke.
 ///
-/// Blank and oversized are different sentences because the repairs differ, and
-/// the bound is checked here rather than at the store: a name past it is a
-/// malformed REQUEST, and the column would take it.
-pub(super) fn bounded_model(model_id: &str) -> Result<&str, Refusal> {
-    if model_id.is_empty() {
-        return Err(Refusal::malformed(DETAIL_MODEL_ID_REQUIRED));
-    }
-    if model_id.len() > MODEL_ID_MAX {
-        return Err(Refusal::malformed(DETAIL_MODEL_ID_TOO_LONG));
-    }
-    Ok(model_id)
+/// The BOUNDS live on the request types in [`afd_wire::tenant_model_entry`];
+/// what stays here is the wording, which the dashboard renders and is therefore
+/// a public contract. `garde` reports a PATH and a message: the path picks the
+/// field, and for `model_id` the VALUE picks which of its two sentences, since
+/// blank and oversized are different repairs and garde's own message is not the
+/// copy this surface promises. A `model_id` break wins over a `secret_ref` one,
+/// which is the order the two `if`s here read in before the bounds moved.
+pub(super) fn entry_detail(report: &garde::Report, model_id: &str) -> Refusal {
+    let detail = report
+        .iter()
+        .next()
+        .map_or(DETAIL_MODEL_ID_REQUIRED, |(path, _message)| {
+            if path.to_string() == FIELD_SECRET_REF {
+                DETAIL_SECRET_REF_REQUIRED
+            } else if model_id.is_empty() {
+                DETAIL_MODEL_ID_REQUIRED
+            } else {
+                DETAIL_MODEL_ID_TOO_LONG
+            }
+        });
+    Refusal::malformed(detail)
 }
+
+/// The path `garde` reports a credential-reference break under.
+const FIELD_SECRET_REF: &str = "secret_ref";

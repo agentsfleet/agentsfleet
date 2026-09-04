@@ -31,6 +31,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 use http::StatusCode;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
@@ -73,13 +74,6 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 
 /// The refusal a fleet that will not take work earns.
 const DETAIL_NOT_ACTIVE: &str = "Fleet is not active";
-
-/// The longest message a steer may carry.
-///
-/// `MAX_MESSAGE_LEN`, mirrored. A steer is a sentence a person typed; past
-/// this it is a payload, and the fleet's own trigger surface is where a
-/// payload belongs.
-const MAX_MESSAGE_BYTES: usize = 8192;
 
 /// The soft ceiling on one thread page's encoded bytes.
 ///
@@ -280,13 +274,16 @@ fn read_message(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
     }
     let request: SteerRequest<'_> = afd_core::json::object_from_slice(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-    if request.message.is_empty() {
-        return Err(Refusal::malformed(DETAIL_MESSAGE_EMPTY));
-    }
-    // Bounded on the DECODED bytes, which is what reaches the stream and what
-    // the runner will read — not on the escaped form a client happened to send.
-    if request.message.len() > MAX_MESSAGE_BYTES {
-        return Err(Refusal::malformed(DETAIL_MESSAGE_LONG));
+    // One bound, two sentences: an empty message and an oversized one are
+    // different mistakes to whoever has to fix them, and the wording is a
+    // public contract. The cap lives on the wire type; which end broke it is
+    // read back off the report here.
+    if request.validate().is_err() {
+        return Err(Refusal::malformed(if request.message.is_empty() {
+            DETAIL_MESSAGE_EMPTY
+        } else {
+            DETAIL_MESSAGE_LONG
+        }));
     }
     Ok(request.message)
 }

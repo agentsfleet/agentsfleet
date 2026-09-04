@@ -10,7 +10,10 @@ use std::borrow::Cow;
 
 use afd_core::error_code;
 use afd_library::{LibraryPatch, Repository, valid_revision};
-use afd_wire::admin::AdminLibraryPatch;
+use afd_wire::admin::{
+    AdminLibraryPatch, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
+};
+use garde::Validate as _;
 
 const DETAIL_BODY_REQUIRED: &str = "A request body is required";
 
@@ -41,13 +44,9 @@ pub(super) fn patch_request(
     }
     let request = afd_core::json::object_from_slice::<AdminLibraryPatch<'_>>(body)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
-    if request
-        .name
-        .as_ref()
-        .is_some_and(|name| name.is_empty() || name.len() > 200)
-    {
-        return Err((error_code::INVALID_REQUEST, DETAIL_NAME_INVALID));
-    }
+    request
+        .validate()
+        .map_err(|_report| (error_code::INVALID_REQUEST, DETAIL_NAME_INVALID))?;
     if request
         .source_repo
         .as_deref()
@@ -80,14 +79,14 @@ fn validate_reasons(
         let Some(reasons) = reasons.as_object() else {
             return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
         };
-        if reasons.len() > 32 {
+        if reasons.len() > REASONS_MAX {
             return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_TOO_MANY));
         }
         for (credential, reason) in reasons {
             let Some(reason) = reason.as_str() else {
                 return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
             };
-            if credential.len() > 200 || reason.len() > 500 {
+            if credential.len() > REASON_CREDENTIAL_MAX_BYTES || reason.len() > REASON_MAX_BYTES {
                 return Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG));
             }
         }

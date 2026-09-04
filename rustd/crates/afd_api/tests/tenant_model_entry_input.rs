@@ -21,6 +21,7 @@
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_wire::tenant_model_entry::MODEL_ID_MAX_BYTES;
 use base64::Engine as _;
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -122,7 +123,11 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
     // bounded on the catalogue route and unbounded on this one. A blank name
     // and an oversized one earn different sentences because the repairs differ.
     const BLANK: &str = r#"{"model_id":"","secret_ref":"anthropic-prod"}"#;
-    let oversized = "m".repeat(257);
+    // Read from the type that DECLARES the bound rather than spelled again: a
+    // local 257 would let the cap move on the request type while this case
+    // asserted the old edge and still passed.
+    let oversized = "m".repeat(MODEL_ID_MAX_BYTES + 1);
+    let at_the_cap = "m".repeat(MODEL_ID_MAX_BYTES);
     for (method, path) in [(Method::POST, ENTRIES), (Method::PATCH, ENTRY)] {
         let refused = send(ENTRIES_WRITE, method.clone(), path, Some(TENANT_KEY), BLANK).await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
@@ -139,6 +144,24 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
             detail_of(refused).await,
             "model_id must be at most 256 chars",
             "{method} {path}: an oversized model names the bound"
+        );
+
+        // The cap is INCLUSIVE, and this is the edge a derive is most likely to
+        // move by one: a name exactly at it is carried past this layer, which
+        // the 503 is the proof of — the refusals above never reach a store.
+        let at_cap = format!(r#"{{"model_id":"{at_the_cap}","secret_ref":"anthropic-prod"}}"#);
+        let reached = send(
+            ENTRIES_WRITE,
+            method.clone(),
+            path,
+            Some(TENANT_KEY),
+            &at_cap,
+        )
+        .await;
+        assert_eq!(
+            reached.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{method} {path}: a name exactly at the cap is not a malformed request"
         );
     }
 }
