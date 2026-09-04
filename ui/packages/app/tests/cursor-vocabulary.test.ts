@@ -11,15 +11,15 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 
-// The fleets list handler names the old spelling once, as the constant it
+// The fleet handler module names the old spelling once, as the constant it
 // refuses requests with — that declaration IS the refusal, not a surviving
 // vocabulary, so lines referencing it are exempt.
 const RETIRED_PARAM_CONST = "QUERY_CURSOR_RETIRED";
 
 const MIGRATED_SOURCES = [
-  "src/agentsfleetd/http/handlers/fleets/list.zig",
-  "src/agentsfleetd/http/handlers/memory/handler.zig",
-  "src/agentsfleetd/http/handlers/memory/sql.zig",
+  "rustd/crates/afd_api_tenant/src/handler/fleet/mod.rs",
+  "rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs",
+  "rustd/crates/afd_fleet/src/memory/sql.rs",
   "ui/packages/app/lib/api/fleets.ts",
   "ui/packages/app/lib/api/api_keys.ts",
   "ui/packages/app/lib/api/runners.ts",

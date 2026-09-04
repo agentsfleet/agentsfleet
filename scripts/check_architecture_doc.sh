@@ -234,7 +234,7 @@ while IFS= read -r entry; do
   err "test_arch_cited_paths_resolve: $src cites '$path', which matches no tracked file"
   broken_paths=$((broken_paths + 1))
 done < <(doc_files | while IFS= read -r f; do
-  grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./-]*\.(zig|sql|ts|tsx|py|sh|mk)`' "$f" 2>/dev/null \
+  grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./-]*\.(zig|rs|sql|ts|tsx|py|sh|mk)`' "$f" 2>/dev/null \
     | tr -d '`' | sort -u | sed "s|^|$f::|" || true
 done)
 [ "$broken_paths" = 0 ] && ok "test_arch_cited_paths_resolve: all $cited_paths cited source paths resolve"

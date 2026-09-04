@@ -85,22 +85,23 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 ## Dead-code auditing (`src/`)
 
 Auditing for dead `.zig` files needs **two reachability walks**, and both must
-model Zig's transitive test-block compilation:
+model Zig's transitive test-block compilation. The Zig tree is the runner and
+the library it links (`src/runner`, `src/lib`); the daemon is Rust under
+`rustd/`, and `cargo`'s own dead-code lints cover it.
 
-- **PROD reach** — breadth-first from the binary entrypoints (`src/agentsfleetd/main.zig`,
-  `src/runner/main.zig` via `build_runner.zig`) + the named module roots
-  (`log`/`contract`/`common`/…) + `bench_exports.zig`.
+- **PROD reach** — breadth-first from the binary entrypoint (`src/runner/main.zig`
+  via `build_runner.zig`) + the named module roots the runner's `SharedDeps`
+  wires (`log`/`contract`/`common`/…).
 - **TEST reach** — breadth-first from the test aggregators only
-  (`src/agentsfleetd/tests.zig`, `src/agentsfleetd/auth/tests.zig`, `src/runner/tests.zig`,
-  `src/lib/tests.zig`), following **all** `@import`s — in a test build,
-  `test {}` blocks compile, so a parent module's
+  (`src/runner/tests.zig`, `src/lib/tests.zig`), following **all** `@import`s —
+  in a test build, `test {}` blocks compile, so a parent module's
   `test { _ = @import("x_test.zig"); }` pulls the test file in *transitively*.
 
 The trap: grepping "is this `*_test.zig` imported by `tests.zig` directly?"
-produced **16 false positives** in one sweep — files like
-`error_registry_test.zig` run via their parent's test block, never via the
-aggregator directly. Non-test files reachable in TEST but not PROD are
-production-dead (test-kept); `*_test.zig` files in neither walk are true orphans.
+produced **16 false positives** in one sweep of the old daemon tree — test
+files that ran via their parent's test block, never via the aggregator
+directly. Non-test files reachable in TEST but not PROD are production-dead
+(test-kept); `*_test.zig` files in neither walk are true orphans.
 
 ## agentsfleet CLI conventions
 
