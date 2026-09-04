@@ -210,18 +210,30 @@ parity_codes() {
     | grep -oE 'ERR_[A-Z][A-Z0-9_]+' | sort -u || true
 }
 
-zig_err=$(parity_codes '^pub const ERR_[A-Z][A-Z0-9_]+[[:space:]]*=' '*.zig')
-client_err=$(parity_codes '^export const ERR_[A-Z][A-Z0-9_]+[[:space:]]*=' '*.js' '*.jsx' '*.ts' '*.tsx')
+# The daemon is Rust. The contract a client holds is the UZ- STRING it matches
+# on, not a constant's spelling, so parity is checked on the string: every
+# `export const ERR_X = "UZ-…"` in a client must name a code the Rust registry
+# declares via `ErrorCode::declare("UZ-…")`. The runner's Zig mirror
+# (src/runner/engine/client_errors.zig) is the executor's own subset and is
+# deliberately not the oracle. `record` mutates globals, so the loop runs in
+# this shell over a here-string — never on the right of a pipe.
+daemon_codes=$(git ls-files -z -- 'rustd/crates/afd_core/src/error_code/*.rs' 2>/dev/null \
+  | { xargs -0 grep -hoE 'ErrorCode::declare\("UZ-[A-Z][A-Z0-9]*-[0-9]{3}"\)' 2>/dev/null || true; } \
+  | { grep -oE 'UZ-[A-Z][A-Z0-9]*-[0-9]{3}' || true; } | sort -u)
 
-if [ -z "$zig_err" ]; then
-  ok "audit-ufs: cross-runtime parity skipped — no Zig ERR_* declared, so this repository has no source of truth to compare against"
+if [ -z "$daemon_codes" ]; then
+  ok "audit-ufs: cross-runtime parity skipped — no Rust registry found, so this repository has no source of truth to compare against"
 else
-  # Every client-side ERR_* must exist in Zig.
-  for c in $client_err; do
-    if ! echo "$zig_err" | grep -qx "$c"; then
-      record "cross-runtime-orphan $c absent-in-zig"
-    fi
-  done
+  client_decls=$(git ls-files -z -- '*.js' '*.jsx' '*.ts' '*.tsx' 2>/dev/null \
+    | { grep -zvE "$PARITY_EXCLUDE" || true; } \
+    | { xargs -0 grep -hE '^export const ERR_[A-Z][A-Z0-9_]+[[:space:]]*=[[:space:]]*"UZ-' 2>/dev/null || true; })
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    name=$(printf '%s' "$line" | grep -oE 'ERR_[A-Z][A-Z0-9_]+' | head -1)
+    code=$(printf '%s' "$line" | grep -oE 'UZ-[A-Z][A-Z0-9]*-[0-9]{3}' | head -1)
+    [ -n "$code" ] || continue
+    echo "$daemon_codes" | grep -qx "$code" || record "cross-runtime-orphan $name ($code) absent-in-daemon"
+  done <<<"$client_decls"
 fi
 
 # ── Report ──────────────────────────────────────────────────────────────────

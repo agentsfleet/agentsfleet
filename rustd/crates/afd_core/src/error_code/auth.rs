@@ -145,6 +145,16 @@ pub const AUTH_CLI_CREDENTIAL_REVOKED: ErrorCode = ErrorCode::declare("UZ-AUTH-0
 /// credential to whoever guessed its identifier.
 pub const AUTH_CLI_CREDENTIAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AUTH-024");
 
+/// The browser session could not be exchanged for a durable CLI credential.
+///
+/// Declared here because it is published (`api-reference/error-codes.mdx`) and
+/// because the CLI emits it: `cli/src/commands/login-exchange.ts` answers with
+/// this code when the exchange fails with no server code to relay — a transport
+/// failure, an expired session. This daemon does not send it on any route
+/// today; the registry of record still has to know every code a client can
+/// show a person, or the client is emitting a code the product cannot explain.
+pub const AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-AUTH-025");
+
 /// The tenant api-key resolved to a row that is no longer active.
 ///
 /// `ERR_APIKEY_REVOKED`, and the tenant-key counterpart of
