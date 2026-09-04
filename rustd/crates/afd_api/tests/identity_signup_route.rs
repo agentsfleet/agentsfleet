@@ -39,8 +39,9 @@ use afd_auth::scope::ScopeSet;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_identity::MetadataUnwritten;
 
-use self::harness::{Fleet, json_body, send_with_headers};
+use self::harness::{Fleet, RecordingWriteback, json_body, send_with_headers};
 
 /// Where a signup event arrives.
 const PATH: &str = "/v1/auth/identity-events/clerk";
@@ -577,5 +578,103 @@ async fn a_verified_signup_tells_the_provider_which_tenant_it_opened() {
         afd_auth::scope::signup_owner_claim(),
         "the owner grant is what makes the account's first workspace usable; \
          `signup_owner_claim` had NO production caller before this write"
+    );
+}
+
+/// The provider refusing the writeback does not refuse the delivery.
+///
+/// The tenant row is already committed when the write runs, so a refusal there
+/// answered to the provider would refuse an account that exists and invite a
+/// retry that can only duplicate work. The handler swallows it and LOGS it,
+/// and this case proves the swallow from both sides: the seam refuses every
+/// write, the delivery still answers 200 with the account it opened, and the
+/// seam shows the write was ATTEMPTED — a handler that skipped the call would
+/// pass a status-only assertion while leaving the operator nothing to repair
+/// from.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_delivery() {
+    let lane = TestDatabase::shared();
+    let database: Db = lane.open(DbRole::Api, &[]).await;
+    let refusing = RecordingWriteback::refusing(MetadataUnwritten::Unauthorized);
+    let router = Fleet::live(
+        database,
+        "user_identity_writeback_refused",
+        ScopeSet::from_scopes(&[]),
+    )
+    .with_identity_secret(SECRET)
+    .with_signup_writeback(refusing.clone())
+    .router();
+
+    let subject = format!("user_{}", mint_id().replace('-', ""));
+    let address = format!("{subject}@example.test");
+    let body = format!(
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1"}}}}"#
+    );
+
+    let answer = deliver(&router, &body).await;
+    assert_eq!(
+        answer.status(),
+        StatusCode::OK,
+        "the row is committed before the write runs; a refused write must not \
+         turn an opened account into a delivery the provider retries"
+    );
+    let opened = json_body(answer).await;
+    assert_eq!(
+        opened.get("created").and_then(Value::as_bool),
+        Some(true),
+        "the case needs a fresh account, not a replay"
+    );
+    assert_eq!(
+        refusing.written().len(),
+        1,
+        "the write was attempted and refused — a handler that never asked \
+         would be a skipped write wearing a swallowed one's clothes"
+    );
+}
+
+/// A subject the account model tolerated and the write cannot address.
+///
+/// `bootstrap` opens an account under whatever subject the provider sent: the
+/// column is `TEXT NOT NULL`, and a run of spaces satisfies it. The writeback
+/// cannot follow — a blank subject resolves to nobody at the provider — so the
+/// handler declines the write rather than asking the provider to merge a claim
+/// into no one. The delivery is still answered, because the row is committed;
+/// what the operator has is the log line. Proven by the seam recording
+/// NOTHING rather than by a status, since a status alone cannot tell a
+/// declined write from one that was never reached.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_subject_that_is_only_whitespace_opens_the_account_but_is_not_written_back() {
+    let lane = TestDatabase::shared();
+    let database: Db = lane.open(DbRole::Api, &[]).await;
+    let fleet = Fleet::live(
+        database,
+        "user_identity_writeback_blank",
+        ScopeSet::from_scopes(&[]),
+    )
+    .with_identity_secret(SECRET);
+    let writebacks = fleet.signup_writebacks();
+    let router = fleet.router();
+
+    // The subject is fixed — it is the whole point — and the address is minted,
+    // so a `KEEP_TEST_STATE=1` rerun replays the same account rather than
+    // colliding on a second one. The replay path reaches the same write.
+    let address = format!("blank-{}@example.test", mint_id().replace('-', ""));
+    let body = format!(
+        r#"{{"type":"user.created","data":{{"id":"   ","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1"}}}}"#
+    );
+
+    let answer = deliver(&router, &body).await;
+    assert_eq!(
+        answer.status(),
+        StatusCode::OK,
+        "the account model took the subject, so the delivery is answered; the \
+         gap is the provider's to see in the log, not a refusal to retry"
+    );
+    assert!(
+        writebacks.written().is_empty(),
+        "a blank subject addresses nobody — the write must be declined, not \
+         sent for the provider to merge a claim into no one"
     );
 }

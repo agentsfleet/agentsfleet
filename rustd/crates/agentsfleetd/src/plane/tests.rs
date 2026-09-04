@@ -77,6 +77,7 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     let plane = plane();
 
     assert!(same(plane.authenticator(), &plane.authenticator));
+    assert!(same(plane.signup_metadata(), &plane.signup_writeback));
     assert!(same(plane.runners(), &plane.runners));
     assert!(same(plane.leases(), &plane.leases));
     assert!(same(plane.bundles(), &plane.bundles));

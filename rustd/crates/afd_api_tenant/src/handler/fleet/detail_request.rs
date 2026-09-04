@@ -130,8 +130,8 @@ mod tests {
     use afd_wire::fleet::FLEET_MARKDOWN_MAX_BYTES as MAX_MARKDOWN_LEN;
 
     use super::{
-        DETAIL_CONFIG_REQUIRED, DETAIL_SOURCE_BOUNDS, DETAIL_STATUS_INVALID, DETAIL_TRIGGER_BOUNDS,
-        read_patch,
+        ConfigSource, DETAIL_CONFIG_REQUIRED, DETAIL_SOURCE_BOUNDS, DETAIL_STATUS_INVALID,
+        DETAIL_TRIGGER_BOUNDS, read_patch,
     };
 
     /// The refusal a body earns, as its status and the sentence a caller reads.
@@ -184,6 +184,30 @@ mod tests {
         assert_eq!(
             refused(&past_cap).await,
             Some((StatusCode::BAD_REQUEST, DETAIL_TRIGGER_BOUNDS.to_owned()))
+        );
+    }
+
+    /// Each configuration source alone resolves to its own [`ConfigSource`],
+    /// carrying the document the caller sent — a `TRIGGER.md` is reparsed
+    /// downstream, a JSON document replaces the stored one directly, and the
+    /// edge must not confuse the two.
+    #[test]
+    fn test_each_configuration_source_alone_resolves_to_its_own_variant() {
+        let trigger = read_patch(
+            &Bytes::from_static(br#"{"trigger_markdown":"Nightly triage"}"#),
+            None,
+        );
+        // `.ok()` rather than comparing the `Result`: a `Refusal` is a
+        // response, and renders rather than compares.
+        assert_eq!(
+            trigger.ok().map(|patch| patch.config),
+            Some(Some(ConfigSource::Trigger("Nightly triage".to_owned())))
+        );
+
+        let json = read_patch(&Bytes::from_static(br#"{"config_json":"{}"}"#), None);
+        assert_eq!(
+            json.ok().map(|patch| patch.config),
+            Some(Some(ConfigSource::Json("{}".to_owned())))
         );
     }
 
