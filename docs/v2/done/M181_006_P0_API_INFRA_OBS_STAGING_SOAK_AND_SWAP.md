@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 006
 **Date:** Sep 01, 2026
-**Status:** IN_PROGRESS
+**Status:** PARKED — 18 of 25 Dimensions DONE. The Zig daemon is sunset (§4), the probe runner grades every merged milestone (§3.1–§3.2), request bounds moved onto the types (§5), the collector app is created before anything addresses it (§0.1–§0.3), and the rollback rows (§2) are closed on Indy's call rather than graded. The seven that remain each need a live environment this branch cannot reach — §0.4, all of §1, and §3.3 — and are marked IN_PROGRESS in place rather than closed. Indy directed the park and the close (Sep 04, 2026): "i dont need 3, 4, 5 and the tests. park them and chore close". Every deferral carries its verbatim quote in Discovery. Reactivation condition: a staging environment serving the Rust daemon, plus the development deploy the merge triggers.
 **Priority:** P0 — the family's payoff; every sibling exists so this one is boring
 **Categories:** API | INFRA | OBS
 **Batch:** B8 — family closer, strictly serial: every dimension needs the merged whole on staging
