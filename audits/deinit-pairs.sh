@@ -116,13 +116,13 @@ files_with_cleanup=$'\n'
 if [[ ${#present_files[@]} -gt 0 ]]; then
   while IFS= read -r f; do
     [[ -n "$f" ]] && files_with_cleanup="${files_with_cleanup}${f}"$'\n'
-  done < <(grep -lE "$CLEANUP_RE" ${present_files[@]+"${present_files[@]}"} 2>/dev/null || true)
+  done < <(grep -lE "$CLEANUP_RE" "${present_files[@]}" 2>/dev/null || true)
 fi
 
 # Enumerate every `pub fn init(` site in one batched grep. Output shape:
 # `<file>:<line>:<sig>` — same as the per-file `grep -nE` produced, just
 # with the filename prepended by `-H`.
-inits_list=$(grep -nHE 'pub fn init\(' ${present_files[@]+"${present_files[@]}"} 2>/dev/null || true)
+inits_list=$(grep -nHE 'pub fn init\(' "${present_files[@]}" 2>/dev/null || true)
 
 if [[ -n "$inits_list" ]]; then
   while IFS= read -r row; do
@@ -215,7 +215,7 @@ if [[ ${#present_files[@]} -gt 0 ]]; then
       if (tgt != "" && length(tgt) > 2 && !is_optional_binding($0)) errdefers[FNR] = tgt;
     }
     END { if (current_file != "") flush() }
-  ' ${present_files[@]+"${present_files[@]}"})
+  ' "${present_files[@]}")
 fi
 
 # ---------------------------------------------------------------------------

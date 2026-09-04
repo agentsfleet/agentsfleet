@@ -33,12 +33,12 @@ dispatch_run_helper "LOG"  "logging.sh"      "--staged"
 dispatch_run_helper "MSID" "msid-ui.sh"      "--staged"
 
 # ── delegations (run only in the product repo — need state absent from dotfiles) ──
-# ERR's leaf hard-exits if src/agentsfleetd/errors/error_registry.zig is absent (it
+# ERR's leaf hard-exits if the product repo's error registry is absent (it
 # cross-references emitted codes against the registry), unlike UFS/LOG/MSID which
 # pass gracefully on empty input. So it can't run in dotfiles — delegate it; the
 # product repo's `make harness-verify` runs error-codes.sh against the real
 # registry. The .md keeps [DETERMINISTIC → ERR]: deterministic, just not run here.
-dispatch_delegate "ERR" "make harness-verify (error-codes.sh — needs src/agentsfleetd/errors/error_registry.zig)"
+dispatch_delegate "ERR" "make harness-verify (error-codes.sh — needs the product repo's error registry)"
 
 # ── judgment gates (no script can decide; agent states verdict in chat) ──
 dispatch_judgment "GRP" "per-iteration (diff langs change) + end-of-turn: audit the diff against docs/greptile-learnings/RULES.md — one row per applicable code (UFS/ORP/TST-NAM/PRI/EMS/…); \"it's just a label\" is not an exception"
