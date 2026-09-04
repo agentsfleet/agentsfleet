@@ -277,7 +277,7 @@ came from, not what made it worth asserting. Once Zig is gone Rust is canon, so
 the expectation is frozen inline and the assertion survives. Deleting them
 would trade a dangling dependency for a coverage hole.
 
-- **Dimension 4.1** — every Rust test that read the Zig tree from disk asserts the same values from a frozen expectation, and is green with the tree still present → Tests the eight converted files, run before §4.2 lands
+- **Dimension 4.1** — **DONE** — every Rust test that read the Zig tree from disk asserts the same values from a frozen expectation, and is green with the tree still present → Tests the eight converted files, run before §4.2 lands
 - **Dimension 4.2** — `src/agentsfleetd/**` is removed and no reference survives outside `docs/v2/done/` and `docs/v1/` → Test `no path under src/agentsfleetd is referenced after the deletion`
 - **Dimension 4.3** — `build.zig` loses its daemon targets and still builds what it should: six references die with the tree, including `S_SRC_MAIN_ZIG` and the `test-auth` gate that reaches the daemon's auth through `src/build/auth_tests.zig`. A support file left addressing a deleted directory is removed with its caller rather than left orphaned → Test `the default build file declares no daemon target`
 - **Dimension 4.4** — every gate, make target and playbook whose scope was the daemon either narrows or is removed, and none is left scanning nothing and reporting green. A gate covering daemon AND runner narrows; only an empty scope is deleted → Test `no gate reports a vacuous pass over a deleted tree`
