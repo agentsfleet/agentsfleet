@@ -12,7 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use afd_core::env::MapEnv;
@@ -37,18 +37,17 @@ fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
     MapEnv::from_pairs(pairs.iter().copied())
 }
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf()
-}
-
 /// The key every fleet's events live on, and the group they are read under.
 ///
-/// Compared against `queue/constants.zig` rather than against a literal
-/// repeated here, so the assertion cannot drift with the thing it checks.
+/// The three names a Redis key is built from, frozen as `queue/constants.zig`
+/// spelled them at sunset.
+///
+/// These were read out of that file at test time so the assertion could not
+/// drift with the thing it checked. The tree is deleted in this milestone, so
+/// the values are pinned here instead. They stay worth asserting for the reason
+/// they always were, which was never about Zig: a producer and its consumers
+/// agree on these bytes or events vanish silently, and a key renamed in a
+/// refactor strands every entry already written under the old one.
 #[test]
 fn test_stream_key_and_group_match_the_zig_constants() {
     assert_eq!(
@@ -56,84 +55,30 @@ fn test_stream_key_and_group_match_the_zig_constants() {
         "fleet:fleet_0123:events",
         "the producer and every consumer agree byte-for-byte or events vanish"
     );
-
-    let constants =
-        std::fs::read_to_string(repo_root().join("src/agentsfleetd/queue/constants.zig")).unwrap();
-    assert!(
-        constants.contains(r#"fleet_stream_prefix = "fleet:""#)
-            && constants.contains(r#"fleet_stream_suffix = ":events""#),
-        "the Zig side spells the stream key differently"
+    assert_eq!(
+        FLEET_CONSUMER_GROUP, "fleet_lease",
+        "every consumer reads under this group or a rename strands the backlog"
     );
-    assert!(
-        constants.contains(&format!(r#""{FLEET_CONSUMER_GROUP}""#)),
-        "the Zig side reads under a different consumer group"
-    );
-    assert!(
-        constants.contains(&format!(r#"ready_index_key = "{READY_INDEX_KEY}""#)),
-        "the Zig side keeps its readiness index somewhere else"
+    assert_eq!(
+        READY_INDEX_KEY, "fleet:ready",
+        "the readiness index moves and every entry already written is orphaned"
     );
 }
 
-/// The session key and time-to-live, likewise single-sourced against Zig.
+/// The session key and time-to-live, frozen as `session_store_redis.zig`
+/// declared them at sunset.
+///
+/// Read from that file until the tree's deletion; pinned here now. The property
+/// outlives its source: a prefix or a lifetime that moves without a migration
+/// signs every live session out at once.
 #[test]
 fn test_session_key_and_ttl_match_the_zig_store() {
     assert_eq!(session_key("abc"), "auth:session:abc");
     assert_eq!(SESSION_TTL, Duration::from_secs(300));
 
-    let store = std::fs::read_to_string(
-        repo_root().join("src/agentsfleetd/session/session_store_redis.zig"),
-    )
-    .unwrap();
-    assert!(
-        store.contains(&format!(
-            r#"SESSION_KEY_PREFIX: []const u8 = "{SESSION_KEY_PREFIX}""#
-        )),
-        "the Zig store uses a different key prefix"
-    );
-    assert!(
-        store.contains(&format!(
-            "SESSION_TTL_SECONDS: u32 = {}",
-            SESSION_TTL.as_secs()
-        )),
-        "the Zig store uses a different time-to-live"
-    );
-}
-
-/// This crate's script and the Zig daemon's are the same bytes.
-///
-/// Not the same FILE: M181 deletes `src/agentsfleetd/`, and a crate that
-/// included a script from a directory scheduled for deletion would stop
-/// building on cutover day. So each side owns its copy and this test is what
-/// makes "two copies" safe — it compares them byte for byte, so a change to
-/// either without the other fails here rather than as two binaries disagreeing
-/// about whether a device-flow code was already redeemed.
-///
-/// When the Zig tree goes, this test goes with it, and the Rust copy is simply
-/// the script.
-#[test]
-fn test_the_verify_script_matches_the_zig_daemons() {
-    let ours = include_str!("../src/session/verify_consume.lua");
-    let zig_path = repo_root().join("src/agentsfleetd/session/session_verify_consume.lua");
-
-    let Ok(theirs) = std::fs::read_to_string(&zig_path) else {
-        // The Zig tree is gone: cutover happened, and this crate's copy is now
-        // the only one. Nothing to compare, and nothing wrong.
-        return;
-    };
-
     assert_eq!(
-        ours, theirs,
-        "the two copies of the verify-and-consume script have drifted — \
-         one binary would redeem a session the other considers already consumed"
-    );
-
-    let proto = std::fs::read_to_string(
-        repo_root().join("src/agentsfleetd/session/session_store_redis_proto.zig"),
-    )
-    .unwrap();
-    assert!(
-        proto.contains(r#"@embedFile("session_verify_consume.lua")"#),
-        "the Zig daemon stopped embedding the script this test compares against"
+        SESSION_KEY_PREFIX, "auth:session:",
+        "a moved prefix signs every live session out at once"
     );
 }
 

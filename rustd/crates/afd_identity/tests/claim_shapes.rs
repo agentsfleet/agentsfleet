@@ -15,16 +15,13 @@
 //! not already link.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use afd_auth::scope::{Scope, parse_claim};
 use afd_auth::verifier::VerifyError;
 
-use crate::support::signing::{
-    AUDIENCE, ISSUER, NOT_EXPIRED, TENANT, TEST_KEY_PKCS1_B64, WORKSPACE, verify,
-};
+use crate::support::signing::{AUDIENCE, ISSUER, NOT_EXPIRED, TENANT, WORKSPACE, verify};
 
 /// Signing works, so a failure below means the claim shape and nothing else.
 #[test]
@@ -207,20 +204,4 @@ fn test_an_unparseable_identifier_claim_reads_as_absent() {
     .expect("the token itself is fine");
     assert!(claims.tenant.is_none());
     assert!(claims.workspace_scope.is_none());
-}
-
-/// The signing key is the Zig tree's, byte for byte.
-#[test]
-fn test_the_signing_key_is_the_zig_daemons_fixture() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("the crate sits three levels under the repository root")
-        .join("src/agentsfleetd/auth/crypto/rs256_sign.zig");
-    let zig = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    assert!(
-        zig.contains(&format!("\"{TEST_KEY_PKCS1_B64}\"")),
-        "the signing fixture does not match rs256_sign.zig"
-    );
 }

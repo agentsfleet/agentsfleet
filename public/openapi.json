@@ -16649,7 +16649,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "What to say to the fleet.\n\nBounded on the DECODED bytes, which is what reaches the stream and what\nthe runner reads — not on the escaped form a client happened to send."
+            "description": "What to say to the fleet.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
           }
         }
       },
