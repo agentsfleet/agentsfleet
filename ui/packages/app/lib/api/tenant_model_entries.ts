@@ -5,7 +5,7 @@ import type {
 } from "../types";
 
 // GET/POST/PATCH/DELETE /v1/tenants/me/models — see
-// src/agentsfleetd/http/handlers/tenant_model_entries.zig for the wire
+// rustd/crates/afd_api_tenant/src/handler/tenant/model_entry.rs for the wire
 // contract. `api_key` never appears in any response; each entry carries only
 // `has_key` plus the metadata joined from its referenced secret.
 

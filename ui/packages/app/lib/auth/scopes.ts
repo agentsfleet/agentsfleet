@@ -1,9 +1,10 @@
 /**
- * Operator scope strings — a verbatim mirror of the backend's per-route scope
- * map in `src/agentsfleetd/http/route_scopes.zig:120-127`. The backend
- * `requireScope` middleware is the authoritative gate (403 `UZ-AUTH-022` on a
- * missing scope); these constants drive the dashboard's defence-in-depth checks
- * so the two never drift apart by hand-typed string.
+ * Operator scope strings — a verbatim mirror of the wire spellings in
+ * `rustd/crates/afd_auth/src/scope.rs`, which the backend's per-route scope
+ * table (`rustd/crates/afd_http/src/route/`) names per endpoint. The backend
+ * gate is authoritative (403 `UZ-AUTH-022` on a missing scope); these constants
+ * drive the dashboard's defence-in-depth checks so the two never drift apart by
+ * hand-typed string.
  *
  * This module is intentionally dependency-free (no `@clerk/nextjs/server`
  * import) so it is safe to import from both server components/actions and the
@@ -34,7 +35,7 @@ export const SCOPE = {
 export type Scope = (typeof SCOPE)[keyof typeof SCOPE];
 
 // Downward closure of the `read < write < admin` ladder — a verbatim mirror of
-// the backend `HIERARCHY` table (`src/agentsfleetd/auth/scopes.zig`). The
+// the backend `HIERARCHY` table (`rustd/crates/afd_auth/src/scope.rs`). The
 // backend expands a held scope to this closure at parse time, so a token
 // provisioned with the documented operator set (which carries `runner:write` /
 // `model:admin`, not the `:read` rungs — docs/AUTH.md §Manually-provisioned)

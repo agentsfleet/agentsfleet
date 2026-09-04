@@ -17,10 +17,12 @@
 //     exit-code mapping. This file proves the wired read path inherits the
 //     same boundedness and renders the right exit codes.
 //
-// Real UZ codes (src/agentsfleetd/errors/error_entries.zig) used here:
-//   UZ-INTERNAL-002  (500, "Database error")                       :53
-//   UZ-API-002       (503, "Event-stream capacity reached")        :85
-//   UZ-API-001       (429, "Too many in-flight requests")          :83
+// Real UZ codes used here — declared in rustd/crates/afd_core/src/error_code/,
+// with the status each answers in rustd/crates/afd_core/src/problem/. The
+// detail strings below are this file's fixtures, not the registry's titles:
+//   UZ-INTERNAL-002  (500, "Database error")            INTERNAL_DB_QUERY
+//   UZ-API-002       (503, "Event-stream capacity …")   SSE_STREAM_CAP
+//   UZ-API-001       (429, "Too many in-flight …")      API_BACKPRESSURE
 //
 // Boundedness anchor: the GET read path runs through apiRequestWithRetry
 // with the default maxAttempts of 3. A retryable status (503/429/TIMEOUT)

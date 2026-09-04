@@ -1,8 +1,8 @@
 import { request, requireApiOrigin } from "./client";
 import { ApiError } from "./errors";
 
-// Mirrors the server's PendingRow envelope
-// (src/agentsfleetd/fleet_runtime/approval_gate_db_reads.zig)
+// Mirrors the server's inbox gate row
+// (`GateRow` in rustd/crates/afd_approval/src/inbox/row.rs)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";

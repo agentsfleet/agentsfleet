@@ -15,13 +15,14 @@ const workspaceFleetLibrariesPath = (workspaceId: string) =>
 
 // The platform catalog has no workspace segment — it is a single tier shared by
 // every tenant, gated on `platform-library:write` rather than workspace
-// ownership (src/agentsfleetd/http/route_scopes.zig). Every method needs that same
-// scope: there is no read rung.
+// ownership (rustd/crates/afd_http/src/route/admin.rs, whose `Route::meta`
+// carries the scope). Every method needs that same scope: there is no read rung.
 const PLATFORM_FLEET_LIBRARIES_PATH = "/v1/admin/fleet-libraries";
 const platformEntryPath = (id: string) =>
   `${PLATFORM_FLEET_LIBRARIES_PATH}/${encodeURIComponent(id)}`;
 
-// Fleet library gallery client. Mirrors src/agentsfleetd/http/routes.zig:
+// Fleet library gallery client. Mirrors the route table in
+// rustd/crates/afd_http/src/route/workspace.rs:
 //   GET /v1/workspaces/{ws}/fleet-libraries  (platform ∪ own-tenant entries)
 //
 // The gallery returns the union of the platform catalog and the caller-

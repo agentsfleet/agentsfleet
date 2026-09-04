@@ -52,8 +52,8 @@ interface CodeEntry {
 // hand-typed shadow that goes stale the next time someone adds an entry.
 //
 // Every code that CAN be backend-authored now carries its friendly copy as
-// `user_message` on the RFC 7807 error body (see
-// src/agentsfleetd/errors/error_entries.zig's eu()) instead of living here —
+// `user_message` on the RFC 7807 error body (the field of that name on each
+// entry in rustd/crates/afd_core/src/problem/) instead of living here —
 // client.ts/approvals.ts prefer it automatically, no call-site changes
 // needed. What's left below is exactly the set that can't be: codes minted
 // client-side that never round-trip to a real backend response, plus two
