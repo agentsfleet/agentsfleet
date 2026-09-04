@@ -146,6 +146,33 @@ fn a_trailing_slash_does_not_double_the_signal_path() {
     );
 }
 
+/// Every signal carries its `/v1/` path, and the base origin alone is not it.
+///
+/// The exporter is handed a COMPLETE url, because a programmatically-set
+/// endpoint is used verbatim (`resolve_http_endpoint` in
+/// `opentelemetry-otlp`). The crate's own example documents the opposite and
+/// is wrong, so this asserts the property a reader trusting that example would
+/// delete: post to the bare origin and a collector answers 404 while the
+/// daemon's own counters report a successful export.
+#[test]
+fn each_signal_posts_under_its_versioned_path() {
+    let config = configured(&[(OTEL_ENDPOINT_KNOB, "http://otelcol-dev.internal:4318")]);
+    let otlp = config.otlp().expect("an endpoint is configured");
+
+    for (path, expected) in [
+        (super::TRACES_PATH, "http://otelcol-dev.internal:4318/v1/traces"),
+        (super::METRICS_PATH, "http://otelcol-dev.internal:4318/v1/metrics"),
+        (super::LOGS_PATH, "http://otelcol-dev.internal:4318/v1/logs"),
+    ] {
+        let built = super::signal_endpoint(otlp, path);
+        assert_eq!(built, expected);
+        assert_ne!(
+            built, "http://otelcol-dev.internal:4318",
+            "the bare origin is not a signal endpoint"
+        );
+    }
+}
+
 /// The two accepted spellings reach the exporter's own two encodings.
 ///
 /// The knob's vocabulary and the SDK's are different types, and the mapping

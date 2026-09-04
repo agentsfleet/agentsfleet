@@ -58,6 +58,21 @@ pub(crate) use self::resource::resident_bytes;
 /// Appended here because a programmatic endpoint is used verbatim: the
 /// exporter only derives these when it reads the environment itself, and this
 /// daemon reads the environment in exactly one place, which is `preflight`.
+///
+/// **Do not "simplify" this by passing a base URL — the crate's own
+/// documentation invites exactly that and is wrong.** `opentelemetry-otlp`
+/// 0.32's `lib.rs` example sits above `.with_endpoint("http://my-collector:4318")`
+/// and claims "the path /v1/traces … is appended automatically". Its code says
+/// otherwise: `exporter/http/mod.rs`'s `resolve_http_endpoint` returns a
+/// programmatically-provided endpoint verbatim, and reaches
+/// `build_endpoint_uri` — the function that appends — only on the
+/// `OTEL_EXPORTER_OTLP_ENDPOINT` and default branches.
+///
+/// So dropping the append here posts every signal to the bare origin, which a
+/// collector answers with 404. The failure is silent from the daemon's side:
+/// export counters move, nothing arrives. Raised against 0.32.0 — recheck the
+/// same function before any bump, because this is a docs-versus-code
+/// disagreement rather than a stable contract.
 const TRACES_PATH: &str = "/v1/traces";
 const METRICS_PATH: &str = "/v1/metrics";
 const LOGS_PATH: &str = "/v1/logs";
