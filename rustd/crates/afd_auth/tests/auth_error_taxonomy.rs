@@ -16,7 +16,7 @@ use afd_auth::error::{Error, Unavailable};
 
 /// Every client-visible refusal sentence the Zig auth tree carried at sunset.
 ///
-/// FROZEN, not read. `src/agentsfleetd/auth` was walked whole at test time —
+/// FROZEN, not read. the retired daemon's `auth/` tree was walked whole at test time —
 /// the strings are spread across four middlewares and which file held which was
 /// never a fact worth encoding — and every sentence below was found there as a
 /// quoted literal on the tree's last standing day. The tree is deleted in this

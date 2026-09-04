@@ -1,7 +1,7 @@
 //! What was presented, and which class it belongs to.
 //!
 //! This module holds the routing decision that
-//! `src/agentsfleetd/auth/middleware/bearer_or_api_key.zig:74-124` spells as a
+//! the retired daemon's `auth/middleware/bearer_or_api_key.zig:74-124` spells as a
 //! chain of `if`, and it is the reason that chain does not survive the port.
 //!
 //! # The chain was never the problem
@@ -70,9 +70,9 @@ pub enum CredentialKind {
     OidcSessionToken,
 }
 
-/// `src/agentsfleetd/auth/middleware/tenant_api_key.zig`'s `TENANT_KEY_PREFIX`.
+/// the retired daemon's `auth/middleware/tenant_api_key.zig`'s `TENANT_KEY_PREFIX`.
 pub const TENANT_API_KEY_PREFIX: &str = "agt_t";
-/// `src/agentsfleetd/auth/cli_credential.zig`'s `PREFIX`.
+/// the retired daemon's `auth/cli_credential.zig`'s `PREFIX`.
 pub const CLI_CREDENTIAL_PREFIX: &str = "afc_";
 /// `src/lib/contract/protocol.zig`'s `RUNNER_TOKEN_PREFIX`.
 pub const RUNNER_TOKEN_PREFIX: &str = "agt_r";

@@ -1,6 +1,6 @@
 //! Canonical entity identifiers: one spelling, checked at the boundary.
 //!
-//! Ported from `src/agentsfleetd/types/id_format.zig`, which owns the rule this
+//! Ported from the retired daemon's `types/id_format.zig`, which owned the rule this
 //! type enforces: an identifier is 36 characters of LOWERCASE dashed hex, with
 //! version nibble `7` and an RFC 4122 variant. Uppercase is REJECTED, never
 //! normalized — Postgres folds `::uuid` to lowercase, so an uppercase spelling

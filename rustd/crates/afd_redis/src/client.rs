@@ -7,7 +7,7 @@
 //! client does not have that problem: `ConnectionManager` writes concurrent
 //! commands down one socket and routes each reply back to the caller that is
 //! waiting for it. So the ~3.0k lines of pooling, RESP framing and reconnect
-//! logic under `src/agentsfleetd/queue/` become one field here — and the
+//! logic under the retired daemon's `queue/` became one field here — and the
 //! reconnect that pool hand-rolled is the manager's own behaviour.
 //!
 //! The one thing a multiplexed connection must not do is run a blocking

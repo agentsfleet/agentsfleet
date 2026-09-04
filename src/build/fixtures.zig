@@ -4,17 +4,16 @@
 //! Fixtures live under `tests/fixtures/` (outside every source module's root
 //! directory). `@embedFile` resolves a relative path against the importing
 //! file's module root and refuses to read a file the root does not contain, so
-//! a fixture at the repo root is unreachable by path from `src/agentsfleetd/**`
-//! or `src/runner/**`. Registering it as a named anonymous import makes
+//! a fixture at the repo root is unreachable by path from `src/runner/**`.
+//! Registering it as a named anonymous import makes
 //! `@embedFile("<name>")` resolve it regardless of where the source file sits.
 //!
-//! Mirrors the pg.zig / s3.zig helper split — keeps build.zig and
-//! build_runner.zig free of per-fixture wiring.
+//! Keeps build_runner.zig free of per-fixture wiring.
 //!
 //! CONVENTION: place new fixtures under `tests/fixtures/<category>/`, grouped by
 //! domain (`telemetry/`, `webhooks/`, `fleetbundle/`, `runner/`, …). Then add a
-//! `{ .name, .path }` row to DAEMON (`src/agentsfleetd/**` tests) or RUNNER
-//! (`src/runner/**` tests) and consume via `@embedFile("<name>")` using the
+//! `{ .name, .path }` row to RUNNER (`src/runner/**` tests) and consume via
+//! `@embedFile("<name>")` using the
 //! registered NAME — never a relative path, and never a repo-root `samples/…`
 //! path. Both are unreachable: `@embedFile` refuses files outside the importing
 //! module's root directory.
@@ -23,13 +22,6 @@ const std = @import("std");
 
 const Fixture = struct { name: []const u8, path: []const u8 };
 
-/// agentsfleetd (`src/agentsfleetd/**`) `*_test.zig` @embedFile fixtures.
-const DAEMON: []const Fixture = &.{
-    .{ .name = "github_run_failure.json", .path = "tests/fixtures/webhooks/github_run_failure.json" },
-    .{ .name = "github_run_success.json", .path = "tests/fixtures/webhooks/github_run_success.json" },
-    .{ .name = "sample_with_folders.tar.gz", .path = "tests/fixtures/fleetbundle/sample_with_folders.tar.gz" },
-    .{ .name = "otlp_metrics.json", .path = "tests/fixtures/telemetry/otlp_metrics.json" },
-};
 
 /// agentsfleet-runner (`src/runner/**`) `*_test.zig` @embedFile fixtures.
 const RUNNER: []const Fixture = &.{
@@ -45,11 +37,6 @@ const RUNNER: []const Fixture = &.{
     .{ .name = "09_rule_ct_return.mnl.txt", .path = "tests/fixtures/runner/network/captured/09_rule_ct_return.mnl.txt" },
     .{ .name = "10_rule_masquerade.mnl.txt", .path = "tests/fixtures/runner/network/captured/10_rule_masquerade.mnl.txt" },
 };
-
-/// Register the agentsfleetd test fixtures on `module` (the `tests` root module).
-pub fn addDaemon(b: *std.Build, module: *std.Build.Module) void {
-    addAll(b, module, DAEMON);
-}
 
 /// Register the agentsfleet-runner test fixtures on `module` (the `runner_tests` root module).
 pub fn addRunner(b: *std.Build, module: *std.Build.Module) void {

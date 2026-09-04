@@ -1,6 +1,6 @@
 //! The runner control plane: what a host may do, and what it is owed.
 //!
-//! Named for `src/agentsfleetd/fleet/`, which is where the Zig daemon keeps
+//! Named for the retired daemon's `fleet/`, which is where it kept
 //! this domain. What lands first is the runner ROW — enrolment, liveness, and
 //! the degraded verdict — because every other verb in the plane is gated on a
 //! runner the authenticator has already proven and this crate has to be able to

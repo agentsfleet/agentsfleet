@@ -2,8 +2,8 @@
 
 const types = @import("types.zig");
 
-// Error-code mirrors of src/agentsfleetd/errors/error_registry.zig — the runner
-// binary tree forbids imports into src/agentsfleetd/ (build_runner.zig keeps the
+// Error-code mirrors of the product registry (`rustd/crates/afd_core/src/error_code/`)
+// — the runner binary tree links no daemon code (build_runner.zig keeps the
 // runner portable) so the canonical strings are duplicated here. Every runner
 // source needing a UZ-EXEC-* / UZ-TOOL-* / UZ-RUN-* literal MUST import from
 // this file — never declare a local `const ERR_X` in another runner source.

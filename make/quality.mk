@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: check-cutover-probes lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
+.PHONY: check-cutover-probes lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -44,10 +44,6 @@ _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
 	@python3 scripts/check_model_allowlist.py
 
-
-check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
-	@python3 scripts/check_route_registration_doc_test.py
-	@python3 scripts/check_route_registration_doc.py
 
 # The Rust workspace. `cd` rather than `--manifest-path`: rust-toolchain.toml is
 # resolved from the WORKING DIRECTORY, so running cargo from the repository root
@@ -120,7 +116,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test check-cutover-probes  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test check-cutover-probes  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check

@@ -49,7 +49,7 @@ test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
 	@cd ui/packages/design-system && bun run test
 	@echo "✓ [design-system] Unit tests passed"
 
-test-coverage-all:  ## Run coverage gates across Zig, app, website, agentsfleet, and design-system
+test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and design-system
 	@echo "→ [app] Running Vitest with --coverage..."
 	@cd ui/packages/app && bun run test:coverage
 	@echo "→ [website] Running Vitest with --coverage..."
