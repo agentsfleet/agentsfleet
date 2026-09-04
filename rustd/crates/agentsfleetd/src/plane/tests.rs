@@ -19,7 +19,7 @@ use afd_observability::Analytics;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_sse::{Ceiling, Live};
 
-use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions};
+use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
 
 fn same<T: ?Sized>(left: &T, right: &T) -> bool {
     std::ptr::eq(left, right)
@@ -43,6 +43,7 @@ fn plane() -> ServingPlane {
         queue,
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
+        signup_writeback: SignupWriteback::Unconfigured(crate::identity::NoWriteback),
         sessions: Sessions::Unconfigured(NoVerifier),
         stores: crate::bundles::resolve(None),
         broker: Arc::new(Broker::new(

@@ -28,6 +28,7 @@ octocrab.workspace = true
 jiff.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true
+afd_auth.workspace = true
 afd_connector.workspace = true
 afd_core.workspace = true
 afd_cron.workspace = true

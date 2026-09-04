@@ -48,8 +48,11 @@ impl ProviderSecret {
     }
 
     /// The secret, for the one header that carries it.
+    ///
+    /// `pub(crate)` rather than private: the write side lives in
+    /// [`crate::metadata`] and carries the same credential in the same header.
     #[must_use]
-    fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         &self.0
     }
 }
@@ -84,6 +87,12 @@ pub const USER_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// has granted nothing has made a decision, and re-asking on every request
 /// would spend a round trip to be told the same thing.
 pub const UNPROVISIONED_CLAIM: &str = "";
+
+/// The media type both directions of the provider API speak.
+///
+/// Bound rather than spelled twice: the read sends it as `Accept`, the write
+/// as `Content-Type` (RULE UFS).
+pub(crate) const JSON_MEDIA_TYPE: &str = "application/json";
 
 /// The object an operator writes capabilities into.
 const PUBLIC_METADATA_KEY: &str = "public_metadata";
@@ -201,7 +210,7 @@ impl ClaimSource for ProviderClaims {
             .client
             .get(&url)
             .bearer_auth(self.secret.expose())
-            .header(reqwest::header::ACCEPT, "application/json")
+            .header(reqwest::header::ACCEPT, JSON_MEDIA_TYPE)
             .send()
             .await
             .inspect_err(|failure| {

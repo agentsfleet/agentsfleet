@@ -508,3 +508,74 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
         );
     }
 }
+
+/// The writeback the Rust port dropped.
+///
+/// Signup is TWO writes. The tenant row is the one this daemon owns; the second
+/// tells the identity provider which tenant the account resolved to, and until
+/// it lands the person's next session token carries no `tenant_id` — so every
+/// call they make is refused for want of a tenant context. `identity_events_clerk.zig:290`
+/// made that call and the Rust route did not, for the whole of the port: it
+/// created tenants and told the provider nothing.
+///
+/// Nothing failed when it was missing, which is why this test exists rather
+/// than a type. The write is best-effort by design — the row is already
+/// committed, so a provider outage must not turn signup into a 500 — and an
+/// omitted best-effort call produces no error, no 500, and no failing lane.
+/// Only an assertion that it HAPPENED can see it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_verified_signup_tells_the_provider_which_tenant_it_opened() {
+    let lane = TestDatabase::shared();
+    let database: Db = lane.open(DbRole::Api, &[]).await;
+    let fleet = Fleet::live(
+        database,
+        "user_identity_writeback_live",
+        ScopeSet::from_scopes(&[]),
+    )
+    .with_identity_secret(SECRET);
+    let writebacks = fleet.signup_writebacks();
+    let router = fleet.router();
+
+    let subject = format!("user_{}", mint_id().replace('-', ""));
+    let address = format!("{subject}@example.test");
+    let body = format!(
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
+    );
+
+    let opened = json_body(deliver(&router, &body).await).await;
+    assert_eq!(
+        opened.get("created").and_then(Value::as_bool),
+        Some(true),
+        "the case needs a fresh account, not a replay"
+    );
+
+    let written = writebacks.written();
+    assert_eq!(
+        written.len(),
+        1,
+        "one account opened is one writeback — a second would mean the handler \
+         wrote on the replay path too"
+    );
+    let Some(wrote) = written.first() else {
+        // Unreachable past the length assertion; spelled as a fallible read
+        // because this crate's suites index nothing.
+        return;
+    };
+    assert_eq!(
+        wrote.subject, subject,
+        "the write addresses the subject the event named — an account repaired \
+         under a different one is a different person's"
+    );
+    assert!(
+        !wrote.tenant_id.is_empty(),
+        "a writeback carrying no tenant is the bug it exists to prevent: the \
+         provider merges an empty claim and the next token still has none"
+    );
+    assert_eq!(
+        wrote.scopes,
+        afd_auth::scope::signup_owner_claim(),
+        "the owner grant is what makes the account's first workspace usable; \
+         `signup_owner_claim` had NO production caller before this write"
+    );
+}

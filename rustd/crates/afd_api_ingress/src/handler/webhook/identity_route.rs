@@ -36,6 +36,8 @@
 
 use std::sync::Arc;
 
+use afd_auth::principal::Subject;
+use afd_auth::scope::signup_owner_claim;
 use afd_core::error_code;
 use afd_observability::metrics::label::fleet::SignupFailure;
 use afd_observability::producers;
@@ -48,7 +50,9 @@ use http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 
 use crate::handler::Refusal;
-use crate::services::{NewAccount, Services, Signups as _, personal_tenant_name};
+use crate::services::{
+    NewAccount, Services, SignupMetadata as _, Signups as _, personal_tenant_name,
+};
 use afd_wire::ingress::IdentityAnswer;
 
 use super::verify::{header, wall};
@@ -56,6 +60,9 @@ use super::{Ignored, within_cap};
 
 /// The scoped event a failed bootstrap is logged under.
 const EVENT_BOOTSTRAP: &str = "identity_signup_bootstrap_failed";
+
+/// What the log calls a tenant that never reached the identity provider.
+const EVENT_WRITEBACK: &str = "identity_metadata_writeback_failed";
 
 /// The event type that opens an account.
 const EVENT_USER_CREATED: &str = "user.created";
@@ -264,6 +271,12 @@ pub(crate) async fn receive<D: Services>(
         .inspect_err(|_refused| producers::fleet::signup_failed(SignupFailure::DatabaseError))
         .map_err(Refusal::at(EVENT_BOOTSTRAP))?;
 
+    // The tenant row exists; the provider does not know about it yet. Until it
+    // does, this person's next session token carries no `tenant_id` and every
+    // call they make is refused for want of a tenant — so the write happens
+    // here, before the 200, exactly where `identity_events_clerk.zig` puts it.
+    write_back(&services, &event.data.id, &opened.tenant_id).await;
+
     // 200 either way, and the flag says which. A replay is not a conflict: the
     // provider is right to retry and a 409 would put a delivery it cannot
     // change into its retry queue forever.
@@ -276,6 +289,45 @@ pub(crate) async fn receive<D: Services>(
         })),
     )
         .into_response())
+}
+
+/// Tells the identity provider which tenant the account resolved to.
+///
+/// Best-effort by construction, and the swallow is the point: the tenant row is
+/// already committed, so answering the delivery with this failure would refuse
+/// an account that exists and invite a retry that can only duplicate work. The
+/// Zig makes the same call at `identity_events_clerk.zig:290` and swallows it
+/// the same way.
+///
+/// What the swallow costs is a person whose next token carries no tenant, which
+/// an operator repairs from the provider's dashboard — so the failure is LOGGED
+/// with the subject and tenant, because a silent one leaves them nothing to
+/// repair from.
+async fn write_back<D: Services>(services: &Arc<D>, subject: &str, tenant_id: &str) {
+    let Ok(subject) = Subject::new(subject) else {
+        // A blank subject cannot address a write. `bootstrap` already opened
+        // the account under it, so this is the provider sending something the
+        // account model tolerated and the API cannot use.
+        tracing::warn!(event = EVENT_WRITEBACK, reason = "blank subject");
+        return;
+    };
+    if let Err(unwritten) = services
+        .signup_metadata()
+        .write_signup(&subject, tenant_id, &signup_owner_claim())
+        .await
+    {
+        // Hoisted out of the macro: `tracing`'s `log` feature is on across this
+        // workspace, so a call inside an event field compiles twice.
+        let reason = unwritten.to_string();
+        tracing::warn!(
+            event = EVENT_WRITEBACK,
+            tenant_id,
+            reason,
+            "the account exists but its tenant did not reach the identity \
+             provider; the person's next token will carry none until an \
+             operator repairs the metadata"
+        );
+    }
 }
 
 /// The signup reason a wall refusal counts under, where it counts as one.

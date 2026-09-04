@@ -67,7 +67,7 @@ pub use self::preference::WorkspacePreferences;
 pub use self::provider::TenantProviders;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
-    Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
+    Bootstrapped, IdentityWebhookSecret, NewAccount, SignupMetadata, Signups, personal_tenant_name,
 };
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
