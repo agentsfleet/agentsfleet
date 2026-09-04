@@ -8,9 +8,9 @@
 //!
 //! # Why this is a separate crate
 //!
-//! The Zig daemon holds a portability wall — `src/agentsfleetd/auth/` must not
-//! import `src/db/`, `src/http/`, or any business module — and enforces it with
-//! a grep in `make test-auth`. Splitting the I/O out here makes the same rule a
+//! The Zig daemon held a portability wall — its `auth/` could not import
+//! `db/`, `http/`, or any business module — enforced by a grep in a `test-auth`
+//! step that retired with the tree. Splitting the I/O out here makes the same rule a
 //! fact about the dependency graph: `afd_auth` does not list `reqwest`, `moka`
 //! or `ring`, so it cannot name them, and rustc checks that on every build
 //! rather than a script checking it on demand.

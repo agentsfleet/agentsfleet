@@ -16,7 +16,7 @@ const common = @import("common");
 
 /// Roots that must be free of the retired surface. Test files are included:
 /// a test that still constructs a watchdog would mean the type still exists.
-const PRODUCTION_ROOTS = [_][]const u8{ "src/agentsfleetd", "src/runner", "src/lib" };
+const PRODUCTION_ROOTS = [_][]const u8{ "src/runner", "src/lib" };
 
 /// Generous ceiling for one Zig source file.
 const MAX_SOURCE_BYTES: usize = 512 * 1024;
@@ -60,7 +60,6 @@ const FORBIDDEN_LOG_FIELDS = [_][]const u8{ ".handle =", ".fd =", ".socket =", "
 const DEADLINE_EVENT_SOURCES = [_][]const u8{
     "src/lib/call_deadline/scheduler.zig",
     "src/runner/daemon/control_plane_deadline.zig",
-    "src/agentsfleetd/http/handlers/connectors/bounded_fetch.zig",
 };
 
 /// Read one source file into `alloc`.

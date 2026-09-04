@@ -2,7 +2,7 @@
 //! refuse, and a key-id miss triggers EXACTLY ONE refresh.
 //!
 //! Every token here is one the Zig daemon signs and verifies. The fixtures are
-//! copied from `src/agentsfleetd/auth/jwks_test_fixtures.zig` and pinned to it
+//! copied from the retired daemon's `auth/jwks_test_fixtures.zig` and pinned to it
 //! by `test_the_fixtures_are_the_zig_daemons`, so these are real RS256
 //! signatures over a real 2048-bit key — not a Rust-side key pair that would
 //! only prove this implementation agrees with itself.
@@ -443,7 +443,7 @@ fn test_the_key_set_url_is_derived_from_the_issuer() {
 /// being dodged by the fixture that proves the happy path.
 ///
 /// This stood beside a byte-for-byte comparison against
-/// `src/agentsfleetd/auth/jwks_test_fixtures.zig`, which the tree's deletion
+/// the retired daemon's `auth/jwks_test_fixtures.zig`, which the tree's deletion
 /// takes with it: once there is no second implementation, "my fixtures equal
 /// theirs" has nothing to compare against and freezing it would assert a
 /// constant against itself. The fixtures above ARE those bytes, copied while

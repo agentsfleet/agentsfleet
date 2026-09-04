@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use afd_core::error_code::{self, ErrorCode, REGISTRY};
 
-/// Every code `src/agentsfleetd/errors/error_registry.zig` declared at sunset.
+/// Every code the retired daemon's `errors/error_registry.zig` declared at sunset.
 ///
 /// FROZEN, not read. The Zig registry was the registry of record and this test
 /// read it from disk; the tree is deleted in this milestone, so the values it

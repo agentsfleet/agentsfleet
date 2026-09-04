@@ -1,6 +1,6 @@
 //! Who the caller is, once a credential has been proven.
 //!
-//! This is a deliberate DIVERGENCE from `src/agentsfleetd/auth/principal.zig`
+//! This is a deliberate DIVERGENCE from the retired daemon's `auth/principal.zig`
 //! rather than a port of it, and the reason is that the Zig shape encodes its
 //! rules in comments that the compiler cannot read.
 //!

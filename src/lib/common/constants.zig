@@ -8,23 +8,9 @@
 /// it as `@import("common").clock` — see `clock.zig`.
 pub const clock = @import("clock.zig");
 
-/// Fixed-capacity, allocator-free associative cache (`common.CacheTable`) —
-/// set-associative buckets, no clock, unsynchronized so each consumer picks its
-/// own lock. See `cache_table.zig`.
-///
-/// Placement note: it sits in `src/lib/` because `src/agentsfleetd/auth/**` could
-/// only import named modules (the `test-auth` portability gate) and needed it.
-/// The runner token cache deletion removed that consumer, so both remaining instantiations
-/// (`state/model_rate_cache.zig`, `state/model_library_cache.zig`) are now in ONE
-/// build graph — which is below `src/lib/`'s "reused across ≥2 graphs" bar.
-/// Relocating it to `src/agentsfleetd/common/` is a live follow-up, not a
-/// justified placement; recorded here so the next reader knows it is inherited.
-///
 /// `Options` is reached by coercion from an anonymous literal at every
 /// instantiation, so it stays unexported — a re-export nobody names is dead code
 /// (RULE NDC).
-const cache_table = @import("cache_table.zig");
-pub const CacheTable = cache_table.CacheTable;
 
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
 /// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.

@@ -1,6 +1,6 @@
 //! The Zig unit suite, re-run against the Rust implementation.
 //!
-//! Each test below mirrors one in `src/agentsfleetd/secrets/crypto_primitives.zig`
+//! Each test below mirrors one the retired daemon's `secrets/crypto_primitives.zig` carried
 //! with the SAME inputs and the SAME expected outcome. Where the Zig suite is
 //! the specification, this file is the conformance run: no fixture is committed,
 //! no Zig is compiled, and nothing is executed outside this crate — the parity

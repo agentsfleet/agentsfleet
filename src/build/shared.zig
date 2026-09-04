@@ -48,7 +48,6 @@ pub const SharedDeps = struct {
     common: *std.Build.Module,
     call_deadline: *std.Build.Module,
     http_pin: *std.Build.Module,
-    tripwire: *std.Build.Module,
     nullclaw: *std.Build.Module,
 
     pub fn init(
@@ -94,15 +93,6 @@ pub const SharedDeps = struct {
             .root_source_file = b.path("src/lib/http_pin/http_pin.zig"),
         });
 
-        // tripwire: comptime-erased fault injection for errdefer-path tests
-        // (src/lib/tripwire, vendored from ghostty). Pure std — no named-module
-        // deps, so it joins the src/lib/tests.zig aggregator root. Production
-        // code carries `try tw.check(.point)` markers that compile to nothing
-        // outside test builds.
-        const tripwire = b.createModule(.{
-            .root_source_file = b.path("src/lib/tripwire/tripwire.zig"),
-        });
-
         // NullClaw engine dependency — same options on both graphs (RULE UFS).
         const nullclaw_dep = b.dependency(S_NULLCLAW, .{
             .target = target,
@@ -117,7 +107,6 @@ pub const SharedDeps = struct {
             .common = common,
             .call_deadline = call_deadline,
             .http_pin = http_pin,
-            .tripwire = tripwire,
             .nullclaw = nullclaw_dep.module(S_NULLCLAW),
         };
     }
