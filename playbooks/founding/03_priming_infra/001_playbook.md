@@ -50,20 +50,40 @@ fly apps create cloudflared-prod --org agentsfleet-prod
 fly apps create otelcol-prod --org agentsfleet-prod
 ```
 
-**One organisation per environment, and the split is the point.** Production
-and development bill separately, and an access grant to one is not a grant to
-the other. Each new organisation starts on Pay As You Go and **refuses to
-deploy until a card is added** — `https://fly.io/dashboard/<org>/billing` —
-so priming an environment includes that step or the first deploy fails for a
-reason no log in this repository explains.
+**One organisation per environment, and the split buys access separation, not
+separate bills.** An access grant to one environment is not a grant to the
+other; that is the whole reason for the split. Billing is the opposite — see
+below.
+
+**Billing is pooled, and it has to be set up before the first deploy.** A new
+organisation starts on Pay As You Go and **refuses to deploy until it can
+pay**. Two ways to satisfy that: put a card on each organisation, or make one
+organisation the **Billing Organization** and link the others to it, which
+pools that organisation's prepaid credits across all of them. This project
+took the second route on Sep 04, 2026 — `personal` holds the credits and both
+`agentsfleet-dev` and `agentsfleet-prod` are linked to it, from
+`https://fly.io/dashboard/<org>/billing` → *Link billing to another
+Organization*.
+
+> **`personal` is now load-bearing. Do not delete it.** It is empty of apps,
+> which makes it look disposable, and it is the payer for both environments.
+> Linking is **irreversible** — Fly does not support detaching a linked
+> organisation — so removing the billing organisation cannot be undone by
+> relinking.
 
 These lines read `--org agentsfleet` until Sep 04, 2026, naming an
 organisation that has never existed: `fly orgs list` returned exactly one
 organisation, `personal`, and all four apps that existed were created there
 regardless of what this page said. Anyone running the commands verbatim would
-have been refused. The six apps were moved into the two organisations above on
-Sep 04, 2026; `personal` is now empty and Fly does not allow it to be renamed
-or removed, which is why it is not named here.
+have been refused.
+
+**Fly organisations cannot be renamed — any of them.** The six apps were
+therefore moved into the two organisations above rather than `personal` being
+renamed. This is Fly's own prescribed workaround, not a local invention:
+create the organisation, `fly apps move` the apps, delete the old one. Skip
+that last step here, for the billing reason above. A replacement organisation
+is always created as `SHARED`, so the `PERSONAL` type cannot be re-minted
+either — another reason `personal` is not named in the commands above.
 
 The checked-in deployment definitions are canonical:
 
