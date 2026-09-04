@@ -66,4 +66,4 @@ pub mod worker;
 pub use self::error::{Error, Result};
 pub use self::poster::{Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
-pub use self::worker::{BLOCK_INTERVAL, Worker};
+pub use self::worker::{BLOCK_INTERVAL, LONGEST_PARK, Worker};
