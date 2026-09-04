@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 > previous image digest… the registry retains the digest" — so this rewrite
 > brings the spec into line with the procedure, not the other way round.
 > M187_001's Invariant 1 and its §5 gate read this spec's soak, so they inherit
-> the same correction; the consequence for M187_001 §5.2 is named in §5 below.
+> the same correction; the consequence for M187_001 §5.2 is named in Invariant 3.
 >
 > > Indy (2026-09-02): "Its not accidental, Indy accelerated it, so just record
 > > it and move on" — context: asked whether the missing Zig daemon build was
@@ -130,6 +130,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `build.zig` | EDIT | §4.3 — six references die with the tree, including `S_SRC_MAIN_ZIG` and the `test-auth` target |
 | `src/build/auth_tests.zig` | DELETE | §4.3 — the `test-auth` gate's support file; its only scope was the deleted daemon's auth directory |
 | `rustd/crates/**` · `cli/**` · `docs/**` · `audits/**` · `dispatch/**` · `playbooks/**` | EDIT | §4.2 — the reference sweep: 92 files name the deleted tree, most citing it as canon in prose |
+| `rustd/crates/{afd_wire,afd_api_operator,afd_api_tenant,afd_library,afd_runner}/**` | EDIT | §5 — the bound each request field carries moves onto its request type; the sentence a break earns stays at the handler |
 | `src/runner/**` · `build_runner.zig` | **UNTOUCHED — asserted, not assumed** | §4.5 grades that the deletion did not take the runner with it |
 | `rustd/crates/agentsfleetd/**` | EDIT | only what the soak proves it needs — a startup or shutdown ordering fix the drain-swap surfaces, a budget-driven change the latency or memory dimension forces. No feature work: a soak that changes the daemon it is measuring has measured nothing |
 
@@ -281,6 +282,37 @@ would trade a dangling dependency for a coverage hole.
 - **Dimension 4.3** — `build.zig` loses its daemon targets and still builds what it should: six references die with the tree, including `S_SRC_MAIN_ZIG` and the `test-auth` gate that reaches the daemon's auth through `src/build/auth_tests.zig`. A support file left addressing a deleted directory is removed with its caller rather than left orphaned → Test `the default build file declares no daemon target`
 - **Dimension 4.4** — every gate, make target and playbook whose scope was the daemon either narrows or is removed, and none is left scanning nothing and reporting green. A gate covering daemon AND runner narrows; only an empty scope is deleted → Test `no gate reports a vacuous pass over a deleted tree`
 - **Dimension 4.5** — the runner is untouched and still ships: `build_runner.zig` and `src/runner/**` unmodified, `compile-runner-amd64` and `compile-runner-arm64` still declared and still in the release job's `needs`, deploy stages still consuming `agentsfleet-runner-linux-amd64`. Zig does not leave this repository — the runner stays Zig by Indy's Sep 02 call, so a sweep that greps for `.zig` and expects zero is wrong by construction → Tests `the runner build still produces its artifact` · `the release workflow still builds and ships the runner`
+
+
+### §5 — Request bounds are declared on the type, not re-spelled per handler
+
+Not planned here. The soak could not start until three Rust-port defects were
+repaired, and the credential-rule fix in `afd_library` was the first place a
+bound was moved onto its request type rather than re-checked beside it. The
+same shape was then carried across the request surface, on Indy's call, as ONE
+commit — the alternative being a rule that holds in the crate the defect was
+found in and nowhere else.
+
+The rollout GROWS the code and that was agreed before it began: roughly −6 lines
+of `if`, +1 per field, +12 for the sentence mapping ≈ +8 net per request struct.
+`garde` reports a stringly `(path, message)`, while these handlers answer a
+specific public sentence per field and sometimes a different error CODE, so each
+conversion keeps a `detail_for` mapping and the wire text stays byte-identical.
+Nothing a caller reads changes; what changes is that a cap has one home.
+
+What is deliberately NOT converted is a finding, not a gap: newtype smart
+constructors (`afd_tenant/apikey/name.rs`, `afd_vault/secret.rs`), parsers
+(cursors, cron expressions, tokens, `Repository::parse`), URL path parameters
+and raw `Bytes` bodies with no struct to hang a bound on, internal capacity
+guards (`afd_observability`), and one handler-local struct with a single
+sentence (`afd_api_ingress` approval webhook) whose conversion would add a
+dependency to buy no shared bound. A newtype constructor IS the idiomatic Rust
+pattern; converting it would make it worse.
+
+- **Dimension 5.1** — **DONE** — every request type whose fields carried a hand-rolled length or emptiness check declares that bound with `garde` instead: eleven types across `afd_wire`, driven from `afd_api_operator`, `afd_api_tenant`, `afd_library` and `afd_runner` → Tests `patch_validation_covers_identity_and_reason_bounds` · `test_the_model_bound_holds_on_both_verbs_that_take_one` · `test_a_document_is_refused_when_empty_or_past_the_cap_and_kept_at_it`
+- **Dimension 5.2** — **DONE** — the refusal SENTENCE each field earns is unchanged, mapped from the path `garde` reports rather than from garde's own message, including the two fields that share one cap and answer different copy → Tests `test_a_create_naming_no_credential_is_refused_before_the_store` · `should_admit_the_ceiling_and_refuse_one_byte_past_it`
+- **Dimension 5.3** — **DONE** — a cap has exactly one declaration, and the cases that assert it read it from there. `FLEET_MARKDOWN_MAX_BYTES` carries the reason its number and its sentence disagree, so neither is reconciled by a later reader without a decision about the client between them → Tests `test_a_document_is_refused_when_empty_or_past_the_cap_and_kept_at_it` (at-cap and one-past arms) · `test_the_model_bound_holds_on_both_verbs_that_take_one` (inclusive-edge arm)
+- **Dimension 5.4** — **DONE** — the credential rule reads the PARSED document rather than a raw byte window, so a YAML comment documenting a credential shape is not onboarded as a leak, and a `client_secret` pasted below the closing fence still is → Tests the `afd_library` credential-scanner cases over both halves of the document
 
 
 ## Interfaces

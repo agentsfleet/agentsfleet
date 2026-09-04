@@ -25,7 +25,16 @@
 //! the scan the pagination exists to avoid, and §3 declares null to mean "not
 //! computed" rather than letting the key vanish.
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
+
+/// The longest model identifier this surface accepts.
+///
+/// One rule and two request types, so the bound cannot hold on the create and
+/// not on the change — which is exactly how `model_id` ended up bounded on the
+/// catalogue route and unbounded on this one. The refusal sentence spells the
+/// same number in words; both move together or neither does.
+pub const MODEL_ID_MAX_BYTES: usize = 256;
 
 /// One configured model, as the registry page shows it.
 ///
@@ -143,11 +152,16 @@ pub struct StoredModelEntry<'a> {
 /// agentsfleet ignores fields it does not know, instead of refusing the
 /// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
     pub model_id: String,
     /// The credential to back it with. Immutable once the entry exists.
+    // Bounded below only: the ceiling belongs to the vault's key name, which
+    // refuses a reference no secret could carry — a length here would be a
+    // second opinion about someone else's column.
+    #[garde(length(bytes, min = 1))]
     pub secret_ref: String,
 }
 
@@ -157,9 +171,10 @@ pub struct CreateModelEntryRequest {
 // same model on a different credential is a DIFFERENT entry, which is what the
 // table's domain key says.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
     pub model_id: String,
 }
 

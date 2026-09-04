@@ -5,6 +5,7 @@
 //! rules that answer has to meet — which decision the path spells, how long a
 //! note may be, and what the second answerer is told.
 
+use garde::Validate as _;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -30,10 +31,6 @@ const DETAIL_REASON_TOO_LONG: &str = "reason exceeds max length";
 
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
-
-/// `REASON_MAX`, mirrored: the column is unbounded text and a note is a
-/// sentence, so the cap is what keeps a decision from becoming storage.
-const REASON_MAX_BYTES: usize = 4096;
 
 /// `POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}`.
 ///
@@ -152,9 +149,8 @@ fn read_reason(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
     // Plain JSON strings borrow from `body`; escaped strings necessarily own
     // their decoded value. Carrying the `Cow` through the await accepts both
     // without cloning either one.
-    let reason = request.reason.unwrap_or(Cow::Borrowed(""));
-    if reason.len() > REASON_MAX_BYTES {
-        return Err(Refusal::malformed(DETAIL_REASON_TOO_LONG));
-    }
-    Ok(reason)
+    request
+        .validate()
+        .map_err(|_report| Refusal::malformed(DETAIL_REASON_TOO_LONG))?;
+    Ok(request.reason.unwrap_or(Cow::Borrowed("")))
 }

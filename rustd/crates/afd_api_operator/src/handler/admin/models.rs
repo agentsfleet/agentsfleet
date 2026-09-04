@@ -14,6 +14,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 use http::StatusCode;
 
 use crate::auth::PersonIdentity;
@@ -23,6 +24,13 @@ use crate::services::Services;
 
 const DETAIL_BODY_REQUIRED: &str = "Request body required";
 const DETAIL_MALFORMED_JSON: &str = "Malformed JSON";
+/// The path `garde` reports a provider-length break under.
+const FIELD_PROVIDER: &str = "provider";
+/// The path a model-identity break is reported under.
+const FIELD_MODEL_ID: &str = "model_id";
+/// The path a context-ceiling break is reported under.
+const FIELD_CONTEXT_CAP: &str = "context_cap_tokens";
+
 const DETAIL_PROVIDER_LEN: &str = "provider must be 1–64 chars";
 const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–256 chars";
 const DETAIL_CAP_POSITIVE: &str = "context_cap_tokens must be > 0";
@@ -235,13 +243,7 @@ fn create_request(body: &[u8]) -> Result<AdminModelCreate<'_>, &'static str> {
     }
     let request = afd_core::json::object_from_slice::<AdminModelCreate<'_>>(body)
         .map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    if request.provider.is_empty() || request.provider.len() > 64 {
-        return Err(DETAIL_PROVIDER_LEN);
-    }
-    if request.model_id.is_empty() || request.model_id.len() > 256 {
-        return Err(DETAIL_MODEL_ID_LEN);
-    }
-    validate_rates(request.rates)?;
+    request.validate().map_err(|report| detail_for(&report))?;
     Ok(request)
 }
 
@@ -251,21 +253,34 @@ fn rates_request(body: &[u8]) -> Result<afd_admin::ModelRates, &'static str> {
     }
     let rates = afd_core::json::object_from_slice::<ModelRates>(body)
         .map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    validate_rates(rates)?;
+    rates.validate().map_err(|report| detail_for(&report))?;
     Ok(store_rates(rates))
 }
 
-fn validate_rates(rates: ModelRates) -> Result<(), &'static str> {
-    if rates.context_cap_tokens <= 0 {
-        return Err(DETAIL_CAP_POSITIVE);
-    }
-    if rates.input_nanos_per_mtok < 0
-        || rates.cached_input_nanos_per_mtok < 0
-        || rates.output_nanos_per_mtok < 0
-    {
-        return Err(DETAIL_RATES_NONNEGATIVE);
-    }
-    Ok(())
+/// The sentence a caller is told, for the bound their body broke.
+///
+/// `garde` reports a PATH and a message; this route answers a fixed sentence
+/// per field, and that is a public contract — the dashboard renders it. So the
+/// bound moves onto the type and the wording stays here, mapped by the path
+/// that broke, rather than both living in an `if` that has to be kept in step
+/// with the schema.
+fn detail_for(report: &garde::Report) -> &'static str {
+    report
+        .iter()
+        .next()
+        .map_or(DETAIL_MALFORMED_JSON, |(path, _message)| {
+            // The rates ride FLATTENED on the wire but nested in the type, so
+            // `dive` spells them `rates.context_cap_tokens` from the create and
+            // `context_cap_tokens` from the rates-only verb. Matching the whole
+            // path would answer the create's cap break with the rates sentence.
+            let spelled = path.to_string();
+            match spelled.rsplit('.').next().unwrap_or(&spelled) {
+                FIELD_PROVIDER => DETAIL_PROVIDER_LEN,
+                FIELD_MODEL_ID => DETAIL_MODEL_ID_LEN,
+                FIELD_CONTEXT_CAP => DETAIL_CAP_POSITIVE,
+                _rate => DETAIL_RATES_NONNEGATIVE,
+            }
+        })
 }
 
 fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {

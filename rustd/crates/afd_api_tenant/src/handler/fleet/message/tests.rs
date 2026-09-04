@@ -14,11 +14,11 @@
 )]
 
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
 use axum::body::Bytes;
 
 use super::{
-    MAX_MESSAGE_BYTES, PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit,
-    read_message,
+    PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit, read_message,
 };
 
 /// The millisecond the fixture thread's oldest row was stamped.
@@ -154,20 +154,26 @@ fn should_read_a_message_that_carries_escapes() {
 /// the decoded text.
 #[test]
 fn should_bound_the_decoded_bytes_and_not_the_escaped_ones() {
-    let escaped = format!(r#"{{"message":"{}"}}"#, r"\n".repeat(MAX_MESSAGE_BYTES));
+    let escaped = format!(
+        r#"{{"message":"{}"}}"#,
+        r"\n".repeat(STEER_MESSAGE_MAX_BYTES)
+    );
     let body = Bytes::from(escaped.into_bytes());
     let read = read_message(&body).expect("a message of newlines is under the bound once decoded");
-    assert_eq!(read.len(), MAX_MESSAGE_BYTES);
+    assert_eq!(read.len(), STEER_MESSAGE_MAX_BYTES);
 }
 
 /// The bound admits its own ceiling and refuses one byte past it.
 #[test]
 fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
-    let at_the_ceiling = format!(r#"{{"message":"{}"}}"#, "a".repeat(MAX_MESSAGE_BYTES));
+    let at_the_ceiling = format!(r#"{{"message":"{}"}}"#, "a".repeat(STEER_MESSAGE_MAX_BYTES));
     read_message(&Bytes::from(at_the_ceiling.into_bytes()))
         .expect("the documented ceiling is a message this surface takes");
 
-    let one_past = format!(r#"{{"message":"{}"}}"#, "a".repeat(MAX_MESSAGE_BYTES + 1));
+    let one_past = format!(
+        r#"{{"message":"{}"}}"#,
+        "a".repeat(STEER_MESSAGE_MAX_BYTES + 1)
+    );
     read_message(&Bytes::from(one_past.into_bytes())).unwrap_err();
 }
 
