@@ -413,4 +413,15 @@ family by default.
 
   **Rotation now has a home.** `playbooks/operations/credential_rotation/001_playbook.md` covered Upstash, PostHog and Vercel and not this credential at all, which is why an org-scoped token could go blind with no step to consult. It now carries the org-scope trap, the two vault rows, the `--org` flag warning, and how to read `Could not find App` as a token error rather than a missing app.
 
+- **External review of the collector hop (Tarzy, Sep 04, 2026) — three findings confirmed, one correction rejected.** The hop was reviewed end to end against the OpenTelemetry specification and the collector's own documentation. Its architectural verdict matches what `deploy/fly/otelcol-*/config.yml` already documents, which is worth stating because the corroboration is independent rather than a re-read of our own comments.
+
+  **Confirmed, and none is in this milestone's scope to fix:**
+  1. *No client-side retry on the daemon → collector hop.* Verified in `rustd/Cargo.toml:617-630`: `experimental-http-retry` is not among the enabled `opentelemetry-otlp` features. A collector restart, redeploy or brief 6PN flap is immediate loss on that hop, not a retried one.
+  2. *The acknowledgement boundary is RAM.* The collector answers 2xx once it accepts the request into its pipeline, which the daemon records as a successful export; the batch may not have reached the outbound queue, and the queue is in-memory with no `file_storage` backing. `[[restart]] policy = "always"` and an OOM kill are both restarts.
+  3. *`sending_queue: 1000` is sized in REQUESTS against a 512mb container.* One queued request can carry a large batch, and the memory limiter cannot reclaim exporter-queue memory — so a long vendor outage can pin enough live objects to OOM the process that is holding the only copy.
+
+  **Rejected, and the reason matters more than the verdict.** The review also reported that `opentelemetry-otlp` 0.32 appends `/v1/traces` to a programmatically-set endpoint, making this daemon's manual append a double-append bug. It is not. `resolve_http_endpoint` (`exporter/http/mod.rs`) returns a provided endpoint **verbatim** and reaches `build_endpoint_uri` — the appending function — only on the `OTEL_EXPORTER_OTLP_ENDPOINT` and default branches. The reviewer was reading the crate's OWN example, which sits above `.with_endpoint("http://my-collector:4318")` and states the opposite of the code beneath it. Deleting the append would post every signal to the bare origin and collect 404s that the daemon reports as successful exports. Pinned by `each_signal_posts_under_its_versioned_path`, verified red first.
+
+  Findings 1–3 are observability durability, adjacent to this spec rather than inside it: this milestone asks whether the soak's signals are continuous, not whether the hop is crash-durable. They belong in a follow-up rather than widening a spec that is already carrying two unplanned repairs.
+
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
