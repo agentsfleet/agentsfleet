@@ -37,7 +37,7 @@ sequenceDiagram
 
 ## 1. Install — one Open Authorization (OAuth), multi-tenant
 
-A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the Open Authorization (OAuth) code-exchange and persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables). A generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. ✅
+A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the Open Authorization (OAuth) code-exchange and persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`afd_api_tenant/src/handler/connector/callback.rs`, zero entity tables). A generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. ✅
 
 ## 2. The channel is the memory namespace
 
@@ -50,7 +50,7 @@ The first `@mention` in `#support` materializes a **durable per-channel resident
 
 ## 3. Mention → steer → answer (one reasoning loop)
 
-A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signature-authed, no principal — `webhooks/fleet.zig`) on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); NullClaw answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the answer posts back via `chat.postMessage thread_ts=<originating>`. On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
+A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signature-authed, no principal — `afd_api_ingress/src/handler/webhook/receive_route.rs`) on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); NullClaw answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the answer posts back via `chat.postMessage thread_ts=<originating>`. On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
 
 ## 4. The cross-thread payoff
 

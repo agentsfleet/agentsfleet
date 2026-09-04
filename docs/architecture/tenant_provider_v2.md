@@ -36,11 +36,11 @@ ALTER TABLE core.tenant_model_selection ADD COLUMN secret_id UUID REFERENCES vau
 
 An INSERT of a referencing row then takes `FOR KEY SHARE` on the credential
 row; a DELETE of a referenced credential fails IN THE DATABASE. The
-producer/destroyer race that `secret_reference_txn.zig` and
-`afd_vault/src/sql.rs`'s lock trio hand-simulate is settled by Postgres, for
-every future reference producer too. The Zig module's own first sentence
-concedes the point: "it cannot be a foreign key: secret_ref is TEXT" — a fact
-about the columns, not about possibility.
+producer/destroyer race that `afd_vault/src/sql.rs`'s lock trio hand-simulates
+(as the retired Zig daemon's `secret_reference_txn` module did before it) is
+settled by Postgres, for every future reference producer too. The Zig module's
+own first sentence conceded the point: "it cannot be a foreign key: secret_ref
+is TEXT" — a fact about the columns, not about possibility.
 
 Migration shape: add column → backfill by join on `(workspace, key_name)` →
 dual-write → flip readers → keep `secret_ref` TEXT for display only (or derive
