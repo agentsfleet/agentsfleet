@@ -76,7 +76,7 @@ const loadRecord = (
 //
 // The two credential classes are checked to different depths on purpose. A
 // minted credential is matched against its full declared shape, mirroring
-// looksWellFormed in src/agentsfleetd/auth/cli_credential.zig, so a
+// `accepts_shape` in rustd/crates/afd_auth/src/authenticate.rs, so a
 // truncated paste fails here rather than at the server. A tenant key is
 // matched on its prefix alone: its shape is owned by the tenant-key module
 // and is not mirrored here, and a second copy of a shape we do not generate

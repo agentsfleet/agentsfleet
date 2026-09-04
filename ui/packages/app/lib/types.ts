@@ -191,11 +191,12 @@ export type OnboardedPlatformLibraryEntry = OnboardedLibraryEntryBase & { visibi
 
 // ── The platform catalog (M128) — GET /v1/admin/fleet-libraries ──────────────
 //
-// The publish lifecycle as the server stores it. Spelled verbatim in
-// src/agentsfleetd/fleet_library/library_store.zig and in
-// schema/023_fleet_library.sql; SQL cannot import a Zig constant and TypeScript
-// cannot import either, so the three must agree by hand. A drift silently hides
-// or exposes fleets, which is why an integration test pins it.
+// The publish lifecycle as the server stores it. Spelled verbatim as
+// VISIBILITY_DRAFT / VISIBILITY_PUBLIC in
+// rustd/crates/afd_library/src/catalogue/mod.rs and in
+// schema/023_fleet_library.sql; SQL cannot import a Rust constant and
+// TypeScript cannot import either, so the three must agree by hand. A drift
+// silently hides or exposes fleets, which is why an integration test pins it.
 export const CATALOG_DRAFT = "draft" as const;
 export const CATALOG_PUBLIC = "public" as const;
 export type CatalogVisibility = typeof CATALOG_DRAFT | typeof CATALOG_PUBLIC;
@@ -319,8 +320,8 @@ export const PROVIDER_MODE = {
 
 // Provider id that opts a self-managed credential into a custom OpenAI-compatible
 // endpoint. Mirrors the backend resolver
-// (`src/agentsfleetd/state/tenant_provider_resolver.zig` →
-// `OPENAI_COMPATIBLE_PROVIDER`) and the CLI's `constants/custom-endpoint.ts`: a
+// (`rustd/crates/afd_credential/src/provider/endpoint/mod.rs` →
+// `OPENAI_COMPATIBLE`) and the CLI's `constants/custom-endpoint.ts`: a
 // credential carrying this provider requires a `base_url` (https, SSRF-validated
 // server-side), forbidden for every named provider. The literal lives here once
 // for the UI; every reader (the custom credential form, the Models own-key
@@ -364,7 +365,7 @@ export type TenantProvider = {
 
 // ── Tenant model registry ──
 // One row per configured `(model_id, secret_ref)` pair — see
-// src/agentsfleetd/http/handlers/tenant_model_entries.zig for the wire
+// rustd/crates/afd_api_tenant/src/handler/tenant/model_entry.rs for the wire
 // shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.

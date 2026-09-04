@@ -38,8 +38,9 @@ const TYPE_STRING = "string" as const;
 const LITERAL_DASH = "—" as const;
 const SERVER_ERROR_TAG = "ServerError" as const;
 
-// Server error codes this command remaps to actionable suggestions — same
-// identifiers as src/agentsfleetd/errors/error_registry.zig (RULE UFS).
+// Server error codes this command remaps to actionable suggestions — the same
+// values the registry declares in rustd/crates/afd_core/src/error_code/fleet.rs
+// (RULE UFS).
 const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 
