@@ -547,6 +547,11 @@ jobs:
         # the next daemon deploy. Shared with the dev workflow because the two
         # inline copies of this logic drifted into real defects.
         run: |
+          # The app must exist before secrets can be set on it. `--create-only`
+          # creates without deploying, which is the ordering Dimension 0.2
+          # shipped the flag for: the secrets step below runs FIRST and fails
+          # on an app that was never created.
+          bash scripts/ensure_fly_app.sh --create-only "$OTLP_COLLECTOR_APP"
           flyctl secrets set \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
@@ -558,6 +563,7 @@ jobs:
             "$OTLP_COLLECTOR_APP" "$OTLP_COLLECTOR_DIR" "$OTLP_COLLECTOR_MACHINES"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+          FLY_ORG: agentsfleet-prod
 
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
