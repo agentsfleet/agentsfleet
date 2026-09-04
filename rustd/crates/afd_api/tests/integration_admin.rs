@@ -57,7 +57,10 @@ async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
     // and telling them to re-check their input sends them looking at a value
     // that was already correct.
     assert_eq!(
-        json_body(unknown).await.get("code").and_then(Value::as_str),
+        json_body(unknown)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
         Some("UZ-PROVIDER-011"),
         "an absent workspace must not read back as an invalid request"
     );
