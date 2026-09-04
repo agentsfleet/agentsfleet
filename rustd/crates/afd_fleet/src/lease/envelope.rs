@@ -24,26 +24,20 @@ use crate::error::{Result, envelope_field, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
 use crate::lease::reclaim::{Reclaimed, Reused};
 
-/// The stream field carrying the event's type.
+/// The stream fields this reader requires, taken from the ONE place they are
+/// declared.
 ///
-/// These four are `event_envelope.zig`'s `encodeForXAdd` argv, and the entry id
-/// itself IS the event id — there is no `event_id` field. Declared here because
-/// this is the only Rust reader of the fleet stream's shape; `afd_redis` hands
-/// back untyped fields on purpose, so that it stays a transport and not a
-/// second place the envelope is defined.
-const FIELD_TYPE: &str = "type";
-
-/// The stream field carrying who raised the event.
-const FIELD_ACTOR: &str = "actor";
-
-/// The stream field carrying the owning workspace.
-const FIELD_WORKSPACE: &str = "workspace_id";
-
-/// The stream field carrying the request body.
-const FIELD_REQUEST: &str = "request";
-
-/// The stream field carrying the producer's instant.
-const FIELD_CREATED_AT: &str = "created_at";
+/// Private copies lived here once, and they drifted: the producers moved to
+/// `event_type`/`request_json` and stopped writing `created_at` while these
+/// still read `type`/`request`/`created_at`, so every appended event was
+/// durable, delivered, and undecodable. Importing the same constants the
+/// producers write is what makes that class of drift a compile-time concern
+/// instead of a silent one. The entry id itself IS the event id — there is no
+/// `event_id` field.
+use afd_wire::event::field::{
+    ACTOR as FIELD_ACTOR, CREATED_AT as FIELD_CREATED_AT, EVENT_TYPE as FIELD_TYPE,
+    REQUEST_JSON as FIELD_REQUEST, WORKSPACE_ID as FIELD_WORKSPACE,
+};
 
 /// Whether the work was pulled fresh or taken back from a dead holder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,7 +164,39 @@ pub(crate) fn from_fresh(
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the restriction set is for the daemon"
+    )]
     use super::Kind;
+    use afd_core::clock::UnixMillis;
+    use afd_core::id::{ENTROPY_LEN, Uuid7};
+
+    /// A Redis stream entry id: milliseconds and a sequence, as Redis mints it.
+    const ENTRY_ID: &str = "1788550034853-0";
+
+    /// A workspace the reader will parse as a version-7 UUID.
+    const WORKSPACE: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0120";
+
+    /// The fleet the entry belongs to. Minted rather than parsed from a literal:
+    /// `encode` is the only constructor that cannot drift from the type's own
+    /// shape rules.
+    fn fleet_id() -> Uuid7 {
+        Uuid7::encode(
+            UnixMillis::from_millis(1_767_225_600_000),
+            [7u8; ENTROPY_LEN],
+        )
+        .expect("a fixed timestamp and entropy encode to a Uuid7")
+    }
+
+    /// A won claim. Its values are irrelevant to decoding and are carried
+    /// through unread, which is why one shape serves every case here.
+    fn claimed() -> super::Claimed {
+        super::Claimed {
+            fence: super::Fence::from_i64(1),
+            leased_until: UnixMillis::from_millis(1_788_550_064_853),
+        }
+    }
 
     /// Both kinds spell themselves, and differently.
     ///
@@ -184,5 +210,75 @@ mod tests {
         assert_eq!(Kind::Fresh.as_str(), "fresh");
         assert_eq!(Kind::Reclaim.as_str(), "reclaim");
         assert_ne!(Kind::Fresh.as_str(), Kind::Reclaim.as_str());
+    }
+
+    /// What a producer writes is what this reader can read.
+    ///
+    /// The regression this exists for shipped and was invisible for a fortnight:
+    /// the producers wrote `event_type`/`request_json` and no `created_at` while
+    /// this reader asked for `type`/`request`/`created_at`, so every appended
+    /// event was durable, delivered to a consumer, and undecodable — no lease,
+    /// no error a person saw, no event row. Asserting the two sides against each
+    /// other is the only check that catches a rename on either.
+    #[test]
+    fn a_producers_entry_is_readable_by_this_reader() {
+        let entry = afd_wire::event::Entry {
+            actor: "steer:user_1",
+            event_type: afd_wire::event::EventType::Chat.as_str(),
+            workspace_id: WORKSPACE,
+            request_json: r#"{"message":"hello"}"#,
+            created_at: "1788550034853",
+        };
+        let event = afd_redis::FleetEvent {
+            id: afd_redis::EventId::of(ENTRY_ID),
+            fields: entry
+                .pairs()
+                .into_iter()
+                .map(|(name, value)| ((*name).to_owned(), value.to_owned()))
+                .collect(),
+        };
+
+        let acquired = super::from_fresh(&fleet_id(), &claimed(), &event)
+            .expect("a producer's own entry must be readable by the reader");
+
+        assert_eq!(acquired.actor, "steer:user_1");
+        assert_eq!(acquired.event_type, "chat");
+        assert_eq!(acquired.request_json, r#"{"message":"hello"}"#);
+        assert_eq!(acquired.workspace_id.as_str(), WORKSPACE);
+        assert_eq!(acquired.event_created_at.as_millis(), 1_788_550_034_853);
+        assert_eq!(acquired.event_id, ENTRY_ID);
+    }
+
+    /// An entry missing any single field is refused, naming that field.
+    ///
+    /// The other half of the pair above: the reader must not paper over a
+    /// partial entry with a default, because an empty actor or a zero instant
+    /// fails later — inside a runner, mid-execution, with nothing left to say
+    /// where the value went.
+    #[test]
+    fn an_entry_missing_any_field_is_refused() {
+        let entry = afd_wire::event::Entry {
+            actor: "steer:user_1",
+            event_type: afd_wire::event::EventType::Chat.as_str(),
+            workspace_id: WORKSPACE,
+            request_json: r#"{"message":"hello"}"#,
+            created_at: "1788550034853",
+        };
+        let pairs = entry.pairs();
+        for dropped in 0..pairs.len() {
+            let fields = pairs
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| *index != dropped)
+                .map(|(_, (name, value))| ((*name).to_owned(), (*value).to_owned()))
+                .collect();
+            let event = afd_redis::FleetEvent {
+                id: afd_redis::EventId::of(ENTRY_ID),
+                fields,
+            };
+            let refused = super::from_fresh(&fleet_id(), &claimed(), &event);
+            let name = pairs.get(dropped).map_or("?", |(name, _)| name);
+            assert!(refused.is_err(), "dropping {name} must refuse the entry");
+        }
     }
 }
