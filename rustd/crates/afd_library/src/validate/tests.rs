@@ -1,6 +1,6 @@
 use super::{
     MAX_MARKDOWN_LEN, MAX_SOURCE_REF_LEN, MAX_SUPPORT_FILE_LEN, MAX_SUPPORT_FILES,
-    MAX_SUPPORT_PATH_LEN, body,
+    MAX_SUPPORT_PATH_LEN, body, classify,
 };
 use crate::{ImportBody, InvalidBundle, SourceKind, SupportFile};
 
@@ -272,4 +272,25 @@ fn every_rule_this_module_owns_still_reports_its_own_variant() {
         content: Vec::new(),
     });
     assert_eq!(body(&value), Err(InvalidBundle::UnsafeSupportPath));
+}
+
+/// A report this module has no rule for degrades to the strictest refusal.
+///
+/// Every custom rule names itself and every `length` bound sits on a path
+/// `classify` knows, so no [`ImportBody`] reaches this arm through [`body`] —
+/// it is driven directly. What it pins is the direction of the default: a
+/// bound added to the model without a mapping here must surface as a refusal
+/// the caller cannot mistake for an admitted file, never as a pass.
+#[test]
+fn a_report_under_no_known_path_is_refused_rather_than_admitted() {
+    assert_eq!(
+        classify("source_revision", "length is lower than 1"),
+        InvalidBundle::UnsafeSupportPath
+    );
+    assert_eq!(
+        classify("support_files[0].path", "length is greater than 160"),
+        InvalidBundle::UnsafeSupportPath,
+        "a support-file field that is not `content` is the path, and a path \
+         finding is a path refusal"
+    );
 }

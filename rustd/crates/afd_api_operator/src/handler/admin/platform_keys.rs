@@ -303,4 +303,44 @@ mod tests {
             Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
         );
     }
+
+    /// The sentence names the field whose bound broke, keyed by the path
+    /// `garde` reports — the wording is a public contract the dashboard
+    /// renders, so each of the two bounds must earn its own sentence.
+    #[test]
+    fn a_broken_bound_is_told_as_the_field_that_broke_it() {
+        // The caps are read from the wire type that DECLARES them, never
+        // copied: a local number would let the bound move while these cases
+        // asserted the old one and still passed.
+        let provider_past_cap = format!(
+            r#"{{"provider":"{}","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#,
+            "p".repeat(KEY_PROVIDER_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            request(provider_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
+        );
+
+        let provider_empty = format!(
+            r#"{{"provider":"","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#
+        );
+        assert_eq!(
+            request(provider_empty.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
+        );
+
+        let model_past_cap = format!(
+            r#"{{"provider":"anthropic","source_workspace_id":"{WORKSPACE}","model":"{}","base_url":null}}"#,
+            "m".repeat(afd_wire::admin::MODEL_ID_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            request(model_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_MODEL_LEN))
+        );
+
+        // A report with nothing in it cannot name a field. `validate` never
+        // produces one, so the default is driven directly: the fallback must
+        // stay a refusal rather than a sentence blaming a field that passed.
+        assert_eq!(detail_for(&garde::Report::new()), DETAIL_MALFORMED_JSON);
+    }
 }

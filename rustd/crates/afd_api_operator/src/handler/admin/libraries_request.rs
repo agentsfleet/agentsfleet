@@ -125,4 +125,33 @@ mod tests {
             Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID))
         );
     }
+
+    /// A reason that IS a string is then held to its byte caps, on both the
+    /// credential name and the sentence — and one inside both is kept.
+    #[test]
+    fn a_string_reason_is_bounded_on_both_its_name_and_its_sentence() {
+        assert_eq!(
+            patch_request(br#"{"required_credentials_reasons":{"github":"opens the release PR"}}"#)
+                .map(|_patch| ()),
+            Ok(())
+        );
+
+        let sentence_past_cap = format!(
+            r#"{{"required_credentials_reasons":{{"github":"{}"}}}}"#,
+            "r".repeat(REASON_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            patch_request(sentence_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG))
+        );
+
+        let name_past_cap = format!(
+            r#"{{"required_credentials_reasons":{{"{}":"fine"}}}}"#,
+            "c".repeat(REASON_CREDENTIAL_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            patch_request(name_past_cap.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG))
+        );
+    }
 }
