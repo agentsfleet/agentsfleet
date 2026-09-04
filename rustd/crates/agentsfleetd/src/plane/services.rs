@@ -15,6 +15,8 @@
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::{Services, TenantSurface};
+
+use crate::identity::SignupWriteback;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
@@ -41,6 +43,7 @@ use super::{Authenticator, ServingPlane};
 
 impl Services for ServingPlane {
     type Auth = Authenticator;
+    type SignupMetadata = SignupWriteback;
     type Leases = Plane;
     type Sessions = Logins;
     type Workspaces = Workspaces;
@@ -58,6 +61,10 @@ impl Services for ServingPlane {
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
+    }
+
+    fn signup_metadata(&self) -> &Self::SignupMetadata {
+        &self.signup_writeback
     }
 
     fn runners(&self) -> &Runners {

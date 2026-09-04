@@ -13,8 +13,10 @@
 //! configured once for the deployment and resolved at boot, exactly as the App
 //! ingress secret is.
 
+use afd_auth::principal::Subject;
 use afd_core::clock::UnixMillis;
 use afd_crypto::secret::SecretBytes;
+use afd_identity::MetadataUnwritten;
 use afd_tenant::Result as TenantResult;
 
 // Re-exported so a handler names this seam rather than the store crate behind
@@ -66,6 +68,36 @@ impl IdentityWebhookSecret for Option<SecretBytes> {
     fn identity_webhook_secret(&self) -> Option<&SecretBytes> {
         self.as_ref()
     }
+}
+
+/// Telling the identity provider which tenant a new account resolved to.
+///
+/// Separate from [`Signups`] because the direction and the failure posture
+/// both differ. Provisioning decides whether the delivery succeeded; this only
+/// decides whether the person's NEXT token will carry a tenant, and the
+/// account exists either way. A caller that answered the delivery with this
+/// outcome would refuse an account it had already created.
+///
+/// # Why it is a seam at all
+///
+/// The Zig calls its provider client straight from the handler. Here it is a
+/// port for the reason every other one is: the suite that proves this route's
+/// refusal matrix runs with no provider and no socket, and a handler that
+/// reached for a client directly could not be driven by it.
+pub trait SignupMetadata: Send + Sync + std::fmt::Debug + 'static {
+    /// Merges the account's tenant and owner grant into the subject's
+    /// provider-side metadata.
+    ///
+    /// # Errors
+    /// Reports a provider that would not take the write. Every outcome is the
+    /// caller's to LOG and swallow — see the trait docs on why none of them
+    /// may reach the delivery.
+    fn write_signup(
+        &self,
+        subject: &Subject,
+        tenant_id: &str,
+        scopes: &str,
+    ) -> impl Future<Output = Result<(), MetadataUnwritten>> + Send;
 }
 
 #[cfg(test)]

@@ -26,6 +26,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_api::services::SignupMetadata;
 use afd_auth::capability::{CapabilitySource, NoCapabilitySource};
 use afd_auth::credential::Presented;
 use afd_auth::error::Unavailable;
@@ -33,8 +34,8 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::{NoVerifier, TokenVerifier, VerifiedClaims, VerifyError};
 use afd_identity::{
-    ClaimUnavailable, HttpKeySet, JwksVerifier, ProviderCapabilities, ProviderClaims,
-    VerifierConfig, jwks_url,
+    ClaimUnavailable, HttpKeySet, JwksVerifier, MetadataUnwritten, ProviderCapabilities,
+    ProviderClaims, ProviderMetadata, VerifierConfig, jwks_url,
 };
 
 use crate::preflight::IdentityConfig;
@@ -48,6 +49,51 @@ pub const PROVIDER_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long the key-set endpoint has to answer.
 pub const KEY_SET_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Whether a new account's tenant can be told to the provider.
+#[derive(Debug)]
+pub enum SignupWriteback {
+    /// A configured provider. The write is attempted and its outcome logged.
+    Provider(ProviderMetadata),
+    /// No provider client. Every writeback is an outage, by design — and one
+    /// that is announced at boot rather than discovered per signup.
+    Unconfigured(NoWriteback),
+}
+
+impl SignupMetadata for SignupWriteback {
+    async fn write_signup(
+        &self,
+        subject: &Subject,
+        tenant_id: &str,
+        scopes: &str,
+    ) -> Result<(), MetadataUnwritten> {
+        match self {
+            Self::Provider(provider) => provider.write_signup(subject, tenant_id, scopes).await,
+            Self::Unconfigured(absent) => absent.write_signup(subject, tenant_id, scopes).await,
+        }
+    }
+}
+
+/// The writeback a deployment with no provider client has.
+///
+/// Refuses rather than silently succeeding: a signup whose tenant never
+/// reached the provider mints tokens that every gate turns away, and a seam
+/// that answered `Ok` would hide exactly the outage an operator has to repair.
+#[derive(Debug, Clone, Copy)]
+pub struct NoWriteback;
+
+impl SignupMetadata for NoWriteback {
+    fn write_signup(
+        &self,
+        _subject: &Subject,
+        _tenant_id: &str,
+        _scopes: &str,
+    ) -> impl Future<Output = Result<(), MetadataUnwritten>> + Send {
+        // Ready rather than `async`: there is nothing to await, and an `async`
+        // body with no await is a future that only looks like it does work.
+        std::future::ready(Err(MetadataUnwritten::Unreachable))
+    }
+}
 
 /// What a subject may do, if anyone can be asked.
 #[derive(Debug, Clone)]
@@ -98,22 +144,25 @@ impl TokenVerifier for Sessions {
 /// already refused the boot if a knob was missing, so an absent provider can no
 /// longer reach this function at all.
 #[must_use]
-pub fn resolve(identity: &IdentityConfig) -> (Capabilities, Sessions) {
-    resolve_with(identity, build_claims, build_key_set)
+pub fn resolve(identity: &IdentityConfig) -> (Capabilities, Sessions, SignupWriteback) {
+    resolve_with(identity, build_claims, build_key_set, build_metadata)
 }
 
-fn resolve_with<C, K>(
+fn resolve_with<C, K, M>(
     identity: &IdentityConfig,
     claim_builder: C,
     key_set_builder: K,
-) -> (Capabilities, Sessions)
+    metadata_builder: M,
+) -> (Capabilities, Sessions, SignupWriteback)
 where
     C: FnOnce(&IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable>,
     K: FnOnce(String, Duration) -> Result<HttpKeySet, VerifyError>,
+    M: FnOnce(&IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten>,
 {
     (
         capabilities(identity, claim_builder),
         sessions(identity, key_set_builder),
+        writeback(identity, metadata_builder),
     )
 }
 
@@ -123,6 +172,41 @@ fn build_claims(identity: &IdentityConfig) -> Result<ProviderClaims, ClaimUnavai
         identity.secret.clone(),
         PROVIDER_TIMEOUT,
     )
+}
+
+fn build_metadata(identity: &IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten> {
+    ProviderMetadata::new(
+        identity.api_base.clone(),
+        identity.secret.clone(),
+        PROVIDER_TIMEOUT,
+    )
+}
+
+/// The signup-writeback seam for a configured provider.
+///
+/// Announced at boot like the capability seam, and for a sharper reason: the
+/// writeback runs AFTER a tenant row is committed, so a deployment that cannot
+/// build a client opens accounts whose next token carries no tenant. That is
+/// worth a line at startup rather than one per signup.
+fn writeback<M>(identity: &IdentityConfig, build: M) -> SignupWriteback
+where
+    M: FnOnce(&IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten>,
+{
+    match build(identity) {
+        Ok(metadata) => SignupWriteback::Provider(metadata),
+        Err(_unbuildable) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            tracing::error!(
+                error_code = code,
+                event = "identity_writeback_unavailable",
+                "no HTTP client for the identity provider — every new account's \
+                 tenant will go unwritten and its next token will carry none"
+            );
+            SignupWriteback::Unconfigured(NoWriteback)
+        }
+    }
 }
 
 fn build_key_set(url: String, timeout: Duration) -> Result<HttpKeySet, VerifyError> {

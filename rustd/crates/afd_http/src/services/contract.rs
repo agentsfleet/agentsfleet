@@ -24,9 +24,9 @@ use crate::auth::Authenticator;
 
 use super::TenantSurface;
 use super::{
-    DeviceFlow, FleetGrants, FleetMemories, FleetSchedules, FleetSteering, Leasing, WebhookIngress,
-    WorkspaceApprovals, WorkspaceConnectors, WorkspaceEvents, WorkspaceFleets, WorkspaceOwnership,
-    WorkspacePreferences, WorkspaceSecrets,
+    DeviceFlow, FleetGrants, FleetMemories, FleetSchedules, FleetSteering, Leasing, SignupMetadata,
+    WebhookIngress, WorkspaceApprovals, WorkspaceConnectors, WorkspaceEvents, WorkspaceFleets,
+    WorkspaceOwnership, WorkspacePreferences, WorkspaceSecrets,
 };
 
 /// The services one request is served through.
@@ -207,6 +207,16 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// cannot be reached through a [`afd_ingress::Binding`], because it has to
     /// be verified before there is a binding to reach it through.
     fn platform_admin_workspace(&self) -> Option<&Uuid7>;
+
+    /// What tells the identity provider a new account's tenant.
+    ///
+    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// concrete writer holds an HTTP client built at boot, and a suite proving
+    /// this route's refusal matrix must not need a provider to talk to.
+    type SignupMetadata: SignupMetadata;
+
+    /// The signup writeback surface.
+    fn signup_metadata(&self) -> &Self::SignupMetadata;
 
     /// What a signup event's signature is checked against.
     ///

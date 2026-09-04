@@ -59,7 +59,7 @@ pub(super) async fn open_runtime(
     // set both. `warm` reports its shortfall through `pool_warm_incomplete`.
     database.warm(POOL_WARM_DEADLINE).await;
     let queue = Redis::connect(config.redis()).await?;
-    let (capabilities, sessions) = crate::identity::resolve(config.identity());
+    let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
     let broker = crate::credentials::resolve(
@@ -78,6 +78,7 @@ pub(super) async fn open_runtime(
         // gives — it runs beside the plane, not through it.
         kek: Arc::clone(&kek),
         capabilities,
+        signup_writeback,
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
         platform_admin_workspace: config.platform_admin_workspace().cloned(),

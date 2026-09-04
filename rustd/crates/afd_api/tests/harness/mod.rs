@@ -92,6 +92,7 @@ use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
 mod readiness;
+mod stubs_identity;
 mod stubs_ingress;
 mod stubs_provider;
 
@@ -103,6 +104,7 @@ mod support;
 /// Signed deliveries, as a provider would present them.
 pub(crate) mod webhook;
 
+pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
@@ -212,6 +214,7 @@ pub(crate) struct Fleet {
     fleets: Fleets,
     secrets: SecretVault,
     ingress: HarnessIngress,
+    signup_writeback: RecordingWriteback,
     schedules: SchedulePlane,
     connectors: afd_connector::Connectors,
     schedule_keys: Option<afd_cron::SigningKeys>,

@@ -116,6 +116,7 @@ name = "afd_api_ingress"
 version = "0.27.1"
 dependencies = [
  "afd_approval",
+ "afd_auth",
  "afd_connector",
  "afd_core",
  "afd_cron",
@@ -510,6 +511,7 @@ dependencies = [
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
+ "afd_identity",
  "afd_ingress",
  "afd_library",
  "afd_observability",
