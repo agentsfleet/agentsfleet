@@ -199,6 +199,6 @@ The honest critique that informed the M46 trim: most YAML config in skill-style 
 - `docs/ARCHITECTURE.md` §8.1 (Authoring), §10 (capabilities)
 - `tests/fixtures/fleetbundle/platform-ops/` — canonical example bundle
 - `tests/fixtures/fleetbundle/skill/` and `tests/fixtures/fleetbundle/trigger/` — minimal/full/broken parser fixtures
-- `src/agentsfleetd/fleet_runtime/config_parser.zig` — parser implementation
-- `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` — YAML→JSON converter
+- `rustd/crates/afd_fleet_runtime/src/config/raw/document.rs` — parser implementation
+- `rustd/crates/afd_library/src/frontmatter.rs` — YAML frontmatter reader
 - `~/Projects/docs/concepts/skill-frontmatter` — end-user reference (mintlify)
