@@ -188,6 +188,12 @@ const ZIG_DECLARED: &[&str] = &[
     "UZ-WH-022",
     "UZ-WH-030",
     "UZ-WORKSPACE-001",
+    // The one code the Zig registry never declared. Added to split an absent
+    // workspace from a malformed request on the platform-key write, where the
+    // two shared UZ-REQ-001 and the caller could not tell them apart. Declared
+    // here deliberately, which is what this list asks of a public-contract
+    // addition.
+    "UZ-PROVIDER-011",
 ];
 
 /// Catches a code declared twice under two names, or a typo'd spelling that

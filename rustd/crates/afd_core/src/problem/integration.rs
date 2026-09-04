@@ -118,6 +118,15 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::PROVIDER_SOURCE_WORKSPACE_NOT_FOUND,
+        status: 400,
+        title: "Source workspace not found",
+        hint: "source_workspace_id is well-formed but names no workspace. List them with GET /v1/workspaces.",
+        user_message: Some(
+            "That workspace doesn't exist. Pick one from your workspace list and try again.",
+        ),
+    },
+    Problem {
         code: error_code::MODELS_DELETE_ACTIVE,
         status: 409,
         title: "Cannot delete the active model entry",
