@@ -25,8 +25,8 @@ import {
 import { AuthError, reasonOf, type CliError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
 
-// Mirrors ERR_CLI_CREDENTIAL_EXCHANGE_FAILED in
-// src/agentsfleetd/errors/error_registry.zig.
+// Mirrors AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED in
+// rustd/crates/afd_core/src/error_code/auth.rs.
 export const ERR_CLI_CREDENTIAL_EXCHANGE_FAILED = "UZ-AUTH-025" as const;
 
 const SIGN_IN_AGAIN = "run `agentsfleet login` again" as const;

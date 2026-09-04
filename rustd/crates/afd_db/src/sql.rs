@@ -8,14 +8,13 @@
 //!
 //! # Validation is a constructor, not a method
 //!
-//! The Zig original ([`sql_splitter.zig`]) exposes `validate(sql)` beside
+//! The retired daemon's `sql_splitter.zig` exposed `validate(sql)` beside
 //! `next()` and trusts every caller to run it first. Here the scan happens in
 //! [`SqlStatements::new`], which returns [`SplitError`] instead of an iterator:
 //! past that constructor, "these statements might be a truncated string
 //! literal" is not a state a caller can hold. That is the whole reason this is
 //! a type and not a function.
 //!
-//! [`sql_splitter.zig`]: ../../../../src/agentsfleetd/db/sql_splitter.zig
 
 mod scanner;
 

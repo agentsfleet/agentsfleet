@@ -248,7 +248,7 @@ test_arch_doc_cited_paths_resolve() {
   # The shorthand form (leading directories dropped) must keep resolving — the
   # pages use it throughout, and rejecting it would be a rewrite, not a check.
   assert_citation_shape test_arch_doc_cited_paths_resolve paths \
-    'Reads `http/router.zig` and `schema/embed.zig`.' \
+    'Reads `runner/main.zig` and `schema/embed.zig`.' \
     'Reads `http/router_that_never_existed.zig`.'
 }
 

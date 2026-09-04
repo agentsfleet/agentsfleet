@@ -1,8 +1,8 @@
 // Authenticated platform-admin client for the model library + platform default.
 // Distinct from model_library.ts (the tenant-facing catalogue reader): these
 // routes are platform-admin-gated and mutate core.model_library / core.platform_provider_defaults.
-// Wire shape: src/agentsfleetd/http/handlers/admin/model_library_admin.zig +
-// .../admin/platform_keys.zig.
+// Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
+// .../admin/platform_keys.rs.
 
 import { request } from "./client";
 

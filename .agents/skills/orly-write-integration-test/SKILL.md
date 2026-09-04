@@ -80,7 +80,7 @@ Spec asserts "503 on Redis down", code returns 200 → test the spec, flag the c
 | **Standard** | New service method, new Redis stream/key, schema change with logic | + T4 + T5 + T6 |
 | **Hardening** | Auth / payment / lease / migration / streaming / anything in the data-loss radius | + T7 (if applicable) + T8 + chaos pass |
 
-Auto-detect from diff: `src/auth/**`, `src/agent/leases/**`, `src/runner/**` + `src/agentsfleetd/fleet/**` (the lease/reclaim/fence + client-daemon surface → T9), schema migrations, streaming handlers → Hardening. CRUD-only against existing schema → Smoke. Default → Standard.
+Auto-detect from diff: `src/auth/**`, `src/agent/leases/**`, `src/runner/**` + `rustd/crates/afd_fleet/**` (the lease/reclaim/fence + client-daemon surface → T9), schema migrations, streaming handlers → Hardening. CRUD-only against existing schema → Smoke. Default → Standard.
 
 Any operation that touches multiple systems or acquires the same resource more than once is **Standard at minimum** and must run T4, even when the endpoint is otherwise CRUD-only.
 

@@ -14,6 +14,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The workspace's validation crate. Wire bounds are DECLARED on the request
+# types they guard, so a handler proves them by calling `validate` rather than
+# by re-spelling each cap as an `if`.
+garde.workspace = true
 # Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
 # types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true

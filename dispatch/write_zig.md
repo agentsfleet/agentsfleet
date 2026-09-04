@@ -480,7 +480,7 @@ Rules:
 
 New production Zig modules must not define SQL statement text inline. Put query
 text in a domain-local `sql.zig` and import it from the state/handler/service
-module. This mirrors `src/agentsfleetd/fleet_bundle/sql.zig`: table names and
+module. The shape is a domain-local `sql.zig` beside the module it serves: table names and
 query statements stay grepable in one place, while the public module owns row
 mapping, allocator ownership, and error translation.
 

@@ -21,8 +21,9 @@ import {
 const ROUNDTRIP_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${"d".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
 
 test("the mirrored total-length constant matches the shape it claims to mirror", () => {
-  // CLI_CREDENTIAL_TOTAL_LEN mirrors src/agentsfleetd/auth/cli_credential.zig;
-  // without this pin it is a drift obligation nothing enforces.
+  // CLI_CREDENTIAL_TOTAL_LEN mirrors the prefix-plus-body length
+  // rustd/crates/afd_auth/src/authenticate.rs checks a presented credential
+  // against; without this pin it is a drift obligation nothing enforces.
   expect(CLI_CREDENTIAL_TOTAL_LEN).toBe(ROUNDTRIP_CREDENTIAL.length);
 });
 

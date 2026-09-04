@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.9.2",
+  "orly_version": "0.9.4",
   "packs": [
     "language.rust",
     "product.agentsfleet"
@@ -66,6 +66,7 @@
     ".opencode/skills/orly-write-integration-test/SKILL.md",
     ".opencode/skills/orly-write-unit-test/SKILL.md",
     "AGENTS.orly.md",
+    "audits/cross-tier-rates.sh",
     "audits/deinit-pairs.sh",
     "audits/design-tokens.sh",
     "audits/doc-read.sh",

@@ -2,7 +2,7 @@
 //!
 //! # The key-size floor is a deliberate divergence
 //!
-//! `src/agentsfleetd/auth/jwks_crypto.zig` accepts moduli of 128, 256, 384 and
+//! The retired daemon's `auth/jwks_crypto.zig` accepted moduli of 128, 256, 384 and
 //! 512 bytes — 1024 bits upward. This daemon accepts 2048 upward, because
 //! `aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256` is what it verifies with, and
 //! ring names its 1024-bit constant `FOR_LEGACY_USE_ONLY` on purpose.

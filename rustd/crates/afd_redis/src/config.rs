@@ -1,7 +1,7 @@
 //! Which Redis a role talks to, and how long it may take.
 //!
 //! Knob names are the Zig daemon's, spelled identically
-//! (`src/agentsfleetd/queue/redis_config.zig`, `redis_types.zig`), so a
+//! (the retired daemon's `queue/redis_config.zig`, `redis_types.zig`), so a
 //! deployment moves between the two binaries without touching its environment.
 
 use std::path::PathBuf;

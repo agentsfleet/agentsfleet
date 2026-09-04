@@ -20,7 +20,7 @@ use afd_redis::Redis;
 use afd_sse::Live;
 
 use crate::bundles::Stores;
-use crate::identity::{Capabilities, Sessions};
+use crate::identity::{Capabilities, Sessions, SignupWriteback};
 
 /// Everything [`ServingPlane::new`] is assembled from.
 ///
@@ -47,6 +47,8 @@ pub struct PlaneParts {
     pub capabilities: Capabilities,
     /// What verifies a browser session token.
     pub sessions: Sessions,
+    /// What tells the provider a new account's tenant.
+    pub signup_writeback: SignupWriteback,
     /// The object-store handles, read and upload, over one owner.
     ///
     /// Split inside [`ServingPlane::new`] rather than out here, because the two

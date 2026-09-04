@@ -26,3 +26,5 @@ mod jwks_verify_negative_paths;
 mod key_set_parsing;
 #[path = "provider_claims.rs"]
 mod provider_claims;
+#[path = "provider_metadata.rs"]
+mod provider_metadata;

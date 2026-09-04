@@ -90,6 +90,7 @@ impl Fleet {
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.
+            signup_writeback: RecordingWriteback::accepting(),
             ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
                 database.clone(),
                 SecretVault::new(database.clone(), kek, Entropy::new()),
@@ -218,6 +219,7 @@ impl Fleet {
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.
+            signup_writeback: RecordingWriteback::accepting(),
             ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
                 database.clone(),
                 SecretVault::new(database.clone(), kek, Entropy::new()),

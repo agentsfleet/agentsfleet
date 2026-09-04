@@ -1040,6 +1040,16 @@
               }
             }
           },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No credential, or one this route does not accept",
             "content": {
@@ -16649,7 +16659,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "What to say to the fleet."
+            "description": "What to say to the fleet.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
           }
         }
       },

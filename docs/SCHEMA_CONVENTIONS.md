@@ -16,7 +16,7 @@ Destructive changes (`DROP TABLE`, `DROP COLUMN`, type rewrites) require an expl
 
 - Each SQL file must be **≤100 lines** and **single-concern** (one table, one logical group, or one additive change).
 - Files are numbered sequentially: `001_core_foundation.sql`, `002_core_workflow.sql`, etc. New migrations append the next number; shipped numbers are never reused or slid.
-- Every SQL file must be registered in `schema/embed.zig` (compile-time embed) and `src/agentsfleetd/cmd/common.zig` (migration version array).
+- Every SQL file must be registered in `schema/embed.zig` (compile-time embed) and `rustd/crates/afd_db/src/migration.rs` (migration version array).
 - No-op stub files (e.g., columns folded into earlier files) are kept for version history but excluded from the migrations array.
 
 ## SQL Qualification
@@ -37,14 +37,14 @@ Destructive changes (`DROP TABLE`, `DROP COLUMN`, type rewrites) require an expl
 
 - **Column:** `id`
 - **Type:** Universally Unique Identifier (UUID) `PRIMARY KEY`
-- **Generation:** Application-side UUID version 7 (UUIDv7) via `src/agentsfleetd/types/id_format.zig`, never `gen_random_uuid()`.
+- **Generation:** Application-side UUID version 7 (UUIDv7) via `rustd/crates/afd_core/src/id.rs`, never `gen_random_uuid()`.
 - **No second unique key on the same value.** This is a correctness rule, not only a storage one: `ON CONFLICT` can arbitrate exactly one constraint, so a table carrying two unique keys over the same value makes two sessions inserting a brand-new row race to a duplicate-key error on the *other* index instead of taking the update arm. `schema/043_runner_lifetime_counters.sql` recorded this before the rule was generalised.
 - **Foreign keys reference the primary key**, never a secondary unique constraint.
 - **Constraint:** every table carries a UUIDv7 CHECK:
   ```sql
   CONSTRAINT ck_{table}_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
   ```
-- **Adding a new table:** add a `generate{TableName}Id()` function to `src/agentsfleetd/types/id_format.zig`.
+- **Adding a new table:** add a `generate{TableName}Id()` function to `rustd/crates/afd_core/src/id.rs`.
 - **API shape:** unchanged — public fields keep exposing `id`, `tenant_id`, `workspace_id` and the other documented names. The column now *is* the public name in most tables, so the aliasing the old rule required mostly disappears; where a public field differs from `id`, alias at the boundary rather than renaming client-facing payloads.
 - **Exceptions,** each stated in the slot that creates the table: a curated catalogue keyed by a stable slug (`core.fleet_library`) and a singleton keyed by a pinned integer (`core.model_catalogue_revision`) carry no UUID.
 

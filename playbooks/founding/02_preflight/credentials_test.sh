@@ -340,8 +340,9 @@ test_workflows_load_only_current_connector_boot_secret() {
 
 test_issue_tracker_docs_pin_current_source_scopes() {
   local name="issue-tracker docs pin current source scopes"
-  local jira_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/jira/spec.zig"
-  local linear_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/linear/spec.zig"
+  # Both providers declare their scopes in one Rust registry now; the Jira
+  # string is split across two source lines, so it is pinned as two fragments.
+  local registry="$repo_root/rustd/crates/afd_connector/src/registry.rs"
   local jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
   local linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
   local jira_doc_text
@@ -350,15 +351,12 @@ test_issue_tracker_docs_pin_current_source_scopes() {
 
   # Backticks below are literal Markdown delimiters.
   # shellcheck disable=SC2016
-  if ! rg --fixed-strings --quiet \
-    'const SCOPES = "read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request offline_access";' \
-    "$jira_spec"; then
+  if ! rg --fixed-strings --quiet 'scopes: "read:jira-work read:jira-user write:jira-work' "$registry" \
+    || ! rg --fixed-strings --quiet 'read:servicedesk-request write:servicedesk-request offline_access",' "$registry"; then
     bad "$name" "Jira source scope changed"
   elif [[ "$jira_doc_text" != *'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`'* ]]; then
     bad "$name" "Jira registration scope is stale"
-  elif ! rg --fixed-strings --quiet \
-    'const SCOPES = "read,comments:create";' \
-    "$linear_spec"; then
+  elif ! rg --fixed-strings --quiet 'scopes: "read,comments:create",' "$registry"; then
     bad "$name" "Linear source scope changed"
   elif ! rg --fixed-strings --quiet \
     'The authorization request supplies `read,comments:create`.' \

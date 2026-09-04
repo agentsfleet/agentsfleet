@@ -3,9 +3,9 @@
 # registry test include_str!s this file and grades the registry against it in
 # both directions. This file is the SINGLE source of truth for the export —
 # docs/architecture/observability.md points here and repeats none of it.
-# Transcribed from the Zig registry declarations
-# (src/agentsfleetd/observability/otel_metrics_families.zig + otel_metrics_dims.zig);
-# histogram bounds are in the family's declared unit (the Zig ms bounds are
+# Transcribed from the retired daemon's registry declarations and now graded
+# against `rustd/crates/afd_observability/src/metrics/declared.rs`;
+# histogram bounds are in the family's declared unit (the old ms bounds are
 # already converted to seconds here, because the Rust side records f64 seconds
 # and deletes the scale concept).
 #

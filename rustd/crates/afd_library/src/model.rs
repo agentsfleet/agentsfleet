@@ -1,6 +1,11 @@
 //! Owned inputs and outputs for pure bundle preparation.
 
+use garde::Validate;
 use serde::Serialize;
+
+use crate::validate::{
+    MAX_MARKDOWN_LEN, MAX_SOURCE_REF_LEN, MAX_SUPPORT_FILE_LEN, MAX_SUPPORT_FILES,
+};
 
 /// Where a bundle's untrusted bytes originated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,28 +56,65 @@ impl SourceKind {
 }
 
 /// One non-root file supplied by a bundle.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct SupportFile {
     /// Relative, slash-separated path inside the bundle.
+    ///
+    /// Path safety is not a bound, so it is a custom rule: the refusal turns on
+    /// traversal components and root-document collision, neither of which a
+    /// length expresses.
+    #[garde(custom(crate::validate::safe_path))]
     pub path: String,
     /// Untrusted file bytes.
+    #[garde(
+        length(max = MAX_SUPPORT_FILE_LEN),
+        custom(crate::validate::no_credential_bytes)
+    )]
     pub content: Vec<u8>,
 }
 
 /// Complete caller input to pure bundle preparation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The bounds below are the whole of this type's size contract. Two of them
+/// carry a `custom` rule beside the `length` rule on the same field, because
+/// the two ends of one range answer DIFFERENT public codes: an empty
+/// `SKILL.md` is a malformed bundle (400) while an oversized one is a payload
+/// that exceeded its cap (413), and a report that could not tell them apart
+/// could not answer either. `crate::validate` maps each rule back to the
+/// [`crate::InvalidBundle`] variant that classification rides on.
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
+#[garde(custom(crate::validate::aggregate))]
 pub struct ImportBody {
     /// Source category persisted as metadata.
+    #[garde(skip)]
     pub source_kind: SourceKind,
     /// Caller-readable source locator.
+    ///
+    /// Bounded in bytes, not characters: the cap exists to keep an untrusted
+    /// locator off the wire and out of a column, and both count bytes.
+    #[garde(length(bytes, max = MAX_SOURCE_REF_LEN))]
     pub source_ref: String,
     /// Git reference actually fetched, when applicable.
+    #[garde(skip)]
     pub source_revision: Option<String>,
     /// Required `SKILL.md` bytes.
+    #[garde(length(max = MAX_MARKDOWN_LEN), custom(crate::validate::skill_present))]
     pub skill_markdown: Vec<u8>,
     /// Optional `TRIGGER.md` bytes.
+    ///
+    /// Absent is legal; present-and-empty is not. `inner` reaches through the
+    /// `Option` so the absent case is skipped rather than refused.
+    #[garde(
+        inner(length(max = MAX_MARKDOWN_LEN)),
+        custom(crate::validate::trigger_non_empty)
+    )]
     pub trigger_markdown: Option<Vec<u8>>,
     /// All remaining bundle files.
+    ///
+    /// `dive` runs each file's own rules and reports the INDEX that broke
+    /// them — `support_files[3].content` — where a hand-rolled loop refuses
+    /// "a support file" and leaves the caller to find which one.
+    #[garde(length(max = MAX_SUPPORT_FILES), dive)]
     pub support_files: Vec<SupportFile>,
 }
 

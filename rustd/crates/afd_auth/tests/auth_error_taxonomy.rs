@@ -10,58 +10,31 @@
 //! function, that no two refusals collapse onto one another by accident, and —
 //! the part that is genuinely parity rather than hygiene — that every sentence
 //! a client reads is byte-identical to the Zig constant it replaces.
-#![expect(
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
-
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use afd_auth::error::{Error, Unavailable};
 
-/// The Zig tree whose constants these strings are pinned against.
+/// Every client-visible refusal sentence the Zig auth tree carried at sunset.
 ///
-/// Read whole rather than file-by-file: the strings are spread across four
-/// middlewares, and which file holds which is not a fact worth encoding here.
-const ZIG_AUTH_DIR: &str = "src/agentsfleetd/auth";
-
-fn repo_root() -> PathBuf {
-    // <repo>/rustd/crates/afd_auth -> <repo>
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("the crate sits three levels under the repository root")
-        .to_path_buf()
-}
-
-/// Every `.zig` source under the auth tree, concatenated.
-fn zig_auth_sources() -> String {
-    let root = repo_root().join(ZIG_AUTH_DIR);
-    let mut out = String::new();
-    let mut stack = vec![root.clone()];
-    while let Some(dir) = stack.pop() {
-        let entries = std::fs::read_dir(&dir)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()));
-        for entry in entries {
-            let path = entry.expect("a readable directory entry").path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|ext| ext == "zig") {
-                out.push_str(&std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                    panic!("cannot read {}: {e}", path.display());
-                }));
-            }
-        }
-    }
-    assert!(
-        !out.is_empty(),
-        "found no Zig sources under {}",
-        root.display()
-    );
-    out
-}
+/// FROZEN, not read. the retired daemon's `auth/` tree was walked whole at test time —
+/// the strings are spread across four middlewares and which file held which was
+/// never a fact worth encoding — and every sentence below was found there as a
+/// quoted literal on the tree's last standing day. The tree is deleted in this
+/// milestone, so the values are pinned and the assertion is unchanged.
+///
+/// A detail string is as client-visible as a status code. What made these worth
+/// asserting was never that Zig held them: it is that a person editing one is
+/// changing what a client reads, and that should cost them an edit here saying
+/// so, rather than passing as a typo fix.
+const ZIG_AUTH_SENTENCES: &[&str] = &[
+    "Invalid or missing token",
+    "token expired",
+    "Authentication service unavailable",
+    "API key has been revoked",
+    "Command-line credential has been revoked",
+    "Invalid or missing runner token",
+    "Runner admin state blocks runner-plane access",
+];
 
 /// The pairing is a function, and the catalogue is total.
 ///
@@ -108,24 +81,28 @@ fn test_each_refusal_answers_the_documented_registry_code() {
     }
 }
 
-/// Every sentence a client reads appears verbatim in the Zig auth tree.
+/// Every sentence a client reads is one the shipped daemon carried.
 ///
 /// This is the assertion that makes the port's behavioural parity checkable
-/// rather than asserted. A detail string is as client-visible as a status code:
-/// changing one here without changing the Zig daemon would make two binaries
-/// answer the same request differently, which is the definition of a behaviour
-/// divergence and therefore a bug.
+/// rather than asserted. Changing a sentence here without a matching edit to
+/// [`ZIG_AUTH_SENTENCES`] is changing what a client reads, which is a behaviour
+/// change and therefore a decision, not a tidy-up.
 #[test]
 fn test_every_client_visible_sentence_is_pinned_to_the_zig_daemons() {
-    let zig = zig_auth_sources();
     for err in Error::ALL {
-        let quoted = format!("\"{}\"", err.detail());
         assert!(
-            zig.contains(&quoted),
-            "{err:?} says {quoted}, which appears nowhere under {ZIG_AUTH_DIR}; \
-             Zig is the behaviour source of truth"
+            ZIG_AUTH_SENTENCES.contains(&err.detail()),
+            "{err:?} says {:?}, which the shipped daemon never said",
+            err.detail()
         );
     }
+    // Total in both directions: a sentence pinned here that no variant answers
+    // with is a stale expectation, and would let a real one be deleted unseen.
+    assert_eq!(
+        ZIG_AUTH_SENTENCES.len(),
+        Error::ALL.len(),
+        "the pinned sentences and the refusals they pin are no longer one-to-one"
+    );
 }
 
 /// The runner plane's sentence is deliberately NOT the tenant plane's.

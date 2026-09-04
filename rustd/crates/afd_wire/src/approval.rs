@@ -16,6 +16,7 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
@@ -107,12 +108,21 @@ pub struct ApprovalsResponse<'a> {
 /// without a note, and demanding one would make the common answer the awkward
 /// one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Validate)]
 pub struct ResolveApprovalRequest<'a> {
     /// The operator's note, stored as the gate's `detail`.
     #[serde(borrow, default)]
+    // `inner` reaches through the `Option`: an absent note and an empty one are
+    // the same answer, so only a note that was SENT is bounded.
+    #[garde(inner(length(bytes, max = APPROVAL_REASON_MAX_BYTES)))]
     pub reason: Option<Cow<'a, str>>,
 }
+
+/// The longest note an operator may file with a gate answer.
+///
+/// `REASON_MAX`, mirrored: the column is unbounded text and a note is a
+/// sentence, so the cap is what keeps a decision from becoming storage.
+pub const APPROVAL_REASON_MAX_BYTES: usize = 4096;
 
 /// What answering a gate reports, whether or not this caller won the race.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -50,3 +50,8 @@ check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and she
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
 	@bash deploy/baremetal/deploy_test.sh
+	@# The collector stand-up's ORDER, which actionlint cannot see: an app
+	@# must exist before `flyctl secrets set --app` addresses it. This block
+	@# was once inline in both deploy workflows and one copy drifted to run
+	@# after the deploy it was supposed to precede, passing actionlint.
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/ensure_fly_app_test.py

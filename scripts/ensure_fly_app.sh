@@ -4,6 +4,14 @@
 # actually deployed.
 #
 #     scripts/ensure_fly_app.sh <app> <build-context-dir> <desired-count>
+#     scripts/ensure_fly_app.sh --create-only <app>
+#
+# CREATE-ONLY EXISTS BECAUSE OF AN ORDERING CONSTRAINT, not for symmetry. A
+# fresh app must exist before `flyctl secrets set --app` addresses it, and it
+# must NOT be deployed until after — a collector that boots without its
+# upstream credentials fails its health check, and this script then refuses,
+# correctly, for a reason that is nobody's bug. So a caller priming a new
+# environment creates, stages secrets, then ensures.
 #
 # WHY THIS IS A SCRIPT AND NOT INLINE WORKFLOW SHELL. It was inline, copied
 # into two workflows, and the two copies drifted apart within a day: one
@@ -28,11 +36,62 @@ POLL_ATTEMPTS="${POLL_ATTEMPTS:-12}"
 POLL_SLEEP_SECONDS="${POLL_SLEEP_SECONDS:-5}"
 readonly POLL_ATTEMPTS POLL_SLEEP_SECONDS
 
+# The organisation new apps are created in. NO DEFAULT, deliberately.
+# Development and production live in separate Fly organisations
+# (`agentsfleet-dev` and `agentsfleet-prod`), so there is no single value that
+# is right for both callers, and a default would be silently wrong for one of
+# them — creating a production app inside the development organisation is not
+# an error Fly reports, it is an error somebody finds later.
+#
+# An earlier revision of this file defaulted to `agentsfleet`, an organisation
+# that has never existed. Refusing beats guessing: the caller knows which
+# environment it is deploying and can say so.
+FLY_ORG="${FLY_ORG:-}"
+readonly FLY_ORG
+
 usage() {
   printf 'usage: %s <app> <build-context-dir> <desired-count>\n' "${0##*/}" >&2
+  printf '       %s --create-only <app>\n' "${0##*/}" >&2
+}
+
+# Create the app when it is absent, and say which of the two it was. The deploy
+# workflows address an app they never created; the priming playbook creates
+# apps a later-added service does not appear in. Between those two habits an
+# app can be referenced everywhere and exist nowhere, which is what took the
+# development deploy down at `flyctl secrets set --app` — the first command to
+# address it. Creating here closes that gap without depending on a human
+# having read a playbook.
+ensure_app_exists() {
+  local app="$1"
+  if "$FLYCTL" status --app "$app" >/dev/null 2>&1; then
+    printf '%s already exists\n' "$app"
+    return 0
+  fi
+  if [ -z "$FLY_ORG" ]; then
+    # Only the create path needs the org, so this refuses HERE rather than at
+    # the top of the script: an existing app deploys fine without it, and
+    # demanding it up front would break every caller that never creates.
+    printf '%s does not exist and FLY_ORG is unset — refusing to guess which organisation to create it in\n' \
+      "$app" >&2
+    return 1
+  fi
+  printf '%s does not exist — creating it in %s\n' "$app" "$FLY_ORG"
+  if ! "$FLYCTL" apps create "$app" --org "$FLY_ORG"; then
+    printf 'could not create %s — refusing to continue\n' "$app" >&2
+    return 1
+  fi
 }
 
 main() {
+  if [ "${1:-}" = "--create-only" ]; then
+    if [ "$#" -ne 2 ]; then
+      usage
+      return 2
+    fi
+    ensure_app_exists "$2"
+    return
+  fi
+
   if [ "$#" -ne 3 ]; then
     usage
     return 2
@@ -60,6 +119,8 @@ main() {
   #
   # Positional path is the BUILD CONTEXT. Without it flyctl uses the working
   # directory and a Dockerfile `COPY config.yml` cannot resolve.
+  ensure_app_exists "$app"
+
   printf 'deploying %s from %s\n' "$app" "$context_dir"
   "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60
 

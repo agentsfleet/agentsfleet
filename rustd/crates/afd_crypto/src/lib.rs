@@ -5,7 +5,7 @@
 //! (KEK) encrypts that DEK; both operations bind the same associated data, so a
 //! row cannot be replayed under a different workspace or a different name. That
 //! layout is not this crate's invention — it is what
-//! `src/agentsfleetd/secrets/crypto_store.zig` already writes, and rows written
+//! the retired daemon's `secrets/crypto_store.zig` already wrote, and rows written
 //! by the Zig daemon must open here unchanged.
 //!
 //! # Parity is the whole point

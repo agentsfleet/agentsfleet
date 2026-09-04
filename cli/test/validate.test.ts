@@ -18,7 +18,7 @@ describe("isValidId", () => {
   // same row on ::uuid, but Redis dedupe keys, cache keys and string equality
   // see a different id — so one entity would have two valid spellings whose
   // behaviour depends on which storage boundary it crossed. The server rejects
-  // uppercase (`src/agentsfleetd/types/id_format.zig`); the CLI matches it
+  // uppercase (`rustd/crates/afd_core/src/id.rs`); the CLI matches it
   // rather than letting the request through to a guaranteed 400.
   test("uppercase uuidv7 fails (canonical form is lowercase)", () => {
     expect(isValidId(VALID_UUIDV7.toUpperCase())).toBe(false);

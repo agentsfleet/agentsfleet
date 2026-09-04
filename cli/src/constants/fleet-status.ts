@@ -1,5 +1,5 @@
-// Fleet lifecycle status — wire-level enum mirroring
-// `src/agentsfleetd/fleet_runtime/config_types.zig::FleetStatus`.
+// Fleet lifecycle status — wire-level enum mirroring the `FleetStatus`
+// spellings in `rustd/crates/afd_fleet_lifecycle/src/lib.rs`.
 // RULE Unnamed String (UFS): every
 // emit/compare site reads from here. `paused` is server-set
 // (rate-limit / circuit-breaker); the CLI never mutates to it.

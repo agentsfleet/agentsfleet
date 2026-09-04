@@ -17,10 +17,6 @@
 # Blank lines and #-comments are ignored. A prefix without a trailing slash is a
 # file-name prefix (matches child_supervisor.zig, child_supervisor_read.zig, …).
 
-src/agentsfleetd/cmd/
-src/agentsfleetd/events/
-src/agentsfleetd/fleet/
-src/agentsfleetd/queue/
 src/runner/daemon/
 src/runner/child_supervisor
 src/lib/

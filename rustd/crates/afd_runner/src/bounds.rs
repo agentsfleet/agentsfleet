@@ -31,21 +31,28 @@
 //! claiming health its own checks contradict.
 
 use afd_wire::runner::{CapabilityReport, SelftestReport};
+use garde::Validate as _;
+
+// The four caps below are the wire type's own, under the names this crate and
+// its suite already spell them by. Aliases rather than second definitions: the
+// bound is DECLARED on `SelftestReport` where `garde` proves it, and a local
+// copy would let the cap move on the type while a case kept asserting the old
+// number and still passing.
 
 /// Most checks one verdict may carry.
 ///
 /// Sized to the probe's vocabulary plus room for a per-operator-bind check
 /// each, not to a guess.
-pub const MAX_SELFTEST_CHECKS: usize = 32;
+pub const MAX_SELFTEST_CHECKS: usize = afd_wire::runner::SELFTEST_CHECKS_MAX;
 
 /// Longest a check's name may be.
-pub const MAX_CHECK_NAME_LEN: usize = 128;
+pub const MAX_CHECK_NAME_LEN: usize = afd_wire::runner::CHECK_NAME_MAX_BYTES;
 
 /// Longest a check's prose cause may be.
-pub const MAX_CHECK_DETAIL_LEN: usize = 256;
+pub const MAX_CHECK_DETAIL_LEN: usize = afd_wire::runner::CHECK_DETAIL_MAX_BYTES;
 
 /// Longest the policy strings travelling with a verdict may be.
-pub const MAX_SELFTEST_POLICY_LEN: usize = 64;
+pub const MAX_SELFTEST_POLICY_LEN: usize = afd_wire::runner::SELFTEST_POLICY_MAX_BYTES;
 
 /// Why a reported verdict was refused.
 ///
@@ -73,17 +80,11 @@ pub enum Rejection {
 /// checks. That second one is the incident this exists for: a host reading
 /// healthy while every lease dies inside its sandbox.
 pub fn accept(report: &SelftestReport<'_>) -> Result<(), Rejection> {
-    if report.checks.len() > MAX_SELFTEST_CHECKS
-        || !bounded(&report.sandbox_tier, MAX_SELFTEST_POLICY_LEN)
-        || !bounded(&report.network_policy, MAX_SELFTEST_POLICY_LEN)
-        || !report.checks.iter().all(|check| {
-            bounded(&check.name, MAX_CHECK_NAME_LEN)
-                // `detail` may be long-ish prose but never empty: an empty
-                // cause reads to the dashboard as a leaked internal identifier
-                // and is hidden, so the check would arrive explanation-less.
-                && bounded(&check.detail, MAX_CHECK_DETAIL_LEN)
-        })
-    {
+    // Every bound is declared on the wire type, including the per-check ones
+    // `dive` reaches. What stays here is the agreement between `all_ok` and the
+    // checks, which is a relation between two fields rather than a bound on
+    // either.
+    if report.validate().is_err() {
         return Err(Rejection::Unbounded);
     }
 

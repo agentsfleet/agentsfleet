@@ -223,6 +223,45 @@ else
   bad "a scrape claim matching a declared deployment block passes" "exit $status: $(out)"
 fi
 
+# --------------------------------------------------------------------------
+# test_runbook_has_no_orphan_owner_tag — the REAL runbook, not a fixture. A
+# fill-tag ("`M…` fills / records / sets", "rows marked `M…`") names the
+# milestone that OWNS those rows today, and the question this asks is whether
+# that milestone still owns them.
+#
+# It is not "does a spec sit in active/". A milestone parked in done/ with
+# unfinished Dimensions still owns its rows — that is what parked means — and
+# keying on the directory failed the moment such a spec was filed. A milestone
+# marked DONE does not: if its rows are still empty, either the fill never
+# happened or the tag should name whoever inherited them. Both are the drift
+# this catches, which is why a completed milestone is the failing case rather
+# than a missing one.
+#
+# The id is read from the runbook, never written here (RULE TST-NAM), which is
+# why no identifier appears above.
+# --------------------------------------------------------------------------
+orphan_tags=""
+specs_dir="$SCRIPT_DIR/../../../docs/v2"
+while IFS= read -r tag; do
+  [ -n "$tag" ] || continue
+  spec="$(find "$specs_dir" -maxdepth 2 -name "${tag}_*.md" 2>/dev/null | head -1)"
+  if [ -z "$spec" ]; then
+    orphan_tags="$orphan_tags $tag(no spec)"
+    continue
+  fi
+  # `**Status:** DONE …` and `**Status:** ✅ DONE` both mean complete; PARKED,
+  # DEFERRED and IN_PROGRESS all mean the rows are still somebody's.
+  if grep -m1 '^\*\*Status:\*\*' "$spec" | grep -qE '^\*\*Status:\*\* (✅ )?DONE'; then
+    orphan_tags="$orphan_tags $tag(complete)"
+  fi
+done < <(grep -oE '(`M[0-9]{3}_[0-9]{3}` (fills|records|sets)|rows marked `M[0-9]{3}_[0-9]{3}`)' \
+           "$SCRIPT_DIR/001_playbook.md" | grep -oE 'M[0-9]{3}_[0-9]{3}' | sort -u)
+if [ -z "$orphan_tags" ]; then
+  ok "test_runbook_has_no_orphan_owner_tag"
+else
+  bad "test_runbook_has_no_orphan_owner_tag" "fill-tag names a milestone that no longer owns the rows:$orphan_tags"
+fi
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] || exit 1
 [ "$passed" -gt 0 ] || { printf 'FAIL the self-test suite ran nothing\n' >&2; exit 1; }
