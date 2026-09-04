@@ -45,8 +45,15 @@ NO_MACHINES = "[]"
 
 
 class EnsureFlyAppTest(unittest.TestCase):
-    def run_script(self, *args, machine_list, record=None):
-        """Run the script with a fake flyctl that prints `machine_list`."""
+    def run_script(self, *args, machine_list, record=None,
+                   app_exists=True, create_ok=True):
+        """Run the script with a fake flyctl that prints `machine_list`.
+
+        `app_exists` drives what `flyctl status` returns, which is how the
+        script decides whether to create. `create_ok` drives `flyctl apps
+        create`. Both default to the pre-existing behaviour, so every test
+        written before create-if-absent keeps asserting what it always did.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             fake = Path(tmp) / "flyctl"
             log = Path(tmp) / "calls.log"
@@ -58,6 +65,8 @@ class EnsureFlyAppTest(unittest.TestCase):
                     case "$1" in
                       "machine")  printf '%s' '{machine_list}' ;;
                       "image")    printf '%s' '[{{"Digest":"sha256:deadbeef"}}]' ;;
+                      "status")   exit {0 if app_exists else 1} ;;
+                      "apps")     exit {0 if create_ok else 1} ;;
                       *)          : ;;
                     esac
                     """
@@ -172,6 +181,65 @@ class EnsureFlyAppTest(unittest.TestCase):
 
     def test_rejects_wrong_argument_count(self):
         proc, _ = self.run_script("otelcol-dev", machine_list=STARTED_TWO)
+        self.assertEqual(proc.returncode, 2)
+
+
+class CreateIfAbsentTest(unittest.TestCase):
+    """The gap that took the development deploy down.
+
+    Two collector apps shipped with a fly.toml, a Dockerfile, a config.yml and
+    a deploy step in each of two workflows, and nothing ever created them. The
+    priming playbook creates the apps it knew about; this script deployed,
+    scaled and polled apps it assumed existed. So the first command to address
+    one was `flyctl secrets set --app`, which fails on an app that is not
+    there — and no gate was comparing the workflows against the playbook.
+    """
+
+    run_script = EnsureFlyAppTest.run_script
+
+    def test_an_absent_app_is_created_before_the_deploy(self):
+        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                   machine_list=STARTED_TWO, app_exists=False)
+        self.assertIn("apps create otelcol-dev --org", calls)
+        self.assertLess(calls.index("apps create "), calls.index("deploy "))
+
+    def test_an_existing_app_is_not_recreated(self):
+        # Creating an app that exists is an error on Fly's side, so a script
+        # that always created would fail every run after the first.
+        _, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                   machine_list=STARTED_TWO, app_exists=True)
+        self.assertNotIn("apps create", calls)
+
+    def test_a_failed_creation_refuses_rather_than_falling_through(self):
+        # Falling through would deploy into nothing and then poll an app that
+        # cannot answer, reporting the wrong cause twelve attempts later.
+        proc, calls = self.run_script("otelcol-dev", "deploy/fly/otelcol-dev", "1",
+                                      machine_list=STARTED_TWO,
+                                      app_exists=False, create_ok=False)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("could not create", proc.stderr)
+        self.assertNotIn("deploy ", calls)
+
+    def test_create_only_creates_without_deploying(self):
+        # The ordering constraint: a fresh app must exist before `secrets set`
+        # addresses it, and must not deploy until after — a collector booting
+        # without its upstream credentials fails its health check, and this
+        # script would then refuse for a reason that is nobody's bug.
+        proc, calls = self.run_script("--create-only", "otelcol-dev",
+                                      machine_list=NO_MACHINES, app_exists=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("apps create otelcol-dev --org", calls)
+        self.assertNotIn("deploy ", calls)
+        self.assertNotIn("scale count", calls)
+
+    def test_create_only_is_idempotent(self):
+        proc, calls = self.run_script("--create-only", "otelcol-dev",
+                                      machine_list=NO_MACHINES, app_exists=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("apps create", calls)
+
+    def test_create_only_rejects_a_wrong_argument_count(self):
+        proc, _ = self.run_script("--create-only", machine_list=NO_MACHINES)
         self.assertEqual(proc.returncode, 2)
 
 

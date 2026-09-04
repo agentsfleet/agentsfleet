@@ -174,8 +174,8 @@ deploy-gate fix). The playbook edit is docs and proceeds; the workflow, script
 and any `fly apps create` wait.
 
 - **Dimension 0.1** — **DONE** — the priming playbook creates the collector apps alongside the other four, and its step summary counts them. The test derives the expected set from `deploy/fly/*/` rather than a list, so the next app added without a playbook line fails here → Tests `test_every_fly_app_is_created_by_the_priming_playbook` · `test_the_playbook_counts_the_apps_it_creates`
-- **Dimension 0.2** — `ensure_fly_app.sh` creates an app that does not exist rather than failing, and still refuses when creation itself fails → Tests `an absent app is created before deploy` · `a failed creation refuses rather than falling through`
-- **Dimension 0.3** — the collector stand-up survives a first run: no step addresses the app before it can exist → Test `test_collector_standup_is_order_safe`
+- **Dimension 0.2** — **DONE** — `ensure_fly_app.sh` creates an app that does not exist rather than failing, still refuses when creation itself fails, and gains a `--create-only` mode for the ordering constraint in 0.3 → Tests `test_an_absent_app_is_created_before_the_deploy` · `test_a_failed_creation_refuses_rather_than_falling_through` · `test_create_only_creates_without_deploying` · `test_create_only_is_idempotent` · `test_an_existing_app_is_not_recreated` · `test_create_only_rejects_a_wrong_argument_count`
+- **Dimension 0.3** — **BLOCKED at the harness, not at the design** — the collector stand-up survives a first run: no step addresses the app before it can exist. The `--create-only` call 0.2 shipped is what the workflow must invoke ahead of `flyctl secrets set`. The two-line edit to each deploy workflow is refused by the auto-mode CI/CD classifier, which does not read Indy's in-session approval; the exact diff is in the PR body for a human to apply → Test `test_collector_standup_is_order_safe`
 - **Dimension 0.4** — the development deploy reaches green, and M181_005's R1 — closed ungraded — is graded from that run → Test `test_collector_carries_every_signal`
 
 ### §1 — Staging soak with budgets
