@@ -133,21 +133,20 @@ fn first_party_bundles_documenting_credential_shapes_are_not_refused() {
     assert_eq!(body(&platform_ops()), Ok(()));
 }
 
-/// The other half of that fix: relaxing the key match must not relax the scan.
+/// The other half of that fix: reading the document must not stop it refusing.
 ///
-/// The values below are deliberately mundane. What the rule tests is whether a
-/// value is a PLACEHOLDER, not whether it looks like a credential — it reads no
-/// entropy and no vendor prefix — so a realistic-looking token would prove
-/// nothing extra here and would trip the repository's own secret scanner on the
-/// way past.
+/// The values are deliberately mundane. The rule tests whether a mapping
+/// assigns a credential key something real — it reads no entropy and no vendor
+/// prefix — so a realistic-looking token would prove nothing extra and would
+/// trip the repository's own secret scanner on the way past.
 #[test]
-fn a_real_value_after_a_credential_key_is_still_refused() {
+fn a_credential_assigned_in_the_document_is_still_refused() {
     for leak in [
         &b"webhook_secret: hunter2"[..],
         &b"api_key: not-a-placeholder"[..],
         &b"access_token: plain-value"[..],
-        &b"client_secret: { nested: no }"[..],
-        &b"config = { webhook_secret: opaque, other: 1 }"[..],
+        &b"outer:\n  inner:\n    client_secret: buried"[..],
+        &b"items:\n  - api_key: in-a-sequence"[..],
         &b"op://vault/item"[..],
         &b"-----BEGIN PRIVATE KEY-----"[..],
     ] {
@@ -163,14 +162,19 @@ fn a_real_value_after_a_credential_key_is_still_refused() {
 }
 
 /// What a bundle is allowed to say about the credentials it needs.
+///
+/// The first case is the regression itself: a COMMENT. Once the document is
+/// parsed there is no comment left to match, which is why parsing fixes this
+/// at the root where a cleverer byte pattern only moves the false positive.
 #[test]
 fn documented_credential_shapes_and_substitutions_are_admitted() {
     for benign in [
-        &b"# github = { webhook_secret: \"<base64>\", api_key: \"<gh PAT>\" }"[..],
+        &b"# github = { webhook_secret: \"<base64>\", api_key: \"<gh PAT>\" }\nname: x"[..],
         &b"webhook_secret: \"{{github_webhook_secret}}\""[..],
         &b"api_key: ${secrets.openai.api_key}"[..],
         &b"access_token:"[..],
         &b"client_secret: ''"[..],
+        &b"api_key: \"<gh PAT>\""[..],
     ] {
         let mut value = upload();
         value.trigger_markdown = Some(benign.to_vec());
