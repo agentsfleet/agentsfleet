@@ -223,6 +223,29 @@ else
   bad "a scrape claim matching a declared deployment block passes" "exit $status: $(out)"
 fi
 
+# --------------------------------------------------------------------------
+# test_runbook_has_no_orphan_owner_tag — the REAL runbook, not a fixture. A
+# fill-tag ("`M…` fills / records / sets", "rows marked `M…`") names the
+# milestone that owns the work today, so its spec must be under
+# docs/v2/active/. A tag naming a closed milestone is work nobody holds — the
+# state this case was written from, where four rows named a milestone that had
+# closed and handed them on. The id is read from the runbook, never written
+# here (RULE TST-NAM), which is why no identifier appears above.
+# --------------------------------------------------------------------------
+orphan_tags=""
+while IFS= read -r tag; do
+  [ -n "$tag" ] || continue
+  if ! ls "$SCRIPT_DIR/../../../docs/v2/active/${tag}"_*.md >/dev/null 2>&1; then
+    orphan_tags="$orphan_tags $tag"
+  fi
+done < <(grep -oE '(`M[0-9]{3}_[0-9]{3}` (fills|records|sets)|rows marked `M[0-9]{3}_[0-9]{3}`)' \
+           "$SCRIPT_DIR/001_playbook.md" | grep -oE 'M[0-9]{3}_[0-9]{3}' | sort -u)
+if [ -z "$orphan_tags" ]; then
+  ok "test_runbook_has_no_orphan_owner_tag"
+else
+  bad "test_runbook_has_no_orphan_owner_tag" "fill-tag names a milestone with no active spec:$orphan_tags"
+fi
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] || exit 1
 [ "$passed" -gt 0 ] || { printf 'FAIL the self-test suite ran nothing\n' >&2; exit 1; }

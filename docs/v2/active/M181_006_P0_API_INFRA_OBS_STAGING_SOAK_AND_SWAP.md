@@ -133,6 +133,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/{afd_wire,afd_api_operator,afd_api_tenant,afd_library,afd_runner}/**` | EDIT | §5 — the bound each request field carries moves onto its request type; the sentence a break earns stays at the handler |
 | `src/runner/**` · `build_runner.zig` | **UNTOUCHED — asserted, not assumed** | §4.5 grades that the deletion did not take the runner with it |
 | `rustd/crates/agentsfleetd/**` | EDIT | only what the soak proves it needs — a startup or shutdown ordering fix the drain-swap surfaces, a budget-driven change the latency or memory dimension forces. No feature work: a soak that changes the daemon it is measuring has measured nothing |
+| `.github/workflows/lint.yml` | EDIT | §4.4 — the route-registration self-test step goes with the checker it tested; Indy approved the workflow edit in-session |
+| `Makefile` · `make/{bench,harness,quality,test-unit}.mk` | EDIT | §4.4 — gates by scope: `check-route-registration-doc`, `bench-redis`, `_bench-micro` and the `ERROR REGISTRY` row leave the graph; `migration_audit_test` roots narrow to the two trees left |
+| `scripts/check_route_registration_doc.py` · `scripts/check_route_registration_doc_test.py` · `scripts/collector_wiring_test.py` | DELETE | §4.4 / §0 — the first two scanned only the daemon's middleware tree; the third was a self-test of wiring the priming playbook now owns |
+| `scripts/check_architecture_doc.sh` · `scripts/check_architecture_doc_test.sh` | EDIT | §4.2 — the citation gate grades `.rs` paths, which the tree that replaced the daemon is written in; its fixture cites a path that survives |
+| `src/build/**` · `src/lib/{common/cache_table*,s3/r2.zig,tripwire/**}` | DELETE | §4.3 — nothing the runner links reaches them: `daemon_tests`, `pg`, `s3` lost their only callers; `CacheTable`, R2 and tripwire had no runner consumer |
+| `src/build/{main,shared,fixtures}.zig` · `src/lib/{common/constants.zig,tests.zig,call_deadline/migration_audit_test.zig}` | EDIT | §4.3 / §4.4 — the graph keeps `test-lib` and `bench-incident`; `fixtures.zig` keeps `addRunner`; the lib test aggregator and the migration audit drop their daemon entries |
+| `rustd/Cargo.toml` · `rustd/Cargo.lock` | EDIT | §4.2 — comments that cited `src/agentsfleetd/` paths name the retired daemon instead; the lock follows the manifest |
+| `public/openapi.json` | EDIT | regenerated after `UZ-PROVIDER-011` replaced the malformed-request code on the absent-workspace 400 |
+| `ui/packages/app/tests/cursor-vocabulary.test.ts` | EDIT | §4.2 — the vocabulary sweep reads the Rust handlers that took the Zig ones' job |
 
 ## Applicable Rules
 
@@ -244,7 +253,7 @@ excluded with a reason — the manifest prints on every run, so a skip cannot
 become invisible by ageing.
 
 - **Dimension 3.1** — **DONE** — every merged milestone through M181 is declared, and each of its rubric rows is probed or carries an exclusion reason. 57 rows → **119**, with seventeen new probes running each row's own Verify line verbatim → Test `test_probe_runner_row_coverage` (existing, over the widened roster)
-- **Dimension 3.2** — the runbook's three sections tagged `M181_002` name the milestone that actually owns them; M181_002 closed having explicitly moved that work here → Test `test_runbook_has_no_orphan_owner_tag`
+- **Dimension 3.2** — **DONE** — the runbook's three sections tagged `M181_002` name the milestone that actually owns them; M181_002 closed having explicitly moved that work here → Test `test_runbook_has_no_orphan_owner_tag`
 - **Dimension 3.3** — the runbook's evidence tables are filled from real runs, not left as empty rows → Test `test_runbook_probes`
 
 
