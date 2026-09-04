@@ -13,7 +13,7 @@ receivers:
   otlp:
     protocols:
       # HTTP only. The daemon posts to {endpoint}/v1/{logs,traces,metrics}
-      # (src/agentsfleetd/observability/otel_logs.zig), which is what the OTLP
+      # (rustd/crates/agentsfleetd/src/telemetry.rs), which is what the OTLP
       # HTTP receiver serves. No gRPC listener, because nothing dials one.
       http:
         endpoint: 0.0.0.0:4318
