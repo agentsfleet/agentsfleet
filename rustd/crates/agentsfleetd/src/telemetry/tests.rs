@@ -160,8 +160,14 @@ fn each_signal_posts_under_its_versioned_path() {
     let otlp = config.otlp().expect("an endpoint is configured");
 
     for (path, expected) in [
-        (super::TRACES_PATH, "http://otelcol-dev.internal:4318/v1/traces"),
-        (super::METRICS_PATH, "http://otelcol-dev.internal:4318/v1/metrics"),
+        (
+            super::TRACES_PATH,
+            "http://otelcol-dev.internal:4318/v1/traces",
+        ),
+        (
+            super::METRICS_PATH,
+            "http://otelcol-dev.internal:4318/v1/metrics",
+        ),
         (super::LOGS_PATH, "http://otelcol-dev.internal:4318/v1/logs"),
     ] {
         let built = super::signal_endpoint(otlp, path);
