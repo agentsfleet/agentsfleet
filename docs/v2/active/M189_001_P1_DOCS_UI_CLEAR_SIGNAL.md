@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M189
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — readable product surfaces and accurate launch copy
 **Categories:** DOCS, UI
 **Batch:** B1 — independent of the outbound repair
 **Branch:** feat/m189-clear-signal
-**Test Baseline:** awaiting declared commands at CHORE(open)
+**Test Baseline:** User directs full unit and integration suites to run only immediately before the PR. No passing baseline recorded.
 **Depends on:** none for visual work; connector acceptance remains with its existing workstream
 **Provenance:** LLM-drafted from the user's approved design proposal
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md`; `docs/architecture/billing_and_provider_keys.md`
@@ -216,6 +216,8 @@ Remove superseded website composition and its unused imports.
 ## Discovery (consult log)
 
 - **Consults:** User approved Clear Signal and a separate worktree. M186 remains with another agent, per the user's instruction.
+  > Indy (2026-09-05): "dont run these make test-integration, test-unit-all until you are about to send the PR"
+  This instruction replaces the baseline cadence. Focused UI checks run during implementation.
 - **Metrics review:** Existing analytics meanings remain unchanged.
 - **Skill-chain outcomes:** Pending implementation and verification.
 - **Deferrals:** None.
