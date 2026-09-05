@@ -44,8 +44,10 @@ const REDIAL_BUDGET: Duration = Duration::from_secs(5);
 /// asserting against a ceiling six times the deadline under test.
 const SCHEDULING_SLACK: Duration = Duration::from_millis(150);
 
-/// A destination that swallows the packet: TEST-NET-1, routed nowhere.
-const BLACKHOLE: &str = "192.0.2.1:6379";
+/// The first command the driver sends on every new socket, before anything
+/// the caller asked for: its own `CLIENT SETINFO`. A fake told to swallow it
+/// leaves the dial stalled with TCP already open.
+const CMD_CLIENT: &str = "CLIENT";
 
 /// How long the dial in the last test is given.
 ///
@@ -185,14 +187,17 @@ async fn test_a_dedicated_socket_that_is_hung_up_on_is_redialled() {
 /// This is the branch that proves it, and the error it produces names the
 /// number rather than surfacing as a driver error nobody can act on.
 ///
-/// The address is TEST-NET-1 (RFC 5737), reserved for documentation and routed
-/// nowhere. A closed port is the wrong fault: it is REFUSED, which the driver
-/// reports at once and which takes the other branch. Only a destination that
-/// swallows the packet leaves the dial outstanding.
-#[tokio::test]
+/// The peer is the fake on loopback, told to swallow `CLIENT`: TCP completes,
+/// the driver's handshake never does, and nothing between here and the socket
+/// can turn that into a different fault. An earlier version dialled a
+/// black-holed address instead, which proves the same thing only where the
+/// network drops the packet, and made the verdict depend on the route to it.
+/// Nothing here leaves loopback.
+#[tokio::test(flavor = "multi_thread")]
 async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
     install_subscriber();
-    let config = RedisConfig::from_url(RedisRole::Default, format!("redis://{BLACKHOLE}/"))
+    let server = FakeRedis::spawn(&[(CMD_CLIENT, Reply::Silent)]).await;
+    let config = RedisConfig::from_url(RedisRole::Default, server.url())
         .with_connect_timeout(CONNECT_DEADLINE);
 
     let started = Instant::now();
@@ -201,6 +206,15 @@ async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
         .expect_err("a dial nothing answers must not be waited on forever");
     let waited = started.elapsed();
 
+    // The floor proves the timeout is what ended the dial, the ceiling that
+    // the reply allowance did not govern it. Neither says the fake was
+    // reached — the driver retries a refused port until the same timeout —
+    // which is what the last assertion is for.
+    assert!(
+        waited >= CONNECT_DEADLINE,
+        "the dial gave up after {waited:?}, inside the {CONNECT_DEADLINE:?} connect timeout — \
+         it was refused rather than timed out, and the timeout branch was never reached"
+    );
     assert!(
         waited < CONNECT_DEADLINE + SCHEDULING_SLACK,
         "the dial waited {waited:?} against a {CONNECT_DEADLINE:?} connect timeout — \
@@ -210,5 +224,10 @@ async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
     assert!(
         reported.contains(&CONNECT_DEADLINE.as_millis().to_string()),
         "the refusal must name what it waited; got: {reported}"
+    );
+    assert!(
+        server.seen().iter().any(|command| command == CMD_CLIENT),
+        "the dial never reached the server, so nothing was stalled: {:?}",
+        server.seen()
     );
 }
