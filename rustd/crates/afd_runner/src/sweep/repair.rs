@@ -41,7 +41,7 @@ use afd_observability::metrics::label::fleet::{SyntheticEvent, VerifierRun};
 use afd_observability::producers;
 use afd_redis::Redis;
 use afd_redis::streams::{FleetStreams, OnceScope};
-use afd_wire::event::EventType;
+use afd_wire::event::{Entry, EventType};
 use sqlx::Row as _;
 
 mod cleanup;
@@ -198,14 +198,18 @@ impl Repairs {
                 OnceScope::FleetIntent,
                 &intent.id,
                 &intent.verifier_fleet_id,
-                &[
-                    ("fleet_id", intent.verifier_fleet_id.as_str()),
-                    ("workspace_id", intent.workspace_id.as_str()),
-                    ("actor", VERIFIER_ACTOR),
-                    ("event_type", TRIGGER_EVENT_TYPE.as_str()),
-                    ("request_json", payload.as_str()),
-                    ("created_at", created_at.as_str()),
-                ],
+                // Through the wire's own entry type rather than pairs spelled
+                // here: this producer once wrote its own field names, and the
+                // reader could not decode a single event it appended. The
+                // stream key already names the fleet, so no `fleet_id` field.
+                &Entry {
+                    actor: VERIFIER_ACTOR,
+                    event_type: TRIGGER_EVENT_TYPE.as_str(),
+                    workspace_id: intent.workspace_id.as_str(),
+                    request_json: payload.as_str(),
+                    created_at: created_at.as_str(),
+                }
+                .pairs(),
             )
             .await?;
 

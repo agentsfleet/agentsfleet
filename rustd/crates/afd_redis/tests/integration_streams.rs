@@ -306,7 +306,7 @@ async fn test_a_dedicated_connection_reports_the_role_it_opened_for() {
     let config = RedisHarness::config();
     let expected = config.role();
 
-    let owned = Dedicated::connect(&config)
+    let owned = Dedicated::connect(&config, std::time::Duration::from_millis(100))
         .await
         .expect("the lane's Redis must be reachable");
 
