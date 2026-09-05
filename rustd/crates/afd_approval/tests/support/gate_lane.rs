@@ -162,6 +162,14 @@ impl Lane {
     /// that fixed it would make one of the two impossible to write.
     pub(crate) async fn seed_gate(&self, timeout_at: i64) -> String {
         let action = afd_db::test_util::mint_id();
+        self.seed_gate_for(&action, timeout_at).await;
+        action
+    }
+
+    /// One pending gate row for an action that may already have one — a
+    /// re-raised action, which the park writes as a second row rather than
+    /// reopening the first.
+    pub(crate) async fn seed_gate_for(&self, action: &str, timeout_at: i64) {
         sqlx::query(
             "INSERT INTO core.fleet_approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
@@ -175,7 +183,7 @@ impl Lane {
         .bind(mint().as_str())
         .bind(self.fleet.as_str())
         .bind(self.workspace.as_str())
-        .bind(&action)
+        .bind(action)
         .bind(KIND)
         .bind(timeout_at)
         .bind(NOW_MS)
@@ -183,7 +191,6 @@ impl Lane {
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");
-        action
     }
 
     /// The status column of one gate, by action.
