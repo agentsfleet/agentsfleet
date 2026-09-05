@@ -75,15 +75,21 @@ All paths below `ui/packages/app/` unless stated.
 | `app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | `getFleetRunSummaryAction` |
 | `app/(dashboard)/admin/runners/[runnerId]/page.tsx` | EDIT | the view read starts beside the runner read |
 | `app/(dashboard)/admin/models/page.tsx` | EDIT | platform keys read runs with the model list |
-| `tests/runner-detail-page.test.ts`, `tests/admin-models-page.test.ts` | EDIT | both reads are in flight before either resolves; failure handling unchanged |
+| `tests/admin-models-page.test.ts` | EDIT | both reads are in flight before either resolves |
+| `tests/runner-detail-page/` (`harness.ts`, `guards.test.ts`, `views.test.ts`) | CREATE | the 458-line page test split by concern; the parallel-start and failure-handling proofs live in `guards` |
+| `tests/runner-detail-page.test.ts` | DELETE | replaced by the directory above |
 | `app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx` (+ `.test.tsx`) | EDIT | optimistic row removal on delete |
 | `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` (+ `.test.tsx`) | EDIT | optimistic admin-state badge on cordon, drain, revoke; the action tests move to a sibling suite |
 | `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.actions.test.tsx` | CREATE | the admin-action tests by concern, plus the optimistic paint and rollback |
 | `app/(dashboard)/admin/runners/[runnerId]/components/RunnerIdentityLine.tsx` | CREATE | the status, badges and degraded line extracted from the header, which sat at 317 lines before the edit |
 | `app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.tsx` | EDIT | row leaves before the POST resolves; restored on failure |
-| `tests/approvals-list.test.ts` | EDIT | optimistic removal, restore on failure, already-resolved notice |
+| `tests/approvals-list/` (`harness.ts`, `rendering`, `resolve`, `pagination`, `polling` `.test.ts`) | CREATE | the 724-line suite split by concern; optimistic removal, restore on failure and the already-resolved notice live in `resolve` |
+| `tests/approvals-list.test.ts` | DELETE | replaced by the directory above |
 | `app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons.tsx` | EDIT | drop the redundant refresh after the push; pending state unchanged |
-| `tests/approvals-resolve-buttons.test.ts`, `tests/fleet-thread.test.ts` | EDIT | push once with no refresh; the completion callback replaces the router assertion |
+| `tests/approvals-resolve-buttons.test.ts` | EDIT | push once with no refresh |
+| `tests/fleet-thread/` (`harness.ts` + seven `.test.ts` by concern) | CREATE | the 1751-line suite split; the completion callback replaces the router assertion in `surface` |
+| `tests/fleets-routes/` (`harness.ts` + six `.test.ts` by concern) | CREATE | the 1284-line suite split; the detail-page thread mocks gained a real thread page |
+| `tests/fleet-thread.test.ts`, `tests/fleets-routes.test.ts` | DELETE | replaced by the directories above |
 | `docs/architecture/web_app.md` (repo root) | EDIT | scoreboard re-measured: `useOptimistic` count and any other moved row |
 | `tests/web-app-scoreboard.test.ts` | CREATE | pins the scoreboard's `useOptimistic` row to the grep it describes |
 | `tests/fleet-run-summary-action.test.ts` | CREATE | the summary action: three reads together, each boundary's failure, no token |
@@ -298,6 +304,7 @@ N/A — no files deleted. Two symbols lose their only consumer and leave in the 
   - PLAN amendment (agent, Sep 05, 2026): Files Changed gained the import-site edits in `events.ts` and `fleets.ts`, the split test files, `vitest.setup.ts`, `view-data.ts`, `RunnerIdentityLine.tsx`, and the three existing tests under `tests/` that replace the CREATE rows. §2 narrows the default retry set to GET, HEAD, PUT and adds the abort guard after an adversarial read of the policy.
   - > Indy (2026-09-05 20:43): "Can you make the retry.ts more robust and performant, and change with effects" — asked which reading; Indy chose **rewrite on the Effect library**. Disposition: a separate spec, because it adds a dependency and breaks CLI parity; §2 here lands the wiring and the two guards, and the rewrite replaces `retry.ts` behind the same `runWithRetry` seam.
   - > Indy (2026-09-05 20:44): "adversarial review on retry.ts" — findings reported in session and carried into the Effect spec's Failure Modes; the two that touch the default path this spec introduces (DELETE replay answers 404; an aborted caller keeps retrying and sleeping) are fixed in §2.
+  - Rubric S7 (Sep 05, 2026): four touched test files were over the 350-line cap on `main` already. Offered override-and-split-spec, split-the-two-grown, or split-all; Indy chose **"Split all four now"**. Each became a `tests/<suite>/` directory: one `harness.ts` (mocks, fixtures, hooks) plus test files by concern, `it` counts identical (29 / 21 / 42 / 77), every file under the cap.
   - > Indy (2026-09-05 20:46): "Have you upgraded all the packages to the latest vite is 5 and others" — no; dependency upgrades are outside this spec's Files Changed. `bun outdated` in the app package lists patch and minor bumps plus vitest 5.0.0; reported in session for a separate decision.
 - **Metrics review** — no events added; `approval_resolved` unchanged; no analytics or funnel playbook update required.
 - **Skill-chain outcomes** — populated during VERIFY and REVIEW.
