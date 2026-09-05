@@ -79,7 +79,8 @@ pub(crate) use self::refuse::{memory_entry_not_found, memory_fleet_not_found};
 /// no call site names the file the cap moved them into.
 pub(crate) use self::report::{
     bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, envelope_field,
-    memory_unavailable, query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
+    envelope_malformed, memory_unavailable, query, rejected, row_malformed, sequence_corrupt,
+    vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.
@@ -152,6 +153,9 @@ pub(crate) enum ErrorKind {
 
     #[error("the leased event envelope is missing {field}")]
     Envelope { field: &'static str },
+
+    #[error("the leased event envelope's {field} is present but unreadable")]
+    EnvelopeMalformed { field: &'static str },
 
     #[error("{detail}")]
     Rejected { detail: &'static str },

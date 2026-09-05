@@ -43,14 +43,14 @@
 //! `BLOCK 0` (wait forever) is refused by construction because no park is
 //! declared for it.
 //!
-//! One cost, named rather than left to be discovered. The reply allowance also
-//! covers the handshake the DIAL performs, so `client.rs`'s ladder arithmetic —
-//! which keeps the driver's own error the first to fire — does not hold for
-//! this connection: a peer that accepts a socket and then never answers is
-//! reported as a connect timeout instead of whatever the driver would have
-//! said. That is a diagnostic loss on a path taken once per process at boot,
-//! and the alternative is a reply deadline shorter than the park, which is the
-//! outage this whole note exists about.
+//! The DIAL is not governed by this allowance, which is worth stating because
+//! it looks as though it should be. The driver wraps the whole setup — socket,
+//! handshake and all — in its own `connection_timeout`, and the retry policy
+//! still bounds each attempt at `CONNECT_ATTEMPT_TIMEOUT`. So `client.rs`'s
+//! ladder arithmetic holds here too: the driver's own error is still the first
+//! to fire on a peer that accepts a socket and then says nothing, and it keeps
+//! its source chain. Raising the REPLY deadline buys the park without spending
+//! the dial's diagnostics.
 //!
 //! # A dropped socket heals, as the shared handle's does
 //!

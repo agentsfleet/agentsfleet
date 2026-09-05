@@ -97,6 +97,19 @@ const OWN_PENDING: &str = "0";
 /// delivered one would re-execute it.
 const GROUP_START_BEGIN: &str = "0";
 
+/// Where a group RECREATED mid-life starts: the stream's newest entry.
+const GROUP_START_END: &str = "$";
+
+/// The `XGROUP` subcommand that creates a consumer group.
+///
+/// Named because two call sites issue it — the boot ensure and the mid-life
+/// repair — and they differ only in where the group starts. A literal at each
+/// would let the two drift into different commands while reading as one.
+const XGROUP_CREATE: &str = "CREATE";
+
+/// Creates the stream alongside the group when the stream does not exist yet.
+const XGROUP_MKSTREAM: &str = "MKSTREAM";
+
 /// The prefix an outbound consumer name is built on. Shared with the Zig.
 const CONSUMER_PREFIX: &str = "agentsfleetd";
 
@@ -209,11 +222,49 @@ impl OutboundQueue {
     /// reason other than already existing.
     pub async fn ensure_group(&self) -> Result<()> {
         let mut cmd = redis::cmd(CMD_XGROUP);
-        cmd.arg("CREATE")
+        cmd.arg(XGROUP_CREATE)
             .arg(OUTBOUND_STREAM_KEY)
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(GROUP_START_BEGIN)
-            .arg("MKSTREAM");
+            .arg(XGROUP_MKSTREAM);
+
+        match self
+            .redis
+            .command::<String>(CMD_XGROUP, OUTBOUND_STREAM_KEY, &cmd)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(failure) if failure.is_group_exists() => Ok(()),
+            Err(failure) => Err(failure),
+        }
+    }
+
+    /// Recreates a group that vanished, at the stream's NEWEST entry.
+    ///
+    /// `$`, not `0`, and the difference is real connector traffic. The stream
+    /// retains entries already delivered and acknowledged under the group that
+    /// disappeared, and a group recreated at `0` hands every one of them out
+    /// again — historical answers posted a second time, to real channels.
+    /// Recreated at `$` nothing historical re-runs; the cost is that entries
+    /// appended during the groupless window are skipped, which is bounded and
+    /// re-submittable. A duplicate post is not retractable.
+    /// [`crate::streams`] reasons its way to the same `$` for the same reason.
+    ///
+    /// Distinct from [`OutboundQueue::ensure_group`] on purpose, which starts
+    /// at `0`: at BOOT the backlog is work this deployment has not delivered
+    /// yet, not history it already did.
+    ///
+    /// # Errors
+    /// Returns a command error when the group could not be created for any
+    /// reason other than already existing — a concurrent worker winning the
+    /// same repair is a success, not a failure.
+    pub async fn repair_group(&self) -> Result<()> {
+        let mut cmd = redis::cmd(CMD_XGROUP);
+        cmd.arg(XGROUP_CREATE)
+            .arg(OUTBOUND_STREAM_KEY)
+            .arg(OUTBOUND_CONSUMER_GROUP)
+            .arg(GROUP_START_END)
+            .arg(XGROUP_MKSTREAM);
 
         match self
             .redis

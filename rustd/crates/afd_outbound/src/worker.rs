@@ -177,12 +177,28 @@ impl<S: Deliver> Worker<S> {
         // The resume read. A process that starts — or restarts after a crash —
         // reaches its predecessor's unacknowledged entries only through this;
         // `read_blocking` below offers new entries and never re-offers those.
-        match self.reader.read_pending().await {
+        //
+        // Raced against the token for the same reason the blocking read below
+        // is, even though this one asks for no BLOCK and normally answers at
+        // once. Its reply deadline is the longest park plus the request timeout
+        // (`Dedicated::connect`), so a peer that accepts the socket and then
+        // answers nothing — a dropped packet filter, a frozen host, not a
+        // hangup, which redials — parks the worker here for that whole
+        // allowance. That is not shorter than `supervisor::JOIN_TIMEOUT`, so an
+        // unraced await here is how this task lands in
+        // `ShutdownReport::abandoned` on an otherwise clean stop.
+        let pending = tokio::select! {
+            biased;
+            () = token.cancelled() => return Turn::Stopped,
+            read = self.reader.read_pending() => read,
+        };
+        match pending {
             Ok(Some(job)) => return Turn::Job(Box::new(job)),
             Ok(None) => {}
             Err(failure) => {
-                report("outbound_read_pending_failed", &failure.into());
-                return Turn::Failed;
+                return self
+                    .read_failed("outbound_read_pending_failed", failure)
+                    .await;
             }
         }
 
@@ -196,12 +212,38 @@ impl<S: Deliver> Worker<S> {
             read = self.reader.read_blocking(BLOCK_INTERVAL) => match read {
                 Ok(Some(job)) => Turn::Job(Box::new(job)),
                 Ok(None) => Turn::Idle,
-                Err(failure) => {
-                    report("outbound_read_next_failed", &failure.into());
-                    Turn::Failed
-                }
+                Err(failure) => self.read_failed("outbound_read_next_failed", failure).await,
             },
         }
+    }
+
+    /// Reports a failed read, recreating the consumer group if that is why.
+    ///
+    /// `run` ensures the group once, at boot. A group can still vanish after
+    /// that — deleted out of band, a restart without persistence, a failover to
+    /// an empty replica — and every read after it answers `NOGROUP`, forever,
+    /// because nothing re-ensures. Without this the worker pauses and re-reads
+    /// on a loop that can never succeed, and the deployment stops delivering
+    /// answers until somebody restarts it. The boot call's own comment promised
+    /// this repair; this is where it happens.
+    ///
+    /// Still `Turn::Failed` on the way out even when the repair worked: the
+    /// caller's pause costs one interval and cannot spin, where retrying at
+    /// once would spin if the repair kept succeeding against a group that kept
+    /// vanishing. Delivery resumes on the turn after.
+    async fn read_failed(&self, event: &'static str, failure: afd_redis::Error) -> Turn {
+        if failure.is_group_missing() {
+            match self.queue.repair_group().await {
+                Ok(()) => tracing::warn!(
+                    event = "outbound_group_repaired",
+                    "the consumer group had vanished and was recreated at the stream's newest \
+                     entry; answers appended while it was missing are not delivered"
+                ),
+                Err(repair) => report("outbound_group_repair_failed", &repair.into()),
+            }
+        }
+        report(event, &failure.into());
+        Turn::Failed
     }
 
     /// Delivers one job with bounded retry, then acknowledges it.

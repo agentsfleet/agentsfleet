@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — standalone; no other workstream shares its files.
 **Branch:** {feat/mNN-name — added at CHORE(open)}
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
-**Depends on:** none — the fix that motivated it (outbound reply deadline and read backoff) is already merged.
+**Depends on:** the fix that motivated it — the outbound reply deadline and read backoff — which lands with this spec on `fix/event-plane-wire-and-outbound-reader`. The baselines below are only meaningful once it is on `main`.
 **Provenance:** agent-generated (pre-spec, this session's dev-environment investigation)
 **Canonical architecture:** `docs/architecture/scaling.md`
 

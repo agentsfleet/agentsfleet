@@ -71,6 +71,7 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Envelope { .. }
+            | ErrorKind::EnvelopeMalformed { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::Mint { .. }
             // The six lease-lifecycle refusals are not configuration faults at
