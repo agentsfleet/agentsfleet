@@ -34,7 +34,20 @@ struct Request {
     consumed: usize,
 }
 
-/// A server that hangs up on every `XREADGROUP`, counting them.
+/// What the server does when it is asked to read.
+///
+/// The two are different faults and the client tells them apart: a hangup is an
+/// error the driver reports at once and reconnects from, while a stall leaves
+/// the socket open and answers nothing, so the client waits out its whole reply
+/// deadline. A frozen host or a packet filter that drops rather than rejects
+/// looks like the second.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum OnRead {
+    HangUp,
+    Stall,
+}
+
+/// A server that refuses every `XREADGROUP`, counting them.
 #[derive(Debug)]
 pub(crate) struct HangingQueue {
     addr: SocketAddr,
@@ -44,6 +57,15 @@ pub(crate) struct HangingQueue {
 impl HangingQueue {
     /// Binds a loopback port and serves until the test drops it.
     pub(crate) async fn spawn() -> Self {
+        Self::spawn_with(OnRead::HangUp).await
+    }
+
+    /// Binds a server that accepts the read and then answers nothing.
+    pub(crate) async fn spawn_stalling() -> Self {
+        Self::spawn_with(OnRead::Stall).await
+    }
+
+    async fn spawn_with(on_read: OnRead) -> Self {
         // Port 0: the kernel picks, so parallel tests never contend.
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
@@ -56,7 +78,7 @@ impl HangingQueue {
         let counting = Arc::clone(&reads);
         tokio::spawn(async move {
             while let Ok((socket, _peer)) = listener.accept().await {
-                tokio::spawn(serve(socket, Arc::clone(&counting)));
+                tokio::spawn(serve(socket, Arc::clone(&counting), on_read));
             }
         });
         Self { addr, reads }
@@ -75,7 +97,7 @@ impl HangingQueue {
 
 /// Answers one connection: `+PONG` to a ping, `+OK` to anything else, and a
 /// hangup on the read.
-async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>) {
+async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead) {
     let mut buffer = Vec::new();
     let mut scratch = [0_u8; 4096];
     loop {
@@ -85,7 +107,14 @@ async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>) {
             buffer.drain(..request.consumed);
             if request.name == CMD_XREADGROUP {
                 reads.fetch_add(1, Ordering::AcqRel);
-                return;
+                match on_read {
+                    OnRead::HangUp => return,
+                    // Holds the connection open and never replies, so the client
+                    // is left waiting on its own deadline rather than handed an
+                    // error. Parking the task is what keeps the socket alive:
+                    // returning would drop it, which IS the hangup case.
+                    OnRead::Stall => std::future::pending::<()>().await,
+                }
             }
             let reply: &[u8] = if request.name == "PING" {
                 b"+PONG\r\n"

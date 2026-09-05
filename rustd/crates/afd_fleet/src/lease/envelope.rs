@@ -20,7 +20,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_redis::FleetEvent;
 
-use crate::error::{Result, envelope_field, row_malformed};
+use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
 use crate::lease::reclaim::{Reclaimed, Reused};
 
@@ -157,7 +157,7 @@ pub(crate) fn from_fresh(
         event_created_at: field(FIELD_CREATED_AT)?
             .parse()
             .map(UnixMillis::from_millis)
-            .map_err(|_unparseable| envelope_field(FIELD_CREATED_AT))?,
+            .map_err(|_unparseable| envelope_malformed(FIELD_CREATED_AT))?,
         reused: None,
     })
 }

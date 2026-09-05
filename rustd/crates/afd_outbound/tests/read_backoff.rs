@@ -125,6 +125,51 @@ async fn test_a_failing_read_is_not_retried_in_a_spin() {
     );
 }
 
+/// A cancelled worker stops inside a STALLED read, rather than waiting it out.
+///
+/// The resume read asks for no `BLOCK`, so it reads as instant — but its reply
+/// allowance is now the longest park plus the request timeout, because that is
+/// what `Dedicated::connect` sets for the blocking read that shares the
+/// connection. A peer that accepts the socket and answers nothing therefore
+/// holds this read for the whole allowance.
+///
+/// That is the regression this guards: raising the deadline to make the park
+/// work also made an unraced await on this read outlast
+/// `supervisor::JOIN_TIMEOUT`, which reports the task abandoned on a stop that
+/// was otherwise clean. Unlike the backoff test below, this one discriminates
+/// the bug — with the read unraced it takes the full allowance, not merely
+/// longer than it should.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_shutdown_does_not_wait_out_a_stalled_read() {
+    let server = HangingQueue::spawn_stalling().await;
+    let (worker, token, delivered) = worker_against(&server).await;
+    let running = tokio::spawn(worker.run(token.clone()));
+
+    // Long enough that the worker is parked in the resume read, which is the
+    // only state where this assertion means anything.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        server.reads() > 0,
+        "the worker never reached the read, so this proves nothing about shutdown"
+    );
+    let started = Instant::now();
+    token.cancel();
+    running.await.expect("the worker task must not panic");
+    let stopped = started.elapsed();
+
+    assert_eq!(
+        delivered.load(Ordering::Acquire),
+        0,
+        "no read succeeded, so the worker had nothing to deliver"
+    );
+    assert!(
+        stopped < SHUTDOWN_BUDGET,
+        "the worker took {stopped:?} to stop against a stalled peer — the resume \
+         read is being awaited rather than raced against the token, so shutdown \
+         waits out the {LONGEST_PARK:?} reply allowance"
+    );
+}
+
 /// A cancelled worker stops inside the pause, rather than waiting it out.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_shutdown_does_not_wait_out_the_backoff() {

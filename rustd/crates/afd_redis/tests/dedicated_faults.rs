@@ -35,6 +35,15 @@ const REQUEST_DEADLINE: Duration = Duration::from_millis(100);
 /// How long a redial may take to be visible before the test gives up.
 const REDIAL_BUDGET: Duration = Duration::from_secs(5);
 
+/// Room for the runtime to schedule the wake, and nothing more.
+///
+/// Deliberately small. The bound this test exists to prove is the connection's
+/// reply deadline; a generous ceiling would pass on a read that gave up
+/// seconds late, which is what an earlier version did by borrowing
+/// [`REDIAL_BUDGET`] — a term belonging to the redial test next door — and
+/// asserting against a ceiling six times the deadline under test.
+const SCHEDULING_SLACK: Duration = Duration::from_millis(150);
+
 /// A blocking read, as the outbound reader spells one.
 fn blocking_read(park: Duration) -> redis::Cmd {
     let mut cmd = redis::cmd(CMD_XREADGROUP);
@@ -79,9 +88,11 @@ async fn test_a_dedicated_read_waits_out_the_park_it_declared() {
         "the read gave up after {waited:?}, inside the {PARK:?} park it declared — \
          the driver's own default deadline is being applied"
     );
+    // The deadline this connection actually sets, plus scheduling room.
     assert!(
-        waited < PARK + REQUEST_DEADLINE + REDIAL_BUDGET,
-        "the read waited {waited:?}, which is not a bound"
+        waited < PARK + REQUEST_DEADLINE + SCHEDULING_SLACK,
+        "the read waited {waited:?}, past the {PARK:?} park plus the \
+         {REQUEST_DEADLINE:?} reply allowance — that is not a bound"
     );
     assert!(
         failure.is_unavailable(),
