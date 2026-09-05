@@ -107,18 +107,21 @@ Run the greps, then move the numbers. Every row is measurable in one command,
 so a stale row is a choice. Re-measure at any milestone that touches the app
 and update this table in the same diff.
 
-Measured against `ui/packages/app` at 209 `.tsx` files.
+Measured against `ui/packages/app` at 222 `.tsx` files.
 
 | Signal | Today | Target | Grep |
 |---|---|---|---|
-| `"use client"` files | 116 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
+| `"use client"` files | 119 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
 | `useEffect` files | 31 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
-| `useOptimistic` | 1 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
+| `useOptimistic` | 4 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
 | `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |
 
-The first two moved away from target as the app grew; the last three have not
-moved at all. Both facts are the point of keeping the table.
+The first two moved away from target as the app grew. `useOptimistic` moved
+from one surface to four — secrets delete, runner state, the approvals inbox
+and the fleet kill switch — each reconciling inside the transition that set it,
+so the row is now a pattern rather than an exception. `useActionState` and
+`Suspense` have not moved. All of it is the point of keeping the table.
 
 The two library routes are the worked example. `ModelCatalogueProvider` fetched the
 entire global model catalogue in a mount effect, so every visit to Models

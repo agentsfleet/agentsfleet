@@ -77,13 +77,15 @@ All paths below `ui/packages/app/` unless stated.
 | `app/(dashboard)/admin/models/page.tsx` | EDIT | platform keys read runs with the model list |
 | `tests/runner-detail-page.test.ts`, `tests/admin-models-page.test.ts` | EDIT | both reads are in flight before either resolves; failure handling unchanged |
 | `app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx` (+ `.test.tsx`) | EDIT | optimistic row removal on delete |
-| `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` (+ `.test.tsx`) | EDIT | optimistic admin-state badge on cordon, drain, revoke |
+| `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` (+ `.test.tsx`) | EDIT | optimistic admin-state badge on cordon, drain, revoke; the action tests move to a sibling suite |
+| `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.actions.test.tsx` | CREATE | the admin-action tests by concern, plus the optimistic paint and rollback |
 | `app/(dashboard)/admin/runners/[runnerId]/components/RunnerIdentityLine.tsx` | CREATE | the status, badges and degraded line extracted from the header, which sat at 317 lines before the edit |
 | `app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.tsx` | EDIT | row leaves before the POST resolves; restored on failure |
 | `tests/approvals-list.test.ts` | EDIT | optimistic removal, restore on failure, already-resolved notice |
 | `app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons.tsx` | EDIT | drop the redundant refresh after the push; pending state unchanged |
 | `tests/approvals-resolve-buttons.test.ts`, `tests/fleet-thread.test.ts` | EDIT | push once with no refresh; the completion callback replaces the router assertion |
 | `docs/architecture/web_app.md` (repo root) | EDIT | scoreboard re-measured: `useOptimistic` count and any other moved row |
+| `tests/web-app-scoreboard.test.ts` | CREATE | pins the scoreboard's `useOptimistic` row to the grep it describes |
 
 A changelog `<Update>` lands in `~/Projects/docs/changelog.mdx` on its own branch at CHORE(close), per `dispatch/lifecycle.md`; it is a cross-repo write and not a row here.
 
@@ -150,12 +152,12 @@ The runner detail page awaits the runner before starting the leases or activity 
 
 Four surfaces adopt the `KillSwitch` shape. Secrets delete removes the row optimistically and refreshes inside the transition. Runner cordon, drain and revoke paint the target badge optimistically and refresh inside the transition; a 409 rolls back and the refresh shows the real state. The approvals inbox removes the row before the POST and restores it on a failed result; an already-resolved outcome keeps the row removed and shows the resolver. The approval detail page drops its second render after the push.
 
-- **Dimension 4.1** — confirming a secret delete removes the row at once; a failed delete restores it with the error → Test `a secret row leaves on confirm and returns on failure`
-- **Dimension 4.2** — a runner state action paints the target badge at once; a 409 restores the prior badge → Test `a runner badge paints the target state and rolls back on conflict`
-- **Dimension 4.3** — approving from the inbox removes the row before the action resolves; a failed action restores it → Test `an inbox row leaves before the resolve settles and returns on failure`
-- **Dimension 4.4** — an already-resolved outcome keeps the row removed and names the resolver → Test `an already resolved gate stays removed and shows who resolved it`
-- **Dimension 4.5** — the approval detail resolve navigates once with no trailing refresh → Test `resolving from the detail page pushes once and does not refresh`
-- **Dimension 4.6** — the architecture scoreboard reports the re-measured counts → Test `the scoreboard useOptimistic row equals the grep`
+- **Dimension 4.1** — DONE — confirming a secret delete removes the row at once; a failed delete restores it with the error → Test `a secret row leaves on confirm and returns on failure`
+- **Dimension 4.2** — DONE — a runner state action paints the target badge at once; a 409 restores the prior badge → Test `a runner badge paints the target state and rolls back on conflict`
+- **Dimension 4.3** — DONE — approving from the inbox removes the row before the action resolves; a failed action restores it → Test `an inbox row leaves before the resolve settles and returns on failure`
+- **Dimension 4.4** — DONE — an already-resolved outcome keeps the row removed and names the resolver → Test `an already resolved gate stays removed and shows who resolved it`
+- **Dimension 4.5** — DONE — the approval detail resolve navigates once with no trailing refresh → Test `resolving from the detail page pushes once and does not refresh`
+- **Dimension 4.6** — DONE — the architecture scoreboard reports the re-measured counts → Test `the scoreboard useOptimistic row equals the grep`
 
 ## Interfaces
 

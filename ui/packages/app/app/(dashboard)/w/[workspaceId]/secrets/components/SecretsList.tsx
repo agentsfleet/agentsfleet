@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
@@ -262,21 +262,20 @@ export default function SecretsList({
   const [editTarget, setEditTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  if (secrets.length === 0) {
-    return (
-      <EmptyState
-        icon={<KeyRoundIcon size={28} />}
-        title="No secrets"
-        description="Create secret to have your fleets reach other services securely."
-      />
-    );
-  }
+  // The row leaves the table the moment the operator confirms; the server is
+  // told inside the same transition. A rejected delete ends that transition and
+  // React restores the row from the server-rendered list on its own — the same
+  // shape the fleet kill switch uses, so nothing here has to put it back.
+  const [visibleSecrets, hideSecret] = useOptimistic(
+    secrets,
+    (current: Secret[], removedName: string) => current.filter((secret) => secret.name !== removedName),
+  );
 
   function onConfirmDelete(name: string) {
     if (name === protectedSecretName) return;
     setError(null);
     startTransition(async () => {
+      hideSecret(name);
       const result = await deleteSecretAction(workspaceId, name);
       if (!result.ok) {
         setError(
@@ -295,29 +294,37 @@ export default function SecretsList({
 
   return (
     <div className="space-y-3">
-      <SecretTable
-        secrets={secrets}
-        pending={pending}
-        target={target}
-        protectedSecretName={protectedSecretName}
-        onEdit={(name) => {
-          setError(null);
-          setEditTarget(name);
-        }}
-        onRename={(name) => {
-          setError(null);
-          setRenameTarget(name);
-        }}
-        onDelete={(name) => {
-          setError(null);
-          setTarget(name);
-        }}
-      />
+      {visibleSecrets.length === 0 ? (
+        <EmptyState
+          icon={<KeyRoundIcon size={28} />}
+          title="No secrets"
+          description="Create secret to have your fleets reach other services securely."
+        />
+      ) : (
+        <SecretTable
+          secrets={visibleSecrets}
+          pending={pending}
+          target={target}
+          protectedSecretName={protectedSecretName}
+          onEdit={(name) => {
+            setError(null);
+            setEditTarget(name);
+          }}
+          onRename={(name) => {
+            setError(null);
+            setRenameTarget(name);
+          }}
+          onDelete={(name) => {
+            setError(null);
+            setTarget(name);
+          }}
+        />
+      )}
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}
         renameTarget={renameTarget}
-        existingNames={secrets.map((s) => s.name)}
+        existingNames={visibleSecrets.map((s) => s.name)}
         target={target}
         error={error}
         onEditClose={() => setEditTarget(null)}
