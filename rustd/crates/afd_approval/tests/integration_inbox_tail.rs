@@ -16,10 +16,10 @@ use std::time::Duration;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_core::clock::UnixMillis;
 use afd_redis::hub::Received;
-use afd_redis::{Redis, Subscription, SubscriptionHub};
+use afd_redis::{Subscription, SubscriptionHub};
 use serde_json::{Value, json};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, redis_config, sweeper_exclusive};
+use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, redis_config, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -202,6 +202,71 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     );
 }
 
+/// A gate that held no run is answered, announced with no event, and
+/// continues nothing.
+///
+/// The column is nullable for exactly this row — a standing grant raised at
+/// install time — and an approval of it must decode, land, and say `null`
+/// where a run's answer would name its event, rather than fail after the
+/// row moved or continue a run that never was.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+
+    let hub = SubscriptionHub::start(redis_config())
+        .await
+        .expect("the lane's Redis accepts a subscriber");
+    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
+    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+
+    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+    let outcome = lane
+        .inbox
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the resolve must not fault");
+    let continued = match outcome {
+        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(String::new()),
+    };
+    assert_eq!(continued, None, "nothing to continue, and nothing invented");
+
+    let frame = next_frame(&mut tail)
+        .await
+        .expect("the answer reaches the fleet's tail");
+    assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
+    assert_eq!(frame.get("status"), Some(&json!("approved")));
+    assert_eq!(frame.get("event_id"), Some(&Value::Null));
+    assert_eq!(lane.status_of(&runless).await, "approved");
+}
+
+/// An approval whose continuation the queue refuses is still answered.
+///
+/// The row moved before the continuation was attempted, so the decision is
+/// the operator's whatever the queue does: the answer is announced (into the
+/// same queue, which drops it), the failure to restart the run is reported,
+/// and the row reads `approved` — never a gate saying yes over a run nobody
+/// was told about.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+
+    let outcome = inbox
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await;
+    assert!(
+        outcome.is_err(),
+        "the run could not be restarted, and the caller is told so"
+    );
+    assert_eq!(lane.status_of(&action).await, "approved");
+}
+
 /// A queue that will not take the frame does not fail the decision.
 ///
 /// The row moved over live Postgres before the announcement ran, and a
@@ -213,8 +278,7 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let deaf = Redis::unreachable(&redis_config()).expect("a lazy handle needs no socket");
-    let inbox = Inbox::new(lane.pool.clone(), deaf);
+    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox
