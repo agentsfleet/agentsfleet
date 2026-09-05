@@ -38,7 +38,7 @@ describe("Tooltip", () => {
     if (el) {
       expect(el.className).toContain("bg-popover");
       expect(el.className).toContain("text-foreground");
-      expect(el.className).toContain("font-mono");
+      expect(el.className).toContain("font-sans");
     }
   });
 

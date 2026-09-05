@@ -76,9 +76,9 @@ describe("Button", () => {
     expect(screen.getByRole("button").className).toContain("rounded-md");
   });
 
-  it("uses font-mono on chrome", () => {
+  it("uses font-sans on chrome", () => {
     render(<Button>X</Button>);
-    expect(screen.getByRole("button").className).toContain("font-mono");
+    expect(screen.getByRole("button").className).toContain("font-sans");
   });
 
   it("default size has h-10 (40px) per spec component principles", () => {
@@ -191,7 +191,7 @@ describe("buttonVariants / buttonClassName", () => {
     expect(cls).toContain("text-cta-foreground");
     expect(cls).toContain("rounded-md");
     expect(cls).toContain("inline-flex");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-sans");
   });
 
   it("buttonClassName defaults to the default variant + default size", () => {

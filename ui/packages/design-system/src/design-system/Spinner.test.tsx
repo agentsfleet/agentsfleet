@@ -22,7 +22,7 @@ describe("Spinner", () => {
   it("shows a visible label for standalone loaders", () => {
     const { getByRole, getByText } = render(<Spinner label="Loading agents…" />);
     expect(getByText("Loading agents…")).toBeTruthy();
-    expect(getByRole("status").className).toContain("font-mono");
+    expect(getByRole("status").className).toContain("font-sans");
   });
 
   it("falls back to a screen-reader-only label when no visible label", () => {

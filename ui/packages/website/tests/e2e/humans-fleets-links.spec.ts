@@ -12,13 +12,15 @@ async function assertFooterLinks(page: Page) {
 
   const internalFooterLinks: InternalLinkCase[] = [
     { label: /^fleet$/i, href: "/#operational-loop" },
-    { label: /^pricing$/i, href: "/#pricing" },
+    { label: /^early access$/i, href: "/#pricing" },
     { label: /^fleets$/i, href: "/fleets" },
     { label: /^llms\.txt$/i, href: "/llms.txt" },
     { label: /^llms-full\.txt$/i, href: "/llms-full.txt" },
     { label: /^OpenAPI$/, href: "/openapi.json" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
+    { label: /^about$/i, href: "/about" },
+    { label: /^contact$/i, href: "mailto:agentsfleet@agentmail.to" },
   ];
 
   for (const link of internalFooterLinks) {
@@ -34,11 +36,11 @@ test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "A fleet, ready to run.",
+      "Keep shipping. Bring a fleet.",
     );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
-    await nav.getByRole("link", { name: /^pricing$/i }).click();
+    await nav.getByRole("link", { name: /^early access$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
@@ -58,13 +60,14 @@ test.describe("Cross-page link coverage", () => {
     await expect(heroCtaPrimary).toHaveJSProperty("tagName", "BUTTON");
     await expect(heroCtaPrimary).not.toHaveAttribute("href", /./);
 
-    // The Hero promo pill is the home page's link to the inline /pricing anchor.
-    await expect(page.getByTestId("hero-promo-pill")).toHaveAttribute("href", "/pricing");
+    await page.getByTestId("hero-promo-pill").click();
+    await expect(page).toHaveURL(/\/#pricing$/);
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
 
     await expect(
       page.getByTestId("hero").getByRole("link", { name: /talk to us/i }),
     ).toHaveCount(0);
-    await expect(page.getByTestId("pricing-cta-enterprise")).toHaveText(/talk to us/i);
+    await expect(page.getByTestId("pricing-cta-early-access")).toHaveText(/request early access/i);
 
     await assertFooterLinks(page);
   });
@@ -81,7 +84,7 @@ test.describe("Cross-page link coverage", () => {
     await page.goto("/fleets");
     await expect(page).toHaveURL(/\/fleets$/);
 
-    await nav.getByRole("link", { name: /^pricing$/i }).click();
+    await nav.getByRole("link", { name: /^early access$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await page.goto("/fleets");
     await expect(page).toHaveURL(/\/fleets$/);

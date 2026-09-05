@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# design-tokens.sh — enforce design-system token discipline across
-# ui/packages/{app,website}/**/*.tsx.
+# design-tokens.sh — enforce design-system token discipline and flat fills
+# across the app, website, and shared design system.
 #
 # Dispatch façade: dispatch/write_ts_adhere_bun.md (Design Tokens / DESIGN TOKEN GATE)
 # Fires in: CONFORM (via `make harness-verify` in `agentsfleet`).
@@ -62,6 +62,8 @@ PATTERNS=(
   '(text|bg|border)-(red|blue|green|yellow|purple|indigo|violet|pink|orange|gray|slate|zinc|neutral)-[0-9]:::use semantic tokens (text-destructive, text-error, text-success, …)'
 )
 
+readonly GRADIENT_REGEX='(repeating-)?(linear|radial|conic)-gradient[[:space:]]*\('
+
 # ── File scope ───────────────────────────────────────────────────────────
 in_scope() {
   local f="$1"
@@ -76,15 +78,31 @@ in_scope() {
   esac
 }
 
+in_gradient_scope() {
+  local f="$1"
+  case "$f" in
+    *.test.*|*.spec.*|*/tests/*|*/coverage/*|*/dist/*|*/.next/*|*/node_modules/*) return 1 ;;
+    ui/packages/app/*.css|ui/packages/app/*.js|ui/packages/app/*.jsx|ui/packages/app/*.mjs|ui/packages/app/*.ts|ui/packages/app/*.tsx) return 0 ;;
+    ui/packages/app/**/*.css|ui/packages/app/**/*.js|ui/packages/app/**/*.jsx|ui/packages/app/**/*.mjs|ui/packages/app/**/*.ts|ui/packages/app/**/*.tsx) return 0 ;;
+    ui/packages/website/*.css|ui/packages/website/*.js|ui/packages/website/*.jsx|ui/packages/website/*.mjs|ui/packages/website/*.ts|ui/packages/website/*.tsx) return 0 ;;
+    ui/packages/website/**/*.css|ui/packages/website/**/*.js|ui/packages/website/**/*.jsx|ui/packages/website/**/*.mjs|ui/packages/website/**/*.ts|ui/packages/website/**/*.tsx) return 0 ;;
+    ui/packages/design-system/*.css|ui/packages/design-system/*.js|ui/packages/design-system/*.jsx|ui/packages/design-system/*.mjs|ui/packages/design-system/*.ts|ui/packages/design-system/*.tsx) return 0 ;;
+    ui/packages/design-system/**/*.css|ui/packages/design-system/**/*.js|ui/packages/design-system/**/*.jsx|ui/packages/design-system/**/*.mjs|ui/packages/design-system/**/*.ts|ui/packages/design-system/**/*.tsx) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "$MODE" in
   --staged|staged)
     FILES=$(git diff --cached --name-only --diff-filter=ACMRT 2>/dev/null || true)
+    GRADIENT_CANDIDATES="$FILES"
     ;;
   --all|all)
     # `git ls-files` reports the index, which includes staged content —
     # so pre-commit-style invocations see staged-but-not-committed files
     # without needing a `--staged` flag.
     FILES=$(git ls-files -- 'ui/packages/app/*.tsx' 'ui/packages/app/*.jsx' 'ui/packages/website/*.tsx' 'ui/packages/website/*.jsx' 2>/dev/null || true)
+    GRADIENT_CANDIDATES=$(git ls-files -- ui/packages/app ui/packages/website ui/packages/design-system 2>/dev/null || true)
     ;;
   *)
     echo "usage: $0 [--all|--staged]" >&2
@@ -127,10 +145,28 @@ if [ "${#SCOPED_FILES[@]}" -gt 0 ]; then
   done
 fi
 
+GRADIENT_FILES=()
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  [ ! -f "$f" ] && continue
+  in_gradient_scope "$f" || continue
+  GRADIENT_FILES+=("$f")
+done <<< "$GRADIENT_CANDIDATES"
+
+if [ "${#GRADIENT_FILES[@]}" -gt 0 ]; then
+  while IFS= read -r match; do
+    [ -z "$match" ] && continue
+    f="${match%%:*}"
+    printf '%s\n  -> use a solid design-system color token; gradients are forbidden\n' "$match"
+    SEEN_FILES_LIST="${SEEN_FILES_LIST}${f}"$'\n'
+    FAIL=1
+  done < <(grep -nHE "$GRADIENT_REGEX" "${GRADIENT_FILES[@]}" 2>/dev/null || true)
+fi
+
 FILES_WITH_VIOLATIONS=$(printf '%s' "$SEEN_FILES_LIST" | sort -u | grep -c . || true)
 
 if [ "$FAIL" = "0" ]; then
-  echo "OK: design-token discipline — no arbitraries that have a token equivalent (mode=$MODE)"
+  echo "OK: design-token discipline — named utilities and flat fills verified (mode=$MODE)"
   exit 0
 fi
 

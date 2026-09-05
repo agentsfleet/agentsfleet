@@ -50,7 +50,7 @@ export function Spinner({
       className={cn(
         "inline-flex items-center gap-2 text-muted-foreground",
         label &&
-          "rounded-md border border-primary/40 bg-primary/10 px-sm py-xs font-mono text-label font-medium leading-label text-primary",
+          "rounded-md border border-primary/40 bg-primary/10 px-sm py-xs font-sans text-label font-medium leading-label text-primary",
         className,
       )}
       {...rest}

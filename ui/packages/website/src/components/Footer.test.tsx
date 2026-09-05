@@ -1,7 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import Footer from "./Footer";
+import { SUPPORT_EMAIL } from "../lib/contact";
+
+const analytics = vi.hoisted(() => ({ trackNavigationClicked: vi.fn() }));
+vi.mock("../analytics/posthog", () => analytics);
 
 function renderFooter() {
   return render(
@@ -12,6 +16,23 @@ function renderFooter() {
 }
 
 describe("Footer", () => {
+  beforeEach(() => analytics.trackNavigationClicked.mockReset());
+
+  it("adds About and direct Contact without duplicate GitHub or legal links", () => {
+    renderFooter();
+    const about = screen.getByRole("link", { name: /^about$/i });
+    const contact = screen.getByRole("link", { name: /^contact$/i });
+    expect(about).toHaveAttribute("href", "/about");
+    expect(contact).toHaveAttribute("href", `mailto:${SUPPORT_EMAIL}`);
+    expect(contact).not.toHaveAttribute("target");
+    for (const name of [/^github$/i, /^privacy$/i, /^terms$/i]) {
+      expect(screen.getAllByRole("link", { name })).toHaveLength(1);
+    }
+    fireEvent.click(about);
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({ source: "footer_about", surface: "footer", target: "about" });
+    fireEvent.click(contact);
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({ source: "footer_contact", surface: "footer", target: "contact" });
+  });
   it("renders the brand name", () => {
     renderFooter();
     expect(screen.getByText(/^agentsfleet$/)).toBeInTheDocument();
@@ -30,7 +51,7 @@ describe("Footer", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^fleet$/i })).toHaveAttribute("href", "/#operational-loop");
-    expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
+    expect(screen.getByRole("link", { name: /^early access$/i })).toHaveAttribute("href", "/#pricing");
     expect(screen.getByRole("link", { name: /^fleets$/i })).toHaveAttribute("href", "/fleets");
   });
 

@@ -41,7 +41,7 @@ describe("Badge", () => {
     const { container } = render(<Badge>X</Badge>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("rounded-sm");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-sans");
     expect(cls).toContain("uppercase");
   });
 

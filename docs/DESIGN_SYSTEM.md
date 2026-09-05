@@ -1,320 +1,182 @@
-# Design System — Operational Restraint
+# agentsfleet design system
 
-**Version:** 0.1 · 2026-05-08
-**Source of truth.** All visual, typographic, and motion decisions in `ui/packages/website`, `ui/packages/app`, `ui/packages/design-system`, `docs.agentsfleet.net`, and `agentsfleet` output read from this document. Do not deviate without explicit user approval and a corresponding update here.
+**Direction:** Clear Signal · **Updated:** 2026-09-05
 
----
+This document governs the app, website, and shared component library.
+Clear Signal names the visual direction; agentsfleet remains the product name.
+The website gallery demonstrates the components.
 
-## Memorable thing
+## Intent
 
-**"It wakes."** A long-lived daemon that wakes on events, runs against a durable replayable log, receives operator direction, and posts evidenced answers. Every visual decision serves this posture.
+Make work, evidence, and next actions easy to recognize.
+Keep the mint identity. Use flat surfaces, readable typography, and precise alignment.
+Brightness comes from foreground contrast and deliberate color.
 
----
-
-## Product context
-
-- **What:** Always-on operational runtime. Agents are long-lived daemons that own one operational outcome end to end.
-- **Who for:** Engineers running production infrastructure who want events → evidence → diagnosis without wiring a chatbot.
-- **Category:** Developer infrastructure / observability adjacent.
-- **Surfaces:**
-  - `ui/packages/website` — marketing site (`agentsfleet.net`)
-  - `ui/packages/app` — authenticated product UI (`app.agentsfleet.net`)
-  - `ui/packages/design-system` — shared React component library
-  - `docs.agentsfleet.net` — long-form technical documentation
-  - `agentsfleet` — CLI output (rendered in 256-color terminals)
-
----
-
-## Aesthetic direction
-
-**"Operational Restraint"** — serious infrastructure brand language with one signature of liveness nobody else owns.
-
-- **Reference vibes:** Anthropic console × Datadog × a single bioluminescent pulse.
-- **Anti-vibes:** Vercel/Linear aurora gradients, purple-to-blue meshes, "magical" hero animations, friendly mascots, generic consumer-chat bubbles, decorative blobs, gradient CTA buttons, bubble-radius everything.
-- **Decoration level:** minimal. The mono typography + the pulse do all the work. A subtle dot-grid background is permitted on marketing hero only (8% opacity).
-- **Mood:** evidenced, machine-precise, slightly haunted, never decorative. The product feels alive but never performs.
-- **Differentiation strategy:** restraint as the differentiator. Every competitor uses aurora gradients. By having none, the single pulse color owns all attention.
-
----
-
-## Interaction restraint — minimize end-user friction
-
-Restraint is procedural, not only visual. Default every flow to the **fewest steps the user must take** — friction is debt, justified only by real risk.
-
-- **No confirmation beats** where intent is already expressed. A primary action (e.g. "Use template") *is* the commit; don't gate it behind a second "Confirm." **Auto-proceed** once prerequisites are met.
-- **Resolve in place.** When a flow needs a credential or a value, surface the input **inline at the point of need** — never bounce the user to another page and back.
-- **Auto-resume.** The instant a gate is satisfied, the flow continues on its own; the user never re-initiates.
-- **Show, don't ask.** Push live state (the run is provisioning) rather than making the user poll, refresh, or click "check status."
-
-**The one exception:** destructive or irreversible actions still confirm. Cutting friction never overrides the safety-confirm rule.
-
-## Product copy
-
-App copy is short, literal, and useful at scan speed.
-
-- **Page subtitles:** one short sentence when possible; two short sentences only when the second carries state the user needs now.
-- **Helper text:** explain the next action, not the feature. Prefer "Create a workspace first." over longer prerequisite prose.
-- **Credential copy:** always say write-only, but keep it short: "Write-only. Replace to rotate."
-- **Install copy:** keep the three beats visible: pick source, connect token, watch live states.
-- **Integration copy:** show current status and one action. Do not describe roadmap detail in row subtitles.
-
----
+The memorable impression is an active fleet whose work you can follow.
+Marketing explains outcomes with product examples.
+The app prioritizes the current task and the next useful action.
 
 ## Typography
 
-### Font stack
+| Role | Family | Use |
+|---|---|---|
+| Display | Bricolage Grotesque | Website hero and large section headings |
+| Interface and reading | Instrument Sans | App titles, navigation, buttons, forms, tables, and prose |
+| Technical | Commit Mono | Code, logs, identifiers, timestamps, and technical values |
 
-| Role | Font | Weights | License | Source |
-|---|---|---|---|---|
-| Display, UI chrome (buttons, labels, badges, nav, headers) | **Commit Mono** | 400, 500, 600, 700 | OFL (free) | https://commitmono.com |
-| Body, paragraphs, long-form copy | **Instrument Sans** | 400, 500, 600 | OFL (free) | https://fonts.google.com/specimen/Instrument+Sans |
-| Code, logs, data tables | **Commit Mono** (same family — keeps the system tight) | 400, 500 | OFL (free) | https://commitmono.com |
+Fonts are bundled through Fontsource. Runtime font downloads from third-party domains are unnecessary.
+Use `font-display`, `font-sans`, and `font-mono` through the shared theme.
+Do not redefine a font family in a consumer stylesheet.
 
-**Optional commercial upgrade:** swap Commit Mono → **Berkeley Mono** (~$300 commercial team license, https://berkeleygraphics.com). Spec is font-agnostic; only the file changes. Recommended only if the user explicitly asks for the peak signal — Commit Mono is intentionally chosen so the entire stack ships free.
+| Token | Size | Role |
+|---|---|---|
+| display-xl | 72px maximum | Responsive website hero |
+| display-lg | 40px maximum | Website sections |
+| display-md | 28px | App titles and major values |
+| heading | 20px | Working sections and card headings |
+| body-lg | 18px | Website introductions |
+| body | 15px | Default reading and controls |
+| body-sm | 14px | Supporting copy and navigation |
+| eyebrow / label | 12px | Short metadata and section labels |
+| mono | 13px | Technical content |
 
-**No-fly list (never use, even if requested without explicit override):**
-- **Geist / Geist Mono** — currently in `ui/packages/website` and `ui/packages/app`. Replace during implementation. Overused; the new Inter.
-- Inter, Inter Tight, Roboto, Arial, Helvetica, Open Sans, Lato, Montserrat, Poppins
-- Space Grotesk (the AI-design convergence trap — every AI tool defaults to it)
-- system-ui / -apple-system as the primary display or body face (the "I gave up on typography" signal)
-
-### Type scale
-
-| Token | Family | Size / Line / Tracking | Weight | Use |
-|---|---|---|---|---|
-| `display-xl` | Commit Mono | 64 / 1.0 / -0.025em | 500 | Marketing hero only |
-| `display-lg` | Commit Mono | 40 / 1.1 / -0.02em | 500 | Section heads on marketing & docs |
-| `display-md` | Commit Mono | 28 / 1.15 / -0.015em | 500 | Stat values, inline metric callouts |
-| `heading` | Commit Mono | 18 / 1.3 / 0 | 500 | App page titles, card heads |
-| `eyebrow` | Commit Mono | 12 / 1.3 / 0.08em uppercase | 500 | Section labels, status eyebrow on hero |
-| `body-lg` | Instrument Sans | 18 / 1.5 / 0 | 400 | Marketing lede, long-form intros |
-| `body` | Instrument Sans | 15 / 1.55 / 0 | 400 | Default body text |
-| `body-sm` | Instrument Sans | 13 / 1.5 / 0 | 400 | Secondary body, helper text |
-| `label` | Commit Mono | 11 / 1.3 / 0.08em uppercase | 500 | Form labels, stat labels |
-| `mono` | Commit Mono | 13 / 1.55 / 0 + tabular-nums | 400 | Code, logs, data, badges |
-
-Apply `font-feature-settings: "tnum"` (or Tailwind `tabular-nums`) on every numeric column, stat value, dashboard row, and CLI table.
-
----
+Use sentence case for controls and navigation.
+Uppercase is reserved for short eyebrows and compact status labels.
+Use tabular numerals for changing values and aligned numeric columns.
+Do not use mono for an entire table when its rows contain names and descriptions.
 
 ## Color
 
-Dark is the **primary** brand surface. All hero shots, marketing screenshots, docs landing pages, and the canonical app screenshot ship dark. Light mode exists and is fully supported, but is never the brand's first impression.
+Dark is the primary brand presentation. Light has equal usability requirements.
+The token file owns exact values; the following roles explain their use.
 
-### Dark mode tokens
-
-| Token | Hex | Use |
+| Role | Dark | Light |
 |---|---|---|
-| `--bg` | `#0A0D0E` | Page background. Near-black, cool undertone. Never use pure `#000`. |
-| `--surface-1` | `#141A1F` | Default elevated surface (cards, sidebars). Lifted from `#11161A` on Jul 07, 2026 — see Decisions log. |
-| `--surface-2` | `#181E22` | Inputs, mockup chrome, elevated cards. |
-| `--surface-3` | `#1F262C` | Hover state, more-elevated layer. |
-| `--border` | `#2B333A` | Default borders. Lifted from `#23292E` on Jul 07, 2026 — see Decisions log. |
-| `--border-strong` | `#2E373E` | Active/focused borders, button outlines. |
-| `--text` | `#E6EAEC` | Default text. Off-white, never pure `#FFF`. |
-| `--text-muted` | `#8B9398` | Secondary text, captions. |
-| `--text-subtle` | `#7A8085` | Tertiary text, timestamps, dim CLI output. AA against `--bg` (4.88:1); lifted from `#5C6469` (3.23:1) on May 11, 2026. |
+| Page | Graphite | Cool off-white |
+| Card | Lifted graphite | White |
+| Input / secondary surface | Distinct graphite layer | Pale green-gray |
+| Hover / selected surface | Brighter graphite | Muted green-gray |
+| Primary text | Near-white | Deep green-black |
+| Secondary text | Clear silver | Dark gray-green |
+| Brand action | Bright mint with dark text | Solid ink with white text |
+| Link / live signal | Bright mint | Deep teal |
 
-### The pulse — used only on live signals
+Use semantic foreground tokens on their intended backgrounds.
+Check primary, muted, and subtle text against every surface where they appear.
+Normal text must reach 4.5:1 contrast; focus and control boundaries must remain identifiable.
+Never reduce a readable text token through opacity to create secondary copy.
 
-| Token | Hex | Rule |
-|---|---|---|
-| `--pulse` | `#5EEAD4` | **Bioluminescent cyan-mint.** The signature accent. Used **only** on live/awake/wake signals: pulse rings on running agents, `LIVE` badges, the brand-mark dot, primary CTA buttons, link color, focus rings. Treat as currency — every additional use dilutes. |
-| `--pulse-dim` | `#2DD4BF` | Pressed state for primary buttons; pulse desaturated. |
-| `--pulse-glow` | `rgba(94, 234, 212, 0.35)` | The expanding ring color in the wake-pulse keyframe. |
+Separate brand actions from status.
+Mint identifies primary actions, links, selected navigation, and live signals.
+Success, warning, error, information, and evidence colors communicate their named meanings.
+Status always includes text or an icon; color alone carries no required information.
 
-**Forbidden uses of `--pulse`:** decorative borders, large background fills, gradient stops, hover states on non-live elements, illustrations.
+## Surfaces and layout
 
-**Sanctioned non-pulse exception — the account avatar.** The dashboard's account-avatar fallback (Clerk `UserButton`, no uploaded photo) is the one place a non-`--pulse` decorative gradient is allowed. It is a deterministic two-colour `repeating-conic-gradient` pinwheel, hashed from the signed-in user's id — hue, second hue and start angle all derive from that hash — so each account reads as visually distinct. Two colours only, within the "no three-or-more-stop gradients" rule below, and never `--pulse` as one of them. Added Jul 07, 2026; see Decisions log.
+- Use solid fills. No linear, radial, conic, or mesh gradients, including avatars and usage bars.
+- Remove ambient glow fields, text shadows, and glowing buttons.
+- Borders define panels. Shadows are reserved for dialogs, menus, and other floating surfaces.
+- Use 6px, 8px, and 12px radii for small details, controls, and panels.
+- Circular shapes are reserved for avatars and status dots.
+- Use the shared 4px spacing scale.
+- Keep related controls close and separate different tasks with clear section gaps.
+- Avoid cards nested inside cards when a divider communicates the same grouping.
 
-**Fleet identity sigils:** every Fleet wall tile carries a deterministic, mirrored dot-matrix robot sigil and agent callsign derived from the immutable fleet id. The geometry and callsign provide identity without replacing the Fleet's functional name or storing profile data. Resting sigils use surface, border, and muted-text tokens; only an actually-live Fleet may switch the sigil to `--pulse` and inherit the existing wake ring. The sigil never introduces a second accent, decorative card border, or permanent glow.
+App layouts use consistent navigation, page titles, section headings, and action positions.
+PageLayout owns section spacing. PageHeader owns the title and description.
+SectionHeader places an action beside the working area it affects.
+Descriptions sit below titles and wrap naturally.
 
-### Status (use sparingly)
+Website layouts use an editorial grid within the shared content width.
+Pair a concise explanation with a concrete product example.
+Vary section composition according to its content.
+Keep narrow-screen reading order meaningful without relying on visual placement.
 
-| Token | Hex | Use |
-|---|---|---|
-| `--success` | `#34D399` | Success log lines, OK states, deltas trending good. |
-| `--warn` | `#F59E0B` | Degraded agents, warning logs. |
-| `--error` | `#F87171` | Failed agents, error logs. |
-| `--info` | `#60A5FA` | Debug logs, neutral informational. |
-| `--evidence` | `#FBBF24` | Warm amber. Reserved for evidence-quoted content (line-numbered logs, citation marks, `EVIDENCE` log labels). |
+## Components
 
-### Light mode (secondary)
+| Component | Rules |
+|---|---|
+| Button | Sans label, solid fill, visible focus, stable disabled state |
+| Input and textarea | Sans by default; explicit mono only for code or technical data |
+| Navigation | Readable sans labels, clear selected state, consistent icon size |
+| Tabs | Shared underline style for both route and local tabs |
+| Card | Flat surface, fine border, one clear heading |
+| Table | Sans names and descriptions; mono identifiers; aligned numeric values |
+| Badge | Short readable label; semantic color only when meaningful |
+| Dialog | Clear title, focused first action, keyboard dismissal when safe |
+| Empty state | Explain the missing item and provide the next action |
+| Error state | Explain what failed and retain the recovery action |
+| Usage bar | Solid mint fill with visible numeric context |
+| Transcript | Distinguish operator input, fleet response, and external activity through structure |
 
-| Token | Hex | Notes |
-|---|---|---|
-| `--bg` | `#F8F6F1` | Warm parchment, never pure white. Reinforces "evidenced document" feel. |
-| `--surface-1` | `#F1EEE6` | |
-| `--surface-2` | `#E9E5DA` | |
-| `--surface-3` | `#DFDACB` | |
-| `--border` | `#D4CDB9` | |
-| `--border-strong` | `#B7AE96` | |
-| `--text` | `#1A1D1E` | |
-| `--text-muted` | `#5A625F` | |
-| `--text-subtle` | `#67706B` | AA against light `--bg` (4.73:1); darkened from `#8A918A` (2.99:1) on May 11, 2026. |
-| `--pulse` | `#14B8A6` | Pulse desaturates 15% in light mode. |
-| `--pulse-dim` | `#0D9488` | |
-| `--pulse-glow` | `rgba(20, 184, 166, 0.30)` | |
-| `--ink` | `#17211F` | Light-mode primary-CTA fill (solid ink, white text). Mint stays for accents/links/active/glow. |
-
-### Forbidden color treatments
-
-- Aurora gradients (purple-to-blue mesh) — anywhere
-- Three-or-more-stop gradients on any surface or button
-- `--pulse` used as a large fill (it's currency, not paint)
-- Pure `#000` background or pure `#FFF` background
-- Status colors used decoratively (only for actual status)
-- Multiple accent colors competing for attention
-
----
-
-## Spacing
-
-- **Base unit:** **4px** (not 8px — engineers want information density, not cathedral whitespace)
-- **Density:** comfortable-dense
-- **Scale:** `2 / 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 / 96` (px)
-- **Rhythm:** primary section vertical padding is 96px on marketing, 48px on app, 32px on dense data views.
-
----
-
-## Layout
-
-- **Marketing site:** editorial within a 12-col grid. Asymmetry permitted in hero only; strict grid everywhere else.
-- **App / dashboard:** strict 12-col grid. Borders > shadows. Tabular-nums on every numeric column. Comfortable-dense rows; no `padding: 24px` rows when 12px holds the same information.
-- **Docs:** single-column, ~68ch measure (`max-width: 720px` at default body size). Commit Mono headers, Instrument Sans body.
-- **CLI / agentsfleet:** 256-color palette mirroring web tokens. Pulse cyan for live state, amber for `EVIDENCE` lines, status colors restrained, no decorative ASCII art (no boxes-around-titles, no banners, no ASCII agents).
-- **Max content width (marketing & docs):** 1280px.
-- **Border radius:** small and hierarchical. `--r-sm: 6px`, `--r-md: 9px`, `--r-lg: 14px`. **No `border-radius: 9999px` on buttons. Ever.** Only on circular dots, avatars, status rings.
-- **Borders preferred over shadows.** A `1px solid var(--border)` is the default elevation cue. Drop shadows are only for floating elements (popovers, modals).
-
----
+Existing component behavior remains authoritative.
+Presentation changes must preserve keyboard interactions, loading state, and accessible names.
+Use shared primitives before adding consumer markup with equivalent behavior.
 
 ## Motion
 
-The system has **two** signature animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Beyond those, **marketing and docs stay still** — motion is functional or absent. The **operator dashboard** (the gated app) is the one deliberate exception: a lived-in workspace earns a restrained, fully reduced-motion-gated motion pass — content mount-rise, a slow ambient glow-drift, hover/press micro-interactions — see *Dashboard motion pass* below.
+Use brief color transitions for hover, focus, and selection.
+Do not move cards or whole pages when navigating or hovering.
+The live indicator may pulse only when the underlying entity is live.
+Reduced motion leaves a static, readable state without dimming the content.
+Terminal demonstrations may reveal lines when their final content remains available without animation.
 
-### Wake pulse (signature)
+## Website illustrations
 
-```css
-@keyframes pulse {
-  0%   { box-shadow: 0 0 0 0 var(--pulse-glow); }
-  50%  { box-shadow: 0 0 0 10px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
-.live { animation: pulse 2.4s ease-in-out infinite; }
-```
+Use original product illustrations alongside concrete interface examples.
+The hero shows a shared engineering workbench with agents, reference material, and an approval checkpoint.
+Supporting diagrams explain an example run and the context available to the next run.
+Use recognizable tool marks where they clarify evidence sources or delivery destinations.
+The incident diagram distinguishes diagnosis from repair. A human request or failed workflow starts the separate approval-gated repair path.
+Label example activity explicitly. Do not present it as live customer activity.
+Keep illustrations still. Supporting path animations play once and respect reduced motion.
+Use solid color regions and crisp edges. Avoid gradients, glossy shading, and ambient glow.
 
-**Rules:**
-- Fires only on actually-live entities (running agents, active streams, `LIVE` badges, the brand-mark dot in the header, the cursor on the hero).
-- The instant a agent is parked, the animation stops.
-- Failed/degraded agents get a static ring in their status color; no pulse.
-- Maximum on-screen: ~5 simultaneous pulses. More than that is visual noise; consolidate to a count.
+The hero image is `ui/packages/website/public/fleet-workshop.webp`.
+It was created with the built-in image generator and encoded as WebP for delivery.
 
-### Install-demo terminal reveal (marketing)
+## Product copy and pricing
 
-The marketing hero's `<Terminal animate>` reveals its install transcript
-line-by-line (staggered `animation-delay`, opacity-only — no slide) so the demo
-reads as "running live". CSS-driven (`[data-terminal-reveal]` in tokens.css),
-no JS timer — same discipline as the wake pulse.
+Explain what a fleet does, what it reads, and what the user can inspect.
+Keep backend implementation details out of product instructions.
+Retain explicit approval requirements wherever an action requires approval.
 
-**Rules:**
-- Marketing surfaces only. Operational log streams (the dashboard event log)
-  keep the functional 80ms fade below — no stagger there.
-- One-shot: lines hold their final visible frame (`forwards`); the reveal never loops.
-- `prefers-reduced-motion: reduce` → every line visible at once, no reveal.
+The website invites early users to try real workflows and provide feedback before launch pricing is decided.
+Explain fleet runtime and model usage separately, including that a personal model key does not remove runtime costs.
+Do not publish unapproved prices, starter-credit promises, savings estimates, or unlimited free usage.
+State that early-access terms precede use and pricing is confirmed before paid usage.
+The authenticated app still displays actual balances and charges from its existing billing data.
+Do not add subscriptions, payment methods, or automatic reload controls without supporting behavior.
+Enterprise discussions must distinguish offered capabilities from requested arrangements.
 
-### Dashboard motion pass (operator app)
+Address both audiences without separate homepages. Founders need concrete jobs and visible results; infrastructure leads need access boundaries, evidence, and spending controls.
+Show setup requirements after the product example. Do not promise instant setup or automatic access from a waitlist submission.
 
-The gated operator dashboard is the one surface that performs — a restrained
-layer over the static system, scoped to `ui/packages/app` and defined in
-`app/globals.css`. It exists because the dashboard is a lived-in workspace, not
-a one-shot marketing read; a little life reads as responsive without tipping
-into the anti-vibes traps the rest of this doc forbids.
+## Interaction principles
 
-- **Mount-rise:** page content fades + rises 10px (`rise-in`, 0.38s, no
-  overshoot) as it mounts / on route change, gently staggered across the page's
-  top-level sections. `both` fill resolves to the visible frame — never pins
-  `opacity: 0` as a resting state.
-- **Ambient glow-drift:** the dashboard's single `--pulse` glow drifts a few
-  percent over ~24s (`glow-drift`). Low-opacity, single radius — a slow breath,
-  explicitly **not** an aurora/mesh gradient.
-- **Micro-interactions:** a faint brightness lift on button hover, a 1px press
-  on active, a 1px sidebar-nav nudge on hover. Transform/filter only — the
-  colour transitions stay with the design-system primitives.
+Expressed intent proceeds without redundant confirmation.
+Credentials and prerequisites appear at the point of need when supported.
+Loading, success, and failure states remain visible where the action began.
+Destructive actions retain their existing confirmation behavior.
 
-**Rules:**
-- Scoped to the gated app dashboard. Marketing + docs keep the "instant, no
-  performance" restraint below.
-- **Every effect is gated:** keyframe animations are neutralised by the global
-  `prefers-reduced-motion: reduce` block; the hover/press lifts live inside a
-  `no-preference` query; the nav nudge uses the `motion-safe:` variant. Under
-  reduced motion the dashboard is as still as the rest of the system.
-- Pinned by `app/tests/shell-motion.test.ts` — the gate is structural, not a
-  review note.
-- Later dashboard motion extends this pass under the same reduced-motion
-  guarantee (the Billing balance meter-fill lands with that screen's rebuild).
+## Implementation and verification
 
-### Functional motion
+1. Define values in `ui/packages/design-system/src/tokens.css`.
+2. Forward named utilities in `ui/packages/design-system/src/theme.css`.
+3. Apply roles inside shared primitives.
+4. Migrate explicit consumer styles.
+5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
-- **Hovers:** `transition: 50ms ease-out`. Snap. No bounce, no spring, no `cubic-bezier` overshoot.
-- **Focus rings:** instant, no animated draw-on. `box-shadow: 0 0 0 3px var(--pulse-glow)`.
-- **Page transitions:** instant on marketing + docs — no fade, no slide. The gated operator dashboard is the exception: page content performs a restrained mount-rise (≤0.4s, reduced-motion-gated) on route change — see *Dashboard motion pass* above.
-- **Log streams (operational):** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger. (The marketing install-demo terminal is the one sanctioned staggered reveal — see above.)
-- **Loading states:** prefer skeleton bars (1-pixel-thick borders) when the page shape is still resolving. For active work already underway (button submits, install states, short route waits), use the shared `Spinner`: a tiny monochrome arc around the WakePulse dot. When visible text is needed, render it as the compact mono install chip (`rounded-md`, pulse-tinted border/background, label text). Do not introduce page-local loader glyphs.
+Use the existing design-system gallery as the visual reference.
+Keep token mappings, accessible contrast, and meaningful component behavior covered.
+Run focused UI checks during implementation.
+Run full repository unit and integration suites immediately before the PR, as directed by the user.
 
-### `prefers-reduced-motion: reduce`
+## Scope
 
-- Pulse animations become a static ring at `0.2` opacity (`box-shadow: 0 0 0 4px var(--pulse-glow)`).
-- Log-stream fade disabled; the install-demo terminal reveal shows all lines at once.
-- Hover transitions retained at 50ms (functional, not decorative).
-
-### Forbidden motion
-
-- Bouncy easings (`elastic`, `bounce`, anything with overshoot)
-- Page-transition fades or slides **on marketing + docs** (the gated dashboard mount-rise is the one sanctioned exception — *Dashboard motion pass*)
-- Scroll-driven animations on marketing (other than the static dot-grid)
-- Animated gradients **as decoration** — no aurora/mesh gradients anywhere; the dashboard's slow, low-opacity single-radius glow-drift is the one sanctioned exception
-- Cursor-following effects, parallax, mouse-tracking glows
-- Spring physics on UI chrome
-
----
-
-## Component principles
-
-- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md` (`9px`). Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
-- **Badges:** mono font, 11px, padding `4px 8px`, border-radius `--r-sm`. Status badges (`LIVE`, `degraded`, `failed`) get colored fills; informational badges get muted outlines.
-- **Form fields:** surface-2 background, border on default, pulse-cyan focus ring with `--pulse-glow` shadow. Mono font for input values (they're operational data, not prose).
-- **Fleet transcripts:** a centered reading column makes human, fleet, and external-source turns scannable. Operator turns align right in a restrained bordered bubble; fleet replies are open text on the left; integration turns are flat activity traces with their outcome below. Conversation turns omit repeated avatars, names, and timestamps. Operational evidence keeps its source, time, result, and expandable payload. Relative activity times may refresh visually, but assistive technology receives a stable absolute instant so a live region does not re-announce elapsed-time changes.
-- **Cards:** surface-1 background, 1px border, `--r-lg` (`14px`) radius. Padding 24px default, 16px in dense data views.
-- **Tables / lists:** prefer flat rows with 1px bottom borders over zebra-striping. Tabular-nums everywhere. Right-align numbers, left-align text.
-- **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
-- **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
-- **Dashboard page rhythm:** `PageLayout` owns the 32px gap between direct page sections. It uses flex gap, never adjacent margins, so standard and full-height pages share the same spacing. `PageHeader` owns title and description only. `SectionHeader` owns the labelled working area and places its primary action on the right when that area has one.
-- **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional page-level action pins top-right only when it acts on the whole page. The title + description form a left column, and the action aligns to its top.
-- **Usage bars:** a thin (8px) full-width track (`--surface-3`/`bg-accent`) with a `--pulse-dim → --pulse` gradient fill whose width is the consumed fraction; the fill animates `0 → value` on load (`meter-fill`, reduced-motion-gated). A usage bar, not a gauge — an optional label + tabular-nums percentage row sits above, an optional caption below. `UsageBar` (`design-system/UsageBar.tsx`), not a marketing primitive; `globals.css` owns only the animation keyframe. First consumer: Billing's balance card (unlabeled — the dollar headline above it already states the value).
-- **Option cards:** a bordered choice card (icon slot + label + optional one-line description), `data-state="checked"` gets a `--primary`/`--border-strong` ring — the picker idiom for a small (2-5) set of mutually-exclusive choices where a plain dropdown hides the tradeoff. Built on the existing `RadioGroup`/`RadioGroupItem` Radix primitive (`OptionCard`, `design-system/OptionCard.tsx`), not a second radio implementation. First consumer: `AddRunnerDialog`'s isolation-mode field, replacing a `Select` dropdown.
-
----
-
-## CLI / agentsfleet rendering
-
-- **Palette mapping** (256-color terminal):
-  - `--pulse` → `#5EEAD4` (closest 256: 79 / `cyan2`)
-  - `--evidence` → `#FBBF24` (closest 256: 220 / `gold1`)
-  - `--success` → `#34D399` (closest 256: 78)
-  - `--warn` → `#F59E0B` (closest 256: 214)
-  - `--error` → `#F87171` (closest 256: 210)
-  - `--text-muted` → `#8B9398` (closest 256: 102 / `grey53`)
-  - `--text-subtle` → `#7A8085` (closest 256: 244)
-- **Status glyphs:**
-  - Live: `●` in `--pulse`
-  - Parked: `○` in `--text-subtle`
-  - Degraded: `●` in `--warn`
-  - Failed: `✕` in `--error`
-- **`EVIDENCE` lines:** `EVIDENCE` label in `--evidence`, source ref in `--text`, quoted content in `--text-muted`.
-- **No decorative ASCII art** — no agent face, no boxes around titles, no banners, no rocket emoji. The CLI is operational output.
-
----
+This update governs web surfaces.
+Terminal output keeps its existing palette and rendering rules.
+Historical decisions below record prior directions; the current sections above supersede conflicting visual guidance.
 
 ## Decisions log
 
@@ -339,8 +201,9 @@ into the anti-vibes traps the rest of this doc forbids.
 | 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
 | 2026-07-07 | Lift dark-mode `--border`/`--surface-1` one step brighter | M119 §1. Resting-state cards/tables only read as defined on hover (`--border` sat ~4% luminance above `--surface-1`), benchmarked against a PlanetScale dashboard reference. Dark `--border` `#23292E → #2B333A`, `--surface-1` `#11161A → #141A1F`. Value-only; every existing `border-border`/`bg-card` consumer inherits it. Light mode untouched (vestigial — `ThemeToggle.tsx` forces dark). |
 | 2026-07-07 | Formalize `UsageBar` and `OptionCard` as shared primitives | M119 §2, §4. `UsageBar` extracts the bespoke `.app-meter` markup (previously hand-rolled once, in `BillingBalanceCard`) into a reusable component — see "Usage bars" above. `OptionCard` builds the M98 §3-4 "option-card" idiom (until now ad-hoc prose, never extracted into code) on top of the existing, previously-zero-consumer `RadioGroup` primitive — see "Option cards" above. First consumer: `AddRunnerDialog`'s isolation-mode field. |
-| 2026-07-07 | Sanction one non-`--pulse` decorative pattern: the account avatar | M119 §5. The dashboard account avatar (Clerk `UserButton` fallback) rendered every user against the same flat `--surface-2`. Added a deterministic, per-user `repeating-conic-gradient` pinwheel (hue, second hue, and start angle all hashed from the user id) so accounts read as visually distinct — a pattern reads closer to "distinct identity" than a smooth blend, approximating GitHub/Linear-style per-account avatar colour without a pixel-grid identicon (Clerk's `appearance.elements` styling hook accepts CSS values only, not custom child markup — a true identicon is a follow-up, not this patch). Never `--pulse`; two colours only, within the "no three-or-more-stop gradients" rule. |
+| 2026-07-07 | Sanction one non-`--pulse` decorative pattern: the account avatar | M119 §5 introduced a deterministic account-avatar pinwheel. Clear Signal retired this exception on 2026-09-05; avatars now use one deterministic solid color. This row remains only as history. |
 | 2026-07-22 | Give each Fleet a deterministic robot sigil and agent callsign | The Fleet wall needed persistent identity without adopting friendly mascots or obscuring functional names. The immutable fleet id seeds mirrored geometry and a stable callsign; live Fleets alone use the existing pulse colour and wake ring. The tile also states that a Fleet is an AI agent and exposes a visible Manage fleet affordance. |
 | 2026-07-23 | Fleet detail supports an operational conversation | Operators can steer a fleet in a centered transcript alongside evidence from GitHub, Slack, Zoho, Grafana, logs, and other sources. Human turns are distinct from source-context cards; fleet replies remain evidence-first and never use generic consumer-chat styling. |
+| 2026-09-05 | Clear Signal: sans interface, expressive display, flat surfaces | User approved brighter clarity, retained mint, and removal of gradients across app and website. |
 
----
+The flat-fill rule is enforced by `audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.

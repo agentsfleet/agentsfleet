@@ -67,10 +67,6 @@ function PagePagination({
   className,
 }: PagePaginationProps) {
   const totalPages = total != null ? Math.max(1, Math.ceil(total / pageSize)) : null;
-  const hasPrev = page > 1;
-  const selectablePageSizes = pageSizeOptions.includes(pageSize)
-    ? pageSizeOptions
-    : [pageSize, ...pageSizeOptions];
   // An explicit `hasNext` always wins: only the caller holding the cursor
   // knows whether the feed continues.
   const canAdvance = hasNext ?? (totalPages == null ? true : page < totalPages);
@@ -82,73 +78,88 @@ function PagePagination({
       aria-label="Pagination"
       aria-busy={isLoading ? "true" : "false"}
       className={cn(
-        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 font-mono",
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 font-sans",
         className,
       )}
     >
-      <div className="flex items-center gap-2 text-label font-medium uppercase tracking-label text-muted-foreground">
-        <span>Rows per page</span>
-        {onPageSizeChange ? (
-          <Select
-            value={String(pageSize)}
-            onValueChange={(value) => onPageSizeChange(Number(value))}
-            disabled={isLoading}
-          >
-            <SelectTrigger
-              aria-label="Rows per page"
-              className="h-8 w-20 bg-card px-2 py-1 font-mono text-xs tabular-nums"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {selectablePageSizes.map((size) => (
-                <SelectItem key={size} value={String(size)} className="font-mono tabular-nums">
-                  {size}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <span className="rounded-sm border border-border bg-card px-2 py-1 text-xs tabular-nums text-foreground">
-            {pageSize}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-1">
-        <div className="mr-2 flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-          <span aria-live="polite" aria-atomic="true">
-            {totalPages != null
-              ? `Page ${page} of ${totalPages} · ${total} ${totalLabel}`
-              : `Page ${page}`}
-          </span>
-          {isLoading ? (
-            <Spinner size="sm" label="Loading…" className="border-0 bg-transparent p-0" />
-          ) : null}
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={!hasPrev || isLoading}
-          onClick={() => onPageChange(page - 1)}
-          aria-label="Previous page"
-        >
-          <span aria-hidden="true">‹</span>
-          Prev
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={!canAdvance || isLoading}
-          onClick={() => onPageChange(page + 1)}
-          aria-label="Next page"
-        >
-          Next
-          <span aria-hidden="true">›</span>
-        </Button>
-      </div>
+      <PageSizeControl pageSize={pageSize} pageSizeOptions={pageSizeOptions} onPageSizeChange={onPageSizeChange} isLoading={isLoading} />
+      <PageNavigation page={page} total={total} totalPages={totalPages} totalLabel={totalLabel} canAdvance={canAdvance} onPageChange={onPageChange} isLoading={isLoading} />
     </nav>
+  );
+}
+
+function PageSizeControl({ pageSize, pageSizeOptions, onPageSizeChange, isLoading }: Pick<PagePaginationProps, "pageSize" | "onPageSizeChange" | "isLoading"> & { pageSizeOptions: readonly number[] }) {
+  const selectablePageSizes = pageSizeOptions.includes(pageSize)
+    ? pageSizeOptions
+    : [pageSize, ...pageSizeOptions];
+  return (
+    <div className="flex items-center gap-2 text-label font-medium uppercase tracking-label text-muted-foreground">
+      <span>Rows per page</span>
+      {onPageSizeChange ? (
+        <Select
+          value={String(pageSize)}
+          onValueChange={(value) => onPageSizeChange(Number(value))}
+          disabled={isLoading}
+        >
+          <SelectTrigger
+            aria-label="Rows per page"
+            className="h-8 w-20 bg-card px-2 py-1 font-sans text-xs tabular-nums"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="start">
+            {selectablePageSizes.map((size) => (
+              <SelectItem key={size} value={String(size)} className="font-sans tabular-nums">
+                {size}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <span className="rounded-sm border border-border bg-card px-2 py-1 text-xs tabular-nums text-foreground">
+          {pageSize}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPageChange, isLoading }: Pick<PagePaginationProps, "page" | "total" | "totalLabel" | "onPageChange" | "isLoading"> & { totalPages: number | null; canAdvance: boolean }) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className="mr-2 flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+        <span aria-live="polite" aria-atomic="true">
+          {totalPages != null
+            ? `Page ${page} of ${totalPages} · ${total} ${totalLabel}`
+            : `Page ${page}`}
+        </span>
+        {isLoading ? (
+          <Spinner size="sm" label="Loading…" className="border-0 bg-transparent p-0" />
+        ) : null}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={page <= 1 || isLoading}
+        onClick={() => onPageChange(page - 1)}
+        aria-label="Previous page"
+      >
+        <span aria-hidden="true">‹</span>
+        Prev
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={!canAdvance || isLoading}
+        onClick={() => onPageChange(page + 1)}
+        aria-label="Next page"
+      >
+        Next
+        <span aria-hidden="true">›</span>
+      </Button>
+    </div>
   );
 }
 

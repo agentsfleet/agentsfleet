@@ -24,7 +24,7 @@ export function WorkspaceSwitcherTrigger({
       type="button"
       variant="outline"
       size="sm"
-      className="bg-card font-mono text-eyebrow"
+      className="bg-card font-sans text-body-sm"
       {...props}
     >
       {busy ? (
