@@ -141,9 +141,9 @@ The strip shows fleet status, the latest run's outcome, tokens, cost, duration a
 
 The runner detail page awaits the runner before starting the leases or activity read, though both need only the URL id; the admin models page reads the platform keys after the model list. Both pages start the second read beside the first and await it after, keeping every existing failure mapping.
 
-- **Dimension 3.1** — the runner page issues the runner read and the view read before either resolves → Test `runner detail starts the view read beside the runner read`
-- **Dimension 3.2** — the admin models page issues the model list and the platform keys read before either resolves → Test `admin models starts both reads together`
-- **Dimension 3.3** — a 404 runner still renders not-found and a failed view read still renders its warning → Test `runner detail failure handling is unchanged by the parallel start`
+- **Dimension 3.1** — DONE — the runner page issues the runner read and the view read before either resolves → Test `runner detail starts the view read beside the runner read`
+- **Dimension 3.2** — DONE — the admin models page issues the model list and the platform keys read before either resolves → Test `admin models starts both reads together`
+- **Dimension 3.3** — DONE — a 404 runner still renders not-found and a failed view read still renders its warning → Test `runner detail failure handling is unchanged by the parallel start`
 
 ### §4 — Writes paint before the server answers
 

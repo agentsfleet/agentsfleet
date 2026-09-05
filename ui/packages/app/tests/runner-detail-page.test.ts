@@ -2,6 +2,7 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ApiError } from "@/lib/api/errors";
+import { LEASES_UNAVAILABLE } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
 
 // ── Shared mocks (the runners-page harness shape: page guards under test,
 // presentational children stubbed to markers — each child carries its own
@@ -115,6 +116,11 @@ async function loadPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   hasScopeMock.mockResolvedValue(true);
+  // The view read now starts beside the runner read, so it is issued even when
+  // the runner read ends in a redirect or not-found. It must answer with a
+  // promise in every case; tests that care queue their own value first.
+  listRunnerLeasesMock.mockResolvedValue(EMPTY_PAGE);
+  listRunnerEventsMock.mockResolvedValue(EMPTY_PAGE);
   delete process.env[GRAFANA_ENV];
 });
 
@@ -158,6 +164,42 @@ describe("admin/runners/[runnerId] page", () => {
     getRunnerMock.mockRejectedValueOnce(new ApiError("exploded", 500, "UZ-INTERNAL-001"));
     const Page = await loadPage();
     await expect(Page(pageProps())).rejects.toThrow("exploded");
+  });
+
+  it("runner detail starts the view read beside the runner read", async () => {
+    mockAuth();
+    let releaseRunner: (runner: typeof RUNNER) => void = () => {};
+    getRunnerMock.mockReturnValueOnce(
+      new Promise<typeof RUNNER>((resolve) => {
+        releaseRunner = resolve;
+      }),
+    );
+    const Page = await loadPage();
+    const rendering = Page(pageProps());
+    // The lease read is on the wire while the runner read is still pending —
+    // one round-trip, not two in sequence.
+    await vi.waitFor(() => expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, { limit: 25 }));
+    expect(getRunnerMock).toHaveBeenCalledTimes(1);
+    releaseRunner(RUNNER);
+    const html = renderToStaticMarkup(await rendering);
+    expect(html).toContain('data-lease-table="0"');
+  });
+
+  it("runner detail failure handling is unchanged by the parallel start", async () => {
+    // Not-found still short-circuits the page even though the lease read was
+    // already issued, and a failed lease read still renders its warning.
+    mockAuth();
+    getRunnerMock.mockRejectedValueOnce(new ApiError("no runner", 404, "UZ-RUN-014"));
+    const Page = await loadPage();
+    await expect(Page(pageProps())).rejects.toThrow("notFound");
+    expect(listRunnerLeasesMock).toHaveBeenCalledTimes(1);
+
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockRejectedValueOnce(new Error("lease read down"));
+    const html = renderToStaticMarkup(await Page(pageProps()));
+    expect(html).toContain(LEASES_UNAVAILABLE);
+    expect(html).toContain('data-runner-strip="1"');
   });
 
   it("lands on Leases by default: strip over the table, tracker armed, no Grafana without a base", async () => {
