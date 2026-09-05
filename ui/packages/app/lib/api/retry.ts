@@ -1,13 +1,16 @@
 import { ApiError } from "./errors";
-import { request } from "./client";
 
 /**
- * HTTP retry wrapper mirroring `cli/src/lib/http-retry.ts`'s
+ * The retry policy mirroring `cli/src/lib/http-retry.ts`'s
  * `apiRequestWithRetry`. Same retryable-status set, same backoff
  * math, same Retry-After honoring, same server-5xx idempotency gate,
  * same `onAttempt`/`onRetry` hook surface — so dashboard + CLI
  * behaviour stays consistent for the operator. Bounds + defaults are
  * pinned identical to keep one mental model.
+ *
+ * Policy only: this module never imports the transport. `client.ts` owns the
+ * single attempt and wraps it with `runWithRetry`, so the dependency points
+ * one way and neither side can retry the other's retry.
  */
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -16,6 +19,14 @@ const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
 
 const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
+
+/**
+ * The `ApiError.code` a client-side request timeout carries — the retry
+ * layer's own class, distinct from any `UZ-` wire code. The classifier and the
+ * transport both read it, so it is declared once here.
+ */
+export const RETRY_CODE_TIMEOUT = "TIMEOUT";
+const RETRY_CODE_CONFIG_INVALID = "CONFIG_INVALID";
 
 export type RetryReason =
   | "timeout"
@@ -48,11 +59,17 @@ export type RetryOptions = {
   sleepImpl?: (ms: number) => Promise<void>;
   /** Test seam: replaces `Math.random` so jitter is deterministic. */
   randomFn?: () => number;
+  /**
+   * The caller's cancellation. Once it is aborted the loop stops: no further
+   * attempt is made and a backoff already in progress ends early, so a page
+   * the operator has left never holds a server render for its retry schedule.
+   */
+  signal?: AbortSignal;
 };
 
 export function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
-    if (err.code === "TIMEOUT") return "timeout";
+    if (err.code === RETRY_CODE_TIMEOUT) return "timeout";
     if (RETRYABLE_STATUSES.has(err.status)) {
       if (err.status === 429) return "429";
       return "5xx";
@@ -119,6 +136,24 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Sleeps for `ms`, or until `signal` aborts — whichever comes first. */
+function sleepUnlessAborted(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal === undefined) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    void sleep(ms).then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
+  });
+}
+
 function isNoRetryEnv(): boolean {
   // `process.env` is defined in every runtime this ships to (Node on the
   // server, the webpack/Edge shim in the browser); a non-public var simply
@@ -135,6 +170,7 @@ type ResolvedRetry = {
   randomFn: () => number;
   onAttempt?: (info: AttemptInfo) => void;
   onRetry?: (info: RetryInfo) => void;
+  signal?: AbortSignal;
 };
 
 function resolveRetryConfig(options: RetryOptions): ResolvedRetry {
@@ -147,7 +183,7 @@ function resolveRetryConfig(options: RetryOptions): ResolvedRetry {
     throw new ApiError(
       `retry.maxAttempts must be an integer in 1..${MAX_ATTEMPTS_HARD_CAP}`,
       0,
-      "CONFIG_INVALID",
+      RETRY_CODE_CONFIG_INVALID,
     );
   }
   return {
@@ -158,6 +194,7 @@ function resolveRetryConfig(options: RetryOptions): ResolvedRetry {
     randomFn: options.randomFn ?? Math.random,
     onAttempt: options.onAttempt,
     onRetry: options.onRetry,
+    signal: options.signal,
   };
 }
 
@@ -183,12 +220,14 @@ type AttemptContext = {
 
 /** Decides whether a failed attempt retries. Returns the backoff delay (and
  * fires `onRetry`) when it should, else null. The server-5xx idempotency gate
- * blocks replay of non-idempotent methods. */
+ * blocks replay of non-idempotent methods; a caller that has already cancelled
+ * gets no further attempt, whatever the failure class. */
 function planRetry(
   err: unknown,
   cfg: ResolvedRetry,
   ctx: AttemptContext,
 ): { delayMs: number } | null {
+  if (cfg.signal?.aborted) return null;
   const reason = classifyRetryable(err);
   const isServer5xx = ctx.status !== undefined && ctx.status >= 500;
   const unsafeReplay = reason === "5xx" && isServer5xx && !isIdempotentMethod(ctx.method);
@@ -208,39 +247,40 @@ function planRetry(
 }
 
 /**
- * Wraps `request<T>` with the CLI-parity retry policy. On success the
- * unwrapped body is returned exactly as `request<T>` returns it. On
- * non-retryable failure (or after `maxAttempts` exhausted) the last
- * `ApiError` is re-thrown.
+ * Runs one attempt under the policy. `method` decides the server-5xx replay
+ * gate — a POST or PATCH that reached the server is never replayed on a 5xx.
+ * On success the attempt's value is returned as is. On a non-retryable failure
+ * (or after `maxAttempts` exhausted) the last error is re-thrown.
  */
-export async function requestWithRetry<T>(
-  path: string,
-  init: RequestInit,
-  token: string,
+export async function runWithRetry<T>(
+  attempt: () => Promise<T>,
+  method: string,
   options: RetryOptions = {},
 ): Promise<T> {
   const cfg = resolveRetryConfig(options);
-  const method = init.method ?? "GET";
   // `planRetry` owns the ceiling (`attempt < maxAttempts`); on the final
   // attempt it returns null, so the loop always exits via return (success)
   // or throw (failure) — no normal fall-through after the loop.
-  let attempt = 0;
+  let attemptNumber = 0;
   for (;;) {
-    attempt += 1;
+    attemptNumber += 1;
     const startedAt = Date.now();
     try {
-      const result = await request<T>(path, init, token);
-      emitTerminalAttempt(cfg.onAttempt, attempt, 200, Date.now() - startedAt);
+      const result = await attempt();
+      emitTerminalAttempt(cfg.onAttempt, attemptNumber, 200, Date.now() - startedAt);
       return result;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       const status = err instanceof ApiError ? err.status : undefined;
-      const step = planRetry(err, cfg, { attempt, status, durationMs, method });
+      const step = planRetry(err, cfg, { attempt: attemptNumber, status, durationMs, method });
       if (step) {
-        await cfg.sleep(step.delayMs);
-        continue;
+        await sleepUnlessAborted(cfg.sleep, step.delayMs, cfg.signal);
+        // A cancel that landed during the backoff ends the loop here, on the
+        // error already in hand — the next attempt would only fail against an
+        // aborted signal.
+        if (!cfg.signal?.aborted) continue;
       }
-      emitTerminalAttempt(cfg.onAttempt, attempt, status, durationMs);
+      emitTerminalAttempt(cfg.onAttempt, attemptNumber, status, durationMs);
       throw err;
     }
   }

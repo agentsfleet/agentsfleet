@@ -7,6 +7,13 @@ import { configure } from "@testing-library/dom";
 // keeps a caller-provided value intact.
 process.env.NEXT_PUBLIC_API_URL ??= "https://api-test.agentsfleet.net";
 
+// Unit tests never reach a backend, so a retry can only add wall time and
+// re-count a stubbed fetch. The transport's own env switch turns the policy off
+// for the suite; a test that proves retry behaviour stubs it back to ""
+// (`vi.stubEnv("AGENTSFLEET_NO_RETRY", "")`) — the same seam the acceptance
+// journeys use in the other direction. `??=` keeps a caller-provided value.
+process.env.AGENTSFLEET_NO_RETRY ??= "1";
+
 /// Async ceiling for waitFor/findBy* across the suite.
 const ASYNC_UTIL_TIMEOUT_MS = 5_000;
 

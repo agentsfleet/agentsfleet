@@ -1,5 +1,6 @@
 import { ApiError, RequestCancelledError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
+import { RETRY_CODE_TIMEOUT, runWithRetry, type RetryOptions } from "./retry";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
 // No fallback on purpose: a silent api-dev default once pointed env-less
@@ -22,6 +23,26 @@ export const API_ORIGIN = requireApiOrigin();
 // In the browser we go through the same-origin `/backend` proxy configured in
 // next.config.ts `rewrites` — browser never sees a cross-origin request.
 export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
+
+// Per-attempt ceiling for a request whose caller passes no `signal`. The same
+// window the SSE backfill grants its proxy fetch: long enough for a slow page
+// read, short enough that a hung backend fails the render instead of pinning
+// it. A caller with a stricter or looser budget passes its own signal and this
+// default does not apply.
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+// A client-side timeout has no server status. 408 is the closest standard
+// meaning (the request did not complete in time) and is already in the retry
+// layer's transient set, so a timed-out read is retried like any other blip.
+const REQUEST_TIMEOUT_STATUS = 408;
+const METHOD_GET = "GET";
+const METHOD_HEAD = "HEAD";
+const METHOD_PUT = "PUT";
+// The methods `request()` retries on its own. Narrower than the policy's
+// idempotency gate on purpose: a DELETE is idempotent in effect but not in
+// answer — a 204 lost to the network comes back as a 404 on the replay, and the
+// transport would then report a deletion that happened as a failure. Callers
+// that want DELETE, POST or PATCH replayed say so through `requestWithRetry`.
+const DEFAULT_RETRY_METHODS: ReadonlySet<string> = new Set([METHOD_GET, METHOD_HEAD, METHOD_PUT]);
 
 /**
  * Parses a `Retry-After` header value into milliseconds. Honors the
@@ -77,6 +98,11 @@ function isAbort(cause: unknown): boolean {
   return cause instanceof Error && cause.name === "AbortError";
 }
 
+/** True for the abort `AbortSignal.timeout` raises — `TimeoutError`, never `AbortError`. */
+function isTimeout(cause: unknown): boolean {
+  return cause instanceof Error && cause.name === "TimeoutError";
+}
+
 export function parseRetryAfterHeaderValue(headerVal: string | null): number | null {
   if (!headerVal) return null;
   const n = Number(headerVal);
@@ -112,19 +138,66 @@ export async function request<T>(
 // catalog row editor): the caller holds the tag and sends it back as `If-Match`
 // on the next write, so a concurrent edit is a 412 rather than a silent
 // overwrite. `etag` is null when the endpoint sets no header.
+//
+// Reads (and the one replay-safe write, PUT) ride the retry policy by default.
+// Every other write keeps one attempt unless its caller opts in through
+// `requestWithRetry`: a timed-out POST may well have been processed, and
+// replaying it is the caller's decision, not the transport's.
 export async function requestWithEtag<T>(
   path: string,
   init: RequestInit,
   token: string,
 ): Promise<{ data: T; etag: string | null }> {
-  if ((init.method ?? "GET").toUpperCase() === "GET") {
-    recordWorkspaceFetchForAcceptance(path);
-  }
+  const method = methodOf(init);
+  recordAudit(path, method);
+  const attempt = () => attemptWithEtag<T>(path, init, token);
+  return DEFAULT_RETRY_METHODS.has(method)
+    ? runWithRetry(attempt, method, { signal: init.signal ?? undefined })
+    : attempt();
+}
 
+/**
+ * `request` with an explicit retry configuration, for the callers that own
+ * their replay decision — the steer POST, the thread and events reads. The
+ * policy is `retry.ts`'s; its idempotency gate still refuses to replay a
+ * non-idempotent method on a server 5xx.
+ */
+export async function requestWithRetry<T>(
+  path: string,
+  init: RequestInit,
+  token: string,
+  options: RetryOptions = {},
+): Promise<T> {
+  const method = methodOf(init);
+  recordAudit(path, method);
+  return runWithRetry(async () => (await attemptWithEtag<T>(path, init, token)).data, method, {
+    signal: init.signal ?? undefined,
+    ...options,
+  });
+}
+
+function methodOf(init: RequestInit): string {
+  return (init.method ?? METHOD_GET).toUpperCase();
+}
+
+// Audited once per logical request, never per attempt: the acceptance budget
+// counts what a render asked for, and a transient retry is not a second ask.
+function recordAudit(path: string, method: string): void {
+  if (method === METHOD_GET) recordWorkspaceFetchForAcceptance(path);
+}
+
+// One attempt: the fetch, the abort classification, and the RFC 7807 parse.
+async function attemptWithEtag<T>(
+  path: string,
+  init: RequestInit,
+  token: string,
+): Promise<{ data: T; etag: string | null }> {
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       ...init,
+      // The caller's signal wins; only a request with none gets the default.
+      signal: init.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -139,6 +212,11 @@ export async function requestWithEtag<T>(
     // leaves every caller to recognise it, and the ones that do not turn a
     // page the user already left into an unhandled rejection.
     if (isAbort(cause)) throw new RequestCancelledError(path);
+    // A timeout IS a failure, and a transient one: the retry layer classifies
+    // this code as retryable, so a hung read gets its second chance.
+    if (isTimeout(cause)) {
+      throw new ApiError(`request to ${path} timed out`, REQUEST_TIMEOUT_STATUS, RETRY_CODE_TIMEOUT);
+    }
     throw cause;
   }
 
