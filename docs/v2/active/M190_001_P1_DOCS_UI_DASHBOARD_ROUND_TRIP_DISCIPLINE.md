@@ -248,19 +248,19 @@ No new HTTP endpoint. Every read the summary action composes exists today.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The completion hook never touches the router (§1) | `grep -cE "next/navigation\|router\." ui/packages/app/components/domain/useRefreshOnCompletion.ts` | 0 | P0 | |
-| R2 | The default timeout is declared once and applied (§2) | `grep -c "DEFAULT_REQUEST_TIMEOUT_MS" ui/packages/app/lib/api/client.ts` | 2 or more | P0 | |
-| R3 | Both pages start their reads together (§3) | `grep -c "Promise.allSettled" "ui/packages/app/app/(dashboard)/admin/models/page.tsx"; grep -n "startRunnerViewRead(\|await loadRunner(" "ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/page.tsx"` | 1; the `startRunnerViewRead(` call line precedes the `await loadRunner(` line | P0 | |
-| R4 | Four mutation surfaces are optimistic (§4) | `grep -rl useOptimistic ui/packages/app/app ui/packages/app/components \| wc -l` | 4 | P0 | |
-| R5 | Scoreboard re-measured (§4.6) | `grep -n "useOptimistic" docs/architecture/web_app.md \| grep -c "| 4 |"` | 1 | P1 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| R1 | The completion hook never touches the router (§1) | `grep -cE "next/navigation\|router\." ui/packages/app/components/domain/useRefreshOnCompletion.ts` | 0 | P0 | ✅ `0` |
+| R2 | The default timeout is declared once and applied (§2) | `grep -c "DEFAULT_REQUEST_TIMEOUT_MS" ui/packages/app/lib/api/client.ts` | 2 or more | P0 | ✅ `2` |
+| R3 | Both pages start their reads together (§3) | `grep -c "Promise.allSettled" "ui/packages/app/app/(dashboard)/admin/models/page.tsx"; grep -n "startRunnerViewRead(\|await loadRunner(" "ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/page.tsx"` | 1; the `startRunnerViewRead(` call line precedes the `await loadRunner(` line | P0 | ✅ `1`; `startRunnerViewRead(` on line 94, `await loadRunner(` on line 95 |
+| R4 | Four mutation surfaces are optimistic (§4) | `grep -rl useOptimistic ui/packages/app/app ui/packages/app/components \| wc -l` | 4 | P0 | ✅ `4` |
+| R5 | Scoreboard re-measured (§4.6) | `grep -n "useOptimistic" docs/architecture/web_app.md \| grep -c "| 4 |"` | 1 | P1 | ✅ `1` |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 41 paths, all in Files Changed after the recorded amendments |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN ── ready for VERIFY` |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Slow tier green (code-carrying branch) | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S5 | Version sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S4 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` (exit 0) |
+| S5 | Version sync | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.27.1` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found`, 5193 commits scanned |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output after the four suites were split |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ plus one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 

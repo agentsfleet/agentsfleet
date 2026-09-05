@@ -140,8 +140,9 @@ describe("ApprovalsList — resolve actions", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
     });
-    // A refused resolve leaves the row where it was.
-    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+    // A refused resolve leaves the row where it was. The error state lands
+    // before the transition settles, so the restored row is awaited, not read.
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
   });
 
   it("renders error message when approveApprovalAction surfaces a network error", async () => {
