@@ -2,7 +2,6 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ApiError } from "@/lib/api/errors";
-import { LEASES_UNAVAILABLE } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
 
 // ── Shared mocks (the runners-page harness shape: page guards under test,
 // presentational children stubbed to markers — each child carries its own
@@ -198,6 +197,11 @@ describe("admin/runners/[runnerId] page", () => {
     getRunnerMock.mockResolvedValueOnce(RUNNER);
     listRunnerLeasesMock.mockRejectedValueOnce(new Error("lease read down"));
     const html = renderToStaticMarkup(await Page(pageProps()));
+    // Resolved here, not at module top: a static import of the copy module would
+    // load the mocked runners module before the hoisted mock factory's consts exist.
+    const { LEASES_UNAVAILABLE } = await import(
+      "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy"
+    );
     expect(html).toContain(LEASES_UNAVAILABLE);
     expect(html).toContain('data-runner-strip="1"');
   });
