@@ -122,10 +122,18 @@ impl<S: Deliver> Worker<S> {
     /// and the next turn of the loop re-reads. The one thing that ends this
     /// function is cancellation.
     pub async fn run(mut self, token: CancellationToken) {
-        // Idempotent, and here rather than only at boot so a worker that starts
-        // before the group exists — or after one is lost to a failover onto an
-        // empty replica — heals itself instead of reading into a `NOGROUP`
-        // forever.
+        // Idempotent, and at boot rather than per turn: an existing group answers
+        // `BUSYGROUP`, which is the steady state.
+        //
+        // A group lost AFTER this — deleted out of band, a failover onto an
+        // empty replica — is not repaired here, and that is deliberate rather
+        // than missed. Recreating it at the stream's end skips answers appended
+        // while it was gone, and recreating it at the beginning re-delivers
+        // answers already acknowledged, which for this stream means posting the
+        // same reply to a real channel twice. Resuming exactly where delivery
+        // stopped needs a durable record of the last acknowledged id, and that
+        // belongs with the producer this stream is still waiting for: nothing
+        // in the daemon calls `OutboundQueue::enqueue` yet.
         if let Err(failure) = self.queue.ensure_group().await {
             report("outbound_group_ensure_failed", &failure.into());
         }
@@ -196,9 +204,7 @@ impl<S: Deliver> Worker<S> {
             Ok(Some(job)) => return Turn::Job(Box::new(job)),
             Ok(None) => {}
             Err(failure) => {
-                return self
-                    .read_failed("outbound_read_pending_failed", failure)
-                    .await;
+                return Self::read_failed("outbound_read_pending_failed", failure);
             }
         }
 
@@ -212,36 +218,13 @@ impl<S: Deliver> Worker<S> {
             read = self.reader.read_blocking(BLOCK_INTERVAL) => match read {
                 Ok(Some(job)) => Turn::Job(Box::new(job)),
                 Ok(None) => Turn::Idle,
-                Err(failure) => self.read_failed("outbound_read_next_failed", failure).await,
+                Err(failure) => Self::read_failed("outbound_read_next_failed", failure),
             },
         }
     }
 
-    /// Reports a failed read, recreating the consumer group if that is why.
-    ///
-    /// `run` ensures the group once, at boot. A group can still vanish after
-    /// that — deleted out of band, a restart without persistence, a failover to
-    /// an empty replica — and every read after it answers `NOGROUP`, forever,
-    /// because nothing re-ensures. Without this the worker pauses and re-reads
-    /// on a loop that can never succeed, and the deployment stops delivering
-    /// answers until somebody restarts it. The boot call's own comment promised
-    /// this repair; this is where it happens.
-    ///
-    /// Still `Turn::Failed` on the way out even when the repair worked: the
-    /// caller's pause costs one interval and cannot spin, where retrying at
-    /// once would spin if the repair kept succeeding against a group that kept
-    /// vanishing. Delivery resumes on the turn after.
-    async fn read_failed(&self, event: &'static str, failure: afd_redis::Error) -> Turn {
-        if failure.is_group_missing() {
-            match self.queue.repair_group().await {
-                Ok(()) => tracing::warn!(
-                    event = "outbound_group_repaired",
-                    "the consumer group had vanished and was recreated at the stream's newest \
-                     entry; answers appended while it was missing are not delivered"
-                ),
-                Err(repair) => report("outbound_group_repair_failed", &repair.into()),
-            }
-        }
+    /// Reports a failed read, so both read paths answer a failure the same way.
+    fn read_failed(event: &'static str, failure: afd_redis::Error) -> Turn {
         report(event, &failure.into());
         Turn::Failed
     }
