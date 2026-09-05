@@ -59,6 +59,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
+use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Row as _;
 
@@ -166,10 +167,23 @@ impl Lane {
         action
     }
 
+    /// One pending gate that held no run: `event_id` is NULL, the shape of a
+    /// standing grant raised at install time rather than by an event.
+    pub(crate) async fn seed_runless_gate(&self, timeout_at: i64) -> String {
+        let action = afd_db::test_util::mint_id();
+        self.seed_row(&action, timeout_at, None).await;
+        action
+    }
+
     /// One pending gate row for an action that may already have one — a
     /// re-raised action, which the park writes as a second row rather than
     /// reopening the first.
     pub(crate) async fn seed_gate_for(&self, action: &str, timeout_at: i64) {
+        self.seed_row(action, timeout_at, Some(afd_db::test_util::mint_id()))
+            .await;
+    }
+
+    async fn seed_row(&self, action: &str, timeout_at: i64, event_id: Option<String>) {
         sqlx::query(
             "INSERT INTO core.fleet_approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
@@ -187,7 +201,7 @@ impl Lane {
         .bind(KIND)
         .bind(timeout_at)
         .bind(NOW_MS)
-        .bind(afd_db::test_util::mint_id())
+        .bind(event_id)
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");
@@ -309,6 +323,24 @@ pub(crate) fn redis_config() -> RedisConfig {
     RedisConfig::from_url(RedisRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
+}
+
+/// A queue that will not answer: a loopback port nobody listens on.
+///
+/// `Redis::unreachable` opens no socket, and this address makes sure the
+/// first command opens none either. A handle over the LANE's Redis would
+/// connect lazily and succeed, which is a live queue wearing a dead name; the
+/// lane's Redis is shared by every test binary, so it is never the one taken
+/// down.
+const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// A handle over a Redis that will not take a single command.
+pub(crate) fn dead_queue() -> Redis {
+    Redis::unreachable(&RedisConfig::from_url(
+        RedisRole::Default,
+        NOWHERE.to_owned(),
+    ))
+    .expect("a lazy handle opens no socket and cannot fail")
 }
 
 /// A fresh identifier, so no two fixtures can name each other's rows.
