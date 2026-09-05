@@ -79,7 +79,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
 
   return (
     <Card className="flex flex-col gap-md bg-card p-4" aria-label={MEMORY_PANEL_TITLE}>
-      <span className="font-mono text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
+      <span className="font-sans text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
       {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
       {initial === null ? null : entries.length === 0 ? (

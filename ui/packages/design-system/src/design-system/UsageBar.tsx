@@ -5,8 +5,8 @@ import { cn } from "../utils";
  * UsageBar — a quota/usage meter: track + solid fill, an optional
  * label + tabular-nums percentage row, and an optional sub-caption.
  * Extracted from the bespoke `.app-meter` markup BillingBalanceCard
- * previously hand-rolled; the mount-fill animation + reduced-motion
- * carve-out live in globals.css under the `usage-bar-*` class hooks below.
+ * previously hand-rolled. The component owns its solid fill and typography
+ * so consumers need no accompanying stylesheet.
  * `label` is optional — BillingBalanceCard's meter was
  * always unlabeled/aria-hidden (the dollar headline above it already
  * states the value), so the label+percentage row only renders when a
@@ -25,20 +25,20 @@ export function UsageBar({ label, pct, sublabel, className, ...rest }: UsageBarP
     <div
       data-slot="usage-bar"
       data-testid="usage-bar"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex flex-col gap-2 font-sans", className)}
       {...rest}
     >
       {label ? (
         <div className="flex items-baseline justify-between gap-2 text-sm">
           <span className="text-foreground">{label}</span>
-          <span className="font-mono tabular-nums text-muted-foreground">{clamped}%</span>
+          <span className="tabular-nums text-muted-foreground">{clamped}%</span>
         </div>
       ) : null}
-      <div className="usage-bar-track h-2 rounded-full bg-accent" aria-hidden="true">
-        <span className="usage-bar-fill block h-full rounded-full" style={{ width: `${clamped}%` }} />
+      <div className="usage-bar-track h-2 overflow-hidden rounded-full bg-accent" aria-hidden="true">
+        <span className="usage-bar-fill block h-full rounded-full bg-pulse" style={{ width: `${clamped}%` }} />
       </div>
       {sublabel ? (
-        <div className="font-mono text-xs text-muted-foreground">{sublabel}</div>
+        <div className="text-xs text-muted-foreground">{sublabel}</div>
       ) : null}
     </div>
   );

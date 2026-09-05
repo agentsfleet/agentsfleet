@@ -112,13 +112,13 @@ export function FleetMessageRow({
           )}
         >
           {annotation ? (
-            <div className="font-mono text-label text-muted-foreground">
+            <div className="font-sans text-label text-muted-foreground">
               {annotation}
             </div>
           ) : null}
           <div
             className={cn(
-              "min-w-0 max-w-full break-words font-mono text-mono leading-mono text-foreground",
+              "min-w-0 max-w-full break-words font-sans text-body-sm leading-body-sm text-foreground",
               isOperator
                 ? "w-fit rounded-lg rounded-br-sm border border-border-strong bg-accent px-md py-sm"
                 : "w-full",
@@ -168,7 +168,7 @@ export function FleetActivityRow({
       className={cn("w-full border-b border-border", ROW_ENTER)}
     >
       <div className="flex min-w-0 items-start gap-md px-lg py-md">
-        <div className="min-w-0 flex-1 font-mono leading-mono">
+        <div className="min-w-0 flex-1 font-sans leading-body-sm">
           <div className="flex min-w-0 flex-wrap items-center gap-sm text-label">
             <span className="shrink-0 text-muted-foreground">{sender}</span>
             {annotation}
@@ -186,7 +186,7 @@ export function FleetActivityRow({
             <div className="mt-xs">
               <p
                 className={cn(
-                  "font-mono",
+                  "font-sans",
                   failed
                     ? "flex min-h-6 items-start gap-xs text-label font-medium leading-label text-foreground"
                     : "text-mono leading-mono text-muted-foreground",
@@ -212,7 +212,7 @@ export function FleetActivityRow({
           {children ? (
             <Accordion type="single" collapsible className="w-fit">
               <AccordionItem value={DETAILS_VALUE} className="border-0">
-                <AccordionTrigger className="min-h-11 w-fit flex-none gap-xs py-0 font-mono text-label leading-none text-muted-foreground hover:no-underline sm:min-h-6 [&>svg]:ml-0 [&>svg]:size-3">
+                <AccordionTrigger className="min-h-11 w-fit flex-none gap-xs py-0 font-sans text-label leading-none text-muted-foreground hover:no-underline sm:min-h-6 [&>svg]:ml-0 [&>svg]:size-3">
                   <span className="flex size-4 shrink-0 items-center justify-center">
                     <BracesIcon size={12} aria-hidden="true" />
                   </span>
@@ -278,7 +278,7 @@ export function FleetGroupRow({
         onValueChange={onToggle}
       >
         <AccordionItem value={GROUP_VALUE} className="border-0">
-          <AccordionTrigger className="px-lg py-md font-mono text-label leading-mono text-muted-foreground hover:no-underline">
+          <AccordionTrigger className="px-lg py-md font-sans text-label leading-mono text-muted-foreground hover:no-underline">
             <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-sm text-left">
               <Badge
                 variant={failed ? "destructive" : "default"}

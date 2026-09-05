@@ -64,6 +64,21 @@ PATTERNS=(
 
 readonly GRADIENT_REGEX='(repeating-)?(linear|radial|conic)-gradient[[:space:]]*\('
 
+# Consumers may select a font role, but only the design system defines it.
+check_font_ownership() {
+  local f="$1"
+  case "$f" in ui/packages/design-system/*) return ;; esac
+  awk '
+    {
+      source = $0
+      gsub(/font-family[[:space:]]*:[[:space:]]*var\(--ff-(sans|mono|display)\)/, "")
+      invalid = /font-family[[:space:]]*:|fontFamily[[:space:]]*:[[:space:]]*["\047]|--(ff|font)-(sans|mono|display)[[:space:]]*:|font-\[/
+      if (FILENAME ~ /^ui\/packages\/app\// && /font-display|DisplayXL|DisplayLG/) invalid = 1
+      if (invalid) printf "%s:%d:%s\n", FILENAME, FNR, source
+    }
+  ' "$f"
+}
+
 # ── File scope ───────────────────────────────────────────────────────────
 in_scope() {
   local f="$1"
@@ -72,8 +87,6 @@ in_scope() {
     *tests/e2e/*) return 1 ;;
     ui/packages/app/*.tsx|ui/packages/app/*.jsx) return 0 ;;
     ui/packages/website/*.tsx|ui/packages/website/*.jsx) return 0 ;;
-    ui/packages/app/**/*.tsx|ui/packages/app/**/*.jsx) return 0 ;;
-    ui/packages/website/**/*.tsx|ui/packages/website/**/*.jsx) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -83,11 +96,8 @@ in_gradient_scope() {
   case "$f" in
     *.test.*|*.spec.*|*/tests/*|*/coverage/*|*/dist/*|*/.next/*|*/node_modules/*) return 1 ;;
     ui/packages/app/*.css|ui/packages/app/*.js|ui/packages/app/*.jsx|ui/packages/app/*.mjs|ui/packages/app/*.ts|ui/packages/app/*.tsx) return 0 ;;
-    ui/packages/app/**/*.css|ui/packages/app/**/*.js|ui/packages/app/**/*.jsx|ui/packages/app/**/*.mjs|ui/packages/app/**/*.ts|ui/packages/app/**/*.tsx) return 0 ;;
     ui/packages/website/*.css|ui/packages/website/*.js|ui/packages/website/*.jsx|ui/packages/website/*.mjs|ui/packages/website/*.ts|ui/packages/website/*.tsx) return 0 ;;
-    ui/packages/website/**/*.css|ui/packages/website/**/*.js|ui/packages/website/**/*.jsx|ui/packages/website/**/*.mjs|ui/packages/website/**/*.ts|ui/packages/website/**/*.tsx) return 0 ;;
     ui/packages/design-system/*.css|ui/packages/design-system/*.js|ui/packages/design-system/*.jsx|ui/packages/design-system/*.mjs|ui/packages/design-system/*.ts|ui/packages/design-system/*.tsx) return 0 ;;
-    ui/packages/design-system/**/*.css|ui/packages/design-system/**/*.js|ui/packages/design-system/**/*.jsx|ui/packages/design-system/**/*.mjs|ui/packages/design-system/**/*.ts|ui/packages/design-system/**/*.tsx) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -151,6 +161,12 @@ while IFS= read -r f; do
   [ ! -f "$f" ] && continue
   in_gradient_scope "$f" || continue
   GRADIENT_FILES+=("$f")
+  while IFS= read -r match; do
+    [ -z "$match" ] && continue
+    printf '%s\n  -> define fonts in design-system tokens.css; use sans for app UI and mono for technical values\n' "$match"
+    SEEN_FILES_LIST="${SEEN_FILES_LIST}${f}"$'\n'
+    FAIL=1
+  done < <(check_font_ownership "$f")
 done <<< "$GRADIENT_CANDIDATES"
 
 if [ "${#GRADIENT_FILES[@]}" -gt 0 ]; then

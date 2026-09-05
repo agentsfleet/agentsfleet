@@ -281,7 +281,7 @@ describe("ModelsView", () => {
     renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
-    const dialog = within(screen.getByRole("dialog"));
+    const dialog = within(await screen.findByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Provider"), { target: { value: "moonshot" } });
     fireEvent.change(dialog.getByLabelText("Model"), { target: { value: "kimi-k2.6" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);

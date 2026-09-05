@@ -54,7 +54,7 @@ function RailRow({
   const label = (
     <span
       className={cn(
-        "font-mono",
+        "font-sans",
         compact ? "text-label" : "text-body-sm",
         step.done && "line-through text-text-subtle",
         !step.done && step.isNext && "text-text",

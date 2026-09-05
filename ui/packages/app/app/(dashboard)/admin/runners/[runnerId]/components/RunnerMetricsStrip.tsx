@@ -101,14 +101,14 @@ function Metric({
 }) {
   return (
     <div className={cn("min-w-0", divided && "md:border-l md:border-border md:pl-lg")}>
-      <DescriptionTerm className="font-mono text-eyebrow uppercase">{label}</DescriptionTerm>
+      <DescriptionTerm className="font-sans text-eyebrow uppercase">{label}</DescriptionTerm>
       <DescriptionDetails
         className={cn("mt-xs truncate font-mono text-sm tabular-nums", tone ?? "text-foreground")}
       >
         {value}
       </DescriptionDetails>
       {detail ? (
-        <p className="mt-xs truncate font-mono text-label text-muted-foreground tabular-nums">{detail}</p>
+        <p className="mt-xs truncate font-sans text-label text-muted-foreground tabular-nums">{detail}</p>
       ) : null}
     </div>
   );

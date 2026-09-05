@@ -100,13 +100,13 @@ export function PolicyBindsField({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button variant="ghost" size="icon-sm"
                   type="button"
                   aria-label={DEFAULT_MOUNTS_LABEL}
                   className="text-muted-foreground"
                 >
                   <InfoIcon size={14} aria-hidden="true" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <span className="flex flex-col gap-2xs text-left">

@@ -292,7 +292,7 @@ export function RunnerHeader({
             achievable line states what the host reported — assigned against
             achievable, side by side (Dimensions 4.1 / 4.2). */}
         {runner.degraded && runner.degraded_reason ? (
-          <p className="font-mono text-body-sm text-destructive">
+          <p className="font-sans text-body-sm text-destructive">
             {ASSIGNMENT_UNMET_PREFIX}
             {runner.degraded_reason}
             {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}

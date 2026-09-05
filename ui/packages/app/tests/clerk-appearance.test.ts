@@ -77,3 +77,15 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.modalCloseButton.color).toBe("var(--text)");
   });
 });
+
+  it("exports stable auth appearance tokens", () => {
+    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--cta)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--cta-foreground)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.backgroundColor).toBe("var(--cta)");
+    expect(AUTH_APPEARANCE.elements.footer.backgroundColor).toBe("var(--surface-1)");
+    expect(AUTH_APPEARANCE.elements.footer).not.toHaveProperty("background");
+    // Footer / link affordances stay muted (currency-rule guard).
+    expect(AUTH_APPEARANCE.elements.footerActionLink.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.identityPreviewEditButton.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.formResendCodeLink.color).not.toBe("var(--pulse)");
+  });
