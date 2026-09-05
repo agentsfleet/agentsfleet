@@ -66,3 +66,45 @@ impl FleetStreams {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
+
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    use super::super::FleetStreams;
+    use crate::Redis;
+    use crate::config::{RedisConfig, RedisRole};
+
+    /// A loopback port nobody listens on.
+    const NOWHERE: &str = "redis://127.0.0.1:1";
+
+    /// A frame that will not serialize is dropped before the queue is asked.
+    ///
+    /// `serde_json` refuses a map keyed by anything but a string; the daemon's
+    /// own frames are structs of strings and integers and never reach this
+    /// arm, which is why it is proven with a shape they cannot take. The verb
+    /// answers within the budget over a queue that is not there, because it
+    /// never got as far as asking.
+    #[tokio::test]
+    async fn should_drop_a_frame_that_will_not_serialize_before_asking_the_queue() {
+        let queue = Redis::unreachable(&RedisConfig::from_url(
+            RedisRole::Default,
+            NOWHERE.to_owned(),
+        ))
+        .expect("a lazy handle opens no socket");
+        let streams = FleetStreams::new(queue);
+        let unserializable: HashMap<(u8, u8), u8> = HashMap::from([((1, 2), 3)]);
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            streams.publish_frame("fleet-1", &unserializable),
+        )
+        .await
+        .expect("the frame is dropped at serialization, not after a connect attempt");
+    }
+}
