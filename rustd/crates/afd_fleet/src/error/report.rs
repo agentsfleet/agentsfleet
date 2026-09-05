@@ -24,6 +24,16 @@ pub(crate) fn envelope_field(field: &'static str) -> Error {
     Error::new(ErrorKind::Envelope { field })
 }
 
+/// Reports a field the entry carries but this daemon cannot read.
+///
+/// Separate from [`envelope_field`] because the operator action differs: a
+/// missing field means the producer omitted it, an unreadable one means the
+/// producer wrote a shape this reader does not parse. Reporting the second as
+/// the first sends whoever is holding the pager looking for an absent field.
+pub(crate) fn envelope_malformed(field: &'static str) -> Error {
+    Error::new(ErrorKind::EnvelopeMalformed { field })
+}
+
 /// Refuses a request the caller can correct, quoting the Zig detail verbatim.
 pub(crate) fn rejected(detail: &'static str) -> Error {
     Error::new(ErrorKind::Rejected { detail })
