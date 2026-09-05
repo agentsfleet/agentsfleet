@@ -31,22 +31,14 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-function renderStrip(
-  latest: EventRow | null,
-  pendingApprovals = 0,
-  pendingApprovalsHasMore = false,
-  summaryAvailable = true,
-  approvalsAvailable = true,
-) {
+function renderStrip(latest: EventRow | null, pendingApprovals = 0, summaryAvailable = true) {
   return render(
     <RunMetricsStrip
       status="active"
       latest={latest}
       pendingApprovals={pendingApprovals}
-      pendingApprovalsHasMore={pendingApprovalsHasMore}
       approvalsHref="/w/ws_1/approvals?fleetId=agt_1"
       summaryAvailable={summaryAvailable}
-      approvalsAvailable={approvalsAvailable}
     />,
   );
 }
@@ -117,9 +109,9 @@ describe("RunMetricsStrip", () => {
     expect(link.getAttribute("href")).toBe("/w/ws_1/approvals?fleetId=agt_1");
   });
 
-  it("marks a truncated singular approval count", () => {
-    renderStrip(event(), 1, true);
-    expect(screen.getByRole("link", { name: /1\+ approval waiting/i })).toBeTruthy();
+  it("names a single waiting approval in the singular", () => {
+    renderStrip(event(), 1);
+    expect(screen.getByRole("link", { name: /^1 approval waiting/i })).toBeTruthy();
   });
 
   it("renders the empty note when no outcome exists", () => {
@@ -127,10 +119,9 @@ describe("RunMetricsStrip", () => {
     expect(screen.getByText(METRICS_EMPTY)).toBeTruthy();
   });
 
-  it("distinguishes unavailable summary and approval reads from empty data", () => {
-    renderStrip(null, 0, false, false, false);
+  it("distinguishes an unavailable summary read from empty data", () => {
+    renderStrip(null, 0, false);
     expect(screen.getByText("Latest data unavailable.")).toBeTruthy();
-    expect(screen.getByText("Approvals unavailable")).toBeTruthy();
     expect(screen.queryByText(METRICS_EMPTY)).toBeNull();
   });
 });

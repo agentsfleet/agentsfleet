@@ -148,10 +148,20 @@ describe("RunnerHeader — admin actions", () => {
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
-    // Painted before the daemon answers: the badge reads revoked, and the
-    // controls follow it — Delete is offered, Revoke is not.
+    // Painted before the daemon answers: the badge reads revoked. The one
+    // destructive control does not follow the paint — Delete waits for the
+    // server to confirm the revoke.
     await waitFor(() => expect(screen.getByText(/^revoked/)).toBeTruthy());
     expect(screen.queryByText(/^active/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+
+    // While the PATCH is out the dialog is held: both buttons disabled, the
+    // confirm reads Working…, and a second click sends no second PATCH.
+    const working = within(dialog).getByRole("button", { name: "Working…" });
+    expect(working.hasAttribute("disabled")).toBe(true);
+    expect(within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(working);
+    expect(updateRunnerAdminStateActionMock).toHaveBeenCalledTimes(1);
 
     settle({ ok: false, status: 409, errorCode: "UZ-RUN-015", error: "state changed under you" });
 

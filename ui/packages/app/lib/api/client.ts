@@ -1,6 +1,12 @@
 import { ApiError, RequestCancelledError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
-import { RETRY_CODE_TIMEOUT, runWithRetry, type RetryOptions } from "./retry";
+import {
+  HTTP_METHOD,
+  HTTP_STATUS_REQUEST_TIMEOUT,
+  RETRY_CODE_TIMEOUT,
+  runWithRetry,
+  type RetryOptions,
+} from "./retry";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
 // No fallback on purpose: a silent api-dev default once pointed env-less
@@ -24,25 +30,25 @@ export const API_ORIGIN = requireApiOrigin();
 // next.config.ts `rewrites` — browser never sees a cross-origin request.
 export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
 
-// Per-attempt ceiling for a request whose caller passes no `signal`. The same
-// window the SSE backfill grants its proxy fetch: long enough for a slow page
-// read, short enough that a hung backend fails the render instead of pinning
-// it. A caller with a stricter or looser budget passes its own signal and this
-// default does not apply.
-const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
-// A client-side timeout has no server status. 408 is the closest standard
-// meaning (the request did not complete in time) and is already in the retry
-// layer's transient set, so a timed-out read is retried like any other blip.
-const REQUEST_TIMEOUT_STATUS = 408;
-const METHOD_GET = "GET";
-const METHOD_HEAD = "HEAD";
-const METHOD_PUT = "PUT";
+// Per-attempt ceiling for a request whose caller passes no `signal`: long
+// enough for a slow page read, short enough that a hung backend fails the
+// render instead of pinning it. It matches the window the SSE backfill grants
+// its proxy fetch (`lib/streaming/fleet-stream-backfill.ts`); the two are held
+// equal by the pin in client.defaults.test.ts rather than by one importing the
+// other, so the transport never depends on the streaming module. A caller with
+// a stricter or looser budget passes its own signal and this default does not
+// apply.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 // The methods `request()` retries on its own. Narrower than the policy's
 // idempotency gate on purpose: a DELETE is idempotent in effect but not in
 // answer — a 204 lost to the network comes back as a 404 on the replay, and the
 // transport would then report a deletion that happened as a failure. Callers
 // that want DELETE, POST or PATCH replayed say so through `requestWithRetry`.
-const DEFAULT_RETRY_METHODS: ReadonlySet<string> = new Set([METHOD_GET, METHOD_HEAD, METHOD_PUT]);
+const DEFAULT_RETRY_METHODS: ReadonlySet<string> = new Set([
+  HTTP_METHOD.GET,
+  HTTP_METHOD.HEAD,
+  HTTP_METHOD.PUT,
+]);
 
 /**
  * Parses a `Retry-After` header value into milliseconds. Honors the
@@ -103,6 +109,54 @@ function isTimeout(cause: unknown): boolean {
   return cause instanceof Error && cause.name === "TimeoutError";
 }
 
+/** A cancel or a timeout: the two ways a request ends without an answer. */
+export function isTransportInterrupt(cause: unknown): boolean {
+  return isAbort(cause) || isTimeout(cause);
+}
+
+/**
+ * Maps a fetch or body-read rejection to the transport's error classes. A
+ * navigation abort is not a failure: rethrowing the raw DOMException leaves
+ * every caller to recognise it, and the ones that do not turn a page the user
+ * already left into an unhandled rejection. A timeout IS a failure, and a
+ * transient one: the retry layer classifies its code as retryable, so a hung
+ * read gets its second chance (a hung write does not — the policy's replay
+ * gate refuses a POST or PATCH the server may already have processed).
+ * Anything else is returned as it came, for the caller to throw.
+ */
+export function classifyTransportFailure(cause: unknown, path: string): unknown {
+  if (isAbort(cause)) return new RequestCancelledError(path);
+  if (isTimeout(cause)) {
+    return new ApiError(`request to ${path} timed out`, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT);
+  }
+  return cause;
+}
+
+// The RFC 7807 problem+json shape every error body carries — see
+// rustd/crates/afd_http/src/envelope.rs, ProblemResponse.
+type ProblemBody = {
+  detail?: string;
+  title?: string;
+  error_code?: string;
+  request_id?: string;
+  user_message?: string;
+  etag?: string;
+};
+
+// The signal that bounds the fetch bounds the body stream too, so a cancel or
+// a timeout can land here as easily as before the headers arrived — and must
+// mean the same thing, never a success body typed as `T`. An error body that
+// is not JSON (an intermediary's HTML 502 page) still needs a status to
+// report, so that case keeps the status text as its detail.
+async function readBody(res: Response, path: string): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (cause) {
+    if (isTransportInterrupt(cause)) throw classifyTransportFailure(cause, path);
+    return { detail: res.statusText };
+  }
+}
+
 export function parseRetryAfterHeaderValue(headerVal: string | null): number | null {
   if (!headerVal) return null;
   const n = Number(headerVal);
@@ -152,8 +206,15 @@ export async function requestWithEtag<T>(
   recordAudit(path, method);
   const attempt = () => attemptWithEtag<T>(path, init, token);
   return DEFAULT_RETRY_METHODS.has(method)
-    ? runWithRetry(attempt, method, { signal: init.signal ?? undefined })
+    ? runWithRetry(attempt, method, { signal: init.signal ?? undefined, cancelled: cancelledFor(path) })
     : attempt();
+}
+
+// What the policy throws when the caller's signal aborts between attempts:
+// the same cancel class a mid-flight abort produces, so a page the operator
+// left is dropped silently whichever moment the navigation landed in.
+function cancelledFor(path: string): () => Error {
+  return () => new RequestCancelledError(path);
 }
 
 /**
@@ -172,18 +233,19 @@ export async function requestWithRetry<T>(
   recordAudit(path, method);
   return runWithRetry(async () => (await attemptWithEtag<T>(path, init, token)).data, method, {
     signal: init.signal ?? undefined,
+    cancelled: cancelledFor(path),
     ...options,
   });
 }
 
 function methodOf(init: RequestInit): string {
-  return (init.method ?? METHOD_GET).toUpperCase();
+  return (init.method ?? HTTP_METHOD.GET).toUpperCase();
 }
 
 // Audited once per logical request, never per attempt: the acceptance budget
 // counts what a render asked for, and a transient retry is not a second ask.
 function recordAudit(path: string, method: string): void {
-  if (method === METHOD_GET) recordWorkspaceFetchForAcceptance(path);
+  if (method === HTTP_METHOD.GET) recordWorkspaceFetchForAcceptance(path);
 }
 
 // One attempt: the fetch, the abort classification, and the RFC 7807 parse.
@@ -208,41 +270,31 @@ async function attemptWithEtag<T>(
       },
     });
   } catch (cause) {
-    // A navigation abort is not a failure. Rethrowing the raw DOMException
-    // leaves every caller to recognise it, and the ones that do not turn a
-    // page the user already left into an unhandled rejection.
-    if (isAbort(cause)) throw new RequestCancelledError(path);
-    // A timeout IS a failure, and a transient one: the retry layer classifies
-    // this code as retryable, so a hung read gets its second chance.
-    if (isTimeout(cause)) {
-      throw new ApiError(`request to ${path} timed out`, REQUEST_TIMEOUT_STATUS, RETRY_CODE_TIMEOUT);
-    }
-    throw cause;
+    throw classifyTransportFailure(cause, path);
   }
 
   const etag = etagFrom(res);
 
   if (res.status === 204) return { data: undefined as T, etag };
 
-  // Error bodies are RFC 7807 problem+json: `{ docs_uri, title, detail,
-  // error_code, request_id, user_message?, etag? }` (see
-  // rustd/crates/afd_http/src/envelope.rs, ProblemResponse). `user_message`
-  // (when present) is the curated dashboard-safe sentence for this code —
-  // preferred over `detail`/`title`, which are written for the CLI/API
-  // audience and often carry internal nouns a dashboard user can't act on.
-  const body = await res.json().catch(() => ({ detail: res.statusText }));
+  const body = await readBody(res, path);
 
   if (!res.ok) {
+    // `user_message` (when present) is the curated dashboard-safe sentence for
+    // this code — preferred over `detail`/`title`, which are written for the
+    // CLI/API audience and often carry internal nouns a dashboard user can't
+    // act on.
+    const problem = body as ProblemBody;
     const retryAfterMs = retryAfterFrom(res);
     throw new ApiError(
-      body.user_message ?? body.detail ?? body.title ?? res.statusText,
+      problem.user_message ?? problem.detail ?? problem.title ?? res.statusText,
       res.status,
-      body.error_code ?? "UZ-UNKNOWN",
-      body.request_id,
+      problem.error_code ?? "UZ-UNKNOWN",
+      problem.request_id,
       retryAfterMs,
       // A 412 carries the resource's current etag in the body so the editor can
       // rebase without a second GET (REST guide §4).
-      body.etag ?? etag,
+      problem.etag ?? etag,
     );
   }
 

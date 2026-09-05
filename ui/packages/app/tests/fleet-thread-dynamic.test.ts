@@ -51,7 +51,6 @@ describe("FleetThreadDynamic", () => {
         fleetId: "zomb_1",
         fleetName: "reviewer",
         initial: [],
-        onRunCompleted: () => {},
       }),
     );
     await waitFor(async () => {
@@ -66,7 +65,6 @@ describe("FleetThreadDynamic", () => {
         fleetId: "zomb_42",
         fleetName: "github-pr-reviewer",
         initial: [],
-        onRunCompleted: () => {},
       }),
     );
     const inner = await findByTestId("mounted-inner");

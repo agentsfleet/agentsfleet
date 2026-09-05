@@ -145,21 +145,19 @@ describe("fleets routes — detail views", () => {
     expect(unavailableMarkup).toContain("Memory is temporarily unavailable");
   });
 
-  it("fleet Chat remains available when summary reads fail", async () => {
+  it("fleet Chat remains available when the thread read fails, and never reads the inbox", async () => {
+    const asked: string[] = [];
     fetchMock.mockImplementation(async (url: string) => {
+      asked.push(url);
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       // `/messages` is the chat's thread read — the one request that replaced
       // the events-list-plus-per-turn-detail fan-out this view used to issue.
-      if (
-        url.includes("/messages") ||
-        url.includes("/events") ||
-        url.includes("/approvals")
-      ) {
+      if (url.includes("/messages") || url.includes("/events")) {
         throw new Error("summary down");
       }
-      return detailResponse();
+      return detailResponse({ pending_approvals: 2 });
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -170,8 +168,11 @@ describe("fleets routes — detail views", () => {
     );
     expect(markup).toContain("Latest outcome");
     expect(markup).toContain("Latest data unavailable.");
-    expect(markup).toContain("Approvals unavailable");
     expect(markup).not.toContain("No outcome recorded yet.");
+    // The pending count comes off the fleet detail the page already holds:
+    // no approvals read is issued to render it.
+    expect(markup).toContain("2 approvals waiting");
+    expect(asked.some((url) => url.includes("/approvals"))).toBe(false);
     expect(markup).toContain("Chat");
   });
 

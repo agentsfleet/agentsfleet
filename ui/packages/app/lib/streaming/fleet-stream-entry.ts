@@ -7,10 +7,13 @@
 
 import type { EventRow } from "@/lib/api/events";
 import {
-  maxServerCreatedAt,
-  mergeBackfill,
-  type FleetEvent,
-} from "./fleet-stream-frames";
+  NO_FACTS,
+  latestFigures,
+  type FleetFacts,
+  type RunFigures,
+} from "@/lib/events/run-summary";
+import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
+import type { FleetEvent } from "./fleet-stream-row";
 import type { InstallStepId } from "./install-steps";
 
 export const CONNECTION_STATUS = {
@@ -30,6 +33,21 @@ export type FleetStreamSnapshot = {
   // InstallStates surface reads this to advance its rendered step and to detect
   // the installing→active flip; the chat path ignores it.
   installStep: InstallStepId | null;
+  // What the server render and the live tail last said about the fleet
+  // itself: its lifecycle status and how many approvals wait on it. The
+  // console's summary strip reads these beside `latest`; both keep their
+  // identity across frames that changed nothing they show.
+  fleet: FleetFacts;
+  // How many times a FRAME has moved `fleet` since the entry was created. A
+  // server render pushes its own facts in through `reconcileServerFacts` and
+  // never moves this; the hook that asked for that render compares it against
+  // the value it saw when it asked, so a frame that landed while the render
+  // was in flight is not rolled back by facts the server read before it.
+  factsSeq: number;
+  // The newest server row's figures, recomputed whenever the rows change and
+  // kept by identity when the figures did not — so a subscriber selecting
+  // `latest` does not re-render per chunk of a streaming reply.
+  latest: RunFigures | null;
 };
 
 export type Listener = () => void;
@@ -65,15 +83,22 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
   connectionStatus: CONNECTION_STATUS.CONNECTING,
   installStep: null,
+  fleet: NO_FACTS,
+  factsSeq: 0,
+  latest: null,
 }) as FleetStreamSnapshot;
 
 export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
+  const events = mergeBackfill([], initial);
   return {
     workspaceId,
     snapshot: {
-      events: mergeBackfill([], initial),
+      events,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
       installStep: null,
+      fleet: NO_FACTS,
+      factsSeq: 0,
+      latest: latestFigures(events),
     },
     listeners: new Set(),
     refCount: 0,

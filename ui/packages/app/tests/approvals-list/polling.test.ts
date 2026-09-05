@@ -89,6 +89,44 @@ describe("ApprovalsList — 5s polling effect", () => {
     expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 
+  it("a tick still in flight is not stacked by the next", async () => {
+    // The first read never answers; the interval keeps firing. One read on the
+    // wire is the ceiling, however slow the backend is.
+    listApprovalsActionMock.mockReturnValueOnce(new Promise(() => {}));
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(15_001); // three ticks
+    expect(listApprovalsActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hidden tab asks for nothing, and one read catches it up when it is looked at again", async () => {
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(15_001); // three ticks, all skipped
+    expect(listApprovalsActionMock).not.toHaveBeenCalled();
+    // A visibility change that lands with the tab still hidden asks nothing.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listApprovalsActionMock).not.toHaveBeenCalled();
+
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listApprovalsActionMock).toHaveBeenCalledTimes(1);
+    visibility.mockRestore();
+  });
+
   it("polling no-ops if the component unmounts before the request resolves", async () => {
     let release: (v: unknown) => void = () => {};
     listApprovalsActionMock.mockReturnValueOnce(

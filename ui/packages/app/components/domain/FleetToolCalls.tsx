@@ -1,5 +1,5 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { FleetToolCall } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { formatMs } from "@/lib/utils";
 
 // A tool that is still running vs one that returned. Same vocabulary as the

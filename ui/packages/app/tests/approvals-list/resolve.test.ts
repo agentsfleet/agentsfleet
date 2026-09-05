@@ -34,6 +34,75 @@ describe("ApprovalsList — resolve actions", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/gate service unavailable/);
   });
 
+  it("a rejected resolve call restores the row with the error, never the error boundary", async () => {
+    approveApprovalActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+
+    // The transport, not the gate, refused: the row is back beside the message.
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toMatch(/transport failed/);
+  });
+
+  it("a resolve call rejected with something that is not an Error still names it", async () => {
+    approveApprovalActionMock.mockRejectedValueOnce("the transport gave up");
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toMatch(/transport gave up/);
+  });
+
+  it("resolving the last gate keeps the list shell until the server confirms", async () => {
+    let settle: (result: { ok: true; data: unknown }) => void = () => {};
+    approveApprovalActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
+
+    // Gone from view, but "No pending approvals" is the server's claim to make:
+    // the filter input stays and the status region is not announced yet.
+    expect(screen.queryByText("No pending approvals")).toBeNull();
+    expect(screen.getByRole("searchbox", { name: /filter approvals/i })).toBeTruthy();
+
+    settle({
+      ok: true,
+      data: {
+        kind: "resolved",
+        data: {
+          gate_id: "01999999-0000-7000-8000-000000000001",
+          action_id: "act_001",
+          outcome: "approved",
+          resolved_at: Date.now(),
+          resolved_by: "user:user_abc",
+        },
+      },
+    });
+    await waitFor(() => expect(screen.getByText("No pending approvals")).toBeTruthy());
+  });
+
   it("a resolved row stays gone once the server confirms", async () => {
     approveApprovalActionMock.mockResolvedValueOnce({
       ok: true,

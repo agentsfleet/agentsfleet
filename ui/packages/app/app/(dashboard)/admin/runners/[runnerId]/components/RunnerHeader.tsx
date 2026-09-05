@@ -91,8 +91,26 @@ export function RunnerHeader({
     setConfirmAction({ runner, action, ...ACTION_CONFIG[action] });
   }
 
-  function runAction(target: NonNullable<RunnerActionConfirmTarget>) {
-    startTransition(async () => {
+  // Both confirm-backed actions resolve when their transition settles, so the
+  // dialog (RunnerActionConfirm forwards the promise to ConfirmDialog) holds
+  // its buttons disabled and reads "Working…" until the daemon has answered —
+  // the kill switch's shape. A confirm that returned at once would leave the
+  // dialog live beside a badge already painted, and a second click would send
+  // a second PATCH against a state the page already claims.
+  function settled(work: () => Promise<void>): Promise<void> {
+    return new Promise<void>((resolve) => {
+      startTransition(async () => {
+        try {
+          await work();
+        } finally {
+          resolve();
+        }
+      });
+    });
+  }
+
+  function runAction(target: NonNullable<RunnerActionConfirmTarget>): Promise<void> {
+    return settled(async () => {
       paintAdminState(OPTIMISTIC_ADMIN_STATE[target.action]);
       const result = await updateRunnerAdminStateAction(runner.id, target.action);
       if (!result.ok) {
@@ -128,8 +146,8 @@ export function RunnerHeader({
     });
   }
 
-  function runDelete(target: NonNullable<RunnerDeleteConfirmTarget>) {
-    startTransition(async () => {
+  function runDelete(target: NonNullable<RunnerDeleteConfirmTarget>): Promise<void> {
+    return settled(async () => {
       const result = await deleteRunnerAction(runner.id);
       if (!result.ok) {
         setError(
@@ -227,7 +245,10 @@ export function RunnerHeader({
                 );
               })
             : null}
-          {canWrite && canDelete(adminState) ? (
+          {/* A destructive control renders from the state the server confirmed,
+              never from the optimistic paint: Delete must not appear while the
+              revoke that would allow it is still unanswered. */}
+          {canWrite && canDelete(runner.admin_state) ? (
             <Button
               variant="destructive"
               size="sm"

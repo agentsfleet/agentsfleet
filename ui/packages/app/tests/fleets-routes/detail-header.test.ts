@@ -116,16 +116,7 @@ describe("fleets routes — detail header and summary", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            items: [
-              { gate_id: "g1", fleet_id: "zom_1", fleet_name: "platform-ops" },
-            ],
-            next_cursor: "cur_xyz",
-          }),
-        };
+        throw new Error("the chat never reads the inbox to render its count");
       }
       if (url.includes("/memories")) {
         return {
@@ -151,7 +142,7 @@ describe("fleets routes — detail header and summary", () => {
           json: async () => ({ items: [], next_cursor: null }),
         };
       }
-      return detailResponse({ name: "platform-ops", status: "active" });
+      return detailResponse({ name: "platform-ops", status: "active", pending_approvals: 1 });
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -160,7 +151,7 @@ describe("fleets routes — detail header and summary", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
     );
-    expect(markup).toContain("1+ approval waiting");
+    expect(markup).toContain("1 approval waiting");
     expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
   });
 

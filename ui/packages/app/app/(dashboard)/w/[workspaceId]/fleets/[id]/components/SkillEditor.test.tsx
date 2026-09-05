@@ -43,6 +43,7 @@ function detail(over: Partial<FleetDetail> = {}): FleetDetail {
     triggers: null,
     events_processed: 0,
     budget_used_nanos: 0,
+    pending_approvals: 0,
     created_at: 1,
     updated_at: 1,
     ...over,

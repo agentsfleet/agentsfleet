@@ -35,7 +35,7 @@ use afd_fleet_lifecycle::{ConfigSource, Install, LibrarySource, Patch, Requested
 use crate::support::{LIBRARY_ID, Lane, TRIGGER_MD_EDITED};
 
 /// The install every test here starts from.
-async fn installed(lane: &Lane) -> afd_fleet_lifecycle::Installed {
+pub(crate) async fn installed(lane: &Lane) -> afd_fleet_lifecycle::Installed {
     lane.fleets
         .install(
             &lane.workspace,

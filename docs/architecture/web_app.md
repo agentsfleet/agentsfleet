@@ -120,8 +120,14 @@ Measured against `ui/packages/app` at 222 `.tsx` files.
 The first two moved away from target as the app grew. `useOptimistic` moved
 from one surface to four — secrets delete, runner state, the approvals inbox
 and the fleet kill switch — each reconciling inside the transition that set it,
-so the row is now a pattern rather than an exception. `useActionState` and
-`Suspense` have not moved. All of it is the point of keeping the table.
+so the row is now a pattern rather than an exception. The one `useEffect` file
+the chat's summary strip gained is statement 5 as written: a subscription to
+the fleet stream (`useFleetRunSummary`, selecting the two identity-stable
+slices the strip reads so a streaming reply's chunks re-render nothing), never
+a load — a completion frame carries the row and the fleet facts, so the strip
+moves with no request behind it. `ChatView` itself has no effect left.
+`useActionState` and `Suspense` have not moved. All of it is the point of
+keeping the table.
 
 The two library routes are the worked example. `ModelCatalogueProvider` fetched the
 entire global model catalogue in a mount effect, so every visit to Models

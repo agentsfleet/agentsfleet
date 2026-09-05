@@ -377,7 +377,7 @@ Two Redis surfaces carry a fleet's work: a durable stream for ingress, and an ep
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
 | `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
-| `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
+| `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureFleetConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
 `fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
@@ -874,8 +874,16 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
    UI        Fleet Console /fleets/{id}
                → same per-fleet GET /events/stream SSE consumer.
-               → on page load also fetches GET /events?limit=20 for
-                 recent history context.
+               → the page opens on two reads: the fleet detail (status,
+                 pending_approvals) and GET /messages?limit=20 (the
+                 thread, bodies included). The summary strip is a view
+                 over the stream from there: event_complete carries the
+                 terminal row plus fleet_status and pending_approvals,
+                 gate_opened / gate_resolved carry the count, and the
+                 reconnect backfill's durable rows fold in the same way —
+                 no read is issued to move a figure. Only a fleet_status
+                 that differs from the server-rendered one re-runs the
+                 server tree, once, for the header's lifecycle controls.
 
    UI        Fleets Wall /fleets
                → opens ONE GET /v1/workspaces/{id}/events/stream SSE

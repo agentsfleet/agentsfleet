@@ -1,7 +1,6 @@
-import { REFRESH_SETTLE_SLACK_MS, ev, mockStream, onRunCompletedMock, renderThread, renderThreadWithInitial, routerRefreshMock, serverEvent, threadElement } from "./harness";
+import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverEvent, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { REFRESH_DEBOUNCE_MS } from "@/components/domain/useRefreshOnCompletion";
+import { render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
 
@@ -83,16 +82,8 @@ describe("FleetThread — header chrome", () => {
   });
 });
 
-describe("FleetThread — summary refresh", () => {
-  it("does not signal a completion for terminal events already present in the server snapshot", () => {
-    mockStream([]);
-    renderThreadWithInitial([serverEvent()]);
-
-    expect(onRunCompletedMock).not.toHaveBeenCalled();
-    expect(routerRefreshMock).not.toHaveBeenCalled();
-  });
-
-  it("signals a completion once when a live event completes, and never touches the router", async () => {
+describe("FleetThread — the thread never re-runs the page", () => {
+  it("a live completion leaves the router alone: the strip reads the stream, the thread its rows", () => {
     const received = ev({
       id: "event-refresh",
       role: "assistant",
@@ -101,18 +92,9 @@ describe("FleetThread — summary refresh", () => {
     });
     mockStream([received], { isRunning: true });
     const view = renderThread();
-    expect(onRunCompletedMock).not.toHaveBeenCalled();
-
     mockStream([{ ...received, status: "processed" }]);
     view.rerender(threadElement());
-
-    // Debounced: a completion burst refreshes the summary once, not once per
-    // frame — so the wait outlasts that window.
-    await waitFor(() => expect(onRunCompletedMock).toHaveBeenCalledTimes(1), {
-      timeout: REFRESH_DEBOUNCE_MS + REFRESH_SETTLE_SLACK_MS,
-    });
-    view.rerender(threadElement());
-    expect(onRunCompletedMock).toHaveBeenCalledTimes(1);
+    renderThreadWithInitial([serverEvent()]);
     // The whole-page re-render per completion is the cost this shape retired.
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });

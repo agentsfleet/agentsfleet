@@ -68,6 +68,13 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
+/// The trailing count is how many of the fleet's gates still wait once this
+/// one is answered, read in the same statement so the frame announcing the
+/// answer costs no second round trip. A data-modifying CTE and the select
+/// after it run on ONE snapshot (PostgreSQL, "Data-Modifying Statements in
+/// WITH"), so the select still sees the answered gate as pending; excluding it
+/// by id is what makes the count the state after the answer.
+///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` now, `$5` action,
 /// `$6` pending status, `$7` fleet filter (empty disables), `$8` approved
 /// status, `$9` grant approved, `$10` grant revoked, `$11` grant gate kind.
@@ -92,7 +99,10 @@ WITH resolved AS (
   RETURNING g.id
 )
 SELECT id::text, action_id, workspace_id::text, fleet_id::text,
-       status, COALESCE(updated_at, $4::bigint), resolved_by, detail, event_id
+       status, COALESCE(updated_at, $4::bigint), resolved_by, detail, event_id,
+       (SELECT COUNT(*) FROM core.fleet_approval_gates g
+         WHERE g.fleet_id = resolved.fleet_id AND g.status = $6
+           AND g.id <> resolved.id) AS pending_approvals
 FROM resolved";
 
 /// The gate an action already holds, newest first.
@@ -114,13 +124,27 @@ ORDER BY created_at DESC LIMIT 1";
 /// gate a person answered one millisecond before the deadline is not overwritten
 /// by the sweep — the operator's decision outranks the clock's.
 ///
+/// Returns the fleet and event beside the id, and how many of that fleet's
+/// gates still wait once the sweep lands, so each swept gate is announced on
+/// its fleet's live tail without a read per row. The sweep and the count run
+/// on one snapshot (PostgreSQL, "Data-Modifying Statements in WITH"), so the
+/// count still sees the swept rows as pending; excluding what `swept` holds
+/// is what makes it the state after the sweep.
+///
 /// `$1` expired status, `$2` pending status, `$3` resolver attribution,
 /// `$4` detail, `$5` now.
 pub(crate) const EXPIRE_GATES: &str = "\
-UPDATE core.fleet_approval_gates
-SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
-WHERE status = $2 AND timeout_at <= $5
-RETURNING id::text";
+WITH swept AS (
+  UPDATE core.fleet_approval_gates
+  SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
+  WHERE status = $2 AND timeout_at <= $5
+  RETURNING id, fleet_id, event_id
+)
+SELECT s.id::text, s.fleet_id::text, s.event_id,
+       (SELECT COUNT(*) FROM core.fleet_approval_gates g
+         WHERE g.fleet_id = s.fleet_id AND g.status = $2
+           AND g.id NOT IN (SELECT id FROM swept)) AS pending_approvals
+FROM swept s";
 
 /// Whether `$1` is a fleet that `$2` holds.
 ///

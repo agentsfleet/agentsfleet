@@ -25,6 +25,8 @@
 //! bounded and repairable by re-submission. A re-executed run cannot be
 //! un-spent. (`redis_fleet.zig` reasons the same way, at length.)
 
+mod tail;
+
 use crate::client::Redis;
 use crate::error::{self, Result};
 
@@ -33,7 +35,6 @@ const CMD_XADD: &str = "XADD";
 const CMD_XGROUP: &str = "XGROUP";
 const CMD_XREADGROUP: &str = "XREADGROUP";
 const CMD_XACK: &str = "XACK";
-const CMD_PUBLISH: &str = "PUBLISH";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
 const CMD_XINFO: &str = "XINFO";
 const CMD_DEL: &str = "DEL";
@@ -242,16 +243,6 @@ impl FleetStreams {
         cmd.arg(&key);
         let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;
         Ok(())
-    }
-
-    /// Publishes on a channel, for the subscription hub's readers.
-    ///
-    /// # Errors
-    /// Returns a command error when the publish fails.
-    pub async fn publish(&self, channel: &str, payload: &str) -> Result<i64> {
-        let mut cmd = redis::cmd(CMD_PUBLISH);
-        cmd.arg(channel).arg(payload);
-        self.redis.command(CMD_PUBLISH, channel, &cmd).await
     }
 }
 

@@ -83,10 +83,57 @@ describe("SecretsList — optimistic delete", () => {
 
     settle({ ok: false, error: "vault unavailable", status: 503 });
 
-    // The refusal ends the transition: the row is back, the error is beside it.
+    // The failure ends the transition: the row is back, the error is beside
+    // it, and — a 503 leaves the outcome unknown, the vault may have deleted
+    // the row before its gateway gave up — the list re-reads the server.
     await waitFor(() => expect(screen.getByText("openai")).toBeTruthy());
     expect(screen.getByRole("alertdialog").textContent).toMatch(/vault unavailable/);
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refusal the server made restores the row without a read", async () => {
+    deleteSecretActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "the fleet still references it",
+      status: 409,
+    });
+    renderList(twoSecrets());
+
+    await confirmDelete("openai");
+
+    // A 409 is the server's word that nothing changed: the transition's end
+    // restores the row, and a read would only restate what is already shown.
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog").textContent).toMatch(/still references it/),
+    );
+    await waitFor(() => expect(screen.getByText("openai")).toBeTruthy());
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("the dialog holds its buttons disabled until the delete settles", async () => {
+    let settle: (result: { ok: true; data: undefined }) => void = () => {};
+    deleteSecretActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderList(twoSecrets());
+
+    await confirmDelete("openai");
+
+    // In flight: both buttons disabled, the confirm reads Working…, and a
+    // second click sends nothing.
+    const dialog = screen.getByRole("alertdialog");
+    const working = await within(dialog).findByRole("button", { name: "Working…" });
+    expect(working.hasAttribute("disabled")).toBe(true);
+    expect(within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(working);
+    expect(deleteSecretActionMock).toHaveBeenCalledTimes(1);
+
+    settle({ ok: true, data: undefined });
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("a confirmed delete closes the dialog and re-reads the server list", async () => {
@@ -99,13 +146,27 @@ describe("SecretsList — optimistic delete", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
-  it("deleting the last secret shows the empty state at once", async () => {
-    deleteSecretActionMock.mockReturnValueOnce(new Promise(() => {}));
+  it("deleting the last secret keeps the table shell until the server confirms", async () => {
+    let settle: (result: { ok: false; error: string; status: number }) => void = () => {};
+    deleteSecretActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
     renderList([providerSecret(CREATED_MS)]);
 
     await confirmDelete("openai");
 
-    await waitFor(() => expect(screen.getByText("No secrets")).toBeTruthy());
+    // The row is gone from view, but "No secrets" is the server's claim to
+    // make: the status region is not announced ahead of the answer.
+    await waitFor(() => expect(screen.queryByText("openai")).toBeNull());
+    expect(screen.queryByText("No secrets")).toBeNull();
+
+    // Settled before the test ends: an async transition left pending would
+    // hold React's action scope open for every test that follows.
+    settle({ ok: false, error: "vault unavailable", status: 503 });
+    await waitFor(() => expect(screen.getByText("openai")).toBeTruthy());
+    expect(screen.queryByText("No secrets")).toBeNull();
   });
 });
 

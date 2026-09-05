@@ -32,6 +32,9 @@ afd_redis.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_wire.workspace = true
+# The live-tail frames a resolve and a sweep announce are built as values and
+# rendered once; nothing here parses JSON.
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

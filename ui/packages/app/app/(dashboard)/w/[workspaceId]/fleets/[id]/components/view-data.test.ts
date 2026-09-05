@@ -2,14 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 const listFleetEventsMock = vi.hoisted(() => vi.fn());
 const listFleetMessagesMock = vi.hoisted(() => vi.fn());
-const listApprovalsMock = vi.hoisted(() => vi.fn());
 const listAllMemoriesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api/events", () => ({
   listFleetEvents: listFleetEventsMock,
   listFleetMessages: listFleetMessagesMock,
 }));
-vi.mock("@/lib/api/approvals", () => ({ listApprovals: listApprovalsMock }));
 vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
 
 import { CHAT_TURNS, startViewData, type ChatViewData } from "./view-data";
@@ -27,7 +25,6 @@ function resetMocks() {
   for (const mock of [
     listFleetEventsMock,
     listFleetMessagesMock,
-    listApprovalsMock,
     listAllMemoriesMock,
   ]) {
     mock.mockReset();
@@ -46,13 +43,11 @@ describe("startViewData", () => {
     expect(listFleetMessagesMock).toHaveBeenCalledWith("ws_1", "zom_1", "tok", {
       limit: CHAT_TURNS,
     });
-    expect(listApprovalsMock).toHaveBeenCalledTimes(1);
     // The retired shape: an events-list read followed by per-turn detail reads.
     expect(listFleetEventsMock).not.toHaveBeenCalled();
     // The tag is what lets the chat loader take the thread fields directly.
     expect(data.view).toBe(FLEET_VIEW.chat);
     expect(data).toHaveProperty("thread");
-    expect(data).toHaveProperty("approvals");
   });
 
   it("test_detail_view_loaders_concurrent: events view fetch starts from route params alone", () => {
@@ -93,9 +88,7 @@ describe("startViewData", () => {
   it("a failed thread read degrades to null instead of failing the page", async () => {
     resetMocks();
     listFleetMessagesMock.mockRejectedValue(new Error("upstream down"));
-    listApprovalsMock.mockRejectedValue(new Error("upstream down"));
     const data = startViewData(FLEET_VIEW.chat, ARGS) as ChatViewData;
     await expect(data.thread).resolves.toBeNull();
-    await expect(data.approvals).resolves.toBeNull();
   });
 });

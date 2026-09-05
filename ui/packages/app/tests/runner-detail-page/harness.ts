@@ -1,6 +1,5 @@
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, vi } from "vitest";
 import { ApiError } from "@/lib/api/errors";
 
 // ── Shared mocks (the runners-page harness shape: page guards under test,

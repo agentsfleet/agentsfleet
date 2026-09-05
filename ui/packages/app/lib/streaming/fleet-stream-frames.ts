@@ -1,137 +1,31 @@
-import { FRAME_KIND, type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 import {
   ACTOR,
   EVENT_STATUS,
-  outcomeFor,
   outcomeForCompletion,
   outcomeForStatus,
-  replyBodyFor,
   roleFor,
   triggerBodyFor,
 } from "@/lib/events/event-summary";
+import {
+  AGENTSFLEET_EVENT_STATUS,
+  EMPTY_PAYLOAD,
+  figure,
+  rowToEvent,
+  text,
+  type FleetEvent,
+  type FleetEventStatus,
+  type FleetToolCall,
+} from "./fleet-stream-row";
 
-// Pure frame-transform helpers shared by the streaming registry.
-// Nothing here touches Map state, EventSource, or React. Splitting
-// these out keeps the registry's lifecycle file under the LENGTH GATE
-// and the helpers unit-testable without spinning up a subscription.
+// Pure frame-transform helpers shared by the streaming registry: how each
+// live frame folds into the timeline, and how a page of durable rows merges
+// with it. Nothing here touches Map state, EventSource, or React. The row
+// model itself lives in `fleet-stream-row.ts`.
 
-// The server's durable statuses plus the two the browser owns: a submission
-// awaiting its server identifier, and one the server refused.
-export const AGENTSFLEET_EVENT_STATUS = {
-  RECEIVED: EVENT_STATUS.RECEIVED,
-  PROCESSED: EVENT_STATUS.PROCESSED,
-  AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
-  GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
-  OPTIMISTIC: "optimistic",
-  FAILED: "failed",
-} as const;
-
-export type FleetEventStatus =
-  (typeof AGENTSFLEET_EVENT_STATUS)[keyof typeof AGENTSFLEET_EVENT_STATUS];
-
-// One tool the fleet called while working an event. The backend has always
-// published `tool_call_started` / `_progress` / `_completed` frames; the reducer
-// below dropped all three on the floor via a `default: return prev`, while the
-// thread's own empty state promised "Tool calls, chunks, and completions appear
-// here as the fleet runs." The frames were arriving and being discarded.
-export type FleetToolCall = {
-  name: string;
-  /** Wall time so far (from a progress frame) or final (from a completion). */
-  ms: number | null;
-  done: boolean;
-};
-
-export type FleetEvent = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  actor: string;
-  /**
-   * The trigger body — what woke the fleet (an operator's steer, a webhook
-   * headline). Fixed at creation from the actor + request payload; the fleet's
-   * reply never overwrites it. Empty for a row that is itself a reply.
-   */
-  text: string;
-  /**
-   * The fleet's reply on this same durable row (`response_text`), accumulated
-   * from CHUNK frames while streaming. Empty until the fleet answers; the row
-   * then renders `outcome` in the reply's place.
-   */
-  reply: string;
-  /**
-   * What the reply bubble says when `reply` is empty — the honest floor that
-   * keeps a completed turn from rendering blank. Recomputed on status change.
-   */
-  outcome: string;
-  /**
-   * The runner's failure class for a failed turn (`startup_posture`, …), kept
-   * beside the rendered `outcome` sentence because remediation guidance is
-   * chosen by the CLASS, not by the sentence. Null on a clean or in-flight
-   * turn — a row that has not failed has no class to carry.
-   */
-  failureLabel: string | null;
-  /**
-   * The recorded cause line for a failed turn, kept beside the class so a
-   * summary above the thread can name WHICH check failed without re-parsing
-   * it back out of the rendered outcome sentence.
-   */
-  failureDetail: string | null;
-  createdAt: Date;
-  status: FleetEventStatus;
-  /** Tools called while working this event, in first-seen order. */
-  tools?: FleetToolCall[];
-  custom?: { requestJson?: string | null };
-};
-
-export function mergeBackfill(
-  prev: FleetEvent[],
-  rows: EventRow[],
-): FleetEvent[] {
-  const seen = new Set(prev.map((e) => e.id));
-  // A terminal backfill row is authoritative over a live row with the same
-  // id — an event that straddled an outage may sit here as a partial chunk
-  // accumulation, and the durable row carries the full final text + status.
-  // An in-progress ("received") backfill row never clobbers live chunks:
-  // the live accumulation is newer than the list snapshot.
-  const authoritative = new Map<string, EventRow>();
-  for (const r of rows) {
-    if (seen.has(r.event_id) && r.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
-      authoritative.set(r.event_id, r);
-    }
-  }
-  const kept = prev.map((e) => {
-    const replacement = authoritative.get(e.id);
-    if (!replacement) return e;
-    const reconciled = rowToEvent(replacement);
-    return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
-  });
-  const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
-  return [...fromBackfill, ...kept].sort(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-  );
-}
-
-// The newest server-confirmed `created_at` across the rows, folded into the
-// running watermark. Live SSE frames are stamped with the CLIENT clock and
-// must never advance this — a skewed client would push the backfill's lower
-// bound into the server's future and silently recover nothing.
-export function maxServerCreatedAt(
-  current: number | null,
-  rows: EventRow[],
-): number | null {
-  let max = current;
-  for (const r of rows) {
-    if (typeof r.created_at === "number" && (max === null || r.created_at > max)) {
-      max = r.created_at;
-    }
-  }
-  return max;
-}
-
-// Epoch ms → the 20-char `YYYY-MM-DDTHH:MM:SSZ` shape the upstream `since`
-// parser accepts (no fractional seconds).
-export function rfc3339Seconds(ms: number): string {
-  return `${new Date(Math.max(ms, 0)).toISOString().slice(0, 19)}Z`;
-}
+// The statuses the server writes on a row; a completion naming any other
+// spelling marks the turn done rather than leaving it working forever.
+const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(EVENT_STATUS));
 
 export function applyLiveFrame(
   prev: FleetEvent[],
@@ -199,66 +93,58 @@ function applyToolCall(
 
 // ── internals ────────────────────────────────────────────────────────────
 
-// A durable row becomes a rendered turn: the trigger (from the actor + request
-// payload) and the fleet's reply (from response_text on the same row). Neither
-// clobbers the other, so an operator's own message survives reload and the
-// fleet's answer is never dropped or attributed to the operator.
-/// The payload stand-in for a turn whose body is not on hand — a live frame
-/// carries none, and a list row no longer does either.
-const EMPTY_PAYLOAD = "{}";
-
-function rowToEvent(row: EventRow | EventDetail): FleetEvent {
-  // A backfill row may or may not carry bodies. The events LIST carries none —
-  // it is kept off oversized-attribute storage — so a turn reconstructed from
-  // it renders its header and outcome, and its text arrives from the live
-  // stream or from the single-event read. A caller that already holds details
-  // passes them and nothing is lost.
-  const bodies = row as Partial<EventDetail>;
-  const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
-  return {
-    id: row.event_id,
-    role: roleFor(row.actor),
-    actor: row.actor,
-    text: triggerBodyFor({ actor: row.actor, event_type: row.event_type, request_json }),
-    reply: replyBodyFor({ response_text: bodies.response_text ?? null }),
-    outcome: outcomeFor(row),
-    failureLabel: row.failure_label ?? null,
-    failureDetail: row.failure_detail ?? null,
-    createdAt: new Date(row.created_at),
-    status: row.status as FleetEventStatus,
-    custom: { requestJson: request_json },
-  };
-}
-
 function applyEventReceived(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_RECEIVED }>,
 ): FleetEvent[] {
-  if (prev.some((e) => e.id === frame.event_id)) return prev;
+  // The daemon stamps the frame with the row's own instant; a frame without
+  // one (a malformed payload) falls back to now rather than to an invalid
+  // date, so the row still sorts and renders.
+  const createdAt = figure(frame.created_at);
+  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const existing = prev[index];
+  // A row the browser already holds — the operator's own steer, reconciled
+  // to its identifier before the daemon opened it — keeps everything but its
+  // instant: that was the client clock's guess, and the row's own is what the
+  // strip orders the newest run by.
+  if (existing !== undefined) return adoptInstant(prev, index, existing, createdAt);
   return [
     ...prev,
     {
       id: frame.event_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
-      // The frame carries no payload and no event type, so the trigger comes
-      // from the actor alone. A steer renders empty here until reconciliation
-      // grafts the operator's text; anything else gets the neutral "Event
-      // received" floor — fabricating `event_type: "chat"` would caption a
-      // webhook or cron trigger as "chat received" until reload.
+      // The frame carries no payload, so the trigger comes from the actor and
+      // the event type the daemon recorded. A steer renders empty here until
+      // reconciliation grafts the operator's text; a webhook or cron trigger
+      // gets its own neutral headline rather than a chat caption.
       text: triggerBodyFor({
         actor: frame.actor,
         request_json: EMPTY_PAYLOAD,
-        event_type: "",
+        event_type: typeof frame.event_type === "string" ? frame.event_type : "",
       }),
       reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
       failureLabel: null,
       failureDetail: null,
-      createdAt: new Date(),
+      createdAt: createdAt === null ? new Date() : new Date(createdAt),
       status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
     },
   ];
+}
+
+// The row at `index` re-stamped with the daemon's instant, or `prev` itself
+// when the frame carried none or the row already has it.
+function adoptInstant(
+  prev: FleetEvent[],
+  index: number,
+  existing: FleetEvent,
+  createdAt: number | null,
+): FleetEvent[] {
+  if (createdAt === null || existing.createdAt.getTime() === createdAt) return prev;
+  const updated = [...prev];
+  updated[index] = { ...existing, createdAt: new Date(createdAt) };
+  return updated;
 }
 
 function applyChunk(
@@ -304,20 +190,124 @@ function applyEventComplete(
   // Locate once, copy once — same shape as `applyToolCall` and `applyChunk`.
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
-  if (existing === undefined) return prev;
-  const status = (frame.status ?? AGENTSFLEET_EVENT_STATUS.PROCESSED) as FleetEventStatus;
+  // A completion for a row the timeline never opened — a subscriber that
+  // connected after the opening, a continued run whose row the resolve wrote,
+  // an opening frame the queue dropped — opens it here: the frame carries the
+  // whole row, so the turn and the strip's figures land without a read. A
+  // frame too malformed to be a row is dropped, never rendered as a blank.
+  if (existing === undefined) return openFromCompletion(prev, frame);
+  // SSE payloads are untrusted: a completion with no readable status still
+  // marks the turn done rather than leaving it working forever.
+  const status = terminalStatus(frame.status);
   // The outcome follows the status — and carries the failure cause the frame
   // ships, so a failed turn names its check live instead of a generic floor
   // until reload. The class rides alongside so guidance renders live too.
-  const label = (frame.failure_label ?? "").trim();
-  const detail = (frame.failure_detail ?? "").trim();
+  const label = text(frame.failure_label);
+  const detail = text(frame.failure_detail);
+  const createdAt = figure(frame.created_at);
   const updated = [...prev];
   updated[index] = {
     ...existing,
     status,
-    outcome: outcomeForCompletion(status, frame.failure_label, frame.failure_detail),
+    outcome: outcomeForCompletion(status, label, detail),
     failureLabel: label.length > 0 ? label : null,
     failureDetail: detail.length > 0 ? detail : null,
+    // The row's own instant and figures ride the frame, so the strip orders
+    // and moves without a read.
+    createdAt: createdAt === null ? existing.createdAt : new Date(createdAt),
+    tokens: figure(frame.tokens),
+    wallMs: figure(frame.wall_ms),
+    costNanos: figure(frame.cost_nanos),
   };
   return updated;
+}
+
+// The completion's status as a row status: a server spelling as sent, and
+// anything else — absent, malformed, unknown — as processed.
+function terminalStatus(value: unknown): FleetEventStatus {
+  return typeof value === "string" && SERVER_STATUSES.has(value)
+    ? (value as FleetEventStatus)
+    : AGENTSFLEET_EVENT_STATUS.PROCESSED;
+}
+
+// A completion carrying enough of a row to open one: the fields `rowToEvent`
+// reads that have no fallback. Anything short of that is not a row.
+function openFromCompletion(
+  prev: FleetEvent[],
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
+): FleetEvent[] {
+  const createdAt = figure(frame.created_at);
+  if (typeof frame.actor !== "string" || createdAt === null) return prev;
+  const row: EventRow = {
+    fleet_id: "",
+    workspace_id: "",
+    event_id: frame.event_id,
+    actor: frame.actor,
+    event_type: text(frame.event_type),
+    status: terminalStatus(frame.status),
+    tokens: figure(frame.tokens),
+    wall_ms: figure(frame.wall_ms),
+    failure_label: text(frame.failure_label) || null,
+    failure_detail: text(frame.failure_detail) || null,
+    checkpoint_id: typeof frame.checkpoint_id === "string" ? frame.checkpoint_id : null,
+    resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
+    created_at: createdAt,
+    updated_at: figure(frame.updated_at) ?? createdAt,
+    cost_nanos: figure(frame.cost_nanos),
+  };
+  return [...prev, rowToEvent(row)];
+}
+
+// ── the merge ────────────────────────────────────────────────────────────
+
+export function mergeBackfill(
+  prev: FleetEvent[],
+  rows: EventRow[],
+): FleetEvent[] {
+  const seen = new Set(prev.map((e) => e.id));
+  // A terminal backfill row is authoritative over a live row with the same
+  // id — an event that straddled an outage may sit here as a partial chunk
+  // accumulation, and the durable row carries the full final text + status.
+  // An in-progress ("received") backfill row never clobbers live chunks:
+  // the live accumulation is newer than the list snapshot.
+  const authoritative = new Map<string, EventRow>();
+  for (const r of rows) {
+    if (seen.has(r.event_id) && r.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+      authoritative.set(r.event_id, r);
+    }
+  }
+  const kept = prev.map((e) => {
+    const replacement = authoritative.get(e.id);
+    if (!replacement) return e;
+    const reconciled = rowToEvent(replacement);
+    return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
+  });
+  const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
+  return [...fromBackfill, ...kept].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
+}
+
+// The newest server-confirmed `created_at` across the rows, folded into the
+// running watermark. Only durable rows advance it — a live frame's instant is
+// the daemon's, but the backfill that recovers a gap is keyed on rows the list
+// has served, and the 2 s overlap it re-reads is cheaper than a watermark a
+// dropped frame could push past the rows it never saw.
+export function maxServerCreatedAt(
+  current: number | null,
+  rows: EventRow[],
+): number | null {
+  let max = current;
+  for (const r of rows) {
+    if (typeof r.created_at === "number" && (max === null || r.created_at > max)) {
+      max = r.created_at;
+    }
+  }
+  return max;
+}
+
+// Epoch ms → the 20-char `YYYY-MM-DDTHH:MM:SSZ` shape the upstream `since`
+// parser accepts (no fractional seconds).
+export function rfc3339Seconds(ms: number): string {
+  return `${new Date(Math.max(ms, 0)).toISOString().slice(0, 19)}Z`;
 }

@@ -295,7 +295,7 @@ impl Lane {
 }
 
 /// The lane's Redis configuration.
-fn redis_config() -> RedisConfig {
+pub(crate) fn redis_config() -> RedisConfig {
     let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
         panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });

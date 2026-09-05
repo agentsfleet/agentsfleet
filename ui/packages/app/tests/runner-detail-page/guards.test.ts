@@ -86,6 +86,19 @@ describe("admin/runners/[runnerId] page — guards and failure handling", () => 
     expect(html).toContain('data-runner-strip="1"');
   });
 
+  it("a view read that fails while the runner read fails leaves no unhandled rejection", async () => {
+    // The lease read was already issued beside the runner read; when both fail
+    // the page still ends in not-found, and the lease rejection is absorbed —
+    // vitest fails the file on an unhandled rejection, so this case is
+    // load-bearing for the catch on the parallel start.
+    mockAuth();
+    getRunnerMock.mockRejectedValueOnce(new ApiError("no runner", 404, "UZ-RUN-014"));
+    listRunnerLeasesMock.mockRejectedValueOnce(new Error("lease read down"));
+    const Page = await loadPage();
+    await expect(Page(pageProps())).rejects.toThrow("notFound");
+    expect(listRunnerLeasesMock).toHaveBeenCalledTimes(1);
+  });
+
   it("says the history is unavailable when a view read errors, never an empty history", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
