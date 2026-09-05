@@ -7,10 +7,10 @@ import {
 import { listApprovals } from "@/lib/api/approvals";
 import { listAllMemories } from "@/lib/api/memory";
 import { FLEET_VIEW, type FleetView } from "./FleetSubnavigation";
+import { RUN_SUMMARY_APPROVALS_LIMIT } from "./run-summary";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
 export const CHAT_TURNS = 20;
-const CHAT_APPROVALS_LIMIT = 50;
 
 /** Chat opens on the transcript plus the approvals waiting on it. */
 export type ChatViewData = {
@@ -90,7 +90,7 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
         }).catch(() => null),
         approvals: listApprovals(args.workspaceId, args.token, {
           fleetId: args.fleetId,
-          limit: CHAT_APPROVALS_LIMIT,
+          limit: RUN_SUMMARY_APPROVALS_LIMIT,
         }).catch(() => null),
       };
   }

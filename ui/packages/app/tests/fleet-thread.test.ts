@@ -21,12 +21,14 @@ const REFRESH_SETTLE_SLACK_MS = 1_000;
 
 const {
   routerRefreshMock,
+  onRunCompletedMock,
   steerFleetActionMock,
   useFleetEventStreamMock,
   capturedOnNew,
   capturedRetry,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
+  onRunCompletedMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
   // Capture the `onNew` callback wired into the external-store runtime so a
@@ -184,6 +186,7 @@ function threadElement(initial: EventRow[] = []) {
     workspaceId: WS,
     fleetId: ZID,
     fleetName: FLEET_NAME,
+    onRunCompleted: onRunCompletedMock,
     initial,
   });
 }
@@ -198,6 +201,7 @@ function renderThreadWithInitial(initial: EventRow[]) {
       workspaceId: WS,
       fleetId: ZID,
       fleetName: FLEET_NAME,
+      onRunCompleted: onRunCompletedMock,
       initial,
     }),
   );
@@ -229,6 +233,7 @@ function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
 
 beforeEach(() => {
   routerRefreshMock.mockReset();
+  onRunCompletedMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
   // The delivery-failure registry is module-scoped by design (it survives
@@ -322,14 +327,15 @@ describe("FleetThread — header chrome", () => {
 });
 
 describe("FleetThread — summary refresh", () => {
-  it("does not refresh for terminal events already present in the server snapshot", () => {
+  it("does not signal a completion for terminal events already present in the server snapshot", () => {
     mockStream([]);
     renderThreadWithInitial([serverEvent()]);
 
+    expect(onRunCompletedMock).not.toHaveBeenCalled();
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });
 
-  it("refreshes server-rendered summaries once when a live event completes", async () => {
+  it("signals a completion once when a live event completes, and never touches the router", async () => {
     const received = ev({
       id: "event-refresh",
       role: "assistant",
@@ -338,32 +344,20 @@ describe("FleetThread — summary refresh", () => {
     });
     mockStream([received], { isRunning: true });
     const view = renderThread();
-    expect(routerRefreshMock).not.toHaveBeenCalled();
+    expect(onRunCompletedMock).not.toHaveBeenCalled();
 
     mockStream([{ ...received, status: "processed" }]);
-    view.rerender(
-      React.createElement(FleetThread, {
-        workspaceId: WS,
-        fleetId: ZID,
-        fleetName: FLEET_NAME,
-        initial: [],
-      }),
-    );
+    view.rerender(threadElement());
 
-    // The refresh is debounced (a completion burst re-runs the whole page
-    // fetch graph once, not once per frame), so the wait outlasts that window.
-    await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1), {
+    // Debounced: a completion burst refreshes the summary once, not once per
+    // frame — so the wait outlasts that window.
+    await waitFor(() => expect(onRunCompletedMock).toHaveBeenCalledTimes(1), {
       timeout: REFRESH_DEBOUNCE_MS + REFRESH_SETTLE_SLACK_MS,
     });
-    view.rerender(
-      React.createElement(FleetThread, {
-        workspaceId: WS,
-        fleetId: ZID,
-        fleetName: FLEET_NAME,
-        initial: [],
-      }),
-    );
-    expect(routerRefreshMock).toHaveBeenCalledTimes(1);
+    view.rerender(threadElement());
+    expect(onRunCompletedMock).toHaveBeenCalledTimes(1);
+    // The whole-page re-render per completion is the cost this shape retired.
+    expect(routerRefreshMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1088,6 +1082,7 @@ describe("FleetThread — role rendering", () => {
         workspaceId: WS,
         fleetId: ZID,
         fleetName: "",
+        onRunCompleted: onRunCompletedMock,
         initial: [],
       }),
     );
