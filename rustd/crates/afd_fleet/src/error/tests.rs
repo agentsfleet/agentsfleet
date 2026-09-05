@@ -199,6 +199,14 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
             error_code::INTERNAL_OPERATION_FAILED,
             DETAIL_EVENT_MALFORMED,
         ),
+        // Its own row rather than a variant of the one above: the two report the
+        // same code and detail to the caller and DIFFERENT prose to the
+        // operator, and only a separate case proves the second exists at all.
+        expected(
+            super::envelope_malformed("created_at"),
+            error_code::INTERNAL_OPERATION_FAILED,
+            DETAIL_EVENT_MALFORMED,
+        ),
         rejected,
         query,
         malformed,

@@ -20,6 +20,11 @@ use afd_redis::{Dedicated, Redis};
 /// URL which somehow DID open a socket fails the test rather than hanging it.
 const REFUSAL_BUDGET: Duration = Duration::from_secs(5);
 
+/// The park a dedicated connection is opened for here. Irrelevant to a refusal
+/// — nothing is read — but the constructor asks, and a test that made one up
+/// per call would be asserting nothing about the value.
+const PARK: Duration = Duration::from_millis(100);
+
 /// A URL the client cannot be built from is an unreachable-Redis failure that
 /// names the role, not a panic and not a hang.
 ///
@@ -123,7 +128,7 @@ async fn test_a_dedicated_connection_to_nothing_is_refused_by_role() {
         // deployment meets when Redis is down rather than misconfigured.
         let config = RedisConfig::from_url(*role, "redis://127.0.0.1:1/".to_owned());
 
-        let error = tokio::time::timeout(REFUSAL_BUDGET, Dedicated::connect(&config))
+        let error = tokio::time::timeout(REFUSAL_BUDGET, Dedicated::connect(&config, PARK))
             .await
             .expect("a refused connection must fail fast, not hang")
             .expect_err("nothing listens there, so no connection can open");

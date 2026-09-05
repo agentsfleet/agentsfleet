@@ -93,6 +93,7 @@ impl Error {
             // internal failure rather than a 4xx telling a healthy runner to
             // stop asking.
             ErrorKind::Envelope { .. }
+            | ErrorKind::EnvelopeMalformed { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Queue { .. }
@@ -216,7 +217,9 @@ impl Error {
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
-            ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
+            ErrorKind::Envelope { .. } | ErrorKind::EnvelopeMalformed { .. } => {
+                DETAIL_EVENT_MALFORMED
+            }
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,

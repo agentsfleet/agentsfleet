@@ -24,20 +24,47 @@
 //! is stated — a caller that wanted two concurrent commands could not write
 //! them.
 //!
-//! # No deadline here, and that is the point
+//! # The deadline covers the park, and the caller declares the park
 //!
 //! Every command through [`Redis::command`] carries `request_timeout`, because
-//! a request-path command that hangs is an outage. A blocking read is the
-//! opposite: parking IS the behaviour, and a timeout around it would fire on
-//! every idle interval and turn a healthy quiet stream into a log full of
-//! failures. The bound belongs in the `BLOCK` argument, which the server
-//! honours and answers with an empty reply — see
-//! [`crate::outbound::OutboundReader`].
+//! a request-path command that hangs is an outage. A blocking read is
+//! different: parking IS the behaviour, so its deadline has to be LONGER than
+//! the longest park a caller will ask for, or the driver gives up on a read
+//! the server is still honouring. That is not hypothetical — the driver's own
+//! default reply deadline is half a second, and a connection opened without
+//! naming a longer one fails every `BLOCK 5000` at 500 ms while the server
+//! keeps the socket parked for the remaining four and a half. Every command
+//! queued behind it then times out too, and the reader never sees an entry.
+//!
+//! So [`Dedicated::connect`] takes the longest park the owner will request,
+//! and the reply deadline is that park plus the role's `request_timeout`: the
+//! server's bound, then the ordinary allowance for the answer to travel. Still
+//! a bound — a peer that vanishes without closing the socket is noticed, and
+//! `BLOCK 0` (wait forever) is refused by construction because no park is
+//! declared for it.
+//!
+//! The DIAL is not governed by this allowance, which is worth stating because
+//! it looks as though it should be. The driver wraps the whole setup — socket,
+//! handshake and all — in its own `connection_timeout`, and the retry policy
+//! still bounds each attempt at `CONNECT_ATTEMPT_TIMEOUT`. So `client.rs`'s
+//! ladder arithmetic holds here too: the driver's own error is still the first
+//! to fire on a peer that accepts a socket and then says nothing, and it keeps
+//! its source chain. Raising the REPLY deadline buys the park without spending
+//! the dial's diagnostics.
+//!
+//! # A dropped socket heals, as the shared handle's does
+//!
+//! The socket is held through the driver's [`ConnectionManager`], the same way
+//! [`Redis`] holds its own: a command that meets a dead socket fails, the
+//! manager redials in the background, and the next command goes down the new
+//! socket. The ownership rule above is unchanged — the manager is `Clone`, and
+//! this type does not hand it out.
+use std::time::Duration;
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use redis::{Cmd, FromRedisValue, Value};
 
-use crate::client::build_client;
+use crate::client::{build_client, connect_retry_policy};
 use crate::config::{RedisConfig, RedisRole};
 use crate::error::{self, Error, ErrorKind, Result};
 
@@ -49,11 +76,16 @@ use crate::error::{self, Error, ErrorKind, Result};
 #[derive(Debug)]
 pub struct Dedicated {
     role: RedisRole,
-    connection: MultiplexedConnection,
+    manager: ConnectionManager,
 }
 
 impl Dedicated {
     /// Opens a connection for `config`'s role that this caller alone holds.
+    ///
+    /// `longest_park` is the longest `BLOCK` the owner will ever pass: the
+    /// reply deadline on every command is that plus the role's
+    /// `request_timeout`, so a read the server is still honouring is never
+    /// given up on — see the module note.
     ///
     /// Unlike [`crate::Redis::connect`] there is no ping: the caller is a
     /// background consumer rather than boot, and a consumer that cannot reach
@@ -61,26 +93,36 @@ impl Dedicated {
     /// Boot's promise that Redis SERVES is made once, by the shared handle.
     ///
     /// # Errors
-    /// Returns an unavailable error when Redis cannot be reached, and a config
-    /// error when a certificate authority file was named but not readable.
-    pub async fn connect(config: &RedisConfig) -> Result<Self> {
+    /// Returns an unavailable error when Redis cannot be reached within the
+    /// role's `connect_timeout`, and a config error when a certificate
+    /// authority file was named but not readable.
+    pub async fn connect(config: &RedisConfig, longest_park: Duration) -> Result<Self> {
+        let role = config.role().tag();
         let client = build_client(config)?;
-        let connection = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|source| {
+        let policy = connect_retry_policy()
+            .set_response_timeout(Some(longest_park + config.request_timeout()));
+        let dial = ConnectionManager::new_with_config(client, policy);
+        let manager = match tokio::time::timeout(config.connect_timeout(), dial).await {
+            Ok(dialed) => dialed.map_err(|source| {
                 Error::new(ErrorKind::Unreachable {
-                    role: config.role().tag(),
+                    role,
                     source: Box::new(source),
                 })
-            })?;
+            })?,
+            Err(_elapsed) => {
+                return Err(error::connect_timed_out(
+                    role,
+                    config.connect_timeout().as_millis(),
+                ));
+            }
+        };
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let role = config.role().tag();
-        tracing::debug!(role, event = "redis_dedicated_connected");
+        let park_ms = longest_park.as_millis();
+        tracing::debug!(role, park_ms, event = "redis_dedicated_connected");
         Ok(Self {
             role: config.role(),
-            connection,
+            manager,
         })
     }
 
@@ -90,7 +132,7 @@ impl Dedicated {
         self.role
     }
 
-    /// Runs one command, with no deadline of this crate's.
+    /// Runs one command under the deadline the connection was opened with.
     ///
     /// `&mut self` rather than `&self`, which is the invariant stated as a
     /// signature: a second concurrent command on a socket that may be parked
@@ -98,8 +140,9 @@ impl Dedicated {
     ///
     /// # Errors
     /// Returns a group-missing error for `NOGROUP`, an unavailable error when
-    /// the connection dropped, a command error otherwise, and an
-    /// unexpected-reply error when Redis answers a shape `T` cannot read.
+    /// the connection dropped or the deadline passed, a command error
+    /// otherwise, and an unexpected-reply error when Redis answers a shape `T`
+    /// cannot read.
     pub async fn command<T: FromRedisValue>(
         &mut self,
         name: &'static str,
@@ -107,7 +150,7 @@ impl Dedicated {
         cmd: &Cmd,
     ) -> Result<T> {
         let value = cmd
-            .query_async::<Value>(&mut self.connection)
+            .query_async::<Value>(&mut self.manager)
             .await
             .map_err(|source| error::classify(name, context, source))?;
 

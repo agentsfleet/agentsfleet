@@ -155,7 +155,7 @@ impl OutboundHarness {
 
     /// A reader on its own socket, under the consumer name production uses.
     pub(crate) async fn reader(&self) -> OutboundReader {
-        let connection = Dedicated::connect(&Self::config())
+        let connection = Dedicated::connect(&Self::config(), afd_outbound::LONGEST_PARK)
             .await
             .expect("a dedicated connection must be openable");
         OutboundReader::new(connection, outbound_consumer())

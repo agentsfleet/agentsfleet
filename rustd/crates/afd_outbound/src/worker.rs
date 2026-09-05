@@ -39,6 +39,9 @@
 //! it. This is exactly why [`afd_redis::outbound_consumer`] must not carry a
 //! process id.
 
+use std::ops::ControlFlow;
+use std::time::Duration;
+
 use afd_redis::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;
 
@@ -56,6 +59,28 @@ use crate::poster::{Deliver, Posters, Verdict, deliver_with_retry};
 /// between reads.
 pub const BLOCK_INTERVAL: usize = 5_000;
 
+/// The longest a read parks, as a [`Duration`].
+///
+/// What the reader's connection is opened with, so its reply deadline outlives
+/// every `BLOCK` this worker passes — see [`afd_redis::Dedicated::connect`] for
+/// what happens when it does not.
+pub const LONGEST_PARK: Duration = Duration::from_millis(5_000);
+
+// One number spelled twice for two APIs — the wire wants milliseconds as a
+// `usize`, the connection wants a `Duration` — and this is what keeps them one
+// number.
+const _: () = assert!(LONGEST_PARK.as_millis() == BLOCK_INTERVAL as u128);
+
+/// The pause a failed read costs before the next one.
+///
+/// Without it a read that fails INSTANTLY — a dropped socket answers in
+/// microseconds — turns the loop into a hot spin: hundreds of failed reads a
+/// second, each one a log line, on a task sharing its runtime with every
+/// request handler in the process. The pause is the same five seconds the
+/// healthy path parks for, so a failing Redis is asked exactly as often as an
+/// idle one; it is raced against the token so a shutdown never waits it out.
+const READ_FAILURE_BACKOFF: Duration = LONGEST_PARK;
+
 /// The connector answer-delivery worker.
 #[derive(Debug)]
 pub struct Worker<S> {
@@ -68,8 +93,10 @@ pub struct Worker<S> {
 enum Turn {
     /// A job to deliver.
     Job(Box<OutboundDelivery>),
-    /// Nothing was waiting, or the read failed and the next turn will retry.
+    /// Nothing was waiting.
     Idle,
+    /// The read failed; the next turn comes after [`READ_FAILURE_BACKOFF`].
+    Failed,
     /// The supervisor asked this task to stop.
     Stopped,
 }
@@ -95,10 +122,18 @@ impl<S: Deliver> Worker<S> {
     /// and the next turn of the loop re-reads. The one thing that ends this
     /// function is cancellation.
     pub async fn run(mut self, token: CancellationToken) {
-        // Idempotent, and here rather than only at boot so a worker that starts
-        // before the group exists — or after one is lost to a failover onto an
-        // empty replica — heals itself instead of reading into a `NOGROUP`
-        // forever.
+        // Idempotent, and at boot rather than per turn: an existing group answers
+        // `BUSYGROUP`, which is the steady state.
+        //
+        // A group lost AFTER this — deleted out of band, a failover onto an
+        // empty replica — is not repaired here, and that is deliberate rather
+        // than missed. Recreating it at the stream's end skips answers appended
+        // while it was gone, and recreating it at the beginning re-delivers
+        // answers already acknowledged, which for this stream means posting the
+        // same reply to a real channel twice. Resuming exactly where delivery
+        // stopped needs a durable record of the last acknowledged id, and that
+        // belongs with the producer this stream is still waiting for: nothing
+        // in the daemon calls `OutboundQueue::enqueue` yet.
         if let Err(failure) = self.queue.ensure_group().await {
             report("outbound_group_ensure_failed", &failure.into());
         }
@@ -111,6 +146,11 @@ impl<S: Deliver> Worker<S> {
             match self.next(&token).await {
                 Turn::Job(job) => self.deliver_and_ack(&job, &token).await,
                 Turn::Idle => {}
+                Turn::Failed => {
+                    if pause(&token).await.is_break() {
+                        break;
+                    }
+                }
                 Turn::Stopped => break,
             }
         }
@@ -119,9 +159,10 @@ impl<S: Deliver> Worker<S> {
 
     /// The next job, if there is one — pending first, then a blocking read.
     ///
-    /// A read that FAILS answers [`Turn::Idle`] rather than propagating: the
-    /// loop's next turn re-reads, and the blocking read's own interval is what
-    /// keeps a failing Redis from being asked in a tight spin.
+    /// A read that FAILS answers [`Turn::Failed`] rather than propagating: the
+    /// loop pauses, then re-reads. The pause is not optional — a failed
+    /// pending read never reaches the blocking read below, so nothing else in
+    /// this function would slow a loop whose socket is gone.
     async fn next(&mut self, token: &CancellationToken) -> Turn {
         // First, and before the pending list: a cancelled worker stops.
         //
@@ -144,12 +185,26 @@ impl<S: Deliver> Worker<S> {
         // The resume read. A process that starts — or restarts after a crash —
         // reaches its predecessor's unacknowledged entries only through this;
         // `read_blocking` below offers new entries and never re-offers those.
-        match self.reader.read_pending().await {
+        //
+        // Raced against the token for the same reason the blocking read below
+        // is, even though this one asks for no BLOCK and normally answers at
+        // once. Its reply deadline is the longest park plus the request timeout
+        // (`Dedicated::connect`), so a peer that accepts the socket and then
+        // answers nothing — a dropped packet filter, a frozen host, not a
+        // hangup, which redials — parks the worker here for that whole
+        // allowance. That is not shorter than `supervisor::JOIN_TIMEOUT`, so an
+        // unraced await here is how this task lands in
+        // `ShutdownReport::abandoned` on an otherwise clean stop.
+        let pending = tokio::select! {
+            biased;
+            () = token.cancelled() => return Turn::Stopped,
+            read = self.reader.read_pending() => read,
+        };
+        match pending {
             Ok(Some(job)) => return Turn::Job(Box::new(job)),
             Ok(None) => {}
             Err(failure) => {
-                report("outbound_read_pending_failed", &failure.into());
-                return Turn::Idle;
+                return Self::read_failed("outbound_read_pending_failed", failure);
             }
         }
 
@@ -163,12 +218,15 @@ impl<S: Deliver> Worker<S> {
             read = self.reader.read_blocking(BLOCK_INTERVAL) => match read {
                 Ok(Some(job)) => Turn::Job(Box::new(job)),
                 Ok(None) => Turn::Idle,
-                Err(failure) => {
-                    report("outbound_read_next_failed", &failure.into());
-                    Turn::Idle
-                }
+                Err(failure) => Self::read_failed("outbound_read_next_failed", failure),
             },
         }
+    }
+
+    /// Reports a failed read, so both read paths answer a failure the same way.
+    fn read_failed(event: &'static str, failure: afd_redis::Error) -> Turn {
+        report(event, &failure.into());
+        Turn::Failed
     }
 
     /// Delivers one job with bounded retry, then acknowledges it.
@@ -214,6 +272,17 @@ impl<S: Deliver> Worker<S> {
             // thread is what a person reads.
             report("outbound_ack_failed", &failure.into());
         }
+    }
+}
+
+/// Waits out [`READ_FAILURE_BACKOFF`], unless the supervisor cancels first.
+async fn pause(token: &CancellationToken) -> ControlFlow<()> {
+    tokio::select! {
+        // Biased for the reason the read's own race is: a token already
+        // cancelled must win deterministically, not by polling order.
+        biased;
+        () = token.cancelled() => ControlFlow::Break(()),
+        () = tokio::time::sleep(READ_FAILURE_BACKOFF) => ControlFlow::Continue(()),
     }
 }
 

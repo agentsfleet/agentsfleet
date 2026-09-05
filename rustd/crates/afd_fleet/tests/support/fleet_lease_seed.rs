@@ -81,6 +81,33 @@ pub(crate) struct Seeded<const N: usize> {
 
 /// A fleet with one event on its stream, and `N` enrolled runners.
 pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
+    let (fleet, workspace, tenant, runners) = seeded_parts::<N>(fixtures).await;
+    let event_id = crate::queue::enqueue(
+        fixtures.queue(),
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    Seeded {
+        runners,
+        event_id,
+        fleet,
+        tenant,
+    }
+}
+
+/// The fleet and its runners, with NOTHING on the stream yet.
+///
+/// Split out of [`seeded`] because a test about which entry a poll meets first
+/// has to choose the order entries are appended in, and [`seeded`] appends one
+/// before it returns.
+pub(crate) async fn seeded_parts<const N: usize>(
+    fixtures: &Fixtures,
+) -> (String, String, String, [Uuid7; N]) {
     let (fleet, workspace, tenant) = unique_ids();
     // One tag per seeded fleet, carried by its own runners and nobody else's:
     // see `Fixtures::seed_fleet` on why the assignment pass needs it.
@@ -103,22 +130,12 @@ pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);
     }
-    let event_id = crate::queue::enqueue(
-        fixtures.queue(),
-        &fleet,
-        &workspace,
-        ACTOR,
-        EVENT_TYPE,
-        REQUEST_JSON,
-        ENROLLED_AT,
-    )
-    .await;
-    Seeded {
-        runners: runners
+    (
+        fleet,
+        workspace,
+        tenant,
+        runners
             .try_into()
             .expect("N enrolments produce exactly N identifiers"),
-        event_id,
-        fleet,
-        tenant,
-    }
+    )
 }

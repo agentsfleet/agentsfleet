@@ -31,7 +31,7 @@
 
 use afd_redis::FleetStreams;
 use afd_redis::streams::{Appended, OnceScope};
-use afd_wire::event::{EventType, field};
+use afd_wire::event::{Entry, EventType};
 
 use crate::Ingress;
 use crate::binding::Binding;
@@ -108,18 +108,21 @@ impl Ingress {
         let workspace = binding.workspace().as_str();
         let once_id = format!("{fleet}:{}", delivery.event_id);
         let kind = EventType::Webhook.as_str();
+        let created_at = afd_core::clock::now().as_millis().to_string();
 
         let appended = FleetStreams::new(self.queue.clone())
             .append_once(
                 surface.scope(),
                 &once_id,
                 fleet,
-                &[
-                    (field::ACTOR, delivery.actor),
-                    (field::EVENT_TYPE, kind),
-                    (field::WORKSPACE_ID, workspace),
-                    (field::REQUEST_JSON, delivery.request_json),
-                ],
+                &Entry {
+                    actor: delivery.actor,
+                    event_type: kind,
+                    workspace_id: workspace,
+                    request_json: delivery.request_json,
+                    created_at: &created_at,
+                }
+                .pairs(),
             )
             .await?;
 
