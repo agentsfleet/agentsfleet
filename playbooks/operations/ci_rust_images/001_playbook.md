@@ -1,6 +1,6 @@
 # Playbook — CI Rust Base Image
 
-**Updated:** Aug 30, 2026
+**Updated:** Sep 5, 2026
 **Owner:** Agent (build), Human (one-time GHCR auth)
 **Prerequisite:** `gh auth login` with `write:packages`, Docker Desktop or `docker-buildx-plugin`.
 
@@ -58,10 +58,60 @@ An image compiling with a different rustc than every other lane is a second
 compiler nobody chose, and the binary it produces is not the one the tests
 graded.
 
-The Alpine floor is a patch series rather than a floating `alpine3`, because
-this image decides what compiles the shipped binary and a base that moves under
-a release is a different binary nobody chose. The repository holds GitHub
-Actions to the same rule (`audits/gh-actions-runtime.sh`).
+The Alpine floor names a patch series rather than a floating `alpine3`, so a
+major release cannot arrive unannounced. Be precise about what that does and
+does not buy: `alpine:3.24` is itself a moving tag — it resolves to 3.24.1 today
+and will resolve to 3.24.2 — so the musl, gcc and binutils layer floats by patch
+while the compiler does not. Closing that would mean pinning `alpine@sha256:`
+and paying a commit per Alpine patch. `ci_zig_images` makes the same trade, and
+the input that decides the shipped binary is the compiler, which is pinned
+exactly. The repository holds GitHub Actions to the stricter rule
+(`audits/gh-actions-runtime.sh`), where the cost of a digest is one line.
+
+## Why the base is Alpine and not `rust:*-alpine`
+
+docker-library publishes its `rust` alpine variants weeks behind a rustc
+release. 1.98.1 shipped Sep 1, 2026 and the newest `rust:*-alpine` was still
+1.98.0 four days later, so `FROM rust:${RUST_VERSION}-alpine${ALPINE_SERIES}`
+could not be built on the day the repository moved its pin. Waiting is not a
+plan, and pinning the base to the older tag while installing the newer
+toolchain into it puts two compilers in one image — the exact thing
+`versions.env` exists to prevent.
+
+So the base is plain Alpine and rustup installs `RUST_VERSION` into it. That
+leaves `versions.env` the only place the compiler is named, and it decouples the
+repository's toolchain from another project's release cadence.
+
+The bootstrap is not invented here. It follows rust-lang/docker-rust's own
+`Dockerfile-alpine.template` — same archive URL shape, same `--profile minimal`,
+same `--default-host` — and it is the shape `ci_zig_images` already uses next
+door: a pinned installer plus a per-architecture SHA256.
+
+`RUSTUP_VERSION` and the two `RUSTUP_SHA256_*` values pin that installer.
+Refresh them with `./build_and_push.sh fetch-shas`, which reads the checksum
+upstream publishes at `<installer-url>.sha256`, downloads the binary, and
+**refuses when the two disagree**. What that buys is real but bounded: a
+truncated, cached, or tampered-in-transit body fails loudly instead of becoming
+the new pin. It is not a signature. A wholly compromised static.rust-lang.org
+would serve a matching pair, and rustup publishes nothing to check against that.
+
+Hashing our own download and calling the result a trust anchor would have been
+strictly weaker — it proves only that the file did not change after we fetched
+it, which is the one thing nobody was worried about. Do not paste a checksum by
+hand either; `fetch-shas` is the path that checks.
+
+## The published tag and this directory can drift
+
+Nothing rebuilds `ci-rust-alpine` on merge. The workflows `docker run` the tag,
+`make/build.mk` pulls it, and neither notices that the `Dockerfile.alpine` in
+the repository is not the one the tag was built from. So an edit to this
+directory after the image was pushed leaves every lane compiling inside the old
+image while the diff shows the new recipe.
+
+The rule that follows: **any change to `Dockerfile.alpine` or `versions.env`
+means re-running `./build_and_push.sh` before the PR merges.** Use
+`--revision r2` when the tag is already consumed by a merged commit; overwriting
+is only safe while the tag is new and nothing on the default branch names it.
 
 ## Build and publish
 
@@ -71,6 +121,7 @@ cd playbooks/operations/ci_rust_images
 ./build_and_push.sh --no-push          # this arch only, loaded locally
 ./build_and_push.sh                    # both arches, pushed to GHCR
 ./build_and_push.sh --revision r2      # iterate without moving a pinned tag
+./build_and_push.sh fetch-shas         # refresh the rustup-init checksums
 ```
 
 `--no-push` builds a single architecture because `docker buildx --load` cannot
@@ -78,11 +129,32 @@ accept a multi-platform manifest. That is a docker limitation, not a choice.
 
 ## Moving the Rust version
 
-1. Move `channel` in `rustd/rust-toolchain.toml` and the mise tools config together.
-2. Move `RUST_VERSION` in `versions.env` to match.
-3. `./build_and_push.sh` — it refuses if step 1 and step 2 disagree.
-4. Move `BUILDER_IMAGE`'s default in `make/build.mk` only if the tag shape changed;
-   it is derived from `versions.env`, so a version move needs no edit there.
+1. Move `channel` in `rustd/rust-toolchain.toml`. If your own mise config names a
+   Rust version, move it too — mise exports `RUSTUP_TOOLCHAIN`, which overrides
+   the file, and that config is not something this repository can gate.
+2. Move `rust-version` in `rustd/Cargo.toml` with them — the workspace floor is
+   equal to the pin, not trailing it, so cargo fails loudly on the wrong rustc
+   rather than compiling quietly.
+3. Move `RUST_VERSION` in `versions.env` to match.
+4. `./build_and_push.sh` — it refuses if steps 1, 2 and 3 disagree.
+5. Move `BUILDER_IMAGE`'s default in `make/build.mk` only if the tag shape changed;
+   it is derived from `versions.env`, so a version move needs no edit there. The
+   same goes for the workflows, which compute the tag with the same `sed`.
+6. Update the version the README states, and the literal in
+   `scripts/check_builder_pin_test.sh` whose test is named for being *currently
+   correct* — a stale literal there leaves the test passing while no longer
+   testing what it says. Nothing else: every other mention of the number is
+   prose that rots, and belongs written as "the pin" instead.
+7. Re-run `./build_and_push.sh` and confirm `docker manifest inspect` shows both
+   architectures on the new tag. The image is not a build product of CI; if you
+   do not push it, nothing does.
+
+Steps 1-3 are gated: `build_and_push.sh` refuses to build when `versions.env`,
+`rust-toolchain.toml`, and `Cargo.toml` do not all name the same version.
+Steps 6 and 7 are not gated — they are the ones to check by hand.
+
+`RUSTUP_VERSION` moves on its own cadence, whenever rustup itself releases.
+It is the installer, not the compiler; `fetch-shas` is the only way to move it.
 
 ## What this does NOT do
 

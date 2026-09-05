@@ -48,7 +48,7 @@ jobs:
       #    the other every run. That is the workaround `shared-key` removes.
       #
       # Prior art checked before choosing this, per the operating model: the
-      # sibling `e2e-observability-platform` runs the SAME rustc 1.98.0 under
+      # sibling `e2e-observability-platform` runs the SAME pinned rustc under
       # GitLab CI and caches `.cargo/registry` + `.cargo/git` while explicitly
       # refusing to cache `target/` — "to avoid stale artifact/fingerprint
       # mismatches across pipeline runs" (`.gitlab/ci/quality-gates.yml`). Its

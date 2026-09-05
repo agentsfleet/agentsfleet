@@ -37,9 +37,10 @@
 #      rustup selects a toolchain from the WORKING DIRECTORY, not from the
 #      manifest, so `--manifest-path` builds the workspace with whatever
 #      toolchain the machine defaults to — on the CI runner that is the image's
-#      `stable`, not the 1.98.0 this repository pins, and it moves under us
-#      whenever the image is rebuilt. `make test-unit-rustd` has always done it
-#      this way; this lane learned it the expensive way, on a red CI run.
+#      `stable`, not the version `rustd/rust-toolchain.toml` pins, and it moves
+#      under us whenever the image is rebuilt. `make test-unit-rustd` has
+#      always done it this way; this lane learned it the expensive way, on a
+#      red CI run.
 
 .PHONY: test-integration-rustd test-coverage-rustd _migrate-test-db
 
