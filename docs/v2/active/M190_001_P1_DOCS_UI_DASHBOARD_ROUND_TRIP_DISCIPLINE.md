@@ -58,7 +58,10 @@ All paths below `ui/packages/app/` unless stated.
 |------|--------|-----|
 | `lib/api/client.ts` | EDIT | the single attempt becomes internal; `request` and `requestWithEtag` ride the retry policy and apply the default timeout when no signal is supplied |
 | `lib/api/retry.ts` | EDIT | the loop wraps the single-attempt primitive, including the ETag-carrying variant, so no caller can double-retry |
-| `lib/api/client.test.ts`, `lib/api/retry.test.ts`, `lib/api/retry.integration.test.ts` | EDIT | default retry, default timeout, caller-signal precedence, no double retry, no POST replay |
+| `lib/api/events.ts`, `lib/api/fleets.ts` | EDIT | import site only: `requestWithRetry` now lives in `client.ts`, so the policy module never imports the transport |
+| `lib/api/retry.test.ts`, `lib/api/retry.integration.test.ts` | EDIT | policy proofs in isolation; real-transport proofs for default retry and the hung read |
+| `lib/api/client.retry.test.ts`, `lib/api/client.defaults.test.ts` | CREATE | the explicit `requestWithRetry` suite beside the transport; the `request()` default-policy suite — two files so each stays under the length cap |
+| `vitest.setup.ts` | EDIT | the unit suite defaults to one attempt; suites that prove retry stub the switch back |
 | `components/domain/useRefreshOnCompletion.ts` | EDIT | detects new terminal events and debounces as today; invokes a caller-supplied callback instead of the router |
 | `components/domain/useRefreshOnCompletion.test.ts` | CREATE | the hook never touches the router; one callback per burst |
 | `components/domain/FleetThread.tsx` | EDIT | accepts the completion callback and passes it to the hook |
@@ -66,6 +69,7 @@ All paths below `ui/packages/app/` unless stated.
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.test.tsx` | CREATE | strip updates from the action; failure keeps last good values; status change triggers one refresh |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.ts` | CREATE | the `FleetRunSummary` shape and its two builders (from the server thread page, from the action reads) so both sides derive one way |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.test.ts` | CREATE | both builders agree on the same inputs |
+| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/view-data.ts` | EDIT | imports the approvals limit from `run-summary.ts` so the constant has one declaration |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | the chat view renders `ChatView` with the initial summary |
 | `app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | `getFleetRunSummaryAction` |
 | `app/(dashboard)/admin/runners/[runnerId]/page.tsx` | EDIT | the view read starts beside the runner read |
@@ -73,9 +77,11 @@ All paths below `ui/packages/app/` unless stated.
 | `tests/runner-detail-page.test.ts`, `tests/admin-models-page.test.ts` | EDIT | both reads are in flight before either resolves; failure handling unchanged |
 | `app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx` (+ `.test.tsx`) | EDIT | optimistic row removal on delete |
 | `app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` (+ `.test.tsx`) | EDIT | optimistic admin-state badge on cordon, drain, revoke |
+| `app/(dashboard)/admin/runners/[runnerId]/components/RunnerIdentityLine.tsx` | CREATE | the status, badges and degraded line extracted from the header, which sat at 317 lines before the edit |
 | `app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.tsx` | EDIT | row leaves before the POST resolves; restored on failure |
-| `app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.test.tsx` | CREATE | optimistic removal, restore on failure, already-resolved notice |
-| `app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons.tsx` (+ `.test.tsx` CREATE) | EDIT | drop the redundant refresh after the push; pending state unchanged |
+| `tests/approvals-list.test.ts` | EDIT | optimistic removal, restore on failure, already-resolved notice |
+| `app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons.tsx` | EDIT | drop the redundant refresh after the push; pending state unchanged |
+| `tests/approvals-resolve-buttons.test.ts`, `tests/fleet-thread.test.ts` | EDIT | push once with no refresh; the completion callback replaces the router assertion |
 | `docs/architecture/web_app.md` (repo root) | EDIT | scoreboard re-measured: `useOptimistic` count and any other moved row |
 
 A changelog `<Update>` lands in `~/Projects/docs/changelog.mdx` on its own branch at CHORE(close), per `dispatch/lifecycle.md`; it is a cross-repo write and not a row here.
@@ -121,14 +127,15 @@ The strip shows fleet status, the latest run's outcome, tokens, cost, duration a
 
 ### §2 — Every read retries and every request times out
 
-`request()` and `requestWithEtag()` become the retrying calls; the single attempt moves behind them. The policy is the one `requestWithRetry` already applies: transient statuses and network errors retry with the existing backoff, a genuine 5xx never replays a non-idempotent method, `AGENTSFLEET_NO_RETRY` still means one attempt. A request whose caller passes no `signal` gets `AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS)`; a caller-supplied signal is respected as is. A timeout abort maps to the retryable `TIMEOUT` class, distinct from a caller cancel. **Implementation default:** the timeout is the same value the SSE backfill already uses, and is declared once.
+`request()` and `requestWithEtag()` become the retrying calls; the single attempt moves behind them. The policy is the one `requestWithRetry` already applies: transient statuses and network errors retry with the existing backoff, a genuine 5xx never replays a non-idempotent method, `AGENTSFLEET_NO_RETRY` still means one attempt. By default only GET, HEAD and PUT retry; DELETE, POST and PATCH keep one attempt unless the caller opts in through `requestWithRetry`, because a DELETE whose 204 was lost answers 404 on the replay and a POST that timed out may have been processed. A request whose caller passes no `signal` gets `AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS)`; a caller-supplied signal is respected as is and, once aborted, ends the loop without another attempt or a held backoff. A timeout abort maps to the retryable `TIMEOUT` class, distinct from a caller cancel. **Implementation default:** the timeout is the same value the SSE backfill already uses, and is declared once.
 
-- **Dimension 2.1** — a GET answered 503 then 200 resolves with the 200 body through `request()` with no options → Test `request retries a transient read and returns the recovered body`
-- **Dimension 2.2** — a POST answered 503 throws without a second attempt → Test `request does not replay a non-idempotent write on a server error`
-- **Dimension 2.3** — a read with no caller signal that never answers rejects with the `TIMEOUT` class after the policy's attempts → Test `a hung read times out into the retryable class and stops after the attempt ceiling`
-- **Dimension 2.4** — a caller-supplied signal is passed through and the default timeout is not added → Test `a caller signal wins over the default timeout`
-- **Dimension 2.5** — the three `requestWithRetry` callers make exactly the configured number of attempts, not that number squared → Test `an explicit retry caller never retries twice`
-- **Dimension 2.6** — a caller abort still surfaces as `RequestCancelledError`, never as a retry → Test `a navigation abort is a cancel, not a retry`
+- **Dimension 2.1** — DONE — a GET answered 503 then 200 resolves with the 200 body through `request()` with no options → Test `request retries a transient read and returns the recovered body`
+- **Dimension 2.2** — DONE — a POST answered 503 throws without a second attempt → Test `request does not replay a non-idempotent write on a server error`
+- **Dimension 2.3** — DONE — a read with no caller signal that never answers rejects with the `TIMEOUT` class after the policy's attempts → Test `a hung read times out into the retryable class and stops after the attempt ceiling`
+- **Dimension 2.4** — DONE — a caller-supplied signal is passed through and the default timeout is not added → Test `a caller signal wins over the default timeout`
+- **Dimension 2.5** — DONE — the three `requestWithRetry` callers make exactly the configured number of attempts, not that number squared → Test `an explicit retry caller never retries twice`
+- **Dimension 2.6** — DONE — a caller abort still surfaces as `RequestCancelledError`, never as a retry → Test `a navigation abort is a cancel, not a retry`
+- **Dimension 2.7** — DONE — a DELETE is not retried by default, and an aborted caller signal ends the loop without a second attempt → Tests `request does not retry a DELETE on its own`, `an already-cancelled caller gets no second attempt`
 
 ### §3 — Independent reads start together
 
@@ -212,6 +219,7 @@ No new HTTP endpoint. Every read the summary action composes exists today.
 | 2.4 | unit | `a caller signal wins over the default timeout` | init.signal supplied → fetch sees that signal; absent → fetch sees a timeout signal |
 | 2.5 | unit | `an explicit retry caller never retries twice` | `requestWithRetry` with maxAttempts 3 against always-503 → exactly 3 fetches |
 | 2.6 | unit | `a navigation abort is a cancel, not a retry` | fetch rejects AbortError → `RequestCancelledError`; one fetch |
+| 2.7 | unit | `request does not retry a DELETE on its own`, `an already-cancelled caller gets no second attempt` | DELETE 503 → one fetch; aborted signal + TimeoutError → one fetch, code `TIMEOUT`; a backoff in progress ends on abort |
 | regression | unit | `no-retry env still yields one attempt` | `AGENTSFLEET_NO_RETRY=1`, 503 → one fetch, throws |
 | 3.1 | unit | `runner detail starts the view read beside the runner read` | both mocks pending → both called before either resolves |
 | 3.2 | unit | `admin models starts both reads together` | same shape for model list and platform keys |
@@ -283,6 +291,10 @@ N/A — no files deleted. Two symbols lose their only consumer and leave in the 
 ## Discovery (consult log)
 
 - **Consults** — Sep 05, 2026, Indy chose "Perf batch + optimistic rows" from four offered scopes; D (poll pause) and E (approvals transport) moved to a follow-up.
+  - PLAN amendment (agent, Sep 05, 2026): Files Changed gained the import-site edits in `events.ts` and `fleets.ts`, the split test files, `vitest.setup.ts`, `view-data.ts`, `RunnerIdentityLine.tsx`, and the three existing tests under `tests/` that replace the CREATE rows. §2 narrows the default retry set to GET, HEAD, PUT and adds the abort guard after an adversarial read of the policy.
+  - > Indy (2026-09-05 20:43): "Can you make the retry.ts more robust and performant, and change with effects" — asked which reading; Indy chose **rewrite on the Effect library**. Disposition: a separate spec, because it adds a dependency and breaks CLI parity; §2 here lands the wiring and the two guards, and the rewrite replaces `retry.ts` behind the same `runWithRetry` seam.
+  - > Indy (2026-09-05 20:44): "adversarial review on retry.ts" — findings reported in session and carried into the Effect spec's Failure Modes; the two that touch the default path this spec introduces (DELETE replay answers 404; an aborted caller keeps retrying and sleeping) are fixed in §2.
+  - > Indy (2026-09-05 20:46): "Have you upgraded all the packages to the latest vite is 5 and others" — no; dependency upgrades are outside this spec's Files Changed. `bun outdated` in the app package lists patch and minor bumps plus vitest 5.0.0; reported in session for a separate decision.
 - **Metrics review** — no events added; `approval_resolved` unchanged; no analytics or funnel playbook update required.
 - **Skill-chain outcomes** — populated during VERIFY and REVIEW.
 - **Deferrals** — none at authoring. Baseline timing:

@@ -1,5 +1,5 @@
-import { request } from "./client";
-import { requestWithRetry, type RetryOptions } from "./retry";
+import { request, requestWithRetry } from "./client";
+import type { RetryOptions } from "./retry";
 
 // Operator-visible event rows from `core.fleet_events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
