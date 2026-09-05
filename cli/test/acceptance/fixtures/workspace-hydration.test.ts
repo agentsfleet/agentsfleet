@@ -24,7 +24,7 @@ const SECOND_MACHINE_NAME = "acceptance-retry-2";
 const ANSWER_DETAIL = "temporary failure";
 const HTTP_METHOD_POST = "POST";
 const HTTP_NO_CONTENT = 204;
-const HTTP_INTERNAL_SERVER_ERROR = 500;
+const HTTP_FORBIDDEN = 403;
 const HTTP_SERVICE_UNAVAILABLE = 503;
 /** Every test leaves the credential map empty, so the hook never waits. */
 const NO_WAIT = async (): Promise<void> => {};
@@ -159,7 +159,7 @@ describe("revoking the credentials this process minted", () => {
 
   it("waits for a sibling still retrying before it reports a failure", async () => {
     const attempts = installRevokeAnswers({
-      [CLI_CREDENTIAL_ID]: [HTTP_INTERNAL_SERVER_ERROR],
+      [CLI_CREDENTIAL_ID]: [HTTP_FORBIDDEN],
       [SECOND_CLI_CREDENTIAL_ID]: [HTTP_SERVICE_UNAVAILABLE, HTTP_NO_CONTENT],
     });
     await mintCliCredential(API_URL, SESSION_TOKEN, MACHINE_NAME);
@@ -179,7 +179,7 @@ describe("revoking the credentials this process minted", () => {
     gate.open();
     const failure = await outcome;
     expect(failure).toBeInstanceOf(CliCredentialRevokeFailed);
-    expect((failure as CliCredentialRevokeFailed).message).toContain(`answered ${HTTP_INTERNAL_SERVER_ERROR}`);
+    expect((failure as CliCredentialRevokeFailed).message).toContain(`answered ${HTTP_FORBIDDEN}`);
     expect(attempts[SECOND_CLI_CREDENTIAL_ID]).toBe(2);
 
     const remaining = installRevokeAnswers({
@@ -193,8 +193,8 @@ describe("revoking the credentials this process minted", () => {
 
   it("aggregates the failures when more than one credential stays live", async () => {
     installRevokeAnswers({
-      [CLI_CREDENTIAL_ID]: [HTTP_INTERNAL_SERVER_ERROR],
-      [SECOND_CLI_CREDENTIAL_ID]: [HTTP_INTERNAL_SERVER_ERROR],
+      [CLI_CREDENTIAL_ID]: [HTTP_FORBIDDEN],
+      [SECOND_CLI_CREDENTIAL_ID]: [HTTP_FORBIDDEN],
     });
     await mintCliCredential(API_URL, SESSION_TOKEN, MACHINE_NAME);
     await mintCliCredential(API_URL, SESSION_TOKEN, SECOND_MACHINE_NAME);

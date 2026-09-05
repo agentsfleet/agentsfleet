@@ -1,16 +1,18 @@
 import { afterAll } from "bun:test";
 
 import { revokeMintedSessions } from "./fixtures/clerk-admin.ts";
+import { REVOKE_WORST_CASE_MS } from "./fixtures/cli-credential-revoke.ts";
 import { revokeHydratedCliCredentials } from "./fixtures/workspace-hydration.ts";
 import { resolveAcceptanceEnv } from "./global-setup.ts";
 
+/** What the Clerk session revokes may take after the credentials are done. */
+const CLERK_REVOKE_BUDGET_MS = 20_000;
 /**
- * Five revoke attempts of up to 10s each, the backoff between them, then the
- * Clerk session revokes: about 60s at worst. The lane passes a larger
- * `--timeout`, but a by-hand `bun test --preload` would otherwise get bun's
- * 5s hook default and cut the loop mid-retry.
+ * The credential revokes' own worst case plus the Clerk budget. Explicit
+ * because a by-hand `bun test --preload` would otherwise get bun's 5s hook
+ * default and cut the loop mid-retry; the lane's `--timeout` is larger.
  */
-const TEARDOWN_TIMEOUT_MS = 90_000;
+const TEARDOWN_TIMEOUT_MS = REVOKE_WORST_CASE_MS + CLERK_REVOKE_BUDGET_MS;
 
 afterAll(async () => {
   const failures: unknown[] = [];

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   CliCredentialRevokeFailed,
   MAX_REVOKE_ATTEMPTS,
+  REVOKE_WORST_CASE_MS,
   revokeCliCredential,
 } from "./cli-credential-revoke.ts";
 
@@ -15,6 +16,7 @@ const RETRY_AFTER_HEADER = "Retry-After"; // pin test: literal is the contract
 const TIMEOUT_ERROR_NAME = "TimeoutError"; // pin test: literal is the contract
 const HTTP_NO_CONTENT = 204;
 const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
 const HTTP_NOT_FOUND = 404;
 const HTTP_REQUEST_TIMEOUT = 408;
 const HTTP_TOO_EARLY = 425;
@@ -135,6 +137,7 @@ describe("revoking a CLI credential the API cannot answer for yet", () => {
     HTTP_REQUEST_TIMEOUT,
     HTTP_TOO_EARLY,
     HTTP_TOO_MANY_REQUESTS,
+    HTTP_INTERNAL_SERVER_ERROR,
     HTTP_BAD_GATEWAY,
     HTTP_GATEWAY_TIMEOUT,
   ])("retries %d once the API answers", async (status) => {
@@ -148,7 +151,7 @@ describe("revoking a CLI credential the API cannot answer for yet", () => {
   });
 
   it("does not retry an answer the API decided", async () => {
-    const probe = installAnswers([HTTP_INTERNAL_SERVER_ERROR]);
+    const probe = installAnswers([HTTP_FORBIDDEN]);
     const clock = recordingClock();
 
     const failure = await revokeFailure(clock);
@@ -156,7 +159,7 @@ describe("revoking a CLI credential the API cannot answer for yet", () => {
     expect(probe.attempts()).toBe(1);
     expect(clock.delays).toEqual([]);
     expect(failure.retryable).toBe(false);
-    expect(failure.message).toContain(`answered ${HTTP_INTERNAL_SERVER_ERROR}`);
+    expect(failure.message).toContain(`answered ${HTTP_FORBIDDEN}`);
     expect(failure.cause).toBeUndefined();
   });
 
@@ -202,18 +205,26 @@ describe("revoking a CLI credential the API cannot answer for yet", () => {
     expect(failure.cause).toBe(cause);
   });
 
-  it("honours Retry-After up to its cap", async () => {
-    installAnswers([
+  it("honours Retry-After as a floor, up to its cap", async () => {
+    const answers = [
       retryAfterAnswer(HTTP_SERVICE_UNAVAILABLE, "2"),
       retryAfterAnswer(HTTP_TOO_MANY_REQUESTS, "60"),
       retryAfterAnswer(HTTP_SERVICE_UNAVAILABLE, "not-a-number"),
       HTTP_NO_CONTENT,
-    ]);
-    const clock = recordingClock();
+    ];
+    installAnswers(answers);
+    const floor = recordingClock();
+    await revoke(floor, FULL_JITTER_DOWN);
+    installAnswers(answers);
+    const ceiling = recordingClock();
+    await revoke(ceiling, FULL_JITTER_UP);
 
-    await revoke(clock);
+    expect(floor.delays).toEqual([2000, 10_000, 1600]); // pin test: literal is the contract
+    expect(ceiling.delays).toEqual([2400, 12_000, 2400]); // pin test: literal is the contract
+  });
 
-    expect(clock.delays).toEqual([2000, 10_000, 2000]); // pin test: literal is the contract
+  it("states its worst case from its own constants", () => {
+    expect(REVOKE_WORST_CASE_MS).toBe(98_000); // pin test: literal is the contract
   });
 
   it("jitters the schedule by a fifth either way", async () => {

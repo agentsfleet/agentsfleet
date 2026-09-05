@@ -15,14 +15,21 @@ const HTTP_NOT_FOUND = 404;
 const HTTP_REQUEST_TIMEOUT = 408;
 const HTTP_TOO_EARLY = 425;
 const HTTP_TOO_MANY_REQUESTS = 429;
+const HTTP_INTERNAL_SERVER_ERROR = 500;
 const HTTP_BAD_GATEWAY = 502;
 const HTTP_SERVICE_UNAVAILABLE = 503;
 const HTTP_GATEWAY_TIMEOUT = 504;
-/** Answers that say the API could not decide yet, never that the credential is bad. */
+/**
+ * Answers that say the API could not decide yet, never that the credential is
+ * bad. 500 is here because this DELETE is idempotent and the daemon answers
+ * `UZ-INTERNAL-002` (500) for an I/O fault inside the revoke statement but
+ * `UZ-AUTH-004` (503) for the same fault one step earlier, at acquire.
+ */
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
   HTTP_REQUEST_TIMEOUT,
   HTTP_TOO_EARLY,
   HTTP_TOO_MANY_REQUESTS,
+  HTTP_INTERNAL_SERVER_ERROR,
   HTTP_BAD_GATEWAY,
   HTTP_SERVICE_UNAVAILABLE,
   HTTP_GATEWAY_TIMEOUT,
@@ -30,10 +37,16 @@ const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
 export const MAX_REVOKE_ATTEMPTS = 5;
 export const REVOKE_ATTEMPT_TIMEOUT_MS = 10_000;
 const REVOKE_BACKOFF_BASE_MS = 500;
-/** ±20%, so two lane processes retrying the same outage do not re-hit the pool in lockstep. */
+/**
+ * ±20% on the schedule, so two lane processes retrying the same outage do not
+ * re-hit the pool in lockstep; +0..20% on a `Retry-After`, which is a floor.
+ */
 const REVOKE_JITTER_RATIO = 0.2;
 /** The daemon's admission shedding answers with `Retry-After`; it is honoured up to this. */
 const REVOKE_RETRY_AFTER_CAP_MS = 10_000;
+/** The longest one revoke can take: every attempt at its timeout, every wait at the cap plus jitter. */
+export const REVOKE_WORST_CASE_MS = MAX_REVOKE_ATTEMPTS * REVOKE_ATTEMPT_TIMEOUT_MS +
+  (MAX_REVOKE_ATTEMPTS - 1) * Math.round(REVOKE_RETRY_AFTER_CAP_MS * (1 + REVOKE_JITTER_RATIO));
 const MS_PER_SECOND = 1000;
 const RETRY_AFTER_HEADER = "Retry-After";
 const TIMEOUT_ERROR_NAME = "TimeoutError";
@@ -90,9 +103,11 @@ function retryAfterMs(response: Response): number | null {
 }
 
 function revokeBackoffMs(attempt: number, retryAfter: number | null, random: () => number): number {
-  const base = retryAfter ?? REVOKE_BACKOFF_BASE_MS * 2 ** (attempt - 1);
-  const jitter = base * REVOKE_JITTER_RATIO * (random() * 2 - 1);
-  return Math.round(base + jitter);
+  if (retryAfter !== null) {
+    return Math.round(retryAfter + retryAfter * REVOKE_JITTER_RATIO * random());
+  }
+  const base = REVOKE_BACKOFF_BASE_MS * 2 ** (attempt - 1);
+  return Math.round(base + base * REVOKE_JITTER_RATIO * (random() * 2 - 1));
 }
 
 /** One DELETE. Resolves `null` once the row is gone; otherwise the fault, never thrown. */
