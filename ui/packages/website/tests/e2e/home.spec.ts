@@ -7,13 +7,17 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("A fleet, ready to run.");
+    await expect(h1).toContainText("Keep shipping. Bring a fleet.");
   });
 
-  test("hero LIVE eyebrow renders a WakePulse data-live element", async ({ page }) => {
+  test("hero illustration does not imply live activity", async ({ page }) => {
     const eyebrow = page.getByTestId("hero-eyebrow");
-    await expect(eyebrow).toContainText("LIVE — wake.on.event");
-    await expect(eyebrow.locator('[data-live="true"]')).toBeVisible();
+    await expect(eyebrow).toContainText("Engineering work");
+    await expect(eyebrow.locator('[data-live="true"]')).toHaveCount(0);
+    const artwork = page.getByRole("img", { name: /Three agents collaborate/ });
+    await expect(artwork).toBeVisible();
+    await expect(artwork).toHaveJSProperty("complete", true);
+    expect(await artwork.evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   });
 
   test("renders hero CTAs", async ({ page }) => {
@@ -27,17 +31,15 @@ test.describe("Home page", () => {
     await expect(install).not.toHaveAttribute("href", /./);
     await expect(install).toContainText(/copy/i);
 
-    // Promo pill between the LIVE eyebrow and the headline links to the
-    // inline /pricing anchor and surfaces the early-access string
-    // (`RATES_DISPLAY.EARLY_ACCESS_PILL` in lib/rates.ts). It names no end date:
-    // the free allowance is the starter grant, so this page has none to state.
+    // The promo pill opens early-access information without quoting a price.
     const pill = page.getByTestId("hero-promo-pill");
     await expect(pill).toBeVisible();
-    await expect(pill).toHaveAttribute("href", "/pricing");
-    await expect(pill).toContainText(/Free during early access/);
+    await expect(pill).toHaveAttribute("href", "/#pricing");
+    await expect(pill).toContainText(/help shape agentsfleet/i);
+    await expect(pill).not.toContainText(/\$\d|starter credit/i);
 
     const earlyAccess = page.getByTestId("hero-cta-early-access");
-    await expect(earlyAccess).toContainText("Get early access");
+    await expect(earlyAccess).toContainText("Request early access");
     // Now an enabled link to the Clerk-hosted waitlist (was a disabled button).
     await expect(earlyAccess).toHaveAttribute("href", /\/waitlist$/);
     await expect(page.getByTestId("hero-cta-secondary")).toContainText("Meet the fleet");
@@ -57,13 +59,14 @@ test.describe("Home page", () => {
     await expect(brandMark).toHaveAttribute("data-live", "true");
   });
 
-  test("renders operational knowledge and the prebuilt Fleet catalogue", async ({ page }) => {
-    await expect(page.getByTestId("operational-knowledge")).toBeVisible();
-    await expect(page.getByText("It remembers, so the next time is faster.")).toBeVisible();
+  test("keeps the Fleet catalogue without repetitive knowledge or setup sections", async ({ page }) => {
+    await expect(page.getByTestId("operational-knowledge")).toHaveCount(0);
+    await expect(page.getByTestId("setup-section")).toHaveCount(0);
     await expect(page.getByTestId("prebuilt-fleets")).toBeVisible();
-    await expect(page.getByTestId("fleet-card-auto-reviewer")).toContainText("Auto Reviewer");
+    await expect(page.getByTestId("fleet-card-auto-reviewer")).toContainText("PR Reviewer");
     await expect(page.getByTestId("fleet-card-security-reviewer")).toContainText("Security Reviewer");
-    await expect(page.getByTestId("fleet-card-coming-soon")).toContainText(/coming soon/i);
+    await expect(page.getByTestId("fleet-coming-soon-security-reviewer")).toContainText(/coming soon/i);
+    await expect(page.getByTestId("fleet-card-slack-teammate")).toContainText(/mention-only and read-only/i);
 
     await page.setViewportSize({ width: 1280, height: 800 });
     const overflowsX = await page.evaluate(
@@ -86,9 +89,11 @@ test.describe("Home page", () => {
 
   test("renders how it works steps", async ({ page }) => {
     const how = page.getByTestId("how-it-works");
-    await expect(how.getByRole("heading", { name: "You push a pull request", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "It posts the review", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "Slack gets the heads-up", exact: true })).toBeVisible();
+    await expect(how.getByText("01 / Gather evidence", { exact: true })).toBeVisible();
+    await expect(how.getByText("02 / Investigate", { exact: true })).toBeVisible();
+    await expect(how.getByText("03 / You approve", { exact: true })).toBeVisible();
+    await expect(how.getByText("05 / GitHub draft PR", { exact: true })).toBeVisible();
+    await expect(how).toContainText("A diagnosis alone never starts it.");
   });
 
   test("does not render a duplicate install block below pricing", async ({ page }) => {
@@ -100,7 +105,7 @@ test.describe("Home page", () => {
   });
 
   test("topbar Pricing link scrolls to inline pricing section", async ({ page }) => {
-    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /pricing/i }).click();
+    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^early access$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });

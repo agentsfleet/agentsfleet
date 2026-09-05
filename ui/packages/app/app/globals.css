@@ -15,85 +15,19 @@ body {
   font-family: var(--ff-sans);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.6;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
-  /* No dot-grid on the app body — DESIGN_SYSTEM.md §Aesthetic permits the
-  * dot-grid on the marketing hero only. The app surface stays flat. */
 }
 
-.app-glow-surface {
+.app-surface {
   position: relative;
   isolation: isolate;
   overflow: hidden;
 }
 
-.app-glow-surface::before {
-  content: "";
-  position: fixed;
-  z-index: -1;
-  width: min(46rem, 82vw);
-  height: min(46rem, 82vw);
-  pointer-events: none;
-  border-radius: 999px;
-  background: radial-gradient(circle, var(--pulse-glow), transparent 64%);
-  filter: blur(8px);
-  opacity: 0.34;
-  transform: translate3d(-50%, -50%, 0);
-}
-
-.app-glow-surface[data-glow="auth"]::before {
-  left: 50%;
-  top: 40%;
-}
-
-.app-glow-surface[data-glow="dashboard"]::before {
-  display: none;
-}
-
-/* ── Dashboard motion — restrained, app-surface only, reduced-motion-gated ──
- * Route-level animation is intentionally absent: RouteLoading owns loading
- * feedback with a spinner, while the dashboard canvas stays static to avoid
- * wobble on navigation. Interactive chrome keeps a tiny no-preference-only
- * hover / press lift, and reduced motion still neutralises transitions. */
-
-/* Content canvas: a single restrained brand glow in the top-right corner — low
- * opacity so it reads as ambient warmth, not a hero background. The header and
- * sidebar stay flat; only the working area carries it. (Operational Restraint:
- * one calm glow, not a multi-stop teal/blue field.) */
 .app-dashboard-canvas {
-  background:
-    radial-gradient(1000px 620px at 96% -18%, var(--pulse-glow), transparent 62%),
-    var(--bg);
-  background-repeat: no-repeat;
-  background-size: 150% 150%, auto;
-  background-position: 100% 0%, 0 0;
-}
-
-/* Interactive chrome under the dashboard surface: a faint brightness lift on
- * hover, a 1px press on active. Inside no-preference so it is wholly absent
- * under reduced-motion. Transform/filter only and no `transition` shorthand —
- * the design-system primitives own the colour transition, which this must not
- * clobber; the lift itself is an instant, on-brand snap. */
-@media (prefers-reduced-motion: no-preference) {
-  .app-glow-surface button:hover {
-    filter: brightness(1.04);
-  }
-  .app-glow-surface button:active {
-    transform: translateY(1px);
-  }
-  .app-dashboard-canvas [data-dashboard-panel],
-  .app-dashboard-canvas [data-terminal-panel] {
-    transition:
-      border-color 0.2s ease,
-      filter 0.16s ease,
-      transform 0.16s ease;
-  }
-  .app-dashboard-canvas [data-dashboard-panel]:hover,
-  .app-dashboard-canvas [data-terminal-panel]:hover {
-    border-color: var(--border-strong);
-    filter: brightness(1.02);
-    transform: translateY(-1px);
-  }
+  background: var(--bg);
 }
 
 /* In @layer base so per-element text-colour utilities win on <a> elements
@@ -123,18 +57,12 @@ code, pre, kbd { font-family: var(--ff-mono); }
   border-width: 0;
 }
 
-/* UsageBar (design-system primitive) — the mint fill animates
- * 0 → its data-driven width on load (`meter-fill`). The gradient + animation
- * live here (not as arbitrary Tailwind); height/radius are Tailwind (`h-2
- * rounded-full`) on the component itself. Neutralised under reduced-motion
- * by the block below (snaps to final width). Formerly a bespoke,
- * billing-only meter class hand-rolled directly on BillingBalanceCard —
- * promoted here so the hooks are generic, not billing-specific. */
+/* Usage meters share a flat fill with the design system. */
 .usage-bar-track {
   overflow: hidden;
 }
 .usage-bar-fill {
-  background: linear-gradient(90deg, var(--pulse-dim), var(--pulse));
+  background: var(--pulse);
   animation: meter-fill 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 @keyframes meter-fill {
@@ -143,8 +71,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
   }
 }
 
-/* prefers-reduced-motion — wake-pulse becomes a static glow, meter-fill snaps
- * to its final frame, and hover lifts + motion-safe nav nudge are absent. */
+/* Keep final values visible without animating their arrival. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

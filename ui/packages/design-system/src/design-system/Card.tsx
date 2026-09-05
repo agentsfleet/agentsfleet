@@ -81,7 +81,7 @@ export function CardTitle({ className, ref, ...props }: ComponentProps<"div">) {
   return (
     <div
       ref={ref}
-      className={cn("font-mono font-medium text-heading leading-none", className)}
+      className={cn("font-sans font-medium text-heading leading-none", className)}
       {...props}
     />
   );

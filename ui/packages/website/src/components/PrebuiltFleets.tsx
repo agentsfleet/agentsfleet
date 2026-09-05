@@ -1,6 +1,9 @@
 import {
   Button,
   Card,
+  DescriptionDetails,
+  DescriptionList,
+  DescriptionTerm,
   DisplayLG,
   Section,
   SectionLabel,
@@ -15,32 +18,24 @@ import {
   type PrebuiltFleet,
 } from "../lib/marketing-copy";
 
-/*
- * Prebuilt fleets — the droids-style "ready to run" wall. Each card is
- * category · name · description · connected-app logos · a waitlist CTA. The
- * three behavioral pillars (isolated / compounding / proactive) moved down to
- * the Core Capabilities section, so this stays a clean catalogue. Keeps
- * id={LOOP_ANCHOR_ID} so the hero "Meet the fleet" link, the footer "fleets"
- * link, nav, and the llms.txt anchor all still resolve.
- */
+// Keep the shared anchor stable for hero, footer, and machine-readable links.
 export default function PrebuiltFleets() {
   return (
     <Section asChild className="site-section" data-testid="prebuilt-fleets">
-      <section id={LOOP_ANCHOR_ID} aria-label="Prebuilt fleets, ready to run">
+      <section id={LOOP_ANCHOR_ID} aria-label="Meet the fleet">
         <div className="wrap flex flex-col gap-8">
           <div className="flex flex-col gap-3">
-            <SectionLabel className="mb-0">the fleet · ready to run</SectionLabel>
+            <SectionLabel className="mb-0">The fleet</SectionLabel>
             <DisplayLG>{FLEETS_SECTION_HEADING}</DisplayLG>
             <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
               {FLEETS_SECTION_LEDE}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {PREBUILT_FLEETS.map((fleet) => (
               <FleetCard key={fleet.id} fleet={fleet} />
             ))}
-            <ComingSoonCard />
           </div>
         </div>
       </section>
@@ -55,7 +50,7 @@ function FleetCard({ fleet }: { fleet: PrebuiltFleet }) {
       data-testid={`fleet-card-${fleet.id}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
+        <span className="font-sans text-eyebrow uppercase tracking-eyebrow text-text-subtle">
           {fleet.category}
         </span>
         {fleet.comingSoon ? (
@@ -67,76 +62,70 @@ function FleetCard({ fleet }: { fleet: PrebuiltFleet }) {
           </span>
         ) : null}
       </div>
-      <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
+      <h3 className="font-sans text-heading leading-heading text-text font-medium m-0">
         {fleet.name}
       </h3>
       <p className="font-sans text-body-sm leading-body text-text-muted m-0">
         {fleet.description}
       </p>
-
+      <FleetDetails fleet={fleet} />
       <div className="mt-auto flex flex-col gap-4">
-        <div
-          className="flex flex-wrap items-center gap-2"
-          data-testid={`fleet-integrations-${fleet.id}`}
-        >
-          {fleet.integrations.map((integration) => (
-            <span
-              key={integration.label}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-border px-2 py-1"
-            >
-              <img
-                src={integration.icon}
-                alt=""
-                aria-hidden="true"
-                loading="lazy"
-                decoding="async"
-                className="size-4 shrink-0"
-              />
-              <span className="font-mono text-label text-text-muted">
-                {integration.label}
-              </span>
-            </span>
-          ))}
-        </div>
-
-        <Button
-          asChild
-          variant="secondary"
-          className="min-h-11 w-full justify-center"
-        >
-          <a
-            href={WAITLIST_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid={`fleet-cta-${fleet.id}`}
-            onClick={() =>
-              trackSignupStarted({
-                source: `fleet_${fleet.id}`,
-                surface: "fleets",
-                mode: "humans",
-              })
-            }
-          >
-            {fleet.comingSoon ? "Join the waitlist" : "Try it"}
-          </a>
-        </Button>
+        <FleetIntegrations fleet={fleet} />
+        <FleetWaitlist fleet={fleet} />
       </div>
     </Card>
   );
 }
 
-function ComingSoonCard() {
+function FleetDetails({ fleet }: { fleet: PrebuiltFleet }) {
+  const details = [
+    { label: "Wakes on", value: fleet.trigger },
+    { label: "Delivers", value: fleet.output },
+    { label: "Your control", value: fleet.control },
+  ];
   return (
-    <div
-      className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border p-2xl text-center"
-      data-testid="fleet-card-coming-soon"
-    >
-      <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
-        more
-      </span>
-      <p className="font-sans text-body-sm leading-body text-text-muted m-0">
-        More prebuilt fleets are joining the fleet — coming soon.
-      </p>
+    <DescriptionList layout="stacked" className="m-0 border-t border-border pt-4">
+      {details.map(({ label, value }) => (
+        <div key={label} className="flex flex-col gap-1">
+          <DescriptionTerm className="font-sans text-label font-medium text-pulse">{label}</DescriptionTerm>
+          <DescriptionDetails className="m-0 font-sans text-body-sm leading-body text-text-muted">{value}</DescriptionDetails>
+        </div>
+      ))}
+    </DescriptionList>
+  );
+}
+
+function FleetIntegrations({ fleet }: { fleet: PrebuiltFleet }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid={`fleet-integrations-${fleet.id}`}>
+      {fleet.integrations.map((integration) => (
+        <span key={integration.label} className="inline-flex items-center gap-1.5 rounded-sm border border-border px-2 py-1">
+          <img src={integration.icon} alt="" aria-hidden="true" loading="lazy" decoding="async" className="size-4 shrink-0" />
+          <span className="font-sans text-label text-text-muted">{integration.label}</span>
+        </span>
+      ))}
     </div>
+  );
+}
+
+function FleetWaitlist({ fleet }: { fleet: PrebuiltFleet }) {
+  return (
+    <Button asChild variant="secondary" className="min-h-11 w-full justify-center">
+      <a
+        href={WAITLIST_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid={`fleet-cta-${fleet.id}`}
+        onClick={() =>
+          trackSignupStarted({
+            source: `fleet_${fleet.id}`,
+            surface: "fleets",
+            mode: "humans",
+          })
+        }
+      >
+        Join the waitlist
+      </a>
+    </Button>
   );
 }

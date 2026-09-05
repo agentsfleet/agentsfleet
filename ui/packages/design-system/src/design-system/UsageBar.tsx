@@ -2,7 +2,7 @@ import { type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "../utils";
 
 /*
- * UsageBar — a quota/usage meter: track + gradient fill, an optional
+ * UsageBar — a quota/usage meter: track + solid fill, an optional
  * label + tabular-nums percentage row, and an optional sub-caption.
  * Extracted from the bespoke `.app-meter` markup BillingBalanceCard
  * previously hand-rolled; the mount-fill animation + reduced-motion

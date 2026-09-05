@@ -18,7 +18,7 @@ describe("Textarea", () => {
     expect(cls).toContain("text-foreground");
     expect(cls).toContain("rounded-md");
     expect(cls).toContain("min-h-20");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-sans");
   });
 
   it("applies focus ring and disabled styles", () => {

@@ -1,202 +1,99 @@
-/*
- * Marketing site (agentsfleet.net) — global stylesheet.
- *
- * Tailwind utility-first; this file keeps only the page-global pieces
- * Tailwind cannot express:
- *   - dot-grid <body> background (DESIGN_SYSTEM.md §Layout permits 8% opacity on marketing hero)
- *   - .wrap content-width shell + .topbar sticky chrome
- *   - prefers-reduced-motion overrides
- *
- * Fonts (Commit Mono + Instrument Sans) and the wake-pulse keyframe ride
- * in transitively via @agentsfleet/design-system/tokens.css.
- */
-
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 
-/* Tailwind v4 auto-scans the website package; the design-system package
- * lives in a sibling workspace and must be registered explicitly so the
- * utilities referenced in its .tsx files (font-mono, gap-xl, p-2xl, …)
- * compile into the final CSS. */
 @source "../../design-system/src/**/*.{ts,tsx}";
 
-/* ── Brand brightness (marketing site only) ──
- * The design-consultation "amplify the mint" decision: lift the near-black
- * base one notch and brighten the body text so the dark brand reads brighter
- * and more alive without leaving the dark world. The app package keeps the
- * original near-black.
- *
- * Scoped to `:root:not([data-theme="light"])` (specificity 0-2-0) so it only
- * overrides the DARK tokens. The bare `:root` form (0-1-0) would tie with the
- * design-system's `[data-theme="light"]` rule and, being later in the cascade,
- * win — resolving --bg/--text to dark values in light mode. The `:not()` makes
- * the override stop applying the instant a light theme is set, so light mode
- * keeps the design-system parchment tokens. */
-:root:not([data-theme="light"]) {
-  --bg: #0d1113;
-  --text: #f4f8f9;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scrollbar-gutter: stable;
-}
-
+* { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
 @supports not (scrollbar-gutter: stable) {
-  html {
-    overflow-y: scroll;
-  }
+  html { overflow-y: scroll; }
 }
-
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-}
-
+html, body, #root { margin: 0; min-height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--ff-sans);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "ss01", "cv11";
-
-  /* Dot-grid — DESIGN_SYSTEM.md §Layout permits this on marketing only,
-   * 8% opacity. Implemented as a CSS radial-gradient (not <img>) so it
-   * adds zero LCP weight. The gradient color rides on --border so it
-   * follows the dark/light token swap automatically. */
-  background-image: radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
-  background-size: 24px 24px;
-  background-attachment: fixed;
 }
-
-[data-theme="light"] body {
-  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--border) 50%, transparent) 1px, transparent 0);
-}
-
-/* Wrap the anchor reset in `@layer base` so Tailwind utility classes
- * (.text-on-pulse, .text-foreground, etc.) win the cascade. Top-level
- * rules outside any @layer beat any @layer rule regardless of
- * specificity, so leaving this un-layered would silently override
- * `text-*` utilities applied to <a> elements (e.g. <Button asChild>
- * with an <a> child rendering primary-CTA dark text on the mint
- * pulse background — the rule was forcing white-via-inherit until
- * this layer wrap landed). */
 @layer base {
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
+  a { color: inherit; text-decoration: none; }
 }
-
-/* `.sr-only` ships in Tailwind v4 base utilities; no custom rule needed. */
-
-/* Page-shell width — DESIGN_SYSTEM.md §Layout: max content width 1280px,
- * 32px gutter at base, tighter on mobile via Tailwind responsive utility
- * on consuming JSX. */
+main a.text-pulse { text-decoration: underline; text-underline-offset: 0.2em; }
 .wrap {
   width: min(100%, 1280px);
   margin-inline: auto;
-  padding-inline: 32px;
+  padding-inline: var(--sp-3xl);
 }
-
-@media (max-width: 640px) {
-  .wrap {
-    padding-inline: 16px;
-  }
-}
-
-/* Topbar — sticky page header, faint backdrop blur, 1px bottom border.
- * Keeps brand-mark <WakePulse>, wordmark, primary nav, install CTA. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
+.site-section { padding-block: var(--sp-6xl); border-top: 1px solid var(--border); }
+.site-section:first-of-type { border-top: 0; }
 
-/* `.topbar-inner` was a one-callsite helper; inlined as utilities at the
- * single JSX site (App.tsx) — `flex items-center justify-between py-4`. */
-
-/* The design-system Terminal keeps its built-in copy button compact for dense
- * product UI. The marketing hero gives it touch-target room without changing
- * the shared primitive. */
-.hero-terminal-copy-target [data-testid="copy-btn"] {
-  min-height: 44px;
-  padding-block: var(--sp-sm);
+.hero-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--sp-3xl); align-items: center; }
+.hero-copy h1 { text-wrap: balance; }
+.hero-copy p { margin-block: 0; }
+.hero-copy code { min-width: 0; }
+.section-intro { display: flex; justify-content: space-between; align-items: end; gap: var(--sp-4xl); }
+.section-intro > * { flex: 1; }
+.section-intro h2, .audience-panel h2, .early-access-layout h2 { text-wrap: balance; }
+.early-access-layout, .audience-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--sp-5xl); align-items: center; }
+.audience-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+.audience-panel { display: flex; flex-direction: column; align-items: start; gap: var(--sp-2xl); }
+.audience-panel + .audience-panel { padding-left: var(--sp-5xl); border-left: 1px solid var(--border); }
+.audience-panel h2 { font-size: var(--fs-display-md); }
+.incident-illustration { overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface-1); }
+.incident-caption { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--sp-lg); padding: var(--sp-xl) var(--sp-2xl); border-bottom: 1px solid var(--border); font-size: var(--fs-body-sm); }
+.incident-diagnosis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: var(--sp-2xl); padding: var(--sp-3xl); align-items: center; }
+.incident-sources { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.incident-label { margin: 0; font-family: var(--ff-mono); font-size: var(--fs-label); color: var(--text-muted); }
+.incident-source { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-xl); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); }
+.connector-mark { display: inline-block; flex-shrink: 0; width: 24px; height: 24px; background: var(--text); mask-size: contain; mask-position: center; mask-repeat: no-repeat; }
+.incident-investigation { text-align: center; }
+.incident-agent { display: block; width: 100%; max-height: 180px; margin-block: var(--sp-md); }
+.incident-wire { fill: none; stroke: var(--pulse); stroke-width: 2; stroke-dasharray: 1; }
+.incident-evidence { display: flex; flex-wrap: wrap; gap: var(--sp-sm); }
+.incident-evidence span { padding: var(--sp-sm) var(--sp-md); border: 1px solid var(--border); border-radius: var(--r-sm); font-size: var(--fs-label); color: var(--text-muted); }
+.incident-repair { padding: var(--sp-2xl) var(--sp-3xl); border-top: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; gap: var(--sp-2xl); }
+.incident-handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-lg) var(--sp-2xl); }
+.incident-handoff p { max-width: 64ch; }
+.incident-repair-steps { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--sp-2xl); }
+.incident-repair-steps p { margin: var(--sp-md) 0 0; font-size: var(--fs-body-sm); font-weight: 500; }
+.incident-arrow { color: var(--pulse); }
+.hero-terminal-copy-target [data-testid="copy-btn"] { min-height: 44px; padding-block: var(--sp-sm); }
+@media (prefers-reduced-motion: no-preference) {
+  .incident-wire { animation: trace-route 900ms ease-out both; }
 }
-
-/* Hero bioluminescent glow — the one sanctioned marketing glow (approved
- * design-shotgun variant B). A soft mint halo centered BEHIND the headline,
- * anchored to the centered content column via calc(50% …) so it stays put on
- * wide screens instead of drifting to the viewport edge. Paired with a faint
- * headline text-shadow and a glow on the primary CTA. No glow on the topbar
- * logo (deliberate — one glow center per viewport keeps "glow = live" honest). */
-.hero-glow {
-  position: absolute;
-  left: calc(50% - 250px);
-  top: 230px;
-  width: 600px;
-  height: 420px;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, var(--pulse-glow), transparent 60%);
-  filter: blur(26px);
-  pointer-events: none;
-  z-index: 0;
+@keyframes trace-route { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (max-width: 1023px) {
+  .hero-layout, .early-access-layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3xl); }
+  .hero-layout figure { max-width: 640px; margin-inline: auto; }
+  .section-intro { flex-direction: column; align-items: start; gap: var(--sp-xl); }
+  .incident-diagnosis { grid-template-columns: minmax(0, 1fr); }
+  .incident-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .incident-sources > p { grid-column: 1 / -1; }
 }
-
-.hero-headline-glow {
-  text-shadow: 0 0 42px var(--pulse-glow);
-}
-
-.cta-glow {
-  box-shadow: 0 0 30px var(--pulse-glow);
-}
-
 @media (max-width: 640px) {
-  .hero-glow {
-    left: 30%;
-    top: 200px;
-  }
+  .audience-layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3xl); }
+  .audience-panel + .audience-panel { padding: var(--sp-3xl) 0 0; border-left: 0; border-top: 1px solid var(--border); }
+  .incident-diagnosis, .incident-repair { padding: var(--sp-xl); }
+  .incident-caption { padding: var(--sp-xl); }
+  .incident-sources, .incident-repair-steps { display: flex; flex-direction: column; align-items: stretch; }
+  .incident-arrow { transform: rotate(90deg); align-self: start; }
+  .wrap { padding-inline: var(--sp-xl); }
+  .site-section { padding-block: var(--sp-4xl); }
 }
-
-/* Section vertical rhythm — Mockup A: 96px section padding on desktop,
- * border-top hairline between sections (skip first-of-type). Tighter on
- * mobile. */
-.site-section {
-  padding-block: 96px;
-  border-top: 1px solid var(--border);
-}
-
-.site-section:first-of-type {
-  border-top: 0;
-}
-
-@media (max-width: 640px) {
-  .site-section {
-    padding-block: 56px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  /* Wake-pulse degrades to a static ring per DESIGN_SYSTEM.md §Motion
-   * §"prefers-reduced-motion: reduce". The design-system already handles
-   * the .live class; this is a defense-in-depth so any animation that
-   * leaks from a 3rd-party utility (tw-animate-css) gets neutered too. */
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0ms !important;

@@ -52,7 +52,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: /primary/i });
     expect(within(nav).getByRole("link", { name: /home/i })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: /pricing/i })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: /^early access$/i })).toHaveAttribute("href", "/#pricing");
     expect(within(nav).getByRole("link", { name: /fleets/i })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
@@ -114,6 +114,12 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the lazy About page at /about", async () => {
+    renderApp("/about");
+    expect(await screen.findByTestId("about-page", {}, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo")).toBeInTheDocument();
+  });
+
   it("renders terms page at /terms", async () => {
     renderApp("/terms");
     expect(
@@ -166,17 +172,6 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
       // The element scrolled into view IS the #pricing section
       // (not some other id we happen to render).
       expect(scrollIntoViewSpy.mock.instances[0]).toBe(pricingBlock);
-    });
-
-    it("scrolls #pricing into view when /pricing redirects to /#pricing (greptile fix)", () => {
-      // Bug-fix coverage: <Navigate to="/#pricing"> via the /pricing route
-      // must end up scrolling, not just updating the URL bar. Without
-      // useScrollToHash this assertion failed and the bookmarked
-      // /pricing URL stranded the user at the top of Home.
-      renderApp("/pricing");
-      const pricingBlock = screen.getByTestId("pricing-block");
-      expect(scrollIntoViewSpy).toHaveBeenCalled();
-      expect(scrollIntoViewSpy.mock.instances.at(-1)).toBe(pricingBlock);
     });
 
     it("does not call scrollIntoView when location has no hash", () => {

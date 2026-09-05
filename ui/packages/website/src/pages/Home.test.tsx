@@ -7,14 +7,10 @@ import {
   CAPABILITY_ITEMS,
   HERO_HEADLINE,
   HOW_IT_WORKS_HEADING,
-  KNOWLEDGE_POINTS,
-  LOOP_STEPS,
   PREBUILT_FLEETS,
-  OPERATIONAL_KNOWLEDGE_HEADING,
   PRICING_COPY,
   RUNTIME_GUARANTEES_LABEL,
 } from "../lib/marketing-copy";
-import { RATES_DISPLAY } from "../lib/rates";
 
 function renderHome() {
   return render(
@@ -42,7 +38,7 @@ describe("Home", () => {
     const hero = screen.getByTestId("hero");
     expect(within(hero).getByText("AI teammates")).toBeInTheDocument();
     expect(within(hero).getByText("recurring engineering work")).toBeInTheDocument();
-    expect(hero.textContent).toMatch(/hand you the change to approve/i);
+    expect(hero.textContent).toMatch(/you control access and decide what ships/i);
   });
 
   it("renders the install command copy-row in the hero", () => {
@@ -75,43 +71,41 @@ describe("Home", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders core capabilities in the first post-hero slot", () => {
+  it("leads with the fleet catalogue before technical capabilities", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
     const capabilities = screen.getByTestId("core-capabilities");
     const fleet = screen.getByTestId("prebuilt-fleets");
-    expectDocumentOrder(hero, capabilities);
-    expectDocumentOrder(capabilities, fleet);
+    expectDocumentOrder(hero, fleet);
+    expectDocumentOrder(fleet, capabilities);
+    expectDocumentOrder(screen.getByTestId("audience-section"), capabilities);
   });
 
-  it("renders the prebuilt Fleet catalogue before How it works", () => {
+  it("explains How it works before presenting the Fleet catalogue", () => {
     renderHome();
     const fleet = screen.getByTestId("prebuilt-fleets");
     const howItWorks = screen.getByTestId("how-it-works");
-    expectDocumentOrder(fleet, howItWorks);
+    expectDocumentOrder(screen.getByTestId("hero"), howItWorks);
+    expectDocumentOrder(howItWorks, fleet);
     for (const fleet of PREBUILT_FLEETS) {
       expect(screen.getByTestId(`fleet-card-${fleet.id}`)).toHaveTextContent(fleet.name);
     }
-    expect(screen.getByTestId("fleet-card-coming-soon")).toBeInTheDocument();
+    expect(screen.queryByTestId("fleet-card-coming-soon")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fleet-coming-soon-security-reviewer")).toHaveTextContent(/coming soon/i);
   });
 
-  it("renders How it works with the three-beat flow", () => {
+  it("renders the connected incident workflow", () => {
     renderHome();
     expect(screen.getByText(HOW_IT_WORKS_HEADING)).toBeInTheDocument();
-    for (const step of LOOP_STEPS) {
-      expect(screen.getByText(step.title)).toBeInTheDocument();
-    }
+    expect(screen.getByRole("figure", { name: /incident diagnosis/i })).toHaveTextContent("Elasticsearch");
   });
 
-  it("moves operational knowledge below How it works", () => {
+  it("omits repetitive setup and operational knowledge sections", () => {
     renderHome();
-    const howItWorks = screen.getByTestId("how-it-works");
-    const operationalKnowledge = screen.getByTestId("operational-knowledge");
-    expectDocumentOrder(howItWorks, operationalKnowledge);
-    expect(screen.getByText(OPERATIONAL_KNOWLEDGE_HEADING)).toBeInTheDocument();
-    for (const point of KNOWLEDGE_POINTS) {
-      expect(screen.getByText(point.title)).toBeInTheDocument();
-    }
+    expect(screen.queryByTestId("operational-knowledge")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("setup-section")).not.toBeInTheDocument();
+    expect(screen.queryByText(/your first fleet/i)).not.toBeInTheDocument();
+    expectDocumentOrder(screen.getByTestId("core-capabilities"), screen.getByTestId("pricing-block"));
   });
 
   it("renders core capabilities — the three pillars plus the trust primitives", () => {
@@ -147,13 +141,9 @@ describe("Home", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
     expect(screen.getByText(PRICING_COPY.headline)).toBeInTheDocument();
-    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(RATES_DISPLAY.EVENT_RATE);
-    expect(screen.getByTestId("pricing-rate-run")).toHaveTextContent(
-      RATES_DISPLAY.RUN_RATE_PER_SEC,
-    );
-    expect(screen.getByTestId("pricing-rate-run-hourly")).toHaveTextContent(
-      RATES_DISPLAY.RUN_RATE_PER_HOUR,
-    );
+    expect(screen.getByTestId("pricing-block")).toHaveTextContent(PRICING_COPY.note);
+    expect(screen.queryByTestId("pricing-rate-run")).not.toBeInTheDocument();
+    expectDocumentOrder(screen.getByTestId("how-it-works"), screen.getByTestId("pricing-block"));
   });
 
   it("does not render a view-full-pricing link (pricing is inline)", () => {

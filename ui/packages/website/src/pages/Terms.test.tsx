@@ -27,10 +27,9 @@ describe("Terms", () => {
 
   it("mentions early access in billing terms, without committing to a date", () => {
     render(<Terms />);
-    // There is no end date to commit to: the free allowance is the starter
-    // grant, which ends when the balance does. A fixed date on this page went
-    // stale the moment it passed, which is the bug this assertion pins shut.
-    expect(screen.getByText(/free to try during early access/i)).toBeInTheDocument();
+    expect(screen.getByText(/pricing will be confirmed before paid usage/i)).toBeInTheDocument();
+    expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/starter credit|free to try|zero markup|\$\d/i);
+    expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/enterprise tier/i);
   });
 
   it("renders contact email link sourced from SUPPORT_EMAIL", () => {

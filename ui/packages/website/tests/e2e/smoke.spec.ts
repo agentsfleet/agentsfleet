@@ -31,12 +31,9 @@ test.describe("Smoke", () => {
   test("pricing section renders inline on home", async ({ page }) => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
-    await expect(page.getByTestId("pricing-card-early-access")).toBeVisible();
-    await expect(page.getByTestId("pricing-card-usage")).toBeVisible();
-    await expect(page.getByTestId("pricing-card-enterprise")).toBeVisible();
-    await expect(page.getByTestId("pricing-rate-event")).toHaveText("free");
-    await expect(page.getByTestId("pricing-rate-run")).toHaveText("$0.0001/sec");
-    await expect(page.getByTestId("pricing-rate-run-hourly")).toHaveText("$0.36/hr");
+    await expect(page.getByTestId("pricing-cta-early-access")).toBeVisible();
+    await expect(page.getByTestId("pricing-block")).toContainText(/pricing will be confirmed before paid usage/i);
+    await expect(page.getByTestId("pricing-block")).not.toContainText(/\$\d|starter credit|start free/i);
   });
 
   test("llms surfaces are generated and reachable", async ({ page }) => {
@@ -73,12 +70,12 @@ test.describe("Smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: /primary/i });
     await expect(nav.getByRole("link", { name: /^home$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^pricing$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^early access$/i })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
   });
 
   test("footer renders on all routes", async ({ page }) => {
-    for (const route of ["/", "/fleets", "/privacy", "/terms"]) {
+    for (const route of ["/", "/fleets", "/privacy", "/terms", "/about"]) {
       await page.goto(route);
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("contentinfo")).toBeVisible({ timeout: 10_000 });
@@ -89,5 +86,20 @@ test.describe("Smoke", () => {
     await page.goto("/");
     const discord = page.getByRole("contentinfo").getByRole("link", { name: /^discord$/i });
     await expect(discord).toHaveAttribute("href", "https://discord.gg/H9hH2nqQjh");
+  });
+
+  test("About opens from the footer and offers direct contact", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("contentinfo").getByRole("link", { name: /^about$/i }).click();
+    await expect(page).toHaveURL(/\/about$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("More time building. Less time gathering clues.");
+    await expect(page.getByTestId("about-page").getByRole("link")).toHaveAttribute("href", "mailto:agentsfleet@agentmail.to");
+  });
+
+  test("reduced motion leaves the investigation static", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await expect(page.locator(".incident-wire")).toHaveCSS("animation-name", "none");
+    await expect(page.getByTestId("hero-headline")).toBeVisible();
   });
 });

@@ -263,7 +263,7 @@ function NavGroup({ label, collapsed, children }: { label?: string; collapsed?: 
 }
 
 const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-r-md border-l-2 border-transparent font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:border-pulse data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse data-[active=true]:font-medium";
+  "flex items-center gap-2.5 px-3 py-2 rounded-r-md border-l-2 border-transparent font-sans text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:border-pulse data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse data-[active=true]:font-medium";
 
 function NavItem({
   href,

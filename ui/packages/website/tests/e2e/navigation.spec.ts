@@ -18,7 +18,7 @@ test.describe("Footer navigation", () => {
 
   test("footer pricing link navigates to home pricing anchor", async ({ page }) => {
     await page.goto("/fleets");
-    await page.getByRole("contentinfo").getByRole("link", { name: /^pricing$/i }).click();
+    await page.getByRole("contentinfo").getByRole("link", { name: /^early access$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
@@ -87,7 +87,7 @@ test.describe("Direct URL navigation", () => {
 test.describe("SPA routing — no full page reloads", () => {
   test("topbar pricing anchor scrolls to inline section", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^pricing$/i }).click();
+    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^early access$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
@@ -100,7 +100,7 @@ test.describe("SPA routing — no full page reloads", () => {
 
   test("footer pricing link points at home anchor", async ({ page }) => {
     await page.goto("/");
-    const pricingLink = page.getByRole("contentinfo").getByRole("link", { name: /^pricing$/i });
+    const pricingLink = page.getByRole("contentinfo").getByRole("link", { name: /^early access$/i });
     await expect(pricingLink).toHaveAttribute("href", "/#pricing");
   });
 });
