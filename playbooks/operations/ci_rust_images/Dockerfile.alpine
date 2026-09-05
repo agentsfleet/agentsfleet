@@ -18,12 +18,23 @@
 #   ./build_and_push.sh                     # both arches, pushed
 #   ./build_and_push.sh --no-push           # this arch only, loaded locally
 
-ARG RUST_VERSION
 ARG ALPINE_SERIES
-FROM rust:${RUST_VERSION}-alpine${ALPINE_SERIES}
+FROM mirror.gcr.io/library/alpine:${ALPINE_SERIES}
+
+# Re-declared: an ARG stated before FROM does not survive into the stage.
+ARG RUST_VERSION
+ARG RUSTUP_VERSION
+ARG RUSTUP_SHA256_X86_64_MUSL
+ARG RUSTUP_SHA256_AARCH64_MUSL
+
+RUN test -n "$RUST_VERSION" \
+ && test -n "$RUSTUP_VERSION" \
+ && test -n "$RUSTUP_SHA256_X86_64_MUSL" \
+ && test -n "$RUSTUP_SHA256_AARCH64_MUSL"
 
 # What the workspace's native dependencies need in order to link:
 #   build-base     — cc, make, and the musl headers the `cc` crate shells out to
+#                    (it is also where rustup's own gcc and musl-dev come from)
 #   perl, cmake    — the crypto backend's own build scripts
 #   go             — the aws-lc assembly generator
 #   linux-headers  — kernel headers the libc-adjacent crates compile against
@@ -39,7 +50,7 @@ RUN apk add --no-cache \
 #   pkgconf      — `-sys` crates probe with it. Alpine's name for what Debian
 #                  calls `pkg-config`; the Debian spelling is "no such package"
 #                  here, which is the one translation this port actually needs.
-#   ca-certificates — cargo fetching over TLS
+#   ca-certificates — cargo fetching over TLS, and the rustup download below
 # `make` arrives with build-base, and `cmake` is already above for the crypto
 # backend, so neither is repeated.
 RUN apk add --no-cache \
@@ -52,13 +63,51 @@ RUN apk add --no-cache \
 # inside the image is what keeps "static" a fact rather than a claim.
 RUN apk add --no-cache binutils
 
-# The base installs the `minimal` profile — rustc, cargo, rust-std, nothing
-# else. `rustd/rust-toolchain.toml` names three components beyond it, and
-# rustup honours that file by DOWNLOADING what is missing the first time cargo
-# runs in `rustd/`. Baking them in does not save the bytes; it moves them out
-# of every job and into the image. `rustfmt` and `clippy` are what the lint
-# lane runs, and a toolchain missing either must fail loudly rather than skip
-# the check.
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+# The toolchain is installed by rustup rather than inherited from a
+# `rust:${RUST_VERSION}-alpine` base, because docker-library publishes its
+# alpine variants weeks behind a rustc release — the day this pin moved to
+# 1.98.1 the newest `rust:*-alpine` was still 1.98.0. A base named after the
+# version cannot be built until upstream catches up, and pinning the base to an
+# older tag while installing a newer toolchain into it would be the second
+# compiler `versions.env` exists to prevent. Alpine plus a pinned installer
+# leaves RUST_VERSION the only place the compiler is named.
+#
+# The bootstrap follows rust-lang/docker-rust's `Dockerfile-alpine.template`:
+# same archive URL shape, same `--profile minimal`, same `--default-host`. The
+# per-architecture SHA256 comes from the checksum upstream publishes beside the
+# installer (`build_and_push.sh fetch-shas` reads it and refuses when the bytes
+# disagree), so a truncated, cached, or tampered-in-transit body fails here
+# rather than installing. It is not a signature: a wholly compromised
+# static.rust-lang.org would serve a matching pair. That is the same bound
+# `ci_zig_images` works within for its own tarballs.
+RUN set -eux; \
+    arch="$(apk --print-arch)"; \
+    case "$arch" in \
+      'x86_64')  rustArch='x86_64-unknown-linux-musl';  rustupSha256="$RUSTUP_SHA256_X86_64_MUSL" ;; \
+      'aarch64') rustArch='aarch64-unknown-linux-musl'; rustupSha256="$RUSTUP_SHA256_AARCH64_MUSL" ;; \
+      *) echo >&2 "unsupported architecture: $arch"; exit 1 ;; \
+    esac; \
+    wget "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustArch}/rustup-init"; \
+    echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
+    chmod +x rustup-init; \
+    ./rustup-init -y --no-modify-path --profile minimal \
+      --default-toolchain "$RUST_VERSION" --default-host "$rustArch"; \
+    rm rustup-init; \
+    rustup --version; \
+    rustc --version; \
+    rustc --version | grep -q "^rustc ${RUST_VERSION} " || { \
+      echo >&2 "installed rustc is not ${RUST_VERSION}"; exit 1; }
+
+# `--profile minimal` above installs rustc, cargo and rust-std, nothing else.
+# `rustd/rust-toolchain.toml` names three components beyond it, and rustup
+# honours that file by DOWNLOADING what is missing the first time cargo runs in
+# `rustd/`. Baking them in does not save the bytes; it moves them out of every
+# job and into the image. `rustfmt` and `clippy` are what the lint lane runs,
+# and a toolchain missing either must fail loudly rather than skip the check.
 #
 # World-readable and cargo-writable: a GitHub Actions job may run the container
 # as an arbitrary uid, and a toolchain only root can read surfaces as
@@ -67,7 +116,6 @@ RUN set -eux; \
     rustup component add rustfmt clippy llvm-tools; \
     rm -rf "$RUSTUP_HOME/toolchains"/*/share/doc; \
     chmod -R a+rX,a+w "$CARGO_HOME" "$RUSTUP_HOME"; \
-    rustc --version; \
     cargo fmt --version; \
     cargo clippy --version
 

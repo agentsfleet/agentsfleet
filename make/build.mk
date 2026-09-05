@@ -50,10 +50,19 @@ DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
 BUILDER_DIR := playbooks/operations/ci_rust_images
 BUILDER_RUST_VERSION := $(shell sed -n 's/^RUST_VERSION=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_ALPINE_SERIES := $(shell sed -n 's/^ALPINE_SERIES=//p' $(BUILDER_DIR)/versions.env)
+# The toolchain arrives by rustup rather than from a `rust:*-alpine` base, so
+# the local bake needs the installer pin and its checksums too — the Dockerfile
+# refuses to build without them rather than silently fetching an unverified one.
+BUILDER_RUSTUP_VERSION := $(shell sed -n 's/^RUSTUP_VERSION=//p' $(BUILDER_DIR)/versions.env)
+BUILDER_RUSTUP_SHA_X86 := $(shell sed -n 's/^RUSTUP_SHA256_X86_64_MUSL=//p' $(BUILDER_DIR)/versions.env)
+BUILDER_RUSTUP_SHA_ARM := $(shell sed -n 's/^RUSTUP_SHA256_AARCH64_MUSL=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_IMAGE ?= ghcr.io/agentsfleet/ci-rust-alpine:$(BUILDER_RUST_VERSION)-alpine$(BUILDER_ALPINE_SERIES)
 
 # Pull the published builder; bake it locally only when the registry does not
 # have it. Either way it happens once and every build after reuses the layers.
+# The bake path now installs the toolchain with rustup rather than inheriting it
+# from a `rust:*-alpine` base, so it downloads more and needs the network for
+# longer. That is the fallback, not the path: a published tag is a pull.
 _builder-image:
 	@docker image inspect $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
 	docker pull -q $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
@@ -61,6 +70,9 @@ _builder-image:
 	docker build -q \
 	  --build-arg RUST_VERSION=$(BUILDER_RUST_VERSION) \
 	  --build-arg ALPINE_SERIES=$(BUILDER_ALPINE_SERIES) \
+	  --build-arg RUSTUP_VERSION=$(BUILDER_RUSTUP_VERSION) \
+	  --build-arg RUSTUP_SHA256_X86_64_MUSL=$(BUILDER_RUSTUP_SHA_X86) \
+	  --build-arg RUSTUP_SHA256_AARCH64_MUSL=$(BUILDER_RUSTUP_SHA_ARM) \
 	  -f $(BUILDER_DIR)/Dockerfile.alpine \
 	  -t $(BUILDER_IMAGE) $(BUILDER_DIR) >/dev/null
 
