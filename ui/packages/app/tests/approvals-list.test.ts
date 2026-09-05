@@ -219,7 +219,36 @@ describe("ApprovalsList — client-side filter", () => {
 // ── Approve / Deny — optimistic resolve ───────────────────────────────
 
 describe("ApprovalsList — resolve actions", () => {
-  it("optimistically removes a row when approveApprovalAction returns kind=resolved", async () => {
+  it("an inbox row leaves before the resolve settles and returns on failure", async () => {
+    let settle: (result: { ok: false; error: string; status: number }) => void = () => {};
+    approveApprovalActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    // Gone at the click, while the action is still in flight.
+    await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
+    expect(approveApprovalActionMock).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      "01999999-0000-7000-8000-000000000001",
+    );
+
+    settle({ ok: false, error: "gate service unavailable", status: 503 });
+
+    // The refusal puts the row back beside the error.
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toMatch(/gate service unavailable/);
+  });
+
+  it("a resolved row stays gone once the server confirms", async () => {
     approveApprovalActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -241,14 +270,10 @@ describe("ApprovalsList — resolve actions", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
-    await waitFor(() => {
-      expect(approveApprovalActionMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        "01999999-0000-7000-8000-000000000001",
-      );
-      // Row removed → EmptyState renders
-      expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull();
-    });
+    await waitFor(() => expect(approveApprovalActionMock).toHaveBeenCalled());
+    // The base list dropped it too, so the settled transition shows no row.
+    await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("optimistically removes a row when denyApprovalAction returns kind=resolved", async () => {
@@ -279,7 +304,7 @@ describe("ApprovalsList — resolve actions", () => {
     });
   });
 
-  it("surfaces an alert when 409 already_resolved comes back", async () => {
+  it("an already resolved gate stays removed and shows who resolved it", async () => {
     approveApprovalActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -308,6 +333,8 @@ describe("ApprovalsList — resolve actions", () => {
       expect(alert.textContent).toMatch(/already approved/i);
       expect(alert.textContent).toMatch(/slack:webhook/);
     });
+    // Resolved elsewhere is still resolved: the pending inbox has no row for it.
+    expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull();
   });
 
   it("shows an error when the server action reports unauth", async () => {
@@ -327,6 +354,8 @@ describe("ApprovalsList — resolve actions", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
     });
+    // A refused resolve leaves the row where it was.
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 
   it("renders error message when approveApprovalAction surfaces a network error", async () => {

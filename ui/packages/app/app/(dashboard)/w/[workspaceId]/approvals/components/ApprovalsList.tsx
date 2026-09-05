@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Alert,
@@ -50,11 +50,19 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   const [filter, setFilter] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [, startResolve] = useTransition();
+  // A resolved row leaves the inbox at the click, not at the answer. The base
+  // list is updated on success; a failed resolve ends the transition and the
+  // row comes back from that base on its own.
+  const [visibleItems, hideGate] = useOptimistic(
+    items,
+    (current: ApprovalGate[], gateId: string) => current.filter((g) => g.gate_id !== gateId),
+  );
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
+    if (!q) return visibleItems;
+    return visibleItems.filter(
       (g) =>
         g.fleet_name.toLowerCase().includes(q) ||
         `${AGENT_PREFIX} ${deriveFleetIdentity(g.fleet_id).callsign}`.toLowerCase().includes(q) ||
@@ -63,7 +71,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
         g.gate_kind.toLowerCase().includes(q) ||
         g.proposed_action.toLowerCase().includes(q),
     );
-  }, [items, filter]);
+  }, [visibleItems, filter]);
 
   // Background poll. SWR not yet on this page, so a manual interval keeps
   // the list within ~5 s of reality. Worker wake on resolution is a separate
@@ -130,31 +138,31 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     });
   }
 
-  async function resolve(gateId: string, decision: ApprovalDecision) {
+  function resolve(gateId: string, decision: ApprovalDecision) {
     setError(null);
     const isApprove = decision === APPROVAL_DECISION.APPROVE;
     const action = isApprove ? approveApprovalAction : denyApprovalAction;
-    const result = await action(workspaceId, gateId);
-    if (!result.ok) {
-      setError(
-        presentErrorString({
-          errorCode: result.errorCode,
-          message: result.error,
-          action: isApprove ? "approve this request" : "deny this request",
-        }),
-      );
-      return;
-    }
-    const outcome: ResolveOutcome = result.data;
-    // Optimistic removal — even on already_resolved the row leaves the
-    // pending list. Toasts could be added later; for v1 the list update
-    // alone is the human-visible signal.
-    setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
-    if (outcome.kind === "already_resolved") {
-      setError(
-        `Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`,
-      );
-    }
+    startResolve(async () => {
+      hideGate(gateId);
+      const result = await action(workspaceId, gateId);
+      if (!result.ok) {
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: isApprove ? "approve this request" : "deny this request",
+          }),
+        );
+        return;
+      }
+      const outcome: ResolveOutcome = result.data;
+      // Gone for good either way: resolved here, or already resolved elsewhere —
+      // the pending inbox has no row for it in both cases.
+      setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
+      if (outcome.kind === "already_resolved") {
+        setError(`Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`);
+      }
+    });
   }
 
   if (filtered.length === 0 && filter.trim() === "" && !error) {
@@ -209,7 +217,7 @@ function ApprovalCard({
 }: {
   gate: ApprovalGate;
   workspaceId: string;
-  onResolve: (gateId: string, decision: ApprovalDecision) => Promise<void>;
+  onResolve: (gateId: string, decision: ApprovalDecision) => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -245,13 +253,13 @@ function ApprovalCard({
         </CardContent>
       ) : null}
       <CardFooter className="gap-2">
-        <Button size="sm" onClick={() => void onResolve(gate.gate_id, APPROVAL_DECISION.APPROVE)}>
+        <Button size="sm" onClick={() => onResolve(gate.gate_id, APPROVAL_DECISION.APPROVE)}>
           Approve
         </Button>
         <Button
           size="sm"
           variant="destructive"
-          onClick={() => void onResolve(gate.gate_id, APPROVAL_DECISION.DENY)}
+          onClick={() => onResolve(gate.gate_id, APPROVAL_DECISION.DENY)}
         >
           Deny
         </Button>
