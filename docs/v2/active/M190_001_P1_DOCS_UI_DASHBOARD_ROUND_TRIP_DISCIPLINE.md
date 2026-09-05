@@ -86,6 +86,7 @@ All paths below `ui/packages/app/` unless stated.
 | `tests/approvals-resolve-buttons.test.ts`, `tests/fleet-thread.test.ts` | EDIT | push once with no refresh; the completion callback replaces the router assertion |
 | `docs/architecture/web_app.md` (repo root) | EDIT | scoreboard re-measured: `useOptimistic` count and any other moved row |
 | `tests/web-app-scoreboard.test.ts` | CREATE | pins the scoreboard's `useOptimistic` row to the grep it describes |
+| `tests/fleet-run-summary-action.test.ts` | CREATE | the summary action: three reads together, each boundary's failure, no token |
 
 A changelog `<Update>` lands in `~/Projects/docs/changelog.mdx` on its own branch at CHORE(close), per `dispatch/lifecycle.md`; it is a cross-repo write and not a row here.
 
@@ -241,9 +242,9 @@ No new HTTP endpoint. Every read the summary action composes exists today.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The completion hook never touches the router (§1) | `grep -c "router" ui/packages/app/components/domain/useRefreshOnCompletion.ts` | 0 | P0 | |
+| R1 | The completion hook never touches the router (§1) | `grep -cE "next/navigation\|router\." ui/packages/app/components/domain/useRefreshOnCompletion.ts` | 0 | P0 | |
 | R2 | The default timeout is declared once and applied (§2) | `grep -c "DEFAULT_REQUEST_TIMEOUT_MS" ui/packages/app/lib/api/client.ts` | 2 or more | P0 | |
-| R3 | Both pages start their reads together (§3) | `grep -c "Promise.all" "ui/packages/app/app/(dashboard)/admin/models/page.tsx" "ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/page.tsx"` | each line reports 1 or more | P0 | |
+| R3 | Both pages start their reads together (§3) | `grep -c "Promise.allSettled" "ui/packages/app/app/(dashboard)/admin/models/page.tsx"; grep -n "startRunnerViewRead(\|await loadRunner(" "ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/page.tsx"` | 1; the `startRunnerViewRead(` call line precedes the `await loadRunner(` line | P0 | |
 | R4 | Four mutation surfaces are optimistic (§4) | `grep -rl useOptimistic ui/packages/app/app ui/packages/app/components \| wc -l` | 4 | P0 | |
 | R5 | Scoreboard re-measured (§4.6) | `grep -n "useOptimistic" docs/architecture/web_app.md \| grep -c "| 4 |"` | 1 | P1 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |

@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, RequestCancelledError } from "./errors";
 import { request } from "./client";
 import { RETRY_CODE_TIMEOUT, RETRY_DEFAULTS } from "./retry";
+import {
+  readWorkspaceFetchAudit,
+  resetWorkspaceFetchAudit,
+  WORKSPACE_LIST_PATH,
+} from "../acceptance/workspace-fetch-audit";
 
 // What `request()` does with NO options: every read rides the retry policy,
 // every request without a caller signal carries the default timeout, and a
@@ -54,6 +59,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  resetWorkspaceFetchAudit();
   fetchMock.mockReset();
 });
 
@@ -100,6 +106,19 @@ describe("request — default retry", () => {
 
     await expect(pending).resolves.toEqual(OK_BODY);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("the acceptance audit counts a retried read once — a retry is not a second ask", async () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+    fetchMock.mockResolvedValueOnce(jsonResponse(TRANSIENT_STATUS, { detail: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, OK_BODY));
+
+    const pending = request(WORKSPACE_LIST_PATH, { method: "GET" }, TOKEN);
+    await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFFS_MS);
+    await pending;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readWorkspaceFetchAudit()).toEqual({ total: 1, byPath: { [WORKSPACE_LIST_PATH]: 1 } });
   });
 
   it("no-retry env still yields one attempt", async () => {
