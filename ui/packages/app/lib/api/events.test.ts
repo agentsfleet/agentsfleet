@@ -28,6 +28,17 @@ const mockResponse = {
   next_cursor: null,
 };
 
+describe("path identifiers", () => {
+  it("encodes the workspace and fleet ids so a hostile id cannot re-target the route", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
+    const { listFleetEvents } = await import("./events");
+    await listFleetEvents("ws/../admin", "z?limit=999#x", "tok");
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("/v1/workspaces/ws%2F..%2Fadmin/fleets/z%3Flimit%3D999%23x/events");
+    expect(url).not.toContain("/../");
+  });
+});
+
 describe("listFleetEvents", () => {
   it("hits the per-fleet events endpoint without a cursor by default", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
@@ -163,5 +174,15 @@ describe("backfillFleetEventsUrl", () => {
     expect(backfillFleetEventsUrl("ws/1", "z 2")).toBe(
       "/live/v1/workspaces/ws%2F1/fleets/z%202/events",
     );
+  });
+});
+
+describe("list path encoding", () => {
+  it("encodes the workspace and fleet ids on the /v1 routes, as the /live/ builders do", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
+    const { listFleetEvents } = await import("./events");
+    await listFleetEvents("ws/1", "z 2", "tok");
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("/v1/workspaces/ws%2F1/fleets/z%202/events");
   });
 });

@@ -9,6 +9,18 @@ import type {
   FleetListResponse,
 } from "../types";
 
+// Every fleet route hangs off these two segments; the ids are encoded here,
+// once, so a caller-controlled value carrying `/`, `?` or `#` can never
+// re-target a server-held-token request at another route or query.
+function fleetsPath(workspaceId: string): string {
+  return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets`;
+}
+
+function fleetPath(workspaceId: string, fleetId: string): string {
+  return `${fleetsPath(workspaceId)}/${encodeURIComponent(fleetId)}`;
+}
+
+
 export type { Fleet, FleetDetail, FleetListResponse };
 
 export const FLEET_ETAG_REQUIRED = "Fleet source response must include a non-empty ETag";
@@ -27,9 +39,7 @@ export async function listFleets(
   if (opts?.starting_after) params.set(QUERY_STARTING_AFTER, opts.starting_after);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  const path = qs
-    ? `/v1/workspaces/${workspaceId}/fleets?${qs}`
-    : `/v1/workspaces/${workspaceId}/fleets`;
+  const path = qs ? `${fleetsPath(workspaceId)}?${qs}` : fleetsPath(workspaceId);
   return request<FleetListResponse>(path, { method: "GET" }, token);
 }
 
@@ -44,7 +54,7 @@ export async function getFleet(
   token: string,
 ): Promise<{ fleet: FleetDetail; etag: string }> {
   const { data, etag } = await requestWithEtag<FleetDetail>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    fleetPath(workspaceId, fleetId),
     { method: "GET" },
     token,
   );
@@ -65,7 +75,7 @@ export async function saveFleetSource(
   token: string,
 ): Promise<{ etag: string; config_revision: number }> {
   const { data, etag } = await requestWithEtag<{ etag?: string; config_revision: number }>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    fleetPath(workspaceId, fleetId),
     { method: "PATCH", headers: { "If-Match": ifMatch }, body: JSON.stringify(body) },
     token,
   );
@@ -78,7 +88,7 @@ export async function installFleet(
   token: string,
 ): Promise<InstallFleetResponse> {
   return request<InstallFleetResponse>(
-    `/v1/workspaces/${workspaceId}/fleets`,
+    fleetsPath(workspaceId),
     { method: "POST", body: JSON.stringify(body) },
     token,
   );
@@ -126,7 +136,7 @@ export async function setFleetStatus(
   token: string,
 ): Promise<FleetStatusUpdate> {
   return request<FleetStatusUpdate>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    fleetPath(workspaceId, fleetId),
     { method: "PATCH", body: JSON.stringify({ status }) },
     token,
   );
@@ -149,7 +159,7 @@ export async function deleteFleet(
   token: string,
 ): Promise<void> {
   return request<void>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    fleetPath(workspaceId, fleetId),
     { method: "DELETE" },
     token,
   );
@@ -168,7 +178,7 @@ export async function steerFleet(
   retry?: RetryOptions,
 ): Promise<{ event_id: string }> {
   return requestWithRetry<{ event_id: string }>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+    `${fleetPath(workspaceId, fleetId)}/messages`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },

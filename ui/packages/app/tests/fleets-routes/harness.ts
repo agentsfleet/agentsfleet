@@ -1,7 +1,5 @@
-import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, vi } from "vitest";
+import { cleanup } from "@testing-library/react";
 import { NANOS_PER_USD } from "@/lib/types";
 import {
   fetchMock,
@@ -68,8 +66,7 @@ afterEach(() => {
   fetchMock.mockReset();
 });
 
-// ── Fleets route — page, loading, detail, new ─────────────────────────────
-
+// ── Fixtures ──────────────────────────────────────────────────────────────
 
 export const happyBilling: BillingSnapshot = {
   balance_nanos: NANOS_PER_USD,
@@ -113,6 +110,7 @@ export function detailBody(over: Record<string, unknown> = {}) {
     triggers: null,
     events_processed: 0,
     budget_used_nanos: 0,
+    pending_approvals: 0,
     created_at: 1,
     updated_at: 1,
     ...over,

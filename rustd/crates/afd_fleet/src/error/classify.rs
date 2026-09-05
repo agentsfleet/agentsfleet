@@ -67,6 +67,7 @@ impl Error {
             // decides which of its failures is an outage and which is a fault.
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
+            ErrorKind::Events { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
@@ -212,6 +213,7 @@ impl Error {
             // any of them.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.detail(),

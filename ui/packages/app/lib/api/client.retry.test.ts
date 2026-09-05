@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
 import { requestWithRetry } from "./client";
+import { RETRY_CODE_TIMEOUT } from "./retry";
 
 // `requestWithRetry` is the explicit opt-in: the caller owns its replay
 // decision and passes the policy options. These cases drive it through the
@@ -207,6 +208,23 @@ describe("requestWithRetry — idempotency guard", () => {
     );
     expect(result.ok).toBe(1);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT replay a POST whose attempt timed out client-side (it may have been processed)", async () => {
+    // The default per-attempt timeout fires with the request on the wire. A
+    // server 408 (below) is the server declining the request; this is the
+    // client giving up on an answer that may still be coming.
+    fetchMock.mockRejectedValue(new DOMException("signal timed out", "TimeoutError"));
+    const onRetry = vi.fn();
+    await expect(
+      requestWithRetry("/v1/x", { method: "POST" }, "tok", {
+        onRetry,
+        sleepImpl: NOOP_SLEEP,
+        randomFn: NOOP_RANDOM,
+      }),
+    ).rejects.toMatchObject({ code: RETRY_CODE_TIMEOUT });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it("DOES retry a POST that returns 429 or 408 (request not processed)", async () => {

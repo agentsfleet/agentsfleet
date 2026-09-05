@@ -71,6 +71,7 @@ pub mod report;
 pub mod runner;
 pub mod schedule;
 pub mod secret;
+pub mod tail;
 pub mod tenant;
 pub mod tenant_model_entry;
 pub mod tenant_provider;

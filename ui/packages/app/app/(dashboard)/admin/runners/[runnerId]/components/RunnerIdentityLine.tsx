@@ -43,39 +43,39 @@ export function RunnerIdentityLine({
   adminState: RunnerAdminState;
 }) {
   return (
-      <div className="mb-2xl flex flex-col gap-md">
-        <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-md">
-            <RunnerStatus adminState={adminState} liveness={runner.liveness} />
-            <a
-              href={RUNNER_STATES_DOC_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
-            >
-              <CircleHelpIcon size={13} aria-hidden="true" />
-              Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
-            </a>
-          </span>
-          <span className="inline-flex flex-wrap gap-sm">
-            <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
-            {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
-            {runner.labels.map((label) => (
-              <Badge key={label}>{label}</Badge>
-            ))}
-          </span>
-        </div>
-        {/* The mismatch line renders ONLY when a real verdict contradicts a real
-            assignment: the reason names the specific missing mechanism, and the
-            achievable line states what the host reported — assigned against
-            achievable, side by side (Dimensions 4.1 / 4.2). */}
-        {runner.degraded && runner.degraded_reason ? (
-          <p className="font-mono text-body-sm text-destructive">
-            {ASSIGNMENT_UNMET_PREFIX}
-            {runner.degraded_reason}
-            {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}
-          </p>
-        ) : null}
+    <div className="mb-2xl flex flex-col gap-md">
+      <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
+        <span className="inline-flex items-center gap-md">
+          <RunnerStatus adminState={adminState} liveness={runner.liveness} />
+          <a
+            href={RUNNER_STATES_DOC_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
+          >
+            <CircleHelpIcon size={13} aria-hidden="true" />
+            Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
+          </a>
+        </span>
+        <span className="inline-flex flex-wrap gap-sm">
+          <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
+          {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
+          {runner.labels.map((label) => (
+            <Badge key={label}>{label}</Badge>
+          ))}
+        </span>
       </div>
+      {/* The mismatch line renders ONLY when a real verdict contradicts a real
+          assignment: the reason names the specific missing mechanism, and the
+          achievable line states what the host reported — assigned against
+          achievable, side by side (Dimensions 4.1 / 4.2). */}
+      {runner.degraded && runner.degraded_reason ? (
+        <p className="font-mono text-body-sm text-destructive">
+          {ASSIGNMENT_UNMET_PREFIX}
+          {runner.degraded_reason}
+          {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}
+        </p>
+      ) : null}
+    </div>
   );
 }

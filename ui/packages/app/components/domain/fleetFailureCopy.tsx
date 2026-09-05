@@ -1,7 +1,7 @@
 "use client";
 
 import type { MessageState } from "@assistant-ui/react";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import {
   readFailureDetail,
   readFailureLabel,

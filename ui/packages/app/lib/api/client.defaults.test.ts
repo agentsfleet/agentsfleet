@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, RequestCancelledError } from "./errors";
-import { request } from "./client";
+import { DEFAULT_REQUEST_TIMEOUT_MS, request } from "./client";
 import { RETRY_CODE_TIMEOUT, RETRY_DEFAULTS } from "./retry";
 import {
   readWorkspaceFetchAudit,
@@ -42,6 +42,16 @@ function abortRejection(): Error {
   const err = new Error("The operation was aborted.");
   err.name = "AbortError";
   return err;
+}
+
+/** A response whose headers arrived but whose body read rejects with `cause`. */
+function bodyRejecting(status: number, cause: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: () => Promise.reject(cause),
+  };
 }
 
 /** The `signal` the nth fetch was given, asserting the call happened. */
@@ -150,16 +160,68 @@ describe("request — default timeout", () => {
   it("a caller signal wins over the default timeout", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, OK_BODY));
     const controller = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
 
     await request(PATH, { method: "GET", signal: controller.signal }, TOKEN);
     await request(PATH, { method: "GET" }, TOKEN);
 
-    // The caller's own signal is passed through untouched…
+    // The caller's own signal is passed through untouched, and no default
+    // timer is minted beside it…
     expect(sentSignal(0)).toBe(controller.signal);
-    // …and a request with none is still given one, so no fetch is unbounded.
-    const defaulted = sentSignal(1);
-    expect(defaulted).toBeInstanceOf(AbortSignal);
-    expect(defaulted).not.toBe(controller.signal);
+    // …while a request with none is given the default budget, so no fetch is
+    // unbounded and no other budget sneaks in.
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(sentSignal(1)).toBe(timeoutSpy.mock.results[0]?.value);
+    // pin test: literal is the contract — the SSE backfill's proxy fetch is
+    // held to the same window (lib/streaming/fleet-stream-backfill.ts).
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(10_000);
+    timeoutSpy.mockRestore();
+  });
+
+  it("a timeout during the body read is a timeout, never a success body", async () => {
+    // Headers in under the budget, body not: the same signal bounds the body
+    // stream, and what it raises there must classify the same way.
+    fetchMock.mockResolvedValue(bodyRejecting(200, timeoutRejection()));
+
+    const settled = request(PATH, { method: "GET" }, TOKEN).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFFS_MS);
+
+    const err = (await settled) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(RETRY_CODE_TIMEOUT);
+    // A read: retried like a timeout before the headers.
+    expect(fetchMock).toHaveBeenCalledTimes(RETRY_DEFAULTS.maxAttempts);
+  });
+
+  it("a cancel during the body read is a cancel, never a success body", async () => {
+    const controller = new AbortController();
+    fetchMock.mockResolvedValue(bodyRejecting(200, abortRejection()));
+
+    const settled = request(PATH, { method: "GET", signal: controller.signal }, TOKEN).catch(
+      (e: unknown) => e,
+    );
+    await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFFS_MS);
+
+    expect(await settled).toBeInstanceOf(RequestCancelledError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a cancel during a backoff surfaces as a cancel, not the stale status", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(TRANSIENT_STATUS, { detail: "svc" }));
+    const controller = new AbortController();
+
+    const settled = request(PATH, { method: "GET", signal: controller.signal }, TOKEN).catch(
+      (e: unknown) => e,
+    );
+    // The first attempt has failed and the loop is asleep between attempts.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortRejection());
+    await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFFS_MS);
+
+    expect(await settled).toBeInstanceOf(RequestCancelledError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("an already-cancelled caller gets no second attempt, whatever the failure class", async () => {

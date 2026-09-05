@@ -25,7 +25,6 @@
 //! the build until somebody decides what the dashboard calls it.
 
 use afd_core::id::Uuid7;
-use afd_redis::fleet_activity_channel;
 use afd_wire::activity::ActivityFrame;
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -85,7 +84,7 @@ impl Leases {
     /// unencodable frame does not silence the rest of the batch, and a Redis
     /// outage costs the tail rather than the run.
     pub async fn publish_activity(&self, target: &Target, frames: &[ActivityFrame<'_>]) {
-        let channel = fleet_activity_channel(target.fleet_id.as_str());
+        let fleet = target.fleet_id.as_str();
         let streams = self.streams();
         for frame in frames {
             // `args_redacted` arrives as a STRING holding JSON, and the Zig
@@ -101,7 +100,6 @@ impl Leases {
                     &owned
                 }
                 Err(malformed) => {
-                    let fleet = target.fleet_id.as_str();
                     tracing::debug!(
                         fleet_id = fleet,
                         reason = %malformed,
@@ -114,8 +112,7 @@ impl Leases {
             let Ok(payload) = serde_json::to_string(published) else {
                 continue;
             };
-            if let Err(unreachable_queue) = streams.publish(&channel, &payload).await {
-                let fleet = target.fleet_id.as_str();
+            if let Err(unreachable_queue) = streams.publish_tail(fleet, &payload).await {
                 let reason = unreachable_queue.to_string();
                 tracing::debug!(
                     fleet_id = fleet,

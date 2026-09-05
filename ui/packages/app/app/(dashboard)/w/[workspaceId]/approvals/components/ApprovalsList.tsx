@@ -25,16 +25,26 @@ import {
 } from "../actions";
 import {
   APPROVAL_DECISION,
+  APPROVALS_PAGE_LIMIT,
   type ApprovalDecision,
   type ApprovalGate,
   type ResolveOutcome,
 } from "@/lib/api/approvals";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
+import type { ActionResult } from "@/lib/actions/with-token";
 import { deriveFleetIdentity } from "../../fleets/components/fleetIdentity";
 
 const POLL_MS = 5000;
 const AGENT_PREFIX = "Agent";
+
+// The Server Action call itself rejecting (RSC transport down, the viewer
+// offline) is a failure like any other to the row: the message comes back with
+// `ok: false`. Left uncaught, a rejection inside an async transition reaches
+// the error boundary and the whole inbox becomes an error page.
+function rejectedCall(cause: unknown): ActionResult<ResolveOutcome> {
+  return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+}
 
 type Props = {
   workspaceId: string;
@@ -50,6 +60,8 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   const [filter, setFilter] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Separate from the load-more transition: `pending` disables pagination, and
+  // a resolve in flight must not grey out the Load more button.
   const [, startResolve] = useTransition();
   // A resolved row leaves the inbox at the click, not at the answer. The base
   // list is updated on success; a failed resolve ends the transition and the
@@ -78,39 +90,58 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   // ≤2 s concern handled server-side.
   //
   // Skip the poll-driven reset once the human has clicked Load more.
-  // Polling fetches page 1 only (`limit: 50`, no cursor); replacing items
+  // Polling fetches page 1 only (`APPROVALS_PAGE_LIMIT`, no cursor); replacing items
   // wholesale would silently drop the loaded-more pages. A ref is fine —
   // the latest value is read inside the interval callback, no re-render
   // needed.
   const hasLoadedMore = useRef(false);
   useEffect(() => {
     let alive = true;
+    // One read on the wire at a time. A slow backend answers a tick after the
+    // next has fired; without this latch the ticks stack, each retrying on its
+    // own, and one open inbox multiplies the load on a backend already behind.
+    // A tick that skips is not lost — the next one reads the same page.
+    let inFlight = false;
     // Read through an accessor so the post-await re-check isn't narrowed away:
     // `loadMore` can flip the ref to true during the in-flight fetch.
     const alreadyPaged = () => hasLoadedMore.current;
+    // A tab nobody is looking at asks for nothing: the read it would make is
+    // thrown away unseen, and a backend already behind is the one that pays.
+    // The moment the tab is looked at again, one read catches the list up.
+    const hidden = () => document.visibilityState === "hidden";
     const tick = async () => {
-      if (alreadyPaged()) return;
-      const result = await listApprovalsAction(workspaceId, { limit: 50, fleetId });
-      if (!alive || alreadyPaged()) return;
-      if (!result.ok) {
-        // 401 is terminal — silently retrying for 5s forever leaves the
-        // human staring at a stale list with no signal that their
-        // session expired. Surface it; refresh fixes it.
-        if (result.status === 401) {
-          setError("Session expired — refresh the page to sign back in.");
+      if (alreadyPaged() || inFlight || hidden()) return;
+      inFlight = true;
+      try {
+        const result = await listApprovalsAction(workspaceId, { limit: APPROVALS_PAGE_LIMIT, fleetId });
+        if (!alive || alreadyPaged()) return;
+        if (!result.ok) {
+          // 401 is terminal — silently retrying for 5s forever leaves the
+          // human staring at a stale list with no signal that their
+          // session expired. Surface it; refresh fixes it.
+          if (result.status === 401) {
+            setError("Session expired — refresh the page to sign back in.");
+            return;
+          }
+          // Transient (5xx, network blips, etc.) — leave the existing list
+          // rendered until the next tick.
           return;
         }
-        // Transient (5xx, network blips, etc.) — leave the existing list
-        // rendered until the next tick.
-        return;
+        setItems(result.data.items);
+        setCursor(result.data.next_cursor);
+      } finally {
+        inFlight = false;
       }
-      setItems(result.data.items);
-      setCursor(result.data.next_cursor);
     };
     const id = setInterval(() => { void tick(); }, POLL_MS);
+    const onVisible = () => {
+      if (!hidden()) void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [workspaceId, fleetId]);
 
@@ -119,7 +150,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
-      const result = await listApprovalsAction(workspaceId, { cursor, fleetId, limit: 50 });
+      const result = await listApprovalsAction(workspaceId, { cursor, fleetId, limit: APPROVALS_PAGE_LIMIT });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -144,7 +175,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const action = isApprove ? approveApprovalAction : denyApprovalAction;
     startResolve(async () => {
       hideGate(gateId);
-      const result = await action(workspaceId, gateId);
+      const result = await action(workspaceId, gateId).catch(rejectedCall);
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -165,7 +196,11 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     });
   }
 
-  if (filtered.length === 0 && filter.trim() === "" && !error) {
+  // The empty state is a claim about the server's inbox, so it reads the
+  // confirmed list: a row that has only optimistically left keeps the list
+  // shell (input, container) in place until the resolve is answered, and an
+  // aria-live "nothing waiting" is never announced ahead of the server.
+  if (items.length === 0 && filter.trim() === "" && !error) {
     return (
       <EmptyState
         icon={<CheckCircle2Icon size={28} />}

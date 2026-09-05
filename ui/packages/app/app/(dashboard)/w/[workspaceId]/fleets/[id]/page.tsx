@@ -27,7 +27,7 @@ import SkillEditor from "./components/SkillEditor";
 import MemoryPanel from "./components/MemoryPanel";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
-import { buildRunSummary } from "./components/run-summary";
+import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
@@ -204,12 +204,10 @@ async function loadChatView(
   // The transcript is the one surface that genuinely wants the bodies: it
   // renders what was said. The thread read carries them in ONE request — the
   // list-then-one-detail-per-turn fan-out this view used to issue is gone. The
-  // strip's first figures come off that same page; the completion refresh
-  // rebuilds them through the same builder from a newest-event read.
-  const [threadResult, approvalsResult] = await Promise.all([
-    data.thread,
-    data.approvals,
-  ]);
+  // strip's first figures come off that same page, and its pending count off
+  // the fleet detail the page already holds: the chat opens on two reads, and
+  // the live tail moves both from there.
+  const threadResult = await data.thread;
   const turns = threadResult?.items ?? [];
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
@@ -218,7 +216,7 @@ async function loadChatView(
       fleetId={fleet.id}
       fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
       initial={turns}
-      initialSummary={buildRunSummary(fleet.status, threadResult, approvalsResult)}
+      initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}
     />
   );

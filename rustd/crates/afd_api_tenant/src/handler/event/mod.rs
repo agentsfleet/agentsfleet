@@ -38,7 +38,7 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_events::{Cursor, EventDetailRow, EventRow, next_cursor};
-use afd_wire::event::{EventDetail, EventSummary, EventsResponse};
+use afd_wire::event::{EventDetail, EventsResponse};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -250,32 +250,11 @@ fn parse_fleet(fleet_id: &str) -> Result<Uuid7, Refusal> {
 /// One page, with the cursor the next one resumes from.
 fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
     EventsResponse {
-        items: page.iter().map(summary).collect(),
+        items: page.iter().map(EventRow::summary).collect(),
         next_cursor: next_cursor(page, limit)
             .as_ref()
             .map(Cursor::encode)
             .map(Cow::Owned),
-    }
-}
-
-/// One stored row, as a listing shows it.
-fn summary(row: &EventRow) -> EventSummary<'_> {
-    EventSummary {
-        fleet_id: Cow::Borrowed(&row.fleet_id),
-        event_id: Cow::Borrowed(&row.event_id),
-        workspace_id: Cow::Borrowed(&row.workspace_id),
-        actor: Cow::Borrowed(&row.actor),
-        event_type: Cow::Borrowed(&row.event_type),
-        status: Cow::Borrowed(&row.status),
-        tokens: row.tokens,
-        wall_ms: row.wall_ms,
-        failure_label: row.failure_label.as_deref().map(Cow::Borrowed),
-        failure_detail: row.failure_detail.as_deref().map(Cow::Borrowed),
-        checkpoint_id: row.checkpoint_id.as_deref().map(Cow::Borrowed),
-        resumes_event_id: row.resumes_event_id.as_deref().map(Cow::Borrowed),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        cost_nanos: row.cost_nanos,
     }
 }
 

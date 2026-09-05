@@ -109,6 +109,11 @@ pub struct FleetDetail {
     pub trigger_markdown: Option<String>,
     /// The bundle a runner materialises support files from.
     pub bundle_content_hash: Option<String>,
+    /// How many approval gates a human still owes this fleet an answer on.
+    ///
+    /// On the detail and not the page row: a wall of fifty fleets does not
+    /// render the count, and the console that does opens on one fleet.
+    pub pending_approvals: i64,
 }
 
 impl FleetDetail {
@@ -230,6 +235,7 @@ impl Fleets {
         let found = sqlx::query(sql::SELECT_FLEET_DETAIL)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
+            .bind(afd_wire::approval::status::PENDING)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
@@ -250,6 +256,7 @@ impl Fleets {
             source_markdown: row.try_get(3).map_err(&unreadable)?,
             trigger_markdown: row.try_get(4).map_err(&unreadable)?,
             bundle_content_hash: row.try_get(5).map_err(&unreadable)?,
+            pending_approvals: row.try_get(11).map_err(&unreadable)?,
         })
     }
 }

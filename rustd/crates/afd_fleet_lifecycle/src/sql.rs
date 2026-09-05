@@ -71,15 +71,22 @@ pub(crate) const SELECT_FLEET_PAGE_AFTER: &str = concat!(
 
 /// One fleet, whole — a page row's fields plus the editable markdown pair.
 ///
-/// `$1` fleet · `$2` workspace. The extra columns over a page row are what the
-/// source editor needs and a list does not: the authored `SKILL.md`, the
-/// `TRIGGER.md` beside it, and the bundle pin a runner materialises from.
+/// `$1` fleet · `$2` workspace · `$3` the gate status that counts as pending.
+/// The extra columns over a page row are what the source editor needs and a
+/// list does not: the authored `SKILL.md`, the `TRIGGER.md` beside it, and the
+/// bundle pin a runner materialises from — and the one the console's summary
+/// strip needs: how many approvals wait on this fleet, counted here so the
+/// chat opens on the fleet and its thread alone rather than paging fifty gate
+/// rows to render a number. One index-only scan per read
+/// (`idx_fleet_approval_gates_fleet_id_status` is exactly the predicate).
 pub(crate) const SELECT_FLEET_DETAIL: &str = "\
 SELECT f.id::text, f.name, f.status, f.source_markdown, f.trigger_markdown, \
        f.bundle_content_hash, \
        (f.config_json->'x-agentsfleet'->'triggers')::text, \
        COALESCE(c.events_processed, 0), COALESCE(c.budget_used_nanos, 0), \
-       f.created_at, f.updated_at \
+       f.created_at, f.updated_at, \
+       (SELECT COUNT(*) FROM core.fleet_approval_gates g \
+         WHERE g.fleet_id = f.id AND g.status = $3) \
 FROM core.fleets f \
 LEFT JOIN core.fleet_activity_counters c ON c.fleet_id = f.id \
 WHERE f.id = $1::uuid AND f.workspace_id = $2::uuid";

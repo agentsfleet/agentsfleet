@@ -1,6 +1,6 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { cleanup } from "@testing-library/react";
 
 export const WORKSPACE_ID = "ws_approvals_001";
 export const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
@@ -70,7 +70,5 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     resolved_by: "",
   };
 }
-
-// ── EmptyState ─────────────────────────────────────────────────────────
 
 export { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };

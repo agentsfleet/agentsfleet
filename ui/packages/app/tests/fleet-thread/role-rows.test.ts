@@ -1,4 +1,4 @@
-import { FLEET_NAME, WS, ZID, ev, mockStream, onRunCompletedMock, renderThread } from "./harness";
+import { FLEET_NAME, WS, ZID, ev, mockStream, renderThread } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -23,7 +23,6 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
         workspaceId: WS,
         fleetId: ZID,
         fleetName: "",
-        onRunCompleted: onRunCompletedMock,
         initial: [],
       }),
     );

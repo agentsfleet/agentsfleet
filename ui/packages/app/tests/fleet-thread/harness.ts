@@ -1,34 +1,21 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
 import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
-import { REFRESH_DEBOUNCE_MS } from "@/components/domain/useRefreshOnCompletion";
-
-/** Headroom over the debounce window so the wait is not a race with it. */
-export const REFRESH_SETTLE_SLACK_MS = 1_000;
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
 const {
   routerRefreshMock,
-  onRunCompletedMock,
   steerFleetActionMock,
   useFleetEventStreamMock,
   capturedOnNew,
   capturedRetry,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
-  onRunCompletedMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
   // Capture the `onNew` callback wired into the external-store runtime so a
@@ -89,7 +76,6 @@ vi.mock("@/components/domain/SteerComposer", async () => {
 });
 
 import { FleetThread } from "@/components/domain/FleetThread";
-import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import {
   CONNECTION_STATUS,
@@ -186,7 +172,6 @@ export function threadElement(initial: EventRow[] = []) {
     workspaceId: WS,
     fleetId: ZID,
     fleetName: FLEET_NAME,
-    onRunCompleted: onRunCompletedMock,
     initial,
   });
 }
@@ -196,15 +181,7 @@ export function renderThread() {
 }
 
 export function renderThreadWithInitial(initial: EventRow[]) {
-  return render(
-    React.createElement(FleetThread, {
-      workspaceId: WS,
-      fleetId: ZID,
-      fleetName: FLEET_NAME,
-      onRunCompleted: onRunCompletedMock,
-      initial,
-    }),
-  );
+  return render(threadElement(initial));
 }
 
 export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
@@ -233,7 +210,6 @@ export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
 
 beforeEach(() => {
   routerRefreshMock.mockReset();
-  onRunCompletedMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
   // The delivery-failure registry is module-scoped by design (it survives
@@ -246,5 +222,4 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-// ── FleetThread integration ─────────────────────────────────────────────
-export { routerRefreshMock, onRunCompletedMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry };
+export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry };

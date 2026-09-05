@@ -15,6 +15,8 @@
  * swap the map values to lookup keys without changing the call sites.
  */
 
+import { RETRY_CODE_TIMEOUT } from "@/lib/api/retry";
+
 export interface ErrorInput {
   /** ActionResult.error from a server action, or the thrown Error.message. */
   message?: string;
@@ -71,6 +73,14 @@ const CODE_MAP = {
   "UZ-AUTH-022": {
     title: "You need an additional scope for that",
     body: "Ask an agentsfleet admin to grant the scope this action requires.",
+  },
+  // Minted in lib/api/client.ts when the per-attempt timeout fires: the
+  // backend never answered, so there is no user_message to prefer. The raw
+  // ApiError message names the backend path for logs; this entry keeps that
+  // path out of what the operator reads.
+  [RETRY_CODE_TIMEOUT]: {
+    title: "The request timed out",
+    body: "The backend took too long to answer. Try again in a moment.",
   },
 } as const satisfies Record<string, CodeEntry>;
 

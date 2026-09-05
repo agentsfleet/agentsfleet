@@ -11,6 +11,8 @@
 #[path = "support/lane.rs"]
 mod support;
 
+#[path = "integration_detail_count.rs"]
+mod integration_detail_count;
 #[path = "integration_install_credentials.rs"]
 mod integration_install_credentials;
 #[path = "integration_install_rollback.rs"]

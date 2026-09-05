@@ -26,18 +26,19 @@ const PATH = "/v1/thing";
 const HANG_PATH = "/v1/hung";
 const TOKEN = "test-token";
 const OK_BODY = '{"ok":true}';
-// Short enough to keep the suite fast, long enough that the request is on the
-// wire before it fires.
-const HUNG_READ_TIMEOUT_MS = 50;
 
 const queue: Scripted[] = [];
 const methodLog: string[] = [];
 const hung: http.ServerResponse[] = [];
+// Runs when a request reaches the hung route — the moment "the request is on
+// the wire" is a fact rather than a guess about how fast the socket connected.
+let onHung: (() => void) | null = null;
 
 const server = http.createServer((req, res) => {
   methodLog.push(req.method ?? "");
   if (req.url === HANG_PATH) {
     hung.push(res);
+    onHung?.();
     return;
   }
   const next = queue.shift() ?? { status: 200, body: OK_BODY };
@@ -71,6 +72,7 @@ afterAll(async () => {
 beforeEach(() => {
   queue.length = 0;
   methodLog.length = 0;
+  onHung = null;
 });
 
 // Real network, fake clock: sleeps are recorded instead of awaited and jitter is
@@ -142,14 +144,19 @@ describe("requestWithRetry — real transport integration", () => {
   });
 
   it("a hung read times out into the retryable class, and the caller's aborted signal stops the loop", async () => {
-    // The caller's own timeout fires on the wire. Its signal stays aborted, so
-    // a second attempt could only fail instantly against it — the policy stops
-    // instead of sleeping a backoff to prove that. The attempt ceiling for the
-    // default (fresh-signal-per-attempt) path is proved in client.defaults.
+    // The caller's own timeout fires with the request on the wire — raised by
+    // the hung handler itself, with the reason `AbortSignal.timeout` would
+    // carry, so the assertion never races a clock. Its signal stays aborted,
+    // so a second attempt could only fail instantly against it — the policy
+    // stops instead of sleeping a backoff to prove that. The attempt ceiling
+    // for the default (fresh-signal-per-attempt) path is proved in
+    // client.defaults.
     const { options, retries } = fastRetry({ maxAttempts: 3 });
+    const controller = new AbortController();
+    onHung = () => controller.abort(new DOMException("signal timed out", "TimeoutError"));
     const err = await requestWithRetry(
       HANG_PATH,
-      { method: "GET", signal: AbortSignal.timeout(HUNG_READ_TIMEOUT_MS) },
+      { method: "GET", signal: controller.signal },
       TOKEN,
       options,
     ).catch((e: unknown) => e);
