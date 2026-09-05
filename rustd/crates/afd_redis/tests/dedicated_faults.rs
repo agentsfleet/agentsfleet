@@ -44,6 +44,15 @@ const REDIAL_BUDGET: Duration = Duration::from_secs(5);
 /// asserting against a ceiling six times the deadline under test.
 const SCHEDULING_SLACK: Duration = Duration::from_millis(150);
 
+/// A destination that swallows the packet: TEST-NET-1, routed nowhere.
+const BLACKHOLE: &str = "192.0.2.1:6379";
+
+/// How long the dial in the last test is given.
+///
+/// Deliberately below the driver's own retry ladder, so the outer timeout is
+/// the one that fires and the branch under test is the one reached.
+const CONNECT_DEADLINE: Duration = Duration::from_millis(120);
+
 /// A blocking read, as the outbound reader spells one.
 fn blocking_read(park: Duration) -> redis::Cmd {
     let mut cmd = redis::cmd(CMD_XREADGROUP);
@@ -164,5 +173,42 @@ async fn test_a_dedicated_socket_that_is_hung_up_on_is_redialled() {
     assert!(
         reads >= 2,
         "the server must have seen the read before and after the hangup, saw {reads}"
+    );
+}
+
+/// A dial that never completes is given up on, and says how long it waited.
+///
+/// The connection opens with a reply allowance of park plus request timeout —
+/// ten seconds on production defaults — and it would be easy to assume the DIAL
+/// inherits it. It does not: the outer `connect_timeout` bounds the whole
+/// setup, so a peer whose handshake never completes costs that and no more.
+/// This is the branch that proves it, and the error it produces names the
+/// number rather than surfacing as a driver error nobody can act on.
+///
+/// The address is TEST-NET-1 (RFC 5737), reserved for documentation and routed
+/// nowhere. A closed port is the wrong fault: it is REFUSED, which the driver
+/// reports at once and which takes the other branch. Only a destination that
+/// swallows the packet leaves the dial outstanding.
+#[tokio::test]
+async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
+    install_subscriber();
+    let config = RedisConfig::from_url(RedisRole::Default, format!("redis://{BLACKHOLE}/"))
+        .with_connect_timeout(CONNECT_DEADLINE);
+
+    let started = Instant::now();
+    let failure = Dedicated::connect(&config, PARK)
+        .await
+        .expect_err("a dial nothing answers must not be waited on forever");
+    let waited = started.elapsed();
+
+    assert!(
+        waited < CONNECT_DEADLINE + SCHEDULING_SLACK,
+        "the dial waited {waited:?} against a {CONNECT_DEADLINE:?} connect timeout — \
+         the reply allowance is governing the dial rather than the connect timeout"
+    );
+    let reported = failure.to_string();
+    assert!(
+        reported.contains(&CONNECT_DEADLINE.as_millis().to_string()),
+        "the refusal must name what it waited; got: {reported}"
     );
 }
