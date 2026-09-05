@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M190
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing latency and resilience on every dashboard write and on every watched chat; nothing is broken, everything is slower and more brittle than the architecture doc already prescribes.
 **Categories:** DOCS, UI
 **Batch:** B11 — independent of the v2 cutover sequence; touches only `ui/packages/app` and one architecture doc.
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m190-dashboard-round-trips
+**Test Baseline:** unit=5448 (`make test-unit-all` on main at fa989b444: cargo 2351 · app 2410 · website 175 · other packages 512) integration=recorded before the PR (Indy, Sep 05, 2026 — see Discovery)
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Fable 5.1, Sep 05, 2026) from an in-session review of every `lib/api` call path, server page, mutation surface and stream registry in `ui/packages/app`; Indy chose the scope from four offered batches.
 **Canonical architecture:** `docs/architecture/web_app.md` §The five statements (statements 1, 4, 5) and §Scoreboard; `docs/architecture/data_flow.md` §D. WATCH
@@ -285,4 +285,5 @@ N/A — no files deleted. Two symbols lose their only consumer and leave in the 
 - **Consults** — Sep 05, 2026, Indy chose "Perf batch + optimistic rows" from four offered scopes; D (poll pause) and E (approvals transport) moved to a follow-up.
 - **Metrics review** — no events added; `approval_resolved` unchanged; no analytics or funnel playbook update required.
 - **Skill-chain outcomes** — populated during VERIFY and REVIEW.
-- **Deferrals** — none at authoring.
+- **Deferrals** — none at authoring. Baseline timing:
+  > Indy (2026-09-05 20:23): "run the test-integration later, before PR" — context: the `verify.integration` baseline count is recorded at the pre-PR gate instead of CHORE(open); rubric S3 runs it there. The unit baseline was recorded at CHORE(open).
