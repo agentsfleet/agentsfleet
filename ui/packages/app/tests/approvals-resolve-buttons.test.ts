@@ -146,6 +146,7 @@ describe("ResolveButtons — deny happy path", () => {
       expect(denyActionMock).toHaveBeenCalled();
       expect(routerPush).toHaveBeenCalledWith(`/w/${WORKSPACE_ID}/approvals`);
     });
+    expect(routerRefresh).not.toHaveBeenCalled();
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
       gate_id: GATE_ID,
       decision: APPROVAL_DECISION.DENY,
