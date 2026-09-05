@@ -23,7 +23,7 @@ edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
-rust-version = "1.98"
+rust-version = "1.98.1"
 # MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
 # manifest said Apache-2.0 from its first commit, which made this workspace the
 # only part of the product claiming a licence the project does not ship under —
