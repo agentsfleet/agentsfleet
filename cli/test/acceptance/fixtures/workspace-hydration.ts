@@ -25,17 +25,17 @@ import {
   MACHINE_NAME_DISALLOWED,
   MACHINE_NAME_REPLACEMENT,
 } from "../../../src/constants/cli-credential.ts";
+import {
+  CLI_CREDENTIALS_PATH,
+  type MintedCliCredential,
+  REVOKE_LABEL,
+  revokeCliCredential,
+  type RevokeOptions,
+} from "./cli-credential-revoke.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
-const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 const MACHINE_NAME_PREFIX = "acceptance-";
-const HTTP_UNAUTHORIZED = 401;
-const HTTP_NOT_FOUND = 404;
-
-export interface MintedCliCredential {
-  readonly id: string;
-  readonly credential: string;
-}
+const ERROR_DETAIL_MAX_CHARS = 200;
 
 const liveCredentials = new Map<string, MintedCliCredential>();
 
@@ -101,7 +101,7 @@ export async function mintCliCredential(
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`CLI credential mint ${response.status}: ${detail.slice(0, 200)}`);
+    throw new Error(`CLI credential mint ${response.status}: ${detail.slice(0, ERROR_DETAIL_MAX_CHARS)}`);
   }
   const body = await response.json() as { id?: unknown; credential?: unknown };
   if (
@@ -116,27 +116,32 @@ export async function mintCliCredential(
   return minted;
 }
 
-export async function revokeHydratedCliCredentials(apiUrl: string): Promise<void> {
+/**
+ * Revokes every credential this process minted, waiting for all of them. One
+ * the API no longer has is forgotten; one whose revoke gave up stays
+ * registered and is named in the error.
+ */
+export async function revokeHydratedCliCredentials(
+  apiUrl: string,
+  options: RevokeOptions = {},
+): Promise<void> {
   const credentials = [...liveCredentials.entries()];
+  const failures: unknown[] = [];
   await Promise.all(credentials.map(async ([machineName, minted]) => {
-    const response = await fetch(
-      `${apiUrl}${CLI_CREDENTIALS_PATH}/${encodeURIComponent(minted.id)}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${minted.credential}` } },
-    );
-    // A test may exercise `logout`, which already revoked this exact row and
-    // credential. Treat that completed cleanup as success here.
-    if (
-      !response.ok &&
-      response.status !== HTTP_UNAUTHORIZED &&
-      response.status !== HTTP_NOT_FOUND
-    ) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`CLI credential revoke ${response.status}: ${detail.slice(0, 200)}`);
+    try {
+      await revokeCliCredential(apiUrl, minted, options);
+    } catch (error: unknown) {
+      failures.push(error);
+      return;
     }
     if (liveCredentials.get(machineName)?.id === minted.id) {
       liveCredentials.delete(machineName);
     }
   }));
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, `${REVOKE_LABEL}: ${failures.length} credentials are still live`);
+  }
 }
 
 export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<HydrateResult> {
@@ -154,7 +159,7 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`workspace hydrate ${res.status}: ${detail.slice(0, 200)}`);
+    throw new Error(`workspace hydrate ${res.status}: ${detail.slice(0, ERROR_DETAIL_MAX_CHARS)}`);
   }
   const body = await res.json() as { items?: unknown; tenant_id?: unknown };
   if (typeof body.tenant_id !== "string" || body.tenant_id.length === 0) {
