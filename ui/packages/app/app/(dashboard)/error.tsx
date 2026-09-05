@@ -72,7 +72,7 @@ export default function DashboardError({
             {/* The countdown is announced here, once, rather than from the ring:
                 `polite` so it never interrupts, and the attempt count tells a
                 non-sighted user the page is working through a budget. */}
-            <p aria-live="polite" className="font-mono text-label text-muted-foreground">
+            <p aria-live="polite" className="font-sans text-label text-muted-foreground">
               {exhausted
                 ? `Stopped after ${maxAttempts} automatic attempts.`
                 : `Retrying in ${secondsRemaining}s · attempt ${attempt} of ${maxAttempts}`}
@@ -80,7 +80,7 @@ export default function DashboardError({
             <Button type="button" onClick={retry.retryNow} data-testid="dashboard-error-retry">
               {exhausted ? RETRY_LABEL : RETRY_NOW_LABEL}
             </Button>
-            <p className="font-mono text-label text-muted-foreground">{SUPPORT_NOTE}</p>
+            <p className="font-sans text-label text-muted-foreground">{SUPPORT_NOTE}</p>
           </div>
         }
       />

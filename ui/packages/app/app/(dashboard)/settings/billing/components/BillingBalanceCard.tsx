@@ -47,7 +47,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
               >
                 {formatDollars(billing.balance_nanos)}
               </span>
-              <span className="ml-1.5 font-mono text-base font-normal text-muted-foreground">
+              <span className="ml-1.5 font-sans text-base font-normal text-muted-foreground">
                 USD
               </span>
             </div>

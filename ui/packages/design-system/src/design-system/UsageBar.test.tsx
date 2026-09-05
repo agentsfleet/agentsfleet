@@ -15,6 +15,9 @@ describe("UsageBar", () => {
     const el = screen.getByTestId("usage-bar");
     const fill = el.querySelector(".usage-bar-fill") as HTMLElement;
     expect(fill.style.width).toBe("62%");
+    expect(fill).toHaveClass("bg-pulse");
+    expect(el).toHaveClass("font-sans");
+    expect(screen.getByText("$310 of $500")).not.toHaveClass("font-mono");
   });
 
   it("renders track+fill only when no label is given (BillingBalanceCard's unlabeled case)", () => {

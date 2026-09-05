@@ -61,19 +61,28 @@ The user approved all three UI packages. Rows name grouped visual consumers; exa
 | `ui/packages/design-system/package.json` | EDIT | Bundle display font locally |
 | `bun.lock` | EDIT | Record font dependency |
 | `cli/package.json` and `cli/bun.lock` | EDIT | Update Effect within the current release-candidate line |
-| `audits/design-tokens.sh` | EDIT | Enforce the approved prohibition on gradient fills |
+| `audits/design-tokens.sh` | EDIT | Enforce flat fills and shared font ownership |
+| `scripts/design_tokens_test.py` | ADD | Exercise font ownership, gradient, and palette rejection in isolated repositories |
 | `audits/cross-tier-rates.sh` | EDIT | Pin the remaining rate consumers after removing website numerical prices |
 | `docs/architecture/billing_and_provider_keys.md`, `docs/CHANGELOG_VOICE.md`, `dispatch/write_changelog.md` | EDIT | Remove references to the deleted website rate mirror |
 | `ui/packages/design-system/src/design-system/*.tsx` | EDIT | Shared typography and interaction presentation |
+| `ui/packages/design-system/src/design-system/eyebrow.ts`, `ui/packages/design-system/src/design-system/index.ts` | EDIT | Centralize interface typography and navigation exports |
+| `ui/packages/design-system/src/index.ts` | EDIT | Expose shared navigation through the package entry point |
+| `ui/packages/design-system/src/design-system/NavItem.tsx` and paired test | ADD | Own shared navigation item appearance and active state |
+| `ui/packages/app/components/**/*.tsx` | EDIT | Align page widgets and remove local visual overrides |
 | `ui/packages/design-system/src/design-system/DataTableModel.ts` | EDIT | Synchronize pagination before commit rather than cascading from an effect |
 | `ui/packages/design-system/src/design-system/*.test.tsx` | EDIT | Keep component behavior covered |
 | `ui/packages/design-system/src/tokens.css.test.ts` | EDIT | Font roles, contrast, and token mapping regressions |
 | `ui/packages/app/app/globals.css` | EDIT | Remove ambient gradients and meter gradients |
+| `ui/packages/app/lib/clerkAppearance.ts` | EDIT | Keep third-party auth actions on the same CTA token pair as shared buttons |
 | `ui/packages/app/components/*.tsx` | EDIT | App shell and navigation typography |
 | `ui/packages/app/app/**/*.tsx` | EDIT | Migrate visual consumers without changing data access |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SourceDocumentPane.tsx` | ADD | Separate technical source rendering from source-edit state while keeping interface labels sans |
 | `ui/packages/app/lib/avatarColor.ts` | RENAME / EDIT | Replace avatarGradient.ts with deterministic flat identity colors |
 | `ui/packages/app/lib/avatarColor.test.ts` | RENAME / EDIT | Preserve identity and empty-seed behavior without gradients |
 | `ui/packages/app/tests/*` | EDIT | Update visual assertions and preserve existing behavior |
+| `ui/packages/app/tests/interface-typography.test.ts` | ADD | Enforce shared interface font defaults across app pages and components |
+| `ui/packages/app/tests/fleet-library-paging.test.ts` | ADD | Split paging checks from install-entry checks and wait for async error rendering |
 | `ui/packages/app/tests/app-shell-frame.test.ts`, `ui/packages/app/tests/admin-models-management.test.ts` | ADD | Split oversized suites by concern without dropping assertions |
 | `ui/packages/app/.oxlintrc.json` | EDIT | Match compiler-only checks to the app's disabled React Compiler |
 | `ui/packages/app/package.json` and `bun.lock` | EDIT | Update app runtime and development dependencies to current releases; retain the TypeScript 6 parser alias required by the bundle guard |
@@ -93,6 +102,7 @@ The user approved all three UI packages. Rows name grouped visual consumers; exa
 | `ui/packages/website/scripts/prebuild.mjs` | EDIT | Stop supplying rate quotes to public text generation |
 | `ui/packages/website/src/App.tsx` | EDIT | Navigation presentation |
 | `ui/packages/website/tests/e2e/*.spec.ts` | EDIT | Responsive and accessibility regression scenarios |
+| `ui/packages/website/tests/e2e/design-system-ownership.spec.ts` | ADD | Prove shared font and color edits propagate to rendered consumers |
 | `ui/packages/website/tests/e2e/design-system-status-smoke.spec.ts` | ADD | Split gallery browser assertions into bounded suites |
 
 ## Applicable Rules
@@ -137,6 +147,8 @@ Apply shared typography and flat surfaces to existing authenticated screens.
 - **Dimension 2.1 — DONE** — App backgrounds and usage meters contain no gradients → Test `flat app surfaces`.
 - **Dimension 2.2 — IN_PROGRESS** — Navigation and forms remain usable on narrow screens → Test browser keyboard and responsive walkthrough.
 - **Dimension 2.3 — DONE** — Empty, loading, and error states retain visible next actions → Test existing app state suites.
+- **Dimension 2.4 — DONE** — Shared primitives own navigation, interface typography, and meter presentation; consumers retain semantic technical text → Test component contracts, app navigation suites, and browser token propagation.
+- **Dimension 2.5 — DONE** — Design-token gate rejects consumer font definitions and display typography in the app → Test rejection and permitted technical token fixtures plus app primitive override checks.
 
 ### §3 — Website and pricing
 
@@ -428,3 +440,48 @@ The generated replacement hero image remains outside the repository; the install
 The test ledger covers clipboard failure and success, footer navigation attribution, rate-copy removal, flat avatar colors,
 pagination configuration changes, toast fade cancellation, and shared-control keyboard behavior.
 No backend input/output contract changed. Live datastore testing remains at the PR boundary.
+
+### Shared ownership and enforcement checkpoint
+
+Merged `origin/main` at `1b87e2a91` into this worktree with merge commit `49fa999ac`.
+The pending alignment edits were restored without conflicts.
+
+Shared `EYEBROW_CLASS` now follows interface typography. `NavItem` owns destination
+styling for the sidebar, fleet sections, and runner sections. `UsageBar` owns its
+solid fill without app CSS. Clerk actions consume the same CTA token pair as Button.
+Human conversation text, recovery copy, onboarding labels, and metric labels use sans;
+technical identifiers, source text, timestamps, and technical input values retain mono.
+
+The design-token gate rejects consumer font definitions, arbitrary font utilities,
+and app display typography. The app's syntax-tree regression check rejects local font
+overrides on shared interface primitives, including aliased imports and local constants.
+Four isolated-repository script tests cover permitted token references and rejected
+font, palette, and gradient bypasses. ShellCheck passes without suppressions.
+
+| Required test | Evidence |
+|---|---|
+| Shared active/inactive navigation and router composition | Three NavItem tests, including import through the public package entry |
+| App primitive font ownership | Three syntax-tree tests, including every app page and component |
+| Tokens propagate to rendered consumers | Three browser tests: both themes, changed sans token, changed pulse token, unchanged technical font |
+| Gallery styling and accessibility | 43 browser checks passed |
+| Source editing after extraction | Existing SkillEditor cases retained; technical panes extracted to keep the source file bounded |
+| Async paging and dialog transitions | Assertions wait for the resulting error or dialog instead of reading before the transition commits |
+
+The gallery was inspected at desktop width in dark and at narrow width in light.
+This proves shared component rendering, not the authenticated app walkthrough.
+Local Clerk publishable and secret keys remain absent. The app currently normalizes
+its own theme to dark; shared-token light support does not imply an app light-mode switch.
+The authenticated walkthrough and repository-wide PR verification remain outstanding.
+
+Package validation after alignment: app `bun run test:coverage` passed 2,413 tests
+across 239 files with 100% statements (6,021), branches (3,645), functions (1,624),
+and lines (5,375). Shared components passed 545 tests across 57 files with all four
+coverage measures at 100%. Website passed 156 tests across 24 files with all four
+coverage measures at 100%. App production build succeeded. App, website, and shared
+component Make lint targets passed. `make harness-verify` passed staged conformance;
+gitleaks found no staged secrets. These are package and conformance claims, not a
+replacement for the deferred repository verification commands.
+
+Scoped review repaired the missing public navigation export, preserved the sidebar's
+mint active state, and retained mono on lease identifiers while removing it from
+surrounding labels. No new data-access, authorization, or backend contract was introduced.

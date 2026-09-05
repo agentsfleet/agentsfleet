@@ -113,6 +113,27 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
+### Ownership and enforcement
+
+Change font families and light/dark color values in `ui/packages/design-system/src/tokens.css`.
+Forward token roles to utilities in `theme.css`. Shared components own their typography,
+surface, focus, disabled, and selected styles. A component must render correctly without
+consumer CSS; `UsageBar` owns its fill, and `NavItem` owns destination styling.
+
+Pages compose layout and data. Use component variants for visual differences.
+Do not copy a component's visual class string into a page or override its font or color
+to create a local theme. Add a shared variant when an actual product state requires one.
+Interface eyebrows use sans. Apply mono to the technical value itself, never its surrounding
+navigation, explanatory prose, or whole table. Keep route labels and recovery actions sans.
+
+`audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
+Component tests verify defaults and state behavior.
+`ui/packages/app/tests/interface-typography.test.ts` checks every app page and component
+for font overrides on shared interface primitives, including aliased imports and named classes.
+Browser review checks both themes,
+narrow screens, and loading, empty, error, selected, and disabled states. Static checks
+cannot determine whether arbitrary prose is a technical value; that remains a review duty.
+
 ## Motion
 
 Use brief color transitions for hover, focus, and selection.

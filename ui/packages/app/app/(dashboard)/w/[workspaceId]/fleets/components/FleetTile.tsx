@@ -246,12 +246,12 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
         >
           {children}
         </TileIdentity>
-        <div className="min-h-[1.25rem] font-mono text-xs text-muted-foreground truncate">
+        <div className="min-h-[1.25rem] font-sans text-xs text-muted-foreground truncate">
           {feed ?? emptyActivity}
         </div>
         <TileMetrics fleet={fleet} />
         <div className="mt-auto flex justify-end border-t border-border pt-3">
-          <span className="font-mono text-xs font-medium text-pulse">
+          <span className="font-sans text-xs font-medium text-pulse">
             {MANAGE_FLEET_LABEL} →
           </span>
         </div>

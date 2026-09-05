@@ -1,16 +1,14 @@
 /*
  * Clerk widget theming for sign-in / sign-up + the dashboard UserButton
  * avatar. Tokens map to the
- * Operational Restraint design system (docs/DESIGN_SYSTEM.md):
+ * Clear Signal design system (docs/DESIGN_SYSTEM.md):
  *   --surface-1   cards
  *   --surface-2   inputs / elevated chrome
  *   --surface-3   hover / active chrome
  *   --text*       text primary / muted / subtle
- *   --pulse       primary action fill ONLY (currency rule — the primary
- *                 action button is the system's "wake" affordance).
- *                 Footer links, resend-code links, edit buttons use
- *                 muted text — they are navigation, not live signals.
- *   --bg          contrast text on the pulse fill
+ *   --cta        primary action fill, shared with Button
+ *   --cta-foreground contrast text on the action fill
+ *   --pulse      focus, hover, and live signal accents
  *   --border*     dividers + outlines
  *   --error       error states. Failed != live; never --pulse.
  * No box-shadow on chrome (spec: borders preferred over shadows).
@@ -25,7 +23,8 @@ const TEXT = "var(--text)";
 const TEXT_MUTED = "var(--text-muted)";
 const TEXT_SUBTLE = "var(--text-subtle)";
 const PULSE = "var(--pulse)";
-const BACKGROUND = "var(--bg)";
+const CTA = "var(--cta)";
+const CTA_FOREGROUND = "var(--cta-foreground)";
 const BORDER = "var(--border)";
 const BORDER_STRONG = "var(--border-strong)";
 const ERROR = "var(--error)";
@@ -82,8 +81,8 @@ export const AUTH_APPEARANCE = {
     colorInputForeground: TEXT,
     colorForeground: TEXT,
     colorMutedForeground: TEXT_MUTED,
-    colorPrimary: PULSE,
-    colorPrimaryForeground: BACKGROUND,
+    colorPrimary: CTA,
+    colorPrimaryForeground: CTA_FOREGROUND,
     colorBorder: BORDER_STRONG,
     colorDanger: ERROR,
     colorSuccess: SUCCESS,
@@ -279,8 +278,8 @@ export const AUTH_APPEARANCE = {
     // slot remains visible before focus on the dark card.
     otpCodeFieldInput: AUTH_INPUT_APPEARANCE,
     formButtonPrimary: {
-      backgroundColor: PULSE,
-      color: BACKGROUND,
+      backgroundColor: CTA,
+      color: CTA_FOREGROUND,
     },
     footerActionText: {
       color: TEXT_MUTED,

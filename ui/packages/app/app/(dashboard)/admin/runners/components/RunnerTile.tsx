@@ -109,11 +109,11 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
               {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
             </div>
             {runner.degraded && runner.degraded_reason ? (
-              <div className="mt-md min-h-5 truncate font-mono text-body-sm text-destructive">
+              <div className="mt-md min-h-5 truncate font-sans text-body-sm text-destructive">
                 {runner.degraded_reason}
               </div>
             ) : (
-              <div className="mt-md min-h-5 truncate font-mono text-body-sm text-muted-foreground">
+              <div className="mt-md min-h-5 truncate font-sans text-body-sm text-muted-foreground">
                 {workLine}
               </div>
             )}

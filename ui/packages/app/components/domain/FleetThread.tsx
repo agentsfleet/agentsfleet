@@ -185,7 +185,7 @@ function ThreadViewport({
               size="sm"
               aria-label={JUMP_TO_LATEST}
               className={cn(
-                "absolute bottom-md right-0 z-20 font-mono text-label",
+                "absolute bottom-md right-0 z-20 font-sans text-label",
                 "disabled:invisible disabled:pointer-events-none",
               )}
             >

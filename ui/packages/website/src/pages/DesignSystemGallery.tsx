@@ -36,6 +36,10 @@ import {
   EmptyState,
   StatusCard,
   Pagination,
+  Nav,
+  NavItem,
+  SectionLabel,
+  UsageBar,
 } from "@agentsfleet/design-system";
 import { DOCS_URL } from "../config";
 
@@ -62,6 +66,21 @@ export default function DesignSystemGallery() {
       <SkeletonDialogExamples />
       <MenuTooltipEmptyGallery />
       <StatusPaginationGallery />
+      <AppPrimitivesGallery />
+    </Section>
+  );
+}
+
+function AppPrimitivesGallery() {
+  return (
+    <Section data-testid="app-primitives">
+      <SectionLabel>App navigation and usage</SectionLabel>
+      <Nav aria-label="Example app sections" className="flex flex-wrap gap-sm">
+        <NavItem href="#app-fleets" active>Fleets</NavItem>
+        <NavItem href="#app-events">Events</NavItem>
+      </Nav>
+      <UsageBar label="Monthly run budget" pct={62} sublabel="Budget remaining for this month" />
+      <code className="font-mono text-mono">fleet_example</code>
     </Section>
   );
 }

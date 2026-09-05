@@ -70,7 +70,7 @@ describe("DropdownMenu", () => {
     );
     const lbl = screen.queryByTestId("lbl");
     if (lbl) {
-      expect(lbl.className).toContain("font-mono");
+      expect(lbl.className).toContain("font-sans");
       expect(lbl.className).toContain("uppercase");
     }
   });
@@ -113,7 +113,7 @@ describe("DropdownMenu", () => {
     const lbl = screen.queryByTestId("lbl-inset");
     if (lbl) {
       expect(lbl.className).toContain("pl-8");
-      expect(lbl.className).toContain("font-mono");
+      expect(lbl.className).toContain("font-sans");
     } else {
       // portal not mounted in jsdom — document the absence
       expect(lbl).toBeNull();
