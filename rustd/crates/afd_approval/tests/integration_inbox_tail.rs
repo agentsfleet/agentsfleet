@@ -164,6 +164,44 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     );
 }
 
+/// A re-raised action's rows are answered together, and counted together.
+///
+/// `action_id` carries no unique constraint: a park that re-raises an action
+/// writes a second pending row, and one decision moves both. The count on
+/// the frame is read on the statement's own snapshot, where both rows still
+/// stand as pending — so it must leave out everything the statement moved,
+/// not the one row the caller happened to read back.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_re_raised_actions_rows_are_counted_out_together() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+
+    let hub = SubscriptionHub::start(redis_config())
+        .await
+        .expect("the lane's Redis accepts a subscriber");
+    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
+    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+
+    let re_raised = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    lane.seed_gate_for(&re_raised, NOW_MS + WINDOW_MS).await;
+    let _sibling = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    lane.inbox
+        .resolve(&re_raised, Decision::Denied, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the resolve must not fault");
+
+    let frame = next_frame(&mut tail)
+        .await
+        .expect("the decision reaches the fleet's tail");
+    assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
+    assert_eq!(
+        frame.get("pending_approvals"),
+        Some(&json!(1)),
+        "both rows of the answered action are out; the sibling alone waits"
+    );
+}
+
 /// A queue that will not take the frame does not fail the decision.
 ///
 /// The row moved over live Postgres before the announcement ran, and a

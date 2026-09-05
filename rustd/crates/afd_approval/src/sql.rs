@@ -69,11 +69,13 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// grant that never heard.
 ///
 /// The trailing count is how many of the fleet's gates still wait once this
-/// one is answered, read in the same statement so the frame announcing the
+/// action is answered, read in the same statement so the frame announcing the
 /// answer costs no second round trip. A data-modifying CTE and the select
 /// after it run on ONE snapshot (PostgreSQL, "Data-Modifying Statements in
-/// WITH"), so the select still sees the answered gate as pending; excluding it
-/// by id is what makes the count the state after the answer.
+/// WITH"), so the select still sees every row the update moved as pending;
+/// excluding all of `resolved` — not one row of it, since a re-raised action
+/// leaves more than one pending row and the update moves them together — is
+/// what makes the count the state after the answer.
 ///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` now, `$5` action,
 /// `$6` pending status, `$7` fleet filter (empty disables), `$8` approved
@@ -102,7 +104,7 @@ SELECT id::text, action_id, workspace_id::text, fleet_id::text,
        status, COALESCE(updated_at, $4::bigint), resolved_by, detail, event_id,
        (SELECT COUNT(*) FROM core.fleet_approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.status = $6
-           AND g.id <> resolved.id) AS pending_approvals
+           AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals
 FROM resolved";
 
 /// The gate an action already holds, newest first.
