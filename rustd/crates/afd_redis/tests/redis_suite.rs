@@ -73,6 +73,8 @@ mod support;
 
 #[path = "connect_refusals.rs"]
 mod connect_refusals;
+#[path = "dedicated_faults.rs"]
+mod dedicated_faults;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "hub_socket_faults.rs"]

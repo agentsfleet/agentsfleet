@@ -23,7 +23,7 @@
 use afd_core::id::Uuid7;
 use afd_redis::Redis;
 use afd_redis::streams::{Appended, FleetStreams, OnceScope};
-use afd_wire::event::{EventType, field};
+use afd_wire::event::{Entry, EventType};
 
 use crate::error::Result;
 use crate::store::FireTarget;
@@ -77,18 +77,21 @@ impl Fire {
         // schedules, and a key that was the message id alone would let two
         // schedules firing on the same tick silence each other.
         let once_id = format!("{fleet}:{schedule}:{message_id}");
+        let created_at = afd_core::clock::now().as_millis().to_string();
 
         let appended: Appended = FleetStreams::new(self.queue.clone())
             .append_once(
                 OnceScope::ScheduleFire,
                 &once_id,
                 fleet,
-                &[
-                    (field::ACTOR, ACTOR_SCHEDULE),
-                    (field::EVENT_TYPE, EventType::Cron.as_str()),
-                    (field::WORKSPACE_ID, target.workspace.as_str()),
-                    (field::REQUEST_JSON, &target.message),
-                ],
+                &Entry {
+                    actor: ACTOR_SCHEDULE,
+                    event_type: EventType::Cron.as_str(),
+                    workspace_id: target.workspace.as_str(),
+                    request_json: &target.message,
+                    created_at: &created_at,
+                }
+                .pairs(),
             )
             .await?;
 

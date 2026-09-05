@@ -61,6 +61,12 @@ const EVENT_STREAM_READ_FAILED: &str = "assign_xreadgroup_failed";
 /// An entry this consumer already held came back.
 const EVENT_PEL_REDELIVERED: &str = "assign_pel_redelivered";
 
+/// An entry no reader can decode was acknowledged and discarded.
+const EVENT_ENTRY_UNDECODABLE_DROPPED: &str = "assign_entry_undecodable_dropped";
+
+/// The discard could not be acknowledged; the next poll tries again.
+const EVENT_ENTRY_UNDECODABLE_DROP_FAILED: &str = "assign_entry_undecodable_drop_failed";
+
 /// A lapsed holder's event was taken back under a higher fence.
 const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 
@@ -268,8 +274,60 @@ impl Leases {
             self.release(fleet_id, claimed.fence, now).await?;
             return Ok(None);
         };
-        from_fresh(fleet_id, claimed, &event).map(Some)
+        match from_fresh(fleet_id, claimed, &event) {
+            Ok(acquired) => Ok(Some(acquired)),
+            Err(undecodable) => {
+                drop_undecodable(&streams, fleet, &event.id, &undecodable).await;
+                // Freed for the reason the empty arm frees it: this fleet holds
+                // nothing this poll can lease. Holding the claim would cost a
+                // full TTL of silence on a fleet whose next event may be fine.
+                self.release(fleet_id, claimed.fence, now).await?;
+                Ok(None)
+            }
+        }
     }
+}
+
+/// Acknowledges an entry no reader can decode, so the fleet keeps moving.
+///
+/// Without this the entry is PERMANENT, and it takes the fleet with it.
+/// `XREADGROUP >` never re-offers a delivered entry; the reclaim sweeper
+/// (`afd_runner::sweep::reclaim`) claims it back into this consumer on every
+/// pass; and pending-first hands it straight back as the oldest entry on every
+/// poll that wins the fleet. So one malformed write makes that fleet
+/// permanently unleasable and hides every event queued behind it — which is
+/// exactly the shape of the cutover defect this branch fixes, and would have
+/// outlived the fix for any stream still holding one.
+///
+/// `afd_redis::outbound`'s `drop_undeliverable` is the same answer for the
+/// other stream, written for the same reason.
+///
+/// A `warn` rather than an `err`: the daemon recovers by itself, so nothing is
+/// raised to the runner, and this line is the only record the entry existed —
+/// which is why it names the fleet, the entry and the field. A failed
+/// acknowledgement is not raised either; the entry stays pending and the next
+/// poll drops it again.
+async fn drop_undecodable(
+    streams: &afd_redis::FleetStreams,
+    fleet_id: &str,
+    event_id: &afd_redis::EventId,
+    error: &crate::error::Error,
+) {
+    let id = event_id.as_str();
+    let reason = error.to_string();
+    let event = if streams.ack(fleet_id, event_id).await.is_ok() {
+        EVENT_ENTRY_UNDECODABLE_DROPPED
+    } else {
+        EVENT_ENTRY_UNDECODABLE_DROP_FAILED
+    };
+    tracing::warn!(
+        error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
+        event,
+        fleet_id,
+        agentsfleet_event_id = id,
+        reason,
+        "a stream entry no reader can decode was discarded so the fleet stays leasable"
+    );
 }
 
 /// The stable consumer name this daemon reads under.

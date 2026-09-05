@@ -26,7 +26,7 @@
 
 use afd_connector::Grants;
 use afd_db::Db;
-use afd_outbound::{Posters, SlackPoster, Worker};
+use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
 use afd_redis::{Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer};
 
 use crate::supervisor::Supervisor;
@@ -52,7 +52,7 @@ pub async fn spawn(
     grants: Grants,
     vendor_client: reqwest::Client,
 ) {
-    let connection = match Dedicated::connect(config).await {
+    let connection = match Dedicated::connect(config, LONGEST_PARK).await {
         Ok(connection) => connection,
         Err(failure) => {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.

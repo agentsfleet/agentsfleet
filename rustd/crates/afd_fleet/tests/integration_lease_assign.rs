@@ -27,7 +27,7 @@ use afd_core::clock::UnixMillis;
 use afd_fleet::lease::Kind;
 
 use self::requests::ENROLLED_AT;
-use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded};
+use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded, seeded_parts};
 use self::support::Fixtures;
 
 /// A ready fleet with an event is assigned, with the envelope intact.
@@ -188,4 +188,74 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
 
     queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
+}
+
+/// An entry no reader can decode is dropped, and the fleet stays leasable.
+///
+/// This is the failure the wire fix would otherwise have left behind. Entries
+/// in the cutover-era shape are on real streams now, and nothing re-offers a
+/// delivered entry: `XREADGROUP >` skips it, the reclaim sweeper claims it back
+/// into this consumer every pass, and pending-first hands it out again as the
+/// oldest entry on every poll that wins the fleet. Refusing it without
+/// acknowledging it therefore does not cost one event — it costs the fleet, and
+/// every event queued behind it, permanently.
+///
+/// The second poll is the whole assertion. A first poll returning `None` proves
+/// only that the pass did not fault; it is the SECOND one, reaching the good
+/// entry behind the poison, that proves the poison is gone rather than merely
+/// stepped over.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+
+    let poison = queue::enqueue_cutover_era(
+        fixtures.queue(),
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+    )
+    .await;
+    let good = queue::enqueue(
+        fixtures.queue(),
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    assert_ne!(poison, good, "the fixture must append two distinct entries");
+
+    let first = fixtures
+        .leases()
+        .select(&runner, now)
+        .await
+        .expect("an entry this daemon cannot decode must not fault the poll");
+    assert!(
+        first.is_none(),
+        "the poll meets the undecodable entry first and has nothing to lease yet"
+    );
+
+    // One millisecond later, and that is not cosmetic: `release` sets
+    // `leased_until = now` and the claim admits `leased_until < now`, so a
+    // second poll at the same instant could never re-claim the slot however
+    // correct the drop was.
+    let later = UnixMillis::from_millis(ENROLLED_AT + 1);
+    let second = fixtures
+        .leases()
+        .select(&runner, later)
+        .await
+        .expect("the second pass must not fault either")
+        .expect("the fleet must still be leasable once the undecodable entry is gone");
+    assert_eq!(
+        second.event_id, good,
+        "the entry behind the poison must be reachable; if this is the poison id \
+         again, it was refused without being acknowledged and the fleet is wedged"
+    );
 }

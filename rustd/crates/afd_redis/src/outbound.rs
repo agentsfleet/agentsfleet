@@ -97,6 +97,12 @@ const OWN_PENDING: &str = "0";
 /// delivered one would re-execute it.
 const GROUP_START_BEGIN: &str = "0";
 
+/// The `XGROUP` subcommand that creates a consumer group.
+const XGROUP_CREATE: &str = "CREATE";
+
+/// Creates the stream alongside the group when the stream does not exist yet.
+const XGROUP_MKSTREAM: &str = "MKSTREAM";
+
 /// The prefix an outbound consumer name is built on. Shared with the Zig.
 const CONSUMER_PREFIX: &str = "agentsfleetd";
 
@@ -209,11 +215,11 @@ impl OutboundQueue {
     /// reason other than already existing.
     pub async fn ensure_group(&self) -> Result<()> {
         let mut cmd = redis::cmd(CMD_XGROUP);
-        cmd.arg("CREATE")
+        cmd.arg(XGROUP_CREATE)
             .arg(OUTBOUND_STREAM_KEY)
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(GROUP_START_BEGIN)
-            .arg("MKSTREAM");
+            .arg(XGROUP_MKSTREAM);
 
         match self
             .redis

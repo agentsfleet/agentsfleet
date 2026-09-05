@@ -90,12 +90,6 @@ const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 /// would make two rows that could disagree about what was asked.
 const CONTINUATION_BODY: &str = "{}";
 
-/// The stream fields a continuation is appended with.
-const FIELD_ACTOR: &str = afd_wire::event::field::ACTOR;
-const FIELD_EVENT_TYPE: &str = afd_wire::event::field::EVENT_TYPE;
-const FIELD_WORKSPACE: &str = afd_wire::event::field::WORKSPACE_ID;
-const FIELD_REQUEST: &str = afd_wire::event::field::REQUEST_JSON;
-
 /// The operator's queue over one workspace's gates.
 #[derive(Debug, Clone)]
 pub struct Inbox {
@@ -243,17 +237,20 @@ impl Inbox {
     async fn continue_from(&self, resolved: &Resolved, now: UnixMillis) -> Result<Option<String>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{}", resolved.event_id);
         let kind = afd_wire::event::EventType::Continuation.as_str();
+        let created_at = now.as_millis().to_string();
         let appended = FleetStreams::new(self.queue.clone())
             .append_once(
                 OnceScope::FleetIntent,
                 &resolved.action_id,
                 &resolved.fleet_id,
-                &[
-                    (FIELD_ACTOR, actor.as_str()),
-                    (FIELD_EVENT_TYPE, kind),
-                    (FIELD_WORKSPACE, resolved.workspace_id.as_str()),
-                    (FIELD_REQUEST, CONTINUATION_BODY),
-                ],
+                &afd_wire::event::Entry {
+                    actor: actor.as_str(),
+                    event_type: kind,
+                    workspace_id: resolved.workspace_id.as_str(),
+                    request_json: CONTINUATION_BODY,
+                    created_at: &created_at,
+                }
+                .pairs(),
             )
             .await?;
 

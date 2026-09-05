@@ -109,6 +109,43 @@ pub(crate) async fn enqueue(
     id.as_str().to_owned()
 }
 
+/// Appends an entry in the shape the Rust producers wrote before the wire fix.
+///
+/// `event_type` and `request_json` rather than `type` and `request`, and no
+/// `created_at` at all. Entries in exactly this shape are sitting on real
+/// streams, which is why the reader has to survive one rather than wedge the
+/// fleet behind it. The field names are LITERALS on purpose: routing them
+/// through `afd_wire`'s constants would make the fixture move with the code it
+/// exists to contradict.
+pub(crate) async fn enqueue_cutover_era(
+    queue: &Redis,
+    fleet: &str,
+    workspace: &str,
+    actor: &str,
+    event_type: &str,
+    request_json: &str,
+) -> String {
+    let streams = FleetStreams::new(queue.clone());
+    streams
+        .ensure_group(fleet)
+        .await
+        .expect("the consumer group must exist before a read");
+    let id = streams
+        .append(
+            fleet,
+            &[
+                ("event_type", event_type),
+                ("actor", actor),
+                ("workspace_id", workspace),
+                ("request_json", request_json),
+            ],
+        )
+        .await
+        .expect("the append must land");
+    mark_ready(queue, fleet).await;
+    id.as_str().to_owned()
+}
+
 /// Marks a fleet ready so the readiness peek can surface it.
 pub(crate) async fn mark_ready(queue: &Redis, fleet: &str) {
     ReadyIndex::new(queue.clone())

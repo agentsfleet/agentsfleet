@@ -108,6 +108,16 @@ async fn test_steer_append_event_id() {
         Some(lane.workspace.as_str())
     );
     assert_eq!(leased.field(field::REQUEST_JSON), Some(REQUEST_JSON));
+    // The instant the reader bills against. Absent for the whole life of the
+    // cutover, which made every appended event undecodable and unleasable; the
+    // value is not asserted, only its presence and that it reads as millis.
+    let created_at = leased
+        .field(field::CREATED_AT)
+        .expect("a producer writes the instant the lease path bills against");
+    assert!(
+        created_at.parse::<i64>().is_ok_and(|millis| millis > 0),
+        "created_at must be milliseconds since the epoch, got {created_at:?}"
+    );
 
     // The readiness mark is what makes the message PROMPTLY leasable rather
     // than waiting for the next poll. It is written after the append and its
