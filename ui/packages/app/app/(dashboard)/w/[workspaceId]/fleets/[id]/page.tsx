@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import { auth } from "@clerk/nextjs/server";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Badge, cn } from "@agentsfleet/design-system";
+import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
-import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { getFleet } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import {
   startViewData,
@@ -14,7 +13,6 @@ import {
   type MemoryViewData,
   type ViewData,
 } from "./components/view-data";
-import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
 import {
   CURSOR_PAGE_SIZE_PARAM,
@@ -24,13 +22,12 @@ import {
   cursorTrailFrom,
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
-import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
-import FleetConfig from "./components/FleetConfig";
-import KillSwitch from "./components/KillSwitch";
 import SkillEditor from "./components/SkillEditor";
 import MemoryPanel from "./components/MemoryPanel";
-import RunMetricsStrip from "./components/RunMetricsStrip";
+import { ChatView } from "./components/ChatView";
+import { FleetHeader } from "./components/FleetHeader";
+import { buildRunSummary } from "./components/run-summary";
 import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
@@ -40,11 +37,7 @@ import {
   FLEET_VIEW,
   resolveFleetView,
 } from "./components/FleetSubnavigation";
-import {
-  BREADCRUMB_LABEL,
-  FLEETS_CRUMB_LABEL,
-  SOURCE_FIELD,
-} from "./components/console-copy";
+import { SOURCE_FIELD } from "./components/console-copy";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -58,12 +51,6 @@ type PageContext = {
   eventsCursor: string | null;
   eventsPageSize: number;
 };
-
-const LIFECYCLE_ACTION_STATUSES = new Set<string>([
-  AGENTSFLEET_STATUS.ACTIVE,
-  AGENTSFLEET_STATUS.PAUSED,
-  AGENTSFLEET_STATUS.STOPPED,
-]);
 
 export default async function FleetDetailPage({
   params,
@@ -216,34 +203,24 @@ async function loadChatView(
 ) {
   // The transcript is the one surface that genuinely wants the bodies: it
   // renders what was said. The thread read carries them in ONE request — the
-  // list-then-one-detail-per-turn fan-out this view used to issue is gone.
+  // list-then-one-detail-per-turn fan-out this view used to issue is gone. The
+  // strip's first figures come off that same page; the completion refresh
+  // rebuilds them through the same builder from a newest-event read.
   const [threadResult, approvalsResult] = await Promise.all([
     data.thread,
     data.approvals,
   ]);
   const turns = threadResult?.items ?? [];
-  const approvals = approvalsResult ?? { items: [], next_cursor: null };
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
-      <div className="shrink-0">
-        <RunMetricsStrip
-          status={fleet.status}
-          latest={turns[0] ?? null}
-          pendingApprovals={approvals.items.length}
-          pendingApprovalsHasMore={approvals.next_cursor !== null}
-          approvalsHref={approvalsHref}
-          summaryAvailable={threadResult !== null}
-          approvalsAvailable={approvalsResult !== null}
-        />
-      </div>
-      <FleetThreadDynamic
-        workspaceId={workspaceId}
-        fleetId={fleet.id}
-        fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
-        initial={turns}
-      />
-    </div>
+    <ChatView
+      workspaceId={workspaceId}
+      fleetId={fleet.id}
+      fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
+      initial={turns}
+      initialSummary={buildRunSummary(fleet.status, threadResult, approvalsResult)}
+      approvalsHref={approvalsHref}
+    />
   );
 }
 
@@ -323,80 +300,6 @@ async function loadTriggerView(context: PageContext) {
     <div className="flex min-h-0 flex-1 flex-col gap-lg">
       <SourceEditor context={context} field={SOURCE_FIELD.trigger} />
       <TriggerPanel triggers={triggers} lastDeliveryByKey={lastDeliveryByKey} />
-    </div>
-  );
-}
-
-function FleetBreadcrumb({
-  workspaceId,
-  fleetName,
-}: {
-  workspaceId: string;
-  fleetName: string;
-}) {
-  return (
-    <nav
-      aria-label={BREADCRUMB_LABEL}
-      className="mb-sm shrink-0 font-mono text-sm text-muted-foreground"
-    >
-      <Link
-        href={workspacePath(workspaceId, "fleets")}
-        className="hover:text-foreground"
-      >
-        {FLEETS_CRUMB_LABEL}
-      </Link>
-      <span aria-hidden="true"> / </span>
-      <span className="text-foreground">{fleetName}</span>
-    </nav>
-  );
-}
-
-function FleetHeader({
-  workspaceId,
-  fleet,
-  exhaustedAt,
-}: {
-  workspaceId: string;
-  fleet: FleetDetail;
-  exhaustedAt?: number | null;
-}) {
-  const actionFleet = {
-    id: fleet.id,
-    name: fleet.name,
-    status: fleet.status,
-    created_at: fleet.created_at,
-    updated_at: fleet.updated_at,
-    triggers: fleet.triggers ?? undefined,
-  };
-  return (
-    <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
-      <h1 className="sr-only">{fleet.name}</h1>
-      <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
-      <div
-        aria-label="Fleet lifecycle actions"
-        className="flex flex-wrap items-center justify-end gap-sm"
-      >
-        {exhaustedAt !== undefined ? (
-          <ExhaustionBadge exhaustedAt={exhaustedAt} />
-        ) : null}
-        {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
-          <Badge variant="cyan" aria-label="Fleet status: installing">
-            Installing
-          </Badge>
-        ) : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
-          <FleetConfig
-            workspaceId={workspaceId}
-            fleetId={fleet.id}
-            fleetName={fleet.name}
-          />
-        ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (
-          <KillSwitch workspaceId={workspaceId} fleet={actionFleet} />
-        ) : (
-          <Badge aria-label={`Fleet status: ${fleet.status}`}>
-            {fleet.status}
-          </Badge>
-        )}
-      </div>
     </div>
   );
 }

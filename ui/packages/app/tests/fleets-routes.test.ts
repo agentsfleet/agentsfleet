@@ -150,6 +150,16 @@ describe("fleets routes", () => {
           json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
+        };
+      }
       if (url.includes("/events")) {
         return {
           ok: true,
@@ -882,6 +892,16 @@ describe("fleets routes", () => {
           json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
+        };
+      }
       if (url.includes("/events")) {
         return {
           ok: true,
@@ -934,6 +954,11 @@ describe("fleets routes", () => {
       if (url.includes("/memories")) {
         return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
       }
+      // The thread read is what the chat renders from; the strip builds its
+      // summary off this page and refuses a body without `items`.
+      if (url.includes("/messages")) {
+        return { ok: true, status: 200, json: async () => ({ items: [listRow], total: null, next_cursor: null }) };
+      }
       // The single-event read carries an identifier after /events/; the list
       // read does not. Order matters — the list branch would swallow both.
       if (/\/events\/[^/?]+/.test(url)) {
@@ -976,6 +1001,16 @@ describe("fleets routes", () => {
           ok: true,
           status: 200,
           json: async () => ({ items: [], total: 0, next_cursor: null }),
+        };
+      }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -1029,6 +1064,16 @@ describe("fleets routes", () => {
           json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
+        };
+      }
       if (url.includes("/events")) {
         return {
           ok: true,
@@ -1068,6 +1113,16 @@ describe("fleets routes", () => {
           ok: true,
           status: 200,
           json: async () => ({ items: [], total: 0, next_cursor: null }),
+        };
+      }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -1114,6 +1169,16 @@ describe("fleets routes", () => {
           json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
+        };
+      }
       if (url.includes("/events")) {
         return {
           ok: true,
@@ -1155,6 +1220,16 @@ describe("fleets routes", () => {
           ok: true,
           status: 200,
           json: async () => ({ items: [], total: 0, next_cursor: null }),
+        };
+      }
+      // The chat's thread read: a real (empty) thread page, not the list
+      // envelope the fall-through returns — the strip builds its summary from
+      // this shape and rightly refuses one without `items`.
+      if (url.includes("/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: null, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {

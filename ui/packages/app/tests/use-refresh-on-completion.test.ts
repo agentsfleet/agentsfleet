@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, renderHook } from "@testing-library/react";
 
-const refreshMock = vi.hoisted(() => vi.fn());
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: refreshMock }),
-}));
+// The hook decides WHEN a completion refreshes; the caller decides WHAT. It
+// receives the callback and must never reach for the router itself.
+const refreshMock = vi.fn();
 
 import {
   REFRESH_DEBOUNCE_MS,
@@ -31,10 +30,10 @@ afterEach(() => {
 });
 
 describe("useRefreshSummariesOnCompletion", () => {
-  it("test_terminal_refresh_debounced: a burst of completions coalesces into one refresh", () => {
+  it("a burst of completions invokes the summary callback once and never the router", () => {
     const { rerender } = renderHook(
       ({ events }: { events: FleetEvent[] }) =>
-        useRefreshSummariesOnCompletion([], events),
+        useRefreshSummariesOnCompletion([], events, refreshMock),
       { initialProps: { events: [running("e1")] } },
     );
 
@@ -61,10 +60,26 @@ describe("useRefreshSummariesOnCompletion", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
+  it("fires the callback the caller holds NOW, not the one it mounted with", () => {
+    const stale = vi.fn();
+    const current = vi.fn();
+    const { rerender } = renderHook(
+      ({ events, onDone }: { events: FleetEvent[]; onDone: () => void }) =>
+        useRefreshSummariesOnCompletion([], events, onDone),
+      { initialProps: { events: [running("e1")], onDone: stale } },
+    );
+    rerender({ events: [terminal("e1")], onDone: stale });
+    // A re-render swaps the closure inside the debounce window.
+    rerender({ events: [terminal("e1")], onDone: current });
+    vi.advanceTimersByTime(REFRESH_DEBOUNCE_MS);
+    expect(stale).not.toHaveBeenCalled();
+    expect(current).toHaveBeenCalledTimes(1);
+  });
+
   it("the trailing completion is never lost", () => {
     const { rerender } = renderHook(
       ({ events }: { events: FleetEvent[] }) =>
-        useRefreshSummariesOnCompletion([], events),
+        useRefreshSummariesOnCompletion([], events, refreshMock),
       { initialProps: { events: [running("e1")] } },
     );
 
@@ -81,7 +96,7 @@ describe("useRefreshSummariesOnCompletion", () => {
   it("unmount cancels a pending refresh", () => {
     const { rerender, unmount } = renderHook(
       ({ events }: { events: FleetEvent[] }) =>
-        useRefreshSummariesOnCompletion([], events),
+        useRefreshSummariesOnCompletion([], events, refreshMock),
       { initialProps: { events: [running("e1")] } },
     );
 
@@ -93,7 +108,7 @@ describe("useRefreshSummariesOnCompletion", () => {
 
   it("already-terminal seed rows never trigger a refresh", () => {
     const seeded = [terminal("e1")];
-    renderHook(() => useRefreshSummariesOnCompletion([], seeded));
+    renderHook(() => useRefreshSummariesOnCompletion([], seeded, refreshMock));
     vi.advanceTimersByTime(REFRESH_DEBOUNCE_MS * 2);
     expect(refreshMock).not.toHaveBeenCalled();
   });

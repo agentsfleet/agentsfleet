@@ -52,6 +52,12 @@ export type FleetThreadProps = {
    * prop; live updates arrive over the cookie-authed SSE route handler.
    */
   initial: EventRow[];
+  /**
+   * Called, debounced, when a streamed run reaches a terminal status. The
+   * surface that owns the run summary refreshes it here; the thread itself
+   * needs nothing re-read, its rows arrive over the stream.
+   */
+  onRunCompleted: () => void;
 };
 
 /**
@@ -66,14 +72,20 @@ export type FleetThreadProps = {
  * stream serialises what arrives. The working state is rendered from our own
  * event statuses instead.
  */
-export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetThreadProps) {
+export function FleetThread({
+  workspaceId,
+  fleetId,
+  fleetName,
+  initial,
+  onRunCompleted,
+}: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   const {
     failedDelivery,
     setFailedDelivery,
     clearFailedDelivery,
   } = useFleetDeliveryFailure(fleetId);
-  useRefreshSummariesOnCompletion(initial, stream.events);
+  useRefreshSummariesOnCompletion(initial, stream.events, onRunCompleted);
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.

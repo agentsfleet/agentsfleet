@@ -63,14 +63,15 @@ All paths below `ui/packages/app/` unless stated.
 | `lib/api/client.retry.test.ts`, `lib/api/client.defaults.test.ts` | CREATE | the explicit `requestWithRetry` suite beside the transport; the `request()` default-policy suite — two files so each stays under the length cap |
 | `vitest.setup.ts` | EDIT | the unit suite defaults to one attempt; suites that prove retry stub the switch back |
 | `components/domain/useRefreshOnCompletion.ts` | EDIT | detects new terminal events and debounces as today; invokes a caller-supplied callback instead of the router |
-| `components/domain/useRefreshOnCompletion.test.ts` | CREATE | the hook never touches the router; one callback per burst |
+| `tests/use-refresh-on-completion.test.ts`, `tests/fleet-thread-dynamic.test.ts` | EDIT | the hook never touches the router, one callback per burst; the dynamic shim forwards the callback |
 | `components/domain/FleetThread.tsx` | EDIT | accepts the completion callback and passes it to the hook |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.tsx` | CREATE | client leaf that owns the live run summary: renders the strip and the thread, runs the summary action on completion, refreshes the router only when the fleet status changed |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.test.tsx` | CREATE | strip updates from the action; failure keeps last good values; status change triggers one refresh |
-| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.ts` | CREATE | the `FleetRunSummary` shape and its two builders (from the server thread page, from the action reads) so both sides derive one way |
-| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.test.ts` | CREATE | both builders agree on the same inputs |
+| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.ts` | CREATE | the `FleetRunSummary` shape, its two limits, and the one builder both the server thread page and the action reads go through |
+| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/run-summary.test.ts` | CREATE | thread rows and event rows build the same summary; failed and empty reads stay distinct |
 | `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/view-data.ts` | EDIT | imports the approvals limit from `run-summary.ts` so the constant has one declaration |
-| `app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | the chat view renders `ChatView` with the initial summary |
+| `app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | the chat view renders `ChatView` with the initial summary; the header moves out so the file returns under the length cap |
+| `app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader.tsx` | CREATE | the breadcrumb and lifecycle-control row, extracted verbatim from the 402-line page |
 | `app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | `getFleetRunSummaryAction` |
 | `app/(dashboard)/admin/runners/[runnerId]/page.tsx` | EDIT | the view read starts beside the runner read |
 | `app/(dashboard)/admin/models/page.tsx` | EDIT | platform keys read runs with the model list |
@@ -119,11 +120,11 @@ A changelog `<Update>` lands in `~/Projects/docs/changelog.mdx` on its own branc
 
 The strip shows fleet status, the latest run's outcome, tokens, cost, duration and the pending approval count. A completion frame carries none of the figures, so one Server Action reads them: the fleet detail, the newest event row and the fleet's pending approvals. The hook keeps its trailing-edge debounce and calls that action through a callback; `ChatView` holds the summary in state and re-renders the strip. Because the server-rendered lifecycle controls in the page header read the fleet status, a summary whose status differs from the last known one triggers one `router.refresh()` so those controls follow; an unchanged status triggers none. **Implementation default:** the newest event row comes from the events list with a limit of one, not from the thread, because the strip reads only list-row fields and the thread carries bodies.
 
-- **Dimension 1.1** — the completion hook never calls the router; it invokes its callback once per debounced burst → Test `a burst of completions invokes the summary callback once and never the router`
-- **Dimension 1.2** — the strip renders the action's latest row and pending count after a completion → Test `the strip shows the new run figures after the summary action resolves`
-- **Dimension 1.3** — a failed summary read keeps the last good strip; nothing is blanked and no error surface appears → Test `a failed summary read leaves the strip unchanged`
-- **Dimension 1.4** — a summary whose fleet status differs from the last known one refreshes the router exactly once; an unchanged status refreshes it zero times → Test `only a status change refreshes the server-rendered controls`
-- **Dimension 1.5** — the server-side initial summary and the action-built summary derive from one builder pair and agree on equal inputs → Test `both summary builders agree`
+- **Dimension 1.1** — DONE — the completion hook never calls the router; it invokes its callback once per debounced burst → Test `a burst of completions invokes the summary callback once and never the router`
+- **Dimension 1.2** — DONE — the strip renders the action's latest row and pending count after a completion → Test `the strip shows the new run figures after the summary action resolves`
+- **Dimension 1.3** — DONE — a failed summary read keeps the last good strip; nothing is blanked and no error surface appears → Test `a failed summary read leaves the strip unchanged`
+- **Dimension 1.4** — DONE — a summary whose fleet status differs from the last known one refreshes the router exactly once; an unchanged status refreshes it zero times → Test `only a status change refreshes the server-rendered controls`
+- **Dimension 1.5** — DONE — the server's thread page and the action's newest-event read go through one builder and yield the same summary → Test `the thread page and the newest-event read build the same summary`
 
 ### §2 — Every read retries and every request times out
 
@@ -212,7 +213,7 @@ No new HTTP endpoint. Every read the summary action composes exists today.
 | 1.2 | unit | `the strip shows the new run figures after the summary action resolves` | action resolves tokens 1200, one pending approval → strip renders both |
 | 1.3 | unit | `a failed summary read leaves the strip unchanged` | action returns ok:false → previous figures still rendered, no alert |
 | 1.4 | unit | `only a status change refreshes the server-rendered controls` | status active→paused → refresh once; active→active → refresh zero times |
-| 1.5 | unit | `both summary builders agree` | same fleet, newest row and approvals page through both builders → deep-equal |
+| 1.5 | unit | `the thread page and the newest-event read build the same summary` | the same event as a thread turn and as a list row → equal summaries; null vs empty pages stay distinct |
 | 2.1 | integration | `request retries a transient read and returns the recovered body` | real server scripts 503 then 200 → body of the 200; two requests logged |
 | 2.2 | integration | `request does not replay a non-idempotent write on a server error` | POST scripted 503 → throws `ApiError` 503; one request logged |
 | 2.3 | integration | `a hung read times out into the retryable class and stops after the attempt ceiling` | server never responds, tiny timeout → `ApiError` code `TIMEOUT`; attempts equal `RETRY_DEFAULTS.maxAttempts` |

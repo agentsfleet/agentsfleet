@@ -15,8 +15,19 @@ import {
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
-import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
+import {
+  getFleetEvent as apiGetFleetEvent,
+  listFleetEvents as apiListFleetEvents,
+  type EventDetail,
+} from "@/lib/api/events";
+import { listApprovals as apiListApprovals } from "@/lib/api/approvals";
 import { forgetMemory as apiForgetMemory } from "@/lib/api/memory";
+import {
+  buildRunSummary,
+  RUN_SUMMARY_APPROVALS_LIMIT,
+  RUN_SUMMARY_LATEST_LIMIT,
+  type FleetRunSummary,
+} from "./[id]/components/run-summary";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
@@ -45,6 +56,31 @@ export async function getFleetEventAction(
   eventId: string,
 ): Promise<ActionResult<EventDetail>> {
   return withToken((t) => apiGetFleetEvent(workspaceId, fleetId, eventId, t));
+}
+
+/**
+ * What the chat's metrics strip shows, read fresh after a run completes: the
+ * fleet's status, its newest event row and the approvals waiting on it. Three
+ * small reads in parallel, in place of the whole-page re-render the strip used
+ * to cost per completion. The fleet read decides the result; the other two
+ * degrade to "unavailable" so a blip in one never blanks the others.
+ */
+export async function getFleetRunSummaryAction(
+  workspaceId: string,
+  fleetId: string,
+): Promise<ActionResult<FleetRunSummary>> {
+  return withToken(async (t) => {
+    const [fleetRead, rows, approvals] = await Promise.all([
+      apiGetFleet(workspaceId, fleetId, t),
+      apiListFleetEvents(workspaceId, fleetId, t, { limit: RUN_SUMMARY_LATEST_LIMIT }).catch(
+        () => null,
+      ),
+      apiListApprovals(workspaceId, t, { fleetId, limit: RUN_SUMMARY_APPROVALS_LIMIT }).catch(
+        () => null,
+      ),
+    ]);
+    return buildRunSummary(fleetRead.fleet.status, rows, approvals);
+  });
 }
 
 export async function setFleetStatusAction(

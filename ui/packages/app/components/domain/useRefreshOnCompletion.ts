@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-frames";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-frames";
 import type { EventRow } from "@/lib/api/events";
@@ -13,24 +12,28 @@ const TERMINAL_EVENT_STATUSES: ReadonlySet<FleetEventStatus> = new Set([
 ]);
 
 /**
- * A burst of completions coalesces into ONE server re-render: `router.refresh`
- * re-runs the whole detail-page fetch graph, so firing it per terminal frame
- * multiplies that cost by the burst size. Trailing-edge — the last completion
- * in a burst is always reflected.
+ * A burst of completions coalesces into ONE summary refresh. Trailing-edge —
+ * the last completion in a burst is always reflected.
  */
 export const REFRESH_DEBOUNCE_MS = 2_000;
 
 /**
- * Refresh the surrounding Server Components (run counters, header badges) when
- * a streamed run reaches a terminal status — debounced, trailing-edge, and
- * cancelled on unmount so a dead route never refreshes its successor.
+ * Calls `onRunCompleted` when a streamed run reaches a terminal status —
+ * debounced, trailing-edge, and cancelled on unmount so a dead route never
+ * refreshes its successor. The caller decides what a completion refreshes; this
+ * hook only decides WHEN. It never touches the router: re-running the whole
+ * detail-page fetch graph per completion is the cost this shape retired.
  */
 export function useRefreshSummariesOnCompletion(
   initial: EventRow[],
   events: FleetEvent[],
+  onRunCompleted: () => void,
 ) {
-  const router = useRouter();
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The latest callback, read when the timer fires — a re-render with a new
+  // closure must neither reschedule the debounce nor call a stale one.
+  const onRunCompletedRef = useRef(onRunCompleted);
+  onRunCompletedRef.current = onRunCompleted;
   const terminalEventIds = useRef(
     new Set([
       ...events
@@ -56,10 +59,10 @@ export function useRefreshSummariesOnCompletion(
       if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
       refreshTimer.current = setTimeout(() => {
         refreshTimer.current = null;
-        router.refresh();
+        onRunCompletedRef.current();
       }, REFRESH_DEBOUNCE_MS);
     }
-  }, [events, router]);
+  }, [events]);
   // A pending refresh dies with the surface that scheduled it — an unmounted
   // route must not refresh whichever page replaced it.
   useEffect(() => {
