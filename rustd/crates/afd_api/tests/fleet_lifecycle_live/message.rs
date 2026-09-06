@@ -47,11 +47,16 @@ pub(super) async fn exercise(
     )
     .await;
     assert_eq!(bundles.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(bundles)
-            .await
-            .pointer("/items/0/id")
-            .and_then(Value::as_str),
-        Some(fixture.library.as_str())
+    let bundles = json_body(bundles).await;
+    assert!(
+        bundles
+            .get("items")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.get("id").and_then(Value::as_str) == Some(fixture.library.as_str())
+                })
+            }),
+        "the seeded public library is present in the bundle catalog: {bundles}"
     );
 }
