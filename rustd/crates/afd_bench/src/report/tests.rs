@@ -65,11 +65,11 @@ fn filled_report() -> Report {
     report.datastores = Datastores {
         redis: super::DatastoreCost {
             operations: 4_000,
-            time_ms: 120.0,
+            time_ms: Some(120.0),
         },
         postgres: super::DatastoreCost {
             operations: 2_100,
-            time_ms: 640.0,
+            time_ms: Some(640.0),
         },
     };
     report.fixture = Fixture {

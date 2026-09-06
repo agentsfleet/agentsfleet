@@ -127,3 +127,40 @@ bench-cutover-self-test:  ## Run scripts/bench_cutover_test.sh — the cutover b
 	@echo "→ [bench] Running cutover benchmark self-tests..."
 	@bash scripts/bench_cutover_test.sh
 	@echo "✓ [bench] Cutover benchmark self-tests passed"
+
+# ── Throughput lanes ─────────────────────────────────────────────────────────
+# What the steer, lease, delivery and cardinality paths sustain, and which
+# datastore gives out first. Distinct from the loadgen above in the one way
+# that matters: `hey` measures a URL, and only the steer path IS one — these
+# drive the production types directly, which is the only way to attribute a
+# cost between Redis and Postgres.
+#
+# PROFILE decides scale, target and blast radius (rig | dev | prod), and the
+# lane refuses a parameter above its ceiling before it opens a connection.
+# The rig IS the compose stack the integration lane already owns, so these
+# targets depend on the same bring-up rather than standing up a second one.
+#
+# The BENCH_* datastore variables are set FROM the lane's TEST_* values here
+# rather than read as TEST_* in Rust: the bench code names one spelling, and
+# this file is where a deployed target would be substituted for it.
+#
+# `--manifest-path` rather than `cd $(RUSTD_DIR)`: a lane writes its result to
+# `bench/results/` relative to its working directory, and that directory is the
+# REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
+PROFILE ?= rig
+
+.PHONY: bench-lease bench-compare
+
+# `--release` is not a detail. A debug build measures rustc's unoptimised
+# output, which is the wrong system: the number would be a property of the
+# build profile rather than of the lease path.
+bench-lease: _ensure-test-infra  ## Lease throughput: rate, p95, round trips per lease (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
+	@echo "→ [bench-lease] profile=$(PROFILE)"
+	@BENCH_PROFILE="$(PROFILE)" \
+	 BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
+	 BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
+	 BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
+	 cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin lease
+
+bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
+	@cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin compare -- "$(LANE)" "$(PROFILE)"

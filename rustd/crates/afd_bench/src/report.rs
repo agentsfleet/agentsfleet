@@ -112,8 +112,13 @@ impl Lane {
 pub struct DatastoreCost {
     /// Commands issued to Redis, or round trips made to Postgres.
     pub operations: u64,
-    /// Wall time spent waiting on them.
-    pub time_ms: f64,
+    /// Wall time spent waiting on them, where a lane measured it.
+    ///
+    /// Absent rather than zero when it did not. A lane that reports `0.0` for
+    /// time it never timed is stating that the datastore answered instantly,
+    /// which is the shape of measurement RULE ECL exists to stop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_ms: Option<f64>,
 }
 
 /// Where a run's cost landed, which is what says WHAT to fix.
