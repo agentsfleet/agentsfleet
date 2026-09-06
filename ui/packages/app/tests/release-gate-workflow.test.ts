@@ -32,6 +32,8 @@ const RAW_RESULTS_DIR = "playwright-acceptance-results";
 const DEV_EVIDENCE_ARTIFACT = "acceptance-e2e-results";
 const PROD_EVIDENCE_ARTIFACT = "acceptance-e2e-prod-results";
 const PHANTOM_LOCK = "ui/packages/app/bun.lock";
+const MARKETING_SMOKE_PROJECTS = ["agentsfleet-website", "agentsfleet-app"] as const;
+const INSTALLER_PROJECT = "agentsfleet-agents-dev";
 
 function deployDevYaml(): string {
   return fs.readFileSync(DEPLOY_DEV_WORKFLOW, "utf8");
@@ -99,6 +101,33 @@ describe("browser cache and evidence in the deployment workflow", () => {
     expect(devFamily, "dev pipeline must not inline a Playwright cache key").not.toMatch(
       /key: .*playwright-(app|agentsfleet)-/,
     );
+  });
+
+  it("routes each production deployment to the matching smoke contract", () => {
+    const workflow = fs.readFileSync(SMOKE_POST_DEPLOY_WORKFLOW, "utf8");
+    const smokeJob = workflow.slice(workflow.indexOf("  smoke:"), workflow.indexOf("  installer-smoke:"));
+    const condition = smokeJob.match(/    if: >-\n([\s\S]*?)    runs-on:/)?.[1] ?? "";
+    const allowlistedProjects = [...condition.matchAll(/contains\(github\.event\.deployment\.environment, '([^']+)'\)/g)]
+      .map((match) => match[1])
+      .filter((project): project is string => project !== undefined);
+
+    expect(allowlistedProjects).toEqual([...MARKETING_SMOKE_PROJECTS]);
+    expect(condition).toContain("github.event.deployment_status.state == 'success'");
+    expect(condition).toContain("startsWith(github.event.deployment.environment, 'Production')");
+
+    const productionEvents = [
+      ...MARKETING_SMOKE_PROJECTS.map((project) => ({
+        environment: `Production – ${project}`,
+        runsMarketingSmoke: true,
+      })),
+      { environment: `Production – ${INSTALLER_PROJECT}`, runsMarketingSmoke: false },
+    ];
+    for (const event of productionEvents) {
+      const runsMarketingSmoke =
+        event.environment.startsWith("Production") &&
+        allowlistedProjects.some((project) => event.environment.includes(project));
+      expect(runsMarketingSmoke, event.environment).toBe(event.runsMarketingSmoke);
+    }
   });
 
   it("test_acceptance_artifacts_survive_failure", () => {
