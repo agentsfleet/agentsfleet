@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M188
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the scaling argument for connector delivery and lease issuance is being made from estimates, and the next change is either a mud-patch or a refactor nobody can justify.
 **Categories:** API, INFRA
 **Batch:** B1 — standalone; no other workstream shares its files.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
-**Depends on:** the fix that motivated it — the outbound reply deadline and read backoff — which lands with this spec on `fix/event-plane-wire-and-outbound-reader`. The baselines below are only meaningful once it is on `main`.
+**Branch:** feat/m188-bench-throughput-ceilings
+**Test Baseline:** TEST BASELINE: SKIPPED per user override (reason: "First i would like to measure, so skip the `make test-unit-all` i dont need a baseline" — Kishore, 2026-09-06). VERIFY's Test Delta row therefore has nothing to compare against and is graded `N/A — no baseline recorded`; the declared `verify.*` suites still run at the milestone boundary.
+**Depends on:** satisfied — the fix that motivated it (the outbound reply deadline and read backoff) merged as PR #654 and is on `main` at `1b87e2a91`. The baselines below are measured against it.
 **Provenance:** agent-generated (pre-spec, this session's dev-environment investigation)
 **Canonical architecture:** `docs/architecture/scaling.md`
 
@@ -96,6 +96,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ### §1 — Profiles, caps and the safety rails
 
 One profile decides scale, target and blast radius, so no lane can be pointed somewhere dangerous by a stray parameter. **Implementation default:** three profiles — `rig` (compose datastores, unbounded, the million-fleet target), `dev` (deployed development, small caps because capacity is small), `prod` (deployed production, smallest caps and an explicit acknowledgement variable). A parameter above the active profile's cap is refused before any connection opens.
+
+**Amendment (CHORE(open)) — no deployed environment exists yet.** The three
+profiles are still defined, and every rail they carry is still built and tested:
+caps, the production acknowledgement, the fixture prefix, the sweep, and the
+abort threshold. What changes is where a deployed profile points. A deployed
+profile resolves its target from `BENCH_TARGET`; with the compose rig as that
+target, `dev` runs its own semantics — small caps, fixture tenancy, prefix
+sweep, observe-don't-create — against datastores this repository owns. That
+proves the deployed behaviour without a deployed environment, and the day one
+exists the same profile points at it with no code change. `prod` is built as a
+refusal and never runs: it has no baseline, no workflow row and no result file.
+
 
 - **Dimension 1.1** — a lane run above its profile's cap exits non-zero naming the cap, before opening a connection → Test `test_a_parameter_above_the_profile_cap_is_refused`
 - **Dimension 1.2** — the production profile refuses to run without its explicit acknowledgement variable set → Test `test_production_requires_an_explicit_acknowledgement`
@@ -232,7 +244,7 @@ result file shape (every lane):
 | R1 | Every lane reports a rate on the rig (§2–§5) | `make bench-steer PROFILE=rig && make bench-lease PROFILE=rig && make bench-outbound PROFILE=rig && make bench-cardinality PROFILE=rig` | exit 0, four result files written | P0 | |
 | R2 | Cost is attributed to a datastore (§2, §3) | `python3 -c "import json;d=json.load(open('bench/results/lease.rig.json'))['datastores'];print(d['redis']['commands'], d['postgres']['roundtrips'])"` | two numbers, both greater than 0 | P0 | |
 | R3 | Cardinality reaches the declared population (§5) | `python3 -c "import json;print(json.load(open('bench/results/cardinality.rig.json'))['parameters']['fleets'])"` | the ladder's declared maximum | P0 | |
-| R4 | A deployed run creates nothing it does not sweep (§1) | `python3 -c "import json;f=json.load(open('bench/results/lease.dev.json'))['fixture'];print(f['created']==f['swept'])"` | `True` | P0 | |
+| R4 | A deployed-profile run creates nothing it does not sweep (§1) | `make bench-lease PROFILE=dev BENCH_TARGET=rig && python3 -c "import json;f=json.load(open('bench/results/lease.dev.json'))['fixture'];print(f['created']==f['swept'])"` | `True` | P0 | |
 | R5 | Production refuses without acknowledgement (§1) | `make bench-lease PROFILE=prod; echo $?` | non-zero | P0 | |
 | R6 | A regression never fails a lane (§6) | `make bench-compare LANE=lease PROFILE=rig; echo $?` | `0` | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -285,3 +297,15 @@ N/A — no files deleted.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+
+**Consult — CHORE(open), deployed environments.** Asked what `rig`, `dev` and
+`prod` mean and whether a deployed target exists.
+
+> Kishore (2026-09-06): "So i donot have the production deployed yet." — context: the `prod` profile. Built as a refusal rail only; no baseline, no workflow row, no result file, and no run against a live target. The refusal itself is unit-tested and needs no environment.
+
+**Deferral — a real deployed run.** No `dev` target was named either, so the
+deployed-profile *runs* against a live environment are deferred; the deployed
+*semantics* are not. Both are built and proved against the compose rig via
+`BENCH_TARGET`, per the §1 amendment, so this deferral costs a target address
+and no code. It lands when an environment exists.
+
