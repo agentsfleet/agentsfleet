@@ -216,7 +216,7 @@ Five verbs. `agentsfleetd` translates them into the Postgres writes and Redis st
 |---|---|---|---|---|
 | `register` | `POST /v1/runners` | `Bearer` JWT carrying the `runner:enroll` scope | `afd_api_runner`'s enrolment handler | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
 | `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
-| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
+| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | non-blocking poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `afd_api_runner`'s report handler | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
 | `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `afd_api_runner`'s activity handler | write-only progress stream for the live tail; best-effort, no ack |
 
@@ -487,7 +487,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 
 ## Live activity (the SSE tail)
 
-NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `afd_fleet`'s activity path translates it to the `PUBLISH` on the `fleet:{id}:activity` channel `afd_sse` names. Downstream Server-Sent Events (SSE) is unchanged.
+NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `afd_fleet`'s activity path translates it to the `PUBLISH` on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Redis subscription connection across downstream Server-Sent Events (SSE) viewers.
 
 ```
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
@@ -499,7 +499,11 @@ Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a 
 - `event_complete` — when a report or a gate refusal closes the row: the terminal row as the events list serves it (status, tokens, wall time, summed cost, failure label and detail) less `fleet_id` and `workspace_id`, plus `fleet_status` and `pending_approvals`, all read by the closing statement's `RETURNING` in the same round trip. A watcher folds it in and issues no read; a watcher that never saw the opening opens the row from it.
 - `gate_opened` / `gate_resolved` — when the gate plane parks an action and when the inbox or the sweeper answers it, each carrying `pending_approvals` so the count a console shows beside the fleet moves without a read. The count rides the statement that moved the row (`INSERT_GATE`, `RESOLVE_GATE`, `EXPIRE_GATES` each select it beside their write on one snapshot), so a gate frame costs its verb one publish and no read. `gate_resolved.event_id` is `null` for a gate raised outside a run.
 
-No daemon frame names its fleet or workspace: the tail is one fleet's channel, and the workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`). Every bracket and gate publish goes through `afd_redis::FleetStreams::publish_frame` and is best-effort like the runner's frames: the row is written first, the frame announces it, and a lost announcement is recovered by the client's reconnect backfill from the events list.
+No daemon frame names its fleet or workspace: the tail is one fleet's channel, and the workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`). Every bracket and gate publish goes through `afd_redis::FleetStreams::publish_frame` and is best-effort like the runner's frames: the row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A missed publish alone does not trigger that backfill.
+
+The dashboard opens streams through authenticated, same-origin Next.js `/live/*` proxies.
+The daemon serves asynchronous response bodies through the shared hub, with a separate stream admission ceiling.
+[Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns authentication, recovery limits, and the per-hop HTTP topology.
 
 ## Steer, kill, pause
 

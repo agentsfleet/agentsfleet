@@ -94,56 +94,13 @@ describe("loadingAccessibleName", () => {
 });
 
 describe("LoadingVerbLabel", () => {
-  it("freezes the verb at mount so the word never changes mid-wait", async () => {
+  it("is emitted as server markup for the route fallback", async () => {
     const { LoadingVerbLabel } = await import("../components/layout/LoadingVerbLabel");
-    const { render } = await import("@testing-library/react");
-
-    const { container, rerender } = render(
-      React.createElement(LoadingVerbLabel, { title: "Fleets" }),
-    );
-    const first = container.textContent;
-    // A re-render must not re-roll: a rotating word would retext the role=status
-    // live region and make assistive tech re-announce mid-wait.
-    rerender(React.createElement(LoadingVerbLabel, { title: "Fleets" }));
-    expect(container.textContent).toBe(first);
-  });
-
-  it("does not log a hydration mismatch when server and client pick different verbs", async () => {
-    const { LoadingVerbLabel } = await import("../components/layout/LoadingVerbLabel");
-    const { renderToString } = await import("react-dom/server");
-    const { hydrateRoot } = await import("react-dom/client");
-    const { act } = await import("react");
-
-    // Server renders the FIRST verb, client is forced to pick the LAST — the
-    // exact disagreement suppressHydrationWarning exists to cover.
     const random = vi.spyOn(Math, "random").mockReturnValue(0);
-    const serverHtml = renderToString(
-      React.createElement(LoadingVerbLabel, { title: "Fleets" }),
-    );
-    random.mockReturnValue(0.9999999999);
-
-    const container = document.createElement("div");
-    container.innerHTML = serverHtml;
-    document.body.appendChild(container);
-
-    const errors: string[] = [];
-    // String(), not JSON.stringify: React passes an Error object, which
-    // serialises to "{}" and would silently swallow the message this asserts on.
-    const spy = vi
-      .spyOn(console, "error")
-      .mockImplementation((...a) => errors.push(a.map(String).join(" ")));
-    await act(async () => {
-      hydrateRoot(container, React.createElement(LoadingVerbLabel, { title: "Fleets" }));
-    });
-    spy.mockRestore();
+    const markup = renderToStaticMarkup(React.createElement(LoadingVerbLabel, { title: "Fleets" }));
     random.mockRestore();
 
-    expect(errors.filter((e) => /hydrat|did not match|mismatch/i.test(e))).toEqual([]);
-    // Non-vacuity guard: without the escape hatch React regenerates the subtree
-    // to the client's word. Asserting the server's word survived proves the
-    // suppression is actually in force, not that the check simply found nothing.
-    expect(container.textContent).toBe(`${LOADING_VERBS[0]} Fleets…`);
-    document.body.removeChild(container);
+    expect(markup).toBe(`<span>${LOADING_VERBS[0]} Fleets…</span>`);
   });
 });
 

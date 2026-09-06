@@ -21,7 +21,7 @@
  */
 
 import { FIXTURE_KEY, OPERATOR_FIXTURE_SCOPES, type FixtureKey } from "./constants";
-import { clerkRequest } from "./clerk-request";
+import { ClerkRequestError, clerkRequest } from "./clerk-request";
 
 // Session-token TTL for minted fixture JWTs. Default Clerk TTL is 60s — too
 // short for a full suite run. The harness uses 15 min, which is ~2× the
@@ -30,6 +30,8 @@ import { clerkRequest } from "./clerk-request";
 // .fixture-jwts.json file. `clientFor` callers that exceed this window
 // will fail loud with a 401 from agentsfleetd — re-mint if/when that happens.
 const SESSION_TOKEN_TTL_SECONDS = 900;
+const CLERK_NOT_FOUND_STATUS = 404;
+const CLERK_RESOURCE_NOT_FOUND = "resource_not_found";
 const CLERK_METADATA_POLL_MS = 500;
 const CLERK_METADATA_TIMEOUT_MS = 15_000;
 const TENANT_ID_METADATA_KEY = "tenant_id";
@@ -204,7 +206,8 @@ export async function revokeSession(sessionId: string): Promise<void> {
   try {
     await clerkRequest<unknown>("POST", `/sessions/${sessionId}/revoke`);
   } catch (err) {
-    if (err instanceof Error && /4\d\d/.test(err.message)) return;
+    if (err instanceof ClerkRequestError && err.status === CLERK_NOT_FOUND_STATUS
+      && err.codes.includes(CLERK_RESOURCE_NOT_FOUND)) return;
     throw err;
   }
 }

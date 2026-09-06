@@ -45,6 +45,7 @@ import {
 } from "./fixtures/constants";
 import { diagnoseApiError } from "./fixtures/preflight";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
+import { initializeBrowserSessions } from "./fixtures/browser-sessions";
 
 // Defensive: playwright.acceptance.config.ts loads worktree-root .env, but
 // globalSetup is the actual fail-fast point for missing creds and should
@@ -167,6 +168,7 @@ export default async function globalSetup(): Promise<void> {
   for (const key of REQUIRED_ENV) {
     if (!process.env[key]) failLoud(key);
   }
+  initializeBrowserSessions();
   await primeVercelBypassState();
   await clerkSetup();
   // Ordered setup keeps JWT claims fresh:

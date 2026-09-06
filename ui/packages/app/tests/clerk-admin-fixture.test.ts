@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSignInTicket,
   findUserIdByEmail,
+  revokeSession,
 } from "./e2e/acceptance/fixtures/clerk-admin";
 
 const FIXTURE_EMAIL = "operator-fixture@e2e.agentsfleet.net";
@@ -123,4 +124,60 @@ describe("Clerk administration requests", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
+
+
+describe("Clerk session revocation", () => {
+  const SESSION_ID = "sess_fixture";
+  const REVOKE_ERROR_PREFIX = `Clerk POST /sessions/${SESSION_ID}/revoke`;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv("CLERK_SECRET_KEY", CLERK_SECRET);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([400, 401, 403, 404, 429, 500])("does not mistake HTTP %i for a revoked session", async (status) => {
+    const fetchMock = vi.fn().mockImplementation(() => new Response("revoke failed", { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    const rejection = expect(revokeSession(SESSION_ID)).rejects.toThrow(
+      `${REVOKE_ERROR_PREFIX} → ${status}: revoke failed`,
+    );
+    await vi.runAllTimersAsync();
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(status === 429 ? 4 : 1);
+  });
+
+  it("accepts only the documented not-found error as already absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      errors: [{ code: "resource_not_found" }],
+    }, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(revokeSession(SESSION_ID)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      `https://api.clerk.com/v1/sessions/${SESSION_ID}/revoke`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("propagates an unrecognized structured not-found response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      errors: [{ code: "invalid_route" }],
+    }, { status: 404 })));
+    await expect(revokeSession(SESSION_ID)).rejects.toThrow(REVOKE_ERROR_PREFIX);
+  });
+
+  it.each([null, [], { errors: [{ code: 404 }] }])("rejects malformed structured error payload %j", async (body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body, { status: 404 })));
+    await expect(revokeSession(SESSION_ID)).rejects.toMatchObject({
+      name: "ClerkRequestError", status: 404, codes: [],
+    });
+  });
+
 });
