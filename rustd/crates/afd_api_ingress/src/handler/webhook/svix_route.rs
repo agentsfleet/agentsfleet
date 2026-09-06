@@ -18,19 +18,16 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_ingress::{Delivery, Surface};
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::response::{IntoResponse as _, Response};
-use axum::{Json, body::Bytes};
-use http::{HeaderMap, StatusCode};
+use axum::response::Response;
+use http::HeaderMap;
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::Services;
 use afd_http::handler::{FleetPath, parse_fleet_id};
 
 use super::verify_svix::{SvixVerified, verified_svix};
-use super::{DETAIL_EVENT_HEADER, actor};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_svix_append_failed";
@@ -86,39 +83,5 @@ pub(crate) async fn receive<D: Services>(
         delivery_id,
     } = verified_svix(&services, &fleet, &headers, body).await?;
 
-    if !proven.binding.is_runnable() {
-        return Ok((
-            StatusCode::OK,
-            Json(webhook::Ignored {
-                ignored: webhook::REASON_FLEET_PAUSED.into(),
-            }),
-        )
-            .into_response());
-    }
-
-    let digest = webhook::json_payload(&proven.body)
-        .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?;
-
-    let appended = services
-        .ingress()
-        .deliver(
-            Surface::Fleet,
-            &proven.binding,
-            &Delivery {
-                event_id: &delivery_id,
-                actor: &actor(proven.binding.source()),
-                request_json: &digest,
-            },
-        )
-        .await
-        .map_err(Refusal::at(EVENT_APPEND))?;
-
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(webhook::Accepted {
-            event_id: appended.id.as_str().into(),
-            replayed: appended.replayed,
-        }),
-    )
-        .into_response())
+    super::delivery::deliver(services.as_ref(), proven, &delivery_id, EVENT_APPEND).await
 }

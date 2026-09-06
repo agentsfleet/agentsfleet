@@ -90,7 +90,7 @@ fn against_live(lane: &CronLane, url: String, token: String) -> Reconciler {
         lane.store.clone(),
         QStash::new(
             reqwest::Client::new(),
-            token,
+            afd_crypto::secret::SecretString::new(token),
             LIVE_DESTINATION.to_owned(),
             url,
         ),
@@ -241,7 +241,7 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
         lane.store.clone(),
         QStash::new(
             reqwest::Client::new(),
-            "unused".to_owned(),
+            afd_crypto::secret::SecretString::new("unused".to_owned()),
             LIVE_DESTINATION.to_owned(),
             UNREACHABLE_BASE.to_owned(),
         ),

@@ -91,8 +91,8 @@ fn mint(claims: &FireClaims, key: &str) -> String {
 /// Both of this deployment's keys.
 fn keys() -> SigningKeys {
     SigningKeys {
-        current: CURRENT_KEY.to_owned(),
-        next: NEXT_KEY.to_owned(),
+        current: afd_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
+        next: afd_crypto::secret::SecretString::new(NEXT_KEY.to_owned()),
     }
 }
 
@@ -126,8 +126,8 @@ fn a_token_signed_with_the_next_key_is_believed_too() {
 fn a_deployment_holding_no_key_refuses_before_it_reads_the_token() {
     let token = mint(&FireClaims::good(), CURRENT_KEY);
     let none = SigningKeys {
-        current: String::new(),
-        next: String::new(),
+        current: afd_crypto::secret::SecretString::new(String::new()),
+        next: afd_crypto::secret::SecretString::new(String::new()),
     };
 
     assert_eq!(
@@ -141,8 +141,8 @@ fn a_deployment_holding_no_key_refuses_before_it_reads_the_token() {
 #[test]
 fn one_configured_key_is_enough_to_verify() {
     let only_current = SigningKeys {
-        current: CURRENT_KEY.to_owned(),
-        next: String::new(),
+        current: afd_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
+        next: afd_crypto::secret::SecretString::new(String::new()),
     };
 
     verify_at(

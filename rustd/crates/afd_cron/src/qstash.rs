@@ -41,12 +41,6 @@ const HEADER_CRON: &str = "Upstash-Cron";
 /// The header carrying the zone that expression is read in.
 const HEADER_TIMEZONE: &str = "Upstash-Timezone";
 
-/// The header this daemon's own bearer is presented in.
-const HEADER_AUTHORIZATION: &str = "Authorization";
-
-/// The scheme that bearer is presented under.
-const BEARER_PREFIX: &str = "Bearer ";
-
 /// The content type a fire body is posted as.
 const HEADER_CONTENT_TYPE: &str = "Content-Type";
 
@@ -117,7 +111,7 @@ pub struct QStash {
     /// The client every call here goes out on.
     client: reqwest::Client,
     /// This deployment's bearer for the scheduler.
-    token: String,
+    token: afd_crypto::secret::SecretString,
     /// Where a fire should arrive back.
     destination: String,
     /// Where this deployment's management calls go.
@@ -134,7 +128,7 @@ impl QStash {
     #[must_use]
     pub const fn new(
         client: reqwest::Client,
-        token: String,
+        token: afd_crypto::secret::SecretString,
         destination: String,
         api_base: String,
     ) -> Self {
@@ -161,15 +155,6 @@ impl QStash {
         &self.destination
     }
 
-    /// This deployment's credential, as the scheme presents it.
-    ///
-    /// Composed once rather than at each call site: two spellings of a header
-    /// value is two places for a missing space after `Bearer` to hide, and the
-    /// failure it produces upstream is a 401 that reads like a wrong token.
-    fn bearer(&self) -> String {
-        format!("{BEARER_PREFIX}{}", self.token)
-    }
-
     /// Registers or replaces a schedule upstream.
     ///
     /// # Errors
@@ -182,7 +167,7 @@ impl QStash {
                 "{}{SCHEDULES_PATH}{}",
                 self.api_base, self.destination
             ))
-            .header(HEADER_AUTHORIZATION, self.bearer())
+            .bearer_auth(self.token.expose())
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
             .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -224,7 +209,7 @@ impl QStash {
         let answer = self
             .client
             .delete(format!("{}{SCHEDULES_PATH}{source_key}", self.api_base))
-            .header(HEADER_AUTHORIZATION, self.bearer())
+            .bearer_auth(self.token.expose())
             .send()
             .await?;
 
@@ -260,7 +245,7 @@ mod accessor_tests {
     fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
         let config = QStash::new(
             reqwest::Client::new(),
-            "token-fixture".to_owned(),
+            afd_crypto::secret::SecretString::new("token-fixture".to_owned()),
             "https://daemon.example.test/v1/fires".to_owned(),
             "https://qstash.example.test".to_owned(),
         );

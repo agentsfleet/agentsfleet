@@ -29,7 +29,7 @@ afd_db.workspace = true
 # The stored plaintext is a JSON OBJECT by contract, and the projection is read
 # out of the same parse the ciphertext is produced from.
 serde_json.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 

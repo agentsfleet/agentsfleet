@@ -18,6 +18,11 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use zeroize::Zeroize;
 
+mod object;
+mod string;
+pub use self::object::SecretObject;
+pub use self::string::SecretString;
+
 use crate::KEY_LEN;
 use crate::error::{Error, ErrorKind, Result};
 

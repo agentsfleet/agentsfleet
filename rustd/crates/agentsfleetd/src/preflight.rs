@@ -165,7 +165,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 identity,
                 bundles,
                 platform_admin_workspace,
-                qstash_token: optional(env, QSTASH_TOKEN_KNOB),
+                qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
                 identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
@@ -201,10 +201,17 @@ fn optional<E: EnvSource + ?Sized>(source: &E, knob: &str) -> Option<Box<str>> {
 /// makes that a loud refusal at the first fire rather than a silent one at the
 /// vendor's next rotation.
 fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
-    let current = optional(source, QSTASH_CURRENT_KEY_KNOB)?;
-    let next = optional(source, QSTASH_NEXT_KEY_KNOB)?;
-    Some(SigningKeys {
-        current: current.into_string(),
-        next: next.into_string(),
-    })
+    let current = optional_secret(source, QSTASH_CURRENT_KEY_KNOB)?;
+    let next = optional_secret(source, QSTASH_NEXT_KEY_KNOB)?;
+    Some(SigningKeys { current, next })
+}
+
+/// Keep optional secret configuration guarded even on a later validation failure.
+fn optional_secret<E: EnvSource + ?Sized>(
+    source: &E,
+    knob: &str,
+) -> Option<afd_crypto::secret::SecretString> {
+    let value = afd_crypto::secret::SecretString::new(source.get(knob)?);
+    let trimmed = value.expose().trim();
+    (!trimmed.is_empty()).then(|| afd_crypto::secret::SecretString::new(trimmed.to_owned()))
 }

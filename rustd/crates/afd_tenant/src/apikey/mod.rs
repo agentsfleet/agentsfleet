@@ -19,11 +19,13 @@
 
 mod name;
 mod sort;
+mod view;
+pub use self::view::{KeyRow, Listing};
 
 use afd_auth::credential::CredentialKind;
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_core::paging::{Boundary, BoundaryKind, Cursor, Page, SortOrder as _};
+use afd_core::id::Uuid7;
+use afd_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::Row as _;
@@ -224,9 +226,7 @@ impl ApiKeys {
 
     /// Draws a fresh key identifier.
     fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
 
@@ -273,103 +273,6 @@ pub struct Revoked {
     pub revoked_at_ms: i64,
 }
 
-impl Boundary<ApiKeySort> for KeyRow {
-    /// Switches on the SORT's declared boundary kind, not on its variants.
-    ///
-    /// [`ApiKeySort::order_by`] and [`ApiKeySort::boundary`] are methods on one
-    /// enum, so a new ordering cannot name a column here and a different one
-    /// there — the compiler makes the pair move together.
-    fn cursor(&self, sort: ApiKeySort) -> Cursor {
-        match sort.boundary() {
-            BoundaryKind::Timestamp => Cursor::Timestamp {
-                at_ms: self.created_at_ms,
-                id: self.id.clone(),
-            },
-            BoundaryKind::Text => Cursor::Text {
-                value: self.name.clone(),
-                id: self.id.clone(),
-            },
-        }
-    }
-}
-
-/// One page of a tenant's keys.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Listing {
-    /// The keys on this page, in the requested order.
-    pub keys: Vec<KeyRow>,
-    /// How many keys the tenant holds in total, across every page.
-    ///
-    /// Page-stable: the count subquery carries no keyset predicate, so a client
-    /// walking pages sees one number rather than a shrinking one.
-    pub total: i64,
-}
-
-impl Listing {
-    /// Reads the page out of the rows the lateral join produced.
-    ///
-    /// The join guarantees at least one row even for an empty page — a marker
-    /// carrying the real total and null key columns — so the total is read from
-    /// the first row and a null identifier means "no keys" rather than a
-    /// malformed one.
-    fn of(rows: &[sqlx::postgres::PgRow]) -> Result<Self> {
-        let Some(first) = rows.first() else {
-            // Unreachable while the lateral join stands, and answered rather
-            // than reported: a tenant with no keys and a statement that
-            // answered nothing look identical to a caller, and both mean the
-            // list is empty.
-            return Ok(Self::default());
-        };
-        let total: i64 = first.try_get("total").map_err(row_unreadable)?;
-        let mut keys = Vec::with_capacity(rows.len());
-        for row in rows {
-            if let Some(key) = KeyRow::of(row)? {
-                keys.push(key);
-            }
-        }
-        Ok(Self { keys, total })
-    }
-}
-
-/// One key, as a list shows it.
-///
-/// Metadata only. There is no field here that could carry the digest, which is
-/// the structural half of "revealed exactly once" — the wire shape cannot hold
-/// a secret even if a statement were changed to select one.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyRow {
-    /// The key's identifier.
-    pub id: String,
-    /// What it is called.
-    pub name: String,
-    /// Whether it still authenticates.
-    pub active: bool,
-    /// When it was minted.
-    pub created_at_ms: i64,
-    /// When it last authenticated, if it ever has.
-    pub last_used_at_ms: Option<i64>,
-    /// When it stopped working, if it has.
-    pub revoked_at_ms: Option<i64>,
-}
-
-impl KeyRow {
-    /// One row, or `None` for the empty-page marker.
-    fn of(row: &sqlx::postgres::PgRow) -> Result<Option<Self>> {
-        let id: Option<String> = row.try_get("id").map_err(row_unreadable)?;
-        let Some(id) = id else {
-            return Ok(None);
-        };
-        Ok(Some(Self {
-            id,
-            name: row.try_get("key_name").map_err(row_unreadable)?,
-            active: row.try_get("active").map_err(row_unreadable)?,
-            created_at_ms: row.try_get("created_at").map_err(row_unreadable)?,
-            last_used_at_ms: row.try_get("last_used_at").map_err(row_unreadable)?,
-            revoked_at_ms: row.try_get(COLUMN_REVOKED_AT).map_err(row_unreadable)?,
-        }))
-    }
-}
-
 /// Turns an insert failure into the refusal it means.
 ///
 /// The unique index is the arbiter, so its violation is the ONE failure here
@@ -394,89 +297,4 @@ fn row_unreadable(source: sqlx::Error) -> crate::Error {
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
-    use afd_core::paging::{Boundary as _, Cursor, SortOrder as _};
-
-    use super::{ApiKeySort, KeyRow};
-
-    /// A row at the end of a page, with a name and an instant that differ.
-    fn boundary_row() -> KeyRow {
-        KeyRow {
-            id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0f7031".to_owned(),
-            name: "zeta-deploy".to_owned(),
-            active: true,
-            created_at_ms: 1_724_800_000_000,
-            last_used_at_ms: None,
-            revoked_at_ms: None,
-        }
-    }
-
-    /// Every ordering emits the form its own seek can resume from.
-    ///
-    /// The regression this pins: the rendering used to live in a private
-    /// handler helper that emitted the timestamp form unconditionally, so a
-    /// `key_name` walk handed back a cursor the paging layer refuses on the
-    /// next request — page two never arrived, and nothing failed loudly because
-    /// the refusal reads as a client sending something malformed.
-    /// `list.zig:122` switches on the same key; this is that switch.
-    #[test]
-    fn a_cursor_carries_the_boundary_its_own_sort_seeks_on() {
-        let row = boundary_row();
-        for sort in [
-            ApiKeySort::CreatedAscending,
-            ApiKeySort::CreatedDescending,
-            ApiKeySort::NameAscending,
-            ApiKeySort::NameDescending,
-        ] {
-            assert_eq!(
-                row.cursor(sort).kind(),
-                sort.boundary(),
-                "{sort:?} orders by one column and its cursor must name that column"
-            );
-        }
-    }
-
-    /// A name-ordered cursor survives the round trip a second request makes.
-    ///
-    /// Rendering the right FORM is only half of it: the value has to come back
-    /// intact, because the seek compares it against `key_name` directly. A name
-    /// is caller-supplied text, so the encoding is what has to hold.
-    #[test]
-    fn a_name_cursor_round_trips_through_the_wire() {
-        let row = boundary_row();
-        let rendered = row.cursor(ApiKeySort::NameAscending).to_string();
-        let parsed = Cursor::parse(&rendered).expect("a cursor this daemon issued must parse");
-
-        match parsed {
-            Cursor::Text { value, id } => {
-                assert_eq!(value, row.name, "the boundary name must survive the trip");
-                assert_eq!(id, row.id, "and the tiebreak id with it");
-            }
-            Cursor::Timestamp { .. } => {
-                panic!("a name walk must not resume from an instant")
-            }
-        }
-    }
-
-    /// A row whose columns are not this daemon's shape stays a query fault.
-    ///
-    /// The reader `try_get`s by name, so a renamed or retyped column surfaces
-    /// here rather than as a wrong value further in — which is the whole point
-    /// of routing it through `error::query` with a context instead of letting a
-    /// bare `sqlx::Error` reach a caller that cannot say which read produced it.
-    #[test]
-    fn an_unreadable_api_key_row_keeps_its_context_and_cause() {
-        use std::error::Error as _;
-
-        let failure = super::row_unreadable(sqlx::Error::PoolClosed);
-
-        assert!(failure.source().is_some(), "the sqlx cause survives");
-        assert!(!failure.to_string().is_empty());
-        assert!(!failure.code().as_str().is_empty());
-    }
-}
+mod tests;

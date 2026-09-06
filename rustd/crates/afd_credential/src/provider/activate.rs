@@ -55,8 +55,9 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::SecretBytes;
+use afd_vault::StoredEnvelope;
+use sqlx::FromRow as _;
 use sqlx::{Acquire as _, Row as _, Transaction};
 
 use crate::error::{Result, entropy_drained, mint_failed, query, row_malformed, vault_open};
@@ -69,20 +70,6 @@ use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ACTIVATE: &str = "tenant provider activation";
-
-/// Where the envelope block starts in [`sql::LOCK_CREDENTIAL_FOR_ACTIVATION`].
-///
-/// The two metadata columns lead, then the six envelope components in
-/// [`Envelope::from_parts`]' own order plus the version — the same block
-/// [`crate::vault`] reads, at a different offset.
-const ENVELOPE_AT: usize = 2;
-
-/// Where the bridge's workspace id sits, APPENDED after the envelope block.
-///
-/// Appended rather than inserted so [`ENVELOPE_AT`] cannot shift. It is the
-/// join's own row — see [`sql::LOCK_CREDENTIAL_FOR_ACTIVATION`] for why it is
-/// projected here instead of read by a second statement.
-const WORKSPACE_AT: usize = ENVELOPE_AT + 7;
 
 /// What an activation attempt resolved to.
 ///
@@ -153,8 +140,12 @@ impl Providers {
             );
         };
 
-        let meta_provider: Option<String> = row.try_get(0).map_err(query(CONTEXT_ACTIVATE))?;
-        let meta_has_key: Option<bool> = row.try_get(1).map_err(query(CONTEXT_ACTIVATE))?;
+        let meta_provider: Option<String> = row
+            .try_get("meta_provider")
+            .map_err(query(CONTEXT_ACTIVATE))?;
+        let meta_has_key: Option<bool> = row
+            .try_get("meta_has_key")
+            .map_err(query(CONTEXT_ACTIVATE))?;
         if SecretKind::of(meta_provider.as_deref(), meta_has_key) != SecretKind::ProviderKey {
             return Ok(Activation::NotAProviderKey);
         }
@@ -163,7 +154,7 @@ impl Providers {
         // holds a connection and the credential's row lock, and acquiring a
         // second connection under both is how a bounded pool starves under
         // concurrent activations. The join already resolved this exact row.
-        let workspace: String = row.try_get(WORKSPACE_AT).map_err(query(CONTEXT_ACTIVATE))?;
+        let workspace: String = row.try_get("id").map_err(query(CONTEXT_ACTIVATE))?;
         let workspace =
             Uuid7::parse(&workspace).map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID))?;
         let opened = open_envelope(&row, &workspace, secret_ref, self.vault_key())?;
@@ -200,34 +191,19 @@ fn effective_model<'a>(override_: Option<&'a str>, credential: Option<&'a str>) 
     (!named.is_empty() && named.trim() == named).then_some(named)
 }
 
-/// One row's envelope, rebuilt from its columns and opened.
-///
-/// Columns are read POSITIONALLY, because the order is the contract the
-/// statement shares with [`Envelope::from_parts`] — see
-/// [`crate::vault`], which reads the same block at its own offset.
+/// Open the named storage projection under the caller's workspace and key name.
 fn open_envelope(
     row: &sqlx::postgres::PgRow,
     workspace: &Uuid7,
     name: &str,
     kek: &afd_crypto::secret::Kek,
 ) -> Result<SecretBytes> {
-    let column = |index: usize| {
-        row.try_get::<Vec<u8>, _>(index)
-            .map_err(query(CONTEXT_ACTIVATE))
-    };
-    Envelope::from_parts(
-        column(ENVELOPE_AT)?,
-        &column(ENVELOPE_AT + 1)?,
-        &column(ENVELOPE_AT + 2)?,
-        &column(ENVELOPE_AT + 3)?,
-        column(ENVELOPE_AT + 4)?,
-        &column(ENVELOPE_AT + 5)?,
-        row.try_get(ENVELOPE_AT + 6)
-            .map_err(query(CONTEXT_ACTIVATE))?,
-    )
-    .map_err(vault_open)?
-    .open(kek, &Aad::new(workspace.as_str(), name))
-    .map_err(vault_open)
+    StoredEnvelope::from_row(row)
+        .map_err(query(CONTEXT_ACTIVATE))?
+        .into_envelope()
+        .map_err(vault_open)?
+        .open(kek, &Aad::new(workspace.as_str(), name))
+        .map_err(vault_open)
 }
 
 impl Providers {

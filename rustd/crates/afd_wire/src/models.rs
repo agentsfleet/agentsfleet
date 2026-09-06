@@ -40,6 +40,8 @@ pub struct CatalogueModel<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogueResponse<'a> {
     /// The catalogue's version stamp: the newest row's change date, UTC.
+    /// Positive timestamps beyond the supported calendar range use their decimal
+    /// Unix timestamp in milliseconds instead of a date.
     pub version: Cow<'a, str>,
     /// The rows on this page, in the catalogue's normalized order.
     pub models: Vec<CatalogueModel<'a>>,

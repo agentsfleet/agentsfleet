@@ -69,8 +69,9 @@ impl Resolved {
 #[cfg(test)]
 mod tests {
     use super::Resolved;
-    use crate::provider::resolved::{Dialled, SecretString};
+    use crate::provider::resolved::Dialled;
     use afd_billing::rates::Posture;
+    use afd_crypto::secret::SecretString;
 
     fn resolved(endpoint: Option<Dialled>) -> Resolved {
         Resolved::new(
