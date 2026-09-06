@@ -116,6 +116,35 @@ pub fn placement_tag(prefix: &RunPrefix) -> String {
     prefix.name("tag")
 }
 
+/// Seed a fleet's rows and its consumer group, with NOTHING on the stream.
+///
+/// What the steer lane wants: the fleet has to exist and its group has to
+/// exist before a read, but the appends are the thing being measured and must
+/// happen inside the window rather than during setup.
+///
+/// # Errors
+///
+/// Whatever Postgres or Redis refused.
+pub async fn empty_fleet(
+    database: &Db,
+    queue: &Redis,
+    prefix: &RunPrefix,
+    tag: &str,
+    index: u64,
+    now: i64,
+) -> Result<SeededFleet> {
+    let seeded = SeededFleet {
+        fleet: identifier(KIND_FLEET, index),
+        workspace: identifier(KIND_WORKSPACE, index),
+        tenant: identifier(KIND_TENANT, index),
+    };
+    rows(database, prefix, &seeded, tag, now).await?;
+    FleetStreams::new(queue.clone())
+        .ensure_group(&seeded.fleet)
+        .await?;
+    Ok(seeded)
+}
+
 /// Seed one ready fleet: three rows, a consumer group, an event, a mark.
 ///
 /// # Errors

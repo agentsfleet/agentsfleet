@@ -88,6 +88,14 @@ pub enum Error {
         source: afd_redis::Error,
     },
 
+    /// The steer ingress path faulted, which is not a measurement.
+    #[error("the steer path would not run")]
+    SteerPathFaulted {
+        /// What `afd_events` reported.
+        #[from]
+        source: afd_events::Error,
+    },
+
     /// The lease path itself faulted, which is not a measurement.
     #[error("the lease path would not run")]
     LeasePathFaulted {
@@ -269,6 +277,7 @@ impl Error {
             | Self::DatabaseUnavailable { .. }
             | Self::QueueUnavailable { .. }
             | Self::LeasePathFaulted { .. }
+            | Self::SteerPathFaulted { .. }
             | Self::FixtureUnseedable { .. }
             | Self::RunnerUnenrollable { .. }
             | Self::RunnerTaskLost => false,

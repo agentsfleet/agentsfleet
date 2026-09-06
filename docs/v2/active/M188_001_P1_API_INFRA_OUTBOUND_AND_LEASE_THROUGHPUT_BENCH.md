@@ -129,10 +129,24 @@ refusal and never runs: it has no baseline, no workflow row and no result file.
 
 ### §2 — Steer ingress under concurrency
 
-Establishes how many concurrent steers the system accepts and where each one costs. One steer is a Postgres write, a stream append and a readiness mark, and the readiness index is a single global hash every steer writes — the first shared structure a million fleets contend on.
+Establishes how many concurrent steers the system accepts and where each one costs. The readiness index is a single global hash every steer writes — the first shared structure a million fleets contend on.
+
+**Amendment (EXECUTE) — a steer does not touch Postgres.** This section was
+written believing one steer is a Postgres write plus a stream append plus a
+readiness mark. It is not. `rustd/crates/afd_events/src/steer.rs:6` says so in
+its own module note — *"Nothing is written to Postgres here"* — `Steer::new`
+takes only a `Redis`, and `append` issues exactly two Redis commands: the
+`XADD` and the `HSET` that marks the fleet ready. A steer becomes a row when a
+runner leases it, which is the lease lane's cost and already counted there.
+
+So Dimension 2.2 measures what the path does rather than what the spec assumed:
+both datastores are still attributed, and Postgres reading zero is the finding
+rather than a failed assertion. The Postgres side is read from
+`pg_stat_database`, so the zero is measured rather than asserted — an
+unmeasured zero is what RULE ECL forbids.
 
 - **Dimension 2.1** — N concurrent steer submitters report sustained accepted steers per second and a p95 acceptance latency → Test `test_steer_bench_reports_a_rate_and_a_p95`
-- **Dimension 2.2** — the same run attributes its cost between Postgres and Redis, as commands issued and time spent in each → Test `test_steer_bench_attributes_cost_between_datastores`
+- **Dimension 2.2** — the same run attributes its cost between Postgres and Redis, as commands issued to each, and shows the ingress path costing Redis alone → Test `test_steer_bench_attributes_cost_between_datastores`
 - **Dimension 2.3** — the run reports readiness-index depth over time, so growth outrunning drain is visible as a number rather than as a stall → Test `test_steer_bench_reports_readiness_depth_over_time`
 
 ### §3 — Lease issuance under ready-depth and runner concurrency
@@ -229,7 +243,7 @@ result file shape (every lane):
 | 1.3 | integration | `test_a_deployed_run_sweeps_everything_it_created` | after a bounded run, objects carrying the run prefix number zero and the result's swept count equals its created count |
 | 1.4 | integration | `test_a_run_aborts_when_the_target_starts_failing` | with a target scripted to refuse above a rate, the run stops and the result records the abort |
 | 2.1 | integration | `test_steer_bench_reports_a_rate_and_a_p95` | a bounded concurrent run reports accepted steers per second above zero and a finite p95 |
-| 2.2 | integration | `test_steer_bench_attributes_cost_between_datastores` | the result carries non-zero Redis commands and non-zero Postgres round trips |
+| 2.2 | integration | `test_steer_bench_attributes_cost_between_datastores` | the result carries non-zero Redis commands and zero Postgres transactions, both read from the server's own counters |
 | 2.3 | integration | `test_steer_bench_reports_readiness_depth_over_time` | the result carries a depth series with at least two samples |
 | 3.1 | integration | `test_lease_bench_reports_a_rate_and_a_p95` | a run with seeded fleets and simulated runners reports leases per second above zero |
 | 3.2 | integration | `test_lease_bench_reports_roundtrips_per_lease` | mean round trips per lease is at least one and comes from the daemon's counter |
