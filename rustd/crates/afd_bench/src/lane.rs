@@ -5,5 +5,6 @@
 //! and changed apart.
 
 pub mod lease;
+pub mod outbound;
 pub mod steer;
 pub mod sweep;

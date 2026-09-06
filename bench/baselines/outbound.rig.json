@@ -1,0 +1,32 @@
+{
+  "lane": "outbound",
+  "profile": "rig",
+  "created": true,
+  "parameters": {
+    "BENCH_JOBS": 200
+  },
+  "measurements": {
+    "delivered": 200.0,
+    "max_ms": 4001.791,
+    "others_p95_ms": 3717.119,
+    "p95_ms": 3717.119,
+    "p99_ms": 3995.647,
+    "rate_per_second": 49.47121302579512,
+    "retry_occupancy": 0.0,
+    "slow_destinations": 1.0,
+    "slow_p95_ms": 3731.455
+  },
+  "datastores": {
+    "redis": {
+      "operations": 605
+    },
+    "postgres": {
+      "operations": 0
+    }
+  },
+  "fixture": {
+    "run_prefix": "bench-1788733082455-65536",
+    "created": 200,
+    "swept": 200
+  }
+}

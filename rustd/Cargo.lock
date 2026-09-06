@@ -255,6 +255,7 @@ dependencies = [
  "afd_events",
  "afd_fleet",
  "afd_observability",
+ "afd_outbound",
  "afd_redis",
  "afd_runner",
  "afd_wire",
@@ -267,6 +268,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

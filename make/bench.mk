@@ -149,7 +149,7 @@ bench-cutover-self-test:  ## Run scripts/bench_cutover_test.sh — the cutover b
 # REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
 PROFILE ?= rig
 
-.PHONY: bench-steer bench-lease bench-compare
+.PHONY: bench-steer bench-lease bench-outbound bench-compare
 
 # `--release` is not a detail. A debug build measures rustc's unoptimised
 # output, which is the wrong system: the number would be a property of the
@@ -169,6 +169,14 @@ bench-steer: _ensure-test-infra  ## Steer ingress: accepted rate, p95, readiness
 	 BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
 	 BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
 	 cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin steer
+
+bench-outbound: _ensure-test-infra  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
+	@echo "→ [bench-outbound] profile=$(PROFILE)"
+	@BENCH_PROFILE="$(PROFILE)" \
+	 BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
+	 BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
+	 BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
+	 cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin outbound
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin compare -- "$(LANE)" "$(PROFILE)"

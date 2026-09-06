@@ -122,8 +122,8 @@ exists the same profile points at it with no code change. `prod` is built as a
 refusal and never runs: it has no baseline, no workflow row and no result file.
 
 
-- **Dimension 1.1** — a lane run above its profile's cap exits non-zero naming the cap, before opening a connection → Test `test_a_parameter_above_the_profile_cap_is_refused`
-- **Dimension 1.2** — the production profile refuses to run without its explicit acknowledgement variable set → Test `test_production_requires_an_explicit_acknowledgement`
+- **Dimension 1.1** — DONE — a lane run above its profile's cap exits non-zero naming the cap, before opening a connection → Test `test_a_parameter_above_the_profile_cap_is_refused`
+- **Dimension 1.2** — DONE — the production profile refuses to run without its explicit acknowledgement variable set → Test `test_production_requires_an_explicit_acknowledgement`
 - **Dimension 1.3** — every deployed run creates only inside a fixture workspace under a unique run prefix, and ends with a sweep whose removed count is reported → Test `test_a_deployed_run_sweeps_everything_it_created`
 - **Dimension 1.4** — a run whose observed error rate crosses the profile's abort threshold stops early and reports the abort rather than continuing to load the target → Test `test_a_run_aborts_when_the_target_starts_failing`
 
@@ -145,22 +145,31 @@ rather than a failed assertion. The Postgres side is read from
 `pg_stat_database`, so the zero is measured rather than asserted — an
 unmeasured zero is what RULE ECL forbids.
 
-- **Dimension 2.1** — N concurrent steer submitters report sustained accepted steers per second and a p95 acceptance latency → Test `test_steer_bench_reports_a_rate_and_a_p95`
-- **Dimension 2.2** — the same run attributes its cost between Postgres and Redis, as commands issued to each, and shows the ingress path costing Redis alone → Test `test_steer_bench_attributes_cost_between_datastores`
-- **Dimension 2.3** — the run reports readiness-index depth over time, so growth outrunning drain is visible as a number rather than as a stall → Test `test_steer_bench_reports_readiness_depth_over_time`
+- **Dimension 2.1** — DONE — N concurrent steer submitters report sustained accepted steers per second and a p95 acceptance latency → Test `test_steer_bench_reports_a_rate_and_a_p95`
+- **Dimension 2.2** — DONE — the same run attributes its cost between Postgres and Redis, as commands issued to each, and shows the ingress path costing Redis alone → Test `test_steer_bench_attributes_cost_between_datastores`
+- **Dimension 2.3** — DONE — the run reports readiness-index depth over time, so growth outrunning drain is visible as a number rather than as a stall → Test `test_steer_bench_reports_readiness_depth_over_time`
 
 ### §3 — Lease issuance under ready-depth and runner concurrency
 
 Establishes leases per second and the Postgres cost of each, at ready-depths and runner counts the deployment has never seen. This is the path a million fleets reach first, because every runner polls it continuously whether or not there is work.
 
-- **Dimension 3.1** — a run with K ready fleets and R concurrent runners reports sustained leases per second and p95 poll latency → Test `test_lease_bench_reports_a_rate_and_a_p95`
-- **Dimension 3.2** — the run reports mean and p95 Postgres round trips per issued lease, read from the daemon's own counter → Test `test_lease_bench_reports_roundtrips_per_lease`
-- **Dimension 3.3** — with runners outnumbering ready fleets, the wasted-claim rate is reported: polls that sampled a fleet another runner already held → Test `test_lease_bench_reports_wasted_claim_rate`
-- **Dimension 3.4** — idle cost is reported separately: the Redis and Postgres commands a poll issues when nothing is ready, which is what a million idle fleets actually cost → Test `test_lease_bench_reports_idle_poll_cost`
+- **Dimension 3.1** — DONE — a run with K ready fleets and R concurrent runners reports sustained leases per second and p95 poll latency → Test `test_lease_bench_reports_a_rate_and_a_p95`
+- **Dimension 3.2** — DONE — the run reports mean and p95 Postgres round trips per issued lease, read from the daemon's own counter → Test `test_lease_bench_reports_roundtrips_per_lease`
+- **Dimension 3.3** — DONE — with runners outnumbering ready fleets, the wasted-claim rate is reported: polls that sampled a fleet another runner already held → Test `test_lease_bench_reports_wasted_claim_rate`
+- **Dimension 3.4** — DONE — idle cost is reported separately: the Redis and Postgres commands a poll issues when nothing is ready, which is what a million idle fleets actually cost → Test `test_lease_bench_reports_idle_poll_cost`
 
 ### §4 — Delivery ceiling and head-of-line cost
 
 Establishes what one worker sustains and whether one slow destination blocks unrelated ones. **Implementation default:** the stub vendor answers on a per-destination delay drawn from the profile, so a scripted-slow or scripted-failing destination mixes into a healthy population without changing the driver.
+
+**Divergence (EXECUTE) — the stub is a poster, not a vendor.** The spec pointed
+at `hanging_queue.rs`, a loopback server that exists to prove the HTTP client's
+deadline. Head-of-line cost and retry occupancy are properties of the worker's
+LOOP — one entry at a time, the ladder awaited inline — and the loop takes its
+destination through the `Deliver` trait. So the lane scripts that trait in
+process (`lane/outbound/poster.rs`): the real `Worker`, the real ladder, and no
+socket adding its own latency to the number. The trait is the seam
+`afd_outbound`'s own suites use for the same reason.
 
 - **Dimension 4.1** — a run of queued jobs against a uniformly fast stub reports sustained jobs per second and p95 end-to-end delivery latency → Test `test_outbound_bench_reports_a_rate_and_a_p95`
 - **Dimension 4.2** — with one destination scripted slow, the latency of the OTHER destinations is separately reported, making head-of-line blocking a measured quantity → Test `test_outbound_bench_isolates_the_slow_destination_cost`
@@ -179,8 +188,8 @@ Establishes what an idle fleet costs when there are a million of them. The per-f
 
 A number nobody compares against is a number nobody reads, and a number with no datastore attached does not say what to fix. **Implementation default:** a lane fails only on a missing or unreadable result, never on a regression — these run on shared runners and against shared environments where a throughput threshold would be a flake generator; the comparison prints a delta a human reads.
 
-- **Dimension 6.1** — every lane writes one result file carrying lane, profile, parameters, measurements, and a per-datastore breakdown → Test `test_each_lane_writes_a_parseable_result`
-- **Dimension 6.2** — a comparison command prints the delta between a result and its per-profile baseline and exits zero regardless of direction → Test `test_the_comparison_reports_a_delta_without_gating`
+- **Dimension 6.1** — DONE — every lane writes one result file carrying lane, profile, parameters, measurements, and a per-datastore breakdown → Test `test_each_lane_writes_a_parseable_result`
+- **Dimension 6.2** — DONE — a comparison command prints the delta between a result and its per-profile baseline and exits zero regardless of direction → Test `test_the_comparison_reports_a_delta_without_gating`
 - **Dimension 6.3** — the dispatch-only workflow runs every lane on the rig, accepts a deployed environment as an input, and uploads every result → Test `test_the_workflow_runs_the_rig_and_accepts_an_environment`
 
 ## Interfaces

@@ -90,3 +90,61 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     }
     Ok(removed)
 }
+
+/// Remove this run's entries from the shared outbound stream.
+///
+/// The outbound queue is ONE stream at a fixed key, shared by every producer,
+/// so a lane cannot drop it the way it forgets a fleet's own stream — on a
+/// deployed target that key carries real answers. Instead the entries this run
+/// appended are found by the run prefix they carry in `workspace_id` and
+/// deleted individually, which is prefix-scoped like every other sweep here.
+///
+/// # Errors
+///
+/// [`crate::Error::QueueUnavailable`] when the stream will not answer.
+pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
+    use afd_redis::OUTBOUND_STREAM_KEY;
+
+    let mut range = redis::cmd(XRANGE);
+    range
+        .arg(OUTBOUND_STREAM_KEY)
+        .arg(RANGE_START)
+        .arg(RANGE_END);
+    let entries: Vec<(String, Vec<String>)> =
+        queue.command(XRANGE, OUTBOUND_STREAM_KEY, &range).await?;
+    let mine: Vec<String> = entries
+        .into_iter()
+        .filter(|(_id, fields)| {
+            fields.chunks(2).any(|pair| {
+                pair.first().is_some_and(|k| k == WORKSPACE_FIELD)
+                    && pair.get(1).is_some_and(|v| prefix.owns(v))
+            })
+        })
+        .map(|(id, _fields)| id)
+        .collect();
+    if mine.is_empty() {
+        return Ok(0);
+    }
+    let mut del = redis::cmd(XDEL);
+    del.arg(OUTBOUND_STREAM_KEY);
+    for id in &mine {
+        del.arg(id);
+    }
+    let removed: u64 = queue.command(XDEL, OUTBOUND_STREAM_KEY, &del).await?;
+    Ok(removed)
+}
+
+/// Read a stream from its first entry.
+const XRANGE: &str = "XRANGE";
+
+/// Delete named entries from a stream.
+const XDEL: &str = "XDEL";
+
+/// The smallest stream id, so a range reads from the beginning.
+const RANGE_START: &str = "-";
+
+/// The largest stream id, so a range reads to the end.
+const RANGE_END: &str = "+";
+
+/// The entry field the outbound producer writes the workspace into.
+const WORKSPACE_FIELD: &str = "workspace_id";
