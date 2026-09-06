@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURATED_ERROR_CODES, presentError, presentErrorString } from "./errors";
-import { RETRY_CODE_TIMEOUT } from "./api/retry";
+import { RETRY_CODE_TIMEOUT } from "./api/errors";
 
 describe("presentError", () => {
   it("maps a known errorCode to the curated title + body", () => {

@@ -9,7 +9,7 @@ import {
   SelectValue,
   SelectItem,
 } from "@agentsfleet/design-system";
-import { modelsForProvider, uniqueModelIds } from "@/lib/api/model_library";
+import { modelsForProvider, uniqueModelIds } from "@/lib/api/model-library-types";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { knownModelsFor } from "../lib/known-models";

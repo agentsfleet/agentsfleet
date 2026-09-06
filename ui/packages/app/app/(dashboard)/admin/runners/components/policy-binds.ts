@@ -1,4 +1,4 @@
-import { BIND_MODE, type BindMode, type ExtraBind } from "@/lib/api/runners";
+import { BIND_MODE, type BindMode, type ExtraBind } from "@/lib/api/runners-types";
 
 // The extra-bind half of the assignment form: bounds, grammar, and the
 // form-row <-> wire conversion. Mirrors `protocol_bind.zig` so the dialog

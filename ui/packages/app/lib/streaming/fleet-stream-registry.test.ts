@@ -11,7 +11,8 @@ import {
   reconcileServerRows,
   subscribe,
 } from "./fleet-stream-registry";
-import { FRAME_KIND, type EventDetail, type EventRow } from "@/lib/api/events";
+import { type EventDetail, type EventRow } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 function row(over: Partial<EventDetail> = {}): EventDetail {

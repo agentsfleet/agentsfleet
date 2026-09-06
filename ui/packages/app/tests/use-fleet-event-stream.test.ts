@@ -7,7 +7,8 @@ import {
 } from "../components/domain/useFleetEventStream";
 import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { FRAME_KIND, type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 
 import { FakeEventSource } from "./helpers/fake-event-source";
 

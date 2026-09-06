@@ -42,6 +42,7 @@ export const DETERMINISTIC_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/help-and-errors.spec.ts",
   "test/acceptance/memory-read.spec.ts",
   "test/acceptance/options-metavar.spec.ts",
+  "test/acceptance/retry-policy.spec.ts",
   "test/acceptance/streaming-follow.spec.ts",
 ];
 

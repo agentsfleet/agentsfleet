@@ -1,85 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, RequestCancelledError } from "./errors";
-import {
-  HTTP_STATUS_REQUEST_TIMEOUT,
-  RETRY_CODE_TIMEOUT,
-  RETRY_DEFAULTS,
-  backoffDelay,
-  classifyRetryable,
-  isIdempotentMethod,
-  runWithRetry,
-} from "./retry";
+import { ApiError, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
+import { RETRY_DEFAULTS, isIdempotentMethod, runWithRetry } from "./retry";
 
 // The transport-level proofs (a real `fetch`, a real `ApiError` off the wire)
 // live beside the transport in client.retry.test.ts and client.defaults.test.ts;
-// this file covers the policy in isolation.
+// this file covers the policy's loop over a bare thunk. The schedule's own
+// guarantees — deadline, Retry-After cap, full jitter, provenance, telemetry —
+// are proved in retry.schedule.test.ts, and the classifier in
+// retry-classify.test.ts.
 
 const NOOP_SLEEP = (_ms: number) => Promise.resolve();
 const NOOP_RANDOM = () => 0;
-const MS_PER_SECOND = 1000 as const;
+// Full jitter draws the delay from [0, delay]; a draw of 1 is the bare delay,
+// which is what a test that must land an abort inside a backoff needs.
+const BARE_DELAY = () => 1;
+// A backoff long enough to land an abort inside, with a deadline that allows it.
+const LONG_BACKOFF_MS = 60_000;
 const TRANSIENT_STATUS = 503;
-
-describe("classifyRetryable", () => {
-  it("classifies ApiError 429 as '429'", () => {
-    const err = new ApiError("rate limited", 429, "UZ-RATE-001");
-    expect(classifyRetryable(err)).toBe("429");
-  });
-  it("classifies ApiError 503 / 502 / 504 / 408 / 425 as '5xx'", () => {
-    for (const s of [502, 503, 504, 408, 425]) {
-      const err = new ApiError("svc", s, "X");
-      expect(classifyRetryable(err)).toBe("5xx");
-    }
-  });
-  it("classifies the transport's timeout code as 'timeout'", () => {
-    const err = new ApiError("timed out", 408, RETRY_CODE_TIMEOUT);
-    expect(classifyRetryable(err)).toBe("timeout");
-  });
-  it("classifies fetch-failed TypeError as 'network'", () => {
-    expect(classifyRetryable(new TypeError("fetch failed"))).toBe("network");
-  });
-  it("returns null for non-retryable ApiError (400/401/404)", () => {
-    expect(classifyRetryable(new ApiError("bad", 400, "X"))).toBeNull();
-    expect(classifyRetryable(new ApiError("auth", 401, "X"))).toBeNull();
-    expect(classifyRetryable(new ApiError("nf", 404, "X"))).toBeNull();
-  });
-  it("returns null for non-Error values", () => {
-    expect(classifyRetryable("string")).toBeNull();
-    expect(classifyRetryable(null)).toBeNull();
-  });
-  it("classifies node-shaped socket errors (ECONNRESET/ETIMEDOUT/ENOTFOUND) as 'network'", () => {
-    for (const code of ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]) {
-      expect(classifyRetryable({ code })).toBe("network");
-    }
-  });
-  it("returns null for an unrecognized node error code", () => {
-    expect(classifyRetryable({ code: "EPERM" })).toBeNull();
-  });
-});
-
-describe("backoffDelay", () => {
-  it("honors server Retry-After floor with +20% jitter cap", () => {
-    const d = backoffDelay({
-      attempt: 1,
-      baseDelayMs: 250,
-      capDelayMs: 2000,
-      retryAfterMs: MS_PER_SECOND,
-      randomFn: () => 1, // maximizes jitter add
-    });
-    // Retry-After 1000ms + (1000 * 0.2 * 1) = 1200
-    expect(d).toBeCloseTo(1200, 0);
-  });
-  it("applies exponential backoff capped at capDelayMs", () => {
-    const d = backoffDelay({
-      attempt: 10,
-      baseDelayMs: 250,
-      capDelayMs: 2000,
-      retryAfterMs: null,
-      randomFn: () => 0.5, // jitter = 0 (centered)
-    });
-    // base = min(250 * 2^9, 2000) = 2000; jitter = 2000 * 0.2 * 0 = 0
-    expect(d).toBe(2000);
-  });
-});
 
 describe("isIdempotentMethod", () => {
   it("GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensitive)", () => {
@@ -132,9 +69,10 @@ describe("runWithRetry — the loop over an attempt thunk", () => {
     const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
     // Real (faked) sleep: a long base so the abort lands inside the backoff.
     const settled = runWithRetry(attempt, "GET", {
-      baseDelayMs: 60_000,
-      capDelayMs: 60_000,
-      randomFn: NOOP_RANDOM,
+      baseDelayMs: LONG_BACKOFF_MS,
+      capDelayMs: LONG_BACKOFF_MS,
+      deadlineMs: 2 * LONG_BACKOFF_MS,
+      randomFn: BARE_DELAY,
       signal: controller.signal,
     }).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(1);
@@ -157,9 +95,10 @@ describe("runWithRetry — the loop over an attempt thunk", () => {
     const refused = new ApiError("svc", TRANSIENT_STATUS, "X");
     const attempt = vi.fn().mockRejectedValue(refused);
     const settled = runWithRetry(attempt, "GET", {
-      baseDelayMs: 60_000,
-      capDelayMs: 60_000,
-      randomFn: NOOP_RANDOM,
+      baseDelayMs: LONG_BACKOFF_MS,
+      capDelayMs: LONG_BACKOFF_MS,
+      deadlineMs: 2 * LONG_BACKOFF_MS,
+      randomFn: BARE_DELAY,
       signal: controller.signal,
     }).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(1);
@@ -184,9 +123,10 @@ describe("runWithRetry — the loop over an attempt thunk", () => {
     const controller = new AbortController();
     const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
     const settled = runWithRetry(attempt, "GET", {
-      baseDelayMs: 60_000,
-      capDelayMs: 60_000,
-      randomFn: NOOP_RANDOM,
+      baseDelayMs: LONG_BACKOFF_MS,
+      capDelayMs: LONG_BACKOFF_MS,
+      deadlineMs: 2 * LONG_BACKOFF_MS,
+      randomFn: BARE_DELAY,
       signal: controller.signal,
       cancelled: () => new RequestCancelledError("/v1/x"),
     }).catch((e: unknown) => e);

@@ -1,17 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  nanosToUsdPerMtok,
-  usdPerMtokToNanos,
-  NANOS_PER_USD,
-  listAdminModels,
-  createAdminModel,
-  updateAdminModel,
-  deleteAdminModel,
-  setPlatformDefault,
-  listPlatformKeys,
-  activePlatformDefault,
-  type PlatformKey,
-} from "./admin_model_library";
+import { listAdminModels, createAdminModel, updateAdminModel, deleteAdminModel, setPlatformDefault, listPlatformKeys, activePlatformDefault, type PlatformKey } from "./admin_model_library";
+import { nanosToUsdPerMtok, usdPerMtokToNanos, NANOS_PER_USD } from "./admin-model-library-types";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);

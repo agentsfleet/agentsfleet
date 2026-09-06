@@ -3,13 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
-import {
-  listApiKeys,
-  createApiKey,
-  revokeApiKey,
-  deleteApiKey,
-  DEFAULT_SORT,
-} from "./api_keys";
+import { listApiKeys, createApiKey, revokeApiKey, deleteApiKey } from "./api_keys";
+import { DEFAULT_SORT } from "./api-keys-types";
 
 const keyRow = (id: string) => ({
   id,

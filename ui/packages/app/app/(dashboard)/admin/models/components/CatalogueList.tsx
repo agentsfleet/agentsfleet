@@ -12,7 +12,8 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
-import { type AdminModel, type PlatformKey, nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
+import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
+import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
 import { presentErrorString } from "@/lib/errors";
 import {
   default as EditModelDialogDynamic,

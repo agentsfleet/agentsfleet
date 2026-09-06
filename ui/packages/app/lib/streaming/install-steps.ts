@@ -7,7 +7,8 @@
 // fleet's status has gone installing→active on the server, so the UI leaves
 // install-mode. `error` is a terminal failure with a retry.
 
-import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
+import { type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 
 // The renderable install steps, in walk order. The pre-create `connect` step is
 // client-driven from the create gate; the post-create steps below are advanced

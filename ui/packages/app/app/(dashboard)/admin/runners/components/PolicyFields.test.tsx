@@ -6,7 +6,7 @@ import {
   policyFromForm,
 } from "./PolicyFields";
 import { MAX_BIND_NOTE_LEN, MAX_EXTRA_BINDS } from "./policy-binds";
-import type { AssignedPolicy } from "@/lib/api/runners";
+import type { AssignedPolicy } from "@/lib/api/runners-types";
 
 // Pure-function coverage for the shared assignment form: the value mapping and
 // the schema bounds are what both dialogs stand on, so their failure paths get

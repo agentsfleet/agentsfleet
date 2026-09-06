@@ -6,7 +6,7 @@ import {
   type ResolveResponse,
 } from "./approvals";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
-import { HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT } from "./retry";
+import { HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT } from "./errors";
 
 // The resolve half of the approvals client (approve / deny: the tagged union
 // over 200 vs 409, and the transport timeout). Split from approvals.test.ts by

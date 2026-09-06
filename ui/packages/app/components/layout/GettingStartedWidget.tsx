@@ -10,7 +10,7 @@ import {
   isOnboardingComplete,
   REQUIRED_STEP_COUNT,
 } from "@/lib/onboarding";
-import { PREFERENCE_KEY } from "@/lib/api/preferences";
+import { PREFERENCE_KEY } from "@/lib/api/preferences-types";
 import {
   putPreferenceAction,
 } from "@/lib/actions/preferences";

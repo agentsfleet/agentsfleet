@@ -24,6 +24,20 @@ type Scripted = { status: number; body?: string; headers?: Record<string, string
 const PATH = "/v1/thing";
 // A route the server accepts and never answers — the hung-backend case.
 const HANG_PATH = "/v1/hung";
+// A route whose socket the server destroys once the request has arrived —
+// the reset-after-sending case, which Node reports as ECONNRESET on the cause.
+const RESET_PATH = "/v1/reset";
+// A loopback port nothing listens on — the refused-at-connect case. Bound and
+// released here so the port is real: Node refuses the well-known low ports
+// before it ever connects, with no socket code to read.
+const closedPort = await new Promise<number>((resolve) => {
+  const probe = http.createServer();
+  probe.listen(0, "127.0.0.1", () => {
+    const { port } = probe.address() as AddressInfo;
+    probe.close(() => resolve(port));
+  });
+});
+const CLOSED_ORIGIN = `http://127.0.0.1:${closedPort}`;
 const TOKEN = "test-token";
 const OK_BODY = '{"ok":true}';
 
@@ -39,6 +53,10 @@ const server = http.createServer((req, res) => {
   if (req.url === HANG_PATH) {
     hung.push(res);
     onHung?.();
+    return;
+  }
+  if (req.url === RESET_PATH && methodLog.length === 1) {
+    req.socket.destroy();
     return;
   }
   const next = queue.shift() ?? { status: 200, body: OK_BODY };
@@ -61,7 +79,7 @@ vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
 vi.resetModules();
 const { request, requestWithRetry } = await import("./client");
 const { ApiError } = await import("./errors");
-const { RETRY_CODE_TIMEOUT } = await import("./retry");
+const { RETRY_CODE_TIMEOUT } = await import("./errors");
 
 afterAll(async () => {
   vi.unstubAllEnvs();
@@ -76,8 +94,9 @@ beforeEach(() => {
 });
 
 // Real network, fake clock: sleeps are recorded instead of awaited and jitter is
-// pinned (randomFn 0.5 → 0 jitter) so backoff math is exact. baseDelayMs is tiny
-// purely for readable assertions — the sleep never actually elapses.
+// pinned (randomFn 1 → the bare delay under full jitter) so backoff math is
+// exact. baseDelayMs is tiny purely for readable assertions — the sleep never
+// actually elapses.
 function fastRetry(extra: Record<string, number> = {}) {
   const delays: number[] = [];
   const retries: RetryInfo[] = [];
@@ -91,7 +110,7 @@ function fastRetry(extra: Record<string, number> = {}) {
       sleepImpl: async (ms: number) => {
         delays.push(ms);
       },
-      randomFn: () => 0.5,
+      randomFn: () => 1,
       onRetry: (info: RetryInfo) => retries.push(info),
       ...extra,
     },
@@ -105,7 +124,7 @@ describe("requestWithRetry — real transport integration", () => {
     const body = await requestWithRetry<{ ok: boolean }>(PATH, { method: "GET" }, TOKEN, options);
     expect(body).toEqual({ ok: true });
     expect(methodLog).toEqual(["GET", "GET", "GET"]);
-    expect(delays).toEqual([10, 20]); // exponential growth, jitter pinned to 0
+    expect(delays).toEqual([10, 20]); // exponential growth, jitter pinned to the bare delay
     expect(retries.map((r) => [r.reason, r.status])).toEqual([
       ["5xx", 503],
       ["5xx", 503],
@@ -175,6 +194,31 @@ describe("requestWithRetry — real transport integration", () => {
     expect(methodLog.length).toBe(3); // capped at maxAttempts, not the 4 queued
   });
 });
+describe("a write replays only when it provably never left", () => {
+  it("a POST refused at connect is sent again: Node's cause code proves it never left", async () => {
+    const { options, retries } = fastRetry({ maxAttempts: 2 });
+    const attempt = vi.fn(() => fetch(`${CLOSED_ORIGIN}${PATH}`, { method: "POST", body: "{}" }));
+    const { runWithRetry } = await import("./retry");
+    await expect(runWithRetry(attempt, "POST", options)).rejects.toBeInstanceOf(TypeError);
+    expect(attempt).toHaveBeenCalledTimes(2);
+    expect(retries.map((r) => r.reason)).toEqual(["network"]);
+  });
+
+  it("a POST whose socket reset after sending is sent once; a GET is read again", async () => {
+    const { options } = fastRetry();
+    await expect(
+      requestWithRetry(RESET_PATH, { method: "POST", body: "{}" }, TOKEN, options),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(methodLog).toEqual(["POST"]);
+
+    methodLog.length = 0;
+    queue.push({ status: 200, body: OK_BODY });
+    const body = await requestWithRetry<{ ok: boolean }>(RESET_PATH, { method: "GET" }, TOKEN, options);
+    expect(body).toEqual({ ok: true });
+    expect(methodLog).toEqual(["GET", "GET"]);
+  });
+});
+
 describe("request — default policy over a real transport", () => {
   it("request retries a transient read and returns the recovered body", async () => {
     queue.push({ status: 503 }, { status: 200, body: OK_BODY });

@@ -127,7 +127,10 @@ test("apiRequest maps an RFC 7807 body onto ApiError", async () => {
 test("apiRequestWithRetry retries on ECONNRESET (network classify)", async () => {
   let calls = 0;
   const retries: RetryInfo[] = [];
-  const econn = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+  // Node's fetch wraps the socket error: the code is on the cause.
+  const econn = new TypeError("fetch failed", {
+    cause: Object.assign(new Error("connection reset"), { code: "ECONNRESET" }),
+  });
   const fetchImpl = asFetchImpl(async () => {
     calls += 1;
     if (calls < 2) throw econn;

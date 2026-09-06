@@ -15,7 +15,7 @@
  * swap the map values to lookup keys without changing the call sites.
  */
 
-import { RETRY_CODE_TIMEOUT } from "@/lib/api/retry";
+import { RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
 
 export interface ErrorInput {
   /** ActionResult.error from a server action, or the thrown Error.message. */

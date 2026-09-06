@@ -5,14 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
 import { Alert, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
-import {
-  RUNNER_ADMIN_ACTION,
-  RUNNER_ADMIN_STATE,
-  type RunnerAdminState,
-  type RunnerStateAction,
-  type RunnerDetail,
-  type RunnerListItem,
-} from "@/lib/api/runners";
+import { type RunnerDetail, type RunnerListItem } from "@/lib/api/runners";
+import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE, type RunnerAdminState, type RunnerStateAction } from "@/lib/api/runners-types";
 import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 import { runnersIndexPath } from "@/lib/runner-routes";
 import { presentErrorString } from "@/lib/errors";

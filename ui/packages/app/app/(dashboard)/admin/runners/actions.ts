@@ -3,25 +3,8 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
-import {
-  listRunners,
-  listRunnerLeases,
-  createRunner,
-  updateRunnerAdminState,
-  updateRunnerPolicy,
-  deleteRunner,
-  requestRunnerSelftest,
-  type AssignedPolicy,
-  type RunnerListResponse,
-  type RunnerLeaseResponse,
-  type CreatedRunner,
-  type RunnerAdminAction,
-  type RunnerAdminStateUpdate,
-  type RunnerPolicyUpdate,
-  type RunnerSelftestRequest,
-  type ListParams,
-  type LeaseListParams,
-} from "@/lib/api/runners";
+import { listRunners, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunnerPolicy, deleteRunner, requestRunnerSelftest, type RunnerListResponse, type RunnerLeaseResponse, type CreatedRunner, type RunnerAdminStateUpdate, type RunnerPolicyUpdate, type RunnerSelftestRequest, type ListParams, type LeaseListParams } from "@/lib/api/runners";
+import { type AssignedPolicy, type RunnerAdminAction } from "@/lib/api/runners-types";
 
 export async function listRunnersAction(params: ListParams): Promise<ActionResult<RunnerListResponse>> {
   return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunners(t, params)));

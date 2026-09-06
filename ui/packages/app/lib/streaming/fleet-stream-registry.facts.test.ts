@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FRAME_KIND, type EventDetail, type LiveFrame } from "@/lib/api/events";
+import { type EventDetail, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { NO_FACTS } from "@/lib/events/run-summary";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import {

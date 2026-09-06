@@ -13,7 +13,8 @@ import {
   DialogTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { LEASE_OUTCOME, type RunnerLease } from "@/lib/api/runners";
+import { type RunnerLease } from "@/lib/api/runners";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { failureSentenceFor } from "@/lib/events/event-summary";
 import { workspacePath } from "@/lib/workspace-routes";
 import {

@@ -5,7 +5,8 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { formatTimeAbsolute, TooltipProvider } from "@agentsfleet/design-system";
-import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
+import { type Secret } from "@/lib/api/secrets";
+import { SECRET_KIND } from "@/lib/api/secrets-types";
 
 // next/navigation + the server action module are the only runtime deps
 // SecretsList reaches for; the dynamic edit/rename islands render null while
