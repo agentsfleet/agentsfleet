@@ -10,7 +10,7 @@ vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
 import { HERO_HEADLINE } from "./lib/marketing-copy";
-import { APP_BASE_URL } from "./config";
+import { WAITLIST_URL } from "./config";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -68,12 +68,12 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     );
   });
 
-  it("renders a Dashboard link for returning users", () => {
+  it("routes the Dashboard link to the waitlist", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
-    expect(cta).toHaveAttribute("href", APP_BASE_URL);
+    expect(cta).toHaveAttribute("href", WAITLIST_URL);
     expect(cta).toHaveAttribute("target", "_blank");
     expect(cta).toHaveAttribute("rel", "noopener noreferrer");
     expect(cta.textContent).toContain("dashboard");

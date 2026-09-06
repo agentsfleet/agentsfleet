@@ -55,10 +55,8 @@ test.describe("Cross-page link coverage", () => {
       "https://docs.agentsfleet.net",
     );
 
-    // The Hero primary copy affordance is a clipboard-copy button, not a docs anchor.
-    const heroCtaPrimary = page.getByTestId("hero-cta-primary");
-    await expect(heroCtaPrimary).toHaveJSProperty("tagName", "BUTTON");
-    await expect(heroCtaPrimary).not.toHaveAttribute("href", /./);
+    await expect(page.getByRole("button", { name: /copy the install command/i })).toHaveCount(0);
+    await expect(page.getByTestId("hero-cta-early-access")).toHaveAttribute("href", /\/waitlist$/);
 
     await page.getByTestId("hero-promo-pill").click();
     await expect(page).toHaveURL(/\/#pricing$/);

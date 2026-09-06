@@ -16,12 +16,12 @@ test.describe("Footer navigation", () => {
     );
   });
 
-  test("footer Dashboard matches the header app destination", async ({ page }) => {
+  test("footer Dashboard matches the header waitlist destination", async ({ page }) => {
     await page.goto("/agents");
     const header = page.getByTestId("header-install-cta");
     await expect(header).toHaveText("dashboard");
     const href = await header.getAttribute("href");
-    expect(href).toMatch(/^https?:\/\//);
+    expect(href).toMatch(/\/waitlist$/);
     await expect(page.getByRole("contentinfo").getByRole("link", { name: "dashboard", exact: true })).toHaveAttribute("href", href!);
   });
 

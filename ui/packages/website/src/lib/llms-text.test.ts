@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INSTALL_COMMAND, DOCS_URL, GITHUB_URL, MARKETING_SITE_URL } from "../config";
+import { DOCS_URL, GITHUB_URL, MARKETING_SITE_URL } from "../config";
 import {
   buildLlmsFullText,
   buildLlmsIndexText,
@@ -16,7 +16,6 @@ import {
 const inputs = {
   docsUrl: DOCS_URL,
   githubUrl: GITHUB_URL,
-  installCommand: INSTALL_COMMAND,
   siteUrl: MARKETING_SITE_URL,
 } as const;
 
@@ -35,7 +34,7 @@ describe("llms text builders", () => {
     expect(body).toContain(`[Docs](${DOCS_URL})`);
     expect(body).toContain("[OpenAPI](/openapi.json)");
     expect(body).toContain(`[Source](${GITHUB_URL})`);
-    expect(body).toContain(`Install: \`${INSTALL_COMMAND}\``);
+    expect(body).not.toContain("curl -fsSL");
   });
 
   it("should trim a trailing slash from the site URL when building anchors", () => {
@@ -63,6 +62,6 @@ describe("llms text builders", () => {
     }
     expect(body).toContain(PRICING_COPY.note);
     expect(body).not.toMatch(/\$\d|starter credit|zero markup/i);
-    expect(body).toContain(`- Install: ${INSTALL_COMMAND}`);
+    expect(body).not.toContain("curl -fsSL");
   });
 });

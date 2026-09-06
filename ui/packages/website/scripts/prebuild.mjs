@@ -15,7 +15,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { DOCS_URL, GITHUB_URL, INSTALL_COMMAND, MARKETING_SITE_URL } from "../src/config";
+import { DOCS_URL, GITHUB_URL, MARKETING_SITE_URL } from "../src/config";
 import { buildLlmsFullText, buildLlmsIndexText } from "../src/lib/llms-text";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,6 @@ await Bun.write(dst, Bun.file(src));
 const llmsInputs = {
   docsUrl: DOCS_URL,
   githubUrl: GITHUB_URL,
-  installCommand: INSTALL_COMMAND,
   siteUrl: MARKETING_SITE_URL,
 };
 
