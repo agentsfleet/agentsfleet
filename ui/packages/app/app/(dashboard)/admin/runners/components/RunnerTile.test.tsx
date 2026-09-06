@@ -104,17 +104,17 @@ describe("RunnerTile", () => {
     expect(listRunnerLeasesActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("should fall back to the idle sentence when the lease read fails", async () => {
+  it("reports unavailable activity when a busy runner lease read fails", async () => {
     listRunnerLeasesActionMock.mockResolvedValueOnce({
       ok: false,
       errorCode: "UZ-RUN-014",
       error: "runner read failed",
     });
     render(<RunnerTile runner={runner({ liveness: "busy" })} />);
-    // A failed work-line read degrades to idle copy — never an error state on
-    // a card, and never a fabricated fleet name.
+    // Failed activity reads must not contradict the known busy status.
     await waitFor(() => {
-      expect(screen.getByText("Idle. No active leases.")).toBeTruthy();
+      expect(screen.getByText("Activity unavailable. Inspect runner to retry.")).toBeTruthy();
+      expect(screen.queryByText("Idle. No active leases.")).toBeNull();
     });
   });
 

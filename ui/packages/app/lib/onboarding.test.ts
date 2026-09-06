@@ -52,6 +52,9 @@ describe("deriveSteps — required steps from live state (3.1)", () => {
 });
 
 describe("model step ticked by default (3.5)", () => {
+  it("the credential step links to the workspace Secrets route", () => {
+    expect(deriveSteps(ZERO).find((step) => step.id === "connect_credential")?.href).toBe("secrets");
+  });
   it("model_configured is done and links to Models when a model is configured", () => {
     const model = deriveSteps({ ...ZERO, modelConfigured: true }).find(
       (s) => s.id === "model_configured",

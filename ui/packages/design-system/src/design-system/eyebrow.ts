@@ -1,6 +1,6 @@
 /*
  * EYEBROW_CLASS — the single source of truth for eyebrow typography: the
- * uppercase, letter-spaced monospace micro-label that marks a section, a
+ * uppercase, letter-spaced interface label that marks a section, a
  * field group, a table column, or a nav group (e.g. "MANAGE WORKSPACE",
  * "BALANCE", "ACTIVE MODEL", "CONNECTORS", column headers, sidebar groups).
  *
@@ -16,4 +16,4 @@
  * One constant collapses them to the eyebrow scale.
  */
 export const EYEBROW_CLASS =
-  "font-mono text-eyebrow uppercase leading-eyebrow tracking-eyebrow";
+  "font-sans text-eyebrow uppercase leading-eyebrow tracking-eyebrow";

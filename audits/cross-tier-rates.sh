@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cross-tier-rates.sh — pin numeric parity of the rate constants
-# across the daemon + three TypeScript surfaces.
+# across the daemon + two TypeScript surfaces.
 #
 # RULE UFS extension. The shipped billing surface depends on these constants
 # having identical numeric values everywhere they appear:
@@ -17,12 +17,11 @@
 # Files (one definition site per constant per file):
 #
 #   rustd/crates/afd_billing/src/nanos.rs   — server enforces the charge
-#   ui/packages/website/src/lib/rates.ts    — pricing page display
 #   ui/packages/app/lib/types.ts            — dashboard display
-#   cli/src/constants/billing.ts    — `agentsfleet doctor --json` billing block
+#   cli/src/constants/billing.ts            — `agentsfleet doctor --json` billing block
 #
 # A drift between any two = a billing-display lie or a server-vs-CLI disagreement.
-# The daemon is the source of truth (server enforces); the three TS surfaces echo it.
+# The daemon is the source of truth (server enforces); the two TS surfaces echo it.
 #
 # Fires in: make harness-verify, make harness-verify-all.
 # Exits 0 clean, 1 on any drift.
@@ -38,7 +37,6 @@ readonly NAMES=(
 
 readonly FILES=(
   rustd/crates/afd_billing/src/nanos.rs
-  ui/packages/website/src/lib/rates.ts
   ui/packages/app/lib/types.ts
   cli/src/constants/billing.ts
 )

@@ -148,7 +148,7 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
       {
         key: "what",
         header: "What",
-        cell: (item) => <span className="font-mono text-sm">{EVENT_HEADLINES[item.event_type]}</span>,
+        cell: (item) => <span className="font-sans text-sm">{EVENT_HEADLINES[item.event_type]}</span>,
       },
       {
         key: "detail",

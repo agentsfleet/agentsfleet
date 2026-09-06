@@ -147,29 +147,24 @@ describe("Integrations page", () => {
     expect(markup).toContain('data-catalog-error="UZ-INTERNAL-003:500"');
   });
 
-  it("degrades the Slack connector to not-connected when the status read errors", async () => {
+  it("does not claim Slack is disconnected when its status read fails", async () => {
     stubConnectors(
       { status: CONNECTOR_STATUS.notConnected },
       new Error("connector endpoint down"),
     );
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
-
-    expect(markup).toContain('data-slack-status="not_connected"');
+    await expect(renderPage(Page)).rejects.toThrow("connector endpoint down");
   });
 
-  it("degrades the GitHub connector to not-connected when the status read errors", async () => {
+  it("does not claim GitHub is disconnected when its status read fails", async () => {
     stubConnectors(
       new Error("connector endpoint down"),
       { status: CONNECTOR_STATUS.notConnected, team: null },
     );
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
-
-    // Never fabricate a connected pill: a failed status read reads as not-connected.
-    expect(markup).toContain('data-github-status="not_connected"');
+    await expect(renderPage(Page)).rejects.toThrow("connector endpoint down");
   });
 
   it("redirects to /sign-in when unauthenticated", async () => {

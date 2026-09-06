@@ -27,7 +27,7 @@ export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props
   return (
     <Card className="bg-card" aria-label={TRIGGERS_TITLE}>
       <CardContent className="flex flex-col gap-md py-4">
-        <h2 className="font-mono text-sm font-medium">{TRIGGERS_TITLE}</h2>
+        <h2 className="font-sans text-sm font-medium">{TRIGGERS_TITLE}</h2>
         {triggers.length === 0 ? (
           <EmptyState
             icon={<ZapIcon size={28} />}
@@ -67,7 +67,7 @@ function TriggerRow({
   return (
     <div className="flex flex-col gap-sm rounded-md border border-border p-md sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="font-mono text-sm text-foreground">{triggerLabel(trigger)}</p>
+        <p className="font-sans text-sm text-foreground">{triggerLabel(trigger)}</p>
         <p className="mt-xs break-words text-sm text-muted-foreground">
           {triggerDetail(trigger)}
         </p>

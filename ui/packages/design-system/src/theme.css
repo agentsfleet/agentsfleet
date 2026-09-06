@@ -60,6 +60,7 @@
 @theme inline {
   /* Color surface — the Tailwind utility names. */
   --color-background: var(--background);
+  --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -206,6 +207,7 @@
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);
+  --font-display: var(--ff-display);
   --font-mono: var(--ff-mono);
 
   /* Spacing — forward Layer 0 --sp-* to Tailwind --spacing-* utilities

@@ -52,7 +52,7 @@ describe("dashboard primitives", () => {
 
   it("renders a meta grid with tokenized labels", () => {
     render(<MetaGrid items={[{ label: "Credential", value: "GITHUB_TOKEN" }]} />);
-    expect(screen.getByText("Credential").className).toContain("font-mono");
+    expect(screen.getByText("Credential").className).toContain("font-sans");
     expect(screen.getByText("GITHUB_TOKEN")).toBeTruthy();
   });
 

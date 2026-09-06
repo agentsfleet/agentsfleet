@@ -45,14 +45,14 @@ describe("CreateWorkspaceDialog component", () => {
   it("submits the trimmed workspace name through the native form", async () => {
     const user = userEvent.setup({ delay: null });
     const { props } = await renderDialog();
-    await user.type(screen.getByLabelText("Name"), "  acme-prod  ");
+    await user.type(screen.getByLabelText("Name (optional)"), "  acme-prod  ");
     await user.click(screen.getByTestId("workspace-create-submit"));
     expect(props.onSubmit).toHaveBeenCalledWith("acme-prod");
   });
 
   it("trims ASCII edges but preserves Unicode whitespace", async () => {
     const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name");
+    const input = screen.getByLabelText("Name (optional)");
     fireEvent.change(input, {
       target: { value: " \t\u00a0acme\u3000\r\n" },
     });
@@ -61,48 +61,19 @@ describe("CreateWorkspaceDialog component", () => {
     expect(props.onSubmit).toHaveBeenCalledWith("\u00a0acme\u3000");
   });
 
-  it("rejects a name made only of Unicode whitespace", async () => {
+  it.each(["", "   ", "\u00a0\u3000"])("allows an automatic name for blank input %j", async (value) => {
     const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name") as HTMLInputElement;
-    const reportValidity = vi
-      .spyOn(input, "reportValidity")
-      .mockReturnValue(false);
-    fireEvent.change(input, { target: { value: "\u00a0\u3000" } });
-    fireEvent.submit(screen.getByTestId("workspace-create-form"));
-
-    expect(props.onSubmit).not.toHaveBeenCalled();
-    expect(input.validationMessage).toBe("Enter a workspace name.");
-    expect(reportValidity).toHaveBeenCalledOnce();
-  });
-
-  it("requires a non-blank name before submitting", async () => {
-    const user = userEvent.setup({ delay: null });
-    const { props } = await renderDialog();
-    await user.click(screen.getByTestId("workspace-create-submit"));
-    expect(props.onSubmit).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("Name") as HTMLInputElement).required).toBe(
-      true,
-    );
-  });
-
-  it("rejects whitespace submitted outside native validation", async () => {
-    const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name") as HTMLInputElement;
-    const reportValidity = vi
-      .spyOn(input, "reportValidity")
-      .mockReturnValue(false);
-    fireEvent.change(input, { target: { value: "   " } });
-    fireEvent.submit(screen.getByTestId("workspace-create-form"));
-    expect(props.onSubmit).not.toHaveBeenCalled();
-    expect(input.validationMessage).toBe("Enter a workspace name.");
-    expect(reportValidity).toHaveBeenCalledOnce();
-    fireEvent.input(input, { target: { value: "a" } });
-    expect(input.validationMessage).toBe("");
+    const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
+    fireEvent.change(input, { target: { value } });
+    fireEvent.click(screen.getByTestId("workspace-create-submit"));
+    expect(props.onSubmit).toHaveBeenCalledWith("");
+    expect(input.required).toBe(false);
+    expect(document.getElementById(input.getAttribute("aria-describedby")!)?.textContent).toBe("Leave blank to generate a workspace name automatically.");
   });
 
   it("rejects a name longer than 128 Unicode code points", async () => {
     const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name") as HTMLInputElement;
+    const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
     const reportValidity = vi
       .spyOn(input, "reportValidity")
       .mockReturnValue(false);
@@ -111,11 +82,13 @@ describe("CreateWorkspaceDialog component", () => {
     expect(props.onSubmit).not.toHaveBeenCalled();
     expect(input.validationMessage).toBe("Use 128 characters or fewer.");
     expect(reportValidity).toHaveBeenCalledOnce();
+    fireEvent.input(input, { target: { value: "a" } });
+    expect(input.validationMessage).toBe("");
   });
 
   it("rejects directional formatting and Unicode line separators", async () => {
     const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name") as HTMLInputElement;
+    const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
     const reportValidity = vi
       .spyOn(input, "reportValidity")
       .mockReturnValue(false);
@@ -133,7 +106,7 @@ describe("CreateWorkspaceDialog component", () => {
   it("submits with Enter without a custom key handler", async () => {
     const user = userEvent.setup({ delay: null });
     const { props } = await renderDialog();
-    await user.type(screen.getByLabelText("Name"), "via-enter{Enter}");
+    await user.type(screen.getByLabelText("Name (optional)"), "via-enter{Enter}");
     expect(props.onSubmit).toHaveBeenCalledWith("via-enter");
   });
 
@@ -144,13 +117,13 @@ describe("CreateWorkspaceDialog component", () => {
         "Use workspaces to organize fleets, teammates, and credentials within your organization.",
       ),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Name")).toBeTruthy();
+    expect(screen.getByLabelText("Name (optional)")).toBeTruthy();
   });
 
   it("shows a controlled error without clearing the attempted name", async () => {
     const user = userEvent.setup({ delay: null });
     const { CreateWorkspaceDialog, props, view } = await renderDialog();
-    const input = screen.getByLabelText("Name") as HTMLInputElement;
+    const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
     await user.type(input, "kept-name");
     view.rerender(
       React.createElement(CreateWorkspaceDialog, {
@@ -167,7 +140,7 @@ describe("CreateWorkspaceDialog component", () => {
   it("keeps dismissal available while a request is pending", async () => {
     const user = userEvent.setup({ delay: null });
     const { props } = await renderDialog({ pending: true });
-    expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(
+    expect((screen.getByLabelText("Name (optional)") as HTMLInputElement).disabled).toBe(
       true,
     );
     expect(
@@ -192,12 +165,12 @@ describe("CreateWorkspaceDialog component", () => {
   it("starts with a clean uncontrolled input after close and reopen", async () => {
     const user = userEvent.setup({ delay: null });
     const { CreateWorkspaceDialog, props, view } = await renderDialog();
-    await user.type(screen.getByLabelText("Name"), "draft-name");
+    await user.type(screen.getByLabelText("Name (optional)"), "draft-name");
     view.rerender(
       React.createElement(CreateWorkspaceDialog, { ...props, open: false }),
     );
     view.rerender(React.createElement(CreateWorkspaceDialog, props));
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Name (optional)") as HTMLInputElement).value).toBe("");
   });
 
   it("restores focus through the parent callback after closing", async () => {

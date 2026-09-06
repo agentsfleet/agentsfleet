@@ -20,14 +20,14 @@ import { useErrorRetry } from "./use-error-retry";
 //      back. `useErrorRetry` owns the ladder and the backoff.
 //   2. It REPORTS. The boundary used to take `error` and drop it, so every
 //      dashboard failure was invisible — no log, no count, no way to know a
-//      route was broken for someone. The support line below promises a human
-//      is on it, and that promise is only as true as this capture.
+//      route was broken for someone. Capturing a failure does not imply that
+//      a support agent has already started investigating it.
 
 const ERROR_TITLE = "Couldn't load this page";
 const ERROR_DESCRIPTION_RETRYING = "This looks transient — retrying automatically.";
 const ERROR_DESCRIPTION_EXHAUSTED =
   "This did not clear on its own. Retry, or come back in a few minutes.";
-const SUPPORT_NOTE = "A support agent is working on this.";
+const SUPPORT_NOTE = "If this continues, contact support.";
 const RETRY_NOW_LABEL = "Retry now";
 const RETRY_LABEL = "Retry";
 
@@ -72,7 +72,7 @@ export default function DashboardError({
             {/* The countdown is announced here, once, rather than from the ring:
                 `polite` so it never interrupts, and the attempt count tells a
                 non-sighted user the page is working through a budget. */}
-            <p aria-live="polite" className="font-mono text-label text-muted-foreground">
+            <p aria-live="polite" className="font-sans text-label text-muted-foreground">
               {exhausted
                 ? `Stopped after ${maxAttempts} automatic attempts.`
                 : `Retrying in ${secondsRemaining}s · attempt ${attempt} of ${maxAttempts}`}
@@ -80,7 +80,7 @@ export default function DashboardError({
             <Button type="button" onClick={retry.retryNow} data-testid="dashboard-error-retry">
               {exhausted ? RETRY_LABEL : RETRY_NOW_LABEL}
             </Button>
-            <p className="font-mono text-label text-muted-foreground">{SUPPORT_NOTE}</p>
+            <p className="font-sans text-label text-muted-foreground">{SUPPORT_NOTE}</p>
           </div>
         }
       />

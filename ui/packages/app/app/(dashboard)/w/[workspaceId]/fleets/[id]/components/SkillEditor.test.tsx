@@ -244,7 +244,8 @@ describe("SkillEditor", () => {
   it("cancels an edit and restores the durable document", async () => {
     await edit(SOURCE_FIELD.skill, "# SKILL\nthrow this away");
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Edit SKILL.md" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "SKILL.md" }).hasAttribute("readonly")).toBe(true);
     expect(screen.getByLabelText("SKILL.md").textContent).toContain("original");
   });
 

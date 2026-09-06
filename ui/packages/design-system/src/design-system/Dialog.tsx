@@ -1,8 +1,9 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { type ComponentProps, type HTMLAttributes } from "react";
+import { type ComponentProps, type HTMLAttributes, useRef } from "react";
 import { cn } from "../utils";
+import { Button } from "./Button";
 
 /*
  * Dialog — Radix Dialog composition with semantic utilities. Client
@@ -28,7 +29,7 @@ export function DialogOverlay({ className, ref, ...props }: DialogOverlayProps) 
     <DialogPrimitive.Overlay
       ref={ref}
       className={cn(
-        "fixed inset-0 z-50 bg-black/60 backdrop-blur-sm",
+        "fixed inset-0 z-50 bg-overlay backdrop-blur-sm",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,
@@ -40,7 +41,8 @@ export function DialogOverlay({ className, ref, ...props }: DialogOverlayProps) 
 
 export type DialogContentProps = ComponentProps<typeof DialogPrimitive.Content>;
 
-export function DialogContent({ className, children, ref, ...props }: DialogContentProps) {
+export function DialogContent({ className, children, ref, onOpenAutoFocus, onCloseAutoFocus, ...props }: DialogContentProps) {
+  const openerRef = useRef<Element | null>(null);
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -48,7 +50,7 @@ export function DialogContent({ className, children, ref, ...props }: DialogCont
         ref={ref}
         className={cn(
           "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
-          "w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl",
+          "w-[calc(100%-var(--spacing-3xl))] max-w-lg rounded-lg border border-border-strong bg-card p-xl",
           // A fixed, centre-translated panel cannot be scrolled to by the page,
           // so a dialog taller than the viewport puts its own footer out of
           // reach — the submit button is unclickable rather than merely
@@ -61,14 +63,22 @@ export function DialogContent({ className, children, ref, ...props }: DialogCont
           className,
         )}
         {...props}
+        onOpenAutoFocus={(event) => {
+          openerRef.current = document.activeElement;
+          onOpenAutoFocus?.(event);
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          const opener = openerRef.current;
+          if (!event.defaultPrevented && opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
+            opener.focus();
+            event.preventDefault();
+          }
+        }}
       >
         {children}
-        <DialogClose
-          className={cn(
-            "absolute right-4 top-4 rounded-sm opacity-70 transition-opacity",
-            "hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring",
-          )}
-        >
+        <DialogClose asChild>
+          <Button variant="ghost" size="icon" className="absolute right-sm top-sm">
           <svg
             className="h-4 w-4"
             xmlns="http://www.w3.org/2000/svg"
@@ -84,6 +94,7 @@ export function DialogContent({ className, children, ref, ...props }: DialogCont
             <path d="m6 6 12 12" />
           </svg>
           <span className="sr-only">Close</span>
+          </Button>
         </DialogClose>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -91,7 +102,7 @@ export function DialogContent({ className, children, ref, ...props }: DialogCont
 }
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-1.5 pb-4", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-1.5 pb-4 pr-10", className)} {...props} />;
 }
 
 export type DialogTitleProps = ComponentProps<typeof DialogPrimitive.Title>;

@@ -1,180 +1,44 @@
-import {
-  Button,
-  Card,
-  DisplayLG,
-  List,
-  ListItem,
-  SectionLabel,
-} from "@agentsfleet/design-system";
+import { Button, Card, DisplayLG, Section, SectionLabel } from "@agentsfleet/design-system";
 import { WAITLIST_URL } from "../config";
-import { trackSignupStarted } from "../analytics/posthog";
+import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";
-import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-copy";
-import { RATES_DISPLAY } from "../lib/rates";
+import { HERO_PRIMARY_LABEL, PRICING_COPY } from "../lib/marketing-copy";
 
-const PRICING_TRACKING_SOURCE_PREFIX = "pricing_";
-
-/// PostHog property values are snake_case — `pricing_trial`, `pricing_usage`,
-/// `pricing_enterprise` — while DOM identifiers are kebab-case. One plan id
-/// carries a hyphen (`early-access`), so the two conventions have to be bridged
-/// somewhere. Doing it here keeps `plan.id` the single source of truth for the
-/// card's `data-testid` AND its analytics source, instead of a second field that
-/// can drift from the first.
-function trackingSourceFor(planId: string): string {
-  return `${PRICING_TRACKING_SOURCE_PREFIX}${planId.replace(/-/g, "_")}`;
-}
-const ENTERPRISE_PLAN_ID = "enterprise";
-const EARLY_ACCESS_PLAN_ID = "early-access";
-const USAGE_PLAN_ID = "usage";
-
-/*
- * Pricing — one simple story: free during early access, then a single
- * usage-based run rate billed by the second only while a Fleet is actually
- * working (same rate on the platform or your own provider key), and the model
- * bill is always yours. No struck-through gradient, no staged billing grid,
- * no tier-extras list — those buried the "it's free right now" headline. Rate
- * Rate values come from RATES_DISPLAY (lib/rates.ts), the changelog-pinned single
- * source; this component only arranges them.
- */
 export default function Pricing() {
   return (
-    <section id="pricing" className="site-section" data-testid="pricing-block">
-      <div className="wrap flex flex-col items-center gap-6 text-center">
-        <SectionLabel className="mb-0">pricing</SectionLabel>
-        <p
-          data-testid="pricing-early-access-banner"
-          className="font-mono text-label uppercase tracking-label text-text-muted border border-border-strong rounded-sm px-md py-sm m-0"
-        >
-          {RATES_DISPLAY.EARLY_ACCESS_PILL} — {PRICING_COPY.earlyAccessSuffix}
-        </p>
-        <DisplayLG>
-          {PRICING_COPY.headline}
-        </DisplayLG>
-        <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-measure">
-          {PRICING_COPY.lede}
-        </p>
-
-        <div className="grid w-full max-w-content grid-cols-1 gap-4 text-left lg:grid-cols-3">
-          {PRICING_PLANS.map((plan) => (
-            <PricingPlanCard key={plan.id} plan={plan} />
-          ))}
+    <Section asChild className="site-section" data-testid="pricing-block">
+      <section id="pricing" aria-label="Early access and pricing">
+        <div className="wrap early-access-layout">
+          <div className="flex flex-col items-start gap-5">
+            <SectionLabel className="mb-0">Build with us</SectionLabel>
+            <DisplayLG>{PRICING_COPY.headline}</DisplayLG>
+            <p className="text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">{PRICING_COPY.lede}</p>
+            <EarlyAccessAction />
+            <a href={`mailto:${SUPPORT_EMAIL}`}
+              onClick={() => trackNavigationClicked({ source: "pricing_contact", surface: "pricing", target: "email" })}
+              className="inline-flex min-h-11 items-center text-body-sm text-text-muted underline underline-offset-4">
+              Tell us about your workflow
+            </a>
+          </div>
+          <Card className="flex flex-col gap-5">
+            <p data-testid="pricing-early-access-banner" className="m-0 text-body-sm font-medium text-pulse">{PRICING_COPY.status}</p>
+            <h3 className="m-0 font-sans text-heading font-medium">What to expect on cost</h3>
+            <p className="m-0 text-body-sm text-text-muted">{PRICING_COPY.runtime}</p>
+            <p className="m-0 text-body-sm text-text-muted">{PRICING_COPY.models}</p>
+            <p className="m-0 border-t border-border pt-4 text-body-sm text-text">{PRICING_COPY.note}</p>
+          </Card>
         </div>
-
-        <p className="font-sans text-body-sm leading-body-sm text-text-subtle m-0 max-w-measure">
-          {PRICING_COPY.note}
-        </p>
-      </div>
-    </section>
+      </section>
+    </Section>
   );
 }
 
-function PricingPlanCard({ plan }: { plan: PricingPlan }) {
-  // Pre-launch: both the early-access ("Start free") and usage ("Get early
-  // access") CTAs route to the waitlist; only Enterprise stays a contact mailto.
-  const ctaHref =
-    plan.id === ENTERPRISE_PLAN_ID
-      ? `mailto:${SUPPORT_EMAIL}?subject=Enterprise%20agentsfleet`
-      : WAITLIST_URL;
-  // The waitlist is an external (Clerk) host — open it in a new tab to match
-  // every other external link in the app and keep the marketing page alive.
-  // The Enterprise mailto stays same-tab (a new tab for a mailto is pointless).
-  const ctaExternal = ctaHref === WAITLIST_URL;
-  const badge = "badge" in plan ? plan.badge : undefined;
-  const testId = `pricing-card-${plan.id}`;
-
+function EarlyAccessAction() {
   return (
-    <Card
-      featured={plan.featured}
-      badgeLabel={badge}
-      data-testid={testId}
-      className="flex h-full flex-col gap-5"
-    >
-      <div className="flex items-center gap-3">
-        <h3 className="font-mono text-label uppercase tracking-label text-text-muted m-0">
-          {plan.name}
-        </h3>
-      </div>
-
-      <div className="font-mono text-fluid-display-md leading-display-md tracking-display-md text-text tabular-nums">
-        {plan.id === USAGE_PLAN_ID ? (
-          <>
-            <span data-testid="pricing-rate-run">{RATES_DISPLAY.RUN_RATE_PER_SEC}</span>
-            <span className="text-body text-text-muted"> · </span>
-            <span data-testid="pricing-rate-run-hourly">{RATES_DISPLAY.RUN_RATE_PER_HOUR}</span>
-          </>
-        ) : (
-          // Only the usage plan carries a per-unit rate, and it renders through
-          // the arm above; every other plan states a bare price.
-          <>{plan.price}</>
-        )}
-      </div>
-
-      {plan.id === USAGE_PLAN_ID ? (
-        <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
-          Events are{" "}
-          <span data-testid="pricing-rate-event" className="text-text">
-            {RATES_DISPLAY.EVENT_RATE}
-          </span>
-          . Usage is metered only while running.
-        </p>
-      ) : null}
-
-      {plan.id === EARLY_ACCESS_PLAN_ID ? (
-        <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
-          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit.
-        </p>
-      ) : null}
-
-      <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
-        {plan.features.map((feature) => (
-          <ListItem key={feature} bullet="arrow" className="font-sans text-body-sm text-text-muted">
-            {feature}
-          </ListItem>
-        ))}
-      </List>
-
-      <Button
-        asChild
-        variant="secondary"
-        className="mt-auto min-h-11 w-full justify-center"
-      >
-        <a
-          href={ctaHref}
-          {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-          data-testid={`pricing-cta-${plan.id}`}
-          onClick={() =>
-            trackSignupStarted({
-              source: trackingSourceFor(plan.id),
-              surface: "pricing",
-              mode: "humans",
-            })
-          }
-        >
-          {plan.cta}
-        </a>
-      </Button>
-
-      {plan.id === ENTERPRISE_PLAN_ID ? (
-        <p
-          className="font-sans text-body-sm leading-body-sm text-text-muted m-0 text-center"
-          data-testid="pricing-enterprise-email"
-        >
-          or email{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="text-text hover:underline"
-            onClick={() =>
-              trackSignupStarted({
-                source: `${trackingSourceFor(ENTERPRISE_PLAN_ID)}_email`,
-                surface: "pricing",
-                mode: "humans",
-              })
-            }
-          >
-            {SUPPORT_EMAIL}
-          </a>
-        </p>
-      ) : null}
-    </Card>
+    <Button wrap asChild className="min-h-11" data-testid="pricing-cta-early-access">
+      <a href={WAITLIST_URL} target="_blank" rel="noopener noreferrer"
+        onClick={() => trackSignupStarted({ source: "pricing_early_access", surface: "pricing", mode: "humans" })}
+      >{HERO_PRIMARY_LABEL} <span aria-hidden="true">→</span></a>
+    </Button>
   );
 }

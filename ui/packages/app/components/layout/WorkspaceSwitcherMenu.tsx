@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Nav,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { EVENTS } from "@/lib/analytics/events";
@@ -42,7 +43,14 @@ export default function WorkspaceSwitcherMenu({
     workspaceIdFromPath(pathname) ?? workspaces[0]?.id ?? null;
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
+  const firstItemRef = useRef<HTMLDivElement>(null);
+  const entryFocusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) entryFocusedRef.current = false;
+  }, [open]);
 
   const creation = useWorkspaceCreation({
     onSuccess: (workspace) => {
@@ -108,8 +116,8 @@ export default function WorkspaceSwitcherMenu({
 
   return (
     <>
-      <div className="inline-flex flex-wrap items-center gap-2">
-        <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <Nav ref={setPortalContainer} aria-label="Workspaces" className="inline-flex min-w-0 items-center gap-2">
+        <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
           <DropdownMenuTrigger asChild>
             <WorkspaceSwitcherTrigger
               ref={switcherTriggerRef}
@@ -121,8 +129,15 @@ export default function WorkspaceSwitcherMenu({
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent
+            portalContainer={portalContainer}
             align="start"
             className="max-w-trim overflow-hidden"
+            onFocusCapture={(event) => {
+              // The lazy menu mounts after the opening keypress, before Radix can observe it.
+              if (!open || event.target !== event.currentTarget || entryFocusedRef.current) return;
+              entryFocusedRef.current = true;
+              firstItemRef.current?.focus();
+            }}
           >
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -130,11 +145,12 @@ export default function WorkspaceSwitcherMenu({
               className="max-h-80 overflow-y-auto"
               data-testid="workspace-list-scroll"
             >
-              {menuWorkspaces.map((workspace) => {
+              {menuWorkspaces.map((workspace, index) => {
                 const label = workspace.name ?? "Unnamed workspace";
                 return (
                   <DropdownMenuItem
                     key={workspace.id}
+                    ref={index === 0 ? firstItemRef : undefined}
                     onSelect={() => pick(workspace.id)}
                     data-active={workspace.id === activeId ? "true" : undefined}
                   >
@@ -156,6 +172,7 @@ export default function WorkspaceSwitcherMenu({
             </div>
             {menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
+              ref={menuWorkspaces.length === 0 ? firstItemRef : undefined}
               onSelect={() => setCreateDialogOpen(true)}
               disabled={creation.locked}
               aria-disabled={creation.locked || undefined}
@@ -166,7 +183,7 @@ export default function WorkspaceSwitcherMenu({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </Nav>
       <CreateWorkspaceDialogDynamic
         open={createOpen}
         pending={creation.pending}

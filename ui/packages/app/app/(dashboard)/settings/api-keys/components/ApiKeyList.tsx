@@ -128,7 +128,7 @@ export default function ApiKeyList({
 function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="truncate font-mono text-sm">{k.key_name}</span>
+      <span className="truncate text-sm">{k.key_name}</span>
       <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
     </div>
   );
@@ -138,21 +138,23 @@ function KeyNameCell({ k }: { k: ApiKeyRow }) {
 // as nullable, so Time renders only for a real timestamp (never for null).
 function KeyActivityCell({ k }: { k: ApiKeyRow }) {
   return (
-    <span className="font-mono text-xs tabular-nums text-muted-foreground">
-      created <Time value={new Date(k.created_at)} format="relative" /> ·{" "}
+    <div className="flex flex-col items-start gap-xs text-xs text-muted-foreground">
+      <Time value={new Date(k.created_at)} format="relative" className="font-mono tabular-nums" />
+      <span>
       {k.last_used_at ? (
         <>
-          last used <Time value={new Date(k.last_used_at)} format="relative" />
+          last used <Time value={new Date(k.last_used_at)} format="relative" className="font-mono tabular-nums" />
         </>
       ) : (
         "never used"
       )}
       {k.revoked_at ? (
         <>
-          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" />
+          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" className="font-mono tabular-nums" />
         </>
       ) : null}
-    </span>
+      </span>
+    </div>
   );
 }
 

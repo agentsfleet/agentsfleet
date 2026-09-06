@@ -55,6 +55,7 @@ export default function AddFleetDialog({
   onOpenChange,
   prefillRepo,
   prefillRef,
+  restoreFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,6 +63,7 @@ export default function AddFleetDialog({
   prefillRepo?: string;
   /** The row's stored ref on the Fetch-update path — the pin the fetch honors. */
   prefillRef?: string;
+  restoreFocus?: () => void;
 }) {
   // Refetch is the row-driven path: a prefilled repo pins the source. An empty
   // string is not a pin, so it stays create-mode rather than rendering a broken
@@ -137,7 +139,10 @@ export default function AddFleetDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent onCloseAutoFocus={restoreFocus ? (event) => {
+        event.preventDefault();
+        restoreFocus();
+      } : undefined}>
         <DialogHeader>
           <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>

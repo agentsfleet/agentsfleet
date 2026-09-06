@@ -31,7 +31,7 @@ export function TerminalPanel({
           <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
           <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
         </span>
-        <span className="font-mono text-label text-muted-foreground">{title}</span>
+        <span className="font-sans text-label text-muted-foreground">{title}</span>
         {tag ? (
           <span className={cn("ml-auto text-text-subtle", EYEBROW_CLASS)}>
             {tag}

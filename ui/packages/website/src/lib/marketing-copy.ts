@@ -1,31 +1,28 @@
 export const PRODUCT_NAME = "agentsfleet";
 
-export const HERO_HEADLINE = "A fleet, ready to run.";
+export const HERO_HEADLINE = "AI teammates for incident response.";
 
 // Tokens that must survive in the hero copy (marketing-spec.test.ts pins
 // presence). They double as the "Pillars" bullets in llms-full.txt, so keep
 // them phrase-shaped and meaningful, not single words.
 export const PILLAR_TOKENS = [
-  "AI teammates",
-  "ready to run",
-  "recurring engineering work",
-  "wake.on.event",
+  "AI incident teammate",
+  "logs, metrics, and code",
+  "You control access and decide what ships.",
 ] as const;
 
-// Hero lede, warm/anti-jargon voice (design-consultation decision). Rendered as
-// one sentence with two emphasized phrases. Verbatim payoff line the user
-// approved in the hero preview: "Prebuilt AI teammates that take the recurring
-// engineering work off your plate — and hand you the change to approve."
+// Lead with the work a visitor can delegate, then explain the control boundary.
 export const HERO_LEDE_PARTS = {
-  intro: "Prebuilt",
-  teammates: "AI teammates",
-  middle: "that take the",
-  recurringWork: "recurring engineering work",
-  outro: "off your plate — and hand you the change to approve.",
+  intro: "Your",
+  teammates: "AI incident teammate",
+  middle: "investigates failures using your",
+  recurringWork: "logs, metrics, and code",
+  outro: "to explain what went wrong and help prepare a fix. You control access and decide what ships.",
 } as const;
 
-export const HERO_PRIMARY_LABEL = "Get early access";
-export const HERO_SECONDARY_LABEL = "Meet the fleet";
+export const HERO_PRIMARY_LABEL = "Request early access";
+export const HERO_SECONDARY_LABEL = "See how it works";
+export const HOW_IT_WORKS_ANCHOR_ID = "how-it-works";
 export const LOOP_ANCHOR_ID = "operational-loop";
 
 export type SourceCategory = {
@@ -62,13 +59,11 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
   },
 ] as const;
 
-// The hero owns "A fleet, ready to run." now, so the prebuilt-fleets wall gets
-// its own heading. "Meet the fleet" matches the hero's secondary CTA, which
-// anchors to this section.
+// The catalogue anchor matches the hero's secondary action.
 export const FLEETS_SECTION_HEADING = "Meet the fleet.";
 
 export const FLEETS_SECTION_LEDE =
-  "Prebuilt and proven. Install one, point it at your stack, and it works the same day — every action gated, every run a replayable log. More teammates join the fleet over time.";
+  "Start with a job you want off your plate. Configure a prebuilt fleet for your stack, or connect a channel teammate in Slack. Explore the workflows below; hosted access is through the waitlist.";
 
 export type FleetIntegration = {
   label: string;
@@ -80,47 +75,68 @@ export type PrebuiltFleet = {
   category: string;
   name: string;
   description: string;
+  trigger: string;
+  output: string;
+  control: string;
   integrations: readonly FleetIntegration[];
-  // Roadmap/forward-looking fleets (not yet a shipped prebuilt) render a
-  // "coming soon" badge and a waitlist CTA instead of "Try it".
+  // Availability is separate from the hosted-access waitlist.
   comingSoon?: boolean;
 };
 
-const INTEGRATION_ICONS = {
+export const INTEGRATION_ICONS = {
   github: { label: "GitHub", icon: "/logos/github.svg" },
-  fly: { label: "Fly.io", icon: "/logos/fly.svg" },
   grafana: { label: "Grafana", icon: "/logos/grafana.svg" },
+  elasticsearch: { label: "Elasticsearch", icon: "/logos/elasticsearch.svg" },
   slack: { label: "Slack", icon: "/logos/slack.svg" },
 } as const satisfies Record<string, FleetIntegration>;
 
 export const PREBUILT_FLEETS: readonly PrebuiltFleet[] = [
   {
-    id: "auto-reviewer",
-    category: "Code review",
-    name: "Auto Reviewer",
-    description:
-      "Wakes on every pull request, runs a full review against the diff and the surrounding code, and pushes inline feedback before a human opens the tab.",
-    integrations: [INTEGRATION_ICONS.github],
-  },
-  {
     id: "diagnose",
     category: "Incident response",
-    name: "Diagnose the Problem",
+    name: "Incident Response",
     description:
-      "Triggered from GitHub, it pulls logs from Fly and dashboards from Grafana, correlates the failure into one cause, and posts the diagnosis to Slack.",
+      "Find the cause of an incident, then prepare a fix for your team to review.",
+    trigger: "Scheduled telemetry checks, a failed GitHub workflow, or a request from your team.",
+    output: "A diagnosis using Grafana and Elasticsearch, plus a draft pull request when a fix is appropriate.",
+    control: "Approve repository write access, then review and merge the diff. The fleet never merges or deploys.",
     integrations: [
       INTEGRATION_ICONS.github,
-      INTEGRATION_ICONS.fly,
       INTEGRATION_ICONS.grafana,
+      INTEGRATION_ICONS.elasticsearch,
       INTEGRATION_ICONS.slack,
     ],
+  },
+  {
+    id: "slack-teammate",
+    category: "Channel teammate",
+    name: "Slack Teammate",
+    description: "Connect Slack for a teammate that carries channel memory across threads.",
+    trigger: "An @agentsfleet mention in a channel where the bot is invited.",
+    output: "An in-thread answer informed by that channel’s saved context.",
+    control: "Mention-only and read-only. It never acts unattended or changes your systems.",
+    integrations: [INTEGRATION_ICONS.slack],
+  },
+  {
+    id: "auto-reviewer",
+    category: "Code review",
+    name: "PR Reviewer",
+    description:
+      "Give your team another set of eyes on the diff and its surrounding code.",
+    trigger: "Selected pull-request events in configured repositories, after you connect GitHub and approve access.",
+    output: "Review comments on the pull request.",
+    control: "You choose the repositories and permissions. You review and merge.",
+    integrations: [INTEGRATION_ICONS.github],
   },
   {
     id: "security-reviewer",
     category: "Security",
     name: "Security Reviewer",
     description:
-      "Scans each pull request and its dependencies for vulnerabilities and exposed secrets, reproduces the finding, opens a remediation pull request, and holds the fix at human approval while flagging the team in Slack.",
+      "Planned: investigate vulnerabilities and exposed secrets in your own code and dependencies.",
+    trigger: "Planned pull-request and scheduled scans.",
+    output: "Proposed findings with evidence and a remediation pull request.",
+    control: "Not available yet. Planned remediation stays subject to human approval.",
     integrations: [INTEGRATION_ICONS.github, INTEGRATION_ICONS.slack],
     comingSoon: true,
   },
@@ -140,75 +156,47 @@ export const FLEET_PILLARS: readonly FleetPillar[] = [
   {
     id: "sandbox",
     eyebrow: "Isolated",
-    title: "A private machine per run",
+    title: "Access you control",
     description:
-      "Every Fleet runs in its own clean sandbox — a dedicated shell, tools, and scratch space. It clones the workspace, reads the context, writes the patch, and runs the checks without trampling anyone else's environment.",
+      "Fleets work within their configured runtime and tool permissions. Give each job the access it needs, and keep repository writes behind approval.",
   },
   {
     id: "learns",
     eyebrow: "Compounding",
-    title: "It learns how you operate",
+    title: "Context for the next job",
     description:
-      "No constant supervision. It sits inside the systems you connect, watches the work that actually happens, and models your stack in days, not weeks. Every recurrence starts where the last one left off.",
+      "Saved fleet memory carries useful context into later runs. The Slack teammate keeps channel context across threads, without reading other channels’ memory.",
   },
   {
     id: "proactive",
     eyebrow: "Proactive",
-    title: "It moves first",
+    title: "Starts when you choose",
     description:
-      "Wake it on an event, a schedule, or a webhook and it takes the initiative — watching deploys, logs, and tickets, surfacing only what needs you. And every step it takes is a replayable log you can audit line by line.",
+      "Configure supported events, schedules, or a manual request. Inspect the run history to understand what happened. The Slack channel teammate stays mention-only.",
   },
 ] as const;
 
-export const OPERATIONAL_KNOWLEDGE_HEADING =
-  "It remembers, so the next time is faster.";
+export const HOW_IT_WORKS_HEADING = "From scattered clues to a clear next step.";
 
-export const OPERATIONAL_KNOWLEDGE_LEDE =
-  "Every fix becomes memory. When the same problem comes back, your teammate already knows its shape — the scenario it wrote, the test it added, and the change that worked last time.";
-
-export const KNOWLEDGE_POINTS = [
-  {
-    number: "01",
-    title: "It names the problem",
-    description:
-      "The first ticket stops being a one-off. Your teammate files it as a named, recurring problem instead of scattered symptoms.",
-  },
-  {
-    number: "02",
-    title: "It keeps the receipts",
-    description:
-      "Logs, traces, and the change that fixed it stay together and replayable, instead of vanishing into a chat thread.",
-  },
-  {
-    number: "03",
-    title: "You still hold the merge",
-    description:
-      "It drafts the fix, but merging and shipping always wait for a human.",
-  },
-] as const;
-
-export const HOW_IT_WORKS_HEADING = "Push a pull request. Get a review back.";
-
-// Make explicit that the Auto Reviewer flow is one example, not the whole
-// product — the same loop runs for incidents, deploys, and security.
+// The incident example combines separately configured fleets; other triggers
+// and destinations use the same bounded execution model.
 export const HOW_IT_WORKS_FOOTNOTE =
-  "That's the Auto Reviewer — one teammate in the fleet. The same loop runs for incidents, deploys, and security reviews.";
+  "This example combines separately configured incident fleets. Connect the required evidence sources and Slack destination; approve repository access before repair runs.";
 
-// Three opinionated beats, rendered as a left-to-right flow in HowItWorks.tsx.
-// The concrete Auto Reviewer path (PR -> review -> Slack) stands in for the
-// loop; it reads far better than the old eight-step abstraction.
+// Machine-readable loop copy for llms-full.txt. The visual website example is
+// owned by FleetPreview, while this sequence explains a concrete PR-review run.
 export const LOOP_STEPS = [
   {
     number: "01",
     title: "You push a pull request",
     description:
-      "The Auto Reviewer wakes the moment the PR lands. No prompt, no queue, no setup.",
+      "Connect GitHub, select your repositories and events, and approve the grants. Matching pull-request events then wake the PR Reviewer.",
   },
   {
     number: "02",
     title: "It posts the review",
     description:
-      "It reads the diff and the code around it, then leaves inline comments before a human opens the tab.",
+      "It reads the diff and the code around it, then leaves review comments for your team.",
   },
   {
     number: "03",
@@ -218,75 +206,46 @@ export const LOOP_STEPS = [
   },
 ] as const;
 
-export const CAPABILITY_HEADING = "What every teammate ships with.";
+export const CAPABILITY_HEADING = "Helpful teammates. You stay in control.";
 
 export const RUNTIME_GUARANTEES_LABEL =
-  "Runtime guarantees under every run";
+  "Controls for every job";
 
 export const CAPABILITY_ITEMS = [
   {
     number: "01",
-    title: "Sandboxed runtime",
+    title: "Isolated workspaces",
     description:
-      "Bounded execution by construction. Every tool call runs inside the configured blast radius.",
+      "Each fleet works within the environment and permissions you configure.",
   },
   {
     number: "02",
-    title: "Vaulted credentials",
+    title: "Protected credentials",
     description:
-      "Secrets resolve at the tool boundary from the vault. They are not printed into prompts, logs, or tables.",
+      "Your credentials stay in the vault. Tools use them when needed without including them in prompts or logs.",
   },
   {
     number: "03",
-    title: "Approval gating",
+    title: "Your approval matters",
     description:
-      "Risky work blocks until a human approves. State survives worker restarts.",
+      "Work that requires approval waits for you. Pending approvals survive worker restarts.",
   },
   {
     number: "04",
-    title: "Open source + replay",
+    title: "Run history & budgets",
     description:
-      "The runtime is code you can read, and every run stays replayable from the event log.",
+      "Inspect run history and spending. Configure fleet budget limits; an active run can cross a limit before its next budget check.",
   },
 ] as const;
 
 export const PRICING_COPY = {
-  earlyAccessSuffix: "events and runtime on us",
-  headline: "Start free. Pay only while it runs.",
-  lede:
-    "Usage is metered per second — no seats, no tiers tax. Enterprise adds the controls large teams need.",
-  note:
-    "Usage rates are fixed and cross-tier-pinned. Enterprise is contact-only; no fabricated tier price.",
-  enterpriseCta: "Talk to us",
+  headline: "Bring a real workflow. Help shape what’s next.",
+  lede: "We’re looking for founders and infrastructure teams to try agentsfleet on their own work and tell us what helps, what breaks, and what’s missing.",
+  status: "Early access · pricing is being worked out",
+  note: "Pricing will be confirmed before paid usage. Early-access terms and any usage limits will be shared before you start.",
+  runtime: "Fleet runtime covers the work agentsfleet runs for you.",
+  models: "Model usage is separate. With your own model key, you pay your provider directly; that does not remove fleet runtime costs.",
 } as const;
-
-export const PRICING_PLANS = [
-  {
-    id: "early-access",
-    name: "Early access",
-    price: "$0",
-    features: ["Every event free", "Every run free", "Starter credit included", "Full product access"],
-    cta: "Start free",
-    featured: false,
-  },
-  {
-    id: "usage",
-    name: "Usage",
-    badge: "Team",
-    price: "metered",
-    features: ["Starter credit included", "Events always free", "Metered only while running", "Pay as you go"],
-    cta: HERO_PRIMARY_LABEL,
-    featured: true,
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: "Custom",
-    features: ["Single Sign-On (SSO)", "Audit export", "Dedicated runners", "Priority support"],
-    cta: PRICING_COPY.enterpriseCta,
-    featured: false,
-  },
-] as const;
 
 export const FAQ_WEDGE_ITEM = {
   q: "What does the Fleet read?",
@@ -294,9 +253,9 @@ export const FAQ_WEDGE_ITEM = {
 } as const;
 
 export const CTA_COPY = {
-  heading: "Meet the teammates who never skip the boring work.",
+  heading: "Start with one job you’d like to delegate.",
   lede:
-    "Chat with your fleet like colleagues. They watch the work that keeps recurring, take the first pass, and hand you a change to approve. No prompting, no setup, no jargon.",
+    "Pick a repository or a recurring investigation. Read the setup guide, choose the access your fleet needs, and review its first result.",
 } as const;
 
 export const FORBIDDEN_MARKETING_CLAIMS = [
@@ -308,7 +267,5 @@ export const FORBIDDEN_MARKETING_CLAIMS = [
   "ticket latency",
 ] as const;
 
-export type KnowledgePoint = (typeof KNOWLEDGE_POINTS)[number];
 export type LoopStep = (typeof LOOP_STEPS)[number];
 export type CapabilityItem = (typeof CAPABILITY_ITEMS)[number];
-export type PricingPlan = (typeof PRICING_PLANS)[number];

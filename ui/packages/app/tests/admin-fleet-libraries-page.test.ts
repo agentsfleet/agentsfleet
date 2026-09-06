@@ -90,6 +90,8 @@ describe("admin/fleet-libraries page", () => {
     expect(html).not.toContain("No fleets in the catalog");
     expect(html).not.toContain("Create fleet library");
     expect(html).toContain("load the fleet catalog");
+    expect(html).toContain("Retry fleet library");
+    expect(html).toContain('href="/admin/fleet-libraries"');
   });
 });
 

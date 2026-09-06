@@ -10,6 +10,7 @@ export {
   type ButtonVariant,
 } from "./Button";
 export { IconAction, type IconActionProps } from "./IconAction";
+export { NavItem, type NavItemProps } from "./NavItem";
 export { TooltipButton, type TooltipButtonProps } from "./TooltipButton";
 export {
   Card,

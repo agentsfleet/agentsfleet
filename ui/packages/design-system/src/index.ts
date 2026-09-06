@@ -142,6 +142,8 @@ export {
   type ConfirmDialogProps,
   Nav,
   type NavProps,
+  NavItem,
+  type NavItemProps,
   PageHeader,
   PageDescription,
   type PageHeaderProps,

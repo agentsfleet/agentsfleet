@@ -65,7 +65,7 @@ describe("FleetTile kinds", () => {
     expect(streamMock).not.toHaveBeenCalled();
     const card = container.querySelector("[data-kind]");
     expect(card?.getAttribute("data-kind")).toBe("drained");
-    expect(card?.className).toContain("opacity-60");
+    expect(card?.className).not.toContain("opacity-60");
     expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
     // Every tile links to its console, drained included.
     expect(container.querySelector('a[href="/w/ws_1/fleets/flt_1"]')).not.toBeNull();
@@ -90,8 +90,8 @@ describe("FleetTile kinds", () => {
     ).toBeTruthy();
     // Footer reads server truth, not token math — figures carry their unit as
     // a plain word, never an abbreviation.
-    expect(getByText("$1.20 spent")).toBeTruthy();
-    expect(getByText("7 events")).toBeTruthy();
+    expect(getByText("spent").textContent).toBe("$1.20 spent");
+    expect(getByText("events").textContent).toBe("7 events");
     // No snapshot eyebrow while live; the pulse animates (data-live set).
     expect(container.textContent).not.toContain("snapshot");
     expect(container.querySelector('[data-live="true"]')).not.toBeNull();
@@ -260,8 +260,8 @@ describe("FleetTile kinds", () => {
       catchingUp: false,
     });
     const { getByText } = renderTile(fleet({ budget_used_nanos: undefined, events_processed: undefined }));
-    expect(getByText("— spent")).toBeTruthy();
-    expect(getByText("— events")).toBeTruthy();
+    expect(getByText("spent").textContent).toBe("— spent");
+    expect(getByText("events").textContent).toBe("— events");
   });
 
   it("a tile absent from the server hello set renders snapshot, not live", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { type ComponentProps, useEffect, useRef, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { cn } from "../utils";
 
 // Default fade window — mirrors the `--motion-duration-fade` design
@@ -38,7 +38,7 @@ const DEFAULT_FADE_MS = 240;
  * wrapper.
  */
 export const toastVariants = cva(
-  ["font-mono text-mono"],
+  ["font-sans text-mono"],
   {
     variants: {
       severity: {
@@ -89,21 +89,12 @@ export function Toast({
 }: ToastProps) {
   const resolved: ToastSeverity = severity ?? "info";
   const [rendered, setRendered] = useState(visible);
-  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  if (visible && !rendered) setRendered(true);
 
   useEffect(() => {
-    if (visible) {
-      // Re-showing cancels any pending fade-out for free: the false-branch
-      // cleanup below runs (clearing + nulling the timer) before this effect
-      // body, so there is never a live timer to clear here.
-      setRendered(true);
-      return;
-    }
-    fadeTimer.current = setTimeout(() => setRendered(false), fadeMs);
-    return () => {
-      clearTimeout(fadeTimer.current!);
-      fadeTimer.current = null;
-    };
+    if (visible) return;
+    const fadeTimer = setTimeout(() => setRendered(false), fadeMs);
+    return () => clearTimeout(fadeTimer);
   }, [visible, fadeMs]);
 
   return (
