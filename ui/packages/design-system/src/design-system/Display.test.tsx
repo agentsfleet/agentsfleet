@@ -9,10 +9,10 @@ describe("DisplayXL", () => {
     expect(screen.getByText("Hero headline")).toBeInTheDocument();
   });
 
-  it("applies the display-xl tokens (mono, fluid hero, tracking + leading)", () => {
+  it("applies the display-xl tokens (display, fluid hero, tracking + leading)", () => {
     const { container } = render(<DisplayXL>X</DisplayXL>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-display");
     expect(cls).toContain("text-fluid-hero");
     expect(cls).toContain("tracking-display-xl");
     expect(cls).toContain("leading-display-xl");
@@ -22,7 +22,7 @@ describe("DisplayXL", () => {
     const { container } = render(<DisplayXL className="max-w-narrow">X</DisplayXL>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("max-w-narrow");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-display");
   });
 });
 
@@ -33,10 +33,10 @@ describe("DisplayLG", () => {
     expect(screen.getByText("Section heading")).toBeInTheDocument();
   });
 
-  it("applies the display-lg tokens (mono, fluid display-lg, tracking + leading)", () => {
+  it("applies the display-lg tokens (display, fluid display-lg, tracking + leading)", () => {
     const { container } = render(<DisplayLG>X</DisplayLG>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-display");
     expect(cls).toContain("text-fluid-display-lg");
     expect(cls).toContain("tracking-display-lg");
     expect(cls).toContain("leading-display-md");
@@ -46,6 +46,6 @@ describe("DisplayLG", () => {
     const { container } = render(<DisplayLG className="max-w-narrow">X</DisplayLG>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("max-w-narrow");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-display");
   });
 });

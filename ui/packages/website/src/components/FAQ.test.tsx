@@ -2,8 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 import FAQ from "./FAQ";
-import { FAQ_WEDGE_ITEM } from "../lib/marketing-copy";
-import { RATES_DISPLAY } from "../lib/rates";
+import { FAQ_WEDGE_ITEM, PRICING_COPY } from "../lib/marketing-copy";
 
 const FAQ_TEST_TIMEOUT_MS = 20_000;
 
@@ -30,33 +29,33 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
 
   it("answers are hidden by default", () => {
     render(<FAQ />);
-    expect(screen.queryByText(/self-managed provider key\./)).not.toBeInTheDocument();
+    expect(screen.queryByText(/self-managed provider key is/)).not.toBeInTheDocument();
   });
 
   it("shows answer when question is clicked", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What does self-managed mean?"));
-    expect(screen.getByText(/self-managed provider key\./)).toBeInTheDocument();
+    expect(screen.getByText(/self-managed provider key is/)).toBeInTheDocument();
   });
 
   it("hides answer when clicked again", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What does self-managed mean?"));
-    expect(screen.getByText(/self-managed provider key\./)).toBeInTheDocument();
+    expect(screen.getByText(/self-managed provider key is/)).toBeInTheDocument();
     await user.click(screen.getByText("What does self-managed mean?"));
-    expect(screen.queryByText(/self-managed provider key\./)).not.toBeInTheDocument();
+    expect(screen.queryByText(/self-managed provider key is/)).not.toBeInTheDocument();
   });
 
   it("closes previous answer when another is opened", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What does self-managed mean?"));
-    expect(screen.getByText(/self-managed provider key\./)).toBeInTheDocument();
+    expect(screen.getByText(/self-managed provider key is/)).toBeInTheDocument();
     await user.click(screen.getByText("What am I actually paying for?"));
-    expect(screen.queryByText(/self-managed provider key\./)).not.toBeInTheDocument();
-    expect(screen.getByText(escapedPattern(RATES_DISPLAY.RUN_RATE_PER_SEC))).toBeInTheDocument();
+    expect(screen.queryByText(/self-managed provider key is/)).not.toBeInTheDocument();
+    expect(screen.getByText(escapedPattern(PRICING_COPY.note))).toBeInTheDocument();
   });
 
   it("sets aria-expanded correctly", async () => {
@@ -79,14 +78,14 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
   });
 
-  it("defines the Fleet at first touch: 'What is agentsfleet?' opens to the explicit definition", async () => {
+  it("explains the product through jobs and user control", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What is agentsfleet?"));
     expect(
-      screen.getByText(/A Fleet is a long-lived runtime you install once/i),
+      screen.getByText(/AI teammates for code review, incident investigation, and preparing fixes/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/not a one-shot prompt/i)).toBeInTheDocument();
+    expect(screen.getByText(/You choose what it can access and review the results/i)).toBeInTheDocument();
   });
 
   it("renders the wedge FAQ answer with source and approval posture", async () => {
@@ -97,15 +96,14 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
     expect(screen.getByText(/human approval before merge or deploy/i)).toBeInTheDocument();
   });
 
-  it("keeps FAQ rate answers byte-equal to RATES_DISPLAY", async () => {
+  it("keeps early-access terms consistent without speculative rates", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What am I actually paying for?"));
-    const answer = screen.getByText(escapedPattern(RATES_DISPLAY.RUN_RATE_PER_SEC)).textContent ?? "";
-    expect(answer).toContain(RATES_DISPLAY.EARLY_ACCESS_PILL);
-    expect(answer).toContain(RATES_DISPLAY.RUN_RATE_PER_SEC);
-    expect(answer).toContain(RATES_DISPLAY.RUN_RATE_PER_HOUR);
-    expect(answer).toContain(RATES_DISPLAY.EVENT_RATE);
+    const answer = screen.getByText(escapedPattern(PRICING_COPY.note)).textContent ?? "";
+    expect(answer).toContain(PRICING_COPY.note);
+    expect(answer).not.toMatch(/\$\d|starter credit|zero markup/i);
+    expect(answer).toContain("does not remove fleet runtime costs");
   });
 
   it("does not render the operational-extras FAQ entry (extras were removed from pricing)", () => {

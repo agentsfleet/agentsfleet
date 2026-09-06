@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   createCoreRowModel,
   createPaginatedRowModel,
@@ -90,8 +90,6 @@ function buildColumns<T extends DataTableRowData>(
       ...accessor,
       enableSorting: sortingEnabled,
       sortDescFirst: false,
-      header: () => column.header,
-      cell: (context) => column.cell(context.row.original),
     };
   });
 }
@@ -101,47 +99,41 @@ type ModelProps<T extends DataTableRowData> = Pick<
   "columns" | "rows" | "rowKey" | "sortKey" | "sortDirection" | "onSortChange" | "pagination"
 >;
 
-export function useDataTableModel<T extends DataTableRowData>({
-  columns,
-  rows,
-  rowKey,
-  sortKey,
-  sortDirection,
-  onSortChange,
-  pagination,
-}: ModelProps<T>) {
+function useTablePagination(pagination: DataTablePagination | undefined, rowCount: number) {
   const clientPagination = isClientPagination(pagination);
   const initialPageSize = clientPagination
     ? pagination?.pageSize ?? DEFAULT_PAGE_SIZE
-    : rows.length || DEFAULT_PAGE_SIZE;
-  const [sorting, setSorting] = useState<SortingState>([]);
+    : rowCount || DEFAULT_PAGE_SIZE;
   const [page, setPage] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: initialPageSize,
   });
-  useEffect(() => {
-    if (!clientPagination) return;
-    setPage((current) => (
-      current.pageSize === initialPageSize
-        ? current
-        : { pageIndex: 0, pageSize: initialPageSize }
-    ));
-  }, [clientPagination, initialPageSize]);
+  const [previousConfig, setPreviousConfig] = useState({ clientPagination, initialPageSize });
+  if (previousConfig.clientPagination !== clientPagination || previousConfig.initialPageSize !== initialPageSize) {
+    setPreviousConfig({ clientPagination, initialPageSize });
+    if (clientPagination && page.pageSize !== initialPageSize) {
+      const firstPage = { pageIndex: 0, pageSize: initialPageSize };
+      setPage(firstPage);
+      return { clientPagination, page: firstPage, setPage };
+    }
+  }
+  const lastClientPage = Math.max(0, Math.ceil(rowCount / page.pageSize) - 1);
+  const pageIndex = clientPagination ? Math.min(page.pageIndex, lastClientPage) : page.pageIndex;
+  if (page.pageIndex !== pageIndex) setPage((current) => ({ ...current, pageIndex }));
+  return { clientPagination, page: { pageIndex, pageSize: page.pageSize }, setPage };
+}
+
+export function useDataTableModel<T extends DataTableRowData>({
+  columns, rows, rowKey, sortKey, sortDirection, onSortChange, pagination,
+}: ModelProps<T>) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const { clientPagination, page, setPage } = useTablePagination(pagination, rows.length);
   const externallySorted = onSortChange !== undefined;
   const tableColumns = useMemo(() => buildColumns(columns, externallySorted), [columns, externallySorted]);
   const columnsByKey = useMemo(() => new Map(columns.map((column) => [column.key, column])), [columns]);
   const controlledSorting: SortingState = sortKey
     ? [{ id: sortKey, desc: sortDirection === "descending" }]
     : [];
-  const lastClientPage = Math.max(0, Math.ceil(rows.length / page.pageSize) - 1);
-  const pageIndex = clientPagination ? Math.min(page.pageIndex, lastClientPage) : page.pageIndex;
-
-  // Keep internal state canonical when rows shrink. React immediately retries
-  // this render, so a later row-count increase cannot revive an invalid page.
-  if (page.pageIndex !== pageIndex) {
-    setPage((current) => ({ ...current, pageIndex }));
-  }
-
   const table = useTable({
     features: dataTableFeatures,
     columns: tableColumns,
@@ -157,7 +149,7 @@ export function useDataTableModel<T extends DataTableRowData>({
     onPaginationChange: setPage,
     state: {
       sorting: externallySorted ? controlledSorting : sorting,
-      pagination: { pageIndex, pageSize: page.pageSize },
+      pagination: page,
     },
   });
   return { columnsByKey, table };

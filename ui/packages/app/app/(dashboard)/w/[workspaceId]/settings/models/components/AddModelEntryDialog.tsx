@@ -73,8 +73,8 @@ export default function AddModelEntryDialog({
 }) {
   const uid = useId();
   const { models, status: catalogueStatus, preload } = useModelCatalogue();
-  // The library's providers plus the OpenAI-compatible option, pinned last —
-  // one dropdown covers hosted providers and custom endpoints alike (no tabs).
+  // Keep the picker stable until the catalogue settles; free text is a failed/empty-read fallback.
+  const catalogueLoading = catalogueStatus === CATALOGUE_STATUS.idle || catalogueStatus === CATALOGUE_STATUS.loading;
   const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
 
   const [open, setOpen] = useState(false);
@@ -278,10 +278,10 @@ export default function AddModelEntryDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor={`${uid}-provider`}>Provider</Label>
-            {providerOptions.length > 0 ? (
-              <Select value={provider} onValueChange={(v) => { setProvider(v); setModel(""); }}>
+            {catalogueLoading || providerOptions.length > 0 ? (
+              <Select disabled={catalogueLoading} value={provider} onValueChange={(v) => { setProvider(v); setModel(""); }}>
                 <SelectTrigger id={`${uid}-provider`} aria-label="Provider">
-                  <SelectValue placeholder="Select a provider" />
+                  <SelectValue placeholder={catalogueLoading ? "Loading providers…" : "Select a provider"} />
                 </SelectTrigger>
                 <SelectContent>
                   {providerOptions.map((p) => <SelectItem key={p} value={p}>{providerLabel(p)}</SelectItem>)}

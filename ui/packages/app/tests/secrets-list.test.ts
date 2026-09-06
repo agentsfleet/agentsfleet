@@ -246,7 +246,7 @@ describe("SecretsList component", () => {
     // Rename is no longer inside the edit dialog — it has its own trigger.
     expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByText(/Edit secret .*fly/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Edit secret .*fly/i })).toBeNull());
   });
 
   it("clicking rename in the Name column opens the rename dialog, and Cancel closes it", async () => {
@@ -257,7 +257,7 @@ describe("SecretsList component", () => {
     expect(screen.getByRole("button", { name: /^rename$/i })).toBeTruthy();
     expect(screen.getByLabelText(/new name/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByText(/Rename secret .*fly/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Rename secret .*fly/i })).toBeNull());
   });
 
   it("error from a previous attempt clears when reopening another secret", async () => {

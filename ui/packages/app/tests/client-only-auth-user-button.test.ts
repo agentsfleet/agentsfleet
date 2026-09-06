@@ -1,7 +1,7 @@
 import React from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { avatarGradient, AVATAR_GRADIENT_FALLBACK_SEED } from "../lib/avatarGradient";
+import { avatarColor, AVATAR_COLOR_FALLBACK_SEED } from "../lib/avatarColor";
 
 const authUserButtonMock = vi.hoisted(() =>
   vi.fn((props: { appearance?: { elements?: { userButtonAvatarBox?: { background?: string } } } }) =>
@@ -49,9 +49,29 @@ it("renders a stable placeholder before replacing it with the auth user button",
   );
 });
 
-// The per-user avatar pattern.
-describe("avatar gradient wiring", () => {
-  it("passes a background derived from the current user's id, not the flat --surface-2 fill", async () => {
+// The per-user avatar color.
+describe("avatar color wiring", () => {
+  it("preserves an uploaded photo instead of painting a fallback over it", async () => {
+    useCurrentUserMock.mockReturnValue({ userId: "user_photo", emailAddress: null, hasImage: true });
+    const { default: ClientOnlyAuthUserButton } = await import("../components/layout/ClientOnlyAuthUserButton");
+    render(React.createElement(ClientOnlyAuthUserButton));
+    await screen.findByTestId("auth-user-button");
+    expect(authUserButtonMock.mock.lastCall?.[0].appearance?.elements).not.toHaveProperty("avatarImage");
+    expect(authUserButtonMock.mock.lastCall?.[0].appearance?.elements).not.toHaveProperty("avatarBox");
+  });
+
+  it("replaces Clerk's generated image with a flat fallback when no photo is uploaded", async () => {
+    useCurrentUserMock.mockReturnValue({ userId: null, emailAddress: "fallback@example.test", hasImage: false });
+    const { default: ClientOnlyAuthUserButton } = await import("../components/layout/ClientOnlyAuthUserButton");
+    render(React.createElement(ClientOnlyAuthUserButton));
+    await screen.findByTestId("auth-user-button");
+    expect(authUserButtonMock.mock.lastCall?.[0].appearance?.elements).toMatchObject({
+      avatarImage: { display: "none" },
+      avatarBox: { background: avatarColor("fallback@example.test") },
+    });
+  });
+
+  it("passes a flat background derived from the current user's id instead of the default surface", async () => {
     useCurrentUserMock.mockReturnValue({
       isLoaded: true,
       isSignedIn: true,
@@ -63,7 +83,7 @@ describe("avatar gradient wiring", () => {
     );
     render(React.createElement(ClientOnlyAuthUserButton));
     const el = await screen.findByTestId("auth-user-button");
-    expect(el.getAttribute("data-avatar-background")).toBe(avatarGradient("user_1"));
+    expect(el.getAttribute("data-avatar-background")).toBe(avatarColor("user_1"));
     expect(el.getAttribute("data-avatar-background")).not.toBe("var(--surface-2)");
   });
 
@@ -79,6 +99,6 @@ describe("avatar gradient wiring", () => {
     );
     render(React.createElement(ClientOnlyAuthUserButton));
     const el = await screen.findByTestId("auth-user-button");
-    expect(el.getAttribute("data-avatar-background")).toBe(avatarGradient(AVATAR_GRADIENT_FALLBACK_SEED));
+    expect(el.getAttribute("data-avatar-background")).toBe(avatarColor(AVATAR_COLOR_FALLBACK_SEED));
   });
 });

@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ApiError } from "@/lib/api/errors";
 
 const WORKSPACE_ID = "ws_pages_001";
 const GATE_ID = "01999999-0000-7000-8000-000000000001";
@@ -135,13 +136,10 @@ describe("ApprovalsPage (workspace inbox)", () => {
     expect(markup).toContain('data-initial-items="1"');
   });
 
-  it("falls back to empty initial list when listApprovals rejects", async () => {
+  it("propagates a failed inbox read to the retry boundary instead of reporting no approvals", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
     const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
-    const markup = renderToStaticMarkup(
-      React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID })),
-    );
-    expect(markup).toContain('data-initial-items="0"');
+    await expect(ApprovalsData({ workspaceId: WORKSPACE_ID })).rejects.toThrow("upstream 503");
   });
 
   it("filters the inbox and list pagination to one fleet", async () => {
@@ -195,13 +193,21 @@ describe("ApprovalDetailPage", () => {
     );
   });
 
-  it("notFound when getApproval returns null", async () => {
-    getApprovalMock.mockRejectedValueOnce(new Error("404"));
+  it("notFound when the approval is missing", async () => {
+    getApprovalMock.mockRejectedValueOnce(new ApiError("missing", 404, "UZ-NOT-FOUND"));
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
     await expect(Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) })).rejects.toThrow(
       "notFound",
     );
   });
+
+  it.each([new Error("offline"), new ApiError("unavailable", 503, "UZ-UPSTREAM")])(
+    "preserves a failed approval detail read for retry: %s", async (cause) => {
+      getApprovalMock.mockRejectedValueOnce(cause);
+      const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+      await expect(Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) })).rejects.toBe(cause);
+    },
+  );
 
   it("renders proposed action, evidence JSON, and Resolve panel for pending gates", async () => {
     getApprovalMock.mockResolvedValueOnce(gateFixture());

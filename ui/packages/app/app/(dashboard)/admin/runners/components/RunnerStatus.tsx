@@ -36,7 +36,7 @@ export function RunnerStatus({
     <span
       data-awake={awake ? "true" : undefined}
       className={cn(
-        "inline-flex items-center gap-md font-mono text-body-sm uppercase tracking-eyebrow",
+        "inline-flex items-center gap-md font-sans text-body-sm uppercase tracking-eyebrow",
         awake ? "text-pulse" : offline ? "text-text-subtle" : "text-muted-foreground",
         className,
       )}

@@ -114,14 +114,11 @@ describe("Secrets page", () => {
     expect(markup).toContain('data-secret-count="2"');
   });
 
-  it("falls back to an empty secrets list when listSecretsCached rejects", async () => {
+  it("does not report an empty vault when the secret list read fails", async () => {
     listSecretsCached.mockRejectedValue(new Error("503"));
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
-
-    expect(markup).toContain('data-testid="secrets-list"');
-    expect(markup).toContain('data-secret-count="0"');
+    await expect(renderPage(Page)).rejects.toThrow("503");
   });
 
   it("passes the self-managed provider's secret_ref as protectedSecretName", async () => {
@@ -148,17 +145,14 @@ describe("Secrets page", () => {
     expect(markup).toContain('data-protected-secret=""');
   });
 
-  it("degrades to no protectedSecretName when the provider fetch fails", async () => {
+  it("does not expose delete controls when the active provider protection is unknown", async () => {
     listSecretsCached.mockResolvedValue({
       secrets: [{ kind: "custom_secret", name: "stripe", created_at: 1 }],
     });
     getTenantProviderCached.mockRejectedValue(new Error("503"));
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
-
-    expect(markup).toContain('data-testid="secrets-list"');
-    expect(markup).toContain('data-protected-secret=""');
+    await expect(renderPage(Page)).rejects.toThrow("503");
   });
 
   it("redirects to /sign-in when unauthenticated", async () => {

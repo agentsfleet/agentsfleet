@@ -4,6 +4,7 @@ import {
   PageHeader,
   PageLayout,
   PageTitle,
+  Section,
   SectionHeader,
   Skeleton,
 } from "@agentsfleet/design-system";
@@ -89,15 +90,15 @@ export async function EventsData({
   const page = await listWorkspaceEvents(workspaceId, token, {
     limit: pageSize,
     ...(cursor ? { cursor } : {}),
-  }).catch(() => ({ items: [], next_cursor: null }));
+  });
 
   return (
-    <div
+    <Section
       aria-label="Workspace events"
       className="flex min-h-0 flex-1 flex-col gap-xl"
     >
       <SectionHeader>Manage events</SectionHeader>
       <EventsList initial={page} pageSize={pageSize} />
-    </div>
+    </Section>
   );
 }

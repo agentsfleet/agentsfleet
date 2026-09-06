@@ -9,10 +9,10 @@ describe("SectionLabel", () => {
     expect(screen.getByText("Pipeline")).toBeInTheDocument();
   });
 
-  it("applies the eyebrow style (mono, uppercase, muted, eyebrow tokens)", () => {
+  it("applies the eyebrow style (sans, uppercase, muted, eyebrow tokens)", () => {
     const { container } = render(<SectionLabel>Recent runs</SectionLabel>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-sans");
     expect(cls).toContain("uppercase");
     expect(cls).toContain("tracking-eyebrow");
     expect(cls).toContain("text-muted-foreground");
@@ -24,6 +24,6 @@ describe("SectionLabel", () => {
     const { container } = render(<SectionLabel className="mb-0">X</SectionLabel>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("mb-0");
-    expect(cls).toContain("font-mono");
+    expect(cls).toContain("font-sans");
   });
 });

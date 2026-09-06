@@ -24,6 +24,8 @@ const PROTECTED_ROUTES = [
   "/w/ws_probe/fleets",
   "/w/ws_probe/events",
   "/settings/billing",
+  "/settings/account",
+  "/settings/account/security",
 ] as const;
 
 test.describe("auth routing", () => {

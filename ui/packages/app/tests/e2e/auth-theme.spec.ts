@@ -1,84 +1,73 @@
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-// Operational Restraint design tokens (M64_002). Hex sources live in
-// ui/packages/design-system/src/tokens.css; rgb() values below are the
-// browser-computed forms of those hex codes.
-//   --surface-1 #11161a → rgb(17, 22, 26)  — cards, sidebars
-//   --surface-2 #181e22 → rgb(24, 30, 34)  — inputs, mockup chrome
-//   --text      #e6eaec → rgb(230, 234, 236)
-//   --text-muted #8b9398 → rgb(139, 147, 152)
-const DARK_SURFACE = "rgb(17, 22, 26)";
-const ELEVATED_SURFACE = "rgb(24, 30, 34)";
-const PRIMARY_TEXT = "rgb(230, 234, 236)";
-const MUTED_TEXT = "rgb(139, 147, 152)";
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
-const EXPECTED_HOSTNAME = new URL(BASE_URL).hostname;
+const AUTH_ROUTES = ["/sign-in", "/sign-up"];
+const INPUT_SELECTOR = 'input[name="identifier"], input[name="emailAddress"]';
+const RENDER_TIMEOUT = 30_000;
 
-async function getCss(locator: Locator, property: string) {
-  return locator.evaluate(
-    (element, cssProperty) => window.getComputedStyle(element).getPropertyValue(cssProperty),
-    property,
-  );
+async function tokenColor(page: Page, token: string) {
+  return page.evaluate((name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
 }
 
-test.describe("Auth theming", () => {
-  test("sign-in uses dashboard token colors", async ({ page }) => {
-    await page.goto("/sign-in");
+async function visibleGradients(page: Page) {
+  return page.evaluate(() => [...document.querySelectorAll("body *")]
+    .filter(element => element.checkVisibility())
+    .flatMap(element => [null, "::before", "::after"].flatMap(pseudo => {
+      const style = getComputedStyle(element, pseudo);
+      return style.backgroundImage.includes("gradient") && (!pseudo || style.content !== "none")
+        ? [`${element.className}${pseudo ?? ""}`] : [];
+    })));
+}
 
-    const heading = page.getByRole("heading", { level: 1, name: /sign in/i });
-    const subtitle = page.getByText("Welcome back! Please sign in to continue");
-    const label = page.getByText("Email address", { exact: true });
-    const button = page.getByRole("button", { name: /continue/i }).last();
-
-    await expect(heading).toBeVisible();
-    await expect(button).toBeVisible();
-
-    expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
-    expect(await getCss(subtitle, "color")).toBe(MUTED_TEXT);
-    expect(await getCss(label, "color")).toBe(PRIMARY_TEXT);
-    expect(await getCss(button, "background-color")).not.toBe("rgb(109, 74, 255)");
+for (const route of AUTH_ROUTES) {
+  test(`${route} renders shared fonts, solid surfaces, and visible input states`, async ({ page }) => {
+    await page.goto(route);
+    const input = page.locator(INPUT_SELECTOR).first();
+    await expect(input).toBeVisible({ timeout: RENDER_TIMEOUT });
+    await page.evaluate(() => document.fonts.ready);
+    const pulse = await tokenColor(page, "--pulse");
+    const strongBorder = await tokenColor(page, "--border-strong");
+    await expect(input).toHaveCSS("border-width", "1px");
+    await expect(input).toHaveCSS("border-color", strongBorder);
+    await expect(input).toHaveCSS("font-family", /Instrument Sans Variable/);
+    await input.hover();
+    await expect(input).toHaveCSS("border-color", pulse);
+    await input.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveCSS("box-shadow", `${pulse} 0px 0px 0px 2px`);
+    const button = page.locator(".cl-formButtonPrimary");
+    await expect(button).toHaveCSS("background-color", await tokenColor(page, "--cta"));
+    await expect(button).toHaveCSS("color", await tokenColor(page, "--cta-foreground"));
+    expect(await visibleGradients(page)).toEqual([]);
+    const card = await page.locator(".cl-cardBox").boundingBox();
+    expect(card).not.toBeNull();
+    expect(card!.x).toBeGreaterThanOrEqual(0);
+    expect(card!.x + card!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   });
 
-  test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
-    // `/` is the protected dashboard entry; unauthenticated it bounces to the
-    // local /sign-in (post-M118 the old `/fleets` root no longer exists).
-    await page.goto("/");
-    await page.waitForTimeout(MS_PER_SECOND);
-
-    expect(new URL(page.url()).hostname).toBe(EXPECTED_HOSTNAME);
-    expect(page.url()).not.toContain("accounts.dev");
-
-    // Clerk dev-keys enforce strict rate limits; when exhausted mid-suite,
-    // Clerk injects a "Temporary API keys" configuration widget at the same
-    // URL, defeating the body-text/bg-color assertions below. Detect and
-    // skip rather than flake.
-    const bodyText = (await page.locator("body").textContent()) ?? "";
-    test.skip(
-      bodyText.includes("Temporary API keys"),
-      "Clerk dev-keys rate-limited — interstitial served in place of app sign-in",
-    );
-
-    const body = page.locator("body");
-    await expect(body).toContainText(/agentsfleet|Fleets|Dashboard/);
-    // --bg #0a0d0e (Operational Restraint) → rgb(10, 13, 14)
-    expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
+  test(`${route} keeps invalid email correction on the local themed form`, async ({ page }) => {
+    await page.goto(route);
+    const input = page.locator(INPUT_SELECTOR).first();
+    await expect(input).toBeVisible({ timeout: RENDER_TIMEOUT });
+    await input.fill("invalid-address");
+    await page.locator(".cl-formButtonPrimary").click();
+    expect(await input.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(false);
+    await expect(input).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(route);
   });
+}
 
-  test("mobile auth keeps the dark card treatment", async ({ page, isMobile }) => {
-    test.skip(!isMobile, "Mobile-only assertion");
-
-    await page.goto("/sign-in");
-
-    const heading = page.getByRole("heading", { level: 1, name: /sign in/i });
-    const googleButton = page.getByRole("button", { name: /continue with google/i });
-
-    await expect(heading).toBeVisible();
-    await expect(googleButton).toBeVisible();
-
-    const buttonBackground = await getCss(googleButton, "background-color");
-    expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
-    expect([DARK_SURFACE, ELEVATED_SURFACE]).toContain(buttonBackground);
-    expect(buttonBackground).not.toBe("rgb(255, 255, 255)");
-  });
+test("protected dashboard opens local sign-in", async ({ page, baseURL }) => {
+  await page.goto("/");
+  await expect(page.locator(INPUT_SELECTOR).first()).toBeVisible({ timeout: RENDER_TIMEOUT });
+  expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
+  expect(new URL(page.url()).pathname).toBe("/sign-in");
 });
-const MS_PER_SECOND = 1000 as const;

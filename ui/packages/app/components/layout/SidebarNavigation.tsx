@@ -22,8 +22,10 @@ import {
 } from "lucide-react";
 import {
   cn,
+  Button,
   EYEBROW_CLASS,
   Nav,
+  NavItem as NavigationItem,
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
@@ -203,7 +205,7 @@ function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed
   if (collapsed) return <NavSection items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} />;
   return (
     <NavGroup>
-      <button
+      <Button variant="ghost" size="sm"
         type="button"
         aria-expanded={open}
         aria-controls={regionId}
@@ -216,7 +218,7 @@ function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed
       >
         <span>Platform</span>
         {open ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
-      </button>
+      </Button>
       <div id={regionId} hidden={!open} className="flex flex-col gap-0.5">
         {open ? <NavItems items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} /> : null}
       </div>
@@ -262,9 +264,6 @@ function NavGroup({ label, collapsed, children }: { label?: string; collapsed?: 
   );
 }
 
-const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-r-md border-l-2 border-transparent font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:border-pulse data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse data-[active=true]:font-medium";
-
 function NavItem({
   href,
   label,
@@ -291,11 +290,11 @@ function NavItem({
   const common = {
     title: collapsed ? label : undefined,
     "aria-label": collapsed ? label : undefined,
-    className: cn(NAV_ITEM_CLASSES, collapsed && "justify-center px-0"),
+    className: cn(collapsed && "justify-center px-0"),
     onClick,
   };
   if (external) {
-    return <a href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</a>;
+    return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
   }
-  return <Link href={href} data-active={active ? "true" : undefined} {...common}>{content}</Link>;
+  return <NavigationItem asChild active={active} {...common}><Link href={href}>{content}</Link></NavigationItem>;
 }

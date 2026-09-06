@@ -39,7 +39,7 @@ export function StatusPill({
       data-variant={variant}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5",
-        "font-mono text-label font-medium uppercase leading-label tracking-label",
+        "font-sans text-label font-medium uppercase leading-label tracking-label",
         pillClass[variant],
         className,
       )}

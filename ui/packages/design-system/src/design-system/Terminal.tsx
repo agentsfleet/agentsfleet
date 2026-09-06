@@ -141,7 +141,7 @@ export default function Terminal({ label, green, copyable, copyText, animate, ch
             aria-label={copied ? "Copied!" : "Copy command"}
             data-testid="copy-btn"
             className={cn(
-              "ml-auto h-auto py-0.5 text-label font-mono",
+              "ml-auto h-auto py-0.5 text-label",
               copied && "border-success text-success",
             )}
           >
@@ -151,9 +151,10 @@ export default function Terminal({ label, green, copyable, copyText, animate, ch
       </div>
       <pre
         className={cn(
-          "m-0 overflow-auto px-xl py-lg text-mono font-mono",
+          "m-0 overflow-auto px-xl py-lg text-mono font-mono focus-visible:outline-2 -outline-offset-2 focus-visible:outline-ring",
           green ? "text-success" : "text-foreground",
         )}
+        tabIndex={0}
         aria-label={label}
         aria-describedby={label ? undefined : id}
         data-command={typeof children === "string" ? children : undefined}

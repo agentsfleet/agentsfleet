@@ -78,6 +78,16 @@ describe("createTenantWorkspace", () => {
     ).rejects.toThrow("workspace create response is invalid");
   });
 
+  it("accepts a server-generated name when the user leaves the name blank", async () => {
+    mockFetchOnce(201, { workspace_id: "ws_x", name: "silent-raven-k7m2", tenant_id: "tenant_x", request_id: "req_1" });
+    await expect(createTenantWorkspace("tok_1", { name: "" })).resolves.toMatchObject({ name: "silent-raven-k7m2" });
+  });
+
+  it.each(["", "   ", null, 12])("rejects an invalid generated name %j", async (name) => {
+    mockFetchOnce(201, { workspace_id: "ws_x", name, tenant_id: "tenant_x", request_id: "req_1" });
+    await expect(createTenantWorkspace("tok_1", { name: "" })).rejects.toThrow("workspace create response is invalid");
+  });
+
   it("pins the create operation the daemon actually serves", () => {
     // The bundle is generated from the daemon's own handlers now, so this
     // pins BEHAVIOUR rather than a hand-written claim about it. The claim it

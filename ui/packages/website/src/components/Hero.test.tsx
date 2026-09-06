@@ -14,8 +14,7 @@ import {
   HERO_HEADLINE,
   HERO_PRIMARY_LABEL,
   HERO_SECONDARY_LABEL,
-  LOOP_ANCHOR_ID,
-  PILLAR_TOKENS,
+  HOW_IT_WORKS_ANCHOR_ID,
 } from "../lib/marketing-copy";
 import { WAITLIST_URL } from "../config";
 
@@ -49,26 +48,23 @@ describe("Hero", () => {
     const h1 = container.querySelector("h1");
     expect(h1).not.toBeNull();
     expect(h1).toHaveTextContent(HERO_HEADLINE);
-    expect(h1!.className).toContain("font-mono");
+    expect(h1!.className).toContain("font-display");
   });
 
-  it("renders the LIVE eyebrow with a WakePulse data-live=true mark", () => {
+  it("does not imply live activity in the illustrative hero", () => {
     renderHero();
     const eyebrow = screen.getByTestId("hero-eyebrow");
-    expect(eyebrow.textContent).toMatch(/LIVE — wake\.on\.event/i);
+    expect(eyebrow.textContent).toMatch(/AI incident response/i);
     const pulse = eyebrow.querySelector("[data-live=\"true\"]");
-    expect(pulse).not.toBeNull();
+    expect(pulse).toBeNull();
   });
 
   it("renders the lede paragraph in the warm teammates voice", () => {
     renderHero();
-    for (const token of PILLAR_TOKENS) {
-      expect(screen.getByTestId("hero").textContent).toMatch(new RegExp(token, "i"));
-    }
-    expect(screen.getByText("AI teammates")).toBeInTheDocument();
-    expect(screen.getByText("recurring engineering work")).toBeInTheDocument();
+    expect(screen.getByText("AI incident teammate")).toBeInTheDocument();
+    expect(screen.getByText("logs, metrics, and code")).toBeInTheDocument();
     expect(screen.getByTestId("hero").textContent).toMatch(
-      /hand you the change to approve/i,
+      /you control access and decide what ships/i,
     );
   });
 
@@ -90,11 +86,7 @@ describe("Hero", () => {
     fireEvent.click(screen.getByTestId("hero-cta-primary"));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0][0]).toBe(INSTALL_COMMAND);
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "hero_primary",
-      surface: "hero",
-      mode: "humans",
-    });
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("copies only — does not scroll or navigate on primary call-to-action click", async () => {
@@ -103,7 +95,7 @@ describe("Hero", () => {
     // The copy-row must NOT — that was the "jumps to a different
     // page" bug. Clicking copies and stays put.
     const anchor = document.createElement("section");
-    anchor.id = LOOP_ANCHOR_ID;
+    anchor.id = HOW_IT_WORKS_ANCHOR_ID;
     const scrollIntoView = vi.fn();
     anchor.scrollIntoView = scrollIntoView;
     document.body.appendChild(anchor);
@@ -247,7 +239,7 @@ describe("Hero", () => {
     expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
       "href",
-      `/#${LOOP_ANCHOR_ID}`,
+      `/#${HOW_IT_WORKS_ANCHOR_ID}`,
     );
     expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
   });
@@ -276,15 +268,13 @@ describe("Hero", () => {
     expect(container.querySelector(".hero-headline")).toBeNull();
   });
 
-  it("renders the promo pill as a link to /pricing with the rates-pinned early-access string", () => {
+  it("invites early access without promising a price or credit", () => {
     renderHero();
     const pill = screen.getByTestId("hero-promo-pill");
     expect(pill.tagName).toBe("A");
-    expect(pill).toHaveAttribute("href", "/pricing");
-    // Sourced from RATES_DISPLAY.EARLY_ACCESS_PILL in lib/rates.ts; rates.test.ts
-    // pins the literal — this assertion catches accidental hardcoding in Hero.
-    expect(pill.textContent).toMatch(/Free during early access/);
-    expect(pill.textContent).toMatch(/Promo/);
+    expect(pill).toHaveAttribute("href", "/#pricing");
+    expect(pill.textContent).toMatch(/help shape agentsfleet/i);
+    expect(pill.textContent).not.toMatch(/\$\d|starter credit|free/i);
   });
 
   it("places the promo pill after the eyebrow and before the headline in document order", () => {

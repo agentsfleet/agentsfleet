@@ -89,7 +89,7 @@ export function InstallStreamSteps({ workspaceId, fleetId, fleetName, onOpen }: 
         <div className="flex items-center gap-md border-t border-border px-lg py-md">
           <span className="inline-flex items-center gap-2 text-sm text-foreground">
             <WakePulse live className="inline-block h-2 w-2 rounded-full bg-pulse" aria-hidden="true" />
-            Installed — <span className="font-mono">{fleetName}</span> is ready
+            Installed — <span className="font-medium">{fleetName}</span> is ready
           </span>
           <Button type="button" size="sm" className="ml-auto" onClick={onOpen}>
             Open fleet →

@@ -47,7 +47,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
               >
                 {formatDollars(billing.balance_nanos)}
               </span>
-              <span className="ml-1.5 font-mono text-base font-normal text-muted-foreground">
+              <span className="ml-1.5 font-sans text-base font-normal text-muted-foreground">
                 USD
               </span>
             </div>
@@ -59,7 +59,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
           data-testid="balance-meter"
           pct={summary.meterPct}
           sublabel={
-            <div className="flex justify-end" data-testid="balance-usage">
+            <div className="text-right" data-testid="balance-usage">
               spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span>{" "}
               ·{" "}
               <span className="text-foreground">{summary.eventCount}</span>{" "}

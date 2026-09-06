@@ -245,24 +245,6 @@ describe("app components", () => {
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(2);
   });
 
-  it("exports stable auth appearance tokens", async () => {
-    const { AUTH_APPEARANCE } = await import("../lib/clerkAppearance");
-
-    // Clerk's primary CTA is the live signal — colorPrimary maps to --pulse;
-    // foreground sits on near-black --bg for contrast. Footer flat surface-1
-    // over a top border (spec forbids decorative gradients on chrome). Footer
-    // links and identity-edit affordances are muted text, NOT --pulse — the
-    // currency rule reserves --pulse for the primary CTA only.
-    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--pulse)");
-    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--bg)");
-    expect(AUTH_APPEARANCE.elements.formButtonPrimary.backgroundColor).toBe("var(--pulse)");
-    expect(AUTH_APPEARANCE.elements.footer.backgroundColor).toBe("var(--surface-1)");
-    expect(AUTH_APPEARANCE.elements.footer).not.toHaveProperty("background");
-    // Footer / link affordances stay muted (currency-rule guard).
-    expect(AUTH_APPEARANCE.elements.footerActionLink.color).not.toBe("var(--pulse)");
-    expect(AUTH_APPEARANCE.elements.identityPreviewEditButton.color).not.toBe("var(--pulse)");
-    expect(AUTH_APPEARANCE.elements.formResendCodeLink.color).not.toBe("var(--pulse)");
-  });
 
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");

@@ -13,8 +13,8 @@ describe("fleets routes — detail views", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("fleets detail page notFound when fleet id is not in the list", async () => {
-    mockFetchBilling(happyBilling);
+  it.each([400, 404])("fleets detail uses notFound for a malformed or missing id (%i)", async (status) => {
+    mockFetchBilling(happyBilling, status);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
@@ -98,7 +98,7 @@ describe("fleets routes — detail views", () => {
     expect(urls.some((url) => url.includes("cursor=tok_fleet"))).toBe(true);
   });
 
-  it("fleet Events view falls back to an empty table when history is unavailable", async () => {
+  it("fleet Events view propagates failed history to the retry boundary", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -108,13 +108,10 @@ describe("fleets routes — detail views", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-        searchParams: Promise.resolve({ view: "events" }),
-      }),
-    );
-    expect(markup).toContain("No events yet");
+    await expect(Page({
+      params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      searchParams: Promise.resolve({ view: "events" }),
+    })).rejects.toThrow("history down");
   });
 
   it("fleet Memory view renders stored entries and a fetch failure separately", async () => {

@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
-import { Alert } from "@agentsfleet/design-system";
+import Link from "next/link";
+import { Alert, Button, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
 import { withToken } from "@/lib/actions/with-token";
 import { listPlatformFleetLibrary } from "@/lib/api/fleet-library";
 import { presentErrorString } from "@/lib/errors";
-import { CATALOG_READ_ACTION, NOT_PLATFORM_ADMIN } from "./library-copy";
+import { ADMIN_FLEET_LIBRARIES_PATH, CATALOG_READ_ACTION, FLEET_LIBRARIES_DESCRIPTION, FLEET_LIBRARY_TITLE, NOT_PLATFORM_ADMIN } from "./library-copy";
 import FleetLibrariesView from "./components/FleetLibrariesView";
 
 export const dynamic = "force-dynamic";
@@ -23,13 +24,17 @@ export default async function AdminFleetLibrariesPage() {
   // different facts, and an operator acts differently on each.
   if (!result.ok) {
     return (
-      <Alert variant="destructive">
+      <PageLayout>
+        <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}><PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle></PageHeader>
+        <Alert variant="destructive">
         {presentErrorString({
           errorCode: result.errorCode,
           message: result.error,
           action: CATALOG_READ_ACTION,
         })}
-      </Alert>
+        </Alert>
+        <Button asChild className="justify-self-start"><Link href={ADMIN_FLEET_LIBRARIES_PATH}>Retry fleet library</Link></Button>
+      </PageLayout>
     );
   }
 

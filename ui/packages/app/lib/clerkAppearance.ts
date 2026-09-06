@@ -1,22 +1,21 @@
 /*
  * Clerk widget theming for sign-in / sign-up + the dashboard UserButton
  * avatar. Tokens map to the
- * Operational Restraint design system (docs/DESIGN_SYSTEM.md):
+ * Clear Signal design system (docs/DESIGN_SYSTEM.md):
  *   --surface-1   cards
  *   --surface-2   inputs / elevated chrome
  *   --surface-3   hover / active chrome
  *   --text*       text primary / muted / subtle
- *   --pulse       primary action fill ONLY (currency rule — the primary
- *                 action button is the system's "wake" affordance).
- *                 Footer links, resend-code links, edit buttons use
- *                 muted text — they are navigation, not live signals.
- *   --bg          contrast text on the pulse fill
+ *   --cta        primary action fill, shared with Button
+ *   --cta-foreground contrast text on the action fill
+ *   --pulse      focus, hover, and live signal accents
  *   --border*     dividers + outlines
  *   --error       error states. Failed != live; never --pulse.
  * No box-shadow on chrome (spec: borders preferred over shadows).
  * No gradient on the footer (spec: no decorative gradients on chrome).
  */
-import { dark } from "@clerk/themes";
+import type { Appearance } from "@clerk/ui";
+import { dark } from "@clerk/ui/themes";
 
 const SURFACE_1 = "var(--surface-1)";
 const SURFACE_2 = "var(--surface-2)";
@@ -25,28 +24,36 @@ const TEXT = "var(--text)";
 const TEXT_MUTED = "var(--text-muted)";
 const TEXT_SUBTLE = "var(--text-subtle)";
 const PULSE = "var(--pulse)";
-const BACKGROUND = "var(--bg)";
+const CTA = "var(--cta)";
+const CTA_FOREGROUND = "var(--cta-foreground)";
 const BORDER = "var(--border)";
 const BORDER_STRONG = "var(--border-strong)";
 const ERROR = "var(--error)";
 const SUCCESS = "var(--success)";
 const WARN = "var(--warn)";
-const RADIUS_SM = "var(--r-sm)";
+const RADIUS_MD = "var(--r-md)";
 const FONT_SANS = "var(--ff-sans)";
 const BORDER_STYLE = `1px solid ${BORDER}`;
 const BORDER_STRONG_STYLE = `1px solid ${BORDER_STRONG}`;
-const FOCUS_RING = `0 0 0 1px ${PULSE}`;
+const FOCUS_RING = `0 0 0 2px ${PULSE}`;
 
 const AUTH_INPUT_APPEARANCE = {
-  backgroundColor: SURFACE_1,
-  border: BORDER_STRONG_STYLE,
-  borderColor: BORDER_STRONG,
-  boxShadow: "none",
-  color: TEXT,
-  "&:hover": {
-    borderColor: PULSE,
+  // Clerk's input reset uses state selectors that outrank a single class.
+  // Match that specificity so a configured border is actually painted.
+  "&&": {
+    backgroundColor: SURFACE_1,
+    border: BORDER_STRONG_STYLE,
+    borderWidth: "1px",
+    borderColor: BORDER_STRONG,
+    boxShadow: "none",
+    color: TEXT,
   },
-  "&:focus": {
+  "&&:hover:not(:disabled):not(:focus)": {
+    borderColor: PULSE,
+    backgroundColor: SURFACE_2,
+    boxShadow: "none",
+  },
+  "&&:focus": {
     borderColor: PULSE,
     boxShadow: FOCUS_RING,
   },
@@ -58,14 +65,9 @@ const MENU_ACTION_INTERACTION = {
 } as const;
 
 export const AUTH_APPEARANCE = {
-  // Dark is the only product surface (lib/theme.ts forces it), so the dark
-  // baseTheme applies unconditionally. It styles the Clerk internals the element
-  // map below does not name — the Security tab's device-type icons and the
-  // account modal's inputs — which otherwise render in Clerk's stock light
-  // palette (dark text/icons on the dark surface, effectively invisible). The
-  // variables + elements below then map the design tokens on top, so the
-  // baseline is dark and the accents stay on-brand.
-  baseTheme: dark,
+  // Clerk Core 3 uses `theme`; the former `baseTheme` is ignored at runtime.
+  theme: dark,
+  options: { logoImageUrl: "/brand.svg", shimmer: false },
   // Colors are `var()` refs to the design-system tokens (tokens.css) — Clerk's
   // own themes declare `variables` the same way (e.g. `colorForeground:
   // "var(--card-foreground)"`), so custom properties resolve fine here; there
@@ -81,15 +83,20 @@ export const AUTH_APPEARANCE = {
     colorInput: SURFACE_2,
     colorInputForeground: TEXT,
     colorForeground: TEXT,
+    colorNeutral: TEXT,
+    colorRing: PULSE,
     colorMutedForeground: TEXT_MUTED,
-    colorPrimary: PULSE,
-    colorPrimaryForeground: BACKGROUND,
+    colorPrimary: CTA,
+    colorPrimaryForeground: CTA_FOREGROUND,
     colorBorder: BORDER_STRONG,
     colorDanger: ERROR,
     colorSuccess: SUCCESS,
     colorWarning: WARN,
-    borderRadius: RADIUS_SM,
+    borderRadius: RADIUS_MD,
     fontFamily: FONT_SANS,
+    fontFamilyButtons: FONT_SANS,
+    fontFamilyMono: "var(--ff-mono)",
+    fontSize: "var(--fs-body)",
   },
   elements: {
     // Dashboard header avatar (UserButton). With no uploaded image Clerk renders
@@ -121,6 +128,7 @@ export const AUTH_APPEARANCE = {
     },
     userButtonPopoverFooter: {
       backgroundColor: SURFACE_1,
+      backgroundImage: "none",
       borderTop: BORDER_STYLE,
     },
     userPreviewMainIdentifier: {
@@ -154,11 +162,11 @@ export const AUTH_APPEARANCE = {
     },
     modalContent: {
       backgroundColor: SURFACE_1,
-      border: BORDER_STRONG_STYLE,
+      border: "none",
       boxShadow: "none",
     },
     modalBackdrop: {
-      backgroundColor: "rgba(10, 13, 14, 0.72)",
+      backgroundColor: "var(--overlay)",
     },
     // The modal's close (X) button rendered in a near-black default on the
     // dark surface — invisible. Pin it readable, with a hover fill matching
@@ -172,7 +180,16 @@ export const AUTH_APPEARANCE = {
     },
     navbar: {
       backgroundColor: SURFACE_1,
+      backgroundImage: "none",
       borderRight: BORDER_STYLE,
+    },
+    navbarMobileMenuRow: {
+      backgroundColor: SURFACE_1,
+      backgroundImage: "none",
+    },
+    menuButton: {
+      color: TEXT,
+      "&:hover": MENU_ACTION_INTERACTION,
     },
     // The account modal's left nav ("Account" / "Security"). At TEXT_MUTED the
     // inactive tab label sat too dim to read on the dark surface; pin it to the
@@ -239,6 +256,7 @@ export const AUTH_APPEARANCE = {
       // disappears into the background. --border-strong sharpens the edge.
       backgroundColor: SURFACE_2,
       border: BORDER_STRONG_STYLE,
+      borderRadius: "var(--r-lg)",
     },
     headerTitle: {
       color: TEXT,
@@ -250,6 +268,8 @@ export const AUTH_APPEARANCE = {
       backgroundColor: SURFACE_2,
       border: BORDER_STYLE,
       color: TEXT,
+      "&&:hover:not(:disabled)": MENU_ACTION_INTERACTION,
+      "&&:focus-visible": { boxShadow: FOCUS_RING },
     },
     socialButtonsBlockButtonText: {
       color: TEXT,
@@ -279,8 +299,11 @@ export const AUTH_APPEARANCE = {
     // slot remains visible before focus on the dark card.
     otpCodeFieldInput: AUTH_INPUT_APPEARANCE,
     formButtonPrimary: {
-      backgroundColor: PULSE,
-      color: BACKGROUND,
+      backgroundColor: CTA,
+      color: CTA_FOREGROUND,
+      "&&::after": { backgroundImage: "none" },
+      "&&:hover:not(:disabled)": { backgroundColor: "var(--cta-hover)" },
+      "&&:focus-visible": { boxShadow: FOCUS_RING },
     },
     footerActionText: {
       color: TEXT_MUTED,
@@ -310,7 +333,8 @@ export const AUTH_APPEARANCE = {
     },
     footer: {
       backgroundColor: SURFACE_1,
+      backgroundImage: "none",
       borderTop: BORDER_STYLE,
     },
   },
-} as const;
+} as const satisfies Appearance;

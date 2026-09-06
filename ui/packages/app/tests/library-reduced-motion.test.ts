@@ -64,7 +64,7 @@ describe("test_library_reduced_motion_state — library loading honours reduced 
     // label is what keeps "loading" different from "loaded and empty".
     for (const source of LOADING_REGIONS) {
       expect(source).toMatch(/aria-busy="true"/);
-      expect(source).toMatch(/aria-label="Loading [^"]+"/);
+      expect(source).toMatch(/aria-label="Loading [^"]+"|<output[^>]*>Loading [^<]+<\/output>/);
     }
   });
 });

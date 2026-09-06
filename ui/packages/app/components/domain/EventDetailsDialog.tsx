@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import {
   Alert,
   AlertDescription,
@@ -144,7 +145,7 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
           <div className="flex flex-wrap items-center gap-md">
             <DialogTitle>{EVENT_DETAILS_TITLE}</DialogTitle>
             <div className="flex min-w-0 max-w-full items-center gap-sm rounded-sm border border-border bg-muted/30 px-md py-sm">
-              <span className="font-mono text-label uppercase tracking-label text-muted-foreground">ID</span>
+              <span className="text-label uppercase tracking-label text-muted-foreground">ID</span>
               <span className="min-w-0 max-w-xs truncate font-mono text-xs text-foreground" title={row.event_id}>
                 {row.event_id}
               </span>
@@ -155,14 +156,14 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
             {row.status}: {result}. {actor}, {row.event_type}.
           </DialogDescription>
         </div>
-        <span className="flex shrink-0 items-baseline gap-sm font-mono text-label text-muted-foreground">
+        <span className="flex shrink-0 items-baseline gap-sm text-label text-muted-foreground">
           <span>{CREATED_LABEL}</span>
           <Time
             value={created}
             format="relative"
             tooltip
             tooltipContent={formatCreatedTooltip(created)}
-            className="tabular-nums text-foreground"
+            className="font-mono tabular-nums text-foreground"
           />
         </span>
       </div>
@@ -171,12 +172,13 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
 }
 
 function EventResult({ result, tone }: { result: string; tone: EventTone }) {
+  const resultId = useId();
   const { Icon } = tone;
   return (
-    <Alert variant={tone.alertVariant} className="block" aria-labelledby="event-result">
+    <Alert variant={tone.alertVariant} className="block" aria-labelledby={resultId}>
       <div className="flex items-start gap-md">
         <Icon size={18} className="mt-xs shrink-0" aria-label={tone.iconLabel} />
-        <AlertTitle id="event-result" className="whitespace-pre-wrap text-foreground">
+        <AlertTitle id={resultId} className="whitespace-pre-wrap text-foreground">
           {result}
         </AlertTitle>
       </div>
@@ -185,14 +187,15 @@ function EventResult({ result, tone }: { result: string; tone: EventTone }) {
 }
 
 function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
+  const contextId = useId();
   const actor = senderLabelFor(row.actor);
   // `null` covers both in-flight and failed: the panel says "not recorded"
   // either way rather than claiming the event carried no context.
   const context = detail === null ? null : parseRequestContext(detail.request_json);
   return (
-    <Section aria-labelledby="request-context" className="gap-md">
+    <Section aria-labelledby={contextId} className="gap-md">
       <div className="flex flex-wrap items-center justify-between gap-md">
-        <h3 id="request-context" className="font-mono text-label uppercase tracking-label text-muted-foreground">
+        <h3 id={contextId} className="text-label uppercase tracking-label text-muted-foreground">
           {REQUEST_CONTEXT_TITLE}
         </h3>
         <div className="flex flex-wrap items-center gap-sm">
@@ -223,7 +226,7 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
           key={key}
           className="flex flex-col gap-sm border-b border-border px-lg py-md last:border-b-0 sm:flex-row sm:gap-lg"
         >
-          <dt className="shrink-0 font-mono text-label capitalize text-muted-foreground sm:w-40">
+          <dt className="shrink-0 text-label capitalize text-muted-foreground sm:w-40">
             {presentRequestLabel(key, githubSource)}
           </dt>
           <dd className="min-w-0 break-words font-mono text-xs leading-mono text-foreground">
@@ -232,7 +235,7 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
         </div>
       ))}
       {hasMore ? (
-        <div className="px-lg py-md font-mono text-xs text-muted-foreground">
+        <div className="px-lg py-md text-xs text-muted-foreground">
           <dt className="sr-only">Preview limit</dt>
           <dd>{REQUEST_CONTEXT_OMITTED}</dd>
         </div>
@@ -318,4 +321,3 @@ function boundedResponse(value: string | null): string {
   if (prefix.length >= EVENT_RESULT_MAX_CHARS) return truncateResult(prefix);
   return `${prefix}…`;
 }
-

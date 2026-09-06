@@ -1,44 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { dark } from "@clerk/themes";
+import { dark } from "@clerk/ui/themes";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 
 describe("AUTH_APPEARANCE", () => {
   const { elements } = AUTH_APPEARANCE;
 
-  it("applies the dark baseTheme so unmapped Clerk internals (Security device icons, Profile inputs) render on the dark surface", () => {
+  it("applies the current Clerk dark theme so unmapped account controls remain readable", () => {
     // The app is dark-only (lib/theme.ts), so the dark base theme is
     // unconditional: it covers the elements the map below does not name, which
     // otherwise paint in Clerk's stock light palette (invisible on dark).
-    expect(AUTH_APPEARANCE.baseTheme).toBe(dark);
+    expect(AUTH_APPEARANCE.theme).toBe(dark);
   });
 
   it("inputs are visually distinct from the card they sit on", () => {
     // Regression: both were var(--surface-2), so the input fields were
     // invisible on the card until focused. They must differ.
-    expect(elements.formFieldInput.backgroundColor).not.toBe(
+    expect(elements.formFieldInput["&&"].backgroundColor).not.toBe(
       elements.cardBox.backgroundColor,
     );
   });
 
   it("inputs carry a visible border so the click target reads without focus", () => {
-    expect(elements.formFieldInput.borderColor).toBeTruthy();
+    expect(elements.formFieldInput["&&"].borderColor).toBeTruthy();
+    expect(elements.formFieldInput["&&"].borderWidth).toBe("1px");
   });
 
   it("pins the surface tokens (card lifts off page; input insets into card)", () => {
     expect(elements.cardBox.backgroundColor).toBe("var(--surface-2)");
-    expect(elements.formFieldInput.backgroundColor).toBe("var(--surface-1)");
-    expect(elements.formFieldInput.borderColor).toBe("var(--border-strong)");
+    expect(elements.formFieldInput["&&"].backgroundColor).toBe("var(--surface-1)");
+    expect(elements.formFieldInput["&&"].borderColor).toBe("var(--border-strong)");
   });
 
   it("keeps segmented email verification inputs visible before focus", () => {
-    expect(elements.otpCodeFieldInput.backgroundColor).toBe(
-      elements.formFieldInput.backgroundColor,
+    expect(elements.otpCodeFieldInput["&&"].backgroundColor).toBe(
+      elements.formFieldInput["&&"].backgroundColor,
     );
-    expect(elements.otpCodeFieldInput.borderColor).toBe(
-      elements.formFieldInput.borderColor,
+    expect(elements.otpCodeFieldInput["&&"].borderColor).toBe(
+      elements.formFieldInput["&&"].borderColor,
     );
-    expect(elements.otpCodeFieldInput["&:focus"]).toEqual(
-      elements.formFieldInput["&:focus"],
+    expect(elements.otpCodeFieldInput["&&:focus"]).toEqual(
+      elements.formFieldInput["&&:focus"],
     );
   });
 
@@ -77,3 +78,15 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.modalCloseButton.color).toBe("var(--text)");
   });
 });
+
+  it("exports stable auth appearance tokens", () => {
+    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--cta)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--cta-foreground)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.backgroundColor).toBe("var(--cta)");
+    expect(AUTH_APPEARANCE.elements.footer.backgroundColor).toBe("var(--surface-1)");
+    expect(AUTH_APPEARANCE.elements.footer).not.toHaveProperty("background");
+    // Footer / link affordances stay muted (currency-rule guard).
+    expect(AUTH_APPEARANCE.elements.footerActionLink.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.identityPreviewEditButton.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.formResendCodeLink.color).not.toBe("var(--pulse)");
+  });
