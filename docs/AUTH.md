@@ -718,6 +718,11 @@ keeps. It is the authorization spent on one call, which exchanges it for an
 `{ token, saved_at, session_id, api_url, credential_id }`, and `token` is that
 `afc_` credential.
 
+The browser authorizes the approval request through `/backend/` with its
+customized session token. The API-template token appears only inside the
+encrypted handoff payload: it lacks the session ID required by Clerk middleware.
+A redirected approval response never counts as confirmed approval.
+
 **Reversing the claim customization.** In the Clerk dashboard, open **Sessions →
 Customize session token** and reset to default. The next minted token has no
 `aud`, and dashboard fetches fail with an `AudienceMismatch` 401 on the following
