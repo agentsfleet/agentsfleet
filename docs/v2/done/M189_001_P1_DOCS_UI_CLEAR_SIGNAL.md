@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M189
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — readable product surfaces and accurate launch copy
 **Categories:** DOCS, UI
 **Batch:** B1 — independent of the outbound repair
@@ -155,9 +155,9 @@ Publish the visual rules and their implementation together.
 Apply shared typography and flat surfaces to existing authenticated screens.
 
 - **Dimension 2.1 — DONE** — App backgrounds and usage meters contain no gradients → Test `flat app surfaces`.
-- **Dimension 2.2 — IN_PROGRESS** — Navigation and forms remain usable on narrow screens → Test browser keyboard and responsive walkthrough.
-- **Dimension 2.6 — IN_PROGRESS** — Every app and website route receives source and rendered review across relevant roles, forms, empty/populated/error states, keyboard interactions, and responsive layouts → Evidence `docs/qa/clear-signal-ux-review.md`.
-- **Dimension 2.3 — IN_PROGRESS** — Empty, loading, and error states retain visible next actions → Test existing app state suites and failed initial reads.
+- **Dimension 2.2 — DONE** — Navigation and forms remain usable on narrow screens → Test browser keyboard and responsive walkthrough.
+- **Dimension 2.6 — DONE** — Every app and website route receives source and rendered review across relevant roles, forms, empty/populated/error states, keyboard interactions, and responsive layouts → Evidence `docs/qa/clear-signal-ux-review.md`.
+- **Dimension 2.3 — DONE** — Empty, loading, and error states retain visible next actions → Test existing app state suites and failed initial reads.
 - **Dimension 2.4 — DONE** — Shared primitives own navigation, interface typography, and meter presentation; consumers retain semantic technical text → Test component contracts, app navigation suites, and browser token propagation.
 - **Dimension 2.5 — DONE** — Design-token gate rejects consumer font definitions and display typography in the app → Test rejection and permitted technical token fixtures plus app primitive override checks.
 
@@ -243,13 +243,13 @@ No analytics or funnel playbook update is required because action meanings remai
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Conform | `make harness-verify` | exit 0 | P0 | |
-| R2 | Lint | `make lint-all` | exit 0 | P0 | |
-| R3 | Unit behavior | `make test-unit-all` | exit 0 | P0 | |
-| R4 | Integration regression | `make test-integration-rustd` | exit 0 | P0 | |
-| R5 | Version consistency | `make check-version` | exit 0 | P0 | |
-| R6 | Browser smoke | `make dry-smoke` | exit 0 | P0 | |
-| R7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Conform | `make harness-verify` | exit 0 | P0 | PASS — make harness-verify through orly gate work; merge commit hook exit 0 |
+| R2 | Lint | `make lint-all` | exit 0 | P0 | PASS — make lint-all; All lint checks passed |
+| R3 | Unit behavior | `make test-unit-all` | exit 0 | P0 | PASS — make test-unit-all; Rust 2355, app 2527, website 155, CLI 1646, design system 559 passed |
+| R4 | Integration regression | `make test-integration-rustd` | exit 0 | P0 | PASS — make test-integration-rustd; 377 passed |
+| R5 | Version consistency | `make check-version` | exit 0 | P0 | PASS — make check-version; all versions match 0.28.0 |
+| R6 | Browser smoke | `make dry-smoke` | exit 0 | P0 | PASS — make dry-smoke; website 13, app browser 4, smoke unit 1 passed |
+| R7 | No secrets | `gitleaks detect` | exit 0 | P0 | PASS — gitleaks detect --redact; 5204 commits scanned, no leaks found |
 
 ## Dead Code Sweep
 
@@ -311,5 +311,15 @@ Historical checkpoints are preserved in [the design history](../../qa/clear-sign
 ## Approved deferral
 
 The complete agent onboarding guide and executable incident-investigation walkthrough on `/agents` are deferred until after `docs/v2/pending/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md`.
-User approval: “1 - i will do it after docs/v2/pending/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md”.
+> Indy (2026-09-05): "1 - i will do it after docs/v2/pending/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md" — context: complete agent onboarding guide and executable walkthrough.
 This milestone changes the page heading, route, and navigation; it does not claim agent onboarding is end-to-end verified.
+
+## Final integration evidence
+
+The branch integrates M190 while retaining its live run summaries and immediate action feedback.
+The UI review and all canonical verification lanes pass on the combined branch.
+Logs: `/tmp/m189-merged-{unit-all,integration,lint-all,dry-smoke,check-version,gitleaks-history}.log`.
+The merged production app passes 17 live acceptance tests and 8 true-touch scenarios.
+Website browser evidence remains 157 Chromium tests, 206 Firefox/WebKit tests, and 56 rebuilt gallery/accessibility/smoke tests.
+The exact reviewed states and evidence limits are recorded in `docs/qa/clear-signal-ux-review.md`.
+Companion documentation: https://github.com/agentsfleet/docs/pull/186.
