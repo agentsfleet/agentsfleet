@@ -12,6 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The p95 and p99 every lane reports. Recording is constant-time, so the
+# sample budget is bounded by the profile's caps rather than by memory.
+hdrhistogram.workspace = true
+# The result file every lane writes, and the baseline the comparison reads.
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 
 [lints]
