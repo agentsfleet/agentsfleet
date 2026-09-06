@@ -27,7 +27,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
 }));
 
 import ResolveButtons from "@/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons";
-import { APPROVAL_DECISION } from "@/lib/api/approvals";
+import { APPROVAL_DECISION } from "@/lib/api/approvals-types";
 import { EVENTS } from "@/lib/analytics/events";
 
 beforeEach(() => {

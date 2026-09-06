@@ -1,7 +1,8 @@
 "use client";
 
 import { ConfirmDialog } from "@agentsfleet/design-system";
-import type { RunnerStateAction, RunnerListItem } from "@/lib/api/runners";
+import type { RunnerListItem } from "@/lib/api/runners";
+import type { RunnerStateAction } from "@/lib/api/runners-types";
 
 const CONFIRM_LABEL = "Confirm";
 

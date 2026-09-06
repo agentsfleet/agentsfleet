@@ -26,7 +26,8 @@ import {
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { InfoIcon, PlusIcon } from "lucide-react";
-import { HOST_ID_REGEX, parseLabels, type CreatedRunner } from "@/lib/api/runners";
+import { type CreatedRunner } from "@/lib/api/runners";
+import { HOST_ID_REGEX, parseLabels } from "@/lib/api/runners-types";
 import { presentErrorString } from "@/lib/errors";
 import { createRunnerAction } from "../actions";
 import { EVENTS } from "@/lib/analytics/events";

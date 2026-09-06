@@ -26,8 +26,9 @@ import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/ac
 import { createModelEntryAction, replaceSecretAction, setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
-import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
-import { providerLabel, uniqueProviders } from "@/lib/api/model_library";
+import { type Secret } from "@/lib/api/secrets";
+import { SECRET_KIND } from "@/lib/api/secrets-types";
+import { providerLabel, uniqueProviders } from "@/lib/api/model-library-types";
 import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";

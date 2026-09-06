@@ -1,11 +1,7 @@
 import { CircleHelpIcon } from "lucide-react";
 import { Badge } from "@agentsfleet/design-system";
-import {
-  SANDBOX_TIER_LABELS,
-  type CapabilityReport,
-  type RunnerAdminState,
-  type RunnerDetail,
-} from "@/lib/api/runners";
+import { type CapabilityReport, type RunnerDetail } from "@/lib/api/runners";
+import { SANDBOX_TIER_LABELS, type RunnerAdminState } from "@/lib/api/runners-types";
 import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
 import { RUNNER_STATES_DOC_URL } from "./runner-copy";
 

@@ -6,13 +6,8 @@ import { Alert } from "@agentsfleet/design-system";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
-import {
-  getRunner,
-  listRunnerEvents,
-  listRunnerLeases,
-  RUNNER_LIFECYCLE_EVENT_TYPES,
-  type RunnerDetail,
-} from "@/lib/api/runners";
+import { getRunner, listRunnerEvents, listRunnerLeases, type RunnerDetail } from "@/lib/api/runners";
+import { RUNNER_LIFECYCLE_EVENT_TYPES } from "@/lib/api/runners-types";
 import { resolveRunnerView, runnerPath, RUNNER_VIEW, type RunnerView } from "@/lib/runner-routes";
 import {
   CURSOR_PAGE_SIZE_PARAM,

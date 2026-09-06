@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
 import { maxServerCreatedAt, mergeBackfill, rfc3339Seconds } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";

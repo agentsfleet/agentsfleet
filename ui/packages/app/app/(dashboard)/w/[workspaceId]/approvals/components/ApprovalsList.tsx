@@ -23,13 +23,8 @@ import {
   denyApprovalAction,
   listApprovalsAction,
 } from "../actions";
-import {
-  APPROVAL_DECISION,
-  APPROVALS_PAGE_LIMIT,
-  type ApprovalDecision,
-  type ApprovalGate,
-  type ResolveOutcome,
-} from "@/lib/api/approvals";
+import { type ApprovalGate, type ResolveOutcome } from "@/lib/api/approvals";
+import { APPROVAL_DECISION, APPROVALS_PAGE_LIMIT, type ApprovalDecision } from "@/lib/api/approvals-types";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/with-token";

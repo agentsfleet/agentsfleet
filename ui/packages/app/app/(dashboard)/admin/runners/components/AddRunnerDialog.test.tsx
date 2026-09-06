@@ -11,12 +11,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
 
 import AddRunnerDialog from "./AddRunnerDialog";
 import { DEFAULT_ASSIGNED_SANDBOX_TIER } from "./PolicyFields";
-import {
-  DEFAULT_ASSIGNED_NETWORK_POLICY,
-  DEFAULT_WORKER_COUNT,
-  NETWORK_POLICY_LABELS,
-  SANDBOX_TIER_LABELS,
-} from "@/lib/api/runners";
+import { DEFAULT_ASSIGNED_NETWORK_POLICY, DEFAULT_WORKER_COUNT, NETWORK_POLICY_LABELS, SANDBOX_TIER_LABELS } from "@/lib/api/runners-types";
 
 afterEach(() => cleanup());
 beforeEach(() => {

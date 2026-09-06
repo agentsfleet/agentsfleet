@@ -7,7 +7,7 @@ import {
   WorkspaceStreamProvider,
   useWorkspaceFleetStream,
 } from "@/components/domain/useWorkspaceStream";
-import { FRAME_KIND } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";
 
 const WORKSPACE_ID = "ws_wall";

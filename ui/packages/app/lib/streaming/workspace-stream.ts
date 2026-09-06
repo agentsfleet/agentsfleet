@@ -1,11 +1,5 @@
-import {
-  FRAME_KIND,
-  streamWorkspaceEventsUrl,
-  type LiveFrame,
-  type WorkspaceControlFrame,
-  type WorkspaceFrame,
-  type WorkspaceLiveFrame,
-} from "@/lib/api/events";
+import { type LiveFrame, type WorkspaceControlFrame, type WorkspaceFrame, type WorkspaceLiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
 
 // One EventSource per WORKSPACE, demultiplexed to per-fleet subscribers.
 //

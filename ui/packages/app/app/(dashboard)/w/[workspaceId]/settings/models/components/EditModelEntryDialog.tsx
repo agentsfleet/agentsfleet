@@ -16,7 +16,7 @@ import {
 } from "@agentsfleet/design-system";
 import { replaceSecretAction, updateModelEntryAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
-import { SECRET_KIND } from "@/lib/api/secrets";
+import { SECRET_KIND } from "@/lib/api/secrets-types";
 import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import type { TenantModelEntry } from "@/lib/types";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";

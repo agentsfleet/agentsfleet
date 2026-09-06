@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Nav, PageTitle } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";

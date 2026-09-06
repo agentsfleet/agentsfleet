@@ -3,12 +3,8 @@
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
-import {
-  DEFAULT_SORT,
-  type ApiKeyListResponse,
-  type ApiKeyRow,
-  type ApiKeySort,
-} from "@/lib/api/api_keys";
+import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
+import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";

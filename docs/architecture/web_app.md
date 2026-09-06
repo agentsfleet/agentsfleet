@@ -25,6 +25,12 @@ posts the encrypted result, so the call cannot move to the server without
 moving the private key with it. It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
 the only one.
+Every server fetch runs under one policy, `lib/api/retry.ts`: a declared
+schedule with a 20 s deadline, a 10 s `Retry-After` cap, full jitter, and a
+replay gate read from where the failure happened, so a write the server may
+hold is never sent twice. The policy's dependency, `effect`, is server-only:
+a client component reads status facts from `lib/api/errors.ts`, and
+`.size-limit.mjs` fails the build if the runtime reaches a client chunk.
 
 **2 · `"use client"` marks a leaf, never a branch.**
 The directive goes on the smallest interactive unit — a button, a form, a
