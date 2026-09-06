@@ -16,7 +16,7 @@ import {
   Form,
   Spinner,
 } from "@agentsfleet/design-system";
-import type { AssignedPolicy } from "@/lib/api/runners";
+import type { AssignedPolicy } from "@/lib/api/runners-types";
 import { presentErrorString } from "@/lib/errors";
 import { updateRunnerPolicyAction } from "../actions";
 import {

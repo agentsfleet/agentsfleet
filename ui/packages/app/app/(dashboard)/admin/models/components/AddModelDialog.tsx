@@ -25,7 +25,8 @@ import {
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
-import { type AdminModel, usdPerMtokToNanos } from "@/lib/api/admin_model_library";
+import { type AdminModel } from "@/lib/api/admin_model_library";
+import { usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
 import { presentErrorString } from "@/lib/errors";
 import { createAdminModelAction } from "../actions";
 

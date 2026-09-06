@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONNECTOR_STATUS } from "../lib/api/connectors-types";
 
 // Pure API-client tests for lib/api/connectors — exercise the real client against
 // a stubbed fetch (no module mocks), so the provider path builder and both
@@ -32,7 +33,7 @@ describe("lib/api/connectors", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
       }),
     );
-    expect(res.status).toBe(mod.CONNECTOR_STATUS.connected);
+    expect(res.status).toBe(CONNECTOR_STATUS.connected);
   });
 
   it("startConnect('github', …) POSTs to the /connect sub-path and returns the install URL", async () => {
@@ -69,7 +70,7 @@ describe("lib/api/connectors", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
       }),
     );
-    expect(res.status).toBe(mod.CONNECTOR_STATUS.connected);
+    expect(res.status).toBe(CONNECTOR_STATUS.connected);
     expect(res.team).toBe("Acme HQ");
   });
 

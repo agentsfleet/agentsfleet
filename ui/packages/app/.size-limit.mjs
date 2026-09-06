@@ -1,6 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findServerOnlyModule, findStaleMarker } from "./scripts/server-only-modules.mjs";
 
 const APP_ROOT = dirname(fileURLToPath(import.meta.url));
 const BUILD_DIRECTORY = ".next";
@@ -19,6 +20,14 @@ const DASHBOARD_APP_PATH = "/(dashboard)/";
 const PAGE_APP_PATH_SUFFIX = "/page";
 const FRAMEWORK_APP_PATH_PREFIX = "/_";
 const GZIP = true;
+// A string only the Effect runtime carries (a registry key in its core). The
+// retry policy runs on the server; a client chunk containing this is the
+// policy, or its dependency, leaking into the browser bundle.
+// `source` is where the marker must be found first: a renamed key fails the
+// build loudly instead of leaving the guard green and blind.
+const SERVER_ONLY_MODULE_MARKERS = [
+  { name: "effect", marker: "effect/Effect/Yield", source: "node_modules/effect/dist/internal/core.js" },
+];
 const BUDGETS = {
   auth: "225 KiB",
   cliAuth: "240 KiB",
@@ -232,6 +241,27 @@ function sizeCheck(name, files, limit) {
   };
 }
 
+// Every client chunk the checks cover is read once and searched for each
+// server-only module's marker; one hit fails the build the same way a budget
+// does.
+async function assertServerOnlyModulesAbsent(checks) {
+  const runtimes = new Map();
+  for (const { name, source } of SERVER_ONLY_MODULE_MARKERS) {
+    const runtime = await readFile(resolve(APP_ROOT, source), "utf8").catch(() =>
+      fail(`${name} runtime is absent at ${source}; the server-only guard cannot be proven`),
+    );
+    runtimes.set(name, runtime);
+  }
+  const stale = findStaleMarker(runtimes, SERVER_ONLY_MODULE_MARKERS);
+  if (stale) fail(`${stale.name} no longer carries the marker ${stale.marker}; update the guard`);
+  const chunks = new Map();
+  for (const file of new Set(checks.flatMap(({ path }) => path))) {
+    chunks.set(file, await readFile(resolve(APP_ROOT, file), "utf8"));
+  }
+  const leaked = findServerOnlyModule(chunks, SERVER_ONLY_MODULE_MARKERS);
+  if (leaked) fail(`${leaked.file} carries the server-only module ${leaked.name}`);
+}
+
 async function assertFilesExist(checks) {
   const paths = union(...checks.flatMap(({ path }) => path));
   await Promise.all(
@@ -289,6 +319,7 @@ async function createConfig() {
   }
   const activeChecks = checks.filter(Boolean);
   await assertFilesExist(activeChecks);
+  await assertServerOnlyModulesAbsent(activeChecks);
   return activeChecks;
 }
 

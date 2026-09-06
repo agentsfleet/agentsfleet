@@ -1,4 +1,5 @@
-import { FRAME_KIND, streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
 import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
 import { backfillEntry } from "./fleet-stream-backfill";
 import { factsOf, mergeFacts } from "./fleet-stream-facts";

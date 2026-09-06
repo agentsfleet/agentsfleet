@@ -1,5 +1,6 @@
-import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { figure } from "./fleet-stream-row";
 

@@ -14,7 +14,7 @@ import React, {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import { FRAME_KIND } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import {
   runWorkspaceBackfill,

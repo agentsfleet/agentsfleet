@@ -54,7 +54,8 @@ vi.mock("lucide-react", () => ({
   LinkIcon: (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": "LinkIcon" }),
 }));
 
-import { getConnector, getConnectorCatalog, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getConnector, getConnectorCatalog } from "@/lib/api/connectors";
+import { CONNECTOR_STATUS } from "@/lib/api/connectors-types";
 import { ApiError } from "@/lib/api/errors";
 
 // The workspace id now comes from the route param; every page invocation passes

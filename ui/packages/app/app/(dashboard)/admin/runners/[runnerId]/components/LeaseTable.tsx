@@ -14,7 +14,8 @@ import {
   Time,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { LEASE_OUTCOME, type RunnerLease, type RunnerLeaseResponse } from "@/lib/api/runners";
+import { type RunnerLease, type RunnerLeaseResponse } from "@/lib/api/runners";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { failureSentenceFor } from "@/lib/events/event-summary";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";

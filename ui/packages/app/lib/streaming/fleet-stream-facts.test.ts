@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
+import { type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { NO_FACTS } from "@/lib/events/run-summary";
 import { factsOf, mergeFacts } from "./fleet-stream-facts";
 import { figure, text } from "./fleet-stream-row";

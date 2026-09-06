@@ -9,7 +9,7 @@ import {
   deriveSteps,
   type OnboardingInputs,
 } from "@/lib/onboarding";
-import { PREFERENCE_KEY } from "@/lib/api/preferences";
+import { PREFERENCE_KEY } from "@/lib/api/preferences-types";
 import { putPreferenceAction } from "@/lib/actions/preferences";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";

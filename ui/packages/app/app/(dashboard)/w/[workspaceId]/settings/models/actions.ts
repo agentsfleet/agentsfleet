@@ -6,7 +6,8 @@ import {
   setTenantProviderSelfManaged as apiSetTenantProviderSelfManaged,
 } from "@/lib/api/tenant_provider";
 import { listSecrets as apiListSecrets, replaceSecret as apiReplaceSecret } from "@/lib/api/secrets";
-import { getModelLibrary as apiGetModelLibrary, type ModelLibrary } from "@/lib/api/model_library";
+import { getModelLibrary as apiGetModelLibrary } from "@/lib/api/model_library";
+import { type ModelLibrary } from "@/lib/api/model-library-types";
 import {
   listTenantModelEntries as apiListTenantModelEntries,
   createTenantModelEntry as apiCreateTenantModelEntry,

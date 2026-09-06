@@ -1,10 +1,5 @@
-import {
-  backfillFleetEventsUrl,
-  backfillWorkspaceEventsUrl,
-  type EventRow,
-  type EventsPage,
-  type EventsQuery,
-} from "@/lib/api/events";
+import { type EventRow, type EventsPage } from "@/lib/api/events";
+import { backfillFleetEventsUrl, backfillWorkspaceEventsUrl, type EventsQuery } from "@/lib/api/events-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
 

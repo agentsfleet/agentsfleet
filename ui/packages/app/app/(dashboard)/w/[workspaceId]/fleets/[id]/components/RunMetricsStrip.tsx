@@ -10,7 +10,7 @@ import {
 } from "@agentsfleet/design-system";
 import Link from "next/link";
 import type { RunFigures } from "@/lib/events/run-summary";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { formatMs } from "@/lib/utils";
 import { outcomeFor } from "@/lib/events/event-summary";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";

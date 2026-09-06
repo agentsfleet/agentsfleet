@@ -3,7 +3,7 @@
 import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ConfirmDialog } from "@agentsfleet/design-system";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { Fleet, FleetStatusSettable } from "@/lib/api/fleets";
 import { setFleetStatusAction } from "../../actions";
 import { presentErrorString } from "@/lib/errors";

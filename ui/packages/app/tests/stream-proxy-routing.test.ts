@@ -11,12 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import nextConfig from "../next.config";
-import {
-  backfillFleetEventsUrl,
-  backfillWorkspaceEventsUrl,
-  streamFleetEventsUrl,
-  streamWorkspaceEventsUrl,
-} from "@/lib/api/events";
+import { backfillFleetEventsUrl, backfillWorkspaceEventsUrl, streamFleetEventsUrl, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
 
 const APP_DIR = path.join(__dirname, "..", "app");
 const WORKSPACE_ID = "ws_1";
