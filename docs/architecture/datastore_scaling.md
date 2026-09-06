@@ -2,7 +2,7 @@
 type: explanation
 audience: contributor
 verified: 2026-09-06
-product_version: 2.0.0
+product_version: 0.28.0
 executable: false
 ---
 
@@ -20,7 +20,7 @@ executable: false
 
 This page records the approved requirements for datastore scaling. It does not claim that Dragonfly support or million-fleet capacity has shipped.
 
-The implementation and acceptance tests belong to [M192_001](../v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md).
+The [datastore scaling roadmap](./roadmap.md#datastore-scaling-and-redis-parity) links the pending implementation and benchmark plans.
 The existing runtime topology remains documented in [data_flow.md](./data_flow.md) and [runner_fleet.md](./runner_fleet.md).
 Implementation must update those pages in the same commit as any topology change.
 
@@ -79,7 +79,7 @@ Missing Cloud evidence leaves the Dragonfly acceptance rows incomplete.
 ## Related pages
 
 - [Scaling](./scaling.md) describes existing capacity assumptions that measurements must verify.
-- [M188_001](../v2/pending/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md) owns the shared benchmark drivers.
+- [Datastore scaling roadmap](./roadmap.md#datastore-scaling-and-redis-parity) identifies the shared benchmark drivers and implementation plan.
 - [Dragonfly Cloud data stores](https://www.dragonflydb.io/docs/cloud/datastores) describes single-shard, Swarm, eviction, and replica settings.
 - [Dragonfly compatibility](https://www.dragonflydb.io/docs/command-reference/compatibility) distinguishes command support from identical behavior.
 - [Dragonfly AOF documentation](https://www.dragonflydb.io/docs/managing-dragonfly/aof) must be checked when reviewing durability assumptions.
