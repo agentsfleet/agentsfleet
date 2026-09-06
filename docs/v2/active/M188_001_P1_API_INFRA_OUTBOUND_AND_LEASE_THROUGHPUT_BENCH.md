@@ -171,18 +171,18 @@ process (`lane/outbound/poster.rs`): the real `Worker`, the real ladder, and no
 socket adding its own latency to the number. The trait is the seam
 `afd_outbound`'s own suites use for the same reason.
 
-- **Dimension 4.1** — a run of queued jobs against a uniformly fast stub reports sustained jobs per second and p95 end-to-end delivery latency → Test `test_outbound_bench_reports_a_rate_and_a_p95`
-- **Dimension 4.2** — with one destination scripted slow, the latency of the OTHER destinations is separately reported, making head-of-line blocking a measured quantity → Test `test_outbound_bench_isolates_the_slow_destination_cost`
-- **Dimension 4.3** — with one destination scripted retryable, the fraction of the window the worker spent in its retry ladder is reported → Test `test_outbound_bench_reports_retry_occupancy`
+- **Dimension 4.1** — DONE — — a run of queued jobs against a uniformly fast stub reports sustained jobs per second and p95 end-to-end delivery latency → Test `test_outbound_bench_reports_a_rate_and_a_p95`
+- **Dimension 4.2** — DONE — — with one destination scripted slow, the latency of the OTHER destinations is separately reported, making head-of-line blocking a measured quantity → Test `test_outbound_bench_isolates_the_slow_destination_cost`
+- **Dimension 4.3** — DONE — — with one destination scripted retryable, the fraction of the window the worker spent in its retry ladder is reported → Test `test_outbound_bench_reports_retry_occupancy`
 
 ### §5 — Cardinality to a million fleets
 
 Establishes what an idle fleet costs when there are a million of them. The per-fleet stream and consumer group design is sound at the scale it has run at; whether it survives six orders of magnitude more is an empirical question with no answer in this repository. **Implementation default:** the `rig` profile creates the full population; the deployed profiles measure the population already present and report the same shape, because creating a million streams in a shared environment is not a measurement anyone consented to.
 
-- **Dimension 5.1** — on the rig, a fleet population reports Redis memory before and after and the per-fleet delta, at each step of a declared ladder up to a million → Test `test_cardinality_bench_reports_memory_per_fleet_across_the_ladder`
-- **Dimension 5.2** — with the population present, a readiness peek and a single-stream read report their latency, so cardinality's cost on the hot path is measured rather than assumed → Test `test_cardinality_bench_reports_hot_path_latency_under_cardinality`
-- **Dimension 5.3** — the same run reports the Postgres side: table sizes and the candidate query's plan and latency at population → Test `test_cardinality_bench_reports_postgres_cost_at_population`
-- **Dimension 5.4** — on a deployed profile the lane observes rather than creates, and says so in its result → Test `test_a_deployed_cardinality_run_creates_nothing`
+- **Dimension 5.1** — DONE — — on the rig, a fleet population reports Redis memory before and after and the per-fleet delta, at each step of a declared ladder up to a million → Test `test_cardinality_bench_reports_memory_per_fleet_across_the_ladder`
+- **Dimension 5.2** — DONE — — with the population present, a readiness peek and a single-stream read report their latency, so cardinality's cost on the hot path is measured rather than assumed → Test `test_cardinality_bench_reports_hot_path_latency_under_cardinality`
+- **Dimension 5.3** — DONE — — the same run reports the Postgres side: table sizes and the candidate query's plan and latency at population → Test `test_cardinality_bench_reports_postgres_cost_at_population`
+- **Dimension 5.4** — IN_PROGRESS — — on a deployed profile the lane observes rather than creates, and says so in its result → Test `test_a_deployed_cardinality_run_creates_nothing`
 
 ### §6 — Reporting, attribution and baselines
 
