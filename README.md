@@ -27,6 +27,8 @@ Agents are defined in Markdown playbooks with tools, triggers, and investigation
 
 ## Quick start
 
+Need access? [Join the waitlist](https://accounts.agentsfleet.net/waitlist). The website's **Dashboard** links currently open the waitlist, and the shell installer command is hidden while unavailable.
+
 ```bash
 npm install -g @agentsfleet/cli
 agentsfleet login
