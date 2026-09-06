@@ -32,7 +32,7 @@ test.describe("Agents page (/agents)", () => {
     await expect(block).toContainText("npx skills add agentsfleet/skills");
     await expect(block).toContainText("Create a fleet for incident response in my workspace.");
     await expect(block).not.toContainText("/agentsfleet-install-platform-ops");
-    await expect(block).toContainText("curl -fsSL https://agentsfleet.dev | bash");
+    await expect(block).not.toContainText("curl -fsSL https://agentsfleet.dev | bash");
   });
 
   test("renders machine surface heading + openapi link", async ({ page }) => {

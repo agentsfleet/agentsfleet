@@ -1,31 +1,10 @@
-import { useState } from "react";
 import { AgentIllustration } from "./AgentIllustration";
-import { Button, DisplayXL, Toast, Section, useResettableTimeout } from "@agentsfleet/design-system";
+import { Button, DisplayXL, Section } from "@agentsfleet/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import { GITHUB_URL, INSTALL_COMMAND, WAITLIST_URL } from "../config";
+import { GITHUB_URL, WAITLIST_URL } from "../config";
 import { HERO_HEADLINE, HERO_LEDE_PARTS, HERO_PRIMARY_LABEL, HERO_SECONDARY_LABEL, HOW_IT_WORKS_ANCHOR_ID } from "../lib/marketing-copy";
 
-type CopyStatus = "copied" | "manual";
-const TOAST_VISIBLE_MS = 2000;
-const COPY_STATUS = { copied: "copied", manual: "manual" } as const;
-
 export default function Hero() {
-  const [toastVisible, setToastVisible] = useState(false);
-  const [shown, setShown] = useState<CopyStatus>(COPY_STATUS.copied);
-  const toastTimer = useResettableTimeout();
-  function showToast(kind: CopyStatus) {
-    setShown(kind);
-    setToastVisible(true);
-    toastTimer.start(() => setToastVisible(false), TOAST_VISIBLE_MS);
-  }
-  async function onCopyInstall() {
-    try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
-      showToast(COPY_STATUS.copied);
-    } catch {
-      showToast(COPY_STATUS.manual);
-    }
-  }
   return (
     <Section asChild>
       <section className="site-section" aria-label="Hero" data-testid="hero">
@@ -33,10 +12,6 @@ export default function Hero() {
           <div className="hero-copy flex min-w-0 flex-col gap-6">
             <HeroHeading />
             <HeroActions />
-            <InstallRow onCopy={() => void onCopyInstall()} />
-            <Toast visible={toastVisible} severity={shown === COPY_STATUS.manual ? "warning" : "info"} data-testid="hero-cta-toast">
-              {shown === COPY_STATUS.copied ? "Copied — paste into your terminal" : "Clipboard blocked — select the command above and copy manually"}
-            </Toast>
           </div>
           <HeroExample />
         </div>
@@ -67,21 +42,6 @@ function HeroHeading() {
         {HERO_LEDE_PARTS.outro}
       </p>
     </>
-  );
-}
-
-function InstallRow({ onCopy }: { onCopy: () => void }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-surface-deep px-md py-sm">
-      <span className="text-pulse" aria-hidden="true">$</span>
-      <code className="min-w-0 flex-1 break-all font-mono text-mono text-text" data-testid="hero-install-command">
-        {INSTALL_COMMAND}
-      </code>
-      <Button type="button" variant="secondary" size="sm" onClick={onCopy}
-        data-testid="hero-cta-primary" className="ml-auto min-h-11 shrink-0"
-        aria-label="Copy the install command"
-      >Copy</Button>
-    </div>
   );
 }
 
