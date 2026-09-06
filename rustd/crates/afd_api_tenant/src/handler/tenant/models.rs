@@ -236,30 +236,18 @@ fn respond(headers: &HeaderMap, body: Vec<u8>) -> Response {
 
 /// The catalogue's version stamp: the newest row's change date, `YYYY-MM-DD`
 /// UTC. An empty catalogue yields 0 → `1970-01-01`, a valid not-yet-
-/// provisioned state rather than an error.
+/// provisioned state rather than an error. Values outside Jiff's supported
+/// calendar range retain their numeric timestamp as the version stamp.
 fn version_stamp(max_updated_ms: i64) -> String {
-    const MS_PER_SECOND: i64 = 1000;
-    const SECONDS_PER_DAY: i64 = 86_400;
-    let seconds = (max_updated_ms / MS_PER_SECOND).max(0);
-    let days = seconds / SECONDS_PER_DAY;
-    let (year, month, day) = civil_from_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-/// Gregorian date from days since the epoch — Howard Hinnant's
-/// `civil_from_days`, the constant-time algorithm every date library uses.
-/// Signed throughout, so no narrowing cast has to argue about a range.
-const fn civil_from_days(days: i64) -> (i64, i64, i64) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    (if month <= 2 { year + 1 } else { year }, month, day)
+    jiff::Timestamp::from_millisecond(max_updated_ms.max(0)).map_or_else(
+        |_outside_calendar| max_updated_ms.to_string(),
+        |timestamp| {
+            timestamp
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .date()
+                .to_string()
+        },
+    )
 }
 
 mod input;
@@ -267,6 +255,10 @@ mod input;
 #[cfg(test)]
 mod tests {
     use super::version_stamp;
+
+    // Jiff 0.2.35's millisecond constructor caps at MAX seconds * 1000,
+    // excluding the final 999 milliseconds that Timestamp::MAX represents.
+    const LAST_CONSTRUCTIBLE_MS: i64 = 253_402_207_200_000;
 
     #[test]
     fn the_version_stamp_renders_epoch_ms_as_a_utc_date() {
@@ -284,5 +276,26 @@ mod tests {
     fn a_leap_day_survives_the_civil_arithmetic() {
         // 2024-02-29 00:00 UTC — the branchy corner of any date algorithm.
         assert_eq!(version_stamp(1_709_164_800_000), "2024-02-29");
+    }
+
+    #[test]
+    fn the_last_supported_millisecond_still_renders_a_utc_date() {
+        assert_eq!(version_stamp(LAST_CONSTRUCTIBLE_MS), "9999-12-30");
+    }
+
+    #[test]
+    fn timestamps_beyond_the_calendar_range_keep_their_numeric_value() {
+        for millis in [
+            LAST_CONSTRUCTIBLE_MS + 1,
+            jiff::Timestamp::MAX.as_millisecond(),
+            i64::MAX,
+        ] {
+            assert_eq!(version_stamp(millis), millis.to_string());
+        }
+    }
+
+    #[test]
+    fn the_most_negative_timestamp_clamps_before_calendar_conversion() {
+        assert_eq!(version_stamp(i64::MIN), "1970-01-01");
     }
 }

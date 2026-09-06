@@ -14,10 +14,7 @@
 use afd_fleet::memory::MAX_KEY_LEN;
 use afd_fleet::memory::page::View;
 
-use super::{
-    LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key,
-    percent_decode,
-};
+use super::{LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key};
 
 /// A page size far past what any page will serve.
 ///
@@ -228,7 +225,7 @@ fn should_keep_a_raw_plus_literal_in_a_path() {
 /// A malformed escape never reaches the database lookup.
 #[test]
 fn should_refuse_a_key_with_a_malformed_escape() {
-    for key in ["bad%2", "bad%", "bad%zz", "%"] {
+    for key in ["bad%2", "bad%", "bad%zz", "%", "%+a", "%-a"] {
         assert!(memory_key(&item(key)).is_err(), "{key} does not decode");
     }
 }
@@ -269,7 +266,4 @@ fn should_refuse_an_empty_key() {
 #[test]
 fn should_refuse_a_key_that_is_not_text() {
     memory_key(&item("%FF%FE")).unwrap_err();
-    // The decoder itself still produced them — the refusal is the UTF-8 gate
-    // above it, not a decode failure.
-    assert_eq!(percent_decode("%FF%FE"), Some(vec![0xFF, 0xFE]));
 }

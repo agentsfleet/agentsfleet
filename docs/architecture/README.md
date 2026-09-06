@@ -69,6 +69,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §Two layers |
 | How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §The publish gate |
 | Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
+| When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §Review rubric |
 | What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §Client event rules |
 | Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
 | Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |

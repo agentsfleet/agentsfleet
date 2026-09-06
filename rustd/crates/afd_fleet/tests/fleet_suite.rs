@@ -62,5 +62,7 @@ mod integration_runner_retire;
 mod integration_runner_row;
 #[path = "integration_runner_views.rs"]
 mod integration_runner_views;
+#[path = "integration_runner_views_malformed.rs"]
+mod integration_runner_views_malformed;
 #[path = "verdict_matrix.rs"]
 mod verdict_matrix;

@@ -227,6 +227,21 @@ async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped(
 }
 
 #[tokio::test]
+async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
+    let ingress = fleet_in("paused");
+    let answered = deliver(&ingress, signed::SVIX_DELIVERY, NOT_JSON).await;
+
+    let status = answered.status();
+    let document = json_body(answered).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document.get("ignored").and_then(Value::as_str),
+        Some(REASON_PAUSED)
+    );
+    assert!(ingress.deliveries().is_empty());
+}
+
+#[tokio::test]
 async fn a_verified_body_that_is_not_a_document_is_refused() {
     let ingress = fleet_in("active");
     let refused = deliver(&ingress, signed::SVIX_DELIVERY, NOT_JSON).await;

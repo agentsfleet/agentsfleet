@@ -32,9 +32,7 @@ use sqlx::Row as _;
 
 /// A migration whose SQL ends inside a string literal.
 ///
-/// The split has to refuse this rather than hand Postgres the half of it that
-/// parses: `'` opens a literal that never closes, so a splitter that broke on
-/// the next `;` would submit a fragment.
+/// Postgres must refuse the whole batch and leave no partial schema change.
 const UNTERMINATED: &[Migration] = &[Migration::for_test(
     9001,
     "9001_unterminated_literal.sql",
@@ -83,16 +81,10 @@ async fn test_a_refusing_migrator_accepts_a_ledger_that_is_not_ahead() {
     database.cleanup().await;
 }
 
-/// A migration whose SQL cannot be split is refused before any of it runs, and
-/// the refusal is recorded.
-///
-/// Refused BEFORE, which is the whole claim: the alternative is submitting the
-/// prefix that happens to parse and leaving the schema half-changed, with a
-/// ledger that says the migration never ran. The failure row is what turns a
-/// broken deploy into something the next boot can report.
+/// A malformed SQL batch applies nothing and leaves a failure record.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_migration_that_cannot_be_split_is_refused_and_recorded() {
+async fn test_a_malformed_migration_applies_nothing_and_records_its_failure() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
 

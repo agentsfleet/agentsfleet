@@ -177,7 +177,7 @@ impl Fleet {
                     CronSchedules::new(database.clone(), Entropy::new()),
                     QStash::new(
                         reqwest::Client::new(),
-                        String::new(),
+                        afd_crypto::secret::SecretString::new(String::new()),
                         SCHEDULE_DESTINATION.to_owned(),
                         SCHEDULE_API_BASE.to_owned(),
                     ),
@@ -286,7 +286,7 @@ impl Fleet {
                     CronSchedules::new(database.clone(), Entropy::new()),
                     QStash::new(
                         reqwest::Client::new(),
-                        String::new(),
+                        afd_crypto::secret::SecretString::new(String::new()),
                         SCHEDULE_DESTINATION.to_owned(),
                         SCHEDULE_API_BASE.to_owned(),
                     ),

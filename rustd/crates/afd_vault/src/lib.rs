@@ -164,3 +164,6 @@ impl Vault {
         &self.directory
     }
 }
+
+mod stored_envelope;
+pub use self::stored_envelope::StoredEnvelope;

@@ -10,7 +10,7 @@ use super::endpoint::{self, Rejection};
 use super::managed::{Credential, FIELD_PROVIDER};
 use super::resolved::Dialled;
 use crate::error::{provider_endpoint, provider_malformed};
-use crate::provider::resolved::SecretString;
+use afd_crypto::secret::SecretString;
 
 /// One stored credential, parsed and with its endpoint ruled on.
 ///

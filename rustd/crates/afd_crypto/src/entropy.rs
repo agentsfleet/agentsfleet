@@ -98,6 +98,17 @@ impl Entropy {
         )
     }
 
+    /// Draws the random portion of a `UUIDv7` from this source.
+    /// The caller supplies its own clock and retains its identifier error mapping.
+    ///
+    /// # Errors
+    /// Returns an entropy error if the configured source refuses the draw.
+    pub fn uuid_randomness(&self) -> Result<[u8; afd_core::id::ENTROPY_LEN]> {
+        let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
+        self.fill(&mut bytes)?;
+        Ok(bytes)
+    }
+
     /// Fills `buf` with random bytes.
     ///
     /// # Errors

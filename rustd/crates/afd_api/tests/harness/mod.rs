@@ -283,6 +283,7 @@ impl CredentialDirectory for Directory {
 const DEFAULT_STREAM_CEILING: usize = 64;
 
 mod fleet;
+mod fleet_credentials;
 mod fleet_seams;
 
 mod services;

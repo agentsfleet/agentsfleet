@@ -25,6 +25,7 @@ test-util = [
 openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
 
 [dependencies]
+jiff.workspace = true
 afd_webhook.workspace = true
 afd_ingress.workspace = true
 afd_crypto.workspace = true

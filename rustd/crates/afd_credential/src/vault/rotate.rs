@@ -34,7 +34,7 @@ use sqlx::Acquire as _;
 
 use crate::error::{Result, query, vault_data_invalid};
 use crate::vault::sql;
-use crate::vault::{ENVELOPE_AT, KeyRef, Vault};
+use crate::vault::{KeyRef, Vault};
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 
 /// Statement name, for the context a query failure carries.
@@ -121,14 +121,17 @@ impl Vault {
             return Ok(Rotated::SkippedStale);
         };
 
-        let stored = self.decrypt(&row, ENVELOPE_AT, key)?;
-        let mut handle: serde_json::Map<String, Value> =
-            serde_json::from_slice(stored.expose()).map_err(|_shape| vault_data_invalid())?;
+        let stored = self.decrypt(&row, key)?;
+        let mut handle = afd_crypto::secret::SecretObject::parse(stored.expose())
+            .map_err(|_shape| vault_data_invalid())?;
         // Compares against what this exchange actually posted, which is the one
         // thing the lock cannot tell us: a reconnect that landed BEFORE this
         // transaction opened leaves a handle whose refresh token was never the
         // one we redeemed.
-        let current = handle.get(FIELD_REFRESH_TOKEN).and_then(Value::as_str);
+        let current = handle
+            .fields()
+            .get(FIELD_REFRESH_TOKEN)
+            .and_then(Value::as_str);
         if current != Some(posted) {
             return Ok(Rotated::SkippedStale);
         }
@@ -139,16 +142,13 @@ impl Vault {
         // as they were, so the broker's cache identity is unchanged and an
         // ordinary rotation remains a cache hit.
         //
-        handle.insert(
-            FIELD_REFRESH_TOKEN.to_owned(),
-            Value::String(replacement.to_owned()),
-        );
-        let plaintext = serde_json::to_vec(&handle).map_err(|_shape| vault_data_invalid())?;
+        handle.replace_string(FIELD_REFRESH_TOKEN, replacement);
+        let plaintext = handle.canonical().map_err(|_shape| vault_data_invalid())?;
         let sealed = Sealer::new()
             .seal(
                 self.kek(),
                 &Aad::new(key.workspace_id.as_str(), key.name),
-                &plaintext,
+                plaintext.expose(),
             )
             .map_err(crate::error::vault_open)?;
 

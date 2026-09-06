@@ -20,10 +20,11 @@
 //!
 //! A raw `+` is a SPACE in a query string and a literal plus in a path. The Zig
 //! writes two loops for that, one per surface; here the difference is a single
-//! substitution applied before [`percent_decode`] rather than a second copy of
+//! substitution applied before [`decode_bytes`] rather than a second copy of
 //! the escape reader — `%2B` contains no `+`, so substituting first cannot
 //! turn an encoded plus into a space.
 
+use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
 
 use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
@@ -72,18 +73,6 @@ const RECALL_LIMIT_DEFAULT: i64 = 20;
 /// the same ask, and a client sitting on either would change class if the two
 /// were made to agree.
 const LIMIT_MAX: i64 = 100;
-
-/// The escape introducer both decoders read.
-const ESCAPE: char = '%';
-
-/// How many characters follow a `%`.
-const ESCAPE_DIGITS: usize = 2;
-
-/// The base a `%XX` pair is read in.
-const ESCAPE_RADIX: u32 = 16;
-
-/// The character a query string spells a space with.
-const QUERY_SPACE: char = '+';
 
 /// Which rows the caller asked for, holding the text they asked with.
 ///
@@ -261,7 +250,7 @@ fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
 /// them spends a statement discovering it.
 pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     let raw = path.rsplit('/').next().unwrap_or_default();
-    let decoded = percent_decode(raw).ok_or_else(|| Refusal::malformed(DETAIL_KEY_ENCODING))?;
+    let decoded = decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?;
     // The bound is on the DECODED bytes, which is what a stored key is measured
     // in. `decodePathSegment` reaches the same answer by writing into a
     // `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
@@ -272,35 +261,9 @@ pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     String::from_utf8(decoded).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
 }
 
-/// Decodes `%XX` escapes, and nothing else.
-///
-/// `None` where `httpz`'s `Url.unescape` answers `error.InvalidEscapeSequence`:
-/// a `%` with fewer than two characters after it, or two that are not hex.
-/// Splitting on `%` is what makes this a fold rather than an index walk — the
-/// first piece is literal text and every later one opens with the pair.
-fn percent_decode(raw: &str) -> Option<Vec<u8>> {
-    let mut pieces = raw.split(ESCAPE);
-    let head = pieces.next().unwrap_or_default().as_bytes().to_vec();
-    pieces.try_fold(head, |mut decoded, escaped| {
-        let (digits, rest) = escaped.split_at_checked(ESCAPE_DIGITS)?;
-        decoded.push(u8::from_str_radix(digits, ESCAPE_RADIX).ok()?);
-        decoded.extend_from_slice(rest.as_bytes());
-        Some(decoded)
-    })
-}
-
-/// Decodes one query-string name or value: `%XX`, and a `+` is a space.
-///
-/// Borrowed when there is nothing to decode, which is the common case and the
-/// reason this answers a [`Cow`].
+/// Query policy is shared; parameter selection remains specific to memory reads.
 fn form_decode(raw: &str) -> Option<Cow<'_, str>> {
-    if !raw.contains([ESCAPE, QUERY_SPACE]) {
-        return Some(Cow::Borrowed(raw));
-    }
-    let spaced = raw.replace(QUERY_SPACE, " ");
-    String::from_utf8(percent_decode(&spaced)?)
-        .ok()
-        .map(Cow::Owned)
+    decode_form(raw).ok()
 }
 
 #[cfg(test)]

@@ -9,24 +9,8 @@
 //! ISSUER published — an attacker naming a `kid` we do not hold gets
 //! `KeyNotFound`, not a key of their choosing.
 //!
-//! # Why the claim checks are ours rather than a crate's
-//!
-//! `jsonwebtoken` would do all of this, and `core_api-develop` uses it — then
-//! hand-writes `has_correct_issuer`, `has_correct_subject`,
-//! `has_secret_name_claim` and `has_account_uid_claim` on top, because the
-//! crate's built-in `Validation` did not fit. The same wall is here, and it was
-//! re-checked against the pinned `jsonwebtoken 10.4.0` rather than taken on
-//! trust: `validation.rs` reads the clock by calling a free
-//! `get_current_timestamp()` inside a `pub(crate) fn validate`, with no clock
-//! parameter and no way to reach it, so every expiry test would have to move
-//! the wall clock. Two of its defaults would also have to be overridden rather
-//! than inherited — `leeway: 60` against a session token that lives sixty
-//! seconds, and `validate_nbf: false`. Owning the checks keeps all of them
-//! steerable, and this note is version-pinned because it is a claim about a
-//! dependency that can change underneath it.
-//!
-//! No cryptography is owned here. RS256 is `aws_lc_rs`, base64 is `base64`, and
-//! the payload is `serde_json` — what this file owns is ORDER and POLICY.
+//! `jsonwebtoken` owns JWS verification. The claim adapter retains the injected
+//! clock, zero leeway, exact expiry boundary, and workspace confinement policy.
 
 use std::sync::Arc;
 
@@ -35,6 +19,7 @@ use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 use afd_core::clock::Clock;
 
+use crate::error::Result;
 use crate::jwks::cache::{DEFAULT_TTL_MS, KeyCache};
 use crate::jwks::claims::{CLAIM_TENANT_ID, Claims};
 use crate::jwks::key_set::SigningKey;
@@ -126,26 +111,12 @@ impl<S: KeySetSource> JwksVerifier<S> {
         let keys = self.cache.resolve(&kid).await?;
         let key = keys.find(&kid).ok_or(VerifyError::KeyNotFound)?;
 
-        let signature = decode_segment(segments.signature)?;
-        verify_rs256(key, segments.signing_input().as_bytes(), &signature)?;
-
-        // Only now is the payload something a decision may be based on.
-        let payload_raw = decode_segment(segments.payload)?;
-        self.read_claims(&payload_raw)
+        let claims = verify_claims(key, token)?;
+        self.read_claims(claims)
     }
 
     /// Checks the standard claims and lifts the ones this daemon acts on.
-    fn read_claims(&self, payload: &[u8]) -> Result<VerifiedClaims, VerifyError> {
-        // The same object-only reader the header and the key set are read
-        // through. `serde_json::from_slice` fills a derived struct from a JSON
-        // ARRAY, taking its elements positionally, and this payload is the one
-        // of the three that carries the authorisation decision. It happens to
-        // be safe today only because `#[serde(flatten)]` suppresses the
-        // sequence path — an incidental property of a field that exists for an
-        // unrelated reason, and not something to leave a guarantee resting on.
-        let claims: Claims = afd_core::json::object_from_slice(payload)
-            .map_err(|_invalid| VerifyError::Malformed)?;
-
+    fn read_claims(&self, claims: Claims) -> Result<VerifiedClaims, VerifyError> {
         if claims.iss.as_deref() != Some(&*self.issuer) {
             return Err(VerifyError::IssuerMismatch);
         }
@@ -223,27 +194,33 @@ impl<S: KeySetSource> TokenVerifier for JwksVerifier<S> {
         // The credential is copied out here rather than borrowed into the
         // future: `Presented` zeroes on drop, and holding a borrow across an
         // await would tie the caller's lifetime to this verification.
-        let token = presented.expose().to_owned();
-        async move { self.verify_token(&token).await }
+        let token = presented.clone();
+        async move { self.verify_token(token.expose()).await }
     }
 }
 
-/// Checks an RS256 signature over `message`.
-///
-/// # Errors
-/// [`VerifyError::SignatureInvalid`] for every failure. ring reports one
-/// opaque error by design, and that is the right shape here too: a caller
-/// learning WHY a signature failed learns something about the key or the
-/// padding, and neither is theirs to know.
-fn verify_rs256(key: &SigningKey, message: &[u8], signature: &[u8]) -> Result<(), VerifyError> {
-    aws_lc_rs::signature::RsaPublicKeyComponents {
-        n: key.modulus(),
-        e: key.exponent(),
-    }
-    .verify(
-        &aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256,
-        message,
-        signature,
-    )
-    .map_err(|_unspecified| VerifyError::SignatureInvalid)
+/// Preserve duplicate-field refusals while requiring an object at the JWS boundary.
+#[derive(serde::Deserialize)]
+#[serde(transparent)]
+struct SignedClaims {
+    #[serde(deserialize_with = "afd_core::json::object_from_deserializer")]
+    claims: Claims,
+}
+
+/// Verify before parsing claims, then pass every policy check to `read_claims`.
+fn verify_claims(key: &SigningKey, token: &str) -> Result<Claims, VerifyError> {
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
+    // The injected-clock adapter immediately enforces these claims. Library
+    // wall-clock defaults would change expiry and fractional nbf boundaries.
+    validation.required_spec_claims.clear();
+    validation.validate_exp = false;
+    validation.validate_nbf = false;
+    validation.validate_aud = false;
+    let verified = jsonwebtoken::decode::<SignedClaims>(token, &key.decoding_key, &validation)
+        .map_err(|error| match error.kind() {
+            jsonwebtoken::errors::ErrorKind::InvalidSignature => VerifyError::SignatureInvalid,
+            jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => VerifyError::UnsupportedAlgorithm,
+            _ => VerifyError::Malformed,
+        })?;
+    Ok(verified.claims.claims)
 }

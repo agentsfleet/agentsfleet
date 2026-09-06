@@ -16,7 +16,7 @@
 //! so a partial write is one the caller cannot reason about.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
 
@@ -217,8 +217,6 @@ impl Vault {
     /// Minted from `now` rather than from a second clock read, so the row's
     /// identifier sorts beside the `created_at` written in the same statement.
     fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0_u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
