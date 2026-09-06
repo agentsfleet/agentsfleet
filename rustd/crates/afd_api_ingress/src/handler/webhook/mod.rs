@@ -29,6 +29,7 @@ pub(crate) mod qstash_route;
 pub(crate) mod receive_route;
 pub(crate) mod svix_route;
 
+mod delivery;
 mod verify;
 pub(crate) mod verify_platform;
 mod verify_svix;

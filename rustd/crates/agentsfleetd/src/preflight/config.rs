@@ -46,7 +46,7 @@ pub struct BootConfig {
     pub(super) identity: IdentityConfig,
     pub(super) bundles: Option<BundleStoreConfig>,
     pub(super) platform_admin_workspace: Option<Uuid7>,
-    pub(super) qstash_token: Option<Box<str>>,
+    pub(super) qstash_token: Option<afd_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) identity_webhook_secret: Option<Box<str>>,
     pub(super) qstash_keys: Option<SigningKeys>,
@@ -195,7 +195,9 @@ impl BootConfig {
     /// This deployment's bearer for the external scheduler, when it has one.
     #[must_use]
     pub fn qstash_token(&self) -> Option<&str> {
-        self.qstash_token.as_deref()
+        self.qstash_token
+            .as_ref()
+            .map(afd_crypto::secret::SecretString::expose)
     }
 
     /// Which scheduler deployment the management calls go to.

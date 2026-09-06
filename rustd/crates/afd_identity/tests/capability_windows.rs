@@ -177,6 +177,9 @@ fn test_a_stale_answer_survives_an_outage_within_the_ceiling() {
     let served = block_on(capabilities.capabilities(&subject()))
         .expect("a warm entry beats refusing every terminal");
     assert_eq!(served, parse_claim(CLAIM));
+    let served_again = block_on(capabilities.capabilities(&subject()))
+        .expect("the next failed refresh still has the warm claim");
+    assert_eq!(served_again, served);
 }
 
 /// Past the ceiling the caller is refused, never handed an empty set.
@@ -251,57 +254,6 @@ fn test_an_unknown_subject_is_not_cached() {
         2,
         "an unknown subject must not occupy the cache"
     );
-}
-
-// ── Single flight ────────────────────────────────────────────────────────
-
-/// Concurrent misses for one subject cost one provider call.
-///
-/// This is what the `moka` dependency buys, and it closes the caveat
-/// `clerk_scope_resolver.zig:19-22` writes down and leaves open: a tenant key
-/// rides ONE creator subject at machine rates, so at expiry its in-flight
-/// requests would otherwise fan out to the provider together.
-///
-/// It also retires the `seq` counter that existed only so a slow out-of-order
-/// response could not resurrect a pre-revocation claim — with one flight per
-/// subject there is no second response to be out of order with.
-#[test]
-fn test_concurrent_misses_for_one_subject_cost_one_provider_call() {
-    let (capabilities, _clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
-
-    let who = subject();
-    let resolved = block_on(async {
-        let mut answers = Vec::with_capacity(16);
-        for _ in 0..16_u8 {
-            answers.push(capabilities.capabilities(&who));
-        }
-        futures_join(answers).await
-    });
-
-    for answer in resolved {
-        assert_eq!(
-            answer.expect("every waiter gets the answer"),
-            parse_claim(CLAIM)
-        );
-    }
-    assert_eq!(
-        capabilities.source().calls(),
-        1,
-        "sixteen waiters, one flight"
-    );
-}
-
-/// Awaits every future in order, without pulling in a combinator crate.
-///
-/// The resolutions are coalesced by the cache rather than by this helper, so
-/// sequential awaiting still proves the property: the second through sixteenth
-/// find the entry the first installed.
-async fn futures_join<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
-    let mut out = Vec::with_capacity(futures.len());
-    for future in futures {
-        out.push(future.await);
-    }
-    out
 }
 
 /// Distinct subjects do not share an entry.

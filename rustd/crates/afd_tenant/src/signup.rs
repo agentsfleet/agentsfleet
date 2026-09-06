@@ -40,7 +40,7 @@
 //! comes back.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers;
@@ -305,8 +305,6 @@ impl Signups {
 
     /// A fresh identifier, stamped with this signup's instant.
     fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut draw = [0_u8; ENTROPY_LEN];
-        self.entropy.fill(&mut draw)?;
-        Ok(Uuid7::encode(now, draw)?)
+        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }

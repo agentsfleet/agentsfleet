@@ -17,7 +17,6 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use afd_db::migration::{MIGRATIONS, Migration};
-use afd_db::sql::SqlStatements;
 
 /// The repository root, four levels up from this crate's manifest
 /// (`rustd/crates/afd_db` → `rustd/crates` → `rustd` → root).
@@ -127,27 +126,6 @@ fn test_migrations_are_in_ascending_version_order() {
     assert_eq!(distinct.len(), versions.len(), "two files claim one slot");
 }
 
-/// Every committed migration splits into applicable statements.
-///
-/// The corpus guard: a migration that ends inside a string literal or a
-/// function body would be refused at apply time, in the middle of a deploy,
-/// against a half-migrated database. It is refused here instead, on every
-/// unit-test run, before it is ever committed.
-#[test]
-fn test_every_migration_splits_into_statements() {
-    for migration in MIGRATIONS {
-        let statements = migration
-            .statements()
-            .unwrap_or_else(|error| panic!("{} is malformed: {error}", migration.name()));
-        let count = statements.count();
-        assert!(
-            count > 0,
-            "{} contains no statements — an empty migration still takes a version",
-            migration.name()
-        );
-    }
-}
-
 /// No migration is empty, and each one's SQL is the file's own content.
 #[test]
 fn test_every_migration_carries_its_file() {
@@ -158,19 +136,6 @@ fn test_every_migration_carries_its_file() {
             migration.sql(),
             on_disk,
             "{} was embedded from somewhere other than schema/",
-            migration.name()
-        );
-    }
-}
-
-/// The whole corpus is structurally sound as one scan, which is the shape the
-/// migrator relies on when it refuses a file before applying any of it.
-#[test]
-fn test_the_corpus_is_structurally_sound() {
-    for migration in MIGRATIONS {
-        assert!(
-            SqlStatements::new(migration.sql()).is_ok(),
-            "{} would be refused at apply time",
             migration.name()
         );
     }

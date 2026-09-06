@@ -1,33 +1,12 @@
-//! Holding a key set, refreshing it once, and serving it stale when refusing
-//! would be worse.
-//!
-//! # Why this is not a cache crate
-//!
-//! It looks like a one-entry cache and is not one. A cache evicts what has
-//! expired; this must do the opposite — when the identity provider is
-//! unreachable, an EXPIRED key set is exactly what should still be served,
-//! because verifying against keys that are minutes old beats a total
-//! authentication outage. `jwks.zig:172-186` calls that the stale-serve path
-//! and it is the behaviour any eviction policy would break.
-//!
-//! So: an `RwLock` over the held set, a `Mutex` as the single-flight gate, and
-//! the freshness decision read from an injected [`Clock`] rather than from a
-//! crate's internal timer. Every one of those decisions is steerable in a test.
-//!
-//! # The three refusals to conflate
-//!
-//! - **Expired** — refresh, then serve whatever we end up holding.
-//! - **Key-id miss on a FRESH set** — the issuer probably rotated ahead of
-//!   signing. Refresh once, rate-limited, then look again.
-//! - **Refresh failed** — keep the previous set and serve from it. A failed
-//!   fetch must never empty the cache; that would turn a provider blip into
-//!   every token failing at once.
+//! Single-flight JWKS refresh with a bounded outage grace period.
+//! Failed fetches retain the last confirmed set without renewing its age.
 
 use std::sync::Arc;
 
 use afd_auth::verifier::VerifyError;
 use afd_core::clock::{Clock, UnixMillis};
 
+use crate::error::Result;
 use crate::jwks::key_set::JwkKeySet;
 use crate::jwks::source::KeySetSource;
 
@@ -36,6 +15,9 @@ use crate::jwks::source::KeySetSource;
 /// Six hours, matching `jwks.zig`'s `cache_ttl_ms` and `docs/AUTH.md`'s
 /// "Cached for 6 h, refreshed on `kid` miss".
 pub const DEFAULT_TTL_MS: i64 = 6 * 60 * 60 * 1_000;
+
+/// Maximum outage tolerance after the normal refresh window.
+pub const STALE_GRACE_MS: i64 = 15 * 60 * 1_000;
 
 /// Shortest interval between fetch ATTEMPTS, successful or not.
 ///
@@ -122,13 +104,15 @@ impl<S: KeySetSource> KeyCache<S> {
 
         self.refresh(reason).await;
 
-        // Stale-serve: whatever we hold now, even if the refresh failed and
-        // even if it is past its time-to-live. Verifying against known keys
-        // beats a hard authentication outage while the provider is down.
+        // A failed refresh never renews the last confirmation timestamp.
         let held = self.held.read().await;
         let Some(entry) = held.as_ref() else {
             return Err(VerifyError::KeySetUnavailable);
         };
+        let ceiling = self.ttl_ms.max(0).saturating_add(STALE_GRACE_MS);
+        if self.clock.now().saturating_millis_since(entry.fetched_at) > ceiling {
+            return Err(VerifyError::KeySetUnavailable);
+        }
         if entry.keys.find(kid).is_none() {
             return Err(VerifyError::KeyNotFound);
         }
@@ -189,7 +173,7 @@ impl<S: KeySetSource> KeyCache<S> {
                 cause,
                 reason,
                 event = "jwks_refresh_failed",
-                "serving the previously held key set"
+                "refresh failed; the last confirmed key set remains subject to its age ceiling"
             );
         }
     }

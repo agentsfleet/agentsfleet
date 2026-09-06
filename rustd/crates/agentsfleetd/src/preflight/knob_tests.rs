@@ -80,6 +80,6 @@ fn one_signing_key_is_no_configuration_rather_than_half_of_one() {
         (QSTASH_NEXT_KEY_KNOB, NEXT),
     ]);
     let keys = signing_keys(&both).expect("both keys configured is a configuration");
-    assert_eq!(keys.current, CURRENT);
-    assert_eq!(keys.next, NEXT);
+    assert_eq!(keys.current.expose(), CURRENT);
+    assert_eq!(keys.next.expose(), NEXT);
 }

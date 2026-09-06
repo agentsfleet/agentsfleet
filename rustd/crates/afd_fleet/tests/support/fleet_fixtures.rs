@@ -1,19 +1,8 @@
 //! The lane's database, and the runner store over it.
 //!
-//! # One database, and what keeps the tests apart in it
-//!
-//! Every assertion here is about a ROW — what enrolment wrote, what a beat
-//! moved — and every one of those rows is keyed by a runner or fleet identifier
-//! the test minted for itself. That is the isolation. A database per test was
-//! belt over braces and cost forty-seven migrations apiece to provide.
-//!
-//! It is also the isolation the queue half has always used, and says so two
-//! doc comments below: Redis has no database-per-test equivalent, so keys are
-//! namespaced by the ids each test declares. Postgres now works the same way.
-//!
-//! Built on [`afd_db::test_util::TestDatabase`], which is where the four
-//! near-identical copies of this were always headed — one of the deletions that
-//! module predicted.
+//! Ordinary row tests share the migrated lane database and mint their own ids.
+//! Tests that corrupt globally listed rows use `Fixtures::create_isolated`:
+//! namespacing cannot keep a malformed row out of an unfiltered operator read.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -53,7 +42,22 @@ impl Fixtures {
     /// a healthy server. Use [`Fixtures::create_with_queue`] where the queue is
     /// actually read.
     pub(crate) async fn create() -> Self {
-        let lane = TestDatabase::shared();
+        Self::from_lane(TestDatabase::shared()).await
+    }
+
+    /// Migrate a private database before injecting corruption visible to global reads.
+    pub(crate) async fn create_isolated() -> Self {
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the isolated fixture has the production schema");
+        migrator.close().await;
+        Self::from_lane(lane).await
+    }
+
+    async fn from_lane(lane: TestDatabase) -> Self {
         let database = lane.open(DbRole::Api, &[]).await;
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -185,8 +189,7 @@ impl Fixtures {
             .expect("this fixture has no queue — build it with Fixtures::create_with_queue")
     }
 
-    /// Releases this test's handles. A no-op against the shared database, and
-    /// called anyway: it is how a test says it is finished.
+    /// Releases this test's handles and drops its database when privately owned.
     pub(crate) async fn cleanup(self) {
         let Self {
             lane,

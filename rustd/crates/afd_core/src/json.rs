@@ -80,6 +80,18 @@ impl<'de, D: Deserializer<'de>> Deserializer<'de> for ObjectOnly<D> {
     }
 }
 
+/// Reads an object from an existing Serde deserializer without an intermediate tree.
+///
+/// # Errors
+/// Returns the format's error for a non-object or invalid field.
+pub fn object_from_deserializer<'de, T, D>(format: D) -> Result<T, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    T::deserialize(ObjectOnly(format))
+}
+
 /// Deserializes `body` into `T`, refusing any JSON that is not an object.
 ///
 /// A drop-in for [`serde_json::from_slice`] at a trust boundary: same
@@ -96,7 +108,7 @@ where
     T: serde::Deserialize<'de>,
 {
     let mut format = serde_json::Deserializer::from_slice(body);
-    let value = T::deserialize(ObjectOnly(&mut format))?;
+    let value = object_from_deserializer(&mut format)?;
     // What `from_slice` does after its own parse: refuse trailing bytes, so
     // `{} garbage` is not silently half-read.
     format.end()?;

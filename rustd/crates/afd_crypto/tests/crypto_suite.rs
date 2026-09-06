@@ -27,3 +27,6 @@ mod mac;
 mod secret;
 #[path = "zig_parity.rs"]
 mod zig_parity;
+
+#[path = "secret_object.rs"]
+mod secret_object;

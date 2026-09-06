@@ -11,7 +11,7 @@
 //! to drift apart, and the wire answer is byte-identical either way.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
 use crate::sql::workspace as sql;
@@ -237,9 +237,7 @@ impl Workspaces {
 
     /// Draws a fresh workspace identifier.
     fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
 

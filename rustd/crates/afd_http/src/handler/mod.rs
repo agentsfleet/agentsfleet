@@ -1,6 +1,8 @@
 //! Shared request parsing and refusal rendering for every API plane.
 
+pub mod encoding;
 pub mod library_onboard;
+pub use self::encoding::BrokenEscape;
 mod refusable;
 mod refusal;
 
@@ -35,10 +37,6 @@ pub fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
     })
 }
 
-/// A broken percent escape or a decoded value that is not UTF-8.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BrokenEscape;
-
 /// Returns one query parameter with URL percent escapes decoded.
 ///
 /// # Errors
@@ -48,49 +46,9 @@ pub fn decoded_parameter<'q>(
     query: &'q str,
     name: &str,
 ) -> Result<Option<Cow<'q, str>>, BrokenEscape> {
-    let Some(raw) = parameter(query, name) else {
-        return Ok(None);
-    };
-    if !raw.bytes().any(|byte| byte == b'%' || byte == b'+') {
-        return Ok(Some(Cow::Borrowed(raw)));
-    }
-    let bytes = raw.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while let Some(&byte) = bytes.get(index) {
-        match byte {
-            b'+' => {
-                decoded.push(b' ');
-                index += 1;
-            }
-            b'%' => {
-                let high = bytes.get(index + 1).copied().and_then(hex_value);
-                let low = bytes.get(index + 2).copied().and_then(hex_value);
-                let (Some(high), Some(low)) = (high, low) else {
-                    return Err(BrokenEscape);
-                };
-                decoded.push(high << 4 | low);
-                index += 3;
-            }
-            other => {
-                decoded.push(other);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8(decoded)
-        .map(Cow::Owned)
-        .map(Some)
-        .map_err(|_not_text| BrokenEscape)
-}
-
-const fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
+    parameter(query, name)
+        .map(encoding::decode_form)
+        .transpose()
 }
 
 /// The refusal a path segment naming no shipped connector earns.

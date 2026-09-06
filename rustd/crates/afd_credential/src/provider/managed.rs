@@ -26,13 +26,14 @@
 use serde::Deserialize;
 
 use crate::error::{Result, provider_malformed};
-use crate::provider::resolved::{Resolved, SecretString};
+use crate::provider::resolved::Resolved;
 use crate::provider::selection::Selection;
 use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
 use afd_billing::Posture;
 use afd_core::id::Uuid7;
+use afd_crypto::secret::SecretString;
 
 /// The credential field a self-managed resolution cannot proceed without.
 pub(super) const FIELD_PROVIDER: &str = "provider";

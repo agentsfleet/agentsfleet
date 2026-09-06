@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetName;
 
 use backon::{ExponentialBuilder, Retryable as _};
@@ -342,8 +342,6 @@ impl Fleets {
 
     /// Draws a fresh fleet identifier.
     fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }

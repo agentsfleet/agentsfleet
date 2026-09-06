@@ -11,6 +11,7 @@
 //! the verifier where the configuration and the clock are. Splitting it the
 //! other way would put policy in a parser.
 
+use crate::error::Result;
 use afd_auth::verifier::VerifyError;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -49,19 +50,6 @@ impl<'a> Segments<'a> {
             payload,
             signature,
         })
-    }
-
-    /// The bytes the signature is over: `header.payload`, exactly as received.
-    ///
-    /// Re-encoding either segment would change these bytes, so the ENCODED
-    /// forms are what this carries. That is why [`Segments`] borrows rather
-    /// than decoding eagerly.
-    pub(crate) fn signing_input(self) -> String {
-        let mut input = String::with_capacity(self.header.len() + 1 + self.payload.len());
-        input.push_str(self.header);
-        input.push('.');
-        input.push_str(self.payload);
-        input
     }
 }
 
