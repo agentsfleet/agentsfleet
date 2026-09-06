@@ -30,10 +30,12 @@
 
 pub mod error;
 pub mod fixture;
+pub mod instrument;
 pub mod profile;
 pub mod report;
 
 pub use error::{Error, Result};
 pub use fixture::{FixtureLedger, RunPrefix};
+pub use instrument::{LeaseInstrument, PollCounters};
 pub use profile::{Caps, Parameter, Profile, Target};
 pub use report::{Lane, Latency, Report};
