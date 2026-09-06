@@ -36,15 +36,7 @@ WHERE workspace_id = $1::uuid AND key_name = $2";
 
 /// The requested credentials of a workspace, ciphertext and all, in one read.
 ///
-/// Column order deliberately puts `key_name` and `created_at` FIRST so the
-/// ciphertext block that follows keeps the exact shape and offsets
-/// [`SELECT_SECRET`] uses — which is what lets one decrypt routine serve both
-/// statements, and why `Vault::decrypt` takes the block's starting index rather
-/// than hard-coding zero.
-///
-/// `created_at` is projected and unread here. It stays because the statement is
-/// shared with the credential-list endpoint that displays it, and narrowing the
-/// projection would fork one statement into two.
+/// The envelope is decoded by column name, independent of metadata positions.
 ///
 /// `$1` workspace, `$2` the names.
 pub const SELECT_SECRETS_BY_NAMES: &str = "\

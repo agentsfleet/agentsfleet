@@ -25,6 +25,7 @@
 //! promoting the second. A verifier that knew one would refuse every delivery
 //! between the vendor's rotation and this daemon's redeploy.
 
+use afd_crypto::secret::SecretString;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
@@ -125,9 +126,9 @@ struct Claims {
 #[derive(Debug, Clone)]
 pub struct SigningKeys {
     /// The key the scheduler is signing with now.
-    pub current: String,
+    pub current: SecretString,
     /// The key it will sign with next.
-    pub next: String,
+    pub next: SecretString,
 }
 
 /// Whether `token` proves `body` was sent by the scheduler to `destination`.
@@ -166,7 +167,7 @@ pub fn verify_at(
     // and a tolerance here is a window a replayed token lives inside.
     validation.leeway = 0;
 
-    let decoded = [keys.current.as_str(), keys.next.as_str()]
+    let decoded = [keys.current.expose(), keys.next.expose()]
         .into_iter()
         .filter(|key| !key.is_empty())
         .find_map(|key| {

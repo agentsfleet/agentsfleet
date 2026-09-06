@@ -12721,7 +12721,7 @@
           },
           "version": {
             "type": "string",
-            "description": "The catalogue's version stamp: the newest row's change date, UTC."
+            "description": "The catalogue's version stamp: the newest row's change date, UTC.\nPositive timestamps beyond the supported calendar range use their decimal\nUnix timestamp in milliseconds instead of a date."
           }
         }
       },

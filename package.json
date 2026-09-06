@@ -6,10 +6,9 @@
     "ui/packages/website",
     "ui/packages/design-system"
   ],
-  "devDependencies": {
-  },
+  "devDependencies": {},
   "overrides": {
     "playwright-core": "1.63.0"
   },
-  "version": "0.28.0"
+  "version": "0.28.2"
 }

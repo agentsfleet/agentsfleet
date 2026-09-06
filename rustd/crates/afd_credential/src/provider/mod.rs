@@ -84,7 +84,7 @@ pub use self::entries::{
 // callers, rather than a second scheme-and-SSRF check that could come to
 // disagree with this one about the same host.
 pub(crate) use self::endpoint::validate as validate_endpoint;
-pub use self::resolved::{Dialled, Resolved, SecretString};
+pub use self::resolved::{Dialled, Resolved};
 pub use self::secret_kind::SecretKind;
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;

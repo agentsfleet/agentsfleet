@@ -13,7 +13,7 @@ use afd_core::env::MapEnv;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
-use afd_crypto::secret::{Kek, SecretBytes};
+use afd_crypto::secret::{Kek, SecretBytes, SecretString};
 use afd_db::config::{DbRole, PoolConfig};
 use afd_observability::Analytics;
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -58,7 +58,7 @@ fn plane() -> ServingPlane {
         identity_webhook_secret: None,
         schedule: crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
-            token: String::new(),
+            token: SecretString::new(String::new()),
             destination: String::new(),
             api_base: String::new(),
             keys: None,

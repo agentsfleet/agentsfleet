@@ -15,7 +15,7 @@
 //! reason (RULE VLT). What an operator gets is which provider, and what it
 //! answered.
 
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::{SecretBytes, SecretString};
 
 use crate::error::{self, Result};
 use crate::oauth;
@@ -29,14 +29,14 @@ use crate::provider::Provider;
 #[derive(Clone)]
 pub struct Exchanged {
     /// The body, unread. Never logged — see the module note.
-    body: String,
+    body: SecretString,
 }
 
 impl Exchanged {
     /// The body, for the provider parse that knows its shape.
     #[must_use]
     pub fn body(&self) -> &str {
-        &self.body
+        self.body.expose()
     }
 }
 
@@ -127,8 +127,11 @@ impl Exchange {
         code: &str,
         redirect_uri: &str,
     ) -> Result<Exchanged> {
-        let secret = String::from_utf8_lossy(credentials.client_secret.expose()).into_owned();
-        let form = oauth::exchange_form(&credentials.client_id, &secret, code, redirect_uri);
+        let secret = SecretString::new(
+            String::from_utf8_lossy(credentials.client_secret.expose()).into_owned(),
+        );
+        let form =
+            oauth::exchange_form(&credentials.client_id, secret.expose(), code, redirect_uri);
         let endpoint = self.endpoint_override.as_deref().unwrap_or(endpoint);
 
         let answer = self
@@ -162,7 +165,7 @@ impl Exchange {
         // one call site would put `serde_json` inside every other crate's HTTP
         // client too. `afd_cron::qstash` reads its own answer the same way.
         Ok(Exchanged {
-            body: answer.text().await?,
+            body: SecretString::new(answer.text().await?),
         })
     }
 }
@@ -170,6 +173,7 @@ impl Exchange {
 #[cfg(test)]
 mod tests {
     use super::Exchanged;
+    use afd_crypto::secret::SecretString;
 
     /// The body never renders, however it is printed.
     ///
@@ -179,7 +183,7 @@ mod tests {
     #[test]
     fn a_provider_grant_does_not_render_its_body() {
         let exchanged = Exchanged {
-            body: String::from(r#"{"access_token":"xoxb-not-a-real-token"}"#),
+            body: SecretString::new(String::from(r#"{"access_token":"xoxb-not-a-real-token"}"#)),
         };
 
         let rendered = format!("{exchanged:?}");

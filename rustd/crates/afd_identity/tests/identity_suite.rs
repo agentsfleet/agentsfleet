@@ -12,6 +12,8 @@ mod support;
 
 #[path = "cache_refresh.rs"]
 mod cache_refresh;
+#[path = "capability_refresh.rs"]
+mod capability_refresh;
 #[path = "capability_windows.rs"]
 mod capability_windows;
 #[path = "claim_authority_bounds.rs"]
@@ -20,8 +22,12 @@ mod claim_authority_bounds;
 mod claim_shapes;
 #[path = "http_key_set.rs"]
 mod http_key_set;
+#[path = "jwks_lifetime.rs"]
+mod jwks_lifetime;
 #[path = "jwks_verify_negative_paths.rs"]
 mod jwks_verify_negative_paths;
+#[path = "key_policy.rs"]
+mod key_policy;
 #[path = "key_set_parsing.rs"]
 mod key_set_parsing;
 #[path = "provider_claims.rs"]

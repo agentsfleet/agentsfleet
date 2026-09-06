@@ -19,6 +19,7 @@ categories.workspace = true
 openapi = ["dep:utoipa"]
 
 [dependencies]
+percent-encoding.workspace = true
 afd_admin.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
