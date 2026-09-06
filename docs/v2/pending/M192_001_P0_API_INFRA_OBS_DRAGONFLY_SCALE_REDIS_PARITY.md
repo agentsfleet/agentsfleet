@@ -20,9 +20,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0, required before claiming Dragonfly readiness or million-fleet capacity.
 **Categories:** API, INFRA, OBS
 **Batch:** B2, consumes the shared benchmark drivers from M188_001.
-**Branch:** fix/sse-fleet-facts, existing authoring worktree selected by the user-authorized agent.
+**Branch:** docs/m192-dragonfly-scale-redis-parity, documentation only; implementation has not started.
 **Test Baseline:** not run during authoring; record canonical unit and integration counts at CHORE(open).
-**Depends on:** M188_001 for measurement drivers and result files; the selected branch's fleet-facts changes for streaming acceptance fixtures.
+**Depends on:** M188_001 for measurement drivers and result files. Streaming acceptance uses the merged runtime; the parked SSE follow-up is not a prerequisite.
 **Provenance:** LLM-drafted (Codex, Sep 06, 2026), from the user's Dragonfly and same-deployment requirements.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; existing flows in `data_flow.md` and `runner_fleet.md`.
 
@@ -39,7 +39,7 @@ Replacing Swarm or removing Redis support requires an explicit user decision. A 
 
 - **PR title (eventual):** feat: add Dragonfly scaling with measured Redis parity
 - **Intent:** retain users' existing fleet behavior while adding tested Dragonfly capacity and recovery.
-- **Handshake:** add capability incrementally in this worktree, preserve Redis behavior, and compare each deployed increment with an identified baseline.
+- **Handshake:** implement on a dedicated feature branch after baseline measurement, preserve Redis behavior, and compare each deployed increment with an identified baseline.
 - **ASSUMPTIONS I'M MAKING:** the million-fleet target needs explicit traffic and concurrency assumptions; this authoring task authorizes no deployment or account changes.
 
 ## Implementing agent — read these first
@@ -170,7 +170,7 @@ Compare sessions, approvals, expiry, readiness, Streams, Lua reload, and deliver
 Keep integration under `make test-integration-rustd`; use disposable Redis and multi-shard Dragonfly locally, and dedicated Swarm datastores for Cloud proof.
 Extend backend selection without forwarding destructive test resets to a shared deployment or requiring logical databases unsupported by the selected topology.
 
-- **Dimension 6.1**: application golden paths return equivalent outcomes and preserve fleet-facts streaming acceptance → Test `test_backends_preserve_application_outcomes`.
+- **Dimension 6.1**: application golden paths return equivalent outcomes and preserve the merged runtime's streaming behavior → Test `test_backends_preserve_application_outcomes`.
 - **Dimension 6.2**: lost responses, Lua cache loss, session races, and expiry preserve error classes and one-time actions → Test `test_backends_preserve_failure_and_session_semantics`.
 - **Dimension 6.3**: a shared endpoint, incomplete matrix, or fixture cleanup mismatch fails verification → Test `test_backend_matrix_refuses_unsafe_or_incomplete_evidence`.
 
@@ -301,7 +301,7 @@ No authoring deletions. Remove replaced helpers and enumerate reference sweeps b
 4. **Rebuild-vs-iterate:** refactor the operation-specific boundaries where measurements require it; keep business semantics and redis-rs.
 5. **What we build:** recoverable acceptance, bounded queues, fair coordination, cluster support, backend tests, and strict deployment evidence.
 6. **What we do NOT build:** another runtime, benchmark stack, cache framework, or automatic production migration.
-7. **Fit with existing features:** reuse M188 drivers, fleet-facts streaming fixtures, fenced settlement, and the existing integration lane.
+7. **Fit with existing features:** reuse M188 drivers, merged streaming fixtures, fenced settlement, and the existing integration lane.
 8. **Surface order:** operator Make commands and reports first; application behavior is verified through the existing API, dashboard, and CLI.
 9. **Dashboard restraint:** no new dashboard controls or scale badges before their measured evidence exists.
 10. **Confused-user next step:** the report names the failing budget, missing backend run, or recovery procedure and links its operational playbook.
@@ -314,6 +314,8 @@ No authoring deletions. Remove replaced helpers and enumerate reference sweeps b
 
 ## Discovery (consult log)
 
+- **Scope decision (2026-09-06):** the user said "park entire sse" and requested that the DragonflyDB commits be pushed.
+  This documentation branch excludes the uncommitted SSE implementation. M192 remains PENDING; no Dragonfly runtime acceptance is claimed.
 - **Consults**
 - **Metrics review**
 - **Skill-chain outcomes**
