@@ -22,14 +22,25 @@ import type { RetryInfo } from "./retry";
 type Scripted = { status: number; body?: string; headers?: Record<string, string> };
 
 const PATH = "/v1/thing";
+// A route the server accepts and never answers — the hung-backend case.
+const HANG_PATH = "/v1/hung";
 const TOKEN = "test-token";
 const OK_BODY = '{"ok":true}';
 
 const queue: Scripted[] = [];
 const methodLog: string[] = [];
+const hung: http.ServerResponse[] = [];
+// Runs when a request reaches the hung route — the moment "the request is on
+// the wire" is a fact rather than a guess about how fast the socket connected.
+let onHung: (() => void) | null = null;
 
 const server = http.createServer((req, res) => {
   methodLog.push(req.method ?? "");
+  if (req.url === HANG_PATH) {
+    hung.push(res);
+    onHung?.();
+    return;
+  }
   const next = queue.shift() ?? { status: 200, body: OK_BODY };
   res.writeHead(next.status, { "content-type": "application/json", ...(next.headers ?? {}) });
   res.end(next.body ?? OK_BODY);
@@ -44,18 +55,24 @@ vi.stubEnv("NEXT_PUBLIC_API_URL", `http://127.0.0.1:${port}`);
 // the real fetch that vitest.setup.ts swaps out for a no-network default in the
 // unit suite (it captured the original under `__realFetch`).
 globalThis.fetch = (globalThis as { __realFetch?: typeof fetch }).__realFetch ?? globalThis.fetch;
+// The unit suite defaults to one attempt (vitest.setup.ts); this suite proves
+// the policy over a real socket, so the switch goes back to "retry".
+vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
 vi.resetModules();
-const { requestWithRetry } = await import("./retry");
+const { request, requestWithRetry } = await import("./client");
 const { ApiError } = await import("./errors");
+const { RETRY_CODE_TIMEOUT } = await import("./retry");
 
 afterAll(async () => {
   vi.unstubAllEnvs();
+  for (const res of hung) res.destroy();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
 beforeEach(() => {
   queue.length = 0;
   methodLog.length = 0;
+  onHung = null;
 });
 
 // Real network, fake clock: sleeps are recorded instead of awaited and jitter is
@@ -126,6 +143,29 @@ describe("requestWithRetry — real transport integration", () => {
     expect(delays[0]).toBeGreaterThanOrEqual(MS_PER_SECOND); // 1s server floor parsed from the header
   });
 
+  it("a hung read times out into the retryable class, and the caller's aborted signal stops the loop", async () => {
+    // The caller's own timeout fires with the request on the wire — raised by
+    // the hung handler itself, with the reason `AbortSignal.timeout` would
+    // carry, so the assertion never races a clock. Its signal stays aborted,
+    // so a second attempt could only fail instantly against it — the policy
+    // stops instead of sleeping a backoff to prove that. The attempt ceiling
+    // for the default (fresh-signal-per-attempt) path is proved in
+    // client.defaults.
+    const { options, retries } = fastRetry({ maxAttempts: 3 });
+    const controller = new AbortController();
+    onHung = () => controller.abort(new DOMException("signal timed out", "TimeoutError"));
+    const err = await requestWithRetry(
+      HANG_PATH,
+      { method: "GET", signal: controller.signal },
+      TOKEN,
+      options,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as InstanceType<typeof ApiError>).code).toBe(RETRY_CODE_TIMEOUT);
+    expect(retries).toEqual([]);
+    expect(methodLog).toEqual(["GET"]); // the one attempt did reach the server
+  });
+
   it("exhausts maxAttempts on a persistently failing real server", async () => {
     queue.push({ status: 503 }, { status: 503 }, { status: 503 }, { status: 503 });
     const { options } = fastRetry({ maxAttempts: 3 });
@@ -135,4 +175,22 @@ describe("requestWithRetry — real transport integration", () => {
     expect(methodLog.length).toBe(3); // capped at maxAttempts, not the 4 queued
   });
 });
+describe("request — default policy over a real transport", () => {
+  it("request retries a transient read and returns the recovered body", async () => {
+    queue.push({ status: 503 }, { status: 200, body: OK_BODY });
+    // No options at all: the built-in backoff sleeps for real (one base delay).
+    const body = await request<{ ok: boolean }>(PATH, { method: "GET" }, TOKEN);
+    expect(body).toEqual({ ok: true });
+    expect(methodLog).toEqual(["GET", "GET"]);
+  });
+
+  it("request does not replay a non-idempotent write on a server error", async () => {
+    queue.push({ status: 503 });
+    await expect(request(PATH, { method: "POST", body: "{}" }, TOKEN)).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(methodLog).toEqual(["POST"]);
+  });
+});
+
 const MS_PER_SECOND = 1000 as const;

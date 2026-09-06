@@ -26,6 +26,7 @@
 use afd_core::clock::UnixMillis;
 
 use afd_core::id::Uuid7;
+use afd_events::Closed;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
@@ -89,18 +90,23 @@ impl Leases {
     }
 }
 
-/// Whether the refusal moved a row.
+/// Whether the refusal moved a row, and the row it moved.
 ///
 /// A named type for the reason [`Delivery`] is one: the answer looks like
-/// success or failure and is neither. Zero rows means the event was ALREADY
+/// success or failure and is neither. No row means the event was ALREADY
 /// terminal, which happens when a refused delivery's acknowledgement was lost
 /// and the producer re-delivered it. The refusal still stands and the
 /// acknowledgement is still owed, so the caller proceeds either way — it just
 /// must not report the second pass as though it decided something.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The pass that DID decide carries the closing: the terminal row and the
+/// fleet facts beside it, which the caller announces on the live tail. Boxed
+/// so the enum stays the size of a discriminant on the arm that carries
+/// nothing — the closing is built once per refused event and read once.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ended {
-    /// This pass wrote the terminal row.
-    Now,
+    /// This pass wrote the terminal row, and here it is.
+    Now(Box<Closed>),
     /// An earlier pass already did.
     Already,
 }
@@ -113,8 +119,9 @@ impl Leases {
     /// with its own row, not a resurrection of this one.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer. A row that has already
-    /// ended is [`Ended::Already`], not an error — see that type.
+    /// Reports a datastore that would not answer, and a closing this daemon
+    /// cannot read. A row that has already ended is [`Ended::Already`], not
+    /// an error — see that type.
     pub async fn block(
         &self,
         fleet_id: &Uuid7,
@@ -123,7 +130,7 @@ impl Leases {
         now: UnixMillis,
     ) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
-        let moved = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
+        let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(afd_core::event::status::GATE_BLOCKED)
@@ -134,14 +141,14 @@ impl Leases {
             // is what keeps the row shape identical for the refusals that
             // carry no operator-readable instruction.
             .bind(refusal.detail)
-            .execute(&mut *connection)
+            .bind(afd_wire::approval::status::PENDING)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_BLOCKED))?;
 
-        Ok(if moved.rows_affected() == 0 {
-            Ended::Already
-        } else {
-            Ended::Now
+        Ok(match closed {
+            Some(row) => Ended::Now(Box::new(Closed::read(&row)?)),
+            None => Ended::Already,
         })
     }
 }

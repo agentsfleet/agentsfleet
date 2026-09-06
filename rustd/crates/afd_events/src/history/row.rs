@@ -1,5 +1,8 @@
 //! One row of history, as an operator sees it.
 
+use std::borrow::Cow;
+
+use afd_wire::event::EventSummary;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
@@ -47,6 +50,10 @@ pub struct EventRow {
 }
 
 impl EventRow {
+    /// How many columns [`Self::read`] consumes, so a statement selecting
+    /// more after them can name where its own begin.
+    pub const COLUMNS: usize = 15;
+
     /// Decode one row, naming the column that refused.
     ///
     /// # Errors
@@ -70,5 +77,32 @@ impl EventRow {
             updated_at: row.try_get(13).map_err(row_malformed("updated_at"))?,
             cost_nanos: row.try_get(14).map_err(row_malformed("cost_nanos"))?,
         })
+    }
+
+    /// This row as the wire serves it — the listing's shape, borrowed.
+    ///
+    /// One mapping for the two surfaces that emit a row: the events listing
+    /// and the live tail's completion frame. Declared on the row rather than
+    /// beside either emitter, so a column added here cannot reach one and not
+    /// the other.
+    #[must_use]
+    pub fn summary(&self) -> EventSummary<'_> {
+        EventSummary {
+            fleet_id: Cow::Borrowed(&self.fleet_id),
+            event_id: Cow::Borrowed(&self.event_id),
+            workspace_id: Cow::Borrowed(&self.workspace_id),
+            actor: Cow::Borrowed(&self.actor),
+            event_type: Cow::Borrowed(&self.event_type),
+            status: Cow::Borrowed(&self.status),
+            tokens: self.tokens,
+            wall_ms: self.wall_ms,
+            failure_label: self.failure_label.as_deref().map(Cow::Borrowed),
+            failure_detail: self.failure_detail.as_deref().map(Cow::Borrowed),
+            checkpoint_id: self.checkpoint_id.as_deref().map(Cow::Borrowed),
+            resumes_event_id: self.resumes_event_id.as_deref().map(Cow::Borrowed),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            cost_nanos: self.cost_nanos,
+        }
     }
 }

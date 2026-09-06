@@ -151,6 +151,12 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
+    #[error("the event store could not answer for the runner plane")]
+    Events {
+        #[source]
+        source: afd_events::Error,
+    },
+
     #[error("the leased event envelope is missing {field}")]
     Envelope { field: &'static str },
 

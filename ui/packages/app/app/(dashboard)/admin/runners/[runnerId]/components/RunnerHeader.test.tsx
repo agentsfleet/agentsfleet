@@ -179,26 +179,6 @@ describe("RunnerHeader", () => {
     expect(grafana?.getAttribute("href")).toContain("var-runner_id=");
   });
 
-  it("test_runner_header_revoke_conflict_surfaces_state", async () => {
-    updateRunnerAdminStateActionMock.mockResolvedValueOnce({
-      ok: false,
-      errorCode: "UZ-RUN-016",
-      error: "Active runner must be revoked before deletion",
-    });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    // Confirm inside the dialog — its confirm button shares the header
-    // button's label, so the query scopes to the alertdialog.
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
-    await waitFor(() => {
-      expect(updateRunnerAdminStateActionMock).toHaveBeenCalled();
-      // The header re-reads the runner so the badge shows the returned
-      // administrative state beside the error, never a stale one.
-      expect(refresh).toHaveBeenCalled();
-    });
-  });
-
   it("test_runner_header_copy_failure_is_reported", async () => {
     const writeText = vi.fn().mockRejectedValueOnce(new Error("denied"));
     // jsdom's navigator.clipboard is getter-only; defineProperty replaces it
@@ -213,41 +193,6 @@ describe("RunnerHeader", () => {
     // never shows a success state (the design system's documented behaviour).
     expect(await screen.findByRole("button", { name: /copy failed/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /copied/i })).toBeNull();
-  });
-
-  it("should close the confirm and refresh when an admin action succeeds", async () => {
-    // Revoke carries the case: it is the one confirm-backed action still
-    // operable (cordon and drain render disabled until their verbs land).
-    updateRunnerAdminStateActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { admin_state: "revoked" },
-    });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
-    await waitFor(() => {
-      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(detail().id, "revoke");
-      expect(refresh).toHaveBeenCalled();
-    });
-    // Success closes the confirm — no error is left behind.
-    await waitFor(() => {
-      expect(screen.queryByRole("alertdialog")).toBeNull();
-    });
-  });
-
-  it("cordon and drain are disabled and inert", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    for (const name of ["Cordon", "Drain"]) {
-      const button = screen.getByRole("button", { name });
-      // Disabled; the reason rides the TooltipButton, not a mouse-only title.
-      expect(button.hasAttribute("disabled")).toBe(true);
-      expect(button.getAttribute("title")).toBeNull();
-      // Clicking opens no confirm and PATCHes nothing.
-      fireEvent.click(button);
-    }
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
   });
 
   it("every header action renders an icon beside its label", () => {

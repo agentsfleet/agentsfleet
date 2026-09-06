@@ -10,7 +10,7 @@ import {
 } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
-import { listApprovals } from "@/lib/api/approvals";
+import { APPROVALS_PAGE_LIMIT, listApprovals } from "@/lib/api/approvals";
 import ApprovalsList from "./components/ApprovalsList";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +51,7 @@ export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: str
   const token = await getToken();
   if (!token) return null;
 
-  const initial = await listApprovals(workspaceId, token, { limit: 50, fleetId }).catch(
+  const initial = await listApprovals(workspaceId, token, { limit: APPROVALS_PAGE_LIMIT, fleetId }).catch(
     () => ({ items: [], next_cursor: null }),
   );
 

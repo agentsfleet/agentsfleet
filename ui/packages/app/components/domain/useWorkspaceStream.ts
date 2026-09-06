@@ -2,10 +2,8 @@
 
 import type { ReactNode } from "react";
 import type { EventRow, WorkspaceControlFrame, WorkspaceLiveFrame } from "@/lib/api/events";
-import type {
-  ConnectionStatus,
-  FleetEvent,
-} from "@/lib/streaming/fleet-stream-registry";
+import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { WorkspaceConnectionStatus } from "@/lib/streaming/workspace-stream";
 
 import React, {

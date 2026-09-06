@@ -11,7 +11,7 @@
 // case: when a matching delivery lands, the next render simply sees a longer
 // run and the group's count grows.
 
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 /**
  * The smallest run that earns collapsing. Two identical deliveries already

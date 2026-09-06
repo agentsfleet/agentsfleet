@@ -67,6 +67,17 @@ impl From<afd_billing::Error> for Error {
     }
 }
 
+/// A closing's row came back in a shape the event store cannot read.
+///
+/// The store that owns `core.fleet_events` decodes what its own closing
+/// statements return; the lease still speaks this crate's error, so the fault
+/// composes in the way a gate or billing fault does.
+impl From<afd_events::Error> for Error {
+    fn from(source: afd_events::Error) -> Self {
+        Self::new(ErrorKind::Events { source })
+    }
+}
+
 /// An identifier could not be minted — the instant is unrepresentable.
 ///
 /// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure

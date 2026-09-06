@@ -86,7 +86,6 @@ export const METRICS_COST_LABEL = "Spend";
 export const METRICS_VALUE_UNKNOWN = "—";
 export const METRICS_EMPTY = "No outcome recorded yet.";
 export const METRICS_UNAVAILABLE = "Latest data unavailable.";
-export const METRICS_APPROVALS_UNAVAILABLE = "Approvals unavailable";
 export const METRICS_APPROVAL_LABEL = "approval waiting";
 export const METRICS_APPROVALS_LABEL = "approvals waiting";
 

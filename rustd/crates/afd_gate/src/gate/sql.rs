@@ -23,31 +23,49 @@ SELECT status FROM core.fleet_approval_gates
 WHERE action_id = $1
 ORDER BY created_at DESC LIMIT 1";
 
-/// Raise one approval gate, in the `pending` state a human answers out of.
+/// Raise one approval gate, in the `pending` state a human answers out of,
+/// and answer how many of the fleet's gates now wait — this one included.
 ///
-/// Text from `fleet_runtime/sql.zig`'s `INSERT_GATE`, with the `::uuid` and
-/// `::text` casts every other statement in this crate carries: the Zig driver
-/// sends an untyped parameter and lets Postgres infer, sqlx binds `&str` as
-/// `text`, and `id`/`fleet_id`/`workspace_id` are `UUID` columns. Column list,
-/// column order and the two literal `''` columns are unchanged.
+/// The insert is `fleet_runtime/sql.zig`'s `INSERT_GATE`, with the `::uuid`
+/// and `::text` casts every other statement in this crate carries: the Zig
+/// driver sends an untyped parameter and lets Postgres infer, sqlx binds
+/// `&str` as `text`, and `id`/`fleet_id`/`workspace_id` are `UUID` columns.
+/// Column list, column order and the two literal `''` columns are unchanged.
 ///
 /// `resolved_by` and `detail` are literal `''` rather than binds because a
 /// pending gate has no resolver and no resolution note — [`RESOLVE_GATE`]'s
 /// job, and it is the tenant plane's, not this crate's. They are `NOT NULL`
 /// columns, so the empty string is the row's own "not yet".
 ///
+/// The count rides the same statement so the frame announcing the gate
+/// carries it without a second round trip. A data-modifying CTE and the
+/// select after it run on ONE snapshot, so the select cannot see the row the
+/// CTE inserts (PostgreSQL, "Data-Modifying Statements in WITH"); the union
+/// with `raised` adds it back, which is what makes the answer "the fleet's
+/// pending gates plus this one" rather than "plus one". The status predicate
+/// is `$12`, the status the row is written in, and the index-only scan over
+/// `idx_fleet_approval_gates_fleet_id_status` is exactly that predicate.
+///
 /// `$1` gate row, `$2` fleet, `$3` workspace, `$4` action, `$5` tool,
 /// `$6` action name, `$7` kind, `$8` proposed action, `$9` evidence,
 /// `$10` blast radius, `$11` deadline, `$12` status, `$13` now, `$14` event,
 /// `$15` stated binding, `$16` spend count, `$17` spend ceiling.
 pub const INSERT_GATE: &str = "\
-INSERT INTO core.fleet_approval_gates
-  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-   resolved_by, status, detail, created_at, event_id, stated_binding,
-   spend_count, spend_ceiling)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, \
-'', $12, '', $13, $14, $15::jsonb, $16, $17)";
+WITH raised AS (
+  INSERT INTO core.fleet_approval_gates
+    (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+     gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+     resolved_by, status, detail, created_at, event_id, stated_binding,
+     spend_count, spend_ceiling)
+  VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, \
+'', $12, '', $13, $14, $15::jsonb, $16, $17)
+  RETURNING id, fleet_id
+)
+SELECT COUNT(*) FROM (
+  SELECT g.id FROM core.fleet_approval_gates g, raised
+   WHERE g.fleet_id = raised.fleet_id AND g.status = $12
+  UNION ALL SELECT id FROM raised
+) pending";
 
 /// Stop a fleet, so nothing else of its work is admitted.
 ///
