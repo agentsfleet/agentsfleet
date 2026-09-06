@@ -17,15 +17,15 @@ Every row is extracted from the sections below; the owner column names the secti
 | Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
-| Redis pool | `max_idle=8, eager_min=2` | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
-| Dedicated Redis connections | one — the SubscriptionHub | refcounted `SUBSCRIBE`; N viewers cost one connection per replica | §Connection topology |
+| Shared Redis handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
+| Dedicated Redis connections | hub + outbound reader | refcounted `SUBSCRIBE`; blocking outbound reads use a separate socket | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); `MAX_CONNECTIONS_PER_READ` = 1 | §The Postgres pool |
 | Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Webhook rejections | 3 codes | `UZ-WH-020` (misconfig) · `UZ-WH-010` (bad signature) · `UZ-WH-011` (stale timestamp, 5-minute window) | §B. TRIGGER |
 | Install guarantee | stream + group before 201 | `ensureEventStream` retries `[100ms, 500ms, 1500ms]`; exhaustion rolls back the PG row | §A. INSTALL |
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
-| Client gap recovery | reconnect-only fetch (M122) | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id | §Two streams + one pub/sub channel |
+| Client gap recovery | reconnect; workspace also handles catching_up | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
@@ -151,7 +151,7 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
                           ↓
            ╔════════════════════════════════════════╗
            ║  agentsfleet-runner (host)             ║
-           ║  POST /v1/runners/me/leases            ║   ← long-poll; no work
+           ║  POST /v1/runners/me/leases            ║   ← single poll; no work
            ║  Authorization: Bearer agt_r           ║     → null + retry_after_ms
            ╚════════════════════════════════════════╝
                           ↓
@@ -386,47 +386,33 @@ Two Redis surfaces carry a fleet's work: a durable stream for ingress, and an ep
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
-Before the cutover, the worker held **one dedicated blocking Redis connection per fleet** (`XREADGROUP … BLOCK 5000`) plus a watcher connection — that dedicated tier was the binding fleet constraint. The cutover **deleted that tier**. `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command, not a held connection. The runner's "blocking" is an HTTP long-poll against `agentsfleetd`, not a Redis `BLOCK`, and the runner holds no Redis at all.
+The Rust daemon shares one multiplexed Redis connection for ordinary commands.
+A lease request checks readiness and reads available work without `BLOCK`.
+An empty response tells the runner when to poll again; the runner holds no Redis connection.
 
-```
-                        REDIS CONNECTION TOPOLOGY (post-cutover)
-                        ════════════════════════════════════════
-
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │                      POOL  (max_idle=8, eager_min=2)                        │
-  │            ──── short-lived request-path commands only ────                 │
-  │                                                                             │
-  │   acquire → command → release   (microseconds to milliseconds)              │
-  │                                                                             │
-  └──▲──────────────────▲──────────────────▲──────────────────▲─────────────────┘
-     │ XADD             │ XREADGROUP       │ PUBLISH          │ XACK
-     │ fleet:{id}:      │ (no BLOCK)       │ fleet:{id}:      │ fleet:{id}:
-     │ events           │ fleet:{id}:      │ activity         │ events
-     │ (steer/webhook/  │ events           │ (brackets +      │ (on report)
-     │   cron/continue) │ (on each lease)  │  forwarded)      │
-  ┌──┴─────────────┐ ┌──┴─────────────┐ ┌──┴─────────────┐ ┌──┴─────────────┐
-  │ HTTP user      │ │ lease          │ │ lease + report │ │ report         │
-  │ handlers       │ │ handler        │ │ + activity     │ │ handler        │
-  │ (agentsfleetd) │ │ (agentsfleetd) │ │ (agentsfleetd) │ │ (agentsfleetd) │
-  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘
-
-  ┌──────────────────────────────────────────────────────────────────────────┐
-  │   DEDICATED CONNECTION  (NOT in the pool) — one SubscriptionHub conn     │
-  │                ──── long-lived blocking SUBSCRIBE ────                   │
-  │                                                                          │
-  │   SubscriptionHub reader thread                                          │
-  │     SUBSCRIBE fleet:{a}:activity      one wire SUBSCRIBE per channel     │
-  │     SUBSCRIBE fleet:{b}:activity  …   that has viewers, refcounted:      │
-  │     → fan-out by copy into each SSE   first viewer subscribes,           │
-  │       stream's bounded queue; never   last one unsubscribes.             │
-  │       blocks on a slow viewer         N viewers cost one connection      │
-  │       (drop-oldest + counter)         per replica, not one each.         │
-  └──────────────────────────────────────────────────────────────────────────┘
+```text
+agentsfleetd replica
+  HTTP handlers and background writers
+    +-- shared ConnectionManager --> XADD / HRANDFIELD / XREADGROUP / PUBLISH / XACK
+  SubscriptionHub async pump
+    +-- dedicated pub/sub socket --> SUBSCRIBE per watched fleet
+         +-- bounded broadcast --> per-fleet or workspace SSE response bodies
+  connector:outbound worker
+    +-- dedicated command socket --> XREADGROUP BLOCK (up to 5 seconds)
 ```
 
-**The rule that survives.** A connection held across a Redis call that blocks the server (`SUBSCRIBE`) cannot return to a pool — its lifetime is tied to the consumer, not the request. The pool is reserved for commands that complete in milliseconds: `XADD`, the non-blocking `XREADGROUP`, `PUBLISH`, `XACK`. The SubscriptionHub's reader is the only remaining dedicated-connection consumer; when its connection dies it redials with stop-checked pacing and replays SUBSCRIBE from the refcount map, while streams heartbeat through the gap (`agentsfleet_sse_hub_reconnects_total` counts recoveries).
+Cloning `afd_redis::Redis` shares its socket; it does not open another connection.
+The outbound reader owns `afd_redis::Dedicated`, so its blocking read cannot delay request-path commands.
+Normal boot opens three Redis connections when both optional background surfaces start.
 
-**What this changed at scale.** The pre-cutover idle cost was dominated by N blocking `XREADGROUP BLOCK 5000` loops iterating every five seconds; the fleet's Upstash bill scaled with `(fleets + workers)`, not throughput. After the cutover there are no idle blocking loops — the idle cost is driven by runner **lease poll frequency** (each idle `lease` does one non-blocking `XREADGROUP`), tunable by the runner's `retry_after_ms` backoff rather than a Redis `BLOCK` constant. [`scaling.md`](./scaling.md) re-derives the math.
+The hub refcounts subscribers and keeps one wire subscription per watched channel.
+Its pump owns the pub/sub socket and reconnects with backoff after a disconnect.
+Redis pub/sub cannot replay frames lost during that gap, even if the browser's HTTP stream stays open.
+
+Source: [`afd_redis::Redis`](../../rustd/crates/afd_redis/src/client.rs),
+[`hub pump`](../../rustd/crates/afd_redis/src/hub/pump.rs),
+[`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
+[`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
 ## The Postgres pool: a saturated pool and a dead datastore are different pages
 
@@ -713,7 +699,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
 ```
    agentsfleet-runner (host)
-    │  POST /v1/runners/me/leases   (long-poll; Bearer agt_r)
+    │  POST /v1/runners/me/leases   (non-blocking poll; Bearer agt_r)
     ▼
    agentsfleetd — lease handler:
 
@@ -856,12 +842,11 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    CLI       agentsfleet steer <fleet_id> "<message>"   (batch mode)
                → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
                  posting the message, and waits (bounded, 2 s) for response
-                 headers — the server SUBSCRIBEs before it writes SSE
-                 headers, so headers-received means the subscription is
-                 live and the POST cannot race the event's first frame.
-               → server SUBSCRIBE fleet:{id}:activity on a dedicated
-                 Redis connection held outside the request-handler pool
-                 (SUBSCRIBE blocks the conn).
+                 headers. The hub queues SUBSCRIBE before returning the stream.
+                 Headers do not acknowledge Redis subscription readiness;
+                 an early frame can still race the pump.
+               → the hub shares one pub/sub connection across viewers;
+                 the response owns a bounded broadcast receiver.
                → frames arriving before the 202 names the event wait in a
                  bounded client-side buffer (drop-oldest) and replay in
                  order once the id is known; a tail that misses the ready
@@ -870,12 +855,14 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                  truncated reply off as complete).
                → forward each PUBLISH as an SSE frame, one per line:
                    id:<seq>\nevent:<kind>\ndata:<json>\n\n
-               → on disconnect: UNSUBSCRIBE, close.
+               → on disconnect: release the receiver; the last reader queues
+                 UNSUBSCRIBE for that channel.
 
    UI        Fleet Console /fleets/{id}
-               → same per-fleet GET /events/stream SSE consumer.
-               → the page opens on two reads: the fleet detail (status,
-                 pending_approvals) and GET /messages?limit=20 (the
+               → browser EventSource opens the same-origin
+                 /live/v1/workspaces/{ws}/fleets/{id}/events/stream proxy.
+               → the core chat data starts with two reads: fleet detail
+                 (status, pending_approvals) and GET /messages?limit=20 (the
                  thread, bodies included). The summary strip is a view
                  over the stream from there: event_complete carries the
                  terminal row plus fleet_status and pending_approvals,
@@ -886,30 +873,30 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                  server tree, once, for the header's lifecycle controls.
 
    UI        Fleets Wall /fleets
-               → opens ONE GET /v1/workspaces/{id}/events/stream SSE
-                 connection for every visible live fleet.
+               → opens ONE same-origin
+                 /live/v1/workspaces/{id}/events/stream SSE connection
+                 shared by the workspace's fleet tiles.
                → agentsfleetd authorizes the workspace and fans in only its
-                 readable fleet:{id}:activity channels through one bounded
-                 shared-consumer ring.
+                 readable fleet:{id}:activity channels through bounded per-channel
+                 broadcast receivers.
                → first frame is hello { fleet_ids:[...] }; this is the live
                  set the wall trusts for quiet-versus-last-known status.
                → activity data gains fleet_id; the wall routes it to one tile.
-               → if the bounded ring drops old frames, agentsfleetd sends
+               → if a receiver falls behind, agentsfleetd sends
                  catching_up { dropped:N }; the wall shows recovery state.
                → hello and catching_up use id:0 without advancing the
                  per-connection activity sequence.
 
-   SSE auth (dual-accept, strict no-fallthrough). The endpoint accepts
-   EITHER a session cookie (browser EventSource path; cookie sent
-   automatically) OR Authorization: Bearer <api_key> (CLI path; Node
-   fetch can set custom headers). Resolution order:
-     if request has Cookie header → validate cookie → 401 on failure
-                                     (do NOT also try Authorization).
-     elif request has Authorization → validate Bearer → 401 on failure.
-     else → 401.
-   A stale or leaked cookie does not silently fall through to a valid
-   Bearer; the request is 401'd. No query-param tokens (avoids leaking
-   long-lived API keys via URL / referrer / access logs).
+   Browser authentication
+     EventSource + session cookie --> Next.js /live/* Route Handler
+       --> Clerk auth().getToken()
+       --> fetch API /v1/.../events/stream with Authorization: Bearer JWT
+       <-- upstream streaming body <-- agentsfleetd
+
+   The Node.js proxy forwards request cancellation to the upstream fetch.
+   It returns upstream error statuses and rejects an absent session with 401.
+   CLI clients call the API directly with their Bearer credential.
+   No stream token belongs in the URL.
 
    Reconnect / sequence id. The id:<seq> line on each SSE frame is a
    per-connection in-memory monotonic counter that resets to 0 on each
@@ -928,10 +915,50 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                → reads core.fleet_sessions
                  ("busy or idle, last response").
 
-   If a live frame drops (slow consumer, network blip), the client pulls
-   the gap from the matching GET /events list. Live tail is best-effort;
-   the durable record is core.fleet_events.
+   Both browser registries backfill durable event rows after reconnect.
+   The workspace registry also backfills on catching_up; the per-fleet
+   registry currently does not trigger a backfill for that frame alone.
+   A missed publish that leaves the HTTP stream open has no automatic replay.
+   Transient token chunks are not durable history; settled rows are.
+   Live tail is best-effort; core.fleet_events remains the durable record.
 ```
+
+For a fresh chat entry with three successful steers, the core chat path makes six daemon HTTP requests:
+one fleet-detail GET, one initial messages GET, one open SSE GET, and three steer POSTs.
+Each browser steer invokes a Next.js Server Action, which makes the daemon POST; these are separate hops, not two daemon requests.
+This budget excludes the rest of the dashboard and recovery traffic:
+
+| Source | Additional daemon requests |
+|---|---|
+| Fleet page billing | One tenant billing GET, deduplicated within the server render. |
+| Dashboard workspace discovery | Workspace-list GETs, paginated at 100 items; callers share the result within one server render. |
+| Getting Started widget | One onboarding GET on mount or workspace change. While undismissed, focus and successful-action invalidations request another read; a 30-second timer also reads when the document and polling surface are visible. Concurrent invalidations coalesce into a queued follow-up. |
+| Successful steer with the widget subscribed | Requests an onboarding refresh through a Server Action, in addition to the steer POST. |
+| Navigation, history, and recovery | Prefetch/server renders, older-message pagination, and reconnect backfills can add reads. A changed fleet status can refresh the server tree. |
+
+No summary-strip read per `chunk` means no read for that update; it does not mean the whole page makes no background API calls.
+Both stream registries retain an entry for 30 seconds after its last subscriber detaches.
+Navigating from the wall into a chat can therefore briefly keep both workspace and fleet SSE requests open.
+These are HTTP request counts, not TCP socket counts; transport pooling and multiplexing determine the latter.
+Sources: [`fleet page`](../../ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx),
+[`workspace cache`](../../ui/packages/app/lib/workspace.ts),
+[`onboarding refresh policy`](../../ui/packages/app/components/layout/use-onboarding-progress.ts),
+[`steer delivery`](../../ui/packages/app/components/domain/useFleetMessageDelivery.ts),
+and the [`workspace`](../../ui/packages/app/lib/streaming/workspace-stream.ts)
+and [`fleet`](../../ui/packages/app/lib/streaming/fleet-stream-registry.ts) registries.
+
+The browser, Next.js proxy, and daemon listener have separate HTTP connections.
+The daemon's Hyper builder accepts HTTP/1.1 and prior-knowledge cleartext HTTP/2 (h2c).
+The Node.js proxy uses ordinary `fetch` without an explicit HTTP/2 transport.
+
+On 2026-09-06, Chromium reported HTTP/2 and status 200 for authenticated fleet and workspace streams at `app-dev.agentsfleet.net`.
+Both responses had `text/event-stream` content types.
+That observation covers the browser-to-app connection only; downstream proxy-to-daemon hops were not measured.
+
+An HTTP/2 browser connection to the app does not prove HTTP/2 between the proxy and API.
+Measure each hop before attributing connection reuse or stream multiplexing to HTTP/2.
+Source: [`fleet stream proxy`](../../ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route.ts)
+and [`daemon connection builder`](../../rustd/crates/afd_api/src/server.rs).
 
 ### KILL
 

@@ -191,8 +191,8 @@ test.describe("runner detail", () => {
     await expect(failedRow).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(page.getByText(EXPECTED_FAILURE_TAG)).toHaveCount(0);
 
-    // Activating the row opens Review lease with the lease's facts.
-    await failedRow.click();
+    // The workspace link stops row activation; target the fleet name to review.
+    await failedRow.getByText(name, { exact: true }).click();
     const review = page.getByRole("dialog", { name: "Review lease" });
     await expect(review).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(review.getByText("Fencing token")).toBeVisible();

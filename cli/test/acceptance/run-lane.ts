@@ -10,7 +10,7 @@ const TERMINAL_OUTCOME = {
   summaryMissing: "summary_missing",
 } as const;
 
-const BUN_TEST_TIMEOUT_MS = 120_000;
+export const BUN_TEST_TIMEOUT_MS = 120_000;
 const SUMMARY_TAIL_MAX_CHARACTERS = 64 * 1024;
 const PREFLIGHT_ENTRYPOINT = "test/acceptance/global-setup.ts";
 const LIVE_TEARDOWN_PRELOAD = "./test/acceptance/global-teardown.ts";
@@ -137,19 +137,23 @@ async function executeAndStream(command: ReadonlyArray<string>): Promise<Command
 }
 
 async function runTestFile(file: string): Promise<LaneResult> {
-  const result = await executeAndStream([
-    "bun",
-    "test",
-    "--preload",
-    LIVE_TEARDOWN_PRELOAD,
-    file,
-    "--timeout",
-    String(BUN_TEST_TIMEOUT_MS),
-  ]);
+  const result = await executeAndStream(acceptanceTestCommand(ACCEPTANCE_LANE.live, [file]));
   return {
     exitCode: result.exitCode,
     counts: parseLaneCounts(result.outputTail),
   };
+}
+
+export function acceptanceTestCommand(
+  lane: AcceptanceLane,
+  files: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  return [
+    "bun", "test",
+    ...(lane === ACCEPTANCE_LANE.live ? ["--preload", LIVE_TEARDOWN_PRELOAD] : []),
+    "--timeout", String(BUN_TEST_TIMEOUT_MS),
+    ...files,
+  ];
 }
 
 async function runBoundedFiles(
@@ -252,13 +256,7 @@ async function runLane(lane: AcceptanceLane): Promise<number> {
         await runTestFile(plan.serial),
       ]);
   } else {
-    const deterministicResult = await executeAndStream([
-        "bun",
-        "test",
-        ...acceptanceFiles(lane),
-        "--timeout",
-        String(BUN_TEST_TIMEOUT_MS),
-      ]);
+    const deterministicResult = await executeAndStream(acceptanceTestCommand(lane, acceptanceFiles(lane)));
     result = {
       exitCode: deterministicResult.exitCode,
       counts: parseLaneCounts(deterministicResult.outputTail),

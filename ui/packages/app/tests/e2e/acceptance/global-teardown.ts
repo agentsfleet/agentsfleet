@@ -38,6 +38,7 @@ import * as path from "node:path";
 import { deleteUser, listUsersByQuery, revokeSession } from "./fixtures/clerk-admin";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 import { sweepLeakedFixtureFleets } from "./fixtures/teardown";
+import { revokeBrowserSessions } from "./fixtures/browser-sessions";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
@@ -73,7 +74,10 @@ async function revokeCachedSessions(): Promise<void> {
     .map((entry) => entry.sessionId)
     .filter((sid): sid is string => typeof sid === "string" && sid.length > 0);
   if (sessionIds.length === 0) return;
-  await Promise.all(sessionIds.map(revokeSession));
+  const outcomes = await Promise.allSettled(sessionIds.map(revokeSession));
+  const failures = outcomes.filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) throw new AggregateError(failures, "Clerk session revocation failed");
   console.log(`[e2e:auth] revoked ${sessionIds.length} Clerk session(s) on teardown`);
 }
 
@@ -109,9 +113,9 @@ async function sweepStaleFixtureUsers(): Promise<void> {
 
 export default async function globalTeardown(): Promise<void> {
   try {
-    await revokeCachedSessions();
+    await revokeBrowserSessions();
   } catch (err) {
-    console.error("[e2e:auth] session revocation failed:", err);
+    console.error("[e2e:auth] browser session cleanup failed:", err);
   }
   try {
     await sweepStaleFixtureUsers();
@@ -128,6 +132,13 @@ export default async function globalTeardown(): Promise<void> {
     }
   } catch (err) {
     console.error("[e2e:sweep] leaked-fleet sweep failed:", err);
+  }
+  try {
+    // A long suite can outlive the cached JWT. Fleet cleanup must still be
+    // able to refresh it on this session before we revoke that authority.
+    await revokeCachedSessions();
+  } catch (err) {
+    console.error("[e2e:auth] session revocation failed:", err);
   }
 }
 

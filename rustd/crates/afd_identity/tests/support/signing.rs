@@ -72,9 +72,15 @@ pub(crate) fn key_set() -> String {
 
 /// Signs `payload` into a compact RS256 token.
 pub(crate) fn sign(payload: &str) -> Presented {
-    let header = URL_SAFE_NO_PAD.encode(format!(
-        "{{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"{KID}\"}}"
-    ));
+    sign_with_header(
+        &format!("{{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"{KID}\"}}"),
+        payload,
+    )
+}
+
+/// Signs `payload` with the supplied protected header.
+pub(crate) fn sign_with_header(header: &str, payload: &str) -> Presented {
+    let header = URL_SAFE_NO_PAD.encode(header);
     let body = URL_SAFE_NO_PAD.encode(payload);
     let signing_input = format!("{header}.{body}");
 
@@ -99,11 +105,24 @@ pub(crate) fn verify(payload: &str) -> Result<VerifiedClaims, VerifyError> {
     verify_at(payload, NOW_MS)
 }
 
+/// Verifies a fixture token that carries the supplied protected header.
+pub(crate) fn verify_with_header(
+    header: &str,
+    payload: &str,
+) -> Result<VerifiedClaims, VerifyError> {
+    verify_signed_at(&sign_with_header(header, payload), NOW_MS)
+}
+
 /// The same, judged at a caller-chosen instant.
 ///
 /// Separate entry point rather than a defaulted argument so the tests that do
 /// not care about time keep reading as tests about claim shape.
 pub(crate) fn verify_at(payload: &str, now_ms: i64) -> Result<VerifiedClaims, VerifyError> {
+    verify_signed_at(&sign(payload), now_ms)
+}
+
+/// Verifies one already-signed fixture token at a stated instant.
+fn verify_signed_at(token: &Presented, now_ms: i64) -> Result<VerifiedClaims, VerifyError> {
     let verifier = JwksVerifier::new(
         StaticKeySet::new(key_set().into_bytes()),
         VerifierConfig::new(ISSUER, AUDIENCE),
@@ -113,5 +132,5 @@ pub(crate) fn verify_at(payload: &str, now_ms: i64) -> Result<VerifiedClaims, Ve
         .enable_all()
         .build()
         .expect("a current-thread runtime")
-        .block_on(verifier.verify(&sign(payload)))
+        .block_on(verifier.verify(token))
 }

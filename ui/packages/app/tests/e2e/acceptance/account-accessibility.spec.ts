@@ -1,15 +1,40 @@
+import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { signInAs } from "./fixtures/auth";
+import { signInAsUser } from "./fixtures/auth";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
+import { deleteUser, finalizeFixtureMetadata, provisionUser } from "./fixtures/clerk-admin";
+import { bootstrapTenant } from "./fixtures/bootstrap";
 
 const WIDTHS = [1440, 390, 320];
 const ACCOUNT_LABEL = "Account";
 const CANCEL_LABEL = "Cancel";
+const FIXTURE_TAG_BYTES = 4;
+const FIXTURE_PASSWORD_BYTES = 32;
+let accountUserId: string | null = null;
+
+test.beforeAll(async () => {
+  // Security renders the account's active devices. A shared fixture makes
+  // this accessibility workload grow with sessions from unrelated suite runs.
+  const tag = crypto.randomBytes(FIXTURE_TAG_BYTES).toString("hex");
+  const user = await provisionUser({
+    key: "regular",
+    email: `signup-fixture-${tag}+clerk_test@e2e.agentsfleet.net`,
+    password: crypto.randomBytes(FIXTURE_PASSWORD_BYTES).toString("base64url"),
+  });
+  accountUserId = user.clerkUserId;
+  await bootstrapTenant(user);
+  await finalizeFixtureMetadata(user);
+});
+
+test.afterAll(async () => {
+  if (accountUserId) await deleteUser(accountUserId);
+});
 
 for (const width of WIDTHS) {
   test(`account profile and security remain accessible at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await signInAs(page, "regular");
+    if (!accountUserId) throw new Error("Account accessibility fixture was not provisioned");
+    await signInAsUser(page, accountUserId);
     await page.goto("/");
     const opener = page.getByRole("button", { name: "Open user menu" });
     await expect(opener).toBeVisible();

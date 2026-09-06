@@ -7,6 +7,16 @@ use afd_ingress::Ingress;
 use super::*;
 
 impl Fleet {
+    /// Keeps real pub/sub while setting the stream ceiling for the load ladder.
+    pub(crate) fn with_stream_capacity(
+        mut self,
+        hub: afd_redis::SubscriptionHub,
+        capacity: usize,
+    ) -> Self {
+        self.live = Live::new(hub, Ceiling::new(capacity));
+        self
+    }
+
     /// An instance whose dependencies answer, whose directory is empty, and
     /// whose Postgres and Redis are not there.
     ///
