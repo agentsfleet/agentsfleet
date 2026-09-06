@@ -88,6 +88,39 @@ jobs:
           path: ${{ steps.detect.outputs.workdir }}/playwright-report/
           retention-days: 7
 
+  # The agents project is the public shell installer, not a web application.
+  # Smoke its production custom domain with the contract of that artifact.
+  installer-smoke:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      startsWith(github.event.deployment.environment, 'Production') &&
+      contains(github.event.deployment.environment, 'agentsfleet-agents-dev')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Smoke the production installer
+        run: |
+          BASE_URL="https://agentsfleet.dev"
+          ROOT_BODY="/tmp/agentsfleet-installer-root.$$"
+          ROOT_HEADERS="/tmp/agentsfleet-installer-root-headers.$$"
+          INSTALL_BODY="/tmp/agentsfleet-installer-install.$$"
+          INSTALL_HEADERS="/tmp/agentsfleet-installer-install-headers.$$"
+          trap 'rm -f "$ROOT_BODY" "$ROOT_HEADERS" "$INSTALL_BODY" "$INSTALL_HEADERS"' EXIT
+
+          curl --fail --silent --show-error --location --max-time 30 \
+            --dump-header "$ROOT_HEADERS" --output "$ROOT_BODY" "$BASE_URL/"
+          curl --fail --silent --show-error --location --max-time 30 \
+            --dump-header "$INSTALL_HEADERS" --output "$INSTALL_BODY" \
+            "$BASE_URL/install.sh"
+
+          grep -qi '^content-type: text/x-shellscript' "$ROOT_HEADERS"
+          grep -qi '^content-type: text/x-shellscript' "$INSTALL_HEADERS"
+          grep -q '^#!/usr/bin/env bash$' "$ROOT_BODY"
+          grep -q '^#!/usr/bin/env bash$' "$INSTALL_BODY"
+          cmp "$ROOT_BODY" "$INSTALL_BODY"
+          echo "✓ agentsfleet.dev root and /install.sh serve the same shell installer"
+
   # Acceptance suite — only fires when the dashboard app deploys to PROD.
   # Mirrors acceptance-e2e (in deploy-dev.yml) but targets the production
   # app URL + clerk-prod credentials. The smoke job above stays unauth so it
