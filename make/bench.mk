@@ -149,7 +149,7 @@ bench-cutover-self-test:  ## Run scripts/bench_cutover_test.sh — the cutover b
 # REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
 PROFILE ?= rig
 
-.PHONY: bench-steer bench-lease bench-outbound bench-compare
+.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-compare
 
 # `--release` is not a detail. A debug build measures rustc's unoptimised
 # output, which is the wrong system: the number would be a property of the
@@ -177,6 +177,14 @@ bench-outbound: _ensure-test-infra  ## Delivery ceiling: rate, p95, head-of-line
 	 BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
 	 BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
 	 cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin outbound
+
+bench-cardinality: _ensure-test-infra  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
+	@echo "→ [bench-cardinality] profile=$(PROFILE)"
+	@BENCH_PROFILE="$(PROFILE)" \
+	 BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
+	 BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
+	 BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
+	 cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin cardinality
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin compare -- "$(LANE)" "$(PROFILE)"

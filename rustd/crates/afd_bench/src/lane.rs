@@ -4,6 +4,7 @@
 //! the thing that generates load and the thing that writes the file can be read
 //! and changed apart.
 
+pub mod cardinality;
 pub mod lease;
 pub mod outbound;
 pub mod steer;
