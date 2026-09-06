@@ -55,17 +55,30 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `make/bench.mk` | EDIT | gains the four lanes and the profile plumbing; the existing loadgen target is untouched |
-| `bench/harness/profile.rs` | CREATE | profile definitions, caps, the production acknowledgement, and the abort switch |
-| `bench/harness/report.rs` | CREATE | the result-file shape, per-datastore attribution, and the comparison |
-| `bench/harness/fixture.rs` | CREATE | fixture tenancy, run prefixes, and the sweep every deployed run ends with |
-| `bench/steer/main.rs` | CREATE | drives concurrent steers, reports accepted rate and where the cost landed |
-| `bench/outbound/main.rs` | CREATE | drives the real `Worker` against a stub vendor, reports rate and head-of-line cost |
-| `bench/lease/main.rs` | CREATE | drives the real lease path, reports rate and round trips per lease |
-| `bench/cardinality/main.rs` | CREATE | reports Redis and Postgres cost per fleet at population, to a million on the rig |
+| `rustd/crates/afd_bench/Cargo.toml` | CREATE | the bench crate's manifest, inheriting workspace deps and lints |
+| `rustd/crates/afd_bench/src/lib.rs` | CREATE | the harness surface: what a lane may reach for |
+| `rustd/crates/afd_bench/src/error.rs` | CREATE | one error type for the crate with its `Result` alias |
+| `rustd/crates/afd_bench/src/profile.rs` | CREATE | profile definitions, caps, the production acknowledgement, and the abort switch |
+| `rustd/crates/afd_bench/src/report.rs` | CREATE | the result-file shape, per-datastore attribution, and the comparison |
+| `rustd/crates/afd_bench/src/fixture.rs` | CREATE | fixture tenancy, run prefixes, and the sweep every deployed run ends with |
+| `rustd/crates/afd_bench/src/bin/steer.rs` | CREATE | drives concurrent steers, reports accepted rate and where the cost landed |
+| `rustd/crates/afd_bench/src/bin/outbound.rs` | CREATE | drives the real `Worker` against a stub vendor, reports rate and head-of-line cost |
+| `rustd/crates/afd_bench/src/bin/lease.rs` | CREATE | drives the real lease path, reports rate and round trips per lease |
+| `rustd/crates/afd_bench/src/bin/cardinality.rs` | CREATE | reports Redis and Postgres cost per fleet at population, to a million on the rig |
+| `rustd/crates/afd_bench/src/bin/compare.rs` | CREATE | the comparison command behind `make bench-compare` |
 | `bench/baselines/*.json` | CREATE | one committed baseline per lane per profile |
-| `rustd/Cargo.toml` | EDIT | registers the bench binaries as workspace members |
+| `rustd/Cargo.toml` | EDIT | registers `afd_bench` as a workspace member |
 | `.github/workflows/bench.yml` | EDIT | runs the lanes on the rig and, on dispatch, against a named deployed environment |
 | `docs/architecture/scaling.md` | EDIT | records the measured ceilings beside the design they grade |
+
+**Layout amendment (CHORE(open)).** The table above moved the bench crate from
+`bench/*.rs` to `rustd/crates/afd_bench/`. `rustd/Cargo.toml` documents
+M-CRATES-FLAT-FOLDER for this workspace — every crate a sibling in `crates/`,
+directory name equal to crate name, no crate nested outside it — so root-level
+Rust sources would have been the one member breaking the rule the manifest
+states. The lanes are binaries of one crate rather than four members, which is
+what keeps the harness a library they share instead of a directory they copy.
+`bench/baselines/` stays where it is: it is committed JSON, not Rust.
 
 ## Applicable Rules
 
