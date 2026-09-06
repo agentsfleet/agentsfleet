@@ -25,9 +25,8 @@ describe("dashboard route motion is absent", () => {
     expect(GLOBALS).not.toMatch(/\.app-content-rise\s*>\s*\*\s*\{/);
     expect(GLOBALS).not.toMatch(/@keyframes\s+glow-drift\b/);
     expect(GLOBALS).not.toMatch(/\.app-dashboard-canvas\s*\{[^}]*animation:\s*glow-drift/s);
-    // A single restrained brand glow (top-right); the former multi-stop teal/blue
-    // field was reduced to one calm radial per the Operational-Restraint pass.
-    expect(GLOBALS).toMatch(/\.app-dashboard-canvas\s*\{[^}]*radial-gradient\(1000px 620px/s);
+    expect(GLOBALS).not.toMatch(/(?:linear|radial|conic)-gradient\(/);
+    expect(GLOBALS).toContain("background: var(--bg);");
   });
 
   it("never wires a page-mount animation onto the Shell content wrapper", () => {
@@ -35,7 +34,7 @@ describe("dashboard route motion is absent", () => {
     expect(GLOBALS).not.toMatch(/\.app-content-rise\s*>\s*\*\s*\{[^}]*opacity:\s*0\s*;/s);
   });
 
-  it("wires the ambient-glow canvas onto the Shell main region", () => {
+  it("wires the flat canvas onto the Shell main region", () => {
     expect(SHELL_FRAME).toMatch(/<main className="app-dashboard-canvas/);
   });
 });
@@ -55,19 +54,12 @@ describe("test_motion_respects_reduced_motion — every effect is gated", () => 
     expect(body).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
   });
 
-  it("scopes the hover/press lifts behind no-preference so they vanish under reduced-motion", () => {
-    const noPref = GLOBALS.match(
-      /@media\s*\(prefers-reduced-motion:\s*no-preference\)\s*\{([\s\S]*?\}\s*)\}/,
-    );
-    expect(noPref, "hover/press lifts must sit inside a no-preference query").not.toBeNull();
-    const body = noPref![1];
-    expect(body).toMatch(/\.app-glow-surface button:hover\s*\{[^}]*filter:\s*brightness/s);
-    expect(body).toMatch(/\.app-glow-surface button:active\s*\{[^}]*transform:\s*translateY/s);
-    expect(body).toMatch(/\.app-dashboard-canvas \[data-dashboard-panel\]/);
-    expect(body).toMatch(/\.app-dashboard-canvas \[data-terminal-panel\]/);
+  it("does not move controls or panels on hover or press", () => {
+    expect(GLOBALS).not.toMatch(/transform:\s*translate/);
+    expect(GLOBALS).not.toContain("app-glow-surface");
   });
 
-  it("gates the sidebar hover nudge with the motion-safe variant", () => {
-    expect(SIDEBAR_NAVIGATION).toContain("motion-safe:hover:translate-x-px");
+  it("keeps sidebar labels in place on hover", () => {
+    expect(SIDEBAR_NAVIGATION).not.toContain("translate-x");
   });
 });

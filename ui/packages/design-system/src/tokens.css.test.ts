@@ -42,32 +42,63 @@ describe("operational stream duration token", () => {
   });
 });
 
-// dark-mode resting-state border/surface contrast bump. Same
-// text-contract rationale as above: jsdom applies no real CSS, so this pins
-// the source value directly against a silent revert to the pre-bump flat
-// tokens.
-describe("tokens.css — dark-mode contrast bump", () => {
+const MIN_TEXT_CONTRAST = 4.5;
+const MAX_RGB_CHANNEL = 255;
+const SRGB_THRESHOLD = 0.04045;
+const SRGB_DIVISOR = 12.92;
+const SRGB_OFFSET = 0.055;
+const SRGB_SCALE = 1.055;
+const SRGB_POWER = 2.4;
+const CONTRAST_OFFSET = 0.05;
+const LUMINANCE_WEIGHTS = [0.2126, 0.7152, 0.0722];
+const SURFACES = ["bg", "surface-deep", "surface-1", "surface-2", "surface-3"];
+const FOREGROUNDS = ["text", "text-muted", "text-subtle"];
+
+function luminance(hex: string): number {
+  const channels = hex.match(/[a-f0-9]{2}/gi);
+  if (!channels || channels.length !== LUMINANCE_WEIGHTS.length) throw new Error("Expected six-digit RGB");
+  return channels.reduce((sum, channel, index) => {
+    const value = parseInt(channel, 16) / MAX_RGB_CHANNEL;
+    const linear = value <= SRGB_THRESHOLD ? value / SRGB_DIVISOR : ((value + SRGB_OFFSET) / SRGB_SCALE) ** SRGB_POWER;
+    return sum + linear * (LUMINANCE_WEIGHTS[index] ?? 0);
+  }, 0);
+}
+
+describe("theme contrast pairs and font roles", () => {
   const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-  const rootStart = css.indexOf(":root {");
-  // The light-mode selector also appears earlier inside a prose comment
-  // (line ~6), so the search for the *block* must start after :root's own
-  // opening brace to avoid slicing an inverted (empty) range.
-  const lightStart = css.indexOf('[data-theme="light"] {', rootStart);
-  const rootBlock = css.slice(rootStart, lightStart);
-  const lightBlock = css.slice(lightStart);
+  const theme = readFileSync(THEME_CSS_PATH, "utf8");
+  const blocks = [
+    { name: "dark", source: css.split(":root {")[1]?.split('[data-theme="light"]')[0] ?? "" },
+    { name: "light", source: css.split('[data-theme="light"] {')[1]?.split("}")[0] ?? "" },
+  ];
 
-  it("bumps dark-mode --border to #2b333a", () => {
-    expect(rootBlock).toContain("--border: #2b333a;");
-    expect(rootBlock).not.toContain("--border: #23292e;");
+  for (const block of blocks) {
+    const colors = Object.fromEntries([...block.source.matchAll(/--([\w-]+):\s*(#[a-f0-9]{6});/gi)].map((match) => [match[1], match[2]]));
+    for (const foreground of FOREGROUNDS) {
+      for (const surface of SURFACES) {
+        it(`${block.name}: ${foreground} remains readable on ${surface}`, () => {
+          const fg = colors[foreground];
+          const bg = colors[surface];
+          expect(fg, foreground).toBeDefined();
+          expect(bg, surface).toBeDefined();
+          const a = luminance(fg ?? "");
+          const b = luminance(bg ?? "");
+          expect((Math.max(a, b) + CONTRAST_OFFSET) / (Math.min(a, b) + CONTRAST_OFFSET)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST);
+        });
+      }
+    }
+  }
+
+  it("keeps display, interface, and technical font roles independent", () => {
+    expect(css).toContain('--ff-display: "Bricolage Grotesque Variable"');
+    expect(css).toContain('--ff-sans: "Instrument Sans Variable"');
+    expect(css).toContain('--ff-mono: "Commit Mono"');
+    for (const role of ["display", "sans", "mono"]) expect(theme).toContain(`--font-${role}: var(--ff-${role});`);
+    expect(theme).not.toMatch(/(--[\w-]+):\s*var\(\1\)/);
   });
 
-  it("bumps dark-mode --surface-1 to #141a1f", () => {
-    expect(rootBlock).toContain("--surface-1: #141a1f;");
-    expect(rootBlock).not.toContain("--surface-1: #11161a;");
-  });
-
-  it("leaves light-mode --border/--surface-1 untouched", () => {
-    expect(lightBlock).toContain("--surface-1: #f1eee6;");
-    expect(lightBlock).toContain("--border: #d4cdb9;");
+  it("does not dim live content for reduced motion", () => {
+    expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*?opacity: 1/);
+    expect(css).not.toContain("opacity: 0.6");
   });
 });

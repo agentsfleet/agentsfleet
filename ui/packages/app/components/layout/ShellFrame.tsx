@@ -26,8 +26,8 @@ export function ShellFrame({
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
       <div
-        className="app-glow-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
-        data-glow="dashboard"
+        className="app-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
+        data-surface="dashboard"
       >
         <DashboardShellHeader>
           <ShellControls
@@ -35,15 +35,16 @@ export function ShellFrame({
             operatorScopes={operatorScopes}
             sidebarNavId={SIDEBAR_NAV_ID}
           />
-          <div className="flex-1" />
-          <WorkspaceSwitcher workspaces={workspaces} />
-          <ThemeToggle />
-          <ClientOnlyAuthUserButton />
+          <div className="ml-auto flex min-w-0 items-center gap-md md:gap-xl">
+            <WorkspaceSwitcher workspaces={workspaces} />
+            <ThemeToggle />
+            <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
+          </div>
         </DashboardShellHeader>
 
         <aside
           id={SIDEBAR_NAV_ID}
-          className="hidden min-h-0 flex-col overflow-y-auto border-r border-border bg-muted py-4 md:flex"
+          className="hidden min-h-0 flex-col overflow-y-auto border-r border-border bg-card py-4 md:flex"
         >
           <DesktopSidebarNavigation
             workspaces={workspaces}

@@ -12,7 +12,7 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
+  PageTitle,
   CopyButton,
   Skeleton,
 } from "@agentsfleet/design-system";
@@ -153,22 +153,13 @@ export default function CliAuthPage({
     // response never makes it back to us.
     let pendingCode: string | null = null;
     try {
-      // ───────── CLI carve-out (I9.1) ─────────
-      // This is the ONE surviving `getToken({ template: "api" })` call in
-      // the dashboard post-Stage-1. The rest of the dashboard now uses the
-      // customized default session token (`auth().getToken()` with no
-      // template arg). WHY this site keeps the api-template mint:
-      //   • The minted JWT is encrypted with the CLI's ephemeral ECDH
-      //     pubkey and persisted in `~/.agentsfleet/credentials.json` for
-      //     ~15 minutes. The CLI has no Clerk SDK and cannot refresh.
-      //   • Default session tokens are ~60s lived and refresh-coupled to
-      //     the browser session via Clerk's cookie. That refresh
-      //     mechanism doesn't exist on the CLI side.
-      //   • The api template lets us mint a longer-lived (currently 60s
-      //     but template-configurable independently of session tokens)
-      //     token that the CLI can actually use.
-      // Invariant I9.1 (grep-gate test) verifies this is the ONLY site
-      // outside `/cli-auth/[session_id]/page.tsx` calling the api template.
+      // The session token authenticates the same-origin middleware. The api
+      // template lacks sid and is only encrypted for the terminal's exchange.
+      const sessionJwt = await getToken();
+      if (!sessionJwt) {
+        setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
+        return;
+      }
       const jwt = await getToken({ template: "api" });
       if (!jwt) {
         setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
@@ -185,7 +176,7 @@ export default function CliAuthPage({
           method: "PATCH",
           headers: {
             "Content-Type": JSON_CONTENT_TYPE,
-            Authorization: `Bearer ${jwt}`,
+            Authorization: `Bearer ${sessionJwt}`,
           },
           body: JSON.stringify({
             dashboard_public_key: dash.publicKeyBase64Url,
@@ -196,6 +187,10 @@ export default function CliAuthPage({
         },
       );
 
+      if (res.redirected) {
+        setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
+        return;
+      }
       if (res.ok) {
         setApprove({ kind: APPROVE.approved, verificationCode: pendingCode });
         return;
@@ -234,7 +229,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Approve CLI login</CardTitle>
+            <PageTitle>Approve CLI login</PageTitle>
             <CardDescription>Checking your terminal&apos;s login session…</CardDescription>
           </CardHeader>
           <CardContent>
@@ -250,7 +245,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Sign in to continue</CardTitle>
+            <PageTitle>Sign in to continue</PageTitle>
             <CardDescription>You need to be signed in to approve a CLI login.</CardDescription>
           </CardHeader>
         </Card>
@@ -263,7 +258,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Login session unavailable</CardTitle>
+            <PageTitle>Login session unavailable</PageTitle>
             <CardDescription>{load.message}</CardDescription>
           </CardHeader>
         </Card>
@@ -278,7 +273,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Type this code into your CLI</CardTitle>
+            <PageTitle>Type this code into your CLI</PageTitle>
             <CardDescription>
               {approve.kind === APPROVE.uncertain
                 ? "We couldn't confirm the approval over the network. If your terminal is asking for a code, enter this one; otherwise refresh and try again."
@@ -300,7 +295,7 @@ export default function CliAuthPage({
     <PageShell>
       <Card>
         <CardHeader>
-          <CardTitle>Approve CLI login for {tokenLabel}</CardTitle>
+          <PageTitle>Approve CLI login for {tokenLabel}</PageTitle>
           <CardDescription>
             Approving will issue a short-lived API token to your terminal. Only continue if you
             started this login.

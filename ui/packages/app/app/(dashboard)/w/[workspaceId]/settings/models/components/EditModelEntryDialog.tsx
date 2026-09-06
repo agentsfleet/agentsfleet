@@ -189,7 +189,7 @@ function EditForm({
           </div>
         ) : null}
         {isOpaque ? (
-          <p className="text-xs text-muted-foreground font-mono">{CUSTOM_SECRET_HINT}</p>
+          <p className="text-xs text-muted-foreground">{CUSTOM_SECRET_HINT}</p>
         ) : (
           <div className="space-y-2">
             <Label htmlFor={`${uid}-key`}>API key</Label>

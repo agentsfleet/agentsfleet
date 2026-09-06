@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { flexRender, type ReactTable } from "@tanstack/react-table";
+import type { ReactTable } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
@@ -21,6 +21,7 @@ import {
 } from "./Pagination";
 
 type ColumnMap<T extends DataTableRowData> = Map<string, DataTableColumn<T>>;
+type TableHeader<T extends DataTableRowData> = ReturnType<ReactTable<DataTableFeatures, T>["getHeaderGroups"]>[number]["headers"][number];
 
 // One nominal size across all three states, so the header does not resize as
 // sorting changes.
@@ -53,8 +54,21 @@ function DataTableHead<T extends DataTableRowData>({
     <thead className={cn("bg-muted", sticky && "sticky top-0 z-10")}>
       {table.getHeaderGroups().map((group) => (
         <tr key={group.id}>
-          {group.headers.map((header) => {
-            const definition = columnsByKey.get(header.column.id);
+          {group.headers.map((header) => (
+            <DataTableHeading key={header.id} header={header} definition={columnsByKey.get(header.column.id)} isLoading={isLoading} onSortChange={onSortChange} />
+          ))}
+        </tr>
+      ))}
+    </thead>
+  );
+}
+
+function DataTableHeading<T extends DataTableRowData>({ header, definition, isLoading, onSortChange }: {
+  header: TableHeader<T>;
+  definition: DataTableColumn<T> | undefined;
+  isLoading?: boolean;
+  onSortChange?: (key: string) => void;
+}) {
             const direction = header.column.getIsSorted();
             const canSort = header.column.getCanSort();
             const ariaSort = direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none";
@@ -64,7 +78,7 @@ function DataTableHead<T extends DataTableRowData>({
                 scope="col"
                 aria-sort={canSort ? ariaSort : undefined}
                 className={cn(
-                  "text-left font-mono text-label font-medium uppercase tracking-label text-muted-foreground",
+                  "text-left font-sans text-label font-medium uppercase tracking-label text-muted-foreground",
                   canSort ? "p-0" : "px-3 py-1.5",
                   definition?.numeric && "text-right",
                   definition?.hideOnMobile && "hidden sm:table-cell",
@@ -79,21 +93,16 @@ function DataTableHead<T extends DataTableRowData>({
                       ? () => onSortChange(header.column.id)
                       : header.column.getToggleSortingHandler()}
                     className={cn(
-                      "w-full justify-start gap-1.5 rounded-none border-0 uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
-                      definition?.numeric && "justify-end",
+                      "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
+                      definition?.numeric && "flex-row-reverse",
                     )}
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {definition!.header}
                     {sortIndicator(direction)}
                   </Button>
-                ) : flexRender(header.column.columnDef.header, header.getContext())}
+                ) : definition!.header}
               </th>
             );
-          })}
-        </tr>
-      ))}
-    </thead>
-  );
 }
 
 function DataTableBody<T extends DataTableRowData>({
@@ -136,7 +145,10 @@ function DataTableBody<T extends DataTableRowData>({
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
               >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                {/* These are render callbacks, not component types. Passing a
+                    freshly built callback to flexRender remounts the cell and
+                    discards its focus and local state on parent updates. */}
+                {definition!.cell(row.original)}
               </td>
             );
           })}
@@ -184,19 +196,7 @@ export function DataTableFooter<T extends DataTableRowData>({
   );
 }
 
-export function DataTableView<T extends DataTableRowData>({
-  table,
-  columnsByKey,
-  caption,
-  onRowClick,
-  className,
-  isLoading,
-  stickyHeader,
-  viewportClassName,
-  onSortChange,
-  pagination,
-  totalRows,
-}: {
+type DataTableViewProps<T extends DataTableRowData> = {
   table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
   caption?: string;
@@ -208,7 +208,9 @@ export function DataTableView<T extends DataTableRowData>({
   onSortChange?: (key: string) => void;
   pagination: DataTablePagination | undefined;
   totalRows: number;
-}) {
+};
+
+function useTableViewport<T extends DataTableRowData>({ table, pagination }: Pick<DataTableViewProps<T>, "table" | "pagination">) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const numericPage = isClientPagination(pagination)
     ? table.state.pagination.pageIndex
@@ -223,13 +225,6 @@ export function DataTableView<T extends DataTableRowData>({
     : pagination === false
       ? null
       : pagination.pageSize;
-  const handleSortChange = onSortChange
-    ? (key: string) => {
-        if (isClientPagination(pagination)) table.setPageIndex(0);
-        onSortChange(key);
-      }
-    : undefined;
-
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     // The ref is attached to a div this component renders unconditionally, and a
@@ -242,7 +237,20 @@ export function DataTableView<T extends DataTableRowData>({
     if (typeof viewport.scrollTo === "function") viewport.scrollTo({ top: 0 });
     else viewport.scrollTop = 0;
   }, [numericPage, pageSize, sortingSignature]);
+  return viewportRef;
+}
 
+export function DataTableView<T extends DataTableRowData>({
+  table, columnsByKey, caption, onRowClick, className, isLoading,
+  stickyHeader, viewportClassName, onSortChange, pagination, totalRows,
+}: DataTableViewProps<T>) {
+  const viewportRef = useTableViewport({ table, pagination });
+  const handleSortChange = onSortChange
+    ? (key: string) => {
+        if (isClientPagination(pagination)) table.setPageIndex(0);
+        onSortChange(key);
+      }
+    : undefined;
   return (
     <div
       data-slot="data-table"
@@ -251,13 +259,7 @@ export function DataTableView<T extends DataTableRowData>({
     >
       <div
         ref={viewportRef}
-        // Contain the horizontal axis only. `overflow-x-auto` makes this a
-        // scroll container on BOTH axes (a box whose one axis is not `visible`
-        // computes the other to `auto`), and a two-axis `overscroll-contain`
-        // swallows the wheel even when there is nothing here to scroll. On a
-        // surface that grows with the page rather than bounding this table —
-        // the fleet detail Events view — that left the page unable to scroll
-        // with the pointer anywhere over the rows.
+        // Contain only horizontal overscroll so an unbounded table lets the page scroll.
         className={cn(
           "overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
           stickyHeader && "overflow-y-auto",
@@ -268,7 +270,7 @@ export function DataTableView<T extends DataTableRowData>({
         role="region"
         aria-label={caption ? `${caption}, scrollable` : "Scrollable table"}
       >
-        <table className="w-full min-w-full border-collapse font-mono text-mono" aria-busy={isLoading ? "true" : "false"}>
+        <table className="w-full min-w-full border-collapse font-sans text-mono" aria-busy={isLoading ? "true" : "false"}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <DataTableHead
             table={table}

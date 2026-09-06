@@ -90,7 +90,7 @@ export default function GettingStartedWidget({ workspaceId, pollingMode = "mount
       <div className="flex items-center justify-between">
         <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>Getting started</span>
         <div className="flex items-center gap-1">
-          <span className="font-mono text-label text-pulse tabular-nums">
+          <span className="font-sans text-label text-pulse tabular-nums">
             {completed}/{REQUIRED_STEP_COUNT}
           </span>
           <Button

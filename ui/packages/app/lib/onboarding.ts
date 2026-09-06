@@ -74,7 +74,7 @@ const STEP_TEMPLATES: ReadonlyArray<{
     label: "Connect its credential",
     hint: "It'll ask for what it needs, and tell you why, at the install gate.",
     required: true,
-    href: "settings/secrets",
+    href: "secrets",
     doneOf: (i) => i.secretCount >= 1,
   },
   {

@@ -42,7 +42,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
     <Card className="flex flex-col gap-2xl p-lg" aria-label={PANEL_LABEL}>
       <Section className="flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-md">
-          <h2 className="font-mono text-body-sm uppercase text-muted-foreground">{CHECKS_HEADING}</h2>
+          <h2 className="font-sans text-body-sm uppercase text-muted-foreground">{CHECKS_HEADING}</h2>
           {report ? (
             <Badge variant={report.all_ok ? "green" : "error"}>
               {report.all_ok ? ALL_OK_LABEL : `${failed} ${FAILED_SUFFIX}`}
@@ -61,12 +61,12 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
 
         {report === null ? <p className="text-body-sm text-muted-foreground">{NEVER_TESTED}</p> : null}
         {requestedAt !== null ? <p className="text-body-sm text-muted-foreground">{PENDING_NOTE}</p> : null}
-        {stale ? <p className="font-mono text-body-sm text-warning">{STALE_NOTE}</p> : null}
+        {stale ? <p className="font-sans text-body-sm text-warning">{STALE_NOTE}</p> : null}
 
         {report ? (
           <ul className="flex flex-col gap-sm">
             {report.checks.map((check) => (
-              <li key={check.name} className="flex flex-wrap items-baseline gap-sm font-mono text-body-sm">
+              <li key={check.name} className="flex flex-wrap items-baseline gap-sm text-body-sm">
                 <span aria-hidden="true" className={check.ok ? "text-success" : "text-destructive"}>
                   {check.ok ? CHECK_YES : CHECK_NO}
                 </span>
@@ -79,7 +79,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
       </Section>
 
       <Section className="flex flex-col gap-md">
-        <h2 className="font-mono text-body-sm uppercase text-muted-foreground">{BINDS_HEADING}</h2>
+        <h2 className="font-sans text-body-sm uppercase text-muted-foreground">{BINDS_HEADING}</h2>
         <BindList binds={runner.assigned_policy?.extra_binds ?? []} />
       </Section>
     </Card>

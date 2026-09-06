@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
+import { workspacePath } from "@/lib/workspace-routes";
 import { redirect } from "next/navigation";
-import { EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
+import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { SlidersHorizontalIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +14,7 @@ export default async function SettingsDefaultsPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await params;
+  const { workspaceId } = await params;
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
@@ -24,8 +26,9 @@ export default async function SettingsDefaultsPage({
       </PageHeader>
       <EmptyState
         icon={<SlidersHorizontalIcon size={32} />}
-        title="Defaults"
-        description="Workspace-wide defaults for new Fleets will live here."
+        title="Workspace defaults aren’t available yet"
+        description="Configure the model and credentials for each fleet from its workspace."
+        action={<Button asChild><Link href={workspacePath(workspaceId, "fleets")}>Back to fleets</Link></Button>}
       />
     </PageLayout>
   );

@@ -71,6 +71,7 @@ export function useCurrentUser(): {
   isSignedIn: boolean;
   userId: string | null;
   emailAddress: string | null;
+  hasImage: boolean;
 } {
   const { isLoaded, isSignedIn, user } = useUser();
   return {
@@ -78,6 +79,7 @@ export function useCurrentUser(): {
     isSignedIn: Boolean(isSignedIn),
     userId: user?.id ?? null,
     emailAddress: user?.primaryEmailAddress?.emailAddress ?? null,
+    hasImage: Boolean(user?.hasImage),
   };
 }
 
@@ -90,5 +92,6 @@ export function useCurrentUser(): {
 // `app/cli-auth/[session_id]/page.tsx` — the CLI handshake carve-out.
 export const AuthProvider = ClerkProvider;
 export const AuthUserButton = UserButton;
+export { UserProfile as AuthUserProfile } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;

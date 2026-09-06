@@ -18,6 +18,7 @@ import {
 
 import { auth } from "@clerk/nextjs/server";
 import { getApproval, type ApprovalGate } from "@/lib/api/approvals";
+import { ApiError } from "@/lib/api/errors";
 import { workspacePath } from "@/lib/workspace-routes";
 import ResolveButtons from "./ResolveButtons";
 
@@ -33,7 +34,10 @@ export default async function ApprovalDetailPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const gate = await getApproval(workspaceId, gateId, token).catch(() => null);
+  const gate = await getApproval(workspaceId, gateId, token).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
   if (!gate) notFound();
 
   const terminal = gate.status !== "pending";

@@ -174,7 +174,7 @@ export default async function FleetDetailPage({
 
 async function loadFleet(workspaceId: string, id: string, token: string) {
   return getFleet(workspaceId, id, token).catch((error: unknown) => {
-    if (error instanceof ApiError && error.status === 404) return null;
+    if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return null;
     throw error;
   });
 }
@@ -226,9 +226,9 @@ async function loadEventsView(
   { fleet, eventsPageSize }: PageContext,
   data: EventsViewData,
 ) {
-  // startViewData always starts this read for the events view, and its catch
-  // turns an upstream failure into an empty page, so a page always arrives.
-  const initial = await data.eventsInitial;
+  const result = await data.eventsInitial;
+  if (!result.ok) throw result.error;
+  const initial = result.page;
   return (
     <EventsList
       fleetId={fleet.id}

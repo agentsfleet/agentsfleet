@@ -118,7 +118,7 @@ function MarkdownBodyField({
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Textarea rows={MARKDOWN_ROWS} spellCheck={false} placeholder={placeholder} {...field} />
+            <Textarea className="font-mono text-mono" rows={MARKDOWN_ROWS} spellCheck={false} placeholder={placeholder} {...field} />
           </FormControl>
           <FormDescription>{description}</FormDescription>
           <FormMessage />

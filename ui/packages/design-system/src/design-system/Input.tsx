@@ -16,8 +16,9 @@ export function Input({ className, type, ref, ...props }: InputProps) {
       type={type}
       className={cn(
         "flex h-10 w-full rounded-md border border-border bg-secondary",
-        "px-lg py-md text-body-sm text-foreground font-mono",
+        "px-lg py-md text-body-sm text-foreground font-sans",
         "placeholder:text-muted-foreground",
+        "enabled:hover:border-ring",
         "focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",

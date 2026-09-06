@@ -56,21 +56,21 @@ export function ReviewLease({
           <>
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
-              <DialogDescription className="font-mono">
+              <DialogDescription className="font-sans">
                 {lease.fleet_name ?? lease.fleet_id} · {lease.event_type}
               </DialogDescription>
             </DialogHeader>
-            <DescriptionList className="font-mono text-body-sm tabular-nums">
+            <DescriptionList className="font-sans text-body-sm tabular-nums">
               <DescriptionTerm>{REVIEW_OUTCOME_LABEL}</DescriptionTerm>
               <DescriptionDetails>
                 <OutcomeSummary lease={lease} />
               </DescriptionDetails>
               <DescriptionTerm>{REVIEW_LEASE_ID_LABEL}</DescriptionTerm>
-              <DescriptionDetails className="break-all">{lease.id}</DescriptionDetails>
+              <DescriptionDetails mono className="break-all">{lease.id}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_KIND_LABEL}</DescriptionTerm>
               <DescriptionDetails>{lease.kind}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_FENCING_LABEL}</DescriptionTerm>
-              <DescriptionDetails>{COUNT_FORMAT.format(lease.fencing_token)}</DescriptionDetails>
+              <DescriptionDetails mono>{COUNT_FORMAT.format(lease.fencing_token)}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_EXPIRES_LABEL}</DescriptionTerm>
               <DescriptionDetails>
                 <Time value={new Date(lease.lease_expires_at)} format="relative" />
@@ -78,7 +78,7 @@ export function ReviewLease({
               <DescriptionTerm>{REVIEW_PROVIDER_LABEL}</DescriptionTerm>
               <DescriptionDetails>{lease.provider}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_MODEL_LABEL}</DescriptionTerm>
-              <DescriptionDetails>{lease.model}</DescriptionDetails>
+              <DescriptionDetails mono>{lease.model}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_POSTURE_LABEL}</DescriptionTerm>
               <DescriptionDetails>{lease.posture}</DescriptionDetails>
               <DescriptionTerm>{REVIEW_TOKENS_LABEL}</DescriptionTerm>
@@ -88,7 +88,7 @@ export function ReviewLease({
                 {COUNT_FORMAT.format(lease.metered_output_tokens)} out
               </DescriptionDetails>
               <DescriptionTerm>{REVIEW_EVENT_LABEL}</DescriptionTerm>
-              <DescriptionDetails className="break-all">
+              <DescriptionDetails mono className="break-all">
                 {lease.event_id}
                 {lease.fleet_name !== null ? (
                   <>

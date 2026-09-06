@@ -109,7 +109,8 @@ const decodeCreateWorkspace = (
   if (
     !isRecord(value) ||
     !isNonEmptyString(value.workspace_id) ||
-    value.name !== expectedName ||
+    !isNonEmptyString(value.name) ||
+    (expectedName !== "" && value.name !== expectedName) ||
     !isNonEmptyString(value.tenant_id) ||
     !isNonEmptyString(value.request_id)
   ) {
@@ -182,8 +183,8 @@ export async function firstTenantWorkspace(
   return page.items[0] ?? null;
 }
 
-// POST /v1/workspaces — the caller supplies the tenant-unique name and the
-// backend assigns the workspace ID from its authenticated tenant context.
+// POST /v1/workspaces — a blank name asks the backend to generate one.
+// The backend assigns the workspace ID from its authenticated tenant context.
 export async function createTenantWorkspace(
   token: string,
   body: { name: string },

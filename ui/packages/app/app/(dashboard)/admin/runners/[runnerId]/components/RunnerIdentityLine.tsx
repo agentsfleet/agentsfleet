@@ -57,7 +57,7 @@ export function RunnerIdentityLine({
             Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
           </a>
         </span>
-        <span className="inline-flex flex-wrap gap-sm">
+        <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
           <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
           {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
           {runner.labels.map((label) => (
@@ -70,7 +70,7 @@ export function RunnerIdentityLine({
           achievable line states what the host reported — assigned against
           achievable, side by side (Dimensions 4.1 / 4.2). */}
       {runner.degraded && runner.degraded_reason ? (
-        <p className="font-mono text-body-sm text-destructive">
+        <p className="font-sans text-body-sm text-destructive">
           {ASSIGNMENT_UNMET_PREFIX}
           {runner.degraded_reason}
           {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}
