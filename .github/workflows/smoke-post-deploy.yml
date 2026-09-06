@@ -8,12 +8,14 @@ on:
 
 jobs:
   smoke:
-    # Only run on production deploys when Vercel marks the deployment as success.
-    # Vercel sets deployment.ref to the commit SHA (not branch name), so we match
-    # on the environment name instead. Production deploys use "Production – <project>".
+    # Only run on successful production deploys for projects covered by this
+    # marketing/dashboard suite. The agentsfleet-agents-dev project serves the
+    # installer domain and has a different artifact and smoke contract.
     if: >-
       github.event.deployment_status.state == 'success' &&
-      startsWith(github.event.deployment.environment, 'Production')
+      startsWith(github.event.deployment.environment, 'Production') &&
+      (contains(github.event.deployment.environment, 'agentsfleet-website') ||
+      contains(github.event.deployment.environment, 'agentsfleet-app'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
