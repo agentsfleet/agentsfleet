@@ -21,6 +21,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Leases;
 
+use crate::abort::Abort;
 use crate::error::Result;
 
 /// What one runner's loop did in its window.
@@ -30,6 +31,8 @@ pub struct Polled {
     pub leases: u64,
     /// Polls that found nothing leasable.
     pub misses: u64,
+    /// Polls the pass refused: a datastore that would not answer.
+    pub failures: u64,
     /// How long each poll took, in order.
     pub durations: Vec<Duration>,
 }
@@ -39,6 +42,7 @@ impl Polled {
     pub fn absorb(&mut self, other: Self) {
         self.leases += other.leases;
         self.misses += other.misses;
+        self.failures += other.failures;
         self.durations.extend(other.durations);
     }
 
@@ -70,30 +74,43 @@ impl Polled {
     }
 }
 
-/// Poll until the deadline, or until `stop_after` leases have been issued.
+/// Poll until the deadline, `stop_after` leases, or the abort monitor fires.
+///
+/// A pass that FAULTS is counted, not propagated: the monitor decides when a
+/// target refusing often enough is a reason to stop, and one refusal is data
+/// about the window rather than the end of it.
 ///
 /// # Errors
 ///
-/// A lease path that faulted. "Nothing to do" is not a fault, so a run against
-/// an empty index returns misses rather than an error.
+/// None today; the signature keeps the seam a future refusal can use.
 pub async fn poll_until(
     leases: &Leases,
     runner: &Uuid7,
     deadline: Instant,
     stop_after: Option<u64>,
+    abort: &Abort,
 ) -> Result<Polled> {
     let mut polled = Polled::default();
-    while Instant::now() < deadline {
+    let token = abort.token();
+    while Instant::now() < deadline && !token.is_cancelled() {
         if stop_after.is_some_and(|ceiling| polled.leases >= ceiling) {
             break;
         }
         let started = Instant::now();
-        let acquired = leases.select(runner, now()).await?;
-        polled.durations.push(started.elapsed());
-        if acquired.is_some() {
-            polled.leases += 1;
-        } else {
-            polled.misses += 1;
+        match leases.select(runner, now()).await {
+            Ok(acquired) => {
+                polled.durations.push(started.elapsed());
+                abort.record(true);
+                if acquired.is_some() {
+                    polled.leases += 1;
+                } else {
+                    polled.misses += 1;
+                }
+            }
+            Err(_refused) => {
+                polled.failures += 1;
+                abort.record(false);
+            }
         }
     }
     Ok(polled)

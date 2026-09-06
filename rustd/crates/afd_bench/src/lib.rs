@@ -28,6 +28,7 @@
 //! traffic on an operator's dashboard.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
+pub mod abort;
 pub mod datastores;
 pub mod error;
 pub mod fixture;
@@ -36,6 +37,7 @@ pub mod lane;
 pub mod profile;
 pub mod report;
 
+pub use abort::Abort;
 pub use datastores::Datastores;
 pub use error::{Error, Result};
 pub use fixture::{FixtureLedger, RunPrefix};

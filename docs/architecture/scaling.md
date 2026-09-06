@@ -246,6 +246,36 @@ Max concurrent connections, requests/sec, or daily request quota — whichever t
 
 ---
 
+## Measured ceilings
+
+Numbers, not estimates. Each row is what a lane in `rustd/crates/afd_bench`
+measured on one developer machine against the compose Postgres and Redis —
+`make bench-<lane> PROFILE=rig` — and the committed result sits beside it in
+`bench/baselines/`. Absolute rates move with hardware; the shapes below do not.
+
+| Path | What it costs | The number that decides |
+|------|---------------|-------------------------|
+| Idle lease poll | 1 Redis command, 0 Postgres round trips | Idle cost scales with runners, not fleets. A million idle fleets add nothing to it. |
+| Contended lease | 174 Postgres round trips per issued lease; 79% of polls find nothing (40 ready, 8 runners) | This is the expensive number. The candidate loop tries each of up to 64 fleets in turn, and under contention most claims lose. |
+| Steer ingress | 2 Redis commands per steer, 0 Postgres; 13 130/s at p95 0.9 ms (8 submitters) | Ingress never reaches Postgres. The readiness index fills to the population and holds until a runner drains it. |
+| Delivery, healthy | 49.5 jobs/s per worker with one 250 ms destination in sixteen | Above the five-per-second estimate the refactor argument was made from, but see the next row. |
+| Delivery, head-of-line | others' p95 3 717 ms against the slow destinations' 3 731 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
+| Delivery, retry | 95.5% of the window in the ladder with two refusing destinations in sixteen | Eight jobs that never resolve cost every job behind them the whole ladder. |
+| Cardinality | 4.6 KB of Redis per idle fleet, flat from 10 to 10 000; peek 0.3 ms, stream read 0.2 ms, candidate query 0.53 ms at 10 000 | Linear. A million idle fleets is roughly 4.6 GB of Redis and no slower a hot path. |
+
+Two of those rows change what the section below assumes. The idle row says the
+per-poll bound holds all the way up: cost tracks runner count and never fleet
+count, which is what makes the "idle deployment" line in the sizing procedure a
+measurement rather than an argument. The head-of-line row says the delivery
+worker's ceiling is not its rate but its ORDERING — a single slow vendor sets
+the latency for every vendor — and that is a shape a replica count cannot fix.
+
+What is deliberately not here: a production number, because nothing is
+deployed; behaviour under real customer traffic, because there is none yet; and
+any threshold, because the lanes print a delta against their baseline and never
+fail a build on it. The rig measures one process against local datastores,
+which is a floor and not a capacity plan.
+
 ## Sizing procedure (fleet- and playbook-readable)
 
 Structured for an LLM fleet or a `agentsfleet`-driven scaling playbook. Each step has explicit inputs, a formula, a decision rule, and an emit target.

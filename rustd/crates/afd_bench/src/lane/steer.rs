@@ -25,6 +25,7 @@ use std::time::Instant;
 use afd_events::Steer;
 use afd_redis::{ReadyIndex, Redis};
 
+use crate::abort::Abort;
 use crate::datastores::{Datastores, postgres_transactions, redis_calls};
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
@@ -109,6 +110,7 @@ pub async fn run(
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
+    let abort = std::sync::Arc::new(Abort::new(profile.caps().abort_error_rate));
     let tag = seed::placement_tag(prefix);
     let mut ledger = FixtureLedger::new();
 
@@ -128,13 +130,14 @@ pub async fn run(
         ledger.created(seed::ROWS_PER_FLEET);
     }
 
-    let measured = submit(stores, &fleets, parameters).await?;
+    let measured = submit(stores, &fleets, parameters, &abort).await?;
 
     let mut report = Report::new(Lane::Steer, profile);
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Concurrency.name(), parameters.concurrency);
     measured.record(&mut report);
+    report.abort = abort.recorded();
     report.fixture = Fixture::of(prefix, ledger);
     Ok(report)
 }
@@ -154,6 +157,7 @@ async fn submit(
     stores: &Datastores,
     fleets: &[seed::SeededFleet],
     parameters: Parameters,
+    abort: &std::sync::Arc<Abort>,
 ) -> Result<Submitted> {
     let redis_before = redis_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
@@ -173,8 +177,16 @@ async fn submit(
             .map(|(_index, fleet)| fleet.fleet.clone())
             .collect();
         let workspace = fleets.first().map(|fleet| fleet.workspace.clone());
+        let abort = std::sync::Arc::clone(abort);
         tasks.push(tokio::spawn(async move {
-            append_until(&steer, &mine, workspace.unwrap_or_default(), deadline).await
+            append_until(
+                &steer,
+                &mine,
+                workspace.unwrap_or_default(),
+                deadline,
+                &abort,
+            )
+            .await
         }));
     }
 
@@ -213,23 +225,36 @@ async fn append_until(
     fleets: &[String],
     workspace: String,
     deadline: Instant,
+    abort: &Abort,
 ) -> Result<Polled> {
     let mut polled = Polled::default();
     if fleets.is_empty() {
         return Ok(polled);
     }
+    let token = abort.token();
     // Round-robin over the slice: cycling the iterator means the fleet is
     // always present, so there is no index to check and no arm for an empty
     // slice past the guard above.
     let mut round_robin = fleets.iter().cycle();
-    while Instant::now() < deadline {
+    while Instant::now() < deadline && !token.is_cancelled() {
         let Some(fleet) = round_robin.next() else {
             break;
         };
         let started = Instant::now();
-        steer.append(fleet, &workspace, ACTOR, REQUEST_JSON).await?;
-        polled.durations.push(started.elapsed());
-        polled.leases += 1;
+        // A refused append is counted and reported through the monitor, not
+        // propagated: the monitor decides when refusing often enough is the
+        // end of the window.
+        match steer.append(fleet, &workspace, ACTOR, REQUEST_JSON).await {
+            Ok(_id) => {
+                polled.durations.push(started.elapsed());
+                polled.leases += 1;
+                abort.record(true);
+            }
+            Err(_refused) => {
+                polled.failures += 1;
+                abort.record(false);
+            }
+        }
     }
     Ok(polled)
 }
