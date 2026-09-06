@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   installPaintBoundaryAudit,
+  readBlankFrameEvidence,
   readBlankFrames,
   type ShellBlankAudit,
 } from "./e2e/acceptance/fixtures/blank-frame-audit";
@@ -64,4 +65,38 @@ it("keeps refusing a replaced main region", async () => {
   await nextFrame();
   document.body.innerHTML = "<main>impostor</main>";
   expect(() => readBlankFrames()).toThrow(/main region was replaced/);
+});
+
+it("bounds diagnostic samples without losing the actual blank count or capturing private content", async () => {
+  installPaintBoundaryAudit();
+  const main = document.querySelector("main");
+  if (!main) throw new Error("fixture main missing");
+  main.innerHTML = '<div data-private="account-data"></div>'.repeat(12);
+  for (let frame = 0; frame < 12; frame += 1) await nextFrame();
+  const evidence = readBlankFrameEvidence();
+  expect(readBlankFrames()).toBe(12);
+  expect(evidence.blankFrames).toBe(12);
+  expect(evidence.samples).toHaveLength(8);
+  for (const sample of evidence.samples) {
+    expect(sample).toEqual({
+      at: expect.any(Number), pathname: location.pathname,
+      connected: true, sameMain: true, textLength: 0,
+      childTags: Array(8).fill("DIV"),
+    });
+  }
+  expect(JSON.stringify(evidence)).not.toContain("account-data");
+});
+
+it("records a detached original main without mistaking the replacement for recovery", async () => {
+  installPaintBoundaryAudit();
+  document.body.innerHTML = "<main>replacement</main>";
+  await nextFrame();
+  expect(readBlankFrameEvidence().samples).toEqual([
+    expect.objectContaining({ connected: false, sameMain: false }),
+  ]);
+  expect(() => readBlankFrames()).toThrow(/main region was replaced/);
+});
+
+it("refuses diagnostics when the page never installed the audit", () => {
+  expect(() => readBlankFrameEvidence()).toThrow(/audit is missing/);
 });

@@ -21,7 +21,9 @@
 use afd_auth::scope::{Scope, parse_claim};
 use afd_auth::verifier::VerifyError;
 
-use crate::support::signing::{AUDIENCE, ISSUER, NOT_EXPIRED, TENANT, WORKSPACE, verify};
+use crate::support::signing::{
+    AUDIENCE, ISSUER, KID, NOT_EXPIRED, TENANT, WORKSPACE, verify, verify_with_header,
+};
 
 /// Signing works, so a failure below means the claim shape and nothing else.
 #[test]
@@ -30,6 +32,19 @@ fn test_the_signing_fixture_produces_a_token_this_daemon_verifies() {
         "{{\"sub\":\"user_x\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\"exp\":{NOT_EXPIRED}}}"
     ))
     .expect("a token this daemon signed and published a key for");
+    assert_eq!(claims.subject.as_str(), "user_x");
+}
+
+/// Clerk adds a numeric `oiat` private protected-header parameter. It is not a
+/// JWS parameter this daemon uses, so it must not prevent the verified RS256
+/// signature and claims from reaching the policy reader.
+#[test]
+fn test_a_numeric_private_header_parameter_does_not_reject_a_clerk_token() {
+    let header = format!("{{\"alg\":\"RS256\",\"kid\":\"{KID}\",\"oiat\":1704067400}}");
+    let payload = format!(
+        "{{\"sub\":\"user_x\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\"exp\":{NOT_EXPIRED}}}"
+    );
+    let claims = verify_with_header(&header, &payload).expect("a Clerk-shaped signed token");
     assert_eq!(claims.subject.as_str(), "user_x");
 }
 

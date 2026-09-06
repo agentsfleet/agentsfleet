@@ -1,9 +1,14 @@
-import { afterAll } from "bun:test";
+import { afterAll, setDefaultTimeout } from "bun:test";
 
 import { revokeMintedSessions } from "./fixtures/clerk-admin.ts";
 import { REVOKE_WORST_CASE_MS } from "./fixtures/cli-credential-revoke.ts";
 import { revokeHydratedCliCredentials } from "./fixtures/workspace-hydration.ts";
 import { resolveAcceptanceEnv } from "./global-setup.ts";
+import { BUN_TEST_TIMEOUT_MS } from "./run-lane.ts";
+
+// This live-only preload follows test/setup.ts. Its 15s unit default otherwise
+// overrides the lane's --timeout 120000 and aborts multi-step fixture setup.
+setDefaultTimeout(BUN_TEST_TIMEOUT_MS);
 
 /** What the Clerk session revokes may take after the credentials are done. */
 const CLERK_REVOKE_BUDGET_MS = 20_000;

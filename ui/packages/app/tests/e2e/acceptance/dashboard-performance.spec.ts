@@ -13,6 +13,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   installPaintBoundaryAudit,
+  readBlankFrameEvidence,
   readBlankFrames,
 } from "./fixtures/blank-frame-audit";
 
@@ -26,7 +27,17 @@ async function installBlankFrameAudit(page: import("@playwright/test").Page) {
 async function blankFrameCount(
   page: import("@playwright/test").Page,
 ): Promise<number> {
-  return page.evaluate(readBlankFrames);
+  try {
+    return await page.evaluate(readBlankFrames);
+  } finally {
+    const evidence = await page.evaluate(readBlankFrameEvidence);
+    if (evidence.blankFrames > 0) {
+      await test.info().attach("dashboard-blank-frame-evidence", {
+        contentType: "application/json",
+        body: JSON.stringify(evidence),
+      });
+    }
+  }
 }
 
 test.describe("authenticated dashboard fluidity", () => {
