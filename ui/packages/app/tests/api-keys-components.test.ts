@@ -113,7 +113,7 @@ describe("ApiKeyList component", () => {
   it("Revoke and Delete are icon buttons — ban and trash glyphs, verbs carried by the aria-label", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i).querySelector("svg.lucide-ban")).toBeTruthy();
-    expect(screen.getByLabelText(/Delete API key old-zapier/i).querySelector("svg.lucide-trash-2")).toBeTruthy();
+    expect(screen.getByLabelText(/Delete API key old-zapier/i).querySelector("svg.lucide-trash")).toBeTruthy();
   });
 
   it("the icon action buttons disable while a mutation is in flight (disabled-while-pending preserved)", async () => {

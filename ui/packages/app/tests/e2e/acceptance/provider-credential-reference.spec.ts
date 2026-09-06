@@ -47,7 +47,8 @@ async function deleteCredentialDirect(name: string): Promise<void> {
 // has rows, and degrades to a free-text <Input> when it doesn't — handle both.
 async function pickProvider(page: Page): Promise<void> {
   const providerField = page.getByRole("dialog").getByLabel("Provider", { exact: true });
-  const role = await providerField.getAttribute("role").catch(() => null);
+  await expect(providerField).toBeEnabled();
+  const role = await providerField.getAttribute("role");
   if (role === "combobox") {
     await providerField.click();
     await page.getByRole("option", { name: new RegExp(`^${PROVIDER}$`, "i") }).click({ timeout: 5_000 });
@@ -61,10 +62,11 @@ async function pickProvider(page: Page): Promise<void> {
 // both so the spec survives either fixture-catalogue state.
 async function pickModel(page: Page): Promise<void> {
   const model = page.getByRole("dialog").getByLabel("Model", { exact: true });
-  const role = await model.getAttribute("role").catch(() => null);
+  await expect(model).toBeEnabled();
+  const role = await model.getAttribute("role");
   if (role === "combobox") {
     await model.click();
-    await page.getByRole("option").first().click({ timeout: 5_000 }).catch(() => undefined);
+    await page.getByRole("option").first().click({ timeout: 5_000 });
   } else {
     await model.fill(MODEL_FALLBACK);
   }

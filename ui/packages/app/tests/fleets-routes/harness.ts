@@ -129,7 +129,7 @@ export function detailResponse(over: Record<string, unknown> = {}) {
   };
 }
 
-export function mockFetchBilling(billing: BillingSnapshot) {
+export function mockFetchBilling(billing: BillingSnapshot, missingStatus = 404) {
   fetchMock.mockImplementation(async (url: string) => {
     if (url.endsWith("/v1/tenants/me/billing")) {
       return { ok: true, status: 200, json: async () => billing };
@@ -175,7 +175,7 @@ export function mockFetchBilling(billing: BillingSnapshot) {
       if (detailMatch[1] !== "zom_1") {
         return {
           ok: false,
-          status: 404,
+          status: missingStatus,
           headers: { get: () => null },
           json: async () => ({
             error_code: "UZ-AGT-009",

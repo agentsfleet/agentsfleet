@@ -24,7 +24,7 @@ export function WorkspaceSwitcherTrigger({
       type="button"
       variant="outline"
       size="sm"
-      className="bg-card font-mono text-eyebrow"
+      className="min-w-0 max-w-full bg-card font-sans text-body-sm"
       {...props}
     >
       {busy ? (
@@ -37,7 +37,7 @@ export function WorkspaceSwitcherTrigger({
           className="text-muted-foreground"
         />
       )}
-      <span className="max-w-trim overflow-hidden text-ellipsis whitespace-nowrap">
+      <span className="min-w-0 max-w-trim truncate" title={activeLabel}>
         {failed ? "Retry workspace menu" : activeLabel}
       </span>
       <ChevronDownIcon size={14} aria-hidden="true" />

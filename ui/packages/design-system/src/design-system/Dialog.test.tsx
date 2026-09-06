@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,79 @@ import {
 } from "./Dialog";
 
 describe("Dialog", () => {
+  it("returns focus to an external opener after a controlled dialog closes", async () => {
+    function ControlledDialog() {
+      const [open, setOpen] = useState(false);
+      return <>
+        <button onClick={() => setOpen(true)}>Edit item</button>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogTitle>Edit item</DialogTitle>
+            <DialogDescription>Update this item.</DialogDescription>
+            <input aria-label="Name" />
+          </DialogContent>
+        </Dialog>
+      </>;
+    }
+    render(<ControlledDialog />);
+    const opener = screen.getByRole("button", { name: "Edit item" });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("preserves caller-defined focus targets on open and close", async () => {
+    render(<>
+      <button>Return here</button>
+      <Dialog>
+        <DialogTrigger>Open</DialogTrigger>
+        <DialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            screen.getByRole("textbox", { name: "Second field" }).focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            screen.getByRole("button", { name: "Return here" }).focus();
+          }}
+        >
+          <DialogTitle>Edit</DialogTitle>
+          <input aria-label="First field" />
+          <input aria-label="Second field" />
+        </DialogContent>
+      </Dialog>
+    </>);
+    fireEvent.click(screen.getByText("Open"));
+    expect(screen.getByRole("textbox", { name: "Second field" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.getByText("Return here")).toHaveFocus());
+  });
+
+  it("falls back to the Radix trigger when focus starts on the body", async () => {
+    render(<Dialog>
+      <DialogTrigger>Open</DialogTrigger>
+      <DialogContent><DialogTitle>Edit</DialogTitle></DialogContent>
+    </Dialog>);
+    expect(document.body).toHaveFocus();
+    fireEvent.click(screen.getByText("Open"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.getByText("Open")).toHaveFocus());
+  });
+
+  it("does not focus an opener removed while the dialog is open", async () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    render(<Dialog defaultOpen>
+      <DialogContent><DialogTitle>Edit</DialogTitle></DialogContent>
+    </Dialog>);
+    opener.remove();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(document.body).toHaveFocus());
+  });
+
   it("is closed by default — trigger present, content not rendered", () => {
     render(
       <Dialog>
@@ -71,8 +145,8 @@ describe("Dialog", () => {
     );
     const cls = screen.getByTestId("content").className;
     expect(cls).toContain("bg-card");
-    expect(cls).toContain("border-border");
-    expect(cls).toContain("rounded-xl");
+    expect(cls).toContain("border-border-strong");
+    expect(cls).toContain("rounded-lg");
   });
 
   // Regression: a fixed, centre-translated panel is unreachable by page scroll,

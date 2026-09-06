@@ -68,7 +68,7 @@ export function FleetConnectionIndicator({ status }: { status: ConnectionStatus 
     <span
       aria-label={`Connection status: ${STATUS_LABEL[status]}`}
       className={cn(
-        "inline-flex items-center gap-sm font-mono text-label",
+        "inline-flex items-center gap-sm font-sans text-label",
         STATUS_CLASS[status],
         // One short cue on arrival, then it settles. `motion-safe` so a
         // reduced-motion reader gets the colour and word change alone.

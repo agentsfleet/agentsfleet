@@ -184,15 +184,7 @@ if (!isLive) {
       );
     }, 30_000);
 
-    // KNOWN BUG (discovered by this suite against api-dev, 2026-06-19):
-    // `tenant provider delete` on a tenant already at the platform default
-    // returns HTTP 500 instead of a clean idempotent no-op. DELETE must be
-    // idempotent — a 500 on a client action is a server defect, not expected
-    // behaviour, so we do NOT enshrine the 500 as a passing assertion.
-    // Skipped pending the server fix; tracked in the PR session notes. Flip
-    // back to `it(...)` once the API returns the platform default on a
-    // repeat delete.
-    it.skip("delete is idempotent — a second reset stays on the platform default (BLOCKED: api-dev returns HTTP 500)", async () => {
+    it("delete is idempotent — a second reset stays on the platform default", async () => {
       const first = await deleteProvider(env, sessionJwt);
       assert.equal(first.mode, TENANT_PROVIDER_MODE.platform, `first reset mode: ${JSON.stringify(first)}`);
       const second = await deleteProvider(env, sessionJwt);

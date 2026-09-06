@@ -49,6 +49,22 @@ beforeEach(() => vi.clearAllMocks());
 // ── /settings redirect ────────────────────────────────────────────────────
 
 describe("settings index redirect", () => {
+  it.each(["models", "runners", "fleet-libraries"])("explains denied %s access and keeps a route back to the workspace", async (area) => {
+    mockAuth();
+    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
+    const html = renderToStaticMarkup(await SettingsPage({ searchParams: Promise.resolve({ notice: `${area}-platform-admin-only` }) }));
+    expect(html).toContain("Platform administrator access required");
+    expect(html).toContain("Back to workspace");
+    expect(html).toContain('href="/"');
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("ignores unknown notice values instead of reflecting query text", async () => {
+    mockAuth();
+    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
+    await expect(SettingsPage({ searchParams: Promise.resolve({ notice: "untrusted" }) })).rejects.toThrow("redirect:/settings/api-keys");
+  });
+
   it("redirects /settings to /settings/api-keys (Workspace tab folded in)", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");

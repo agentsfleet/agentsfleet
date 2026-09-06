@@ -1,4 +1,5 @@
 import {
+  DisplayXL,
   Button,
   Card,
   CardHeader,
@@ -35,6 +36,10 @@ import {
   EmptyState,
   StatusCard,
   Pagination,
+  Nav,
+  NavItem,
+  SectionLabel,
+  UsageBar,
 } from "@agentsfleet/design-system";
 import { DOCS_URL } from "../config";
 
@@ -51,9 +56,53 @@ import { DOCS_URL } from "../config";
 
 export default function DesignSystemGallery() {
   return (
-    <Section gap>
-      <h1>Design System Gallery</h1>
-      <p>Smoke route for Playwright computed-style verification.</p>
+    <Section gap className="wrap">
+      <DisplayXL>Design System Gallery</DisplayXL>
+      <p className="text-body-lg text-text-muted">Flat surfaces. Clear hierarchy. The agentsfleet mint identity.</p>
+      <TypographyButtonsGallery />
+      <CardTerminalGallery />
+      <GridInstallGallery />
+      <BadgeMenuTooltipEmptyGallery />
+      <SkeletonDialogExamples />
+      <MenuTooltipEmptyGallery />
+      <StatusPaginationGallery />
+      <AppPrimitivesGallery />
+    </Section>
+  );
+}
+
+function AppPrimitivesGallery() {
+  return (
+    <Section data-testid="app-primitives">
+      <SectionLabel>App navigation and usage</SectionLabel>
+      <Nav aria-label="Example app sections" className="flex flex-wrap gap-sm">
+        <NavItem href="#app-fleets" active>Fleets</NavItem>
+        <NavItem href="#app-events">Events</NavItem>
+      </Nav>
+      <UsageBar label="Monthly run budget" pct={62} sublabel="Budget remaining for this month" />
+      <code className="font-mono text-mono">fleet_example</code>
+    </Section>
+  );
+}
+
+function TypographyButtonsGallery() {
+  return (
+    <>
+      <Section className="grid-cols-1 md:grid-cols-3">
+        <Card>
+          <p className="text-label text-text-muted">Display · Bricolage Grotesque</p>
+          <p className="font-display text-display-md">A fleet, ready to run.</p>
+        </Card>
+        <Card>
+          <p className="text-label text-text-muted">Interface · Instrument Sans</p>
+          <p className="font-sans text-heading">Review the evidence</p>
+          <Button className="mt-4">View run</Button>
+        </Card>
+        <Card>
+          <p className="text-label text-text-muted">Technical · Commit Mono</p>
+          <code className="font-mono text-mono">agentsfleet --help</code>
+        </Card>
+      </Section>
 
       <Section>
         <h2>Button — variants</h2>
@@ -77,7 +126,13 @@ export default function DesignSystemGallery() {
           <Button size="icon" aria-label="settings" data-testid="btn-icon">⚙</Button>
         </div>
       </Section>
+    </>
+  );
+}
 
+function CardTerminalGallery() {
+  return (
+    <>
       <Section>
         <h2>Button — asChild</h2>
         <Button asChild data-testid="btn-aschild">
@@ -115,7 +170,13 @@ export default function DesignSystemGallery() {
           {"echo green"}
         </Terminal>
       </Section>
+    </>
+  );
+}
 
+function GridInstallGallery() {
+  return (
+    <>
       <Section>
         <h2>Grid</h2>
         <Grid columns="two" data-testid="grid-two">
@@ -142,11 +203,17 @@ export default function DesignSystemGallery() {
           command="npm install -g @agentsfleet/cli"
           actions={[
             { label: "Docs", to: DOCS_URL, external: true },
-            { label: "Pricing", to: "/pricing", variant: "ghost" },
+            { label: "Pricing", to: "/#pricing", variant: "ghost" },
           ]}
         />
       </Section>
+    </>
+  );
+}
 
+function BadgeMenuTooltipEmptyGallery() {
+  return (
+    <>
       <Section>
         <h2>Badge — variants</h2>
         <div className="flex flex-wrap items-center gap-md">
@@ -180,7 +247,13 @@ export default function DesignSystemGallery() {
           </div>
         </div>
       </Section>
+    </>
+  );
+}
 
+function SkeletonDialogExamples() {
+  return (
+    <>
       <Section>
         <h2>Skeleton</h2>
         <div className="flex flex-col gap-md max-w-sm">
@@ -210,7 +283,13 @@ export default function DesignSystemGallery() {
           </DialogContent>
         </Dialog>
       </Section>
+    </>
+  );
+}
 
+function MenuTooltipEmptyGallery() {
+  return (
+    <>
       <Section>
         <h2>DropdownMenu</h2>
         <DropdownMenu>
@@ -248,7 +327,13 @@ export default function DesignSystemGallery() {
           action={<Button size="sm">Create</Button>}
         />
       </Section>
+    </>
+  );
+}
 
+function StatusPaginationGallery() {
+  return (
+    <>
       <Section>
         <h2>StatusCard — variants</h2>
         <Grid columns="four">
@@ -263,7 +348,6 @@ export default function DesignSystemGallery() {
         <h2>Pagination</h2>
         <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
       </Section>
-
-    </Section>
+    </>
   );
 }

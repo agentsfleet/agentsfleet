@@ -24,11 +24,9 @@ describe("billing settings page — error fallback", () => {
   });
   afterEach(() => cleanup());
 
-  it("renders the not-ready empty state when getTenantBilling rejects", async () => {
+  it("preserves a failed billing read for the dashboard retry boundary", async () => {
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
-    // Both endpoints reject — exercises the `.catch(() => null)` and the
-    // `.catch(() => ({ items: [], next_cursor: null }))` fallbacks; a null
-    // billing result renders the explanatory empty state, not Next's error page.
+    // An unavailable balance must never look like a successfully empty account.
     vi.doMock("@/lib/api/tenant_billing", () => ({
       getTenantBilling: vi.fn().mockRejectedValue(new Error("no billing row")),
       listTenantBillingCharges: vi.fn().mockRejectedValue(new Error("no charges")),
@@ -36,8 +34,7 @@ describe("billing settings page — error fallback", () => {
     const { default: BillingSettingsPage } = await import(
       "../app/(dashboard)/settings/billing/page"
     );
-    const markup = renderToStaticMarkup(await BillingSettingsPage());
-    expect(markup).toMatch(/ready yet/);
+    await expect(BillingSettingsPage()).rejects.toThrow("no billing row");
   });
 });
 

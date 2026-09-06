@@ -188,7 +188,7 @@ function ThreadViewport({
               size="sm"
               aria-label={JUMP_TO_LATEST}
               className={cn(
-                "absolute bottom-md right-0 z-20 font-mono text-label",
+                "absolute bottom-md right-0 z-20 font-sans text-label",
                 "disabled:invisible disabled:pointer-events-none",
               )}
             >
@@ -211,9 +211,9 @@ function BackfillSkeleton() {
   return (
     <div
       className="flex w-full flex-col gap-md py-lg"
-      aria-label={BACKFILL_LABEL}
       data-testid="backfill-skeleton"
     >
+      <output className="sr-only">{BACKFILL_LABEL}</output>
       <Skeleton className="h-12 w-full rounded-md" />
       <Skeleton className="h-12 w-3/4 rounded-md" />
       <Skeleton className="h-12 w-2/3 rounded-md" />

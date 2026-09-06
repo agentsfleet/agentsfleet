@@ -1,16 +1,12 @@
 import Link from "next/link";
-import { Badge } from "@agentsfleet/design-system";
+import { Badge, Nav, PageTitle } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import type { FleetDetail } from "@/lib/types";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { BREADCRUMB_LABEL, FLEETS_CRUMB_LABEL } from "./console-copy";
-import type { FleetDetail } from "@/lib/types";
-
-// The console's header row: the way back to the wall on the left, the fleet's
-// lifecycle controls on the right. Which control renders is decided here, from
-// the server-rendered status — the client leaves below only paint the action.
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
   AGENTSFLEET_STATUS.ACTIVE,
@@ -26,9 +22,9 @@ function FleetBreadcrumb({
   fleetName: string;
 }) {
   return (
-    <nav
+    <Nav
       aria-label={BREADCRUMB_LABEL}
-      className="mb-sm shrink-0 font-mono text-sm text-muted-foreground"
+      className="mb-sm shrink-0 text-sm text-muted-foreground"
     >
       <Link
         href={workspacePath(workspaceId, "fleets")}
@@ -38,7 +34,7 @@ function FleetBreadcrumb({
       </Link>
       <span aria-hidden="true"> / </span>
       <span className="text-foreground">{fleetName}</span>
-    </nav>
+    </Nav>
   );
 }
 
@@ -61,7 +57,7 @@ export function FleetHeader({
   };
   return (
     <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
-      <h1 className="sr-only">{fleet.name}</h1>
+      <PageTitle className="sr-only">{fleet.name}</PageTitle>
       <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
       <div
         aria-label="Fleet lifecycle actions"

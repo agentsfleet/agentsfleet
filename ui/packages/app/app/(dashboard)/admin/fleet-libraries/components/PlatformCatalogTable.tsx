@@ -239,6 +239,7 @@ export default function PlatformCatalogTable({
     {
       key: "actions",
       header: COLUMN_ACTIONS,
+      numeric: true,
       cell: (row) => {
         const actions = rowActions(row);
         return (

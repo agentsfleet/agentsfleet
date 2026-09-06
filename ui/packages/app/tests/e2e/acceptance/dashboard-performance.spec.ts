@@ -47,7 +47,7 @@ test.describe("authenticated dashboard fluidity", () => {
     async ({ page }) => {
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.locator('[data-glow="dashboard"]')).toBeVisible();
+      await expect(page.locator('[data-surface="dashboard"]')).toBeVisible();
       await installBlankFrameAudit(page);
 
       const primaryNavigation = page.getByRole("navigation", {
@@ -108,7 +108,7 @@ test.describe("authenticated dashboard fluidity", () => {
 
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.locator('[data-glow="dashboard"]')).toBeVisible();
+      await expect(page.locator('[data-surface="dashboard"]')).toBeVisible();
       await expect.poll(
         () =>
           prefetchedRoutes.some((url) => url.includes("/events")),

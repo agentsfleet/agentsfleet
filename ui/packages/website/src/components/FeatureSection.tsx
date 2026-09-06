@@ -8,7 +8,7 @@ type Props = {
 };
 
 /*
- * FeatureSection — single capability tile. Mono number eyebrow + mono
+ * FeatureSection — single capability tile. Mono number eyebrow + sans
  * title + sans body. Borders > shadows per DESIGN_SYSTEM.md §Layout.
  */
 export default function FeatureSection({ number, title, description, compact }: Props) {
@@ -17,15 +17,15 @@ export default function FeatureSection({ number, title, description, compact }: 
       className={compact ? "flex flex-col gap-2" : "flex flex-col gap-3"}
       data-testid="feature-section"
     >
-      <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
+        <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
         {number}
       </span>
       {compact ? (
-        <h4 className="font-mono text-heading leading-heading text-text font-medium m-0">
+        <h4 className="font-sans text-heading leading-heading text-text font-medium m-0">
           {title}
         </h4>
       ) : (
-        <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
+        <h3 className="font-sans text-heading leading-heading text-text font-medium m-0">
           {title}
         </h3>
       )}

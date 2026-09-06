@@ -66,8 +66,11 @@ test.describe("signup webhook live", () => {
 
     await page.goto(workspaceHref(signup.workspaceId, "fleets"));
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no fleets yet/i)).toBeVisible();
+    await expect(page.getByRole("main").getByRole("link", { name: /Install a fleet/ })).toHaveAttribute(
+      "href",
+      workspaceHref(signup.workspaceId, "fleets/new"),
+    );
   });
 });

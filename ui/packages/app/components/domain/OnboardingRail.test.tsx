@@ -36,7 +36,7 @@ describe("OnboardingRail — tick marks + strikethrough (3.4)", () => {
   it("a done step renders an explicit check and a struck-through label", () => {
     // Model configured → done; its label must be struck through.
     const { container, getByText } = renderRail({ ...ZERO, modelConfigured: true });
-    expect(container.querySelector('[aria-label="done"]')).not.toBeNull();
+    expect(container.querySelector('[data-step-state="done"]')).not.toBeNull();
     expect(container.querySelector(".lucide-check")).not.toBeNull();
     const label = getByText("Model configured");
     expect(label.className).toContain("line-through");
@@ -45,7 +45,7 @@ describe("OnboardingRail — tick marks + strikethrough (3.4)", () => {
   it("the next incomplete step renders the centre-dot marker, no strikethrough", () => {
     // Nothing done → model_configured is the next step.
     const { container, getByText } = renderRail(ZERO);
-    const nextMarker = container.querySelector('[aria-label="next step"]');
+    const nextMarker = container.querySelector('[data-step-state="next step"]');
     expect(nextMarker).not.toBeNull();
     // The next marker is the small static centre dot, NOT a check (that's the
     // done state) and NOT the wake-pulse animation (reserved for live entities).
@@ -57,7 +57,7 @@ describe("OnboardingRail — tick marks + strikethrough (3.4)", () => {
   it("a future step renders a plain hollow marker", () => {
     // Model done makes install_fleet the next; connect_credential is future.
     const { container } = renderRail({ ...ZERO, modelConfigured: true });
-    expect(container.querySelector('[aria-label="pending"]')).not.toBeNull();
+    expect(container.querySelector('[data-step-state="pending"]')).not.toBeNull();
   });
 
   it("renders the steps in fixed order, model first and CLI last", () => {

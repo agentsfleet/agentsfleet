@@ -10,17 +10,14 @@ import {
   LOOP_STEPS,
   PILLAR_TOKENS,
   SOURCE_CATEGORIES,
+  PRICING_COPY,
 } from "./marketing-copy";
-import { RATES_DISPLAY } from "./rates";
 
 const inputs = {
   docsUrl: DOCS_URL,
   githubUrl: GITHUB_URL,
   installCommand: INSTALL_COMMAND,
   siteUrl: MARKETING_SITE_URL,
-  runRatePerSecond: RATES_DISPLAY.RUN_RATE_PER_SEC,
-  starterCredit: RATES_DISPLAY.STARTER_CREDIT,
-  eventRate: RATES_DISPLAY.EVENT_RATE,
 } as const;
 
 describe("llms text builders", () => {
@@ -31,9 +28,10 @@ describe("llms text builders", () => {
     expect(body).toContain("## Product");
     expect(body).toContain("## Resources");
     expect(body).toContain(`https://agentsfleet.net/#${LOOP_ANCHOR_ID}`);
-    expect(body).toContain(RATES_DISPLAY.RUN_RATE_PER_SEC);
-    expect(body).toContain(RATES_DISPLAY.STARTER_CREDIT);
-    expect(body).toContain(RATES_DISPLAY.EVENT_RATE);
+    expect(body).toContain(PRICING_COPY.note);
+    expect(body).toContain("produce an evidence-backed result");
+    expect(body).not.toContain("Each one opens a fix");
+    expect(body).not.toMatch(/\$\d|starter credit|zero markup/i);
     expect(body).toContain(`[Docs](${DOCS_URL})`);
     expect(body).toContain("[OpenAPI](/openapi.json)");
     expect(body).toContain(`[Source](${GITHUB_URL})`);
@@ -52,6 +50,8 @@ describe("llms text builders", () => {
 
   it("should render llms-full.txt with pillars, loop, sources, and links", () => {
     const body = buildLlmsFullText(inputs);
+    expect(body).toContain("Some runs end with diagnosis");
+    expect(body).not.toContain("Each one opens a fix");
     for (const token of PILLAR_TOKENS) {
       expect(body).toContain(`- ${token}`);
     }
@@ -61,7 +61,8 @@ describe("llms text builders", () => {
     for (const category of SOURCE_CATEGORIES) {
       expect(body).toContain(`- ${category.label}: ${category.examples.join(", ")}`);
     }
-    expect(body).toContain(`- Run rate: ${RATES_DISPLAY.RUN_RATE_PER_SEC}`);
+    expect(body).toContain(PRICING_COPY.note);
+    expect(body).not.toMatch(/\$\d|starter credit|zero markup/i);
     expect(body).toContain(`- Install: ${INSTALL_COMMAND}`);
   });
 });
