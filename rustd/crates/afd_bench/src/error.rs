@@ -104,6 +104,32 @@ pub enum Error {
         source: afd_fleet::Error,
     },
 
+    /// A server counter the lane could not read a number out of.
+    ///
+    /// Raised rather than summed to zero: a datastore that answered its
+    /// statistics command with nothing this crate recognises did not serve
+    /// zero operations, and the attribution would be a zero nobody measured.
+    #[error("the {datastore} counter would not parse: no {field} field in the reply")]
+    CounterUnreadable {
+        /// Which datastore answered.
+        datastore: &'static str,
+        /// The field that was expected.
+        field: &'static str,
+    },
+
+    /// A knob that was set to something this lane cannot read as a number.
+    ///
+    /// Refused rather than defaulted: `BENCH_FLEETS=1O00` with a letter O
+    /// would otherwise measure the default population under the name of the
+    /// one asked for.
+    #[error("{variable}={value:?} is not a number this lane can use")]
+    VariableUnreadable {
+        /// The variable that was set.
+        variable: &'static str,
+        /// What it was set to.
+        value: String,
+    },
+
     /// A lane name nothing maps to.
     #[error("unknown lane: {usage}")]
     UnknownLane {
@@ -264,6 +290,7 @@ impl Error {
             | Self::AcknowledgementMissing { .. }
             | Self::TargetMissing { .. }
             | Self::VariableUnset { .. }
+            | Self::VariableUnreadable { .. }
             | Self::UnknownLane { .. } => true,
             Self::LatencyUnavailable { .. }
             | Self::LatencyUnrecordable { .. }
@@ -280,7 +307,8 @@ impl Error {
             | Self::SteerPathFaulted { .. }
             | Self::FixtureUnseedable { .. }
             | Self::RunnerUnenrollable { .. }
-            | Self::RunnerTaskLost => false,
+            | Self::RunnerTaskLost
+            | Self::CounterUnreadable { .. } => false,
         }
     }
 }

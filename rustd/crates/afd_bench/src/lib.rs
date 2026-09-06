@@ -33,6 +33,7 @@ pub mod datastores;
 pub mod error;
 pub mod fixture;
 pub mod instrument;
+pub mod knobs;
 pub mod lane;
 pub mod profile;
 pub mod report;

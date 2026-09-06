@@ -140,7 +140,7 @@ pub async fn run(
 }
 
 /// The rungs up to and including the ceiling.
-fn rungs(ceiling: u64) -> Vec<u64> {
+pub(crate) fn rungs(ceiling: u64) -> Vec<u64> {
     let mut rungs: Vec<u64> = (1..=RUNGS_BELOW_CEILING)
         .rev()
         .map(|below| ceiling / 10_u64.pow(below))
@@ -311,7 +311,7 @@ async fn postgres_at_population(
 ///
 /// Absent rather than zero when the line is missing: a plan without timing is
 /// a plan nothing timed, and RULE ECL says that is not a measurement.
-fn plan_time(lines: &[String], label: &str) -> Option<f64> {
+pub(crate) fn plan_time(lines: &[String], label: &str) -> Option<f64> {
     lines
         .iter()
         .find_map(|line| line.trim().strip_prefix(label))
@@ -381,3 +381,6 @@ const COUNT: &str = "COUNT";
 
 /// `core.fleets` and every index on it, in bytes.
 const TABLE_SIZE_QUERY: &str = "SELECT pg_total_relation_size('core.fleets')";
+
+#[cfg(test)]
+mod tests;

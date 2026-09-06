@@ -103,7 +103,7 @@ pub struct SeededFleet {
 /// The character after the second dash must be `7`. Process id plus index in
 /// the final group gives four billion distinct fleets per process, which is
 /// past anything the cardinality ladder climbs to.
-fn identifier(kind: u32, index: u64) -> String {
+pub(crate) fn identifier(kind: u32, index: u64) -> String {
     format!(
         "0195b4ba-8d3a-7{kind:03x}-8abc-{:04x}{index:08x}",
         std::process::id() & 0xffff
@@ -277,3 +277,6 @@ pub async fn runner(database: &Db, host: &str, tag: &str, now: i64) -> Result<Uu
         .await?
         .runner_id)
 }
+
+#[cfg(test)]
+mod tests;

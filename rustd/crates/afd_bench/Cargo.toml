@@ -63,5 +63,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+# `Db::unreachable` and `Redis::unreachable`: handles that open no socket, so
+# the abort rail can be proven wired into a lane without a datastore to kill.
+afd_db = { workspace = true, features = ["test-util"] }
+afd_redis = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

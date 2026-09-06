@@ -38,6 +38,9 @@ const COMMANDSTATS: &str = "commandstats";
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";
 
+/// The datastore named when a Redis counter will not parse.
+const REDIS: &str = "redis";
+
 /// Postgres's own transaction tally for the database a lane is connected to.
 ///
 /// The counterpart to `INFO commandstats`, and used for the same reason: a
@@ -115,12 +118,28 @@ pub async fn redis_calls(queue: &Redis) -> Result<u64> {
     let mut command = redis::cmd(INFO);
     command.arg(COMMANDSTATS);
     let raw: String = queue.command(INFO, COMMANDSTATS, &command).await?;
-    Ok(raw
+    redis_calls_in(&raw).ok_or(crate::Error::CounterUnreadable {
+        datastore: REDIS,
+        field: CALLS_FIELD,
+    })
+}
+
+/// The total of every `calls=` field in an `INFO commandstats` reply.
+///
+/// `None` when the reply carries no such field at all: a server that answered
+/// `INFO` with nothing this parser recognises is not a server that served zero
+/// commands, and reporting it as one is the zero RULE ECL forbids.
+#[must_use]
+pub(crate) fn redis_calls_in(info: &str) -> Option<u64> {
+    let mut seen = false;
+    let total = info
         .lines()
         .filter_map(|line| line.split_once(CALLS_FIELD))
         .filter_map(|(_before, after)| after.split(',').next())
-        .filter_map(|calls| calls.parse::<u64>().ok())
-        .sum())
+        .filter_map(|calls| calls.trim().parse::<u64>().ok())
+        .inspect(|_calls| seen = true)
+        .sum();
+    seen.then_some(total)
 }
 
 /// Transactions this database has committed or rolled back, in total.
@@ -139,3 +158,6 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
         .try_get(0)?;
     Ok(u64::try_from(total).unwrap_or(0))
 }
+
+#[cfg(test)]
+mod tests;
