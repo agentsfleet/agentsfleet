@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M191
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — the loop shipped in M190_001 is correct for the cases it names; the findings below are exposures it does not close, none of which is failing today.
 **Categories:** UI
 **Batch:** B12 — after M190_001, whose `runWithRetry` seam this spec replaces behind.
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m191-retry-effect-schedule
+**Test Baseline:** unit=2355 (`make test-unit-all` on main at 685725d7f, cargo lane: 123 binaries, 0 failed; the vitest lanes were stopped at Indy's direction and are recorded before the PR — see Discovery) integration=recorded before the PR (Indy, Sep 06, 2026 — see Discovery)
 **Depends on:** M190_001 (the transport/policy split and the `runWithRetry(attempt, method, options)` seam every caller now rides)
 **Provenance:** LLM-drafted (Claude Fable 5.1, Sep 05, 2026) from an adversarial review of `ui/packages/app/lib/api/retry.ts` requested by Indy; Indy chose "rewrite on the Effect library" over hardening in place.
 **Canonical architecture:** `docs/architecture/web_app.md` §The five statements (statement 1: the server fetches)
@@ -47,8 +47,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `ui/packages/app/lib/api/retry.ts` — the seam (`runWithRetry`, `RetryOptions`, `RETRY_DEFAULTS`, `RETRY_CODE_TIMEOUT`) that stays; everything behind it is replaced.
 2. `ui/packages/app/lib/api/client.ts` — the transport that calls the seam; `attemptWithEtag` is the unit of work the schedule retries, and its timeout mapping is the `timeout` class.
 3. `ui/packages/app/lib/api/client.defaults.test.ts`, `client.retry.test.ts`, `retry.integration.test.ts` — the behaviours the rewrite must keep green before it adds any.
-4. `cli/src/lib/http-retry.ts` — the sibling policy; §5 turns the informal mirror into a shared fixture both suites consume.
-5. https://effect.website/docs/scheduling/introduction — `Schedule` composition (`exponential`, `jittered`, `upTo`, `recurs`, `whileInput`), and `Effect.retry` with `Schedule.tapInput` for telemetry.
+4. `cli/src/lib/http-retry.ts` — the sibling policy; §4 turns the informal mirror into a shared fixture both suites consume.
+5. `cli/node_modules/effect/dist/Schedule.d.ts` and `Effect.d.ts` at `4.0.0-rc.112`, the version this repository already ships (https://effect.website/docs/scheduling/introduction for the prose) — `Schedule.exponential`, `recurs`, `upTo`, `modifyDelay` (full jitter reads the `Random` service; `Schedule.jittered` scales by 0.8 to 1.2 and is the centred jitter this spec removes), `tap` for telemetry, and `Effect.retry({ schedule, while })` for the replay and `Retry-After` gates. `Clock` and `Random` are `Context.Reference`s, so the `sleepImpl` and `randomFn` seams are honoured by providing them, and the M190_001 suites run unmodified.
 
 ## Files Changed (blast radius)
 
@@ -56,14 +56,16 @@ All paths below `ui/packages/app/` unless stated.
 
 | File | Action | Why |
 |------|--------|-----|
-| `package.json` | EDIT | adds `effect` as a dependency; the only new package |
+| `package.json` | EDIT | adds `effect` at `4.0.0-rc.112`, the version `cli/package.json` already pins; the only new package |
 | `lib/api/retry.ts` | EDIT | the policy becomes a composed `Schedule`; the public seam is unchanged |
+| `lib/api/retry-backoff.ts`, `lib/api/retry-backoff.test.ts` | DELETE | the schedule owns delay and sleep; `backoffDelay`, `defaultSleep` and `sleepUnlessAborted` have no caller once the loop is gone |
 | `lib/api/retry-classify.ts` | CREATE | failure provenance as a tagged type, read from `cause` codes; replaces message sniffing |
 | `lib/api/client.ts` | EDIT | passes the request's provenance (sent or not) to the classifier; no API change |
 | `lib/api/retry.test.ts`, `lib/api/client.retry.test.ts`, `lib/api/client.defaults.test.ts`, `lib/api/retry.integration.test.ts` | EDIT | every existing case stays; new cases per Dimension |
 | `lib/api/retry-classify.test.ts` | CREATE | provenance table: pre-send, post-send, timeout, each status |
-| `samples/fixtures/retry-policy/cases.json` | CREATE | the shared schedule fixture both runtimes' tests replay |
-| `cli/src/lib/http-retry.test.ts` (repo root) | EDIT | consumes the shared fixture; the CLI loop is not rewritten |
+| `samples/fixtures/retry-policy/cases.json` (repo root, beside `wire-v2` and `model-library`) | CREATE | the shared schedule fixture both runtimes' tests replay |
+| `cli/src/lib/http-retry.ts` (repo root) | EDIT | closes the post-send replay gate for non-idempotent methods, so a timed-out or reset POST is not re-sent; the loop itself is not rewritten |
+| `cli/test/http-retry.unit.test.ts`, `cli/test/http-retry.integration.test.ts` (repo root) | EDIT | the unit suite consumes the shared fixture; the integration suite proves the closed gate over a real socket; the CLI loop is not rewritten |
 | `.size-limit.mjs` | EDIT only if measured | the shared-chunk budget moves only if `effect` reaches a client bundle, which §1 forbids |
 
 ## Applicable Rules
@@ -85,7 +87,7 @@ All paths below `ui/packages/app/` unless stated.
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** Effect `Schedule` — exponential, jittered, `upTo`, `recurs`, composed with `Schedule.whileInput` for the replay gate. Aligned exactly; the loop's arithmetic is deleted, not ported.
+- **Reference:** Effect `Schedule` — `exponential`, `modifyDelay` (full jitter), `recurs`, `upTo`, composed with `Effect.retry`'s `while` option for the replay and `Retry-After` gates (Effect 4 has no `whileInput`). Aligned exactly; the loop's arithmetic is deleted, not ported.
 - **Reference:** `cli/src/lib/http-retry.ts` — the behaviours that must survive: the transient status set, `Retry-After` as a floor, `AGENTSFLEET_NO_RETRY`, the 5xx replay gate. Divergence: the CLI is not rewritten; parity moves to a shared fixture.
 - **Reference:** AWS Architecture Blog, "Exponential Backoff And Jitter" — full jitter over centred jitter for herd dispersion.
 
@@ -202,7 +204,7 @@ The `onAttempt` and `onRetry` hooks remain the seam and become truthful (3.1). N
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no file is deleted; `retry.ts` is rewritten in place.
+`lib/api/retry-backoff.ts` and `lib/api/retry-backoff.test.ts` — the schedule owns delay and sleep. Grep: `git ls-files ui/packages/app/lib/api | grep -c retry-backoff` → 0. `retry.ts` itself is rewritten in place.
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -210,6 +212,7 @@ N/A — no file is deleted; `retry.ts` is rewritten in place.
 |-----------------------|------|----------|
 | `backoffDelay` (replaced by the schedule) | `grep -rn "backoffDelay" ui/packages/app/lib` | 0 matches outside a fixture replay |
 | `classifyRetryable` (replaced by `classifyFailure`) | `grep -rn "classifyRetryable" ui/packages/app` | 0 matches |
+| `sleepUnlessAborted`, `defaultSleep` (the schedule sleeps under `Clock`) | `grep -rn "sleepUnlessAborted\|defaultSleep" ui/packages/app/lib` | 0 matches |
 
 ## Out of Scope
 
@@ -242,6 +245,9 @@ N/A — no file is deleted; `retry.ts` is rewritten in place.
 ## Discovery (consult log)
 
 - **Consults** — Sep 05, 2026: asked whether "make retry.ts more robust and performant, and change with effects" meant hardening in place or the Effect library; Indy chose the Effect library. The adversarial review that produced the Failure Modes above is recorded in M190_001's Discovery.
+- **Consults** — Sep 06, 2026: CHORE(open) found the Failure Modes row "CLI replays a timed-out write" closing the CLI gate while Files Changed listed only the CLI test file; the `cli/src/lib/http-retry.ts` EDIT row was added (the gate closes, the loop is not rewritten). Indy: "Yes yes go and implement chore(open)".
+- **Consults** — Sep 06, 2026: the same CHORE(open) read corrected three paths against the tree (the CLI suites live in `cli/test/`, `samples/fixtures/` is at the repo root, and `retry-backoff.ts` is a separate module the sweep must delete) and the Effect names against the installed `4.0.0-rc.112` (`Effect.retry({ while })` and `modifyDelay` replace the 3.x `whileInput` and `jittered`). Indy: "keep going in parallel".
+- **Consults** — Sep 06, 2026: the unit lane had reported its cargo half and the integration lane was migrating when Indy stopped both; the baseline records the measured cargo count and the remaining counts land at the boundary. Indy: "just stop all of them and continue chore(open) do the make test-unit*, lint* test-integration* prior to PR".
 - **Metrics review** — no events added; no analytics or funnel playbook update required.
 - **Skill-chain outcomes** — populated during VERIFY and REVIEW.
 - **Deferrals** — none at authoring.
