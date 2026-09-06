@@ -18,6 +18,8 @@
 //! grow the registry an operator reads with entries only a developer running a
 //! make target can ever see.
 
+use std::path::PathBuf;
+
 use crate::profile::Profile;
 
 /// The result every fallible function in this crate returns.
@@ -70,6 +72,64 @@ pub enum Error {
         expected: &'static str,
     },
 
+    /// A report that would not render to JSON.
+    ///
+    /// No path, because nothing was written: rendering happens before the
+    /// temporary file is opened, so a failure here leaves the result path
+    /// exactly as it was.
+    #[error("the result would not render")]
+    ResultUnrenderable {
+        /// What serde refused.
+        source: serde_json::Error,
+    },
+
+    /// A result file that would not land.
+    #[error("the result would not be written to {path}")]
+    ResultUnwritable {
+        /// The path being written when it failed.
+        path: PathBuf,
+        /// What the filesystem said.
+        source: std::io::Error,
+    },
+
+    /// A result or baseline file that would not open.
+    #[error("{path} would not be read")]
+    ResultUnreadable {
+        /// The file that would not open.
+        path: PathBuf,
+        /// What the filesystem said.
+        source: std::io::Error,
+    },
+
+    /// A file that is not a report.
+    ///
+    /// Raised rather than skipped: a truncated result is the one thing a
+    /// comparison must refuse, because reading it as an empty run would report
+    /// a delta against numbers that were never measured.
+    #[error("{path} is not a readable result")]
+    ResultUnparseable {
+        /// The file that would not parse.
+        path: PathBuf,
+        /// Where serde gave up.
+        source: serde_json::Error,
+    },
+
+    /// The latency histogram could not be built.
+    #[error("the latency histogram would not be created")]
+    LatencyUnavailable {
+        /// What `HdrHistogram` refused, and why.
+        #[from]
+        source: hdrhistogram::CreationError,
+    },
+
+    /// A measured duration the histogram would not hold.
+    #[error("a measured latency would not be recorded")]
+    LatencyUnrecordable {
+        /// The value and the ceiling that refused it.
+        #[from]
+        source: hdrhistogram::RecordError,
+    },
+
     /// A deployed profile with nowhere to point.
     #[error(
         "profile {profile} needs a target: set {variable} to an address, \
@@ -99,6 +159,12 @@ impl Error {
             | Self::CapExceeded { .. }
             | Self::AcknowledgementMissing { .. }
             | Self::TargetMissing { .. } => true,
+            Self::LatencyUnavailable { .. }
+            | Self::LatencyUnrecordable { .. }
+            | Self::ResultUnrenderable { .. }
+            | Self::ResultUnwritable { .. }
+            | Self::ResultUnreadable { .. }
+            | Self::ResultUnparseable { .. } => false,
         }
     }
 }

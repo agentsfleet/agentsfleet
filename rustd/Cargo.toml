@@ -426,6 +426,25 @@ redis = { version = "1.6.0", default-features = false, features = [
     "streams",
     "script",
 ] }
+# Latency percentiles for the measurement lanes, and only for them.
+#
+# The lanes report a p95 and a p99 over every operation they issued, which is a
+# quantity nothing else in this workspace computes: the operator metrics are
+# counters, and the three `INVOKE_AGENT_*` instruments are OpenTelemetry
+# histograms whose buckets the collector owns. HdrHistogram is what latency
+# tooling standardised on for this — recording is constant-time into log-linear
+# buckets, so a run holding a million samples costs the same memory as one
+# holding a thousand and cannot be the reason a lane runs out of it.
+#
+# `default-features = false` drops `serialization` (the V2 wire codec, which
+# pulls flate2) and `sync`: a lane writes its OWN result shape as JSON, and each
+# lane records on one task. What is left is the recorder and the quantile query.
+#
+# The alternative considered was sorting a Vec of samples and indexing it, which
+# is exact rather than accurate-to-3-significant-figures. Rejected on Indy's
+# call: arithmetic we own is still arithmetic we maintain, and 0.1% on a p95
+# changes no decision this lane exists to inform.
+hdrhistogram = { version = "7.6.0", default-features = false }
 # The HTTP shell. axum replaces the retired Zig daemon's `http/router.zig` and the ten
 # hand-rolled `route_matchers_*.zig` files with a router that matches paths and
 # extracts parameters for us — roughly a thousand lines of matching logic that

@@ -316,6 +316,20 @@ N/A — no files deleted.
 
 > Kishore (2026-09-06): "So i donot have the production deployed yet." — context: the `prod` profile. Built as a refusal rail only; no baseline, no workflow row, no result file, and no run against a live target. The refusal itself is unit-tested and needs no environment.
 
+**Consult — the percentile library.** Asked whether to hand-roll the quantile
+maths, use the built-in `#[bench]` harness on nightly, or take a crate.
+Established by running it that `#![feature(test)]` is refused on the pinned
+stable channel (`error[E0554]`), and that the CI image installs exactly one
+toolchain (`playbooks/operations/ci_rust_images/versions.env:15`,
+`RUST_VERSION=1.98.1`, guarded by `build_and_push.sh:98`). Also established
+that `#[bench]` measures a deterministic closure and cannot express a
+concurrent run against live datastores, so nightly would have moved the pin
+and bought nothing. Download counts were compared on request: criterion 274M
+total / 56.6M in ninety days, hdrhistogram 111M / 19.6M, `quantiles` last
+released 2018.
+
+> Kishore (2026-09-06): "Okay use hrdhistogram" — context: the p95/p99 computation. `hdrhistogram = "7.6.0"` added to `[workspace.dependencies]`, `default-features = false`. Criterion was considered and rejected on fitness rather than popularity: it reports the spread of per-iteration mean times, controls its own iteration count against the profile caps, and re-runs a stateful operation against a growing datastore.
+
 **Deferral — a real deployed run.** No `dev` target was named either, so the
 deployed-profile *runs* against a live environment are deferred; the deployed
 *semantics* are not. Both are built and proved against the compose rig via
