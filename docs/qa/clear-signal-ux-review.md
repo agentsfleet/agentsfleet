@@ -1,142 +1,102 @@
 # Clear Signal interface review
 
-Status: IN_PROGRESS. This report does not claim a completed review or repository verification.
+Status: UX review and local repository verification complete. PR gates and CI are tracked separately.
 
 ## Scope and method
 
-Review every app route and website page in the M189 worktree.
-Check the rendered interface alongside its route, child components, shared primitives, and tokens.
-Use isolated development accounts with genuine Clerk sessions.
+Reviewed the app and website from their rendered pages, route components, shared controls, and tokens.
+The app review uses genuine Clerk sessions for isolated development accounts and existing read-only fleet and runner fixtures.
+Desktop, 390px, and 320px checks cover navigation, forms, keyboard focus, long content, and accessible recovery.
+The website also covers light mode, enlarged text, reduced motion, Firefox, and WebKit.
 
-The app preview is `http://localhost:3100`; the website preview is `http://localhost:5174`.
-The app offers dark mode. The website and gallery also require light-mode checks.
-Screenshots and computed styles live in `.gstack/qa-reports/m189-ux/` and are local review evidence.
+Screenshots and safe measurements are under `.gstack/qa-reports/m189-ux/`.
+The website designer report and inspected before-and-after images are under `.gstack/design-reports/website-final/`.
+[Earlier design decisions](clear-signal-design-history.md) remain separate from current evidence.
 
-Each route requires desktop and mobile inspection, including relevant loading, empty, populated, error, and restricted-access states.
-Forms require empty and invalid submission, readable validation, hover, keyboard focus, cancellation, and confirmation checks.
-Review navigation, deep links, browser history, long content, dialogs, reduced motion, and enlarged text.
+## Designer findings and fixes
 
-## Findings
+| Finding | Result |
+|---|---|
+| Dark surfaces and monospace prose weakened hierarchy | Brighter graphite surfaces, Instrument Sans for UI/prose, and separate technical and display roles come from shared tokens |
+| Website sections and workflow roles looked alike | Lifted audience/pricing surfaces, corrected eyebrow scale, amber evidence marks, and blue delivery marks distinguish the sections |
+| Mobile website navigation was hidden | Visible navigation exposes home, agents, workflow examples, and docs; active routes use mint |
+| Workflow navigation from another page missed the section | Router links preserve the hash transition; target-position checks pass |
+| Touch controls and focused fleet tabs could be clipped | Shared controls have 44px coarse-pointer targets; focused navigation items reveal themselves within their scroll container |
+| Workspace/account controls overflowed narrow headers | Narrow header controls remain visible; account settings use Clerk's supported page at `/settings/account` |
+| Dialog focus, table alignment, and pagination were inconsistent | Shared dialog focus returns to the opener; Created columns align; page-size and row-count changes reset pagination correctly |
+| Failed reads could resemble successful empty lists | Initial read errors reach recovery boundaries or explicit unavailable states; regression tests inject failures |
+| Missing pages and restricted access lacked useful recovery | Themed recovery pages keep an appropriate route back and a single main landmark |
+| Workspace creation rejected a name the API could generate | An omitted name uses the existing generated-name response |
 
-| Finding | Evidence | State |
+The review retained a flat graphite-and-mint design, with brighter semantic accents and consistent spacing.
+Color is supported by labels, focus rings, and status text.
+
+## Route and state ledger
+
+| Surface | Reviewed evidence |
+|---|---|
+| Sign-in/sign-up and CLI authentication | Desktop/mobile auth states, input hover/focus, invalid email, local routing, and invalid CLI-session recovery |
+| Account profile/security | Menu entry, direct route, security tab, edit/cancel, reload, and keyboard access at 1440/390/320px |
+| Header/sidebar/workspace/Getting started | Expanded mobile navigation, long workspace names, menu focus return, account visibility, current/completed onboarding steps |
+| Fleet wall/install/detail | Empty onboarding, populated wall and installation entry; chat, events, memory, Skill, and Trigger views; missing/malformed fleet recovery |
+| Approvals/events/integrations | List and detail captures, missing-record recovery, and failed-read assertions tied to the shared recovery boundary |
+| Models/secrets/API Keys | Populated tables, trailing-column keyboard scrolling, date alignment, sorting, creation/editing dialogs, and focus return |
+| Billing | Usage, Invoices, and Payment method tabs; empty transaction states; unavailable/rejected read tests |
+| Admin catalogs/runners | Operator and restricted-access views, runner header/actions, lists, leases/activity, long creation dialogs, and validation |
+| Library and runner dialogs | GitHub/upload source tabs, missing-field validation, expanded content, and reachable Create/Cancel controls at narrow widths |
+| Website | Home, Agents, Privacy, Terms, gallery, recovery, redirects, both themes, links, FAQ/workflow keyboard behavior, and mobile reflow |
+
+A captured state proves that state only. Populated chat/billing and runner mutations were not exercised as live end-to-end business flows.
+Failed-read behavior is also verified in component/page tests; the review does not claim a live failure injection into every backend endpoint.
+The executable agent onboarding guide remains deferred by the user's recorded decision in the milestone spec.
+
+## Completed checks before the main-branch integration
+
+| Command | Result | Local log |
 |---|---|---|
-| App input and textarea boundaries have no hover treatment | Shared `Input.tsx`, `Textarea.tsx`, and captured creation dialogs | Repaired; mint hover and visible focus use shared tokens |
-| Onboarding markers use unsupported accessible labels on spans | Initial captures report axe `aria-prohibited-attr` | Repaired with readable step status; component tests cover each state |
-| Explanatory copy inherits monospace | `EventDetailsDialog`, `FleetPayloadDisclosure`, model hints, runner checks | Repaired; prose is sans and technical values retain mono |
-| Auth browser tests assert the previous palette | `tests/e2e/auth-theme.spec.ts` | Updated; final browser rerun pending |
-| Clerk resets field borders and overrides focus | Initial `auth-states.ts` capture measures a zero-width border | Repaired through the typed appearance adapter; hover and focus captured |
-| Clerk adds gradients to buttons, pseudo-elements, and footers | Initial auth captures and account menu inspection | Repaired; final account captures report zero gradients |
-| Mobile workspace trigger pushes the account button off-screen | Initial account trigger ends at 445px in a 390px viewport | Repaired; trigger now ends at 374px |
-| The onboarding credential step opens a missing route | `lib/onboarding.ts` pointed to `settings/secrets` | Repaired; link now opens the existing Secrets route |
-| Unknown website URLs display an empty main area | Initial unknown-route screenshots | Repaired with a themed recovery page; website tests cover navigation home |
-| Gallery overflows at mobile width | Initial gallery capture and shared Section layout | Shared Section sizing repaired; final visual recheck pending |
-| Failed reads can appear as successful empty lists | Approvals, events, billing, secrets, integrations, and runner state handlers | Repaired with honest error or unavailable states; focused tests cover failures |
-| Created headings and cells differ in alignment or mobile visibility | Secrets and API Keys tables; shared DataTable header padding | Repaired; browser checks cover column order and alignment at desktop and mobile widths |
-| Closing a dialog loses focus to the page | Shared Dialog and cells rendered as newly created component types | Repaired; six live Edit, Rename, and Delete checks pass across two widths |
-| Empty workspace names are rejected by the form | Rust accepts an absent or blank name and generates one | Form and response validation now accept generated names; focused tests pass |
-| Invalid fleet links display a generic failure page | Backend rejects malformed fleet IDs with HTTP 400 | Repaired; malformed and missing fleet links show the themed recovery page |
-| Nested recovery pages duplicate the main landmark | Dashboard not-found capture | Repaired through shared recovery content; corrected captures report zero axe violations |
-| Fleet event read failures display “No events yet” | Fleet detail's initial events promise discarded its error | Repaired; original errors reach the existing recovery boundary |
-| Clerk profile modal lacks an accessible name | Initial account capture | Replaced by the supported account page at `/settings/account`; final live account tests pass |
-| Clerk profile menu buttons lack required ARIA parents | Initial account captures | Supported account page and navigation pass accessibility checks; no rules suppressed |
+| `make test-unit-all` | All lanes passed: Rust 2351; app 2431; website 155; CLI 1646; design system 559 | `/tmp/m189-resumed-unit-all.log` |
+| `make test-integration-rustd` | 365 passed against Postgres and Redis | `/tmp/m189-resumed-integration.log` |
+| `make lint-all` | All lint checks passed | `/tmp/m189-resumed-lint-all.log` |
+| `make dry-smoke` | Website 13, app browser 4, app smoke unit 1 passed | `/tmp/m189-resumed-dry-smoke.log` |
+| Website full Chromium Playwright suite | 157 passed | `/tmp/m189-website-full-final.log` |
+| Website Firefox/WebKit suite | 206 passed | `/tmp/m189-website-cross-final.log` |
+| Website rebuilt gallery/accessibility/smoke checks | 56 passed | `/tmp/m189-website-final-build-browser.log` |
+| Auth desktop/mobile suite | 10 passed | `/tmp/m189-auth-final-browser.log` |
+| App account/header/navigation suite | 11 passed | `/tmp/m189-app-ux-acceptance.log` |
+| Final visual capture script | 34 captures; no overflow, gradients, or Axe violations | `/tmp/m189-final-visual-resumed.log` |
+| NavItem regression | Red reproduced; 9 tests passed after the fix | `/tmp/m189-navitem-green.log` |
 
-## Completed observations
+App, website, and design-system coverage reached 100% of statements, branches, functions, and lines.
+The CLI gate passed with 100% lines; its report marked functions ungraded because it emitted no per-function records.
+These are the exact reported limits, not a claim of exhaustive behavioral coverage.
 
-The authenticated onboarding preview uses Instrument Sans and a flat graphite background.
-The earlier user screenshot shows monospace navigation and an ambient gradient absent from this preview.
-The Create secret dialog displays separate inline errors for an empty name, field name, and field value.
+## Main-branch integration and final verification
 
-The initial captures used `--bg: #0c1113`. Current tokens use the brighter graphite `--bg: #131d21`.
-Current website screenshots confirm the lifted palette; older captures establish interaction history only.
-`corrections.json` records the computed background, font, overflow, gradients, and accessibility findings for each corrected page.
-Its 18 app and website captures contain no gradients, page overflow, or axe violations.
+M190 added immediate action feedback and live run summaries while this review was finishing.
+The merge retains those changes and the Clear Signal presentation, focus, and failure-handling fixes.
+The malformed/missing fleet and failed-history regressions now live in M190's split fleet-route suites.
+Its exact pending-approval count replaces the earlier separate approval-list read.
 
-`tokens.css` owns font families, light and dark colors, overlay color, and avatar saturation and lightness.
-Shared components and the Clerk adapter consume those roles.
-The design rules and enforcement responsibilities are documented in `docs/DESIGN_SYSTEM.md`.
+The combined source passes 199 focused app tests and `make lint-app`.
+The production app build passes; shared JavaScript is 266.53/276.48 kB gzip, fleet detail 61.36/102.4 kB, and runner detail 50.73/102.4 kB.
+Website JavaScript remains 118.59/120 kB gzip and CSS 12.63/20 kB; the merge does not change website code.
+Final canonical evidence on the merged branch:
 
-## Scenario evidence and remaining review
-
-Screenshots demonstrate a captured state; they do not prove every interaction or a completed visual review.
-All paths below are relative to `.gstack/qa-reports/m189-ux/` unless another location is stated.
-
-| Surface | Evidence available | Remaining work |
+| Command | Result | Local log |
 |---|---|---|
-| Sign-in and sign-up | Desktop and mobile captures; input hover, focus, and pseudo-element inspection | Final tracked auth regression rerun |
-| Account menu, profile, and security | `account-states.ts`; 1440px, 390px, and 320px captures | Resolve the two Clerk accessibility findings |
-| Header, sidebar, workspace selector, Getting started | Authenticated route captures; mobile account boundary checks; step-state unit tests | Final expanded sidebar and narrow header visual pass |
-| Fleet wall and installation | Empty onboarding, populated wall, install entry, and reduced-motion coverage | Close the route and scenario review ledger |
-| Fleet detail | Chat, events, memory, SKILL, and TRIGGER captures at desktop and mobile widths | Final visual confirmation after shared table changes |
-| Approvals, events, integrations | Empty and populated captures; failed-read and missing-record tests | Confirm remaining failure screenshots against their source states |
-| Models, secrets, API Keys | Populated tables, creation dialogs, sorting, date alignment, and resource lifecycle checks | Rerun tracked date and focus checks after the final table correction |
-| Billing | Usage, Invoices, and Payment method captures; unavailable and failed-read tests | Final visual pass through captured tabs |
-| Admin catalogs and runners | Catalog tables, runner list, leases, activity, and restricted-access captures | Final long-dialog footer and expanded-field checks |
-| Creation and editing dialogs | `popups.ts`: library GitHub/upload, catalog model, runner, model, secret, and workspace forms | Final popup pass; upload footer is reachable, runner footer needs explicit confirmation |
-| Secret editing actions | Edit, Rename, and Delete; live Escape and focus assertions | Six checks pass in `/tmp/m189-table-focus-browser.log`; earlier popup focus failures are superseded |
-| Recovery routes and CLI authentication | `corrections.ts`: unknown route, malformed fleet, missing approval, invalid CLI session, restricted access | Final image inspection |
-| Website | Home, Agents, Privacy, Terms, gallery, and unknown-route captures; About removed | Final gallery, legal-page mobile, light-theme, and browser regression pass |
+| `make test-unit-all` | Rust 2355, app 2527, website 155, CLI 1646, design system 559 passed; all unit lanes passed | `/tmp/m189-merged-unit-all.log` |
+| `make test-integration-rustd` | 377 passed; real Postgres and Redis | `/tmp/m189-merged-integration.log` |
+| `make lint-all` | All lint checks passed | `/tmp/m189-merged-lint-all.log` |
+| `make dry-smoke` | Website 13, app browser 4, app smoke unit 1 passed | `/tmp/m189-merged-dry-smoke.log` |
+| `make check-version` | All versions match 0.28.0 | `/tmp/m189-merged-check-version.log` |
+| `gitleaks detect --redact` | 5204 commits scanned; no leaks found | `/tmp/m189-merged-gitleaks-history.log` |
+| Merged production app acceptance | 17 passed | `/tmp/m189-merged-app-acceptance.log` |
+| Merged true-touch scenarios | 8 passed at 390px and 320px | `/tmp/m189-merged-app-touch.log` |
 
-## Focused check results
+Merged app coverage: statements 6203/6203, branches 3784/3784, functions 1677/1677, lines 5531/5531.
+The website and design-system coverage floors also remain at 100%. CLI line coverage passes; its function count remains ungraded by the runner.
+The updated screenshots for runner controls, account access, and focused fleet navigation were inspected after the merge.
 
-The following commands ran in the M189 worktree on 2026-09-05.
-
-| Command and working directory | Latest completed result | Log |
-|---|---|---|
-| `make lint-app lint-design-system lint-website` at repository root | All three lint and typecheck lanes pass | `/tmp/m189-ux-lint-latest.log` |
-| `bun run test:coverage` in design-system | 58 files, 551 tests; 100% statements, branches, functions, and lines | `/tmp/m189-ux-design-system-coverage-latest.log` |
-| `bun run test:coverage` in website | 24 files, 157 tests; 100% statements, branches, functions, and lines | `/tmp/m189-ux-website-coverage-final.log` |
-| `bun run test:coverage` in app | 240 files, 2429 tests; 100% statements, branches, functions, and lines | `/tmp/m189-ux-app-coverage-latest.log` |
-| `bun run build` in website | Passes after correcting the shared table header type | `/tmp/m189-ux-website-build-latest.log` |
-
-The two app assertions matched a tooltip after closing a dialog and restoring focus to its opener.
-They now check the dialog role and accessible name directly.
-The shared focus regression tests fail before the rendering fix and pass afterward.
-
-## Verification boundary
-
-Browser exploration and package checks provide focused evidence.
-The user deferred full repository unit and integration suites until immediately before PR preparation.
-No repository-wide pass or completed UX review is claimed here.
-Production app build, bundle budgets, final browser regressions, adversarial review, and checks over the staged diff remain pending.
-No new commit, push, or PR was created during this review pass.
-
-## Additional acceptance punch list
-
-The user added these checks after reviewing deployed screenshots on 2026-09-05.
-
-- Standardize every dialog’s title, description, fields, close control, cancellation, destructive action, and submit wording through shared components.
-- Review both GitHub and folder-upload states in Create fleet library, including long content and reachable footer actions.
-- Confirm Rust’s empty-name workspace behavior and make the creation form match that behavior.
-- Review header branding, sidebar brightness, workspace selection, account menus, and their alignment at desktop and mobile widths.
-- Review Getting started fonts, spacing, current-step emphasis, completed steps, and readable secondary text.
-- Keep font families, backgrounds, and semantic colors in shared tokens. Remove gradients from application and Clerk surfaces, including pseudo-elements.
-- Return keyboard focus to the opener after closing every dialog, including dialogs opened by table actions.
-
-
-## Final website designer review
-
-The website review now covers visual hierarchy, bright semantic colors, spacing, mobile navigation, and both color themes.
-Phone navigation exposes home, agents, how it works, and docs. The active page uses mint.
-Audience eyebrows retain their smaller scale. Brighter audience and pricing surfaces separate the page sections.
-Amber evidence marks and a blue delivery mark distinguish workflow roles while preserving text labels.
-Internal workflow navigation reaches the visible target section. Desktop anchors clear the header; mobile navigation scrolls with the page.
-The recovery page describes its agent-resources destination accurately.
-
-The detailed local report is `.gstack/design-reports/website-final/review.md`, with inspected before-and-after screenshots beside it.
-Two coarse-pointer navigation tests pass at 320px and 390px; the original versions reproduced hidden navigation and the cross-page anchor failure.
-Final Chromium, Firefox, and WebKit logs remain the authority for completion: `/tmp/m189-website-{full,cross}-final.log`.
-
-## Final app review evidence
-
-The app/shared diff review is recorded in `/tmp/m189-app-review-ledger.md`.
-It covers failed initial reads, optional workspace names, account navigation, dialog focus, table focus, and pagination state.
-A new test proves the original billing balance-read error reaches the recovery boundary. The focused suite passes 17 tests.
-Eleven live account, header, and navigation scenarios pass in `/tmp/m189-app-ux-acceptance.log`.
-True-touch runner controls measure 44px at 320px and 390px. Keyboard scrolling reaches hidden model-table columns.
-A readonly source remains unchanged while ArrowDown scrolls its content after native resizing.
-The final touch review found a partly clipped focused fleet tab at 390px.
-The shared navigation item now scrolls only its overflowing navigation container when focused.
-Tab alone reveals the whole label. The regression suite fails before the fix and passes all nine cases afterward.
-
-The full website Chromium suite passes 157 tests in `/tmp/m189-website-full-final.log`.
-Firefox and WebKit completion remains pending.
+Companion documentation is [docs PR 186](https://github.com/agentsfleet/docs/pull/186).
+It passes `make lint`, including 22 checker tests, Mintlify validation, and link checks.
+No merge or deployment is part of this review.
