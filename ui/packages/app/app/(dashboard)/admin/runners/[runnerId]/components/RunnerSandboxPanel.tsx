@@ -66,7 +66,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
         {report ? (
           <ul className="flex flex-col gap-sm">
             {report.checks.map((check) => (
-              <li key={check.name} className="flex flex-wrap items-baseline gap-sm font-mono text-body-sm">
+              <li key={check.name} className="flex flex-wrap items-baseline gap-sm text-body-sm">
                 <span aria-hidden="true" className={check.ok ? "text-success" : "text-destructive"}>
                   {check.ok ? CHECK_YES : CHECK_NO}
                 </span>

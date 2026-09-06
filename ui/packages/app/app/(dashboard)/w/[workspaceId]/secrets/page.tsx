@@ -20,16 +20,14 @@ export default async function SecretsPage({
   if (!token) redirect("/sign-in");
 
   const [secretsResp, providerResult] = await Promise.all([
-    listSecretsCached(workspaceId, token).catch(() => ({ secrets: [] })),
-    getTenantProviderCached(token).catch((err) => ({ error: String(err) })),
+    listSecretsCached(workspaceId, token),
+    getTenantProviderCached(token),
   ]);
   const secrets = secretsResp.secrets;
   // The secret backing the active self-managed provider can't be deleted from
   // here — deleting it would strand the workspace's live model setup.
   const protectedSecretName =
-    "error" in providerResult
-      ? null
-      : providerResult.mode === PROVIDER_MODE.self_managed
+    providerResult.mode === PROVIDER_MODE.self_managed
         ? providerResult.secret_ref
         : null;
 

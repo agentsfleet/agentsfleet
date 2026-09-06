@@ -8,6 +8,7 @@ export const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
     "rounded-md border font-sans font-medium",
+    "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
     "transition-colors duration-snap ease-snap",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     "disabled:cursor-not-allowed disabled:opacity-50",
@@ -38,10 +39,12 @@ export const buttonVariants = cva(
         icon: "h-9 w-9 p-0",
         "icon-sm": "h-6 w-6 shrink-0 p-0",
       },
+      wrap: { true: "h-auto max-w-full whitespace-normal", false: "" },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      wrap: false,
     },
   },
 );
@@ -59,6 +62,7 @@ export function Button({
   variant,
   size,
   asChild = false,
+  wrap,
   type,
   ref,
   ...props
@@ -67,7 +71,7 @@ export function Button({
   return (
     <Comp
       ref={ref}
-      className={cn(buttonVariants({ variant, size }), className)}
+      className={cn(buttonVariants({ variant, size, wrap }), className)}
       type={asChild ? undefined : (type ?? "button")}
       {...props}
     />

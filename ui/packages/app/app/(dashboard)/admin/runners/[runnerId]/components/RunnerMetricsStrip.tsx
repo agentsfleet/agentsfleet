@@ -26,7 +26,7 @@ const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 const FLEETS_DETAIL_SINGULAR = "Fleet";
 const FLEETS_DETAIL_PLURAL = "Fleets";
 
-// The six-cell strip mirroring RunMetricsStrip's shape: uppercase mono label
+// The six-cell strip mirroring RunMetricsStrip's shape: uppercase sans label
 // over tabular value over a quieter detail line, left-border dividers. Every
 // figure is a durable-state field off the single-runner read — the strip does
 // no arithmetic and renders no percentage, ratio or capacity figure. Outcome
@@ -108,7 +108,7 @@ function Metric({
         {value}
       </DescriptionDetails>
       {detail ? (
-        <p className="mt-xs truncate font-sans text-label text-muted-foreground tabular-nums">{detail}</p>
+        <DescriptionDetails className="mt-xs truncate font-sans text-label text-muted-foreground tabular-nums">{detail}</DescriptionDetails>
       ) : null}
     </div>
   );

@@ -2,7 +2,7 @@ import { WakePulse } from "@agentsfleet/design-system";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-surface min-h-screen flex flex-col items-center justify-center gap-8 bg-background p-6" data-surface="auth">
+    <main className="app-surface min-h-screen flex flex-col items-center justify-center gap-8 bg-background p-6" data-surface="auth">
       <div className="flex items-center gap-2">
         <WakePulse
           live
@@ -14,6 +14,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </span>
       </div>
       {children}
-    </div>
+    </main>
   );
 }

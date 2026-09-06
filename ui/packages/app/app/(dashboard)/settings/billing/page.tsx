@@ -9,7 +9,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@agentsfleet/design-system";
-import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
+import { ReceiptIcon, CreditCardIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import {
   getTenantBilling,
@@ -49,38 +49,17 @@ export default async function BillingSettingsPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  // Fetch in parallel — both endpoints are tenant-scoped (bearer-auth) and
-  // independent. getTenantBilling 500s on a tenant whose signup webhook
-  // never bootstrapped a billing row; listTenantBillingCharges 503s on a
-  // fresh tenant with no events. Catch both so the page renders an
-  // explanatory empty state instead of Next's error page.
+  // Both reads are independent. Failures reach the shared retry boundary so an
+  // unavailable ledger never becomes a successful "No charges yet" result.
   const [billing, chargesResp] = await Promise.all([
-    getTenantBilling(token).catch(() => null),
+    getTenantBilling(token),
     // The ledger page comes from the URL, so a reload or a shared link opens
     // the page the operator meant rather than resetting to the newest.
     listTenantBillingCharges(token, {
       limit: pageSize,
       ...(cursor ? { cursor } : {}),
-    }).catch(() => ({
-      items: [],
-      next_cursor: null,
-    })),
+    }),
   ]);
-
-  if (!billing) {
-    return (
-      <PageLayout>
-        <PageHeader description={BILLING_DESCRIPTION}>
-          <PageTitle>Billing</PageTitle>
-        </PageHeader>
-        <EmptyState
-          icon={<WalletIcon size={28} />}
-          title="Billing isn't ready yet"
-          description="Refresh in a moment. Contact support if it stays blocked."
-        />
-      </PageLayout>
-    );
-  }
 
   const charges = chargesResp.items;
   const summary = summarizeCharges(charges, billing.balance_nanos);

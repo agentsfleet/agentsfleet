@@ -208,9 +208,9 @@ function BackfillSkeleton() {
   return (
     <div
       className="flex w-full flex-col gap-md py-lg"
-      aria-label={BACKFILL_LABEL}
       data-testid="backfill-skeleton"
     >
+      <output className="sr-only">{BACKFILL_LABEL}</output>
       <Skeleton className="h-12 w-full rounded-md" />
       <Skeleton className="h-12 w-3/4 rounded-md" />
       <Skeleton className="h-12 w-2/3 rounded-md" />

@@ -68,7 +68,7 @@ export default function RunMetricsStrip({
         <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} divided />
       </DescriptionList>
       {!approvalsAvailable ? (
-        <span className="font-mono text-xs text-destructive">
+        <span className="font-sans text-xs text-destructive">
           {METRICS_APPROVALS_UNAVAILABLE}
         </span>
       ) : pendingApprovals > 0 ? (
@@ -117,9 +117,9 @@ function Metric({
         ) : value}
       </DescriptionDetails>
       {detail ? (
-        <p className="mt-xs truncate font-sans text-label text-muted-foreground tabular-nums">
+        <DescriptionDetails className="mt-xs truncate font-sans text-label text-muted-foreground tabular-nums">
           {detail}
-        </p>
+        </DescriptionDetails>
       ) : null}
     </div>
   );

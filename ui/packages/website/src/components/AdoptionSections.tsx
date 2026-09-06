@@ -19,7 +19,7 @@ const AUDIENCES = [
 
 export function AudienceSection() {
   return (
-    <Section asChild className="site-section" data-testid="audience-section">
+    <Section asChild className="site-section audience-section" data-testid="audience-section">
       <section aria-label="Built for founders and infrastructure teams">
         <div className="wrap audience-layout">
           {AUDIENCES.map((audience) => (

@@ -11,18 +11,21 @@
 
 :root {
 
-  --surface-deep: #06090a;
-  --bg: #0c1113;
-  --surface-1: #151c20;
-  --surface-2: #1b2429;
-  --surface-3: #243038;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --surface-deep: #0e171b;
+  --bg: #131d21;
+  --surface-1: #1c292e;
+  --surface-2: #26363d;
+  --surface-3: #31434c;
 
-  --border: #344249;
-  --border-strong: #657880;
+  --border: #455c66;
+  --border-strong: #78929c;
 
   --text: #f1f5f5;
-  --text-muted: #b4c0c4;
-  --text-subtle: #9baab0;
+  --text-muted: #c6d2d5;
+  --text-subtle: #acbec4;
+  --avatar-saturation: 35%;
+  --avatar-lightness: 28%;
 
   --pulse: #5eead4;
   --pulse-dim: #2dd4bf;
@@ -133,6 +136,8 @@
   --text-muted: #435d52;
 
   --text-subtle: #4e655b;
+  --avatar-saturation: 35%;
+  --avatar-lightness: 80%;
   --pulse: #087568;
   --pulse-dim: #075f55;
   --pulse-glow: rgba(8, 117, 104, 0.2);

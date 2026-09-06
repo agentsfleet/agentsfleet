@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
-    "@playwright/test": "1.62.1",
+    "@playwright/test": "1.63.0",
     "@size-limit/preset-app": "13.0.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "7.0.0",

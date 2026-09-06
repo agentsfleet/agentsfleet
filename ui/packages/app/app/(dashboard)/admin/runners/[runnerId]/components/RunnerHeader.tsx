@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CircleHelpIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
-import { Alert, Badge, Button, CopyButton, IconAction, TooltipButton } from "@agentsfleet/design-system";
+import { Alert, Badge, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
   type CapabilityReport,
@@ -156,13 +156,13 @@ export function RunnerHeader({
         <h1 className="sr-only">{runner.host_id}</h1>
         <nav
           aria-label={RUNNER_BREADCRUMB_LABEL}
-          className="flex shrink-0 items-center font-mono text-sm text-muted-foreground"
+          className="flex min-w-0 items-center text-sm text-muted-foreground"
         >
           <Link href={runnersIndexPath()} className="hover:text-foreground">
             {RUNNERS_CRUMB_LABEL}
           </Link>
           <span aria-hidden="true" className="mx-md">/</span>
-          <span className="text-foreground">{runner.host_id}</span>
+          <span className="truncate font-mono text-foreground">{runner.host_id}</span>
           <CopyButton value={runner.id} label={COPY_RUNNER_ID_LABEL} className="ml-md" />
         </nav>
         <div aria-label={RUNNER_ACTIONS_LABEL} className="flex flex-wrap items-center justify-end gap-sm">
@@ -254,9 +254,9 @@ export function RunnerHeader({
           {/* Manual re-read, chosen over polling: the platform admin decides
               when the page is stale. Rides the same router refresh every
               action above already ends on. */}
-          <IconAction label={REFRESH_RUNNER_LABEL} onClick={() => router.refresh()}>
+          <TooltipButton size="sm" variant="outline" className="aspect-square px-0" aria-label={REFRESH_RUNNER_LABEL} tooltip={REFRESH_RUNNER_LABEL} onClick={() => router.refresh()}>
             <RefreshCwIcon aria-hidden="true" />
-          </IconAction>
+          </TooltipButton>
         </div>
       </div>
 
@@ -279,7 +279,7 @@ export function RunnerHeader({
               Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
             </a>
           </span>
-          <span className="inline-flex flex-wrap gap-sm">
+          <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
             <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
             {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
             {runner.labels.map((label) => (

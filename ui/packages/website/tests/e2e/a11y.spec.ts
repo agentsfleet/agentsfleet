@@ -3,15 +3,19 @@ import AxeBuilder from "@axe-core/playwright";
 
 const ROUTES: Array<{ path: string; label: string }> = [
   { path: "/", label: "Home" },
-  { path: "/fleets", label: "Fleets" },
+  { path: "/agents", label: "Fleets" },
   { path: "/privacy", label: "Privacy" },
   { path: "/terms", label: "Terms" },
-  { path: "/about", label: "About" },
+  { path: "/_design-system", label: "Design gallery" },
+  { path: "/unavailable-page", label: "Page not found" },
 ];
+const VIEWPORTS = [1440, 390, 320];
 
 for (const { path, label } of ROUTES) {
   for (const theme of ["dark", "light"]) {
-  test(`${label} (${path}) has zero axe violations in ${theme}`, async ({ page }) => {
+  for (const width of VIEWPORTS) {
+  test(`${label} (${path}) has zero axe violations in ${theme} at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
@@ -23,6 +27,8 @@ for (const { path, label } of ROUTES) {
     const results = await new AxeBuilder({ page })
       .analyze();
     expect(results.violations).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
+  }
   }
 }

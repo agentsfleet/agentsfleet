@@ -25,9 +25,7 @@ function SourceComparisonPane({ label, value }: { label: string; value: string }
   return (
     <div data-testid={`source-comparison-${label.toLowerCase().replaceAll(" ", "-")}`} className="min-w-0">
       <p className="mb-xs font-sans text-xs text-muted-foreground">{label}</p>
-      <pre className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-xs leading-mono text-foreground">
-        {value}
-      </pre>
+      <Textarea readOnly value={value} aria-label={label} rows={8} className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-xs leading-mono text-foreground" />
     </div>
   );
 }
@@ -85,15 +83,16 @@ function SourcePreview({ label, value, fillAvailableSpace }: {
       <div className="absolute right-xs top-xs">
         <CopyButton value={value} label={`Copy ${label}`} />
       </div>
-      <pre
+      <Textarea
+        readOnly
+        value={value}
+        rows={16}
         aria-label={label}
         className={cn(
           "max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono text-foreground",
           fillAvailableSpace && "max-h-none min-h-96 flex-1",
         )}
-      >
-        {value}
-      </pre>
+      />
     </div>
   );
 }

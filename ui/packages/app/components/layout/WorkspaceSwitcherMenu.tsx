@@ -10,6 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Nav,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { EVENTS } from "@/lib/analytics/events";
@@ -42,6 +43,7 @@ export default function WorkspaceSwitcherMenu({
     workspaceIdFromPath(pathname) ?? workspaces[0]?.id ?? null;
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
 
   const creation = useWorkspaceCreation({
@@ -108,8 +110,8 @@ export default function WorkspaceSwitcherMenu({
 
   return (
     <>
-      <div className="inline-flex flex-wrap items-center gap-2">
-        <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <Nav ref={setPortalContainer} aria-label="Workspaces" className="inline-flex min-w-0 items-center gap-2">
+        <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
           <DropdownMenuTrigger asChild>
             <WorkspaceSwitcherTrigger
               ref={switcherTriggerRef}
@@ -121,6 +123,7 @@ export default function WorkspaceSwitcherMenu({
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent
+            portalContainer={portalContainer}
             align="start"
             className="max-w-trim overflow-hidden"
           >
@@ -166,7 +169,7 @@ export default function WorkspaceSwitcherMenu({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </Nav>
       <CreateWorkspaceDialogDynamic
         open={createOpen}
         pending={creation.pending}

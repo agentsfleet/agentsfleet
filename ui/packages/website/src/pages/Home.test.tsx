@@ -36,8 +36,8 @@ describe("Home", () => {
   it("renders the hero lede in the warm teammates voice", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
-    expect(within(hero).getByText("AI teammates")).toBeInTheDocument();
-    expect(within(hero).getByText("recurring engineering work")).toBeInTheDocument();
+    expect(within(hero).getByText("AI incident teammate")).toBeInTheDocument();
+    expect(within(hero).getByText("logs, metrics, and code")).toBeInTheDocument();
     expect(hero.textContent).toMatch(/you control access and decide what ships/i);
   });
 

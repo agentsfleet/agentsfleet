@@ -17,16 +17,19 @@ export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
-export type DropdownMenuContentProps = ComponentProps<typeof DropdownMenuPrimitive.Content>;
+export type DropdownMenuContentProps = ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  portalContainer?: HTMLElement | null;
+};
 
 export function DropdownMenuContent({
   className,
   sideOffset = 4,
+  portalContainer,
   ref,
   ...props
 }: DropdownMenuContentProps) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={portalContainer}>
       <DropdownMenuPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}

@@ -8,14 +8,13 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import { DOCS_URL } from "../config";
-import { FLEET_DEFINITION } from "../lib/copy";
 import { FAQ_WEDGE_ITEM, PRICING_COPY } from "../lib/marketing-copy";
 
 const items: { q: string; a: ReactNode }[] = [
   FAQ_WEDGE_ITEM,
   {
     q: "What is agentsfleet?",
-    a: `${FLEET_DEFINITION} The platform-ops Fleet, for example, wakes on a support escalation, gathers evidence from your infrastructure and run logs, captures the recurring problem class, and opens the evidenced fix path for human approval. Reachable via agentsfleet steer for manual investigation.`,
+    a: "agentsfleet gives your engineering team AI teammates for code review, incident investigation, and preparing fixes. A fleet is a teammate you configure for a job. You choose what it can access and review the results.",
   },
   {
     q: "What does self-managed mean?",
@@ -31,7 +30,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Can I self-host?",
-    a: "Not in v2. v2 ships hosted-only on api.agentsfleet.net via Clerk Open Authorization (OAuth). Self-host arrives in v3 — the runtime is open source today, and the auth substrate plus Key Management Service (KMS) adapter are the only deployment-specific layers.",
+    a: "Not currently. agentsfleet is hosted today. Self-hosting is planned for a future release.",
   },
   {
     q: "Which coding agents work for the install skill?",
@@ -41,16 +40,8 @@ const items: { q: string; a: ReactNode }[] = [
     q: "What if my Fleet hits the model's context window?",
     a: (
       <>
-        It doesn&apos;t lose the thread. agentsfleet keeps long incidents coherent through three layers
-        working together. The runtime watches three signals — a <strong>tool-result window</strong>,{" "}
-        <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
-        Fleet responds by compacting tool results into durable memory via{" "}
-        <code className="font-mono">memory_store</code>, ending the stage at safe boundaries, and
-        re-entering on a continuation chain — bounded by the Fleet&apos;s budget caps and the lease
-        deadline, not a fixed hop count — for the next stage. Underneath, the Fleet
-        loop runs its own rolling-summary compaction once message count or token budget crosses a
-        built-in threshold. Net: a 40-tool-call deploy investigation stays reasoned through to a
-        Slack diagnosis, not a context-overflow loop.{" "}
+        A fleet can save useful findings and summarize earlier work before continuing.
+        Continuation stays subject to its budget and runtime limits. You can inspect the run history and saved memory.{" "}
         <a
           href={`${DOCS_URL}/concepts/context-lifecycle`}
           target="_blank"

@@ -1,15 +1,6 @@
 const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 
-// agentsfleet hard cutover: APP_BASE_URL + the *.agentsfleet.net hosts are
-// flipped ahead of DNS — the product is down until the app/api hosts stand
-// up and Clerk JWT aud is configured. config.test.ts pins the new values so
-// a regression to the retired brand is a conscious test edit.
-//
-// Retained deliberately: the only UI consumer (the /fleets "open dashboard"
-// link) was removed in the fleet-positioning PR, but this stays as the canonical
-// env-overridable app host (config.test.ts pins it) for when a dashboard link
-// returns. Unlike the deleted TEAM_EMAIL, this value is correct and load-bearing
-// config, not a dead, contradictory constant.
+// Canonical app destination for the header and footer Dashboard links.
 export const APP_BASE_URL = fromEnv || (
   import.meta.env.PROD
     ? "https://app.agentsfleet.net"
@@ -17,7 +8,7 @@ export const APP_BASE_URL = fromEnv || (
 );
 
 // Clerk-hosted Account Portal waitlist page. "Get early access" links here
-// (hero, topbar, pricing usage tier) rather than embedding a Clerk form on the
+// (hero and pricing usage tier) rather than embedding a Clerk form on the
 // marketing SPA — the dashboard owner enables Waitlist mode in Clerk and the
 // page is themed by the same appearance settings the app already configures.
 // PROD is the production Account Portal on the agentsfleet.net custom domain

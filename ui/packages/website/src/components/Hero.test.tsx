@@ -14,7 +14,7 @@ import {
   HERO_HEADLINE,
   HERO_PRIMARY_LABEL,
   HERO_SECONDARY_LABEL,
-  LOOP_ANCHOR_ID,
+  HOW_IT_WORKS_ANCHOR_ID,
 } from "../lib/marketing-copy";
 import { WAITLIST_URL } from "../config";
 
@@ -54,15 +54,15 @@ describe("Hero", () => {
   it("does not imply live activity in the illustrative hero", () => {
     renderHero();
     const eyebrow = screen.getByTestId("hero-eyebrow");
-    expect(eyebrow.textContent).toMatch(/Engineering work/i);
+    expect(eyebrow.textContent).toMatch(/AI incident response/i);
     const pulse = eyebrow.querySelector("[data-live=\"true\"]");
     expect(pulse).toBeNull();
   });
 
   it("renders the lede paragraph in the warm teammates voice", () => {
     renderHero();
-    expect(screen.getByText("AI teammates")).toBeInTheDocument();
-    expect(screen.getByText("recurring engineering work")).toBeInTheDocument();
+    expect(screen.getByText("AI incident teammate")).toBeInTheDocument();
+    expect(screen.getByText("logs, metrics, and code")).toBeInTheDocument();
     expect(screen.getByTestId("hero").textContent).toMatch(
       /you control access and decide what ships/i,
     );
@@ -95,7 +95,7 @@ describe("Hero", () => {
     // The copy-row must NOT — that was the "jumps to a different
     // page" bug. Clicking copies and stays put.
     const anchor = document.createElement("section");
-    anchor.id = LOOP_ANCHOR_ID;
+    anchor.id = HOW_IT_WORKS_ANCHOR_ID;
     const scrollIntoView = vi.fn();
     anchor.scrollIntoView = scrollIntoView;
     document.body.appendChild(anchor);
@@ -239,7 +239,7 @@ describe("Hero", () => {
     expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
       "href",
-      `/#${LOOP_ANCHOR_ID}`,
+      `/#${HOW_IT_WORKS_ANCHOR_ID}`,
     );
     expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
   });

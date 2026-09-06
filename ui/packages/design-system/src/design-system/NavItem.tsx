@@ -1,3 +1,5 @@
+"use client";
+
 import { type ComponentProps } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "../utils";
@@ -8,11 +10,21 @@ export type NavItemProps = ComponentProps<"a"> & {
 };
 
 /** A navigation destination; asChild preserves the consumer's router link. */
-export function NavItem({ asChild = false, active = false, className, ...props }: NavItemProps) {
+export function NavItem({ asChild = false, active = false, className, onFocus, ...props }: NavItemProps) {
   const Component = asChild ? Slot : "a";
   return (
     <Component
       {...props}
+      onFocus={(event) => {
+        onFocus?.(event);
+        if (event.defaultPrevented) return;
+        const navigation = event.currentTarget.closest("nav");
+        if (!navigation || navigation.scrollWidth <= navigation.clientWidth) return;
+        const item = event.currentTarget.getBoundingClientRect();
+        const viewport = navigation.getBoundingClientRect();
+        if (item.left < viewport.left) navigation.scrollLeft += item.left - viewport.left;
+        else if (item.right > viewport.right) navigation.scrollLeft += item.right - viewport.right;
+      }}
       aria-current={active ? "page" : undefined}
       data-active={active ? "true" : undefined}
       className={cn(

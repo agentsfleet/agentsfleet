@@ -106,27 +106,29 @@ function RailMarker({ step }: { step: OnboardingStep }) {
   if (step.done) {
     return (
       <span
-        aria-label="done"
+        data-step-state="done"
         className="inline-flex w-3 h-3 items-center justify-center rounded-full bg-pulse text-on-pulse"
       >
         <CheckIcon size={10} aria-hidden="true" />
+        <span className="sr-only">Completed</span>
       </span>
     );
   }
   if (step.isNext) {
     return (
       <span
-        aria-label="next step"
+        data-step-state="next step"
         className="inline-flex w-3 h-3 items-center justify-center rounded-full border border-pulse bg-background"
       >
         <span data-current-step="true" className="w-1 h-1 rounded-full bg-pulse" />
+        <span className="sr-only">Next step</span>
       </span>
     );
   }
   return (
     <span
-      aria-label="pending"
+      data-step-state="pending"
       className="inline-block w-3 h-3 rounded-full border border-text-subtle bg-background"
-    />
+    ><span className="sr-only">Pending</span></span>
   );
 }

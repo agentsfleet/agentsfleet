@@ -94,7 +94,7 @@ export function FleetMessageRow({
   const isOperator = tone === ROW_TONE.OPERATOR;
   return (
     <div
-      className={cn("w-full", ROW_ENTER, dimmed && "opacity-60")}
+      className={cn("w-full", ROW_ENTER)}
       data-role={messageRole}
       data-optimistic={dimmed || undefined}
       data-failed={failed || undefined}

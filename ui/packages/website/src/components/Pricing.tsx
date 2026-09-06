@@ -16,7 +16,7 @@ export default function Pricing() {
             <EarlyAccessAction />
             <a href={`mailto:${SUPPORT_EMAIL}`}
               onClick={() => trackNavigationClicked({ source: "pricing_contact", surface: "pricing", target: "email" })}
-              className="text-body-sm text-text-muted underline underline-offset-4">
+              className="inline-flex min-h-11 items-center text-body-sm text-text-muted underline underline-offset-4">
               Tell us about your workflow
             </a>
           </div>
@@ -35,7 +35,7 @@ export default function Pricing() {
 
 function EarlyAccessAction() {
   return (
-    <Button asChild className="min-h-11" data-testid="pricing-cta-early-access">
+    <Button wrap asChild className="min-h-11" data-testid="pricing-cta-early-access">
       <a href={WAITLIST_URL} target="_blank" rel="noopener noreferrer"
         onClick={() => trackSignupStarted({ source: "pricing_early_access", surface: "pricing", mode: "humans" })}
       >{HERO_PRIMARY_LABEL} <span aria-hidden="true">→</span></a>

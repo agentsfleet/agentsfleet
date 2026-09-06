@@ -10,16 +10,16 @@ async function assertFooterLinks(page: Page) {
   const footer = page.getByRole("contentinfo");
   await expect(footer).toBeVisible();
 
+  const dashboardHref = await page.getByTestId("header-install-cta").getAttribute("href");
+  expect(dashboardHref).toMatch(/^https?:\/\//);
+  await expect(footer.getByRole("link", { name: "dashboard", exact: true })).toHaveAttribute("href", dashboardHref!);
+  await expect(footer.getByRole("link", { name: /^early access$/i })).toHaveCount(0);
+
   const internalFooterLinks: InternalLinkCase[] = [
-    { label: /^fleet$/i, href: "/#operational-loop" },
-    { label: /^early access$/i, href: "/#pricing" },
-    { label: /^fleets$/i, href: "/fleets" },
-    { label: /^llms\.txt$/i, href: "/llms.txt" },
-    { label: /^llms-full\.txt$/i, href: "/llms-full.txt" },
-    { label: /^OpenAPI$/, href: "/openapi.json" },
+    { label: /^Use cases$/i, href: "/#operational-loop" },
+    { label: /^Agents$/i, href: "/agents" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
-    { label: /^about$/i, href: "/about" },
     { label: /^contact$/i, href: "mailto:agentsfleet@agentmail.to" },
   ];
 
@@ -36,17 +36,17 @@ test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "Keep shipping. Bring a fleet.",
+      "AI teammates for incident response.",
     );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
-    await nav.getByRole("link", { name: /^early access$/i }).click();
-    await expect(page).toHaveURL(/\/#pricing$/);
+    await nav.getByRole("link", { name: /^how it works$/i }).click();
+    await expect(page).toHaveURL(/\/#how-it-works$/);
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
 
-    await nav.getByRole("link", { name: /^fleets$/i }).click();
-    await expect(page).toHaveURL(/\/fleets$/);
+    await nav.getByRole("link", { name: /^agents$/i }).click();
+    await expect(page).toHaveURL(/\/agents$/);
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
 
@@ -73,21 +73,21 @@ test.describe("Cross-page link coverage", () => {
   });
 
   test("Fleets page exposes expected machine and install links", async ({ page }) => {
-    await page.goto("/fleets");
+    await page.goto("/agents");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for autonomous Fleets.",
+      "This page is for agents.",
     );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: /^home$/i }).click();
     await expect(page).toHaveURL(/\/$/);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets$/);
+    await page.goto("/agents");
+    await expect(page).toHaveURL(/\/agents$/);
 
-    await nav.getByRole("link", { name: /^early access$/i }).click();
-    await expect(page).toHaveURL(/\/#pricing$/);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets$/);
+    await nav.getByRole("link", { name: /^how it works$/i }).click();
+    await expect(page).toHaveURL(/\/#how-it-works$/);
+    await page.goto("/agents");
+    await expect(page).toHaveURL(/\/agents$/);
 
     await expect(nav.getByRole("link", { name: /^docs$/i })).toHaveAttribute(
       "href",
