@@ -12,6 +12,34 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# THE dependency that makes this a measurement rather than a model: the lanes
+# drive `Leases::select`, the real assignment pass, not a copy of it. A
+# reimplementation would not compile against these signatures (Invariant 2).
+afd_fleet.workspace = true
+# Enrolling the runners a lease is issued to.
+afd_runner.workspace = true
+# The pool the lease path reads through, opened the way the daemon opens it.
+afd_db.workspace = true
+# The readiness index and the fleet streams a poll peeks and reads.
+afd_redis.workspace = true
+# `INFO commandstats`, for the Redis half of the attribution. The library never
+# spells a Redis command itself -- `afd_redis` owns every one the product
+# issues -- but asking the SERVER what it served is a question only the server
+# answers, and the same reason `afd_outbound`'s suite reaches for this crate.
+redis.workspace = true
+# Identifiers, the clock the pass is given, and the environment source the
+# daemon's own pool config resolves through.
+afd_core.workspace = true
+# The entropy surface a lease mints its identifiers from.
+afd_crypto.workspace = true
+# The enrolment request shape a seeded runner is registered with.
+afd_wire.workspace = true
+# Seeding the tenant, workspace and fleet rows a ready fleet needs. No store
+# verb creates a fleet -- that is the tenant plane's -- so the lane inserts the
+# three rows directly, as the lease suites do.
+sqlx.workspace = true
+# The concurrency the lanes exist to measure.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 # The daemon's own lease instrument. Invariant 5: round trips per lease are
 # READ from `producers::fleet::lease_polled`, never recounted by wrapping the
 # queries -- a wrapper would measure the wrapper.

@@ -72,6 +72,70 @@ pub enum Error {
         expected: &'static str,
     },
 
+    /// Postgres would not answer, or its URL would not resolve.
+    #[error("the bench database would not open")]
+    DatabaseUnavailable {
+        /// What `afd_db` refused, naming the knob or the connection.
+        #[from]
+        source: afd_db::Error,
+    },
+
+    /// Redis would not answer.
+    #[error("the bench queue would not open")]
+    QueueUnavailable {
+        /// What `afd_redis` refused.
+        #[from]
+        source: afd_redis::Error,
+    },
+
+    /// The lease path itself faulted, which is not a measurement.
+    #[error("the lease path would not run")]
+    LeasePathFaulted {
+        /// What `afd_fleet` reported.
+        #[from]
+        source: afd_fleet::Error,
+    },
+
+    /// A lane name nothing maps to.
+    #[error("unknown lane: {usage}")]
+    UnknownLane {
+        /// How the arguments are spelled.
+        usage: &'static str,
+    },
+
+    /// A variable the lane cannot proceed without.
+    ///
+    /// Named rather than defaulted: guessing a datastore URL is how a bench
+    /// run lands somewhere nobody chose.
+    #[error("{variable} is unset, and this lane will not guess one")]
+    VariableUnset {
+        /// The variable that must be set.
+        variable: &'static str,
+    },
+
+    /// A runner's polling task did not come back.
+    ///
+    /// No source: a join failure is a panic or a cancellation in this process,
+    /// and the panic's own message has already been printed by the runtime.
+    #[error("a runner's polling task was lost, so the window measured less than it drove")]
+    RunnerTaskLost,
+
+    /// A runner would not enrol.
+    #[error("the bench runner would not enrol")]
+    RunnerUnenrollable {
+        /// What `afd_runner` refused.
+        #[from]
+        source: afd_runner::Error,
+    },
+
+    /// A seeding statement would not land.
+    #[error("the bench fixture would not seed")]
+    FixtureUnseedable {
+        /// What Postgres said.
+        #[from]
+        source: sqlx::Error,
+    },
+
     /// The daemon's instrument set would not install.
     ///
     /// Carries the observability crate's own error rather than its message:
@@ -182,11 +246,17 @@ impl Error {
     /// "no fixture was created" will stop being able to say so for free.
     #[must_use]
     pub const fn is_pre_flight(&self) -> bool {
+        // One arm per answer rather than one per family: clippy is right that
+        // grouping by cause and then giving two groups the same body is a
+        // distinction the code does not make. What decides this is whether a
+        // connection was open when the failure was raised.
         match self {
             Self::UnknownProfile { .. }
             | Self::CapExceeded { .. }
             | Self::AcknowledgementMissing { .. }
-            | Self::TargetMissing { .. } => true,
+            | Self::TargetMissing { .. }
+            | Self::VariableUnset { .. }
+            | Self::UnknownLane { .. } => true,
             Self::LatencyUnavailable { .. }
             | Self::LatencyUnrecordable { .. }
             | Self::ResultUnrenderable { .. }
@@ -195,7 +265,13 @@ impl Error {
             | Self::ResultUnparseable { .. }
             | Self::InstrumentUnavailable { .. }
             | Self::InstrumentUnflushable { .. }
-            | Self::InstrumentPoisoned => false,
+            | Self::InstrumentPoisoned
+            | Self::DatabaseUnavailable { .. }
+            | Self::QueueUnavailable { .. }
+            | Self::LeasePathFaulted { .. }
+            | Self::FixtureUnseedable { .. }
+            | Self::RunnerUnenrollable { .. }
+            | Self::RunnerTaskLost => false,
         }
     }
 }

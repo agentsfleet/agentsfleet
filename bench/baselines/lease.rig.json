@@ -1,0 +1,35 @@
+{
+  "lane": "lease",
+  "profile": "rig",
+  "created": true,
+  "parameters": {
+    "BENCH_FLEETS": 40,
+    "BENCH_RUNNERS": 8
+  },
+  "measurements": {
+    "idle_polls": 13185.0,
+    "idle_redis_calls_per_poll": 1.0002275312855518,
+    "idle_roundtrips_per_poll": 0.0,
+    "leases": 40.0,
+    "max_ms": 1136.639,
+    "p95_ms": 961.535,
+    "p99_ms": 1115.135,
+    "polls_per_second": 18.624389496513636,
+    "rate_per_second": 3.880081145107008,
+    "roundtrips_per_lease": 174.3,
+    "wasted_claim_rate": 0.7916666666666666
+  },
+  "datastores": {
+    "redis": {
+      "operations": 277
+    },
+    "postgres": {
+      "operations": 6972
+    }
+  },
+  "fixture": {
+    "run_prefix": "bench-1788731425991-26051",
+    "created": 128,
+    "swept": 128
+  }
+}
