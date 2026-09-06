@@ -19,15 +19,19 @@
 //! sums it was handed is public API, local to this crate, and about as much
 //! code as the feature flag would have been comment.
 //!
-//! # The install is process-wide and happens once
+//! # The install is process-wide, so the instrument is too
 //!
-//! `producers::install` writes a `OnceLock`, so a second call in the same
-//! process is a no-op that returns `false`. That is why a lane installs at
-//! startup rather than per run, and why the readback is expressed as a DELTA
-//! between two reads instead of a reset.
+//! `producers::install` writes a `OnceLock`: the producers bind to whichever
+//! provider installed FIRST and a later install is a no-op returning `false`.
+//! An instrument built per call would therefore read an empty provider every
+//! time after the first — which is exactly what happened when four lane tests
+//! shared one test binary, and what happened inside one lane before that when
+//! `measure` installed twice. So the sink and the provider live in a
+//! `OnceLock` here as well, every `install` hands back the same pair, and the
+//! readback is a DELTA between two reads rather than a reset.
 
 use core::time::Duration;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::registry::Registry;
@@ -164,11 +168,14 @@ impl CapturingExporter {
 }
 
 /// The installed instrument set, and the sink its exports land in.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LeaseInstrument {
     captured: Arc<CapturedCounters>,
     provider: SdkMeterProvider,
 }
+
+/// The one instrument this process has, once anything has installed it.
+static INSTALLED: OnceLock<LeaseInstrument> = OnceLock::new();
 
 impl LeaseInstrument {
     /// Install the process-wide producer set over an in-memory reader.
@@ -178,6 +185,18 @@ impl LeaseInstrument {
     /// [`Error::InstrumentUnavailable`] when the compiled-in census will not
     /// read or the instrument set will not build.
     pub fn install() -> Result<Self> {
+        if let Some(installed) = INSTALLED.get() {
+            return Ok(installed.clone());
+        }
+        let built = Self::build()?;
+        // A racing installer may have set it first; either way what is handed
+        // back is the one the producers are bound to.
+        let _ = INSTALLED.set(built);
+        INSTALLED.get().cloned().ok_or(Error::InstrumentPoisoned)
+    }
+
+    /// Build the provider and bind the producers to it.
+    fn build() -> Result<Self> {
         let captured = Arc::new(CapturedCounters::default());
         let reader = PeriodicReader::builder(CapturingExporter {
             sink: Arc::clone(&captured),
