@@ -245,6 +245,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_bench"
+version = "0.28.1"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "afd_billing"
 version = "0.28.1"
 dependencies = [
