@@ -124,8 +124,8 @@ refusal and never runs: it has no baseline, no workflow row and no result file.
 
 - **Dimension 1.1** — DONE — a lane run above its profile's cap exits non-zero naming the cap, before opening a connection → Test `test_a_parameter_above_the_profile_cap_is_refused`
 - **Dimension 1.2** — DONE — the production profile refuses to run without its explicit acknowledgement variable set → Test `test_production_requires_an_explicit_acknowledgement`
-- **Dimension 1.3** — every deployed run creates only inside a fixture workspace under a unique run prefix, and ends with a sweep whose removed count is reported → Test `test_a_deployed_run_sweeps_everything_it_created`
-- **Dimension 1.4** — a run whose observed error rate crosses the profile's abort threshold stops early and reports the abort rather than continuing to load the target → Test `test_a_run_aborts_when_the_target_starts_failing`
+- **Dimension 1.3** — DONE — — every deployed run creates only inside a fixture workspace under a unique run prefix, and ends with a sweep whose removed count is reported → Test `test_a_deployed_run_sweeps_everything_it_created`
+- **Dimension 1.4** — DONE — — a run whose observed error rate crosses the profile's abort threshold stops early and reports the abort rather than continuing to load the target → Test `test_a_run_aborts_when_the_target_starts_failing`
 
 ### §2 — Steer ingress under concurrency
 
@@ -182,7 +182,7 @@ Establishes what an idle fleet costs when there are a million of them. The per-f
 - **Dimension 5.1** — DONE — — on the rig, a fleet population reports Redis memory before and after and the per-fleet delta, at each step of a declared ladder up to a million → Test `test_cardinality_bench_reports_memory_per_fleet_across_the_ladder`
 - **Dimension 5.2** — DONE — — with the population present, a readiness peek and a single-stream read report their latency, so cardinality's cost on the hot path is measured rather than assumed → Test `test_cardinality_bench_reports_hot_path_latency_under_cardinality`
 - **Dimension 5.3** — DONE — — the same run reports the Postgres side: table sizes and the candidate query's plan and latency at population → Test `test_cardinality_bench_reports_postgres_cost_at_population`
-- **Dimension 5.4** — IN_PROGRESS — — on a deployed profile the lane observes rather than creates, and says so in its result → Test `test_a_deployed_cardinality_run_creates_nothing`
+- **Dimension 5.4** — DONE — — on a deployed profile the lane observes rather than creates, and says so in its result → Test `test_a_deployed_cardinality_run_creates_nothing`
 
 ### §6 — Reporting, attribution and baselines
 

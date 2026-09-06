@@ -156,7 +156,7 @@ pub async fn run(
 }
 
 /// Assign a behaviour to each destination by the requested fractions.
-fn script(prefix: &RunPrefix, parameters: Parameters) -> HashMap<String, Behaviour> {
+pub(crate) fn script(prefix: &RunPrefix, parameters: Parameters) -> HashMap<String, Behaviour> {
     let slow = fraction_of(DESTINATIONS, parameters.slow_fraction);
     let retryable = fraction_of(DESTINATIONS, parameters.retryable_fraction);
     (0..DESTINATIONS)
@@ -174,7 +174,7 @@ fn script(prefix: &RunPrefix, parameters: Parameters) -> HashMap<String, Behavio
 }
 
 /// How many of `total` a fraction selects, rounded down and clamped.
-fn fraction_of(total: u64, fraction: f64) -> u64 {
+pub(crate) fn fraction_of(total: u64, fraction: f64) -> u64 {
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -336,3 +336,6 @@ fn count(value: u64) -> f64 {
         value as f64
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -5,14 +5,15 @@
 
 use std::process::ExitCode;
 
+use afd_bench::RunPrefix;
 use afd_bench::datastores::{
     DATABASE_URL_VARIABLE, Datastores, REDIS_CA_CERT_VARIABLE, REDIS_URL_VARIABLE,
 };
 use afd_bench::error::Result;
+use afd_bench::knobs::{number, required, variable};
 use afd_bench::lane::{cardinality, sweep};
 use afd_bench::profile::{Parameter, Profile};
 use afd_bench::report::Lane;
-use afd_bench::{Error, RunPrefix};
 
 /// Which profile to run under.
 const PROFILE_VARIABLE: &str = "BENCH_PROFILE";
@@ -48,19 +49,20 @@ async fn main() -> ExitCode {
 
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
-    let profile: Profile = variable(PROFILE_VARIABLE)
+    let env = |key: &str| std::env::var(key).ok();
+    let profile: Profile = variable(&env, PROFILE_VARIABLE)
         .unwrap_or_else(|| Profile::Rig.to_string())
         .parse()?;
-    let target = profile.admit(&|key: &str| std::env::var(key).ok())?;
+    let target = profile.admit(&env)?;
     let parameters = cardinality::Parameters {
-        fleets: number(Parameter::Fleets.name(), DEFAULT_FLEETS),
+        fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
     };
     parameters.admit(profile)?;
 
     let stores = Datastores::open(
-        &required(DATABASE_URL_VARIABLE)?,
-        &required(REDIS_URL_VARIABLE)?,
-        variable(REDIS_CA_CERT_VARIABLE),
+        &required(&env, DATABASE_URL_VARIABLE)?,
+        &required(&env, REDIS_URL_VARIABLE)?,
+        variable(&env, REDIS_CA_CERT_VARIABLE),
     )
     .await?;
 
@@ -75,21 +77,4 @@ async fn measure() -> Result<String> {
     let path = Lane::Cardinality.result_path(profile);
     report.write(&path)?;
     Ok(path.display().to_string())
-}
-
-/// An environment variable, or nothing.
-fn variable(key: &str) -> Option<String> {
-    std::env::var(key).ok().filter(|value| !value.is_empty())
-}
-
-/// An environment variable that must be set.
-fn required(key: &'static str) -> Result<String> {
-    variable(key).ok_or(Error::VariableUnset { variable: key })
-}
-
-/// A numeric knob, or its default when unset or unreadable.
-fn number(key: &str, fallback: u64) -> u64 {
-    variable(key)
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(fallback)
 }
