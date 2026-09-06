@@ -39,6 +39,8 @@ mod e2e_seed;
 mod reads;
 #[path = "support/mod.rs"]
 mod support;
+#[path = "support/e2e_tail.rs"]
+mod tail;
 #[path = "support/e2e_wire.rs"]
 mod wire;
 
@@ -54,6 +56,8 @@ mod integration_cli;
 mod integration_readyz;
 #[path = "integration_runner_activity.rs"]
 mod integration_runner_activity;
+#[path = "integration_runner_brackets.rs"]
+mod integration_runner_brackets;
 #[path = "integration_runner_e2e.rs"]
 mod integration_runner_e2e;
 #[path = "integration_runner_shapes.rs"]

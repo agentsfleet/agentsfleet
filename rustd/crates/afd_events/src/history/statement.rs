@@ -29,19 +29,35 @@
 /// `(event_id, charge_type)` — so a join would duplicate the event row per leg
 /// and a page of 50 would render as 100. The subselect keeps one row per event
 /// and yields SQL NULL where no telemetry exists.
+///
+/// Two spellings of one column list: the history reads name the columns bare
+/// over `core.fleet_events`, and a closing statement (`crate::sql`) names the
+/// same fifteen off the alias its CTE hands to the select. The list is
+/// written once so a column added to [`super::EventRow`] reaches every
+/// statement that decodes one, or none.
 macro_rules! shared_columns {
     () => {
-        "\
-SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
-       status, tokens, wall_ms,
-       failure_label, failure_detail, checkpoint_id, resumes_event_id,
-       created_at, updated_at,
-       (SELECT SUM(te.credit_deducted_nanos)::bigint
-          FROM billing.usage_ledger te
-         WHERE te.event_id = core.fleet_events.event_id
-           AND te.fleet_id = core.fleet_events.fleet_id) AS cost_nanos"
+        $crate::history::statement::shared_columns!(@ "", "core.fleet_events.")
+    };
+    ($alias:literal) => {
+        $crate::history::statement::shared_columns!(@ concat!($alias, "."), concat!($alias, "."))
+    };
+    (@ $col:expr, $row:expr) => {
+        concat!(
+            "SELECT ", $col, "fleet_id::text, ", $col, "event_id, ", $col, "workspace_id::text, ",
+            $col, "actor, ", $col, "event_type,\n       ",
+            $col, "status, ", $col, "tokens, ", $col, "wall_ms,\n       ",
+            $col, "failure_label, ", $col, "failure_detail, ", $col, "checkpoint_id, ",
+            $col, "resumes_event_id,\n       ",
+            $col, "created_at, ", $col, "updated_at,\n",
+            "       (SELECT SUM(te.credit_deducted_nanos)::bigint\n",
+            "          FROM billing.usage_ledger te\n",
+            "         WHERE te.event_id = ", $row, "event_id\n",
+            "           AND te.fleet_id = ", $row, "fleet_id) AS cost_nanos"
+        )
     };
 }
+pub(crate) use shared_columns;
 
 /// The two body columns, which only the detail read pays for.
 ///

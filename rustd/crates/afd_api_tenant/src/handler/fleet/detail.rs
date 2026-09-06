@@ -250,6 +250,7 @@ fn detail_response(detail: &FleetDetail) -> FleetDetailResponse<'_> {
         triggers: triggers(detail.row.triggers.as_ref()),
         events_processed: detail.row.events_processed,
         budget_used_nanos: detail.row.budget_used_nanos,
+        pending_approvals: detail.pending_approvals,
         created_at: detail.row.created_at_ms,
         updated_at: detail.row.updated_at_ms,
     }

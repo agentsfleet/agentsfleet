@@ -28,7 +28,7 @@ mod cursor;
 mod detail;
 mod filter;
 mod row;
-mod statement;
+pub(crate) mod statement;
 
 use afd_core::id::Uuid7;
 use afd_db::Db;

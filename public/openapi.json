@@ -7969,7 +7969,7 @@
           "Workspaces"
         ],
         "summary": "Stream live activity for a whole workspace",
-        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. Control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. ",
+        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The frame kinds are the ones `GET …/fleets/{fleet_id}/events/stream` documents. No publisher payload carries `fleet_id` itself, so the tag is the frame's one scope. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. Control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. ",
         "operationId": "stream_workspace_events",
         "parameters": [
           {
@@ -9122,7 +9122,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each message includes `id`, `event`, and `data`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `fleet_response_chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -13544,6 +13544,7 @@
           "source_markdown",
           "events_processed",
           "budget_used_nanos",
+          "pending_approvals",
           "created_at",
           "updated_at"
         ],
@@ -13577,6 +13578,11 @@
           "name": {
             "type": "string",
             "description": "Its name in this workspace."
+          },
+          "pending_approvals": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many approval gates wait on a human's answer for this Fleet.\n\nCounted on the read, so a console showing \"N approvals waiting\" opens\non this one request rather than paging the approvals inbox for a\nnumber. The live tail's completion and gate frames carry the same\ncount, so the figure moves without another read."
           },
           "source_markdown": {
             "type": "string",

@@ -21,7 +21,6 @@ import {
   type ConnectionStatus,
 } from "./useFleetEventStream";
 import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
-import { useRefreshSummariesOnCompletion } from "./useRefreshOnCompletion";
 import type { EventRow } from "@/lib/api/events";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
@@ -66,14 +65,18 @@ export type FleetThreadProps = {
  * stream serialises what arrives. The working state is rendered from our own
  * event statuses instead.
  */
-export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetThreadProps) {
+export function FleetThread({
+  workspaceId,
+  fleetId,
+  fleetName,
+  initial,
+}: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   const {
     failedDelivery,
     setFailedDelivery,
     clearFailedDelivery,
   } = useFleetDeliveryFailure(fleetId);
-  useRefreshSummariesOnCompletion(initial, stream.events);
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.

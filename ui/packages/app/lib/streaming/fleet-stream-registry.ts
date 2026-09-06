@@ -1,6 +1,8 @@
 import { FRAME_KIND, streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
-import { outcomeForStatus } from "@/lib/events/event-summary";
-import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
+import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
+import { backfillEntry } from "./fleet-stream-backfill";
+import { factsOf, mergeFacts } from "./fleet-stream-facts";
+import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
 import {
   FAST_RECONNECT_ATTEMPTS,
   OFFLINE_RETRY_MS,
@@ -8,18 +10,10 @@ import {
   cancelPendingReconnect,
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
-import {
-  applyLiveFrame,
-  mergeBackfill,
-  type FleetEvent,
-} from "./fleet-stream-frames";
+import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
+import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
 import { capEvents } from "./fleet-stream-cap";
-
-export {
-  type FleetEvent,
-  type FleetEventStatus,
-} from "./fleet-stream-frames";
 import {
   CONNECTION_STATUS,
   EMPTY_SNAPSHOT,
@@ -47,10 +41,6 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-const STATUS_OPTIMISTIC = "optimistic";
-const STATUS_FAILED = "failed";
-const STATUS_RECEIVED = "received";
-
 const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
@@ -74,11 +64,38 @@ function patchSnapshot(entry: Entry, patch: Partial<FleetStreamSnapshot>): void 
 function setEvents(
   entry: Entry,
   next: (prev: FleetEvent[]) => FleetEvent[],
+  spoken: Partial<FleetFacts> = {},
 ): void {
   // The one choke point every mutation flows through, so the cap lives here
-  // once rather than at all eight call sites.
-  entry.snapshot = { ...entry.snapshot, events: capEvents(next(entry.snapshot.events)) };
+  // once rather than at all eight call sites — and so does the strip's
+  // `latest`, recomputed from the rows and kept by identity when unchanged.
+  // A completion's fleet facts fold into the same write, so the frame costs
+  // its subscribers one notification, not two.
+  const events = capEvents(next(entry.snapshot.events));
+  const latest = latestFigures(events);
+  entry.snapshot = {
+    ...entry.snapshot,
+    ...spokenFacts(entry, spoken),
+    events,
+    latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
+  };
   notify(entry);
+}
+
+// What a FRAME said about the fleet itself, as a snapshot patch: the merged
+// facts and the advanced sequence, or nothing when the frame restated what
+// the snapshot already held.
+function spokenFacts(entry: Entry, patch: Partial<FleetFacts>): Partial<FleetStreamSnapshot> {
+  const fleet = mergeFacts(entry.snapshot.fleet, patch);
+  if (fleet === entry.snapshot.fleet) return {};
+  return { fleet, factsSeq: entry.snapshot.factsSeq + 1 };
+}
+
+// A gate frame moves the count and no row. Nothing is notified when nothing
+// changed, so a frame restating the count does not wake anyone.
+function patchSpokenFacts(entry: Entry, patch: Partial<FleetFacts>): void {
+  const spoken = spokenFacts(entry, patch);
+  if (spoken.fleet !== undefined) patchSnapshot(entry, spoken);
 }
 
 function startEventSource(entry: Entry, fleetId: string): void {
@@ -95,7 +112,12 @@ function startEventSource(entry: Entry, fleetId: string): void {
     // an accept-then-close upstream escalates to the slow cadence instead of
     // hammering at the base delay forever.
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
-    if (needsBackfill) void backfillMissedFrames(entry, fleetId);
+    if (needsBackfill) {
+      void backfillEntry(entry, fleetId, {
+        stillCurrent: () => REGISTRY.get(fleetId) === entry,
+        onPage: (rows) => setEvents(entry, (prev) => mergeBackfill(prev, rows)),
+      });
+    }
   };
   const handleFrame = (e: MessageEvent) => {
     // A delivered frame is proof the stream works: return to fast backoff.
@@ -115,29 +137,6 @@ function startEventSource(entry: Entry, fleetId: string): void {
   // `event: message`, which is what onmessage receives.
   es.onmessage = handleFrame;
   es.onerror = () => onEventSourceError(entry, fleetId);
-}
-
-// Fire the reconnect gap-recovery walk. The watermark advances only on a
-// completed (or explicitly-truncated) walk; a failure leaves it at the anchor
-// so the next reconnect retries the same window. Merges are id-deduped, so the
-// retry is idempotent.
-async function backfillMissedFrames(entry: Entry, fleetId: string): Promise<void> {
-  if (entry.backfillInFlight) return;
-  entry.backfillInFlight = true;
-  try {
-    const outcome = await runBackfill({
-      workspaceId: entry.workspaceId,
-      fleetId,
-      anchorMs: entry.serverSinceMs,
-      stillCurrent: () => REGISTRY.get(fleetId) === entry,
-      onPage: (rows) => setEvents(entry, (prev) => mergeBackfill(prev, rows)),
-    });
-    if (outcome.ok) entry.serverSinceMs = outcome.watermark;
-  } catch (err) {
-    warnBackfillFailure(err);
-  } finally {
-    entry.backfillInFlight = false;
-  }
 }
 
 function onFrame(entry: Entry, e: MessageEvent): void {
@@ -163,7 +162,14 @@ function onFrame(entry: Entry, e: MessageEvent): void {
     });
     return;
   }
-  setEvents(entry, (prev) => applyLiveFrame(prev, frame));
+  // A completion carries the fleet's status and pending count beside its row;
+  // a gate frame carries the count alone and touches no row.
+  const facts = factsOf(frame);
+  if (frame.kind === FRAME_KIND.GATE_OPENED || frame.kind === FRAME_KIND.GATE_RESOLVED) {
+    patchSpokenFacts(entry, facts);
+    return;
+  }
+  setEvents(entry, (prev) => applyLiveFrame(prev, frame), facts);
 }
 
 // A lost connection is a transient state, never a terminal one. The fast
@@ -248,6 +254,18 @@ export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
   setEvents(entry, (prev) => mergeBackfill(prev, rows));
 }
 
+// A server render's word on the fleet, as the page just read it. It overwrites
+// what the tail last said — a kill from the header reaches the strip this way,
+// since no frame announces a PATCH — and the next frame overwrites it back.
+// Whether a render is older than a frame that landed while it was in flight
+// is the caller's to decide, from `factsSeq`; `factsSeq` never moves here.
+export function reconcileServerFacts(fleetId: string, facts: FleetFacts): void {
+  const entry = REGISTRY.get(fleetId);
+  if (!entry) return;
+  const fleet = mergeFacts(entry.snapshot.fleet, facts);
+  if (fleet !== entry.snapshot.fleet) patchSnapshot(entry, { fleet });
+}
+
 function releaseSubscriber(fleetId: string, listener: Listener): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
@@ -270,23 +288,7 @@ export function appendOptimistic(
   if (!entry) return "";
   tempCounter += 1;
   const tempId = `optim-${tempCounter}`;
-  setEvents(entry, (prev) => [
-    ...prev,
-    {
-      id: tempId,
-      role: "user",
-      actor,
-      text,
-      // The operator's own message is the trigger; the fleet has not replied
-      // yet, so the reply is empty and the outcome floor is set for shape.
-      reply: "",
-      outcome: outcomeForStatus(STATUS_RECEIVED),
-      failureLabel: null,
-      failureDetail: null,
-      createdAt: new Date(),
-      status: STATUS_OPTIMISTIC,
-    },
-  ]);
+  setEvents(entry, (prev) => [...prev, optimisticRow(tempId, text, actor)]);
   return tempId;
 }
 
@@ -299,28 +301,9 @@ export function reconcileOptimistic(
   if (!entry) return false;
   let alreadyComplete = false;
   setEvents(entry, (prev) => {
-    const serverEvent = prev.find((event) => event.id === realEventId);
-    if (serverEvent) {
-      alreadyComplete = serverEvent.status !== STATUS_RECEIVED;
-      // A live EVENT_RECEIVED frame carries no message body, so a server row
-      // that landed before this reconcile holds an empty trigger. The
-      // optimistic row is the only holder of the operator's text — graft it
-      // onto the server row before dropping the temp row, or the message
-      // blanks out of the thread until a reload.
-      const temp = prev.find((event) => event.id === tempId);
-      const grafted =
-        temp !== undefined && serverEvent.text.length === 0
-          ? prev.map((event) =>
-              event === serverEvent ? { ...event, text: temp.text } : event,
-            )
-          : prev;
-      return grafted.filter((event) => event.id !== tempId);
-    }
-    return prev.map((event) =>
-      event.id === tempId
-        ? { ...event, id: realEventId, status: STATUS_RECEIVED }
-        : event,
-    );
+    const reconciled = reconcileRows(prev, tempId, realEventId);
+    alreadyComplete = reconciled.alreadyComplete;
+    return reconciled.events;
   });
   return alreadyComplete;
 }
@@ -343,7 +326,9 @@ export function markOptimisticFailed(fleetId: string, tempId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) =>
-    prev.map((ev) => (ev.id === tempId ? { ...ev, status: STATUS_FAILED } : ev)),
+    prev.map((ev) =>
+      ev.id === tempId ? { ...ev, status: AGENTSFLEET_EVENT_STATUS.FAILED } : ev,
+    ),
   );
 }
 

@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
 import { ENTRY_KIND, groupThreadEvents, type ThreadEntry } from "@/lib/events/event-grouping";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 // What the thread actually renders: the stream's events with each run of
 // identical activity folded into one entry. Kept out of `FleetThread` because

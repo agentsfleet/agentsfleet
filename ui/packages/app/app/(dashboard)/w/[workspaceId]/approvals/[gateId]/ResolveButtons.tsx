@@ -47,14 +47,15 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
         router.refresh();
         return;
       }
-      // Success — bounce back to the inbox so they see the fresh queue.
+      // Success — bounce back to the inbox so they see the fresh queue. The
+      // inbox is a dynamic route, so the push renders it fresh; a refresh on
+      // top would be a second server render of the same page.
       captureProductEvent(EVENTS.approval_resolved, {
         gate_id: gateId,
         decision,
         has_reason: trimmedReason.length > 0,
       });
       router.push(workspacePath(workspaceId, "approvals"));
-      router.refresh();
     });
   }
 

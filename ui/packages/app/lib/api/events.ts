@@ -1,5 +1,14 @@
-import { request } from "./client";
-import { requestWithRetry, type RetryOptions } from "./retry";
+import { request, requestWithRetry } from "./client";
+import type { RetryOptions } from "./retry";
+
+// The fleet-scoped `/v1` routes hang off this segment; the ids are encoded
+// here, once, so a caller-controlled value carrying `/`, `?` or `#` can never
+// re-target a server-held-token request at another route or query. The
+// `/live/` builders below encode inline for the same reason.
+function fleetScope(workspaceId: string, fleetId: string): string {
+  return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
+}
+
 
 // Operator-visible event rows from `core.fleet_events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
@@ -98,7 +107,7 @@ export async function listFleetEvents(
   retry?: RetryOptions,
 ): Promise<EventsPage> {
   return requestWithRetry<EventsPage>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events${buildQuery(opts)}`,
+    `${fleetScope(workspaceId, fleetId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
     retry,
@@ -135,7 +144,7 @@ export async function listFleetMessages(
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return requestWithRetry<ThreadPage>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages${qs.length > 0 ? `?${qs}` : ""}`,
+    `${fleetScope(workspaceId, fleetId)}/messages${qs.length > 0 ? `?${qs}` : ""}`,
     { method: "GET" },
     token,
     retry,
@@ -154,7 +163,7 @@ export async function getFleetEvent(
   token: string,
 ): Promise<EventDetail> {
   return request<EventDetail>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events/${encodeURIComponent(eventId)}`,
+    `${fleetScope(workspaceId, fleetId)}/events/${encodeURIComponent(eventId)}`,
     { method: "GET" },
     token,
   );
@@ -166,21 +175,23 @@ export async function listWorkspaceEvents(
   opts?: EventsQuery,
 ): Promise<EventsPage> {
   return request<EventsPage>(
-    `/v1/workspaces/${workspaceId}/events${buildQuery(opts)}`,
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
   );
 }
 
-// Live progress frames published on `fleet:{id}:activity` (Redis pub/sub),
-// fanned out to subscribers as SSE messages by the backend handler. Two
-// names here are the daemon's own — `hello` and `catching_up`, KIND_HELLO
-// and KIND_CATCHING_UP in rustd/crates/afd_sse/src/frame.rs. The four run
-// frames are the `Published` enum in
-// rustd/crates/afd_fleet/src/lease/activity.rs, which is the seam where the
-// runner's wire vocabulary becomes this one; keep them in sync with it.
-// Everything else below is declared nowhere on the server — the SSE layer
-// reads a payload's leading `kind` and forwards whatever it finds.
+// Live frames published on `fleet:{id}:activity` (Redis pub/sub), fanned out
+// as SSE messages by the backend handler. `hello` and `catching_up` are
+// rustd/crates/afd_sse/src/frame.rs's. The four mid-run frames are the
+// `Published` enum in rustd/crates/afd_fleet/src/lease/activity.rs, where the
+// runner's wire vocabulary becomes this one. The two brackets and the two gate
+// frames are the daemon's own `TailFrame` in rustd/crates/afd_wire/src/tail.rs:
+// `event_received` when the lease opens the row, `event_complete` with the
+// whole row when a report or a refusal closes it, `gate_opened` and
+// `gate_resolved` when a human is asked and answers. Keep every spelling in
+// sync with those enums; the install frames below are declared nowhere on the
+// server — the SSE layer reads a payload's leading `kind` and forwards it.
 export const FRAME_KIND = {
   EVENT_RECEIVED: "event_received",
   TOOL_CALL_STARTED: "tool_call_started",
@@ -188,6 +199,8 @@ export const FRAME_KIND = {
   CHUNK: "chunk",
   TOOL_CALL_COMPLETED: "tool_call_completed",
   EVENT_COMPLETE: "event_complete",
+  GATE_OPENED: "gate_opened",
+  GATE_RESOLVED: "gate_resolved",
   // Synthetic install-progression frames. The retired daemon published these
   // from a thread that slept after the 201 and then flipped
   // installing→active; the current install does that flip inside its own
@@ -207,7 +220,16 @@ export const FRAME_KIND = {
 export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND];
 
 export type ActivityLiveFrame =
-  | { kind: typeof FRAME_KIND.EVENT_RECEIVED; event_id: string; actor: string }
+  // The row as the lease verb opened it: who raised it, how it entered, and
+  // the row's own instant. Every field past the identifier is optional on the
+  // TYPE because the wire is untrusted; the reducer guards each and falls back.
+  | {
+      kind: typeof FRAME_KIND.EVENT_RECEIVED;
+      event_id: string;
+      actor: string;
+      event_type?: EventTypeValue;
+      created_at?: number;
+    }
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_STARTED;
       event_id: string;
@@ -227,16 +249,33 @@ export type ActivityLiveFrame =
       name: string;
       ms: number;
     }
-  // `status` is optional — the backend can emit a status-less completion
-  // frame, which the timeline resolves to "processed".
-  // Empty-string failure fields mean "no failure cause" (the publisher always
-  // includes them; a processed completion carries them empty).
+  // The terminal row as the events list serves it, less the two scope columns
+  // the channel names, plus the two fleet facts a run can change — a watcher
+  // folds this in and reads nothing. Typed partial past the identifier for
+  // the reason the opening bracket is.
+  | ({ kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string } & Partial<
+      Omit<EventRow, "event_id" | "fleet_id" | "workspace_id">
+    > & {
+        fleet_status?: string;
+        pending_approvals?: number;
+      })
+  // A human has been asked about one of the fleet's actions; the count is how
+  // many answers are owed, this one included.
   | {
-      kind: typeof FRAME_KIND.EVENT_COMPLETE;
+      kind: typeof FRAME_KIND.GATE_OPENED;
+      gate_id: string;
       event_id: string;
-      status?: string;
-      failure_label?: string;
-      failure_detail?: string;
+      pending_approvals: number;
+    }
+  // A human answered, or the window closed with no answer. The event is null
+  // for a gate raised outside a run (a standing grant).
+  | {
+      kind: typeof FRAME_KIND.GATE_RESOLVED;
+      gate_id: string;
+      event_id: string | null;
+      status: string;
+      resolved_by: string;
+      pending_approvals: number;
     }
   // Install-progression frames carry only their discriminating `kind` (the kind
   // itself names the step). The registry forks these off the chat-event path —

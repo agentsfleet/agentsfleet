@@ -1,4 +1,4 @@
-import type { FleetEvent } from "./fleet-stream-frames";
+import type { FleetEvent } from "./fleet-stream-row";
 
 // The live-view size cap. Extracted from the registry (length cap) — it is a
 // pure function with no registry state, so it sits on its own.

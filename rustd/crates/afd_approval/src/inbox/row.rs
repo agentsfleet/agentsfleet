@@ -119,7 +119,11 @@ pub struct Resolved {
     /// Their note.
     pub detail: String,
     /// The event the gate blocked, which a continuation resumes from.
-    pub event_id: String,
+    ///
+    /// `None` for a gate that held no run: the column is nullable for gates
+    /// raised outside an event (an install-time integration grant), and a
+    /// resolve of one must decode rather than fail after the row moved.
+    pub event_id: Option<String>,
     /// The continuation this decision landed, when it landed one.
     ///
     /// `Some` only for an approval THIS caller won: a denial continues

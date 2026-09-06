@@ -5,6 +5,7 @@ import {
   EVENT_STATUS,
   HEADLINE,
   OUTCOME,
+  outcomeForCompletion,
   SENDER,
   eventHeadlineFrom,
   failurePresentationFor,
@@ -328,5 +329,14 @@ describe("triggerBodyFor / replyBodyFor", () => {
     const operator = row({ actor: `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`, request_json: "{}" });
     expect(replyBodyFor(operator)).toBe("");
     expect(outcomeFor(operator).length).toBeGreaterThan(0);
+  });
+});
+
+describe("outcomeForCompletion", () => {
+  it("a completion carrying no cause reads as the status alone", () => {
+    expect(outcomeForCompletion(EVENT_STATUS.PROCESSED, undefined, undefined)).toBe(
+      outcomeForCompletion(EVENT_STATUS.PROCESSED, "", ""),
+    );
+    expect(outcomeForCompletion(EVENT_STATUS.FLEET_ERROR, undefined, undefined).length).toBeGreaterThan(0);
   });
 });

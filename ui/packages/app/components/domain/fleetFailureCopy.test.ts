@@ -5,7 +5,7 @@ import type { MessageState } from "@assistant-ui/react";
 import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
-} from "@/lib/streaming/fleet-stream-frames";
+} from "@/lib/streaming/fleet-stream-row";
 import {
   eventOutcome,
   messageOutcome,

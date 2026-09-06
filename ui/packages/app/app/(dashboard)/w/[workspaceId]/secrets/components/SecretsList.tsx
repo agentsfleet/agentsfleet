@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
@@ -8,13 +8,13 @@ import {
   DataTable,
   EmptyState,
   IconAction,
-  Spinner,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
+import { isDefiniteRefusal } from "@/lib/api/retry";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
 import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
@@ -29,7 +29,6 @@ type Props = {
 type SecretActionProps = {
   secret: Secret;
   pending: boolean;
-  deleting: boolean;
   protectedFromDelete: boolean;
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
@@ -38,7 +37,6 @@ type SecretActionProps = {
 function SecretActions({
   secret,
   pending,
-  deleting,
   protectedFromDelete,
   onEdit,
   onDelete,
@@ -71,7 +69,7 @@ function SecretActions({
             : undefined
         }
       >
-        {deleting ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
+        <Trash2Icon size={14} />
       </IconAction>
     </div>
   );
@@ -124,14 +122,12 @@ function SecretCreatedCell({ secret }: { secret: Secret }) {
 
 function buildColumns({
   pending,
-  target,
   protectedSecretName,
   onEdit,
   onRename,
   onDelete,
 }: {
   pending: boolean;
-  target: string | null;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
   onRename: (name: string) => void;
@@ -159,7 +155,6 @@ function buildColumns({
         <SecretActions
           secret={c}
           pending={pending}
-          deleting={pending && target === c.name}
           protectedFromDelete={protectedSecretName === c.name}
           onEdit={onEdit}
           onDelete={onDelete}
@@ -190,7 +185,7 @@ function SecretDialogs({
   onEditClose: () => void;
   onRenameClose: () => void;
   onDeleteClose: () => void;
-  onConfirmDelete: (name: string) => void;
+  onConfirmDelete: (name: string) => Promise<void>;
 }) {
   return (
     <>
@@ -215,9 +210,9 @@ function SecretDialogs({
         confirmLabel="Delete"
         intent="destructive"
         errorMessage={error}
-        onConfirm={() => {
-          if (target) onConfirmDelete(target);
-        }}
+        // The promise reaches the dialog so it can hold both buttons disabled
+        // and read "Working…" until the delete has settled.
+        onConfirm={target ? () => onConfirmDelete(target) : undefined}
       />
     </>
   );
@@ -226,7 +221,6 @@ function SecretDialogs({
 function SecretTable({
   secrets,
   pending,
-  target,
   protectedSecretName,
   onEdit,
   onRename,
@@ -234,13 +228,12 @@ function SecretTable({
 }: {
   secrets: Secret[];
   pending: boolean;
-  target: string | null;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
   onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
-  const columns = buildColumns({ pending, target, protectedSecretName, onEdit, onRename, onDelete });
+  const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
     <DataTable
       columns={columns}
@@ -262,62 +255,86 @@ export default function SecretsList({
   const [editTarget, setEditTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The row leaves the table the moment the operator confirms; the server is
+  // told inside the same transition. A rejected delete ends that transition and
+  // React restores the row from the server-rendered list on its own — the same
+  // shape the fleet kill switch uses, so nothing here has to put it back.
+  const [visibleSecrets, hideSecret] = useOptimistic(
+    secrets,
+    (current: Secret[], removedName: string) => current.filter((secret) => secret.name !== removedName),
+  );
 
-  if (secrets.length === 0) {
-    return (
-      <EmptyState
-        icon={<KeyRoundIcon size={28} />}
-        title="No secrets"
-        description="Create secret to have your fleets reach other services securely."
-      />
-    );
-  }
-
-  function onConfirmDelete(name: string) {
-    if (name === protectedSecretName) return;
+  // Resolves when the transition settles, so the dialog can hold its buttons
+  // disabled and read "Working…" until then (the kill switch's shape). A
+  // confirm that returned at once would leave the dialog live, and a second
+  // click would send a second delete.
+  function onConfirmDelete(name: string): Promise<void> {
+    if (name === protectedSecretName) return Promise.resolve();
     setError(null);
-    startTransition(async () => {
-      const result = await deleteSecretAction(workspaceId, name);
-      if (!result.ok) {
-        setError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: "delete the secret",
-          }),
-        );
-        return;
-      }
-      setTarget(null);
-      router.refresh();
+    return new Promise<void>((resolve) => {
+      startTransition(async () => {
+        try {
+          hideSecret(name);
+          const result = await deleteSecretAction(workspaceId, name);
+          if (!result.ok) {
+            setError(
+              presentErrorString({
+                errorCode: result.errorCode,
+                message: result.error,
+                action: "delete the secret",
+              }),
+            );
+            // A refusal the server made is a no-op: the row is back when the
+            // transition ends. A failure whose outcome is unknown — a timeout,
+            // a transport fault, a gateway error — may have deleted the row
+            // anyway, and the re-read makes its return or absence server truth.
+            if (!isDefiniteRefusal(result.status)) router.refresh();
+            return;
+          }
+          setTarget(null);
+          router.refresh();
+        } finally {
+          resolve();
+        }
+      });
     });
   }
 
   return (
     <div className="space-y-3">
-      <SecretTable
-        secrets={secrets}
-        pending={pending}
-        target={target}
-        protectedSecretName={protectedSecretName}
-        onEdit={(name) => {
-          setError(null);
-          setEditTarget(name);
-        }}
-        onRename={(name) => {
-          setError(null);
-          setRenameTarget(name);
-        }}
-        onDelete={(name) => {
-          setError(null);
-          setTarget(name);
-        }}
-      />
+      {/* "No secrets" is the server's claim to make: the optimistic hide of the
+          last row keeps the table shell until the delete is answered, so the
+          status region never announces an emptiness the server may retract. */}
+      {secrets.length === 0 ? (
+        <EmptyState
+          icon={<KeyRoundIcon size={28} />}
+          title="No secrets"
+          description="Create secret to have your fleets reach other services securely."
+        />
+      ) : (
+        <SecretTable
+          secrets={visibleSecrets}
+          pending={pending}
+          protectedSecretName={protectedSecretName}
+          onEdit={(name) => {
+            setError(null);
+            setEditTarget(name);
+          }}
+          onRename={(name) => {
+            setError(null);
+            setRenameTarget(name);
+          }}
+          onDelete={(name) => {
+            setError(null);
+            setTarget(name);
+          }}
+        />
+      )}
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}
         renameTarget={renameTarget}
-        existingNames={secrets.map((s) => s.name)}
+        existingNames={visibleSecrets.map((s) => s.name)}
         target={target}
         error={error}
         onEditClose={() => setEditTarget(null)}

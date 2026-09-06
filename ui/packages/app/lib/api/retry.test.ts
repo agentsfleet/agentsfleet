@@ -1,33 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "./errors";
+import { describe, expect, it, vi } from "vitest";
+import { ApiError, RequestCancelledError } from "./errors";
 import {
+  HTTP_STATUS_REQUEST_TIMEOUT,
+  RETRY_CODE_TIMEOUT,
   RETRY_DEFAULTS,
   backoffDelay,
   classifyRetryable,
   isIdempotentMethod,
-  requestWithRetry,
+  runWithRetry,
 } from "./retry";
 
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
+// The transport-level proofs (a real `fetch`, a real `ApiError` off the wire)
+// live beside the transport in client.retry.test.ts and client.defaults.test.ts;
+// this file covers the policy in isolation.
 
-beforeEach(() => fetchMock.mockReset());
-afterEach(() => fetchMock.mockReset());
-
-function jsonResponse(status: number, body: unknown, retryAfter?: string) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: {
-      get: (k: string) => (k.toLowerCase() === "retry-after" ? retryAfter ?? null : null),
-    },
-    json: async () => body,
-  };
-}
-
-// Sleep stub so the test runs in microseconds, not real wall time.
 const NOOP_SLEEP = (_ms: number) => Promise.resolve();
-const NOOP_RANDOM = () => 0; // deterministic jitter
+const NOOP_RANDOM = () => 0;
+const MS_PER_SECOND = 1000 as const;
+const TRANSIENT_STATUS = 503;
 
 describe("classifyRetryable", () => {
   it("classifies ApiError 429 as '429'", () => {
@@ -40,8 +30,8 @@ describe("classifyRetryable", () => {
       expect(classifyRetryable(err)).toBe("5xx");
     }
   });
-  it("classifies TIMEOUT as 'timeout'", () => {
-    const err = new ApiError("timed out", 408, "TIMEOUT");
+  it("classifies the transport's timeout code as 'timeout'", () => {
+    const err = new ApiError("timed out", 408, RETRY_CODE_TIMEOUT);
     expect(classifyRetryable(err)).toBe("timeout");
   });
   it("classifies fetch-failed TypeError as 'network'", () => {
@@ -91,196 +81,8 @@ describe("backoffDelay", () => {
   });
 });
 
-describe("requestWithRetry — happy path", () => {
-  it("returns body on first 200, fires onAttempt(terminal=true) once", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { event_id: "evt_1" }));
-    const onAttempt = vi.fn();
-    const onRetry = vi.fn();
-    const result = await requestWithRetry<{ event_id: string }>(
-      "/v1/whatever",
-      { method: "POST" },
-      "tok",
-      { onAttempt, onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-    );
-    expect(result.event_id).toBe("evt_1");
-    expect(onRetry).not.toHaveBeenCalled();
-    expect(onAttempt).toHaveBeenCalledTimes(1);
-    expect(onAttempt.mock.calls[0]![0]).toMatchObject({
-      attempt: 1,
-      terminal: true,
-      retryCount: 0,
-    });
-  });
-});
-
-describe("requestWithRetry — retries", () => {
-  it("retries on 503 then succeeds; fires onRetry once + onAttempt(terminal) once", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    const onAttempt = vi.fn();
-    const onRetry = vi.fn();
-    const result = await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      { method: "GET" },
-      "tok",
-      { onAttempt, onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-    );
-    expect(result.ok).toBe(1);
-    expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(onRetry.mock.calls[0]![0]).toMatchObject({
-      attempt: 1,
-      status: 503,
-      reason: "5xx",
-    });
-    expect(onAttempt).toHaveBeenCalledTimes(1);
-    expect(onAttempt.mock.calls[0]![0]).toMatchObject({
-      attempt: 2,
-      terminal: true,
-    });
-  });
-
-  it("honors Retry-After header on 429", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { detail: "slow" }, "5"));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    let slept = 0;
-    const sleep = (ms: number) => {
-      slept = ms;
-      return Promise.resolve();
-    };
-    await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      { method: "GET" },
-      "tok",
-      { sleepImpl: sleep, randomFn: NOOP_RANDOM },
-    );
-    // 5s = 5000ms floor + 0 jitter (randomFn=0)
-    expect(slept).toBe(5000);
-  });
-
-  it("does NOT retry on 400 (non-retryable)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(400, { detail: "bad", error_code: "UZ-VALIDATE-001" }),
-    );
-    const onRetry = vi.fn();
-    await expect(
-      requestWithRetry(
-        "/v1/x",
-        { method: "POST" },
-        "tok",
-        { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-      ),
-    ).rejects.toBeInstanceOf(ApiError);
-    expect(onRetry).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries up to maxAttempts then throws the last error", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
-    const onAttempt = vi.fn();
-    const onRetry = vi.fn();
-    await expect(
-      requestWithRetry(
-        "/v1/x",
-        { method: "GET" },
-        "tok",
-        {
-          maxAttempts: 3,
-          onAttempt,
-          onRetry,
-          sleepImpl: NOOP_SLEEP,
-          randomFn: NOOP_RANDOM,
-        },
-      ),
-    ).rejects.toBeInstanceOf(ApiError);
-    // 3 fetches, 2 retries fired between them, 1 terminal onAttempt at end.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(onRetry).toHaveBeenCalledTimes(2);
-    expect(onAttempt).toHaveBeenCalledTimes(1);
-    expect(onAttempt.mock.calls[0]![0]).toMatchObject({
-      attempt: 3,
-      terminal: true,
-    });
-  });
-
-  it("retries on fetch network failure (TypeError 'fetch failed')", async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    const onRetry = vi.fn();
-    const result = await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      { method: "GET" },
-      "tok",
-      { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-    );
-    expect(result.ok).toBe(1);
-    expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(onRetry.mock.calls[0]![0]).toMatchObject({ reason: "network" });
-  });
-});
-
-describe("requestWithRetry — idempotency guard", () => {
-  it("does NOT retry a POST that returns 503 (duplicate-mutation hazard)", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
-    const onRetry = vi.fn();
-    await expect(
-      requestWithRetry(
-        "/v1/x",
-        { method: "POST" },
-        "tok",
-        { maxAttempts: 3, onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-      ),
-    ).rejects.toBeInstanceOf(ApiError);
-    // One attempt only — the 503 is non-idempotent, so no replay.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(onRetry).not.toHaveBeenCalled();
-  });
-
-  it("DOES retry a PUT that returns 503 (idempotent method)", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    const onRetry = vi.fn();
-    const result = await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      { method: "PUT" },
-      "tok",
-      { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-    );
-    expect(result.ok).toBe(1);
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it("DOES retry a POST that returns 429 or 408 (request not processed)", async () => {
-    for (const status of [429, 408]) {
-      fetchMock.mockReset();
-      fetchMock.mockResolvedValueOnce(jsonResponse(status, { detail: "x" }));
-      fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-      const onRetry = vi.fn();
-      await requestWithRetry(
-        "/v1/x",
-        { method: "POST" },
-        "tok",
-        { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-      );
-      expect(onRetry).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it("treats an omitted method as GET (idempotent) so reads still retry on 5xx", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    const onRetry = vi.fn();
-    // No `method` in init → defaults to GET → 5xx is replay-safe.
-    const result = await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      {},
-      "tok",
-      { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
-    );
-    expect(result.ok).toBe(1);
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it("isIdempotentMethod: GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensitive)", () => {
+describe("isIdempotentMethod", () => {
+  it("GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensitive)", () => {
     for (const m of ["GET", "put", "Delete", "HEAD"]) {
       expect(isIdempotentMethod(m)).toBe(true);
     }
@@ -290,57 +92,145 @@ describe("requestWithRetry — idempotency guard", () => {
   });
 });
 
-describe("requestWithRetry — config", () => {
+describe("runWithRetry — the replay gate", () => {
+  it("a client-side timeout never replays a non-idempotent method, and still retries a read", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
+    const timedOut = () => new ApiError("timed out", HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT);
+    const policy = { maxAttempts: 3, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM };
+    // The request was on the wire when the clock ran out: the server may have
+    // processed it, so a write gets no second copy.
+    for (const method of ["POST", "PATCH"]) {
+      const write = vi.fn().mockRejectedValue(timedOut());
+      await expect(runWithRetry(write, method, policy)).rejects.toMatchObject({
+        code: RETRY_CODE_TIMEOUT,
+      });
+      expect(write, method).toHaveBeenCalledTimes(1);
+    }
+    // A read is replay-safe and rides the full attempt ceiling.
+    const read = vi.fn().mockRejectedValue(timedOut());
+    await expect(runWithRetry(read, "GET", policy)).rejects.toMatchObject({ code: RETRY_CODE_TIMEOUT });
+    expect(read).toHaveBeenCalledTimes(3);
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("runWithRetry — the loop over an attempt thunk", () => {
+  it("runs the attempt exactly maxAttempts times on a persistent transient failure", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
+    const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
+    await expect(
+      runWithRetry(attempt, "GET", { maxAttempts: 3, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(attempt).toHaveBeenCalledTimes(3);
+    vi.unstubAllEnvs();
+  });
+
+  it("a backoff in progress ends when the caller cancels, and no attempt follows", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
+    // Real (faked) sleep: a long base so the abort lands inside the backoff.
+    const settled = runWithRetry(attempt, "GET", {
+      baseDelayMs: 60_000,
+      capDelayMs: 60_000,
+      randomFn: NOOP_RANDOM,
+      signal: controller.signal,
+    }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attempt).toHaveBeenCalledTimes(1);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1);
+    // What surfaces is the cancel, not the 503 that preceded it, and the
+    // backoff timer is gone rather than left to run out.
+    expect(await settled).toBe(controller.signal.reason);
+    expect(attempt).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it("a cancel whose reason is not an Error surfaces the failure already in hand", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const refused = new ApiError("svc", TRANSIENT_STATUS, "X");
+    const attempt = vi.fn().mockRejectedValue(refused);
+    const settled = runWithRetry(attempt, "GET", {
+      baseDelayMs: 60_000,
+      capDelayMs: 60_000,
+      randomFn: NOOP_RANDOM,
+      signal: controller.signal,
+    }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1);
+    controller.abort("the page moved on");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled).toBe(refused);
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it("runs with the policy's own defaults when the caller names none", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "1");
+    const attempt = vi.fn().mockResolvedValue("ok");
+    expect(await runWithRetry(attempt, "GET")).toBe("ok");
+    expect(attempt).toHaveBeenCalledTimes(1);
+    vi.unstubAllEnvs();
+  });
+
+  it("a cancel during backoff throws the caller's own cancel class when one is named", async () => {
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
+    const settled = runWithRetry(attempt, "GET", {
+      baseDelayMs: 60_000,
+      capDelayMs: 60_000,
+      randomFn: NOOP_RANDOM,
+      signal: controller.signal,
+      cancelled: () => new RequestCancelledError("/v1/x"),
+    }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled).toBeInstanceOf(RequestCancelledError);
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it("returns the attempt's value untouched on success", async () => {
+    const attempt = vi.fn().mockResolvedValue({ etag: "v1", data: 42 });
+    await expect(runWithRetry(attempt, "GET", { sleepImpl: NOOP_SLEEP })).resolves.toEqual({
+      etag: "v1",
+      data: 42,
+    });
+    expect(attempt).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects maxAttempts < 1", async () => {
     await expect(
-      requestWithRetry("/v1/x", { method: "GET" }, "tok", {
-        maxAttempts: 0,
-        sleepImpl: NOOP_SLEEP,
-      }),
+      runWithRetry(async () => 1, "GET", { maxAttempts: 0, sleepImpl: NOOP_SLEEP }),
     ).rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
+
   it("rejects maxAttempts > hard cap", async () => {
     await expect(
-      requestWithRetry("/v1/x", { method: "GET" }, "tok", {
+      runWithRetry(async () => 1, "GET", {
         maxAttempts: RETRY_DEFAULTS.hardCap + 1,
         sleepImpl: NOOP_SLEEP,
       }),
     ).rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 
-  it("uses the built-in sleep when no sleepImpl is injected", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
-    // Tiny base/cap so the real setTimeout-backed sleep returns in ~1ms.
-    const result = await requestWithRetry<{ ok: number }>(
-      "/v1/x",
-      { method: "GET" },
-      "tok",
-      { baseDelayMs: 1, capDelayMs: 1, randomFn: NOOP_RANDOM },
-    );
-    expect(result.ok).toBe(1);
-  });
-
   it("AGENTSFLEET_NO_RETRY=1 collapses maxAttempts to a single attempt", async () => {
-    const prev = process.env.AGENTSFLEET_NO_RETRY;
-    process.env.AGENTSFLEET_NO_RETRY = "1";
-    try {
-      fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
-      const onRetry = vi.fn();
-      await expect(
-        requestWithRetry("/v1/x", { method: "GET" }, "tok", {
-          maxAttempts: 3,
-          onRetry,
-          sleepImpl: NOOP_SLEEP,
-          randomFn: NOOP_RANDOM,
-        }),
-      ).rejects.toBeInstanceOf(ApiError);
-      expect(fetchMock).toHaveBeenCalledTimes(1); // no retry despite a 503
-      expect(onRetry).not.toHaveBeenCalled();
-    } finally {
-      if (prev === undefined) delete process.env.AGENTSFLEET_NO_RETRY;
-      else process.env.AGENTSFLEET_NO_RETRY = prev;
-    }
+    vi.stubEnv("AGENTSFLEET_NO_RETRY", "1");
+    const attempt = vi.fn().mockRejectedValue(new ApiError("svc", TRANSIENT_STATUS, "X"));
+    const onRetry = vi.fn();
+    await expect(
+      runWithRetry(attempt, "GET", { maxAttempts: 3, onRetry, sleepImpl: NOOP_SLEEP }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(attempt).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 });
-const MS_PER_SECOND = 1000 as const;

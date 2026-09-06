@@ -70,6 +70,7 @@ impl Error {
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
             | ErrorKind::Envelope { .. }
             | ErrorKind::EnvelopeMalformed { .. }
             | ErrorKind::Rejected { .. }

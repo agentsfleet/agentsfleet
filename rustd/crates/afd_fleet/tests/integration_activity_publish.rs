@@ -34,6 +34,10 @@ use crate::report_seed;
 use std::borrow::Cow;
 
 use afd_core::error_code;
+use afd_core::event::label;
+use afd_core::id::Uuid7;
+use afd_fleet::lease::Ended;
+use afd_fleet::lease::admit::Refusal;
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
@@ -90,6 +94,119 @@ async fn test_activity_with_a_dead_queue_still_refuses_a_lease_the_runner_does_n
         "the outage changes what happens to the FRAMES, never who is allowed \
          to send them"
     );
+}
+
+/// The daemon's own closing bracket is best-effort for the reason the
+/// runner's frames are.
+///
+/// The refusal is written over live Postgres and answers the closing it
+/// wrote; announcing that closing on a queue that will not take it must cost
+/// the tail one frame and the verb nothing — the row stands, and the client's
+/// reconnect backfill carries it. A panic or a hang here would turn a telemetry
+/// outage into a lease verb that never answers its runner.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
+    let run = held().await;
+    let plane = run.fixtures.plane_with_dead_queue();
+    let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
+
+    let ended = plane
+        .leases
+        .block(
+            &fleet,
+            &run.event_id,
+            Refusal::labelled(label::APPROVAL_DENIED),
+            run.now,
+        )
+        .await
+        .expect("the refusal writes over live Postgres whatever the queue does");
+    let closed = match ended {
+        Ended::Now(closed) => closed,
+        Ended::Already => unreachable!("a held run's row is still open"),
+    };
+    assert_eq!(closed.row.status, afd_core::event::status::GATE_BLOCKED);
+
+    // Returns, rather than erroring or hanging: the queue is asked once and its
+    // refusal is accounted in the log, not on the verb.
+    plane.leases.publish_completion(&closed).await;
+}
+
+/// Dimension 1.3 — the closing counts the fleet's pending gates, and only
+/// those.
+///
+/// The count on a completion is what the strip shows beside "approvals
+/// waiting", so it is proven off zero: one pending gate and one answered gate
+/// on the held fleet, and the closing says ONE. A mis-bound status, a wrong
+/// correlation column or a bind in the wrong slot would all read zero and
+/// pass the bracket suite, which closes a fleet with no gates at all.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_closing_counts_the_fleets_pending_gates() {
+    let run = held().await;
+    let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
+    seed_gate(&run, afd_wire::approval::status::PENDING).await;
+    seed_gate(&run, afd_wire::approval::status::DENIED).await;
+
+    let ended = run
+        .fixtures
+        .plane()
+        .leases
+        .block(
+            &fleet,
+            &run.event_id,
+            Refusal::labelled(label::APPROVAL_DENIED),
+            run.now,
+        )
+        .await
+        .expect("the refusal writes over live Postgres");
+    let closed = match ended {
+        Ended::Now(closed) => closed,
+        Ended::Already => unreachable!("a held run's row is still open"),
+    };
+    assert_eq!(
+        closed.pending_approvals, 1,
+        "the pending gate counts and the answered one does not"
+    );
+    assert_eq!(
+        closed.fleet_status, "active",
+        "the closing joins the fleet's own status"
+    );
+}
+
+/// One gate row on the held fleet, in `status`, shaped as the park writes it.
+async fn seed_gate(run: &report_seed::Held, status: &str) {
+    let mut connection = run
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let workspace: String =
+        sqlx::query_scalar("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
+            .bind(&run.fleet)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the held fleet has a workspace");
+    sqlx::query(
+        "INSERT INTO core.fleet_approval_gates
+           (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+            resolved_by, status, detail, created_at, updated_at, event_id)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+                 'repository_write', 'open a pull request', '{}'::jsonb,
+                 'one repository', $5, '', $6, '', $5, NULL, $7)",
+    )
+    .bind(afd_db::test_util::mint_id())
+    .bind(&run.fleet)
+    .bind(&workspace)
+    .bind(afd_db::test_util::mint_id())
+    .bind(run.now.as_millis())
+    .bind(status)
+    .bind(&run.event_id)
+    .execute(&mut *connection)
+    .await
+    .expect("the gate row must insert");
 }
 
 /// One chunk frame, which is the smallest thing the tail carries.

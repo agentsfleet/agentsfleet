@@ -91,6 +91,24 @@ describe("admin/models page", () => {
     await expect(Page()).rejects.toThrow("backend exploded");
   });
 
+  it("admin models starts both reads together", async () => {
+    mockAuth();
+    let releaseCatalogue: (list: { models: Array<{ model_id: string }> }) => void = () => {};
+    listAdminModelsMock.mockReturnValueOnce(
+      new Promise<{ models: Array<{ model_id: string }> }>((resolve) => {
+        releaseCatalogue = resolve;
+      }),
+    );
+    const { default: Page } = await import("../app/(dashboard)/admin/models/page");
+    const rendering = Page();
+    // The platform-keys read is issued while the catalogue is still pending.
+    await vi.waitFor(() => expect(listPlatformKeysMock).toHaveBeenCalledWith("tok"));
+    expect(listAdminModelsMock).toHaveBeenCalledTimes(1);
+    releaseCatalogue({ models: [{ model_id: "glm-5.2" }] });
+    const html = renderToStaticMarkup(await rendering);
+    expect(html).toContain("glm-5.2");
+  });
+
   it("platform admin: renders ModelsView seeded with the catalogue", async () => {
     mockAuth();
     listAdminModelsMock.mockResolvedValueOnce({ models: [{ model_id: "glm-5.2" }, { model_id: "claude-opus-4-8" }] });
