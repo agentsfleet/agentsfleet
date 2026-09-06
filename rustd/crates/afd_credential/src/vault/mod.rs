@@ -33,9 +33,10 @@ use std::sync::Arc;
 
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
+use afd_vault::StoredEnvelope;
+use sqlx::FromRow as _;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
@@ -49,17 +50,6 @@ const CONTEXT_SECRET: &str = "vault credential";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRETS: &str = "vault credentials";
-
-/// Where the envelope's six components start in [`sql::SELECT_SECRET`].
-const ENVELOPE_AT: usize = 0;
-
-/// Where they start in [`sql::SELECT_SECRETS_BY_NAMES`], which projects
-/// the name and the creation instant first.
-///
-/// The offset is the whole reason one decrypt routine serves both statements,
-/// and it is why the batch statement's column order is copied rather than
-/// tidied — see that statement's own note.
-const ENVELOPE_AT_BATCH: usize = 2;
 
 /// Where one credential is held.
 ///
@@ -150,8 +140,7 @@ impl Vault {
             .await
             .map_err(query(CONTEXT_SECRET))?;
 
-        row.map(|row| self.decrypt(&row, ENVELOPE_AT, key))
-            .transpose()
+        row.map(|row| self.decrypt(&row, key)).transpose()
     }
 
     /// Every credential in `names` this workspace holds, in ONE read.
@@ -182,12 +171,12 @@ impl Vault {
 
         rows.iter()
             .map(|row| {
-                let name: String = row.try_get(0).map_err(query(CONTEXT_SECRETS))?;
+                let name: String = row.try_get("key_name").map_err(query(CONTEXT_SECRETS))?;
                 let key = KeyRef {
                     workspace_id,
                     name: &name,
                 };
-                let plaintext = self.decrypt(row, ENVELOPE_AT_BATCH, key)?;
+                let plaintext = self.decrypt(row, key)?;
                 Ok(Held {
                     name: name.into_boxed_str(),
                     plaintext,
@@ -196,30 +185,13 @@ impl Vault {
             .collect()
     }
 
-    /// One row's envelope, rebuilt from its columns and opened.
-    ///
-    /// Columns are read POSITIONALLY, because the order is the contract this
-    /// shares with `openEnvelopeAt`: the statement's projection and
-    /// [`Envelope::from_parts`]' parameter list are the same six components in
-    /// the same sequence. Reading them by name would hide a projection that had
-    /// drifted out of that order, which is the one way this can go wrong
-    /// silently.
-    fn decrypt(&self, row: &PgRow, at: usize, key: KeyRef<'_>) -> Result<SecretBytes> {
-        let column = |index: usize| {
-            row.try_get::<Vec<u8>, _>(index)
-                .map_err(query(CONTEXT_SECRET))
-        };
-        Envelope::from_parts(
-            column(at)?,
-            &column(at + 1)?,
-            &column(at + 2)?,
-            &column(at + 3)?,
-            column(at + 4)?,
-            &column(at + 5)?,
-            row.try_get(at + 6).map_err(query(CONTEXT_SECRET))?,
-        )
-        .map_err(vault_open)?
-        .open(&self.kek, &Aad::new(key.workspace_id.as_str(), key.name))
-        .map_err(vault_open)
+    /// Decode by column name without opening a connection or changing the caller's transaction.
+    fn decrypt(&self, row: &PgRow, key: KeyRef<'_>) -> Result<SecretBytes> {
+        StoredEnvelope::from_row(row)
+            .map_err(query(CONTEXT_SECRET))?
+            .into_envelope()
+            .map_err(vault_open)?
+            .open(&self.kek, &Aad::new(key.workspace_id.as_str(), key.name))
+            .map_err(vault_open)
     }
 }

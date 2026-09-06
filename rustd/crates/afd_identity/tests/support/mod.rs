@@ -8,6 +8,7 @@
     reason = "shared test support is compiled into every including target; not all of them use all of it"
 )]
 
+pub(crate) mod capability;
 pub(crate) mod signing;
 
 /// Installs a subscriber so event macros actually run.

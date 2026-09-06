@@ -544,7 +544,7 @@ flowchart TD
 | Knob              | Source                | Purpose                                                                         |
 | ----------------- | --------------------- | ------------------------------------------------------------------------------- |
 | `OIDC_ISSUER`     | env var → serve_cfg   | **Required.** Single source of identity: the required value of the `iss` claim, *and* the base the JWKS URL is derived from (`<issuer>/.well-known/jwks.json`). Enabling OIDC keys off this var.   |
-| `OIDC_JWKS_URL`   | env var → serve_cfg   | **Optional override.** Where to fetch the signing keys; defaults to the value derived from `OIDC_ISSUER`. Set only for a non-standard JWKS path (e.g. a `custom` provider). Cached for 6 h, refreshed on `kid` miss.   |
+| `OIDC_JWKS_URL`   | env var → serve_cfg   | **Optional override.** Where to fetch the signing keys; defaults to the value derived from `OIDC_ISSUER`. Set only for a non-standard JWKS path (e.g. a `custom` provider). Cached for 6 h, refreshed on `kid` miss (fetch attempts are limited to one per 30 s). If refresh fails, the last confirmed set remains usable for at most 15 additional minutes. Once it is older than 6 h 15 min, verification returns authentication unavailable until a successful refresh. Failed attempts never renew the age. RSA keys must declare `kty: RSA`; any `use`, `key_ops`, and `alg` restrictions must permit RS256 signature verification. Duplicate usable key IDs invalidate the fetched set.   |
 | `OIDC_AUDIENCE`   | env var → serve_cfg   | Required value of `aud` claim. **Strict** — see audience-mismatch note below.   |
 
 #### How the key set is fetched (`rustd/crates/afd_identity/src/jwks/http.rs`)

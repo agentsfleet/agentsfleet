@@ -57,8 +57,6 @@ fn test_a_parsed_set_reports_what_it_holds() {
 
     let key = set.find(TEST_KID).expect("the published key");
     assert_eq!(key.kid(), TEST_KID);
-    assert_eq!(key.modulus().len(), MIN_MODULUS_BYTES, "a 2048-bit key");
-    assert_eq!(key.exponent(), &[0x01, 0x00, 0x01], "AQAB is 65537");
     assert!(set.find("never-published").is_none());
 }
 

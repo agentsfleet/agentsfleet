@@ -23,7 +23,7 @@ pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
         && !parsed.name.ends_with('-');
     let valid = valid_name
         && !parsed.description.is_empty()
-        && semver::Version::parse(&parsed.version).is_ok();
+        && afd_fleet_runtime::Version::parse(&parsed.version).is_ok();
     valid
         .then_some(parsed)
         .ok_or_else(|| InvalidBundle::InvalidSkill.into())

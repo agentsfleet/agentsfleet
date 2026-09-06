@@ -15,11 +15,12 @@ use serde::Deserialize;
 
 use crate::error::{Result, provider_malformed, provider_platform_key_missing};
 use crate::provider::endpoint;
-use crate::provider::resolved::{Dialled, Resolved, SecretString};
+use crate::provider::resolved::{Dialled, Resolved};
 use crate::provider::selection::PlatformDefault;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
 use afd_billing::Posture;
+use afd_crypto::secret::SecretString;
 
 /// The credential field a platform default cannot resolve without.
 const FIELD_API_KEY: &str = "api_key";

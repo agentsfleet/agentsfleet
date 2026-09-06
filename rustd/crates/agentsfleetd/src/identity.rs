@@ -99,7 +99,7 @@ impl SignupMetadata for NoWriteback {
 #[derive(Debug, Clone)]
 pub enum Capabilities {
     /// A configured provider, behind the documented freshness windows.
-    Provider(ProviderCapabilities<ProviderClaims>),
+    Provider(Box<ProviderCapabilities<ProviderClaims>>),
     /// No provider. Every capability read is an outage, by design.
     Unconfigured(NoCapabilitySource),
 }
@@ -219,10 +219,10 @@ where
     C: FnOnce(&IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable>,
 {
     match build(identity) {
-        Ok(claims) => Capabilities::Provider(ProviderCapabilities::new(
+        Ok(claims) => Capabilities::Provider(Box::new(ProviderCapabilities::new(
             claims,
             Arc::new(afd_core::clock::SystemClock),
-        )),
+        ))),
         Err(_unbuildable) => {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.

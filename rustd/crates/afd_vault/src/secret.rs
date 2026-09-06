@@ -20,9 +20,8 @@
 //! being the only writer and saying so in a comment; this gets there by leaving
 //! no other shape expressible.
 
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::{SecretBytes, SecretObject};
 use serde_json::value::RawValue;
-use serde_json::{Map, Value};
 
 use crate::error::{ErrorKind, Result};
 use crate::projection::Projection;
@@ -109,9 +108,9 @@ impl SecretBody {
         // so an array, a scalar and a null are all refused here rather than by
         // a shape check after the fact. Same guarantee `afd_core::json` gives a
         // derived struct, and for the same reason.
-        let object: Map<String, Value> =
-            serde_json::from_str(data.get()).map_err(|_not_an_object| ErrorKind::DataInvalid)?;
-        if object.is_empty() {
+        let object = SecretObject::parse(data.get().as_bytes())
+            .map_err(|_not_an_object| ErrorKind::DataInvalid)?;
+        if object.fields().is_empty() {
             return Err(ErrorKind::DataInvalid.into());
         }
 
@@ -121,15 +120,16 @@ impl SecretBody {
         // insertion-ordered object map does. Two daemons stringifying one body
         // therefore produce the same bytes, and the size bound below decides
         // identically on either.
-        let canonical =
-            serde_json::to_vec(&object).map_err(|_unwritable| ErrorKind::DataInvalid)?;
+        let canonical = object
+            .canonical()
+            .map_err(|_unwritable| ErrorKind::DataInvalid)?;
         if canonical.len() > MAX_DATA_BYTES {
             return Err(ErrorKind::DataTooLarge.into());
         }
 
         Ok(Self {
-            projection: Projection::of(&object),
-            plaintext: SecretBytes::new(canonical),
+            projection: Projection::of(object.fields()),
+            plaintext: canonical,
         })
     }
 

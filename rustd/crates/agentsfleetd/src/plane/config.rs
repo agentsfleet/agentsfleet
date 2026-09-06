@@ -104,7 +104,7 @@ pub struct ScheduleConfig {
     /// The client the management calls go out on.
     pub client: reqwest::Client,
     /// This deployment's bearer for the external scheduler.
-    pub token: String,
+    pub token: afd_crypto::secret::SecretString,
     /// Where a fire is expected to arrive — see [`qstash::destination_url`].
     pub destination: String,
     /// Which scheduler deployment the management calls go to.

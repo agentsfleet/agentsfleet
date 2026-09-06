@@ -36,6 +36,7 @@ keywords = ["agentsfleet", "daemon", "runner"]
 categories = ["network-programming"]
 
 [workspace.dependencies]
+percent-encoding = "2.3.2"
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }

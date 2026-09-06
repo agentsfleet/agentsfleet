@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 
 use afd_core::error_code;
 use sqlx::pool::PoolConnection;
-use sqlx::{Acquire as _, Executor as _, Postgres};
+use sqlx::{Acquire as _, Postgres};
 
 pub use self::ledger::{FailureRow, Ledger};
 pub use self::lock::{Attempt, MigrationLock, RetryPolicy};
@@ -239,39 +239,16 @@ async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migrat
     let version = migration.version();
     tracing::info!(version, name = migration.name(), event = "migration_start");
 
-    let statements = match migration.statements() {
-        Ok(statements) => statements,
-        Err(source) => {
-            // A malformed migration is refused before any of it applies —
-            // splitting on a boundary inside an unterminated literal is how
-            // half a statement reaches Postgres.
-            let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
-            tracing::error!(
-                version,
-                error = %source,
-                error_code,
-                event = "migrate_sql_invalid"
-            );
-            ledger::record_failure(connection, version, &source.to_string()).await;
-            return Err(Error::new(ErrorKind::MigrationSql { version, source }));
-        }
-    };
-
-    let mut count = 0_usize;
     let failure = {
         let mut transaction = match connection.begin().await {
             Ok(transaction) => transaction,
             Err(source) => return Err(crate::error::query("migrate.begin_tx", source)),
         };
 
-        let mut failure = None;
-        for statement in statements {
-            if let Err(source) = transaction.execute(statement).await {
-                failure = Some(source);
-                break;
-            }
-            count += 1;
-        }
+        let failure = sqlx::raw_sql(migration.sql())
+            .execute(&mut *transaction)
+            .await
+            .err();
 
         if failure.is_none()
             && let Err(error) = ledger::record_applied(&mut *transaction, version).await
@@ -297,6 +274,6 @@ async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migrat
     }
 
     ledger::clear_failure(connection, version).await;
-    tracing::info!(version, statements = count, event = "migration_applied");
+    tracing::info!(version, event = "migration_applied");
     Ok(())
 }
