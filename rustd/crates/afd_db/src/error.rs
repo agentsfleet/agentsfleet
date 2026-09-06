@@ -17,8 +17,6 @@
 
 use afd_core::error_code::{self, ErrorCode};
 
-use crate::sql::SplitError;
-
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader
@@ -82,13 +80,6 @@ pub(crate) enum ErrorKind {
         context: &'static str,
         #[source]
         source: sqlx::Error,
-    },
-
-    #[error("migration {version} is not valid SQL")]
-    MigrationSql {
-        version: i32,
-        #[source]
-        source: SplitError,
     },
 
     #[error("migration {version} failed to apply")]
@@ -155,10 +146,7 @@ impl Error {
     /// Whether a migration could not be applied, for any reason of its own.
     #[must_use]
     pub fn is_migration_failed(&self) -> bool {
-        matches!(
-            self.inner.kind,
-            ErrorKind::MigrationSql { .. } | ErrorKind::MigrationFailed { .. }
-        )
+        matches!(self.inner.kind, ErrorKind::MigrationFailed { .. })
     }
 
     /// Whether the ledger refused this binary — lock held, or a version ahead.
@@ -183,8 +171,7 @@ impl Error {
             | ErrorKind::TlsCertFileUnreadable { .. }
             | ErrorKind::InvalidBoolKnob { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
-            ErrorKind::MigrationSql { .. }
-            | ErrorKind::MigrationFailed { .. }
+            ErrorKind::MigrationFailed { .. }
             | ErrorKind::MigrationLockUnavailable { .. }
             | ErrorKind::MigrationSchemaAhead { .. } => error_code::STARTUP_MIGRATION_CHECK,
         }
@@ -280,13 +267,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "query",
             query("migrate.ensure_tables", sqlx::Error::PoolClosed),
-        ),
-        (
-            "migration sql",
-            Error::new(ErrorKind::MigrationSql {
-                version: 100,
-                source: SplitError::UnterminatedString,
-            }),
         ),
         (
             "migration failed",

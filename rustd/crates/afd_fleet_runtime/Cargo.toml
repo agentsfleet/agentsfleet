@@ -20,6 +20,7 @@ categories.workspace = true
 test-util = []
 
 [dependencies]
+semver.workspace = true
 # The signature wall owns the provider scheme strings; this crate resolves a
 # trigger's `source` to one rather than declaring a second copy (RULE UFS).
 afd_webhook.workspace = true

@@ -1,56 +1,19 @@
-//! What a person may do, asked of the identity provider and cached briefly.
+//! Live capability claims with bounded freshness and outage tolerance.
 //!
-//! The port of `auth/clerk_scope_resolver.zig`, and the one place this
-//! milestone takes a dependency to REPLACE hand-written concurrency rather than
-//! to save typing.
+//! Fresh answers avoid provider calls for sixty seconds. A separate stale
+//! cache retains the last confirmed answer for at most fifteen minutes, so
+//! failed or cancelled refreshes cannot consume the outage fallback.
 //!
-//! # What the cache is, and what it is not
+//! Moka coalesces provider calls per subject. Its atomic entry operation removes
+//! only answers still stale when examined, so a queued caller cannot invalidate
+//! a refresh that another request just published. An unknown subject clears the
+//! stale claim inside that same provider flight before any caller is answered.
 //!
-//! A latency optimisation and nothing else: in-memory, never outliving the
-//! process, no projection to backfill and nothing to reconcile. Every entry
-//! self-heals toward the provider within the freshness window.
-//!
-//! # Three windows, and why they are not one
-//!
-//! - **Fresh** (60 s) — served without asking. The same order as the
-//!   dashboard's own session-token refresh, which is the parity that makes a
-//!   terminal and a browser agree about a person's capabilities.
-//! - **Stale but within the ceiling** (15 min) — served ONLY when the provider
-//!   is unreachable. Refusing every terminal during a vendor blip is worse than
-//!   acting on capabilities that are minutes old.
-//! - **Past the ceiling, or cold** — refused as an outage. Never an empty set:
-//!   an empty set reads to an operator as a demotion they never received, and
-//!   would be indistinguishable from a person the provider has forgotten.
-//!
-//! # What `moka` bought, precisely
-//!
-//! `try_get_with` coalesces concurrent loads for the same key. The Zig resolver
-//! says it is not single-flighted and names the consequence:
-//!
-//! > *"tenant keys ride ONE creator subject at machine rates, so at expiry
-//! > their in-flight requests fetch concurrently; that is the first place to
-//! > add per-subject single-flight if provider-call volume ever shows up in
-//! > ops."*
-//!
-//! That is closed here. It also RETIRES the `seq` counter, which existed only
-//! so a slow out-of-order response could not overwrite a newer one and
-//! resurrect a pre-revocation claim — with one flight per subject there is no
-//! second response to be out of order with. A hand-written ordering rule on a
-//! security-relevant path disappears rather than being ported.
-//!
-//! And the bound behaves better: the Zig cache drops the WHOLE map when it
-//! reaches its limit, costing every live operator a cold fetch. `moka` evicts
-//! the coldest entry.
-//!
-//! # The one thing `moka` is deliberately not trusted with
-//!
-//! Its expiry runs on an internal `Instant` that `afd_core`'s `FixedClock`
-//! cannot steer. So the entry carries its own `fetched_at` and BOTH windows are
-//! decided against the injected clock — every decision stays deterministic in a
-//! test. `time_to_live` is set to the ceiling as well, purely so an entry that
-//! can never be served is eventually reclaimed; nothing reads it as a decision.
+//! Both windows use the injected clock. Moka's TTL is a reclamation backstop;
+//! serving an answer always checks when the provider actually confirmed it.
 
-use crate::error::ClaimUnavailable;
+use crate::error::{ClaimUnavailable, Result};
+use moka::ops::compute::Op;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -111,6 +74,7 @@ pub struct ProviderCapabilities<S> {
     source: Arc<S>,
     clock: Arc<dyn Clock>,
     cache: moka::future::Cache<Box<str>, Cached>,
+    stale: moka::future::Cache<Box<str>, Cached>,
     ttl_ms: i64,
     ceiling_ms: i64,
 }
@@ -128,6 +92,7 @@ impl<S> Clone for ProviderCapabilities<S> {
             source: Arc::clone(&self.source),
             clock: Arc::clone(&self.clock),
             cache: self.cache.clone(),
+            stale: self.stale.clone(),
             ttl_ms: self.ttl_ms,
             ceiling_ms: self.ceiling_ms,
         }
@@ -146,17 +111,17 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
     #[must_use]
     pub fn with_windows(source: S, clock: Arc<dyn Clock>, ttl_ms: i64, ceiling_ms: i64) -> Self {
         let ceiling = u64::try_from(ceiling_ms.max(0)).unwrap_or(u64::MAX);
+        let cache = || {
+            moka::future::Cache::builder()
+                .max_capacity(MAX_CACHED_SUBJECTS)
+                .time_to_live(Duration::from_millis(ceiling))
+                .build()
+        };
         Self {
             source: Arc::new(source),
             clock,
-            cache: moka::future::Cache::builder()
-                .max_capacity(MAX_CACHED_SUBJECTS)
-                // A reclaim backstop, never a decision: an entry past the
-                // ceiling can no longer be served, so letting it linger until
-                // capacity pressure would only waste a slot. Both windows are
-                // still decided from `fetched_at` against the injected clock.
-                .time_to_live(Duration::from_millis(ceiling))
-                .build(),
+            cache: cache(),
+            stale: cache(),
             ttl_ms,
             ceiling_ms,
         }
@@ -179,38 +144,21 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
             return Ok(entry.scopes);
         }
 
-        // Past the freshness window, the entry must be REMOVED before the
-        // flight. `try_get_with` returns a present value without running its
-        // initialiser, and moka's own expiry is set to the ceiling rather than
-        // the freshness window — so leaving it in place would serve a stale
-        // answer for fifteen minutes and never re-ask, which is the opposite of
-        // what both windows are for.
-        //
-        // Removing it does not lose the stale-serve: `held` is a copy taken
-        // above, and the outage path below reads that rather than the cache.
-        if held.is_some() {
-            self.cache.invalidate(&key).await;
-        }
+        self.cache
+            .entry(key.clone())
+            .and_compute_with(|entry| async move {
+                if entry.is_some_and(|entry| self.age(*entry.value()) > self.ttl_ms) {
+                    Op::Remove
+                } else {
+                    Op::Nop
+                }
+            })
+            .await;
 
-        // One flight per subject. Concurrent misses for the same key await the
-        // same fetch, so the `seq` ordering the Zig resolver needs cannot
-        // arise: there is no second response to be out of order with.
-        let fetched = {
-            let source = Arc::clone(&self.source);
-            let clock = Arc::clone(&self.clock);
-            let subject = subject.clone();
-            self.cache
-                .try_get_with(key, async move {
-                    let claim = source.claim(&subject).await?;
-                    Ok::<_, ClaimUnavailable>(Cached {
-                        // The same parser every credential shape feeds, so the
-                        // three cannot drift in how a claim becomes a set.
-                        scopes: parse_claim(&claim),
-                        fetched_at: clock.now(),
-                    })
-                })
-                .await
-        };
+        let fetched = self
+            .cache
+            .try_get_with(key.clone(), self.fetch(subject, key.as_ref()))
+            .await;
 
         match fetched {
             Ok(entry) => Ok(entry.scopes),
@@ -226,7 +174,25 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
                 );
                 Ok(ScopeSet::EMPTY)
             }
-            Err(_unreachable) => self.serve_stale_or_refuse(subject, held),
+            Err(_unreachable) => self.serve_stale_or_refuse(subject, self.stale.get(&key).await),
+        }
+    }
+
+    async fn fetch(&self, subject: &Subject, key: &str) -> Result<Cached, ClaimUnavailable> {
+        match self.source.claim(subject).await {
+            Ok(claim) => {
+                let entry = Cached {
+                    scopes: parse_claim(&claim),
+                    fetched_at: self.clock.now(),
+                };
+                self.stale.insert(key.into(), entry).await;
+                Ok(entry)
+            }
+            Err(ClaimUnavailable::UnknownSubject) => {
+                self.stale.invalidate(key).await;
+                Err(ClaimUnavailable::UnknownSubject)
+            }
+            Err(error) => Err(error),
         }
     }
 

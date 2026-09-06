@@ -19,8 +19,6 @@
 //! directory and `schema/embed.zig` — so an addition to either side that is
 //! missing here fails a test rather than a production migrate.
 
-use crate::sql::{SplitError, SqlStatements};
-
 /// One versioned schema migration: the file, its slot number, and its SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Migration {
@@ -57,15 +55,6 @@ impl Migration {
     #[must_use]
     pub const fn for_test(version: i32, name: &'static str, sql: &'static str) -> Self {
         Self { version, name, sql }
-    }
-
-    /// The statements this migration applies, in order.
-    ///
-    /// # Errors
-    /// Returns [`SplitError`] when the file ends inside a string, quoted
-    /// identifier, dollar-quoted body, or block comment.
-    pub fn statements(&self) -> Result<SqlStatements<'static>, SplitError> {
-        SqlStatements::new(self.sql)
     }
 }
 

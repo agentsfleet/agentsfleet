@@ -31,6 +31,8 @@ mod config_tls_cert_files;
 mod error_surface;
 #[path = "integration_migrate.rs"]
 mod integration_migrate;
+#[path = "integration_migrate_batch.rs"]
+mod integration_migrate_batch;
 #[path = "integration_migrate_faults.rs"]
 mod integration_migrate_faults;
 #[path = "integration_pool.rs"]
@@ -43,5 +45,3 @@ mod integration_pool_tls;
 mod lock_policy;
 #[path = "migrations.rs"]
 mod migrations;
-#[path = "sql_statements.rs"]
-mod sql_statements;

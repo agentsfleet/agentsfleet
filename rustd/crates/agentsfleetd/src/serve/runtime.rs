@@ -96,7 +96,9 @@ pub(super) async fn open_runtime(
         // every fire is refused until the api url is corrected.
         schedule: crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
-            token: config.qstash_token().unwrap_or_default().to_owned(),
+            token: afd_crypto::secret::SecretString::new(
+                config.qstash_token().unwrap_or_default().to_owned(),
+            ),
             destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
             // The one place the vendor's US region is chosen, and only when this
             // deployment named no scheduler of its own.

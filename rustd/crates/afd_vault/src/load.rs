@@ -25,9 +25,7 @@
 
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::SecretBytes;
-use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::secret::SecretName;
@@ -55,7 +53,7 @@ impl Vault {
     /// `afd_crypto::error` on why the two AEAD layers are indistinguishable.
     pub async fn load(&self, workspace: &Uuid7, name: &SecretName) -> Result<Option<SecretBytes>> {
         let mut connection = self.directory.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_SECRET_ENVELOPE)
+        let row = sqlx::query_as::<_, crate::StoredEnvelope>(sql::SELECT_SECRET_ENVELOPE)
             .bind(workspace.as_str())
             .bind(name.as_str())
             .fetch_optional(connection.as_mut())
@@ -66,24 +64,7 @@ impl Vault {
             return Ok(None);
         };
 
-        let unreadable = query(CONTEXT_LOAD);
-        let envelope = Envelope::from_parts(
-            row.try_get(0).map_err(&unreadable)?,
-            row.try_get::<Vec<u8>, _>(1)
-                .map_err(&unreadable)?
-                .as_slice(),
-            row.try_get::<Vec<u8>, _>(2)
-                .map_err(&unreadable)?
-                .as_slice(),
-            row.try_get::<Vec<u8>, _>(3)
-                .map_err(&unreadable)?
-                .as_slice(),
-            row.try_get(4).map_err(&unreadable)?,
-            row.try_get::<Vec<u8>, _>(5)
-                .map_err(&unreadable)?
-                .as_slice(),
-            row.try_get(6).map_err(&unreadable)?,
-        )?;
+        let envelope = row.into_envelope()?;
 
         // The same associated data the seal bound, so a ciphertext moved to
         // another workspace or another name does not open. That binding is the

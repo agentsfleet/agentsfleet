@@ -24,9 +24,6 @@ use crate::error::{Error, Result};
 const MAX_NAME_LEN: usize = 64;
 /// Longest credential reference a vault row name is built from.
 const MAX_CREDENTIAL_LEN: usize = 128;
-/// How many dot-separated components a version carries.
-const VERSION_PARTS: usize = 3;
-
 /// Why a name was refused, phrased for the author who has to fix it.
 const REASON_EMPTY: &str = "it is empty";
 /// See [`REASON_EMPTY`].
@@ -35,13 +32,6 @@ const REASON_TOO_LONG: &str = "it is longer than the limit";
 const REASON_NAME_CHARSET: &str = "only lower-case letters, digits and `-` are allowed";
 /// See [`REASON_EMPTY`].
 const REASON_CREDENTIAL_CHARSET: &str = "only letters, digits and `_` are allowed";
-/// See [`REASON_EMPTY`].
-const REASON_VERSION_PARTS: &str = "it is not MAJOR.MINOR.PATCH";
-/// See [`REASON_EMPTY`].
-const REASON_VERSION_DIGITS: &str = "each part must be digits";
-/// See [`REASON_EMPTY`].
-const REASON_VERSION_LEADING_ZERO: &str = "a part may not have a leading zero";
-
 /// A fleet's authored name — a kebab slug, at most [`MAX_NAME_LEN`] bytes.
 ///
 /// Checked at install so a bad name fails at the boundary rather than leaking
@@ -141,23 +131,13 @@ impl Version {
             reason,
         };
 
-        let mut parts = authored.split('.');
-        let counted = parts.by_ref().take(VERSION_PARTS).count();
-        if counted != VERSION_PARTS || parts.next().is_some() {
-            return Err(refuse(REASON_VERSION_PARTS));
+        let parsed = semver::Version::parse(authored).map_err(|_invalid| {
+            refuse("expected MAJOR.MINOR.PATCH with u64 components and no leading zeros")
+        })?;
+        if !parsed.pre.is_empty() || !parsed.build.is_empty() {
+            return Err(refuse("prerelease and build suffixes are unsupported"));
         }
-
-        authored
-            .split('.')
-            .try_fold((), |(), part| match part.as_bytes() {
-                [] => Err(refuse(REASON_VERSION_DIGITS)),
-                bytes if !bytes.iter().all(u8::is_ascii_digit) => {
-                    Err(refuse(REASON_VERSION_DIGITS))
-                }
-                [b'0', _, ..] => Err(refuse(REASON_VERSION_LEADING_ZERO)),
-                _ => Ok(()),
-            })
-            .map(|()| Self(authored.into()))
+        Ok(Self(authored.into()))
     }
 
     /// The version as authored.
