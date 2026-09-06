@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import {
@@ -46,6 +46,11 @@ export default function WorkspaceSwitcherMenu({
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
   const firstItemRef = useRef<HTMLDivElement>(null);
+  const entryFocusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) entryFocusedRef.current = false;
+  }, [open]);
 
   const creation = useWorkspaceCreation({
     onSuccess: (workspace) => {
@@ -129,7 +134,9 @@ export default function WorkspaceSwitcherMenu({
             className="max-w-trim overflow-hidden"
             onFocusCapture={(event) => {
               // The lazy menu mounts after the opening keypress, before Radix can observe it.
-              if (event.target === event.currentTarget) firstItemRef.current?.focus();
+              if (!open || event.target !== event.currentTarget || entryFocusedRef.current) return;
+              entryFocusedRef.current = true;
+              firstItemRef.current?.focus();
             }}
           >
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
