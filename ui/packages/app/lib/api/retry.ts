@@ -119,24 +119,32 @@ function clockSleepingWith(base: Clock.Clock, sleep: (duration: Duration.Duratio
 class RetryRun<T> {
   readonly #cfg: ResolvedRetry<T>;
   readonly #method: string;
-  readonly #attempt: () => Promise<T>;
+  readonly #attempt: (remainingMs: number) => Promise<T>;
   readonly #startedAt = Date.now();
   #attemptNumber = 0;
   #last: FailedAttempt = NO_FAILURE;
   #answered: Succeeded<T> | undefined;
 
-  constructor(cfg: ResolvedRetry<T>, method: string, attempt: () => Promise<T>) {
+  constructor(cfg: ResolvedRetry<T>, method: string, attempt: (remainingMs: number) => Promise<T>) {
     this.#cfg = cfg;
     this.#method = method;
     this.#attempt = attempt;
+  }
+
+  // What is left of the deadline when this attempt starts. The attempt is
+  // told, so its own ceiling can be no longer than that: the deadline then
+  // bounds the last attempt too, not only the decision to begin it.
+  #remainingMs(now: number): number {
+    return Math.max(0, this.#cfg.deadlineMs - (now - this.#startedAt));
   }
 
   #attemptOnce(): Effect.Effect<Succeeded<T>, FailedAttempt> {
     return Effect.suspend(() => {
       this.#attemptNumber += 1;
       const attemptStartedAt = Date.now();
+      const remainingMs = this.#remainingMs(attemptStartedAt);
       return Effect.tryPromise({
-        try: () => this.#attempt(),
+        try: () => this.#attempt(remainingMs),
         catch: (cause) => {
           this.#last = new FailedAttempt(classifyFailure(cause, false), this.#attemptNumber, Date.now() - attemptStartedAt);
           return this.#last;
@@ -273,12 +281,15 @@ class RetryRun<T> {
  * Runs one attempt under the policy. `method` decides the replay gate: a
  * non-idempotent method is sent again only when the failure provably happened
  * before the request left, or when the server answered without processing it.
- * On success the attempt's value is returned as is. When the schedule ends —
- * a fatal failure, the attempt ceiling, the deadline, a `Retry-After` beyond
- * the cap — the last error is re-thrown as the attempt threw it.
+ * Each attempt is told how much of `deadlineMs` remains when it starts, so a
+ * transport can cap its own per-attempt timeout to that and the deadline
+ * bounds the whole run, last attempt included; an attempt is free to ignore
+ * it. On success the attempt's value is returned as is. When the schedule
+ * ends — a fatal failure, the attempt ceiling, the deadline, a `Retry-After`
+ * beyond the cap — the last error is re-thrown as the attempt threw it.
  */
 export async function runWithRetry<T>(
-  attempt: () => Promise<T>,
+  attempt: (remainingMs: number) => Promise<T>,
   method: string,
   options: RetryOptions<T> = {},
 ): Promise<T> {

@@ -38,7 +38,7 @@ import AddModelDialog from "@/app/(dashboard)/admin/models/components/AddModelDi
 import CatalogueList from "@/app/(dashboard)/admin/models/components/CatalogueList";
 import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
 import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
-import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin-model-library-types";
+import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 import { EVENTS } from "../lib/analytics/events";
 
 function renderWithTooltipProvider(node: React.ReactElement) {

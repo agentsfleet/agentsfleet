@@ -34,6 +34,16 @@ export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
 // a stricter or looser budget passes its own signal and this default does not
 // apply.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * The default per-attempt timeout, bounded by what remains of the policy's
+ * deadline when the attempt starts: an attempt begun late in the run cannot
+ * outlive the deadline by its own ceiling, so the deadline is the total it
+ * says it is.
+ */
+export function attemptTimeoutMs(remainingMs: number): number {
+  return Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs);
+}
 // The methods `request()` retries on its own. Narrower than the policy's
 // idempotency gate on purpose: a DELETE is idempotent in effect but not in
 // answer — a 204 lost to the network comes back as a 404 on the replay, and the
@@ -264,9 +274,9 @@ function statusOfAttempt<T>(attempt: Attempt<T>): number {
 // One attempt as the policy sees it: the send and the read each classify
 // their own failure with what only this side knows — whether the response
 // headers had arrived — and the policy reads the provenance off the result.
-function classifiedAttempt<T>(path: string, init: RequestInit, token: string): () => Promise<Attempt<T>> {
-  return async () => {
-    const res = await sendRequest(path, init, token).catch((cause: unknown) => {
+function classifiedAttempt<T>(path: string, init: RequestInit, token: string): (remainingMs: number) => Promise<Attempt<T>> {
+  return async (remainingMs: number) => {
+    const res = await sendRequest(path, init, token, remainingMs).catch((cause: unknown) => {
       throw classifyFailure(cause, false);
     });
     return readResponse<T>(res, path).catch((cause: unknown) => {
@@ -276,12 +286,13 @@ function classifiedAttempt<T>(path: string, init: RequestInit, token: string): (
 }
 
 // The send: the fetch and the abort classification.
-async function sendRequest(path: string, init: RequestInit, token: string): Promise<Response> {
+async function sendRequest(path: string, init: RequestInit, token: string, remainingMs: number): Promise<Response> {
   try {
     return await fetch(`${BASE}${path}`, {
       ...init,
-      // The caller's signal wins; only a request with none gets the default.
-      signal: init.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+      // The caller's signal wins; only a request with none gets the default,
+      // and the default is no longer than the deadline's remainder.
+      signal: init.signal ?? AbortSignal.timeout(attemptTimeoutMs(remainingMs)),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
