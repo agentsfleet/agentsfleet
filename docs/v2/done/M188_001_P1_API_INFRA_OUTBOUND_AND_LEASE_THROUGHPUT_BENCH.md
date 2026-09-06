@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M188
 **Workstream:** 001
 **Date:** Sep 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the scaling argument for connector delivery and lease issuance is being made from estimates, and the next change is either a mud-patch or a refactor nobody can justify.
 **Categories:** API, INFRA
 **Batch:** B1 — standalone; no other workstream shares its files.
