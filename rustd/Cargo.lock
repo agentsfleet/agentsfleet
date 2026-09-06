@@ -252,6 +252,7 @@ dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "afd_events",
  "afd_fleet",
  "afd_observability",
  "afd_redis",

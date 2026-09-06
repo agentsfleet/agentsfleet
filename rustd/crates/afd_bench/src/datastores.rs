@@ -38,6 +38,16 @@ const COMMANDSTATS: &str = "commandstats";
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";
 
+/// Postgres's own transaction tally for the database a lane is connected to.
+///
+/// The counterpart to `INFO commandstats`, and used for the same reason: a
+/// lane that reported "no Postgres cost" without asking Postgres would be
+/// asserting a zero rather than measuring one, which is what RULE ECL forbids.
+/// Server-wide for this database, so it carries the same caveat as the Redis
+/// side — on the rig that is this lane and nothing else.
+const TRANSACTIONS_QUERY: &str = "SELECT xact_commit + xact_rollback \
+     FROM pg_stat_database WHERE datname = current_database()";
+
 /// Answers the daemon's pool knobs from the lane's single database variable.
 #[derive(Debug, Clone, Copy)]
 struct LaneEnv<'a> {
@@ -111,4 +121,21 @@ pub async fn redis_calls(queue: &Redis) -> Result<u64> {
         .filter_map(|(_before, after)| after.split(',').next())
         .filter_map(|calls| calls.parse::<u64>().ok())
         .sum())
+}
+
+/// Transactions this database has committed or rolled back, in total.
+///
+/// # Errors
+///
+/// [`crate::Error::DatabaseUnavailable`] when the statistics view will not
+/// answer.
+pub async fn postgres_transactions(database: &Db) -> Result<u64> {
+    use sqlx::Row as _;
+
+    let mut connection = database.acquire().await?;
+    let total: i64 = sqlx::query(TRANSACTIONS_QUERY)
+        .fetch_one(&mut *connection)
+        .await?
+        .try_get(0)?;
+    Ok(u64::try_from(total).unwrap_or(0))
 }

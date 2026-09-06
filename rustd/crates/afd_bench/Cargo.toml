@@ -18,6 +18,8 @@ categories.workspace = true
 afd_fleet.workspace = true
 # Enrolling the runners a lease is issued to.
 afd_runner.workspace = true
+# The steer ingress path the steer lane drives.
+afd_events.workspace = true
 # The pool the lease path reads through, opened the way the daemon opens it.
 afd_db.workspace = true
 # The readiness index and the fleet streams a poll peeks and reads.

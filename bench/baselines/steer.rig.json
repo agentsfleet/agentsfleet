@@ -1,0 +1,67 @@
+{
+  "lane": "steer",
+  "profile": "rig",
+  "created": true,
+  "parameters": {
+    "BENCH_CONCURRENCY": 8,
+    "BENCH_FLEETS": 50
+  },
+  "measurements": {
+    "accepted": 105483.0,
+    "max_ms": 6.199,
+    "p95_ms": 0.913,
+    "p99_ms": 1.161,
+    "postgres_transactions_per_steer": 0.000018960401202089435,
+    "rate_per_second": 13129.880602792251,
+    "redis_calls_per_steer": 2.0003318070210367
+  },
+  "series": {
+    "ready_depth": [
+      0.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0
+    ]
+  },
+  "datastores": {
+    "redis": {
+      "operations": 211001
+    },
+    "postgres": {
+      "operations": 2
+    }
+  },
+  "fixture": {
+    "run_prefix": "bench-1788732668513-55971",
+    "created": 150,
+    "swept": 150
+  }
+}
