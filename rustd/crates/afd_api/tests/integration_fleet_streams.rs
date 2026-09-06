@@ -7,6 +7,9 @@
 
 use crate::harness;
 
+#[path = "support/fleet_stream_transport.rs"]
+mod transport;
+
 use std::time::Duration;
 
 use afd_auth::credential::Presented;
@@ -136,10 +139,14 @@ struct Fixture {
 
 impl Fixture {
     async fn create() -> Self {
+        Self::with_pool(&[]).await
+    }
+
+    async fn with_pool(settings: &[(&str, &str)]) -> Self {
         let lane = TestDatabase::shared();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
-            database: lane.open(DbRole::Api, &[]).await,
+            database: lane.open(DbRole::Api, settings).await,
             tenant: mint_id(),
             workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
             fleet: mint_id(),

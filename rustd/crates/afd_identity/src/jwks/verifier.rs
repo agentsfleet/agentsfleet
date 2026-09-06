@@ -111,7 +111,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
         let keys = self.cache.resolve(&kid).await?;
         let key = keys.find(&kid).ok_or(VerifyError::KeyNotFound)?;
 
-        let claims = verify_claims(key, token)?;
+        let claims = verify_claims(key, segments)?;
         self.read_claims(claims)
     }
 
@@ -199,28 +199,20 @@ impl<S: KeySetSource> TokenVerifier for JwksVerifier<S> {
     }
 }
 
-/// Preserve duplicate-field refusals while requiring an object at the JWS boundary.
-#[derive(serde::Deserialize)]
-#[serde(transparent)]
-struct SignedClaims {
-    #[serde(deserialize_with = "afd_core::json::object_from_deserializer")]
-    claims: Claims,
-}
-
 /// Verify before parsing claims, then pass every policy check to `read_claims`.
-fn verify_claims(key: &SigningKey, token: &str) -> Result<Claims, VerifyError> {
-    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
-    // The injected-clock adapter immediately enforces these claims. Library
-    // wall-clock defaults would change expiry and fractional nbf boundaries.
-    validation.required_spec_claims.clear();
-    validation.validate_exp = false;
-    validation.validate_nbf = false;
-    validation.validate_aud = false;
-    let verified = jsonwebtoken::decode::<SignedClaims>(token, &key.decoding_key, &validation)
-        .map_err(|error| match error.kind() {
-            jsonwebtoken::errors::ErrorKind::InvalidSignature => VerifyError::SignatureInvalid,
-            jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => VerifyError::UnsupportedAlgorithm,
-            _ => VerifyError::Malformed,
-        })?;
-    Ok(verified.claims.claims)
+fn verify_claims(key: &SigningKey, segments: Segments<'_>) -> Result<Claims, VerifyError> {
+    let signing_input = format!("{}.{}", segments.header, segments.payload);
+    let verified = jsonwebtoken::crypto::verify(
+        segments.signature,
+        signing_input.as_bytes(),
+        &key.decoding_key,
+        jsonwebtoken::Algorithm::RS256,
+    )
+    .map_err(|_invalid_encoding| VerifyError::Malformed)?;
+    if !verified {
+        return Err(VerifyError::SignatureInvalid);
+    }
+
+    let payload = decode_segment(segments.payload)?;
+    afd_core::json::object_from_slice(&payload).map_err(|_invalid| VerifyError::Malformed)
 }
