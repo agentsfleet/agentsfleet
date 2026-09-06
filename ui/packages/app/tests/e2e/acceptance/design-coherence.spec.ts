@@ -31,8 +31,10 @@ async function checkCreatedColumn(page: Page, name: string) {
   const left = await textStart(heading, "Created");
   const timestamp = await created.boundingBox();
   expect(Math.abs(left - timestamp!.x)).toBeLessThan(1);
+  const direction = await heading.getAttribute("aria-sort");
+  const nextDirection = direction === "ascending" ? "descending" : "ascending";
   await heading.getByRole("button").click();
-  await expect(heading).toHaveAttribute("aria-sort", /ascending|descending/);
+  await expect(heading).toHaveAttribute("aria-sort", nextDirection);
   await expect(row).toBeVisible();
   await row.getByRole("cell").last().scrollIntoViewIfNeeded();
   await expect(row.getByRole("button").last()).toBeInViewport();
