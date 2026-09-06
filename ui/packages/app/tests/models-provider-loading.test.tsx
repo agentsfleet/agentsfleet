@@ -4,7 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/catalogue-status";
 import { SECRETS_LOAD } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load";
-import type { LibraryModel } from "@/lib/api/model_library";
+import type { LibraryModel } from "@/lib/api/model-library-types";
 
 const { catalogue } = vi.hoisted(() => ({
   catalogue: { status: "loading" as CatalogueStatus, models: [] as LibraryModel[], preload: vi.fn() },

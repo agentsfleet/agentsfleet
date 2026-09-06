@@ -2,7 +2,7 @@
 
 // Type-only — erased at compile time, so this does not create a runtime
 // cycle with secrets.ts's own `import { SECRET_FIELD } from "@/lib/types"`.
-import type { SecretKind } from "./api/secrets";
+import type { SecretKind } from "./api/secrets-types";
 
 export type CommandClass = "safe" | "sensitive" | "critical";
 

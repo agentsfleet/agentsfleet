@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const requestMock = vi.fn();
 vi.mock("./client", () => ({ request: (...a: unknown[]) => requestMock(...a) }));
 
-import { putPreference, PREFERENCE_KEY } from "./preferences";
+import { putPreference } from "./preferences";
+import { PREFERENCE_KEY } from "./preferences-types";
 
 afterEach(() => requestMock.mockReset());
 

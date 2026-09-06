@@ -9,7 +9,8 @@ beforeEach(() => {
 });
 vi.mock("./client", () => ({ request: requestMock }));
 
-import { getModelLibrary, modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model_library";
+import { getModelLibrary } from "./model_library";
+import { modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model-library-types";
 
 // Mirrors the GET /v1/models wire shape from
 // rustd/crates/afd_api_tenant/src/handler/tenant/models.rs.

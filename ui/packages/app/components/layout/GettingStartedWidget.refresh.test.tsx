@@ -20,7 +20,7 @@ const capture = vi.fn();
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: (...a: unknown[]) => capture(...a) }));
 
 import GettingStartedWidget from "./GettingStartedWidget";
-import { PREFERENCE_KEY } from "@/lib/api/preferences";
+import { PREFERENCE_KEY } from "@/lib/api/preferences-types";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const COMPLETE: OnboardingInputs = {

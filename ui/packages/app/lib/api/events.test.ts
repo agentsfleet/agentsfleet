@@ -131,14 +131,14 @@ describe("listWorkspaceEvents", () => {
 
 describe("streamFleetEventsUrl", () => {
   it("returns a same-origin path the Next Route Handler intercepts", async () => {
-    const { streamFleetEventsUrl } = await import("./events");
+    const { streamFleetEventsUrl } = await import("./events-types");
     expect(streamFleetEventsUrl("ws_1", "z_1")).toBe(
       "/live/v1/workspaces/ws_1/fleets/z_1/events/stream",
     );
   });
 
   it("encodes path segments so a slashy id can not escape the URL", async () => {
-    const { streamFleetEventsUrl } = await import("./events");
+    const { streamFleetEventsUrl } = await import("./events-types");
     expect(streamFleetEventsUrl("ws/1", "z 2")).toBe(
       "/live/v1/workspaces/ws%2F1/fleets/z%202/events/stream",
     );
@@ -147,14 +147,14 @@ describe("streamFleetEventsUrl", () => {
 
 describe("backfillFleetEventsUrl", () => {
   it("returns a clean same-origin path when no query opts are given", async () => {
-    const { backfillFleetEventsUrl } = await import("./events");
+    const { backfillFleetEventsUrl } = await import("./events-types");
     expect(backfillFleetEventsUrl("ws_1", "z_1")).toBe(
       "/live/v1/workspaces/ws_1/fleets/z_1/events",
     );
   });
 
   it("appends since/limit through the shared query builder", async () => {
-    const { backfillFleetEventsUrl } = await import("./events");
+    const { backfillFleetEventsUrl } = await import("./events-types");
     expect(
       backfillFleetEventsUrl("ws_1", "z_1", { since: "2026-05-15T18:29:58Z", limit: 200 }),
     ).toBe(
@@ -163,14 +163,14 @@ describe("backfillFleetEventsUrl", () => {
   });
 
   it("appends a keyset cursor through the shared query builder", async () => {
-    const { backfillFleetEventsUrl } = await import("./events");
+    const { backfillFleetEventsUrl } = await import("./events-types");
     expect(backfillFleetEventsUrl("ws_1", "z_1", { cursor: "abc123" })).toBe(
       "/live/v1/workspaces/ws_1/fleets/z_1/events?cursor=abc123",
     );
   });
 
   it("encodes path segments so a slashy id can not escape the URL", async () => {
-    const { backfillFleetEventsUrl } = await import("./events");
+    const { backfillFleetEventsUrl } = await import("./events-types");
     expect(backfillFleetEventsUrl("ws/1", "z 2")).toBe(
       "/live/v1/workspaces/ws%2F1/fleets/z%202/events",
     );

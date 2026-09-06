@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { LibraryModel } from "@/lib/api/model_library";
+import type { LibraryModel } from "@/lib/api/model-library-types";
 import { getModelLibraryAction } from "../actions";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 

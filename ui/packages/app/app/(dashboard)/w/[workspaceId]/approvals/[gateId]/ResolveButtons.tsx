@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { Alert, Button, Label, Textarea } from "@agentsfleet/design-system";
 
 import { approveApprovalAction, denyApprovalAction } from "../actions";
-import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals";
+import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals-types";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 import { EVENTS } from "@/lib/analytics/events";

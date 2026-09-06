@@ -1,65 +1,48 @@
+import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Schedule from "effect/Schedule";
 import { ApiError } from "./errors";
-import { backoffDelay, defaultSleep, sleepUnlessAborted } from "./retry-backoff";
+import { FAILURE_KIND, PROVENANCE, classifyFailure, type ClassifiedFailure, type FailureKind } from "./retry-classify";
+import {
+  resolveRetryConfig,
+  type AttemptInfo,
+  type ResolvedRetry,
+  type RetryOptions,
+  type RetryReason,
+} from "./retry-config";
 
-// Part of this module's public surface; it lives beside the sleep it pairs with.
-export { backoffDelay };
+// The options and their defaults are the policy's surface too. The status
+// facts (`HTTP_STATUS_REQUEST_TIMEOUT`, `RETRY_CODE_TIMEOUT`,
+// `isDefiniteRefusal`) live in `./errors`, which every importer reads directly:
+// this module's dependency is server-only.
+export { RETRY_DEFAULTS, type AttemptInfo, type RetryInfo, type RetryOptions, type RetryReason } from "./retry-config";
 
 /**
- * The retry policy mirroring `cli/src/lib/http-retry.ts`'s
- * `apiRequestWithRetry`. Same retryable-status set, same backoff
- * math, same Retry-After honoring, same `onAttempt`/`onRetry` hook
- * surface — so dashboard + CLI behaviour stays consistent for the
- * operator. Bounds + defaults are pinned identical to keep one mental
- * model. One deliberate difference: the dashboard's idempotency gate
- * also refuses to replay a non-idempotent method after a client-side
- * timeout, because every dashboard request carries one by default
- * (`client.ts`) and a steer POST the server did process must not become
- * two events. The CLI's gate (`cli/src/lib/http-retry.ts`) does not
- * close that case yet; the shared fixture table that proves both
- * runtimes from one source is the follow-up that reconciles them.
+ * The retry policy behind every dashboard request: a declared schedule with a
+ * total deadline, not a loop. One attempt runs under `Effect.retry` and a
+ * composed `Schedule` — exponential growth, capped, drawn with full jitter,
+ * bounded by an attempt ceiling and by `deadlineMs`, and gated by what the
+ * failure was and where it happened (`retry-classify.ts`). A `Retry-After`
+ * within `retryAfterCapMs` is the sleep; one beyond it fails the request at
+ * once. The caller's `signal` interrupts the schedule wherever it is.
  *
  * Policy only: this module never imports the transport. `client.ts` owns the
  * single attempt and wraps it with `runWithRetry`, so the dependency points
- * one way and neither side can retry the other's retry.
+ * one way and neither side can retry the other's retry. The CLI keeps its own
+ * loop (`cli/src/lib/http-retry.ts`); `samples/fixtures/retry-policy/` is the
+ * table both runtimes are proven against.
  */
 
-const DEFAULT_MAX_ATTEMPTS = 3;
-const DEFAULT_BASE_DELAY_MS = 250;
-const DEFAULT_CAP_DELAY_MS = 2000;
-const MAX_ATTEMPTS_HARD_CAP = 10;
+/** What a request cancelled before its first attempt surfaces as when the caller named no cancel class and the signal's reason is not an `Error`. */
+export const RETRY_CODE_CANCELLED = "CANCELLED";
 
 /**
- * The status a client-side timeout is reported under. 408 is the closest
- * standard meaning (the request did not complete in time) and sits in the
- * transient set below, so the transport's timeout and a server's 408 are one
- * class to the classifier. Declared here, beside the set that reads it, so the
- * transport imports the number instead of re-spelling it.
- */
-export const HTTP_STATUS_REQUEST_TIMEOUT = 408;
-
-/** Where the client-error class begins and ends. */
-const HTTP_STATUS_CLIENT_ERROR_FLOOR = 400;
-const HTTP_STATUS_SERVER_ERROR_FLOOR = 500;
-
-/**
- * Whether a failed write's outcome is settled by its status: a client-class
- * refusal other than a timeout means the server saw the request and said no,
- * so nothing changed. Anything else — no status at all (a transport fault),
- * a timeout, a server or gateway error — leaves the server's state in doubt,
- * and a surface that painted the write optimistically re-reads before it
- * trusts its own rollback.
- */
-export function isDefiniteRefusal(status: number | undefined): boolean {
-  if (status === undefined || status === HTTP_STATUS_REQUEST_TIMEOUT) return false;
-  return status >= HTTP_STATUS_CLIENT_ERROR_FLOOR && status < HTTP_STATUS_SERVER_ERROR_FLOOR;
-}
-
-const RETRYABLE_STATUSES = new Set<number>([HTTP_STATUS_REQUEST_TIMEOUT, 425, 429, 502, 503, 504]);
-
-/**
- * The HTTP methods the policy and the transport both name: the idempotency
- * gate below reads them, and `client.ts` builds its default retry set from
- * them. One declaration so the two sets can never disagree on a spelling.
+ * The HTTP methods the policy and the transport both name: the replay gate
+ * below reads them, and `client.ts` builds its default retry set from them.
+ * One declaration so the two sets can never disagree on a spelling.
  */
 export const HTTP_METHOD = {
   GET: "GET",
@@ -69,97 +52,7 @@ export const HTTP_METHOD = {
 } as const;
 
 /**
- * The `ApiError.code` a client-side request timeout carries — the retry
- * layer's own class, distinct from any `UZ-` wire code. The classifier and the
- * transport both read it, so it is declared once here.
- */
-export const RETRY_CODE_TIMEOUT = "TIMEOUT";
-const RETRY_CODE_CONFIG_INVALID = "CONFIG_INVALID";
-
-export type RetryReason =
-  | "timeout"
-  | "429"
-  | "5xx"
-  | "network";
-
-export type AttemptInfo = {
-  attempt: number;
-  status: number | undefined;
-  durationMs: number;
-  retryCount: number;
-  terminal: boolean;
-};
-
-export type RetryInfo = {
-  attempt: number;
-  status: number | undefined;
-  durationMs: number;
-  reason: RetryReason;
-};
-
-export type RetryOptions = {
-  maxAttempts?: number;
-  baseDelayMs?: number;
-  capDelayMs?: number;
-  onAttempt?: (info: AttemptInfo) => void;
-  onRetry?: (info: RetryInfo) => void;
-  /**
-   * Test seam: replaces wall-clock sleep so tests don't tick real time. A
-   * seam that ignores `signal` still ends early — the loop races it against
-   * the abort — but only the default sleep can also clear its timer.
-   */
-  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
-  /** Test seam: replaces `Math.random` so jitter is deterministic. */
-  randomFn?: () => number;
-  /**
-   * The caller's cancellation. Once it is aborted the loop stops: no further
-   * attempt is made and a backoff already in progress ends early, so a page
-   * the operator has left never holds a server render for its retry schedule.
-   */
-  signal?: AbortSignal;
-  /**
-   * What the loop throws when `signal` aborts during a backoff — the caller's
-   * own cancel class, so a cancel never surfaces as the transient error that
-   * preceded it. Defaults to the signal's abort reason.
-   */
-  cancelled?: () => Error;
-};
-
-export function classifyRetryable(err: unknown): RetryReason | null {
-  if (err instanceof ApiError) {
-    if (err.code === RETRY_CODE_TIMEOUT) return "timeout";
-    if (RETRYABLE_STATUSES.has(err.status)) {
-      if (err.status === 429) return "429";
-      return "5xx";
-    }
-    return null;
-  }
-  if (
-    err instanceof TypeError &&
-    typeof err.message === "string" &&
-    err.message.toLowerCase().includes("fetch failed")
-  ) {
-    return "network";
-  }
-  // Node-shaped network errors (server-side rendering path).
-  const maybe = err as { code?: string } | null;
-  if (maybe && typeof maybe.code === "string") {
-    if (
-      maybe.code === "ECONNRESET" ||
-      maybe.code === "ETIMEDOUT" ||
-      maybe.code === "ENOTFOUND"
-    ) {
-      return "network";
-    }
-  }
-  return null;
-}
-
-/**
- * HTTP methods safe to replay. A genuine server 5xx (>=500) may have been
- * processed upstream before the gateway error surfaced, and a request that
- * timed out client-side may equally have reached the server, so replaying a
- * non-idempotent method (POST/PATCH) on either risks a duplicate mutation.
+ * HTTP methods safe to replay after a failure the server may have processed.
  * Mirrors the Supabase CLI's `isRetryableResponse` idempotency gate.
  */
 export function isIdempotentMethod(method: string): boolean {
@@ -169,62 +62,29 @@ export function isIdempotentMethod(method: string): boolean {
   );
 }
 
-// The error a cancel during backoff surfaces as: the caller's own class when
-// it named one, else the signal's reason, else the error already in hand.
-function cancelledError(cfg: ResolvedRetry, lastErr: unknown): unknown {
-  if (cfg.cancelled) return cfg.cancelled();
-  const reason: unknown = cfg.signal?.reason;
-  return reason instanceof Error ? reason : lastErr;
-}
-
-function isNoRetryEnv(): boolean {
-  // `process.env` is defined in every runtime this ships to (Node on the
-  // server, the webpack/Edge shim in the browser); a non-public var simply
-  // reads back undefined off-server, so no `typeof process` guard is needed.
-  const v = process.env.AGENTSFLEET_NO_RETRY;
-  return v === "1" || v === "true";
-}
-
-type ResolvedRetry = {
-  maxAttempts: number;
-  baseDelayMs: number;
-  capDelayMs: number;
-  sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
-  randomFn: () => number;
-  onAttempt?: (info: AttemptInfo) => void;
-  onRetry?: (info: RetryInfo) => void;
-  signal?: AbortSignal;
-  cancelled?: () => Error;
+const RETRY_REASON: Readonly<Record<FailureKind, RetryReason>> = {
+  [FAILURE_KIND.TIMEOUT]: "timeout",
+  [FAILURE_KIND.EARLY]: "425",
+  [FAILURE_KIND.RATE]: "429",
+  [FAILURE_KIND.SERVER]: "5xx",
+  [FAILURE_KIND.NETWORK]: "network",
+  [FAILURE_KIND.FATAL]: "fatal",
 };
 
-function resolveRetryConfig(options: RetryOptions): ResolvedRetry {
-  const maxAttemptsRaw = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  if (
-    !Number.isInteger(maxAttemptsRaw) ||
-    maxAttemptsRaw < 1 ||
-    maxAttemptsRaw > MAX_ATTEMPTS_HARD_CAP
-  ) {
-    throw new ApiError(
-      `retry.maxAttempts must be an integer in 1..${MAX_ATTEMPTS_HARD_CAP}`,
-      0,
-      RETRY_CODE_CONFIG_INVALID,
-    );
-  }
-  return {
-    maxAttempts: isNoRetryEnv() ? 1 : maxAttemptsRaw,
-    baseDelayMs: options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
-    capDelayMs: options.capDelayMs ?? DEFAULT_CAP_DELAY_MS,
-    sleep: options.sleepImpl ?? defaultSleep,
-    randomFn: options.randomFn ?? Math.random,
-    onAttempt: options.onAttempt,
-    onRetry: options.onRetry,
-    signal: options.signal,
-    cancelled: options.cancelled,
-  };
+/** One attempt that threw, with what the policy needs to report it. */
+class FailedAttempt {
+  constructor(
+    readonly failure: ClassifiedFailure,
+    readonly attempt: number,
+    readonly durationMs: number,
+  ) {}
 }
 
-/** Terminal `onAttempt` telemetry for a finished attempt — success (status
- * 200) or the failing status on the last try. */
+type Succeeded<T> = { value: T; durationMs: number };
+
+/** The run's failure before any attempt has failed: none, with nothing in hand. */
+const NO_FAILURE = new FailedAttempt(classifyFailure(undefined, false), 0, 0);
+
 function emitTerminalAttempt(
   onAttempt: ((info: AttemptInfo) => void) | undefined,
   attempt: number,
@@ -236,102 +96,191 @@ function emitTerminalAttempt(
   }
 }
 
-type AttemptContext = {
-  attempt: number;
-  status: number | undefined;
-  durationMs: number;
-  method: string;
-};
-
-/**
- * True when a failed attempt may already have been processed by the server,
- * so a non-idempotent method must not be sent again: a genuine server 5xx
- * (the gateway answered after the handler may have run) and a client-side
- * timeout (the request was on the wire; the answer is what never came). A
- * server 408/425/429 is the server saying it did NOT process the request, so
- * those stay replayable for every method.
- */
-function mayHaveBeenProcessed(reason: RetryReason, status: number | undefined): boolean {
-  if (reason === "timeout") return true;
-  return reason === "5xx" && status !== undefined && status >= HTTP_STATUS_SERVER_ERROR_FLOOR;
+// The error a cancel surfaces as: the caller's own class when it named one,
+// else the signal's reason, else the failure already in hand — and, for a
+// request cancelled before it ever ran, the policy's own cancel code.
+function cancelledError<T>(cfg: ResolvedRetry<T>, inHand: unknown): unknown {
+  if (cfg.cancelled) return cfg.cancelled();
+  const reason: unknown = cfg.signal?.reason;
+  if (reason instanceof Error) return reason;
+  return inHand === undefined ? new ApiError("request cancelled before its first attempt", 0, RETRY_CODE_CANCELLED) : inHand;
 }
 
-/** Decides whether a failed attempt retries. Returns the backoff delay (and
- * fires `onRetry`) when it should, else null. The idempotency gate blocks
- * replay of a non-idempotent method whenever the server may have processed
- * the attempt; a caller that has already cancelled gets no further attempt,
- * whatever the failure class. */
-function planRetry(
-  err: unknown,
-  cfg: ResolvedRetry,
-  ctx: AttemptContext,
-): { delayMs: number } | null {
-  if (cfg.signal?.aborted) return null;
-  const reason = classifyRetryable(err);
-  if (reason === null) return null;
-  const unsafeReplay = mayHaveBeenProcessed(reason, ctx.status) && !isIdempotentMethod(ctx.method);
-  if (unsafeReplay || ctx.attempt >= cfg.maxAttempts) return null;
-  if (cfg.onRetry) {
-    cfg.onRetry({ attempt: ctx.attempt, status: ctx.status, durationMs: ctx.durationMs, reason });
+// A clock whose sleep is the run's. Everything else — the time the schedule
+// measures elapsed by — stays the runtime's, inherited by prototype rather
+// than copied, so no member is re-spelled here.
+function clockSleepingWith(base: Clock.Clock, sleep: (duration: Duration.Duration) => Effect.Effect<void>): Clock.Clock {
+  const clock: Clock.Clock = Object.create(base);
+  clock.sleep = sleep;
+  return clock;
+}
+
+/** One request's run under the policy: the attempts it made and what they threw. */
+class RetryRun<T> {
+  readonly #cfg: ResolvedRetry<T>;
+  readonly #method: string;
+  readonly #attempt: () => Promise<T>;
+  readonly #startedAt = Date.now();
+  #attemptNumber = 0;
+  #last: FailedAttempt = NO_FAILURE;
+  #answered: Succeeded<T> | undefined;
+
+  constructor(cfg: ResolvedRetry<T>, method: string, attempt: () => Promise<T>) {
+    this.#cfg = cfg;
+    this.#method = method;
+    this.#attempt = attempt;
   }
-  const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
-  const delayMs = backoffDelay({
-    attempt: ctx.attempt,
-    baseDelayMs: cfg.baseDelayMs,
-    capDelayMs: cfg.capDelayMs,
-    retryAfterMs,
-    randomFn: cfg.randomFn,
-  });
-  return { delayMs };
+
+  #attemptOnce(): Effect.Effect<Succeeded<T>, FailedAttempt> {
+    return Effect.suspend(() => {
+      this.#attemptNumber += 1;
+      const attemptStartedAt = Date.now();
+      return Effect.tryPromise({
+        try: () => this.#attempt(),
+        catch: (cause) => {
+          this.#last = new FailedAttempt(classifyFailure(cause, false), this.#attemptNumber, Date.now() - attemptStartedAt);
+          return this.#last;
+        },
+      }).pipe(
+        Effect.map((value) => {
+          this.#answered = { value, durationMs: Date.now() - attemptStartedAt };
+          return this.#answered;
+        }),
+      );
+    });
+  }
+
+  #withinRetryAfterCap(failure: ClassifiedFailure): boolean {
+    return failure.retryAfterMs === null || failure.retryAfterMs <= this.#cfg.retryAfterCapMs;
+  }
+
+  #mayRetry({ failure }: FailedAttempt): boolean {
+    return (
+      !this.#cfg.signal?.aborted &&
+      failure.kind !== FAILURE_KIND.FATAL &&
+      this.#withinRetryAfterCap(failure) &&
+      (failure.provenance !== PROVENANCE.POST_SEND || isIdempotentMethod(this.#method))
+    );
+  }
+
+  // The deadline bounds the sleep, not only the decision: a wait that would
+  // end past it is never taken, so no retry begins after `deadlineMs`.
+  #withinDeadline(delay: Duration.Duration): boolean {
+    return Date.now() - this.#startedAt + Duration.toMillis(delay) < this.#cfg.deadlineMs;
+  }
+
+  // A `Retry-After` the server asked for is the sleep, exactly. Otherwise the
+  // exponential delay is capped and drawn with full jitter in [0, delay], so a
+  // herd of renders that failed together does not retry together.
+  #delayFor({ failure }: FailedAttempt, computed: Duration.Duration): Effect.Effect<Duration.Duration> {
+    return Effect.sync(() => {
+      if (failure.retryAfterMs !== null && failure.retryAfterMs > 0) return Duration.millis(failure.retryAfterMs);
+      const capped = Math.min(Duration.toMillis(computed), this.#cfg.capDelayMs);
+      return Duration.millis(this.#cfg.randomFn() * capped);
+    });
+  }
+
+  #emitRetry(failed: FailedAttempt, delay: Duration.Duration): void {
+    if (this.#cfg.onRetry) {
+      this.#cfg.onRetry({
+        attempt: failed.attempt,
+        status: failed.failure.status,
+        durationMs: failed.durationMs,
+        reason: RETRY_REASON[failed.failure.kind],
+        delayMs: Duration.toMillis(delay),
+      });
+    }
+  }
+
+  // The gate runs before the ceiling, the ceiling before the delay, the
+  // deadline over the delay chosen, and telemetry last: a step that any of
+  // them ends never reports a retry.
+  #schedule() {
+    return Schedule.exponential(Duration.millis(this.#cfg.baseDelayMs)).pipe(
+      Schedule.setInputType<FailedAttempt>(),
+      Schedule.while(({ input }) => this.#mayRetry(input)),
+      Schedule.upTo({ times: this.#cfg.maxAttempts - 1 }),
+      Schedule.modifyDelay(({ input, duration }) => this.#delayFor(input, duration)),
+      Schedule.while(({ duration }) => this.#withinDeadline(duration)),
+      Schedule.tap(({ input, duration }) => Effect.sync(() => this.#emitRetry(input, duration))),
+    );
+  }
+
+  // The runtime's own sleep, or the caller's seam. A seam sleep in progress
+  // is abandoned, not awaited, when the run is interrupted.
+  #sleep(base: Clock.Clock, duration: Duration.Duration): Effect.Effect<void> {
+    const seam = this.#cfg.sleep;
+    return seam
+      ? Effect.callback<void>((resume) => {
+          seam(Duration.toMillis(duration), this.#cfg.signal).then(
+            () => resume(Effect.void),
+            (cause: unknown) => resume(Effect.die(cause)),
+          );
+        })
+      : base.sleep(duration);
+  }
+
+  // Only a sleep may be interrupted. An abort that lands mid-attempt lets the
+  // attempt settle and surfaces what it threw — the transport is bound to the
+  // same signal and reports the cancel itself — and the gate then refuses the
+  // next attempt. An abort that lands in a sleep ends the run there.
+  #program(): Effect.Effect<Succeeded<T>, FailedAttempt> {
+    const retried = Effect.retry(this.#attemptOnce(), this.#schedule());
+    return Effect.uninterruptibleMask((restore) =>
+      Effect.clockWith((base) =>
+        Effect.provideService(
+          retried,
+          Clock.Clock,
+          clockSleepingWith(base, (duration) => restore(this.#sleep(base, duration))),
+        ),
+      ),
+    );
+  }
+
+  async run(): Promise<T> {
+    const cfg = this.#cfg;
+    // A caller that has already left gets no attempt at all.
+    if (cfg.signal?.aborted) throw cancelledError(cfg, undefined);
+    const exit = await Effect.runPromiseExit(this.#program(), { signal: cfg.signal });
+    if (Exit.isSuccess(exit)) {
+      emitTerminalAttempt(cfg.onAttempt, this.#attemptNumber, cfg.statusOf?.(exit.value.value), exit.value.durationMs);
+      return exit.value.value;
+    }
+    if (Cause.hasInterruptsOnly(exit.cause)) {
+      // A cancel that landed while the attempt was answering came too late to
+      // matter: the answer is the caller's.
+      const answered = this.#answered;
+      if (answered) {
+        emitTerminalAttempt(cfg.onAttempt, this.#attemptNumber, cfg.statusOf?.(answered.value), answered.durationMs);
+        return answered.value;
+      }
+      // Otherwise the cancel landed in a backoff, which only follows a failure.
+      const last = this.#last;
+      emitTerminalAttempt(cfg.onAttempt, last.attempt, last.failure.status, last.durationMs);
+      throw cancelledError(cfg, last.failure.cause);
+    }
+    const error = Cause.squash(exit.cause);
+    if (error instanceof FailedAttempt) {
+      emitTerminalAttempt(cfg.onAttempt, error.attempt, error.failure.status, error.durationMs);
+      throw error.failure.cause;
+    }
+    // A defect: a telemetry hook that threw. It surfaces as its own error.
+    throw error;
+  }
 }
 
 /**
- * Runs one attempt under the policy. `method` decides the replay gate — a
- * POST or PATCH that may have reached the server (a 5xx, a client timeout) is
- * never replayed. On success the attempt's value is returned as is. On a
- * non-retryable failure (or after `maxAttempts` exhausted) the last error is
- * re-thrown.
+ * Runs one attempt under the policy. `method` decides the replay gate: a
+ * non-idempotent method is sent again only when the failure provably happened
+ * before the request left, or when the server answered without processing it.
+ * On success the attempt's value is returned as is. When the schedule ends —
+ * a fatal failure, the attempt ceiling, the deadline, a `Retry-After` beyond
+ * the cap — the last error is re-thrown as the attempt threw it.
  */
 export async function runWithRetry<T>(
   attempt: () => Promise<T>,
   method: string,
-  options: RetryOptions = {},
+  options: RetryOptions<T> = {},
 ): Promise<T> {
-  const cfg = resolveRetryConfig(options);
-  // `planRetry` owns the ceiling (`attempt < maxAttempts`); on the final
-  // attempt it returns null, so the loop always exits via return (success)
-  // or throw (failure) — no normal fall-through after the loop.
-  let attemptNumber = 0;
-  for (;;) {
-    attemptNumber += 1;
-    const startedAt = Date.now();
-    try {
-      const result = await attempt();
-      emitTerminalAttempt(cfg.onAttempt, attemptNumber, 200, Date.now() - startedAt);
-      return result;
-    } catch (err) {
-      const durationMs = Date.now() - startedAt;
-      const status = err instanceof ApiError ? err.status : undefined;
-      const step = planRetry(err, cfg, { attempt: attemptNumber, status, durationMs, method });
-      if (step) {
-        await sleepUnlessAborted(cfg.sleep, step.delayMs, cfg.signal);
-        if (!cfg.signal?.aborted) continue;
-        // A cancel that landed during the backoff ends the loop here, as the
-        // caller's cancel — the transient error in hand is not what happened,
-        // and the next attempt would only fail against an aborted signal.
-        emitTerminalAttempt(cfg.onAttempt, attemptNumber, status, durationMs);
-        throw cancelledError(cfg, err);
-      }
-      emitTerminalAttempt(cfg.onAttempt, attemptNumber, status, durationMs);
-      throw err;
-    }
-  }
+  return new RetryRun(resolveRetryConfig(options), method, attempt).run();
 }
-
-export const RETRY_DEFAULTS = {
-  maxAttempts: DEFAULT_MAX_ATTEMPTS,
-  baseDelayMs: DEFAULT_BASE_DELAY_MS,
-  capDelayMs: DEFAULT_CAP_DELAY_MS,
-  hardCap: MAX_ATTEMPTS_HARD_CAP,
-  statuses: Array.from(RETRYABLE_STATUSES) as readonly number[],
-};

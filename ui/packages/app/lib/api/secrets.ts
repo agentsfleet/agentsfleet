@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { SECRET_KIND } from "./secrets-types";
 
 // Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
@@ -6,18 +7,6 @@ import { request } from "./client";
 // `api_key` (see rustd/crates/afd_vault/src/projection.rs, and the sum type
 // it feeds in rustd/crates/afd_vault/src/classified.rs). The client reads
 // that projection instead of guessing what each secret is.
-
-// Secret kinds, keyed off the server's `kind` discriminator. The string
-// values are verbatim with `Kind::as_str` in that projection.rs
-// (RULE UFS — cross-runtime parity); changing one without the other
-// silently breaks classification.
-export const SECRET_KIND = {
-  provider_key: "provider_key",
-  custom_endpoint: "custom_endpoint",
-  custom_secret: "custom_secret",
-} as const;
-
-export type SecretKind = (typeof SECRET_KIND)[keyof typeof SECRET_KIND];
 
 // Common descriptors every secret carries regardless of kind. Display-only
 // surfaces (the secret list, the vault table) read just these.

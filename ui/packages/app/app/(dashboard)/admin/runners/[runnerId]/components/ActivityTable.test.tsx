@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { formatTimeAbsolute, TooltipProvider } from "@agentsfleet/design-system";
-import {
-  RUNNER_LAST_SEEN_NEVER,
-  RUNNER_LIFECYCLE_EVENT_TYPES,
-  type RunnerEventItem,
-} from "@/lib/api/runners";
+import { type RunnerEventItem } from "@/lib/api/runners";
+import { RUNNER_LAST_SEEN_NEVER, RUNNER_LIFECYCLE_EVENT_TYPES } from "@/lib/api/runners-types";
 
 // The wrapper stands in for a real ancestor, not a missing one: the app mounts
 // exactly one TooltipProvider in `app/layout.tsx`, above every route group, and

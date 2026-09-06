@@ -10,7 +10,8 @@ import {
 } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
-import { APPROVALS_PAGE_LIMIT, listApprovals } from "@/lib/api/approvals";
+import { listApprovals } from "@/lib/api/approvals";
+import { APPROVALS_PAGE_LIMIT } from "@/lib/api/approvals-types";
 import ApprovalsList from "./components/ApprovalsList";
 
 export const dynamic = "force-dynamic";

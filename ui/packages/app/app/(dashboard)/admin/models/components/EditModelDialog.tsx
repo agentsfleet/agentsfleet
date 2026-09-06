@@ -21,12 +21,8 @@ import {
   Input,
   Spinner,
 } from "@agentsfleet/design-system";
-import {
-  type AdminModel,
-  type ModelRatesInput,
-  nanosToUsdPerMtok,
-  usdPerMtokToNanos,
-} from "@/lib/api/admin_model_library";
+import { type AdminModel, type ModelRatesInput } from "@/lib/api/admin_model_library";
+import { nanosToUsdPerMtok, usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
 import { presentErrorString } from "@/lib/errors";
 import { updateAdminModelAction } from "../actions";
 

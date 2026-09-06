@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AssignedPolicy, RunnerDetail, SelftestReport } from "./runners";
+import type { RunnerDetail, SelftestReport } from "./runners";
+import type { AssignedPolicy } from "./runners-types";
 
 // The self-test slice of the runners client — the PATCH that records a request
 // and the staleness rule the detail page renders from. Split from

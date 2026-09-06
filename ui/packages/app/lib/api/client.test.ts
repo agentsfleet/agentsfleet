@@ -228,6 +228,27 @@ describe("test_library_next_cancel_case — a navigation abort", () => {
   });
 });
 
+describe("a body that fails to read", () => {
+  it("surfaces a failure that is neither a broken stream nor bad JSON, unretried", async () => {
+    // Not an abort, not a timeout, not the SyntaxError a non-JSON body throws:
+    // the reader has nothing to say about it, so the caller gets the error it
+    // was, and the policy — which reads it as fatal — makes no second attempt.
+    const readFailure = new Error("body stream closed early");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers(),
+      json: async () => {
+        throw readFailure;
+      },
+    });
+
+    await expect(request("/v1/models", {}, "tok")).rejects.toBe(readFailure);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("test_library_trace_and_stage_schema — traceparent propagation", () => {
   it("sends a well-formed W3C traceparent the server will accept", async () => {
     const spy = fetchMock;
@@ -244,7 +265,9 @@ describe("test_library_trace_and_stage_schema — traceparent propagation", () =
 
   it("mints a fresh trace per request rather than reusing one", async () => {
     const spy = fetchMock;
-    spy.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    // One Response per call, as fetch returns: a body reads once, and the
+    // transport reads every body it is handed.
+    spy.mockImplementation(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
     await request("/v1/models", {}, "tok");
     await request("/v1/models", {}, "tok");

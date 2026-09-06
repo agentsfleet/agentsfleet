@@ -9,22 +9,6 @@ import { request } from "./client";
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
 
-// Rates are stored as integer nanos per million tokens (1 nano = 1e-9 USD) so the
-// billing math stays in integers. The UI presents $/1M tokens — the conversion
-// lives here, in one place, so every catalogue view and form agrees.
-export const NANOS_PER_USD = 1_000_000_000;
-export function nanosToUsdPerMtok(nanos: number): number {
-  return nanos / NANOS_PER_USD;
-}
-export function usdPerMtokToNanos(usd: number): number {
-  return Math.round(usd * NANOS_PER_USD);
-}
-
-// The provider id that opts a default into a custom OpenAI-compatible endpoint —
-// mirrors OPENAI_COMPATIBLE_PROVIDER in tenant_provider_resolver.zig. Only this
-// provider may carry a base_url; named providers must omit it.
-export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible";
-
 export interface AdminModel {
   id: string;
   provider: string;

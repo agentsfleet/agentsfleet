@@ -1,4 +1,5 @@
-import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import {
   ACTOR,
   EVENT_STATUS,

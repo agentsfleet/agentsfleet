@@ -1,16 +1,8 @@
 import { request } from "./client";
+import type { PreferenceKey } from "./preferences-types";
 
 // Client for GET /v1/workspaces/{ws}/preferences and
-// PUT …/preferences/{pref_key}. Mirrors the server registry in
-// rustd/crates/afd_tenant/src/preference/mod.rs — the keys ARE the wire
-// strings, so this const and that `PrefKey` must stay in lockstep.
-export const PREFERENCE_KEY = {
-  DISMISSED: "getting_started_dismissed",
-  COLLAPSED: "getting_started_collapsed",
-  CLI_TICKED: "getting_started_cli_ticked",
-} as const;
-export type PreferenceKey = (typeof PREFERENCE_KEY)[keyof typeof PREFERENCE_KEY];
-
+// PUT …/preferences/{pref_key}; the keys live in preferences-types.ts.
 // The whole preference bag — an object keyed by preference key. Values are the
 // opaque JSON the client wrote; onboarding only ever writes booleans.
 export type PreferenceBag = Record<string, unknown>;

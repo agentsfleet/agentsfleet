@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, RequestCancelledError } from "./errors";
+import { ApiError, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
 import { DEFAULT_REQUEST_TIMEOUT_MS, request } from "./client";
-import { RETRY_CODE_TIMEOUT, RETRY_DEFAULTS } from "./retry";
+import { RETRY_DEFAULTS } from "./retry";
 import {
   readWorkspaceFetchAudit,
   resetWorkspaceFetchAudit,

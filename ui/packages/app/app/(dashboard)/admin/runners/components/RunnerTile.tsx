@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge, Card, cn, Time } from "@agentsfleet/design-system";
-import { LEASE_OUTCOME, type RunnerListItem } from "@/lib/api/runners";
+import { type RunnerListItem } from "@/lib/api/runners";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { runnerPath } from "@/lib/runner-routes";
 import {
   IDLE_SENTENCE,

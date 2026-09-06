@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "./errors";
+import { ApiError, RETRY_CODE_TIMEOUT } from "./errors";
 import { requestWithRetry } from "./client";
-import { RETRY_CODE_TIMEOUT } from "./retry";
 
 // `requestWithRetry` is the explicit opt-in: the caller owns its replay
 // decision and passes the policy options. These cases drive it through the
@@ -55,7 +54,26 @@ describe("requestWithRetry — happy path", () => {
       attempt: 1,
       terminal: true,
       retryCount: 0,
+      status: 200,
     });
+  });
+
+  it("the terminal onAttempt carries the status the server answered with", async () => {
+    for (const status of [201, 204]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValueOnce(jsonResponse(status, { id: "x" }));
+      const onAttempt = vi.fn();
+      await requestWithRetry("/v1/x", { method: "POST" }, "tok", { onAttempt, sleepImpl: NOOP_SLEEP });
+      expect(onAttempt.mock.calls[0]?.[0]).toMatchObject({ status, terminal: true });
+    }
+  });
+
+  it("a signal passed through the policy's options also bounds the fetch", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
+    const controller = new AbortController();
+    await requestWithRetry("/v1/x", { method: "GET" }, "tok", { signal: controller.signal, sleepImpl: NOOP_SLEEP });
+    const sent = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(sent?.signal).toBe(controller.signal);
   });
 });
 

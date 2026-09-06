@@ -10,15 +10,8 @@ import {
   PAGINATION_KIND,
   Time,
 } from "@agentsfleet/design-system";
-import {
-  RUNNER_LAST_SEEN_NEVER,
-  RUNNER_LIFECYCLE_EVENT_TYPES,
-  SANDBOX_TIER_LABELS,
-  type RunnerEventItem,
-  type RunnerEventsResponse,
-  type RunnerEventType,
-  type SandboxTier,
-} from "@/lib/api/runners";
+import { type RunnerEventItem, type RunnerEventsResponse } from "@/lib/api/runners";
+import { RUNNER_LAST_SEEN_NEVER, RUNNER_LIFECYCLE_EVENT_TYPES, SANDBOX_TIER_LABELS, type RunnerEventType, type SandboxTier } from "@/lib/api/runners-types";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import {

@@ -6,8 +6,8 @@ import {
   IconAction,
 } from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { type LibraryModel, providerLabel } from "@/lib/api/model_library";
-import { nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
+import { type LibraryModel, providerLabel } from "@/lib/api/model-library-types";
+import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
 // Presentational cells + row actions for ModelsRegistryTable, split out so the

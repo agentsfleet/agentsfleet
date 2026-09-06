@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { LibraryModel } from "@/lib/api/model_library";
+import type { LibraryModel } from "@/lib/api/model-library-types";
 import {
   CATALOGUE_STATUS,
   type CatalogueStatus,

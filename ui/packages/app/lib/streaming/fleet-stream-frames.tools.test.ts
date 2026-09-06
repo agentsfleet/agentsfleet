@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
+import { type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";

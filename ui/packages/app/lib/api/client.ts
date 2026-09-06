@@ -1,12 +1,7 @@
-import { ApiError, RequestCancelledError } from "./errors";
+import { ApiError, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
-import {
-  HTTP_METHOD,
-  HTTP_STATUS_REQUEST_TIMEOUT,
-  RETRY_CODE_TIMEOUT,
-  runWithRetry,
-  type RetryOptions,
-} from "./retry";
+import { HTTP_METHOD, runWithRetry, type RetryOptions } from "./retry";
+import { classifyFailure } from "./retry-classify";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
 // No fallback on purpose: a silent api-dev default once pointed env-less
@@ -145,15 +140,18 @@ type ProblemBody = {
 
 // The signal that bounds the fetch bounds the body stream too, so a cancel or
 // a timeout can land here as easily as before the headers arrived — and must
-// mean the same thing, never a success body typed as `T`. An error body that
-// is not JSON (an intermediary's HTML 502 page) still needs a status to
-// report, so that case keeps the status text as its detail.
+// mean the same thing, never a success body typed as `T`. A body that is not
+// JSON (an intermediary's HTML 502 page) still needs a status to report, so
+// that case keeps the status text as its detail. A stream that broke before
+// the body ended is neither: it is the socket failure it was, for the policy
+// to classify with the headers already in hand.
 async function readBody(res: Response, path: string): Promise<unknown> {
   try {
     return await res.json();
   } catch (cause) {
     if (isTransportInterrupt(cause)) throw classifyTransportFailure(cause, path);
-    return { detail: res.statusText };
+    if (cause instanceof SyntaxError) return { detail: res.statusText };
+    throw cause;
   }
 }
 
@@ -196,7 +194,8 @@ export async function request<T>(
 // Reads (and the one replay-safe write, PUT) ride the retry policy by default.
 // Every other write keeps one attempt unless its caller opts in through
 // `requestWithRetry`: a timed-out POST may well have been processed, and
-// replaying it is the caller's decision, not the transport's.
+// replaying it is the caller's decision, not the transport's. The single
+// attempt still runs under the policy so a cancel lands the same way.
 export async function requestWithEtag<T>(
   path: string,
   init: RequestInit,
@@ -204,10 +203,13 @@ export async function requestWithEtag<T>(
 ): Promise<{ data: T; etag: string | null }> {
   const method = methodOf(init);
   recordAudit(path, method);
-  const attempt = () => attemptWithEtag<T>(path, init, token);
-  return DEFAULT_RETRY_METHODS.has(method)
-    ? runWithRetry(attempt, method, { signal: init.signal ?? undefined, cancelled: cancelledFor(path) })
-    : attempt();
+  const { data, etag } = await runWithRetry(classifiedAttempt<T>(path, init, token), method, {
+    ...(DEFAULT_RETRY_METHODS.has(method) ? {} : { maxAttempts: 1 }),
+    signal: init.signal ?? undefined,
+    cancelled: cancelledFor(path),
+    statusOf: statusOfAttempt,
+  });
+  return { data, etag };
 }
 
 // What the policy throws when the caller's signal aborts between attempts:
@@ -231,11 +233,16 @@ export async function requestWithRetry<T>(
 ): Promise<T> {
   const method = methodOf(init);
   recordAudit(path, method);
-  return runWithRetry(async () => (await attemptWithEtag<T>(path, init, token)).data, method, {
-    signal: init.signal ?? undefined,
+  // One signal for the fetch and the schedule: a caller that cancels through
+  // the policy's options cuts the request in flight, not only the next one.
+  const signal = init.signal ?? options.signal;
+  const { data } = await runWithRetry(classifiedAttempt<T>(path, { ...init, signal }, token), method, {
     cancelled: cancelledFor(path),
+    statusOf: statusOfAttempt,
     ...options,
+    signal,
   });
+  return data;
 }
 
 function methodOf(init: RequestInit): string {
@@ -248,15 +255,30 @@ function recordAudit(path: string, method: string): void {
   if (method === HTTP_METHOD.GET) recordWorkspaceFetchForAcceptance(path);
 }
 
-// One attempt: the fetch, the abort classification, and the RFC 7807 parse.
-async function attemptWithEtag<T>(
-  path: string,
-  init: RequestInit,
-  token: string,
-): Promise<{ data: T; etag: string | null }> {
-  let res: Response;
+type Attempt<T> = { data: T; etag: string | null; status: number };
+
+function statusOfAttempt<T>(attempt: Attempt<T>): number {
+  return attempt.status;
+}
+
+// One attempt as the policy sees it: the send and the read each classify
+// their own failure with what only this side knows — whether the response
+// headers had arrived — and the policy reads the provenance off the result.
+function classifiedAttempt<T>(path: string, init: RequestInit, token: string): () => Promise<Attempt<T>> {
+  return async () => {
+    const res = await sendRequest(path, init, token).catch((cause: unknown) => {
+      throw classifyFailure(cause, false);
+    });
+    return readResponse<T>(res, path).catch((cause: unknown) => {
+      throw classifyFailure(cause, true);
+    });
+  };
+}
+
+// The send: the fetch and the abort classification.
+async function sendRequest(path: string, init: RequestInit, token: string): Promise<Response> {
   try {
-    res = await fetch(`${BASE}${path}`, {
+    return await fetch(`${BASE}${path}`, {
       ...init,
       // The caller's signal wins; only a request with none gets the default.
       signal: init.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
@@ -272,10 +294,13 @@ async function attemptWithEtag<T>(
   } catch (cause) {
     throw classifyTransportFailure(cause, path);
   }
+}
 
+// The read: the status, the ETag, and the RFC 7807 parse.
+async function readResponse<T>(res: Response, path: string): Promise<Attempt<T>> {
   const etag = etagFrom(res);
 
-  if (res.status === 204) return { data: undefined as T, etag };
+  if (res.status === 204) return { data: undefined as T, etag, status: res.status };
 
   const body = await readBody(res, path);
 
@@ -298,5 +323,5 @@ async function attemptWithEtag<T>(
     );
   }
 
-  return { data: body as T, etag };
+  return { data: body as T, etag, status: res.status };
 }

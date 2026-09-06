@@ -1,11 +1,8 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import {
-  putPreference as apiPutPreference,
-  type PreferenceBag,
-  type PreferenceKey,
-} from "@/lib/api/preferences";
+import { putPreference as apiPutPreference, type PreferenceBag } from "@/lib/api/preferences";
+import { type PreferenceKey } from "@/lib/api/preferences-types";
 import { getOnboardingRequired, statusToInputs } from "@/lib/api/onboarding";
 import type { OnboardingInputs } from "@/lib/onboarding";
 
