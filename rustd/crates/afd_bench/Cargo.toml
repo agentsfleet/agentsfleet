@@ -12,6 +12,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The daemon's own lease instrument. Invariant 5: round trips per lease are
+# READ from `producers::fleet::lease_polled`, never recounted by wrapping the
+# queries -- a wrapper would measure the wrapper.
+afd_observability.workspace = true
+# The manual reader the counters are collected through. Nothing exports
+# anywhere; the provider exists so an in-process reader can be asked for a sum.
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
 # The p95 and p99 every lane reports. Recording is constant-time, so the
 # sample budget is bounded by the profile's caps rather than by memory.
 hdrhistogram.workspace = true

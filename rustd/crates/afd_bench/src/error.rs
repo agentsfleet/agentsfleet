@@ -72,6 +72,34 @@ pub enum Error {
         expected: &'static str,
     },
 
+    /// The daemon's instrument set would not install.
+    ///
+    /// Carries the observability crate's own error rather than its message:
+    /// the census names the row it rejected, and stringifying here would drop
+    /// that from the chain a reader walks.
+    #[error("the lease instrument would not install")]
+    InstrumentUnavailable {
+        /// What the census or the instrument set refused.
+        #[from]
+        source: afd_observability::Error,
+    },
+
+    /// The provider would not flush, so the counters cannot be trusted.
+    #[error("the lease counters would not be collected")]
+    InstrumentUnflushable {
+        /// What the SDK said.
+        #[from]
+        source: opentelemetry_sdk::error::OTelSdkError,
+    },
+
+    /// A thread died holding the capture lock.
+    ///
+    /// No source: a poisoned lock is a fact about this process, not a failure
+    /// something else reported, and inventing a cause for it would be the
+    /// chain-padding `docs/RUST_ERROR_STANDARD.md` rule 4 warns against.
+    #[error("the captured lease counters are unreadable: a holder panicked")]
+    InstrumentPoisoned,
+
     /// A report that would not render to JSON.
     ///
     /// No path, because nothing was written: rendering happens before the
@@ -164,7 +192,10 @@ impl Error {
             | Self::ResultUnrenderable { .. }
             | Self::ResultUnwritable { .. }
             | Self::ResultUnreadable { .. }
-            | Self::ResultUnparseable { .. } => false,
+            | Self::ResultUnparseable { .. }
+            | Self::InstrumentUnavailable { .. }
+            | Self::InstrumentUnflushable { .. }
+            | Self::InstrumentPoisoned => false,
         }
     }
 }
