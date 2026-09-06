@@ -45,6 +45,7 @@ export default function WorkspaceSwitcherMenu({
   const [createOpen, setCreateOpen] = useState(false);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
+  const firstItemRef = useRef<HTMLDivElement>(null);
 
   const creation = useWorkspaceCreation({
     onSuccess: (workspace) => {
@@ -126,6 +127,10 @@ export default function WorkspaceSwitcherMenu({
             portalContainer={portalContainer}
             align="start"
             className="max-w-trim overflow-hidden"
+            onFocusCapture={(event) => {
+              // The lazy menu mounts after the opening keypress, before Radix can observe it.
+              if (event.target === event.currentTarget) firstItemRef.current?.focus();
+            }}
           >
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -133,11 +138,12 @@ export default function WorkspaceSwitcherMenu({
               className="max-h-80 overflow-y-auto"
               data-testid="workspace-list-scroll"
             >
-              {menuWorkspaces.map((workspace) => {
+              {menuWorkspaces.map((workspace, index) => {
                 const label = workspace.name ?? "Unnamed workspace";
                 return (
                   <DropdownMenuItem
                     key={workspace.id}
+                    ref={index === 0 ? firstItemRef : undefined}
                     onSelect={() => pick(workspace.id)}
                     data-active={workspace.id === activeId ? "true" : undefined}
                   >
@@ -159,6 +165,7 @@ export default function WorkspaceSwitcherMenu({
             </div>
             {menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
+              ref={menuWorkspaces.length === 0 ? firstItemRef : undefined}
               onSelect={() => setCreateDialogOpen(true)}
               disabled={creation.locked}
               aria-disabled={creation.locked || undefined}
