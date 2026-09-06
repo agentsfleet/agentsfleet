@@ -23,11 +23,13 @@ export default function AddFleetDialogDynamic({
   onOpenChange,
   prefillRepo,
   prefillRef,
+  restoreFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefillRepo?: string;
   prefillRef?: string;
+  restoreFocus?: () => void;
 }) {
   const dialog = useIntentModule(addFleetDialogLoader);
 
@@ -43,6 +45,7 @@ export default function AddFleetDialogDynamic({
         onOpenChange={onOpenChange}
         prefillRepo={prefillRepo}
         prefillRef={prefillRef}
+        restoreFocus={restoreFocus}
       />
     );
   }

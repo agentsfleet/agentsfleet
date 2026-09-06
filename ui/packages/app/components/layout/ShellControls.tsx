@@ -107,7 +107,7 @@ function MobileNavigationTrigger({ navigation }: { navigation: ReturnType<typeof
       aria-busy={mobileLoading}
       variant="ghost"
       size="icon"
-      className="md:hidden -ml-2"
+      className="size-11 shrink-0 md:hidden -ml-2"
       onFocus={preloadMobileNavigation}
       onPointerEnter={() => {
         if (maySpeculateOnHover()) preloadMobileNavigation();
@@ -156,7 +156,7 @@ function BrandLink({ workspaceId }: { workspaceId: string | null }) {
           ? workspacePath(workspaceId, DEFAULT_WORKSPACE_SUBPATH)
           : "/"
       }
-      className="inline-flex items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline"
+      className="inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline"
       aria-label="agentsfleet home"
     >
       <WakePulse

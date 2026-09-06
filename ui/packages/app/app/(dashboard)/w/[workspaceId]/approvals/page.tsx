@@ -51,9 +51,8 @@ export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: str
   const token = await getToken();
   if (!token) return null;
 
-  const initial = await listApprovals(workspaceId, token, { limit: 50, fleetId }).catch(
-    () => ({ items: [], next_cursor: null }),
-  );
+  // A failed inbox read belongs to the retry boundary; it is not an empty inbox.
+  const initial = await listApprovals(workspaceId, token, { limit: 50, fleetId });
 
   return (
     <Section asChild>

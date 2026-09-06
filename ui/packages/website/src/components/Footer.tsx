@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
-import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
+import { APP_BASE_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 import { LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { trackNavigationClicked } from "../analytics/posthog";
@@ -15,7 +15,7 @@ const EXTERNAL_TARGET = "_blank";
 const EXTERNAL_REL = "noopener noreferrer";
 const FOOTER_SURFACE = "footer";
 const FOOTER_TAGLINE =
-  "Prebuilt AI teammates that take the recurring engineering work off your plate — and wait for your approval.";
+  "AI teammates that investigate incidents and help prepare fixes. You control access and decide what ships.";
 
 export default function Footer() {
   return (
@@ -51,9 +51,8 @@ function FooterColumns() {
       <div>
         <h2 className={COL_LABEL}>product</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>fleet</a></ListItem>
-          <ListItem><a href="/#pricing" className={COL_LINK}>Early access</a></ListItem>
-          <ListItem><Link to="/fleets" className={COL_LINK}>fleets</Link></ListItem>
+          <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>use cases</a></ListItem>
+          <ListItem><a href={APP_BASE_URL} className={COL_LINK}>dashboard</a></ListItem>
         </List>
       </div>
 
@@ -61,9 +60,7 @@ function FooterColumns() {
         <h2 className={COL_LABEL}>resources</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
           <ListItem><a href={DOCS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK}>docs</a></ListItem>
-          <ListItem><a href="/llms.txt" className={COL_LINK}>llms.txt</a></ListItem>
-          <ListItem><a href="/llms-full.txt" className={COL_LINK}>llms-full.txt</a></ListItem>
-          <ListItem><a href="/openapi.json" className={COL_LINK}>OpenAPI</a></ListItem>
+          <ListItem><Link to="/agents" className={COL_LINK}>agents</Link></ListItem>
         </List>
       </div>
 
@@ -93,9 +90,6 @@ function FooterMeta() {
         © {new Date().getFullYear()} {PRODUCT_NAME}. all rights reserved.
       </span>
       <div className="flex flex-wrap gap-6">
-        <Link to="/about" className={COL_LINK}
-          onClick={() => trackNavigationClicked({ source: "footer_about", surface: FOOTER_SURFACE, target: "about" })}
-        >About</Link>
         <a href={`mailto:${SUPPORT_EMAIL}`} className={COL_LINK}
           onClick={() => trackNavigationClicked({ source: "footer_contact", surface: FOOTER_SURFACE, target: "contact" })}
         >Contact</a>

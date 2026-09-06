@@ -10,7 +10,7 @@ const AUTH_BUTTON_PLACEHOLDER_CLASS = "inline-block h-8 w-8";
 
 export default function ClientOnlyAuthUserButton() {
   const mounted = useMounted();
-  const { userId, emailAddress } = useCurrentUser();
+  const { userId, emailAddress, hasImage } = useCurrentUser();
   const appearance = useMemo(
     () => ({
       ...AUTH_APPEARANCE,
@@ -20,13 +20,27 @@ export default function ClientOnlyAuthUserButton() {
           ...AUTH_APPEARANCE.elements.userButtonAvatarBox,
           background: avatarColor(userId ?? emailAddress ?? ""),
         },
+        ...(!hasImage ? {
+          avatarImage: { display: "none" },
+          avatarBox: {
+            position: "relative",
+            background: avatarColor(userId ?? emailAddress ?? ""),
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              inset: "15%",
+              backgroundColor: "var(--text)",
+              mask: 'url("/user.svg") center / contain no-repeat',
+            },
+          },
+        } as const : {}),
       },
     }),
-    [userId, emailAddress],
+    [userId, emailAddress, hasImage],
   );
 
   if (!mounted) {
     return <span aria-hidden="true" className={AUTH_BUTTON_PLACEHOLDER_CLASS} />;
   }
-  return <AuthUserButton appearance={appearance} />;
+  return <AuthUserButton appearance={appearance} userProfileMode="navigation" userProfileUrl="/settings/account" />;
 }

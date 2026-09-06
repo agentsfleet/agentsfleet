@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
  */
 function ModelsRegistrySkeleton() {
   return (
-    <div className="space-y-sm" aria-busy="true" aria-label="Loading model registry">
+    <div className="space-y-sm" aria-busy="true">
+      <output className="sr-only">Loading model registry</output>
       <Skeleton className="h-5 w-32" />
       <Skeleton className="h-48 rounded-lg" />
     </div>

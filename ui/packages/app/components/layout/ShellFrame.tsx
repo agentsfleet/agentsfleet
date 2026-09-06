@@ -35,10 +35,11 @@ export function ShellFrame({
             operatorScopes={operatorScopes}
             sidebarNavId={SIDEBAR_NAV_ID}
           />
-          <div className="flex-1" />
-          <WorkspaceSwitcher workspaces={workspaces} />
-          <ThemeToggle />
-          <ClientOnlyAuthUserButton />
+          <div className="ml-auto flex min-w-0 items-center gap-md md:gap-xl">
+            <WorkspaceSwitcher workspaces={workspaces} />
+            <ThemeToggle />
+            <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
+          </div>
         </DashboardShellHeader>
 
         <aside

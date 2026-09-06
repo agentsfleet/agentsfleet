@@ -110,7 +110,7 @@ function FleetIntegrations({ fleet }: { fleet: PrebuiltFleet }) {
 
 function FleetWaitlist({ fleet }: { fleet: PrebuiltFleet }) {
   return (
-    <Button asChild variant="secondary" className="min-h-11 w-full justify-center">
+    <Button wrap asChild variant="secondary" className="min-h-11 w-full justify-center">
       <a
         href={WAITLIST_URL}
         target="_blank"

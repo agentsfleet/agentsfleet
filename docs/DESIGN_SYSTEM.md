@@ -47,7 +47,7 @@ Do not use mono for an entire table when its rows contain names and descriptions
 
 ## Color
 
-Dark is the primary brand presentation. Light has equal usability requirements.
+Dark is the primary brand presentation. Use lifted graphite surfaces and clear silver secondary text; avoid near-black page fills. Light has equal usability requirements.
 The token file owns exact values; the following roles explain their use.
 
 | Role | Dark | Light |
@@ -113,6 +113,34 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
+### Tables and record dates
+
+Record lists place Created after the record identity and before Actions.
+Secrets and API Keys keep Created visible on narrow screens; the table scrolls when columns need more room.
+Event and runner activity feeds keep their primary Time column first.
+Do not add creation dates to catalog tables whose records have no useful creation-date field.
+
+Column labels and cells share horizontal padding and alignment.
+Left-align dates beneath Created, including secondary usage details in the same cell.
+Right-align numeric columns and row actions. Place a numeric column’s sort icon before its label.
+Use shared DataTable sorting, pagination, and scroll behavior.
+
+### Forms and popups
+
+Inputs have a visible resting boundary, a mint hover boundary, and a two-pixel focus ring.
+Pointer hover must preserve the focus ring on an already focused input.
+Dialogs use the shared panel radius, strong border, and overlay token.
+The close control uses Button and reserves space beside the dialog title.
+Constrain the panel to the viewport and scroll its content so footer actions remain reachable.
+Shared buttons provide a minimum 44-pixel touch target on coarse pointers.
+
+Clerk sign-in, sign-up, account menus, and profile forms use `lib/clerkAppearance.ts`.
+This adapter maps shared tokens through Clerk’s typed Core 3 appearance API, including `theme`, `options`, and `variables`.
+Do not create separate authentication colors or font families.
+Clerk’s primary actions, input states, popup backdrop, and corner radii follow the same component roles.
+Generated avatar images use the local flat fallback; uploaded user photographs remain visible.
+Inspect third-party pseudo-elements for gradients after dependency upgrades.
+
 ### Ownership and enforcement
 
 Change font families and light/dark color values in `ui/packages/design-system/src/tokens.css`.
@@ -145,7 +173,7 @@ Terminal demonstrations may reveal lines when their final content remains availa
 ## Website illustrations
 
 Use original product illustrations alongside concrete interface examples.
-The hero shows a shared engineering workbench with agents, reference material, and an approval checkpoint.
+The hero leads with incident response and a small vector teammate. The detailed workflow belongs in How it works.
 Supporting diagrams explain an example run and the context available to the next run.
 Use recognizable tool marks where they clarify evidence sources or delivery destinations.
 The incident diagram distinguishes diagnosis from repair. A human request or failed workflow starts the separate approval-gated repair path.
@@ -153,8 +181,9 @@ Label example activity explicitly. Do not present it as live customer activity.
 Keep illustrations still. Supporting path animations play once and respect reduced motion.
 Use solid color regions and crisp edges. Avoid gradients, glossy shading, and ambient glow.
 
-The hero image is `ui/packages/website/public/fleet-workshop.webp`.
-It was created with the built-in image generator and encoded as WebP for delivery.
+The shared vector is `ui/packages/website/src/components/AgentIllustration.tsx`.
+The large workshop raster is removed. Incident Response and Slack Teammate are the first two showcased workflows.
+The website JavaScript budget is 120 kB gzip; the CSS budget remains 20 kB.
 
 ## Product copy and pricing
 

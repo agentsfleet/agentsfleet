@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   PageHeader,
   PageLayout,
@@ -29,6 +29,7 @@ import PlatformCatalogTable from "./PlatformCatalogTable";
 // session-scoped result card could not tell them.
 export default function FleetLibrariesView({ entries }: { entries: PlatformCatalogEntry[] }) {
   const [adding, setAdding] = useState(false);
+  const dialogOpenerRef = useRef<Element | null>(null);
   // Set when the dialog was opened from a row's Fetch action, so the operator
   // never retypes a repository the table is already showing them.
   const [prefillRepo, setPrefillRepo] = useState<string | undefined>(undefined);
@@ -37,12 +38,14 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
   const [prefillRef, setPrefillRef] = useState<string | undefined>(undefined);
 
   function openAdd() {
+    dialogOpenerRef.current = document.activeElement;
     setPrefillRepo(undefined);
     setPrefillRef(undefined);
     setAdding(true);
   }
 
   function openFetch(entry: PlatformCatalogEntry) {
+    dialogOpenerRef.current = document.activeElement;
     setPrefillRepo(entry.source_repo);
     setPrefillRef(entry.source_ref);
     setAdding(true);
@@ -82,6 +85,10 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
         <PlatformCatalogTable entries={entries} onFetch={openFetch} />
 
         <AddFleetDialogDynamic
+          restoreFocus={() => {
+            const opener = dialogOpenerRef.current;
+            if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+          }}
           open={adding}
           onOpenChange={setAdding}
           prefillRepo={prefillRepo}

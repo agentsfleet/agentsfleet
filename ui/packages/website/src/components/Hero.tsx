@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { AgentIllustration } from "./AgentIllustration";
 import { Button, DisplayXL, Toast, Section, useResettableTimeout } from "@agentsfleet/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import { INSTALL_COMMAND, WAITLIST_URL } from "../config";
-import { HERO_HEADLINE, HERO_LEDE_PARTS, HERO_PRIMARY_LABEL, HERO_SECONDARY_LABEL, LOOP_ANCHOR_ID } from "../lib/marketing-copy";
+import { GITHUB_URL, INSTALL_COMMAND, WAITLIST_URL } from "../config";
+import { HERO_HEADLINE, HERO_LEDE_PARTS, HERO_PRIMARY_LABEL, HERO_SECONDARY_LABEL, HOW_IT_WORKS_ANCHOR_ID } from "../lib/marketing-copy";
 
 type CopyStatus = "copied" | "manual";
 const TOAST_VISIBLE_MS = 2000;
@@ -37,7 +38,7 @@ export default function Hero() {
               {shown === COPY_STATUS.copied ? "Copied — paste into your terminal" : "Clipboard blocked — select the command above and copy manually"}
             </Toast>
           </div>
-          <HeroArtwork />
+          <HeroExample />
         </div>
       </section>
     </Section>
@@ -49,7 +50,7 @@ function HeroHeading() {
     <>
       <p className="inline-flex items-center gap-2 font-mono text-eyebrow uppercase tracking-eyebrow text-pulse" data-testid="hero-eyebrow">
         <span className="size-2 rounded-full bg-pulse" aria-hidden="true" />
-        Engineering work, in good company
+        AI incident response for engineering teams
       </p>
       <a href="/#pricing"
         onClick={() => trackNavigationClicked({ source: "hero_promo_pill", surface: "hero", target: "pricing" })}
@@ -73,7 +74,7 @@ function InstallRow({ onCopy }: { onCopy: () => void }) {
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-surface-deep px-md py-sm">
       <span className="text-pulse" aria-hidden="true">$</span>
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-mono text-text" data-testid="hero-install-command">
+      <code className="min-w-0 flex-1 break-all font-mono text-mono text-text" data-testid="hero-install-command">
         {INSTALL_COMMAND}
       </code>
       <Button type="button" variant="secondary" size="sm" onClick={onCopy}
@@ -87,29 +88,29 @@ function InstallRow({ onCopy }: { onCopy: () => void }) {
 function HeroActions() {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Button asChild className="min-h-11" data-testid="hero-cta-early-access">
+      <Button wrap asChild className="min-h-11" data-testid="hero-cta-early-access">
         <a href={WAITLIST_URL} target="_blank" rel="noopener noreferrer"
           onClick={() => trackSignupStarted({ source: "hero_early_access", surface: "hero", mode: "humans" })}
         >→ {HERO_PRIMARY_LABEL}</a>
       </Button>
-      <Button asChild variant="ghost" className="min-h-11" data-testid="hero-cta-secondary">
-        <a href={`/#${LOOP_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
+      <Button wrap asChild variant="ghost" className="min-h-11" data-testid="hero-cta-secondary">
+        <a href={`/#${HOW_IT_WORKS_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
       </Button>
     </div>
   );
 }
 
-function HeroArtwork() {
+function HeroExample() {
   return (
-    <figure className="m-0 min-w-0">
-      <img src="/fleet-workshop.webp"
-        alt="Three agents collaborate at an engineering workbench, using shared reference material and preparing work for approval."
-        width={1254} height={1254} fetchPriority="high"
-        className="block h-auto w-full rounded-lg"
-      />
-      <figcaption className="mt-3 font-mono text-label text-text-muted">
-        wake.on.event → work → human approval
+    <figure className="m-0 flex min-w-0 flex-col items-center gap-4 text-center">
+      <AgentIllustration className="w-48 max-w-full" />
+      <figcaption className="max-w-trim font-sans text-body text-text-muted">
+        Your logs, metrics, and code.<br />A diagnosis you can review.
       </figcaption>
+      <p className="m-0 max-w-trim font-sans text-body-sm text-text-muted">
+        <a href={GITHUB_URL} className="inline-flex min-h-11 items-center text-pulse underline" target="_blank" rel="noopener noreferrer">Open-source runtime</a>.
+        Hosted today. Self-hosting is planned.
+      </p>
     </figure>
   );
 }

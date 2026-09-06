@@ -22,7 +22,7 @@ export type ChatViewData = {
 /** Events opens on the page the URL cursor names. */
 export type EventsViewData = {
   view: typeof FLEET_VIEW.events;
-  eventsInitial: Promise<EventsPage>;
+  eventsInitial: Promise<{ ok: true; page: EventsPage } | { ok: false; error: unknown }>;
 };
 
 /** Memory opens on the whole walk — the panel filters client-side. */
@@ -68,7 +68,10 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
         eventsInitial: listFleetEvents(args.workspaceId, args.fleetId, args.token, {
           limit: args.eventsPageSize,
           ...(args.eventsCursor ? { cursor: args.eventsCursor } : {}),
-        }).catch(() => ({ items: [], next_cursor: null })),
+        }).then(
+          (page) => ({ ok: true as const, page }),
+          (error: unknown) => ({ ok: false as const, error }),
+        ),
       };
     case FLEET_VIEW.memory:
       return {

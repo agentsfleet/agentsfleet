@@ -75,7 +75,7 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
   const loading =
     activated && workspaceSwitcher.status === INTENT_MODULE_STATUS.loading;
   return (
-    <div className="inline-flex flex-wrap items-center gap-2">
+    <div className="inline-flex min-w-0 items-center gap-2">
       <WorkspaceSwitcherTrigger
         activeLabel={activeLabel}
         busy={loading}

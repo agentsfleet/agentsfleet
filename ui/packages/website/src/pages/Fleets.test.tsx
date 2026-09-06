@@ -15,7 +15,7 @@ describe("Fleets", () => {
   it("renders the Fleet-first heading", () => {
     renderFleets();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      /this page is for autonomous Fleets/i,
+      /this page is for agents/i,
     );
   });
 
@@ -56,7 +56,9 @@ describe("Fleets", () => {
     expect(block).toHaveTextContent(/npm install -g @agentsfleet\/cli/);
     expect(block).toHaveTextContent(/agentsfleet login/);
     expect(block).toHaveTextContent(/npx skills add agentsfleet\/skills/);
-    expect(block).toHaveTextContent(/agentsfleet-install-platform-ops/);
+    expect(block).toHaveTextContent("Create a fleet for incident response in my workspace.");
+    expect(block).not.toHaveTextContent("/agentsfleet-install-platform-ops");
+    expect(block).toHaveTextContent("curl -fsSL https://agentsfleet.dev | bash");
   });
 
   it("renders machine surface table", () => {
@@ -65,37 +67,11 @@ describe("Fleets", () => {
     expect(screen.getByTestId("fleets-openapi-link")).toHaveAttribute("href", "/openapi.json");
   });
 
-  it("renders API operations table", () => {
-    renderFleets();
-    expect(screen.getByRole("heading", { name: /api operations/i })).toBeInTheDocument();
-    expect(screen.getByText("Create Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Update Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Stop Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Resume Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Kill Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Delete Fleet")).toBeInTheDocument();
-    expect(screen.getByText("Steer / chat")).toBeInTheDocument();
-    expect(screen.getByText("Stream events")).toBeInTheDocument();
-    expect(screen.getByText("Ingest webhook")).toBeInTheDocument();
-  });
 
-  it("renders HTTP methods", () => {
-    renderFleets();
-    const posts = screen.getAllByText("POST");
-    const gets = screen.getAllByText("GET");
-    const patches = screen.getAllByText("PATCH");
-    const deletes = screen.getAllByText("DELETE");
-    expect(posts.length).toBeGreaterThanOrEqual(2);
-    expect(gets.length).toBeGreaterThanOrEqual(1);
-    expect(patches.length).toBeGreaterThanOrEqual(4);
-    expect(deletes.length).toBeGreaterThanOrEqual(1);
-  });
 
-  it("renders webhook example", () => {
-    renderFleets();
-    expect(screen.getByRole("heading", { name: /webhook ingest example/i })).toBeInTheDocument();
-    expect(screen.getByText(/deploy\.failed/)).toBeInTheDocument();
-  });
+
+
+
 
   it("renders safety limits cards", () => {
     renderFleets();
@@ -120,4 +96,13 @@ describe("Fleets", () => {
     expect(container.querySelector(".fleet-surface")).toBeNull();
     expect(container.querySelector(".fleet-table")).toBeNull();
   });
+});
+
+it("puts installation before API steps and removes stale sections", () => {
+  renderFleets();
+  const headings = screen.getAllByRole("heading").map(heading => heading.textContent);
+  expect(headings.indexOf("Install agentsfleet")).toBeLessThan(headings.indexOf("Get started in four calls"));
+  expect(headings).not.toContain("Webhook ingest example");
+  expect(headings).not.toContain("Coming soon");
+  expect(headings).not.toContain("API operations");
 });

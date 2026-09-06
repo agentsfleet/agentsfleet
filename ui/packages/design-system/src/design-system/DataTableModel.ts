@@ -90,8 +90,6 @@ function buildColumns<T extends DataTableRowData>(
       ...accessor,
       enableSorting: sortingEnabled,
       sortDescFirst: false,
-      header: () => column.header,
-      cell: (context) => column.cell(context.row.original),
     };
   });
 }
@@ -114,7 +112,9 @@ function useTablePagination(pagination: DataTablePagination | undefined, rowCoun
   if (previousConfig.clientPagination !== clientPagination || previousConfig.initialPageSize !== initialPageSize) {
     setPreviousConfig({ clientPagination, initialPageSize });
     if (clientPagination && page.pageSize !== initialPageSize) {
-      setPage({ pageIndex: 0, pageSize: initialPageSize });
+      const firstPage = { pageIndex: 0, pageSize: initialPageSize };
+      setPage(firstPage);
+      return { clientPagination, page: firstPage, setPage };
     }
   }
   const lastClientPage = Math.max(0, Math.ceil(rowCount / page.pageSize) - 1);

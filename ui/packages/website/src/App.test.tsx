@@ -9,8 +9,8 @@ const analytics = vi.hoisted(() => ({
 vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
-import { HERO_HEADLINE, HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
-import { WAITLIST_URL } from "./config";
+import { HERO_HEADLINE } from "./lib/marketing-copy";
+import { APP_BASE_URL } from "./config";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -31,6 +31,14 @@ const APP_TEST_TIMEOUT_MS = 20_000;
 const LAZY_ROUTE_TIMEOUT_MS = 10_000;
 
 describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
+  it("offers recovery from an unknown URL and follows its home link", async () => {
+    renderApp("/missing-page");
+    await screen.findByRole("heading", { name: "This page isn’t here." }, { timeout: LAZY_ROUTE_TIMEOUT_MS });
+    expect(screen.getByRole("link", { name: "Explore agents" })).toHaveAttribute("href", "/agents");
+    fireEvent.click(screen.getByRole("link", { name: "Back to home" }));
+    expect(await screen.findByRole("heading", { name: HERO_HEADLINE }, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     analytics.trackNavigationClicked.mockReset();
     analytics.trackSignupStarted.mockReset();
@@ -52,32 +60,32 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: /primary/i });
     expect(within(nav).getByRole("link", { name: /home/i })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: /^early access$/i })).toHaveAttribute("href", "/#pricing");
-    expect(within(nav).getByRole("link", { name: /fleets/i })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: /^how it works$/i })).toHaveAttribute("href", "/#how-it-works");
+    expect(within(nav).getByRole("link", { name: /agents/i })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
     );
   });
 
-  it("renders the early-access CTA in topbar as a waitlist link", () => {
+  it("renders a Dashboard link for returning users", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
-    expect(cta).toHaveAttribute("href", WAITLIST_URL);
+    expect(cta).toHaveAttribute("href", APP_BASE_URL);
     expect(cta).toHaveAttribute("target", "_blank");
     expect(cta).toHaveAttribute("rel", "noopener noreferrer");
-    expect(cta.textContent).toContain(HERO_PRIMARY_LABEL.toLowerCase());
+    expect(cta.textContent).toContain("dashboard");
   });
 
-  it("clicking the early-access CTA tracks a signup", () => {
+  it("clicking Dashboard tracks navigation", () => {
     renderApp();
     fireEvent.click(screen.getByTestId("header-install-cta"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "header_early_access",
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
+      source: "header_dashboard",
       surface: "header",
-      mode: "humans",
+      target: "dashboard",
     });
   });
 
@@ -101,7 +109,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   });
 
   it("renders fleets page at /fleets", async () => {
-    renderApp("/fleets");
+    renderApp("/agents");
     expect(
       await screen.findByRole("heading", { level: 1 }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
@@ -112,12 +120,6 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: /privacy policy/i }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
     ).toBeInTheDocument();
-  });
-
-  it("renders the lazy About page at /about", async () => {
-    renderApp("/about");
-    expect(await screen.findByTestId("about-page", {}, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
-    expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
   it("renders terms page at /terms", async () => {
@@ -185,4 +187,9 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
       expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     });
   });
+});
+
+it.each([["/fleets", "This page is for agents."], ["/pricing", HERO_HEADLINE]])("keeps existing %s links working", async (path, heading) => {
+  renderApp(path);
+  expect(await screen.findByRole("heading", { level: 1, name: heading }, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
 });

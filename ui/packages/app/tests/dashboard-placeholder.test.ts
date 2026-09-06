@@ -166,13 +166,12 @@ describe("placeholder pages", () => {
     expect(m).toContain(`aria-label="${WORKSPACE_EVENTS_LABEL}"`);
   });
 
-  it("events page falls back to empty page when listWorkspaceEvents errors", async () => {
+  it("events page preserves failed reads instead of reporting no activity", async () => {
     mockAuth({ token: "token_abc" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
     const { EventsData } =
       await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
-    expect(m).toContain("Workspace events");
+    await expect(EventsData({ workspaceId: "ws_1" })).rejects.toThrow("boom");
   });
 
   it("events page reads the cursor and page size from the URL", async () => {
@@ -275,7 +274,7 @@ describe("placeholder pages", () => {
     );
   });
 
-  it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {
+  it("billing settings page propagates a failed ledger read instead of claiming zero charges", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 0,
@@ -286,8 +285,18 @@ describe("placeholder pages", () => {
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
     const { default: Page } =
       await import("../app/(dashboard)/settings/billing/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain('data-charge-count="0"');
+    await expect(Page()).rejects.toThrow("503");
+  });
+
+  it("billing settings page preserves a failed balance read for the retry boundary", async () => {
+    mockAuth({ token: "token_balance" });
+    const cause = new Error("Balance unavailable");
+    getTenantBillingMock.mockRejectedValueOnce(cause);
+    listTenantBillingChargesMock.mockResolvedValueOnce({ items: [], next_cursor: null });
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
+    await expect(Page()).rejects.toBe(cause);
+    expect(listTenantBillingChargesMock).toHaveBeenCalledOnce();
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {
@@ -297,19 +306,5 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("billing settings page shows the not-ready empty state when billing is null", async () => {
-    mockAuth({ token: "token_billing" });
-    getTenantBillingMock.mockResolvedValue(null);
-    listTenantBillingChargesMock.mockResolvedValue({
-      items: [],
-      next_cursor: null,
-    });
-    const { default: Page } =
-      await import("../app/(dashboard)/settings/billing/page");
-    const m = renderToStaticMarkup(await Page());
-    // renderToStaticMarkup escapes the apostrophe in "isn't"; assert on a
-    // stable substring of the not-ready empty state instead.
-    expect(m).toContain("ready yet");
-    expect(m).toContain("Refresh in a moment");
-  });
+
 });

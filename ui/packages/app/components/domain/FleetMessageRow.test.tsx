@@ -102,7 +102,7 @@ describe("FleetMessageRow", () => {
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
     expect(row.getAttribute("data-optimistic")).toBe("true");
     expect(row.getAttribute("data-failed")).toBe("true");
-    expect(row.className).toMatch(/opacity-60/);
+    expect(row.className).not.toMatch(/opacity-60/);
   });
 
   it("renders a transient annotation without restoring sender chrome", () => {

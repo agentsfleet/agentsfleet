@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { flexRender, type ReactTable } from "@tanstack/react-table";
+import type { ReactTable } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
@@ -93,14 +93,14 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                       ? () => onSortChange(header.column.id)
                       : header.column.getToggleSortingHandler()}
                     className={cn(
-                      "w-full justify-start gap-1.5 rounded-none border-0 uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
-                      definition?.numeric && "justify-end",
+                      "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
+                      definition?.numeric && "flex-row-reverse",
                     )}
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {definition!.header}
                     {sortIndicator(direction)}
                   </Button>
-                ) : flexRender(header.column.columnDef.header, header.getContext())}
+                ) : definition!.header}
               </th>
             );
 }
@@ -145,7 +145,10 @@ function DataTableBody<T extends DataTableRowData>({
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
               >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                {/* These are render callbacks, not component types. Passing a
+                    freshly built callback to flexRender remounts the cell and
+                    discards its focus and local state on parent updates. */}
+                {definition!.cell(row.original)}
               </td>
             );
           })}

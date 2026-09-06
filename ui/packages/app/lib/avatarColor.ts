@@ -13,5 +13,5 @@ function hashToInt(seed: string): number {
 export function avatarColor(seed: string): string {
   const resolvedSeed = seed.length > 0 ? seed : AVATAR_COLOR_FALLBACK_SEED;
   const hash = hashToInt(resolvedSeed);
-  return `hsl(${hash % HUE_DEGREES}, 35%, 28%)`;
+  return `hsl(${hash % HUE_DEGREES} var(--avatar-saturation) var(--avatar-lightness))`;
 }

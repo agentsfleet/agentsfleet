@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 import HowItWorks from "./HowItWorks";
 import { HOW_IT_WORKS_HEADING } from "../lib/marketing-copy";
@@ -41,4 +42,14 @@ describe("Incident workflow illustration", () => {
     }
     expect(screen.getByRole("heading", { level: 2, name: HOW_IT_WORKS_HEADING })).toBeInTheDocument();
   });
+});
+
+it("switches from incident response to a mention-only Slack example", async () => {
+  const user = userEvent.setup();
+  render(<HowItWorks />);
+  expect(within(screen.getByTestId("how-it-works")).getAllByRole("button").map(tab => tab.textContent)).toEqual(["Incident Response", "Slack Teammate"]);
+  await user.click(screen.getByRole("button", { name: "Slack Teammate" }));
+  expect(screen.getByRole("figure", { name: "Illustrated example: Slack teammate" })).toHaveTextContent("You mention @agentsfleet");
+  expect(screen.getByRole("figure", { name: "Illustrated example: Slack teammate" })).toHaveTextContent("stays read-only");
+  expect(screen.getByRole("figure", { name: "Illustrated example: Slack teammate" })).toHaveTextContent("does not read other channels’ memory");
 });

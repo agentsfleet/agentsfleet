@@ -55,6 +55,14 @@ The user approved all three UI packages. Rows name grouped visual consumers; exa
 | File | Action | Why |
 |------|--------|-----|
 | `docs/DESIGN_SYSTEM.md` | EDIT | Define Clear Signal, typography, flat surfaces, and component rules |
+| `docs/qa/clear-signal-ux-review.md` | ADD | Record every app and website route, scenario evidence, findings, and verified repairs |
+| `ui/packages/app/lib/onboarding.ts` and paired test | EDIT | Point the credential checklist step to the existing Secrets route |
+| `ui/packages/app/lib/auth/client.ts`, account settings route, and identity tests | EDIT / ADD | Supported account page and uploaded-avatar identity |
+| `ui/packages/app/app/(dashboard)/settings/page.tsx`, billing and approvals pages, and paired tests | EDIT | Keep failed reads distinct from empty lists and explain restricted access |
+| `ui/packages/app/public/brand.svg`, `ui/packages/app/public/user.svg` | ADD | Flat brand and account fallback marks for Clerk widgets |
+| `ui/packages/app/app/not-found.tsx`, `ui/packages/website/src/pages/NotFound.tsx` and paired tests | ADD | Provide themed recovery for unknown routes |
+| `package.json`, `ui/packages/website/package.json`, and `bun.lock` | EDIT | Keep the Playwright test runner and its core dependency on the same version |
+| `ui/packages/app/tests/e2e/**/*.spec.ts` | EDIT / ADD | Verify rendered typography, flat surfaces, input states, table alignment, and responsive page behavior |
 | `docs/v2/pending/M189_001_P1_DOCS_UI_CLEAR_SIGNAL.md` | MOVE | Track lifecycle and verification |
 | `ui/packages/design-system/src/tokens.css` | EDIT | Color, typography, spacing, and motion values |
 | `ui/packages/design-system/src/theme.css` | EDIT | Forward new font roles and token values |
@@ -87,15 +95,15 @@ The user approved all three UI packages. Rows name grouped visual consumers; exa
 | `ui/packages/app/.oxlintrc.json` | EDIT | Match compiler-only checks to the app's disabled React Compiler |
 | `ui/packages/app/package.json` and `bun.lock` | EDIT | Update app runtime and development dependencies to current releases; retain the TypeScript 6 parser alias required by the bundle guard |
 | `ui/packages/website/src/styles.css` | EDIT | Flat editorial layouts and responsive composition |
-| `ui/packages/website/public/fleet-workshop.webp` | ADD | Original generated hero illustration, optimized for delivery |
+| `ui/packages/website/src/components/AgentIllustration.tsx` | ADD | Small shared vector replacing the workshop raster |
 | `ui/packages/website/src/components/FleetPreview.tsx` | ADD | Clearly labelled incident illustration with human repair handoff |
 | `ui/packages/website/src/components/AdoptionSections.tsx` | ADD | Founder and infrastructure audiences plus setup guidance |
 | `ui/packages/website/src/components/AdoptionSections.test.tsx` | ADD | Audience, setup, and control-boundary regressions |
 | `ui/packages/website/public/logos/elasticsearch.svg` | ADD | Locally served evidence-source mark |
 | `ui/packages/website/src/components/*.tsx` | EDIT | Product hero, capabilities, pricing, and calls to action |
 | `ui/packages/website/src/pages/*.tsx` | EDIT | Home composition, fleet catalog, and design gallery |
-| `ui/packages/website/src/pages/About.tsx` and paired test | ADD | Minimal product explanation and tracked direct contact without a new form or service |
-| `ui/packages/website/src/components/Footer.tsx` and paired test | EDIT | About and Contact links, Early access label, and bounded local layout helpers |
+| `ui/packages/website/src/pages/About.tsx` and paired test | DELETE | Remove the redundant About route |
+| `ui/packages/website/src/components/Footer.tsx` and paired test | EDIT | Direct Contact, Early access label, and bounded local layout helpers |
 | `ui/packages/website/src/lib/marketing-copy.ts` | EDIT | Explain current product and remove free-run promises |
 | `ui/packages/website/src/lib/rates.ts` and paired test | DELETE | Remove the unused website-only rate mirror after withdrawing numerical pricing |
 | `ui/packages/website/src/lib/llms-text.ts` and paired test | EDIT | Keep generated public copy aligned with early-access terms |
@@ -104,6 +112,8 @@ The user approved all three UI packages. Rows name grouped visual consumers; exa
 | `ui/packages/website/tests/e2e/*.spec.ts` | EDIT | Responsive and accessibility regression scenarios |
 | `ui/packages/website/tests/e2e/design-system-ownership.spec.ts` | ADD | Prove shared font and color edits propagate to rendered consumers |
 | `ui/packages/website/tests/e2e/design-system-status-smoke.spec.ts` | ADD | Split gallery browser assertions into bounded suites |
+
+The website `.size-limit.json` tightens the critical JavaScript budget to 120 kB.
 
 ## Applicable Rules
 
@@ -146,7 +156,8 @@ Apply shared typography and flat surfaces to existing authenticated screens.
 
 - **Dimension 2.1 — DONE** — App backgrounds and usage meters contain no gradients → Test `flat app surfaces`.
 - **Dimension 2.2 — IN_PROGRESS** — Navigation and forms remain usable on narrow screens → Test browser keyboard and responsive walkthrough.
-- **Dimension 2.3 — DONE** — Empty, loading, and error states retain visible next actions → Test existing app state suites.
+- **Dimension 2.6 — IN_PROGRESS** — Every app and website route receives source and rendered review across relevant roles, forms, empty/populated/error states, keyboard interactions, and responsive layouts → Evidence `docs/qa/clear-signal-ux-review.md`.
+- **Dimension 2.3 — IN_PROGRESS** — Empty, loading, and error states retain visible next actions → Test existing app state suites and failed initial reads.
 - **Dimension 2.4 — DONE** — Shared primitives own navigation, interface typography, and meter presentation; consumers retain semantic technical text → Test component contracts, app navigation suites, and browser token propagation.
 - **Dimension 2.5 — DONE** — Design-token gate rejects consumer font definitions and display typography in the app → Test rejection and permitted technical token fixtures plus app primitive override checks.
 
@@ -158,7 +169,7 @@ Invite early users to try a real workflow and provide feedback before launch pri
 - **Dimension 3.1 — DONE** — Home presents product, working example, fleets, controls, and pricing → Test home section walkthrough.
 - **Dimension 3.2 — DONE** — Early-access copy separates runtime and model usage without unapproved prices or credit promises → Test pricing content assertions.
 - **Dimension 3.3 — DONE** — Theme switching and mobile navigation preserve readable content → Test website end-to-end smoke.
-- **Dimension 3.4 — DONE** — About and direct Contact preserve existing footer destinations and click attribution → Test Footer and About suites.
+- **Dimension 3.4 — DONE** — Direct Contact preserves useful footer destinations and click attribution; About is removed → Test Footer and App suites.
 
 ### §4 — App dependency currency
 
@@ -177,9 +188,13 @@ Update the CLI's Effect dependency within its existing release-candidate line.
 
 ## Interfaces
 
-No API, CLI, billing rates, authorization, or data shapes change.
-Component props remain stable. Font roles may add named utilities.
-Existing navigation links and analytics events keep their meaning.
+Backend API routes, CLI commands, billing rates, and authorization remain unchanged.
+The website exposes agent resources at `/agents`; dashboard links open the app.
+Mobile navigation exposes the same destinations as desktop navigation.
+Account profile and security open at `/settings/account`.
+Workspace creation accepts an omitted display name and uses the existing generated-name behavior.
+Shared components add optional presentation and focus props. Existing callers remain valid.
+Analytics events describe the action each link performs.
 
 ## Failure Modes
 
@@ -217,7 +232,7 @@ No analytics or funnel playbook update is required because action meanings remai
 | 3.1 | e2e | home section walkthrough | Product story and links appear in logical order |
 | 3.2 | unit | pricing content assertions | No unapproved prices, credits, or free-run promises; terms precede paid usage |
 | 3.3 | e2e | website smoke | Light, dark, mobile, and reduced-motion states remain usable |
-| 3.4 | unit | Footer and About suites | About route, direct mailto, retained links without duplicates, and navigation attribution |
+| 3.4 | unit | Footer and App suites | Direct mailto, removed About route, retained links, and navigation attribution |
 | 4.1 | package audit | app `bun outdated` | No eligible update remains; the accepted `typescript-jsapi` compatibility alias stays on TypeScript 6 |
 | 4.2 | unit | app `bun run test:coverage` | Existing 100% thresholds pass after dependency resolution |
 | 4.3 | static | app lint and typecheck | Oxlint and the TypeScript 7 native compiler complete without errors |
@@ -233,7 +248,7 @@ No analytics or funnel playbook update is required because action meanings remai
 | R3 | Unit behavior | `make test-unit-all` | exit 0 | P0 | |
 | R4 | Integration regression | `make test-integration-rustd` | exit 0 | P0 | |
 | R5 | Version consistency | `make check-version` | exit 0 | P0 | |
-| R6 | Browser smoke | `make qa-smoke` | exit 0 | P0 | |
+| R6 | Browser smoke | `make dry-smoke` | exit 0 | P0 | |
 | R7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 
 ## Dead Code Sweep
@@ -276,212 +291,25 @@ Remove superseded website composition and its unused imports.
 - **Early-access direction:** User said, “Since i need to get early users and tryout first before arriving at pricing”.
   This supersedes the numerical pricing-grid design. Paid terms must be confirmed before paid usage; no free-usage promise is introduced.
 - **Skill-chain outcomes:** Design consultation informed shared font roles and flat surfaces. Image generation supplied the original workshop illustration.
-- **Deferrals:** None.
+- **Deferrals:** The agent onboarding guide is recorded under Approved deferral below.
 - **Effect refresh direction:** User said, “and can you update the effects packages to the latest as well”.
 - **Dependency refresh direction:** User said, “update all the packages in the packaages/app as well to the lates”. All eligible app dependencies move to their current stable releases. The existing `typescript-jsapi` alias remains on TypeScript 6 because it supplies the parser API used by `intent-module-loader.test.ts`; the normal app compiler remains the current TypeScript 7 release. This preserves the earlier explicit decision to keep the parser bridge until TypeScript 7.1 supplies the needed official API.
 
-## Working preview checkpoint
+## Current UX direction
 
-Implementation remains in progress. Design changes remain uncommitted; no PR or deployment has been made.
-The branch merged `origin/main` through `359222520` and is zero commits behind that fetched revision.
-The worktree is `/private/tmp/agentsfleet-m189-clear-signal`.
-The website preview runs at `http://127.0.0.1:5189/`.
+The hero focuses on incident response with a small vector illustration. How it works owns the detailed examples.
+Incident Response and Slack Teammate appear first. About is removed; direct Contact remains.
+Dark surfaces are brighter. The website advertises an open-source runtime and describes self-hosting as planned.
+The JavaScript size budget is 120 kB gzip. Expanded browser checks cover accessibility, enlarged text, and keyboard focus.
+Account settings use Clerk's supported page mode. Header controls and runner actions have explicit alignment checks.
+Mobile website navigation remains visible, with touch targets at least 44px.
+Audience labels retain the eyebrow scale; lifted section fills separate audiences and early access.
+Evidence-source marks use amber and the delivery mark uses blue from the shared semantic palette.
+Internal workflow links use router navigation so the target section is visible after a page change.
+Historical checkpoints are preserved in [the design history](../../qa/clear-signal-design-history.md).
 
-Package checks are inner-loop evidence, not repository VERIFY completion:
+## Approved deferral
 
-| Check | Observed result |
-|---|---|
-| Website `bun run test` | 175 tests passed before adding two example-run assertions |
-| Updated HowItWorks suite | 7 tests passed, including both new example-run assertions |
-| Selected shared-component and token suites | 137 tests passed |
-| Selected app shell and avatar suites | 37 tests passed |
-| Website production build | Vite build completed |
-| App typecheck | Completed without errors |
-| Design-system lint and typecheck | Completed without errors |
-| Website lint | Completed without errors |
-| Homepage accessibility scan | No WCAG A/AA violations reported in either theme |
-| Browser widths | No horizontal overflow at 390, 768, or 1440px in either theme |
-| Reduced motion | Example path computed animation name was `none` |
-| Source sweep | No gradient functions or old avatar/surface names in production UI source |
-
-Still required: authenticated app browser walkthrough, complete diff review, repository gates, and lifecycle closure.
-Full unit and integration suites remain deferred until PR preparation under the user's instruction.
-
-### Fleet catalogue content checkpoint
-
-The user approved aligning the catalogue with current scenario docs.
-Four cards now explain PR review, incident response, the Slack channel resident, and planned security review.
-Each card identifies its trigger, output, and control boundary. All signup links say “Join the waitlist”.
-The empty roadmap placeholder was removed. Security remains marked coming soon.
-The Slack resident is not described as a library template or unattended worker.
-
-Sources: `docs/architecture/scenarios/github-pr-reviewer.md`, `production-deploy-repair.md`, and `slack-channel-resident.md` in the same directory.
-Security availability follows `docs/architecture/roadmap.md`.
-
-| Changed unit | Required evidence | Observed result |
-|---|---|---|
-| Fleet catalogue and details | Rendered trigger, output, and control labels | Component regression tests |
-| Waitlist links | Destination, label, and click attribution preserved | Component regression tests |
-| Availability boundaries | No immediate-install claims; Slack limits; planned security status | Component regression tests |
-| Homepage composition | No removed placeholder consumer | Home regression tests |
-| Responsive catalogue | No horizontal overflow | Chrome at 390, 768, and 1440px |
-| Section accessibility | WCAG A/AA scan | No violations reported |
-
-Red-green evidence: the revised catalogue suite first reported five failures and four passes against the old content.
-After implementation, website `bun run test` reported 181 passing tests across 24 files.
-Website lint and production build completed successfully. These are package checks, not repository VERIFY completion.
-No new transport, persistence, retry, concurrency, or backend behavior was introduced.
-
-### Audience, illustration, and early-access checkpoint
-
-The homepage now leads with practical work, followed by the catalogue, incident illustration, audience guidance, controls, memory, setup, and early access.
-The incident illustration distinguishes the responder from the approval-gated repairer. Diagnosis alone never starts repair.
-Source: `docs/architecture/scenarios/production-deploy-repair.md`.
-The Elasticsearch mark comes from Simple Icons, served locally from `public/logos/elasticsearch.svg`.
-Source: `https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/elasticsearch.svg` (CC0; third-party trademarks remain with their owners).
-
-Numerical rates and starter-credit promises were removed from the hero, pricing, FAQ, billing paragraph, and generated public text.
-The website-only rate mirror and its obsolete display tests were removed. No backend billing file changed.
-The retained early-access action still reports `pricing_early_access`; removed plan actions no longer emit events.
-The billing paragraph remains draft copy requiring owner review before publication; no legal review is claimed.
-
-| Check | Latest observed result |
-|---|---|
-| Website `bun run test` | 156 passed across 24 files |
-| Website `bun run lint` | Completed without errors |
-| Website `bun run build` | TypeScript and Vite completed; main JavaScript 387.08 kB, gzip 121.01 kB |
-| Homepage WCAG A/AA scans | Zero violations in dark and light themes |
-| Responsive browser checks | No horizontal overflow at 390, 768, or 1440px in either theme |
-| Reduced-motion check | Incident wire animation name is `none` |
-| `git diff --check` | No whitespace errors |
-
-Test count fell because the rate mirror and three-plan presentation were removed.
-Replacement tests cover provisional pricing, waitlist links, model-key limits, founder and infrastructure guidance, setup requirements, and repair boundaries.
-These package checks do not satisfy repository VERIFY or indicate PR readiness.
-`make harness-verify` exited successfully against an empty staged scope. It did not grade these unstaged source changes and must be rerun before commit.
-
-### Homepage repetition cleanup
-
-The user requested removal of “Your first fleet” and “Operational knowledge” because they repeat other sections.
-Both homepage sections were removed, along with the unused knowledge component, paired tests, copy constants, and illustration styles.
-Audience guidance, the fleet catalogue, incident illustration, and core memory capability remain.
-Home tests now assert that neither removed section appears and that capabilities precede early access.
-Focused Home and audience tests passed all 16 cases. Website lint and typecheck completed without errors.
-
-Website `bun outdated` found newer Vite, React Router, PostHog, and testing-tool releases. No dependency upgrades were made during this cleanup.
-
-### About, navigation, and footer cleanup checkpoint
-
-The homepage places How it works before Meet the fleet. Header and footer use Early access for the retained `/#pricing` destination.
-The lazy `/about` page explains the product and provides direct contact through the existing support address.
-About and Contact appear in the footer's copyright row. No team credentials, contact form, or backend service were added.
-
-Footer rendering now composes local brand, column, and copyright/contact helpers.
-The fragment around the columns preserves the existing grid children. Link destinations, external-link attributes, CSS classes, and navigation event payloads are unchanged by this extraction.
-`Footer.tsx` contains 105 lines; component functions contain 14, 12, 40, and 17 lines, all below the 50-line function cap.
-
-| Changed unit | Existing regression evidence |
-|---|---|
-| Footer shell and brand | Rendered brand, tagline, and current-year assertions |
-| Navigation columns | Product, resource, community, and legal destinations; external-link attributes; no duplicate links |
-| Copyright and contact row | About and mailto destinations plus both navigation event payloads |
-
-The focused Footer, App, About, and Home suites passed all 41 tests before and after extraction.
-The final coverage run enforced 100% thresholds for statements, branches, functions, and lines on `src/components/Footer.tsx`:
-14/14 statements, 14/14 lines, 6/6 functions, and 0 conditional branches (reported as 100%).
-No new tests or coverage exclusions were needed for this structural change.
-
-Run from `ui/packages/website`:
-
-```sh
-bun run test src/components/Footer.test.tsx src/App.test.tsx src/pages/About.test.tsx src/pages/Home.test.tsx --coverage --coverage.include=src/components/Footer.tsx --coverage.thresholds.statements=100 --coverage.thresholds.branches=100 --coverage.thresholds.functions=100 --coverage.thresholds.lines=100
-```
-
-Website `bun run lint` and `bun run typecheck` also completed without errors.
-These checks establish package-level evidence for the footer cleanup, not repository VERIFY or coverage of the full M189 diff.
-Authenticated app visuals, the full adversarial review, and repository gates remain pending.
-
-### Hero image production record
-
-Output: `ui/packages/website/public/fleet-workshop.webp`, 1254 × 1254 pixels, 122872 bytes.
-The built-in image generator created the image. WebP encoding preserved the scene for website delivery.
-The final editing prompt was:
-
-> Edit this illustration for production website use. Replace the entire checkerboard background with a perfectly uniform solid graphite #0C1113 background. No checkerboard and no transparency. Preserve the workshop and robot composition. Make the illustration rigorously flat screen-print artwork: every surface filled with one solid color, hard-edged two-tone planes only, no gradients, no soft shadows, no glow, no glossy highlights. Use cyan-mint #5EEAD4, ivory, and graphite solid fills. Keep all objects inside canvas with clear margins. No text or watermark.
-
-### Review and package validation checkpoint
-
-The repository-wide verification rubric remains pending until PR preparation, per the quoted user instruction above.
-The authenticated walkthrough remains incomplete: the local environment lacks the Clerk secret and publishable keys.
-The app root returned HTTP 500 with Clerk's missing-publishable-key error. No authentication bypass was added.
-
-| Scope | Command | Result |
-|---|---|---|
-| App | `bun run test:coverage` | 237 files; 2,410 tests passed; all four coverage measures 100% |
-| Shared components | `bun run test:coverage` | 56 files; 542 tests passed; all four coverage measures 100% |
-| Website | `bun run test:coverage` | 24 files; 156 tests passed; all four coverage measures 100% |
-| CLI | `bun run test` | Build succeeded; 1,624 passed, 13 skipped, zero failures; enforced function and line coverage 100% |
-| Website browser | `BASE_URL=http://127.0.0.1:5174 bun run test:e2e` | 104 passed; both themes, accessibility, reduced motion, links, and shared gallery |
-| Footer final layout | `bunx vitest run src/components/Footer.test.tsx` | Eight tests passed; mobile screenshot inspected |
-| Static checks | Package lint and typecheck | App, website, shared components, and CLI completed successfully |
-| Conform | `make harness-verify` | All staged gates green |
-| Flat fills | `bash audits/design-tokens.sh --all` | Named utilities and flat fills verified |
-| Rate parity | `bash audits/cross-tier-rates.sh` | One rate constant agrees across three remaining consumers |
-| Secrets | `gitleaks protect --staged --redact --no-banner` | No leaks found |
-
-Review fixes remove stale pricing links, preserve diagnosis-only outcomes, and keep clipboard clicks out of signup analytics.
-The footer uses interface typography, valid heading levels, and two mobile link columns.
-Inline prose links remain underlined. Accessibility checks wait for theme transitions before measuring contrast.
-Oversized source functions and test files are split by concern; no assertions were dropped except one duplicate assertion.
-Pagination and toast state changes satisfy the updated lint checks while preserving existing interaction tests.
-A new pagination regression preserves a valid page when client pagination starts with an already-selected page size.
-The generated replacement hero image remains outside the repository; the installed workshop illustration is unchanged.
-
-The test ledger covers clipboard failure and success, footer navigation attribution, rate-copy removal, flat avatar colors,
-pagination configuration changes, toast fade cancellation, and shared-control keyboard behavior.
-No backend input/output contract changed. Live datastore testing remains at the PR boundary.
-
-### Shared ownership and enforcement checkpoint
-
-Merged `origin/main` at `1b87e2a91` into this worktree with merge commit `49fa999ac`.
-The pending alignment edits were restored without conflicts.
-
-Shared `EYEBROW_CLASS` now follows interface typography. `NavItem` owns destination
-styling for the sidebar, fleet sections, and runner sections. `UsageBar` owns its
-solid fill without app CSS. Clerk actions consume the same CTA token pair as Button.
-Human conversation text, recovery copy, onboarding labels, and metric labels use sans;
-technical identifiers, source text, timestamps, and technical input values retain mono.
-
-The design-token gate rejects consumer font definitions, arbitrary font utilities,
-and app display typography. The app's syntax-tree regression check rejects local font
-overrides on shared interface primitives, including aliased imports and local constants.
-Four isolated-repository script tests cover permitted token references and rejected
-font, palette, and gradient bypasses. ShellCheck passes without suppressions.
-
-| Required test | Evidence |
-|---|---|
-| Shared active/inactive navigation and router composition | Three NavItem tests, including import through the public package entry |
-| App primitive font ownership | Three syntax-tree tests, including every app page and component |
-| Tokens propagate to rendered consumers | Three browser tests: both themes, changed sans token, changed pulse token, unchanged technical font |
-| Gallery styling and accessibility | 43 browser checks passed |
-| Source editing after extraction | Existing SkillEditor cases retained; technical panes extracted to keep the source file bounded |
-| Async paging and dialog transitions | Assertions wait for the resulting error or dialog instead of reading before the transition commits |
-
-The gallery was inspected at desktop width in dark and at narrow width in light.
-This proves shared component rendering, not the authenticated app walkthrough.
-Local Clerk publishable and secret keys remain absent. The app currently normalizes
-its own theme to dark; shared-token light support does not imply an app light-mode switch.
-The authenticated walkthrough and repository-wide PR verification remain outstanding.
-
-Package validation after alignment: app `bun run test:coverage` passed 2,413 tests
-across 239 files with 100% statements (6,021), branches (3,645), functions (1,624),
-and lines (5,375). Shared components passed 545 tests across 57 files with all four
-coverage measures at 100%. Website passed 156 tests across 24 files with all four
-coverage measures at 100%. App production build succeeded. App, website, and shared
-component Make lint targets passed. `make harness-verify` passed staged conformance;
-gitleaks found no staged secrets. These are package and conformance claims, not a
-replacement for the deferred repository verification commands.
-
-Scoped review repaired the missing public navigation export, preserved the sidebar's
-mint active state, and retained mono on lease identifiers while removing it from
-surrounding labels. No new data-access, authorization, or backend contract was introduced.
+The complete agent onboarding guide and executable incident-investigation walkthrough on `/agents` are deferred until after `docs/v2/pending/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md`.
+User approval: “1 - i will do it after docs/v2/pending/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md”.
+This milestone changes the page heading, route, and navigation; it does not claim agent onboarding is end-to-end verified.

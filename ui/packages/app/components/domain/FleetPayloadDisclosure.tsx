@@ -35,7 +35,7 @@ export function FleetPayloadDisclosure({ json, inline = false }: FleetPayloadDis
       className="mt-md"
     >
       <AccordionItem value={PAYLOAD_VALUE} className="border-0">
-        <AccordionTrigger className="py-xs font-mono text-label text-muted-foreground hover:no-underline">
+        <AccordionTrigger className="py-xs text-label text-muted-foreground hover:no-underline">
           {PAYLOAD_TITLE}
         </AccordionTrigger>
         <AccordionContent>

@@ -50,9 +50,9 @@ test.describe("Smoke", () => {
   });
 
   test("fleets page loads", async ({ page }) => {
-    await page.goto("/fleets");
+    await page.goto("/agents");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for autonomous Fleets.",
+      "This page is for agents.",
     );
   });
 
@@ -70,12 +70,13 @@ test.describe("Smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: /primary/i });
     await expect(nav.getByRole("link", { name: /^home$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^early access$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^agents$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^how it works$/i })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
   });
 
   test("footer renders on all routes", async ({ page }) => {
-    for (const route of ["/", "/fleets", "/privacy", "/terms", "/about"]) {
+    for (const route of ["/", "/agents", "/privacy", "/terms"]) {
       await page.goto(route);
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("contentinfo")).toBeVisible({ timeout: 10_000 });
@@ -88,18 +89,18 @@ test.describe("Smoke", () => {
     await expect(discord).toHaveAttribute("href", "https://discord.gg/H9hH2nqQjh");
   });
 
-  test("About opens from the footer and offers direct contact", async ({ page }) => {
+  test("footer offers direct contact", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("contentinfo").getByRole("link", { name: /^about$/i }).click();
-    await expect(page).toHaveURL(/\/about$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("More time building. Less time gathering clues.");
-    await expect(page.getByTestId("about-page").getByRole("link")).toHaveAttribute("href", "mailto:agentsfleet@agentmail.to");
+    await expect(page.getByRole("contentinfo").getByRole("link", { name: /^contact$/i }))
+      .toHaveAttribute("href", "mailto:agentsfleet@agentmail.to");
   });
 
   test("reduced motion leaves the investigation static", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await expect(page.locator(".incident-wire")).toHaveCSS("animation-name", "none");
+    for (const wire of await page.locator(".incident-wire").all()) {
+      await expect(wire).toHaveCSS("animation-name", "none");
+    }
     await expect(page.getByTestId("hero-headline")).toBeVisible();
   });
 });

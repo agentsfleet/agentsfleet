@@ -78,14 +78,14 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
   });
 
-  it("defines the Fleet at first touch: 'What is agentsfleet?' opens to the explicit definition", async () => {
+  it("explains the product through jobs and user control", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What is agentsfleet?"));
     expect(
-      screen.getByText(/A Fleet is a long-lived runtime you install once/i),
+      screen.getByText(/AI teammates for code review, incident investigation, and preparing fixes/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/not a one-shot prompt/i)).toBeInTheDocument();
+    expect(screen.getByText(/You choose what it can access and review the results/i)).toBeInTheDocument();
   });
 
   it("renders the wedge FAQ answer with source and approval posture", async () => {

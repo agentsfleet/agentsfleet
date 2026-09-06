@@ -23,7 +23,8 @@ import { DEGRADED_BADGE_LABEL, RunnerStatus, runnerIsAwake } from "./RunnerStatu
 // Only the newest page is consulted for the work line; a host running more
 // live leases than one page holds reads as "many".
 const WORK_LINE_LEASE_SCAN_LIMIT = 25;
-const WORK_LINE_LOADING = "…";
+const WORK_LINE_LOADING = "Loading activity…";
+const WORK_LINE_UNAVAILABLE = "Activity unavailable. Inspect runner to retry.";
 const LEASES_NOUN_SINGULAR = "lease";
 const LEASES_NOUN_PLURAL = "leases";
 
@@ -61,7 +62,7 @@ function useWorkLine(runner: RunnerListItem): string {
     void listRunnerLeasesAction(runner.id, { limit: WORK_LINE_LEASE_SCAN_LIMIT }).then((result) => {
       if (cancelled) return;
       if (!result.ok) {
-        setLine(IDLE_SENTENCE);
+        setLine(WORK_LINE_UNAVAILABLE);
         return;
       }
       const running = result.data.items.filter((lease) => lease.outcome === LEASE_OUTCOME.running);
@@ -87,10 +88,9 @@ function idleLineFor(runner: RunnerListItem): string {
 
 export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
   const awake = runnerIsAwake(runner.admin_state, runner.liveness);
-  const parked = runner.liveness === "offline" || runner.admin_state === "revoked";
   const workLine = useWorkLine(runner);
   return (
-    <Card className={cn("min-h-44 p-xl", parked && "opacity-60")}>
+    <Card className="min-h-44 p-xl">
       <Link
         href={runnerPath(runner.id)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -119,11 +119,11 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
             )}
           </div>
         </div>
-        <div className="mt-auto flex items-center justify-between border-t border-border pt-lg font-mono text-label text-muted-foreground tabular-nums">
+        <div className="mt-auto flex items-center justify-between border-t border-border pt-lg font-sans text-label text-muted-foreground tabular-nums">
           <span>
             {runner.last_seen_at > 0 ? (
               <>
-                heartbeat <Time value={new Date(runner.last_seen_at)} format="relative" tooltip={false} />
+                heartbeat <Time value={new Date(runner.last_seen_at)} format="relative" tooltip={false} className="font-mono" />
               </>
             ) : (
               NEVER_CONNECTED_SENTENCE

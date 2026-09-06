@@ -12,7 +12,7 @@ describe("avatarColor", () => {
 
   it("returns one flat color without a gradient", () => {
     const result = avatarColor("user_123");
-    expect(result).toMatch(/^hsl\(\d+, 35%, 28%\)$/);
+    expect(result).toMatch(/^hsl\(\d+ var\(--avatar-saturation\) var\(--avatar-lightness\)\)$/);
     expect(result).not.toContain("gradient");
   });
 

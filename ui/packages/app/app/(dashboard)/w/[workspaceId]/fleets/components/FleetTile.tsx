@@ -213,10 +213,10 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }
 
 function TileMetrics({ fleet }: { fleet: Fleet }) {
   return (
-    <div className="flex items-center justify-between font-mono text-xs text-muted-foreground tabular-nums">
-      <span>{formatTileSpend(fleet.budget_used_nanos)} {TILE_SPEND_SUFFIX}</span>
-      <span>{formatTileEvents(fleet.events_processed)} {TILE_EVENTS_SUFFIX}</span>
-      <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} />
+    <div className="flex items-center justify-between font-sans text-xs text-muted-foreground tabular-nums">
+      <span><span className="font-mono">{formatTileSpend(fleet.budget_used_nanos)}</span> {TILE_SPEND_SUFFIX}</span>
+      <span><span className="font-mono">{formatTileEvents(fleet.events_processed)}</span> {TILE_EVENTS_SUFFIX}</span>
+      <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} className="font-mono" />
     </div>
   );
 }
@@ -227,7 +227,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
   const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
   return (
     <Card
-      className={cn("min-h-44 p-4", kind === "drained" && "opacity-60")}
+      className="min-h-44 p-4"
       data-kind={kind}
     >
       <Link

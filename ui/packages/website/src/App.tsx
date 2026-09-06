@@ -1,22 +1,21 @@
 import { lazy, Suspense } from "react";
-import { Link, NavLink, Route, Routes, ScrollRestoration } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react-router-dom";
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { DOCS_URL, WAITLIST_URL } from "./config";
-import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
-import { HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
+import { APP_BASE_URL, DOCS_URL } from "./config";
+import { trackNavigationClicked } from "./analytics/posthog";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
  * stays lean. Vite code-splits each React.lazy import by default. */
 const Fleets = lazy(() => import("./pages/Fleets"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
-const About = lazy(() => import("./pages/About"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
 
 const NAV_LINK_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center font-sans text-eyebrow uppercase tracking-eyebrow text-text-muted hover:text-text transition-colors";
+  "inline-flex min-h-11 min-w-11 items-center justify-center font-sans text-body-sm text-text-muted hover:text-text transition-colors";
 
 export default function App() {
   return (
@@ -24,7 +23,7 @@ export default function App() {
       <ScrollRestoration />
 
       <header className="topbar">
-        <div className="wrap flex items-center justify-between py-4">
+        <div className="wrap flex flex-wrap items-center justify-between gap-4 py-4">
           <Link
             to="/"
             className="flex min-h-11 items-center gap-3 font-sans text-body font-medium text-text"
@@ -40,18 +39,20 @@ export default function App() {
           </Link>
 
           <PrimaryNavigation />
-          <EarlyAccessAction />
+          <DashboardAction />
         </div>
       </header>
       <main>
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/fleets" element={<Fleets />} />
+            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
+            <Route path="/fleets" element={<Navigate to="/agents" replace />} />
+            <Route path="/agents" element={<Fleets />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
-            <Route path="/about" element={<About />} />
             <Route path="/_design-system" element={<DesignSystemGallery />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
@@ -62,16 +63,16 @@ export default function App() {
 
 function PrimaryNavigation() {
   return (
-    <nav aria-label="Primary" className="hidden md:flex items-center gap-6">
+    <nav aria-label="Primary" className="primary-navigation order-last flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 md:order-none md:w-auto md:gap-6">
       <NavLink to="/" end className={NAV_LINK_CLASS}>
         home
       </NavLink>
-      <NavLink to="/fleets" className={NAV_LINK_CLASS}>
-        fleets
+      <NavLink to="/agents" className={NAV_LINK_CLASS}>
+        agents
       </NavLink>
-      <a href="/#pricing" className={NAV_LINK_CLASS}>
-        Early access
-      </a>
+      <Link to="/#how-it-works" className={NAV_LINK_CLASS}>
+        how it works
+      </Link>
       <a
         href={DOCS_URL}
         target="_blank"
@@ -87,22 +88,22 @@ function PrimaryNavigation() {
   );
 }
 
-function EarlyAccessAction() {
+function DashboardAction() {
   return (
-    <Button asChild className="min-h-11" data-testid="header-install-cta">
+    <Button wrap asChild className="min-h-11" data-testid="header-install-cta">
       <a
-        href={WAITLIST_URL}
+        href={APP_BASE_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() =>
-          trackSignupStarted({
-            source: "header_early_access",
+          trackNavigationClicked({
+            source: "header_dashboard",
             surface: "header",
-            mode: "humans",
+            target: "dashboard",
           })
         }
       >
-        → {HERO_PRIMARY_LABEL.toLowerCase()}
+        dashboard
       </a>
     </Button>
   );

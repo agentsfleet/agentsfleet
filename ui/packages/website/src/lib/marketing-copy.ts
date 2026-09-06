@@ -1,27 +1,28 @@
 export const PRODUCT_NAME = "agentsfleet";
 
-export const HERO_HEADLINE = "Keep shipping. Bring a fleet.";
+export const HERO_HEADLINE = "AI teammates for incident response.";
 
 // Tokens that must survive in the hero copy (marketing-spec.test.ts pins
 // presence). They double as the "Pillars" bullets in llms-full.txt, so keep
 // them phrase-shaped and meaningful, not single words.
 export const PILLAR_TOKENS = [
-  "AI teammates",
-  "recurring engineering work",
-  "wake.on.event",
+  "AI incident teammate",
+  "logs, metrics, and code",
+  "You control access and decide what ships.",
 ] as const;
 
 // Lead with the work a visitor can delegate, then explain the control boundary.
 export const HERO_LEDE_PARTS = {
-  intro: "Prebuilt",
-  teammates: "AI teammates",
-  middle: "that take the",
-  recurringWork: "recurring engineering work",
-  outro: "off your plate. Review code, investigate incidents, and prepare fixes. You control access and decide what ships.",
+  intro: "Your",
+  teammates: "AI incident teammate",
+  middle: "investigates failures using your",
+  recurringWork: "logs, metrics, and code",
+  outro: "to explain what went wrong and help prepare a fix. You control access and decide what ships.",
 } as const;
 
 export const HERO_PRIMARY_LABEL = "Request early access";
-export const HERO_SECONDARY_LABEL = "Meet the fleet";
+export const HERO_SECONDARY_LABEL = "See how it works";
+export const HOW_IT_WORKS_ANCHOR_ID = "how-it-works";
 export const LOOP_ANCHOR_ID = "operational-loop";
 
 export type SourceCategory = {
@@ -91,24 +92,13 @@ export const INTEGRATION_ICONS = {
 
 export const PREBUILT_FLEETS: readonly PrebuiltFleet[] = [
   {
-    id: "auto-reviewer",
-    category: "Code review",
-    name: "PR Reviewer",
-    description:
-      "Give your team another set of eyes on the diff and its surrounding code.",
-    trigger: "Selected pull-request events in configured repositories, after GitHub connection and grants.",
-    output: "Review comments on the pull request.",
-    control: "You choose the repositories and permissions. You review and merge.",
-    integrations: [INTEGRATION_ICONS.github],
-  },
-  {
     id: "diagnose",
     category: "Incident response",
     name: "Incident Response",
     description:
-      "Connect diagnosis and bounded repair with the incident responder and repairer fleets.",
-    trigger: "Scheduled telemetry checks, a failed GitHub workflow, or a human steer.",
-    output: "Evidence-backed diagnosis from Grafana and Elasticsearch; a bounded draft PR when a fix is appropriate.",
+      "Find the cause of an incident, then prepare a fix for your team to review.",
+    trigger: "Scheduled telemetry checks, a failed GitHub workflow, or a request from your team.",
+    output: "A diagnosis using Grafana and Elasticsearch, plus a draft pull request when a fix is appropriate.",
     control: "Approve repository write access, then review and merge the diff. The fleet never merges or deploys.",
     integrations: [
       INTEGRATION_ICONS.github,
@@ -126,6 +116,17 @@ export const PREBUILT_FLEETS: readonly PrebuiltFleet[] = [
     output: "An in-thread answer informed by that channel’s saved context.",
     control: "Mention-only and read-only. It never acts unattended or changes your systems.",
     integrations: [INTEGRATION_ICONS.slack],
+  },
+  {
+    id: "auto-reviewer",
+    category: "Code review",
+    name: "PR Reviewer",
+    description:
+      "Give your team another set of eyes on the diff and its surrounding code.",
+    trigger: "Selected pull-request events in configured repositories, after you connect GitHub and approve access.",
+    output: "Review comments on the pull request.",
+    control: "You choose the repositories and permissions. You review and merge.",
+    integrations: [INTEGRATION_ICONS.github],
   },
   {
     id: "security-reviewer",
@@ -155,21 +156,21 @@ export const FLEET_PILLARS: readonly FleetPillar[] = [
   {
     id: "sandbox",
     eyebrow: "Isolated",
-    title: "A bounded place to work",
+    title: "Access you control",
     description:
       "Fleets work within their configured runtime and tool permissions. Give each job the access it needs, and keep repository writes behind approval.",
   },
   {
     id: "learns",
     eyebrow: "Compounding",
-    title: "It learns how you operate",
+    title: "Context for the next job",
     description:
       "Saved fleet memory carries useful context into later runs. The Slack teammate keeps channel context across threads, without reading other channels’ memory.",
   },
   {
     id: "proactive",
     eyebrow: "Proactive",
-    title: "You decide what wakes it",
+    title: "Starts when you choose",
     description:
       "Configure supported events, schedules, or a manual request. Inspect the run history to understand what happened. The Slack channel teammate stays mention-only.",
   },
@@ -205,29 +206,29 @@ export const LOOP_STEPS = [
   },
 ] as const;
 
-export const CAPABILITY_HEADING = "Useful work. Explicit boundaries.";
+export const CAPABILITY_HEADING = "Helpful teammates. You stay in control.";
 
 export const RUNTIME_GUARANTEES_LABEL =
-  "Runtime guarantees under every run";
+  "Controls for every job";
 
 export const CAPABILITY_ITEMS = [
   {
     number: "01",
-    title: "Sandboxed runtime",
+    title: "Isolated workspaces",
     description:
-      "Bounded execution by construction. Every tool call runs inside the configured blast radius.",
+      "Each fleet works within the environment and permissions you configure.",
   },
   {
     number: "02",
-    title: "Vaulted credentials",
+    title: "Protected credentials",
     description:
-      "Secrets resolve at the tool boundary from the vault. They are not printed into prompts, logs, or tables.",
+      "Your credentials stay in the vault. Tools use them when needed without including them in prompts or logs.",
   },
   {
     number: "03",
-    title: "Approval gating",
+    title: "Your approval matters",
     description:
-      "Risky work blocks until a human approves. State survives worker restarts.",
+      "Work that requires approval waits for you. Pending approvals survive worker restarts.",
   },
   {
     number: "04",

@@ -7,17 +7,17 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Keep shipping. Bring a fleet.");
+    await expect(h1).toContainText("AI teammates for incident response.");
   });
 
-  test("hero illustration does not imply live activity", async ({ page }) => {
+  test("hero states the incident-response outcome without duplicating the workflow", async ({ page }) => {
     const eyebrow = page.getByTestId("hero-eyebrow");
-    await expect(eyebrow).toContainText("Engineering work");
+    await expect(eyebrow).toContainText("AI incident response");
     await expect(eyebrow.locator('[data-live="true"]')).toHaveCount(0);
-    const artwork = page.getByRole("img", { name: /Three agents collaborate/ });
-    await expect(artwork).toBeVisible();
-    await expect(artwork).toHaveJSProperty("complete", true);
-    expect(await artwork.evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect(page.getByTestId("hero")).toContainText("A diagnosis you can review.");
+    await page.getByTestId("hero-cta-secondary").click();
+    await expect(page).toHaveURL(/#how-it-works$/);
+    await expect(page.getByTestId("how-it-works")).toBeInViewport();
   });
 
   test("renders hero CTAs", async ({ page }) => {
@@ -40,9 +40,9 @@ test.describe("Home page", () => {
 
     const earlyAccess = page.getByTestId("hero-cta-early-access");
     await expect(earlyAccess).toContainText("Request early access");
-    // Now an enabled link to the Clerk-hosted waitlist (was a disabled button).
+    // The early-access action opens the hosted waitlist.
     await expect(earlyAccess).toHaveAttribute("href", /\/waitlist$/);
-    await expect(page.getByTestId("hero-cta-secondary")).toContainText("Meet the fleet");
+    await expect(page.getByTestId("hero-cta-secondary")).toContainText("See how it works");
   });
 
   test("no longer renders the removed hero install Terminal", async ({ page }) => {
@@ -50,10 +50,11 @@ test.describe("Home page", () => {
     await expect(page.getByTestId("hero-cli")).toHaveCount(0);
   });
 
-  test("topbar renders the waitlist CTA + brand-mark pulse", async ({ page }) => {
+  test("topbar opens the dashboard and retains the brand-mark pulse", async ({ page }) => {
     const cta = page.getByTestId("header-install-cta");
     await expect(cta).toBeVisible();
-    await expect(cta).toHaveAttribute("href", /\/waitlist$/);
+    await expect(cta).toHaveText("dashboard");
+    await expect(cta).toHaveAttribute("href", /^https:\/\/app\.(dev\.)?agentsfleet\.net\/?$/);
 
     const brandMark = page.getByTestId("brand-mark");
     await expect(brandMark).toHaveAttribute("data-live", "true");
@@ -104,24 +105,18 @@ test.describe("Home page", () => {
     ).toHaveCount(0);
   });
 
-  test("topbar Pricing link scrolls to inline pricing section", async ({ page }) => {
-    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^early access$/i }).click();
-    await expect(page).toHaveURL(/\/#pricing$/);
-    await expect(page.getByTestId("pricing-block")).toBeVisible();
+  test("topbar how it works link reveals the workflow examples", async ({ page }) => {
+    await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^how it works$/i }).click();
+    await expect(page).toHaveURL(/\/#how-it-works$/);
+    await expect(page.getByTestId("how-it-works")).toBeInViewport();
   });
 
   test("footer is present with canonical Discord URL", async ({ page }) => {
     await expect(page.getByRole("contentinfo")).toBeVisible();
     const footer = page.getByRole("contentinfo");
     await expect(footer.getByRole("link", { name: /^github$/i })).toBeVisible();
-    await expect(footer.getByRole("link", { name: /^llms\.txt$/i })).toHaveAttribute(
-      "href",
-      "/llms.txt",
-    );
-    await expect(footer.getByRole("link", { name: /^llms-full\.txt$/i })).toHaveAttribute(
-      "href",
-      "/llms-full.txt",
-    );
+    await expect(footer.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
+    await expect(footer.getByRole("link", { name: /^llms(-full)?\.txt$|^openapi$/i })).toHaveCount(0);
     const discord = footer.getByRole("link", { name: /^discord$/i });
     await expect(discord).toHaveAttribute("href", "https://discord.gg/H9hH2nqQjh");
   });

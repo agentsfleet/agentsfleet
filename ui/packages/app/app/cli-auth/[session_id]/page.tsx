@@ -12,7 +12,7 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
+  PageTitle,
   CopyButton,
   Skeleton,
 } from "@agentsfleet/design-system";
@@ -234,7 +234,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Approve CLI login</CardTitle>
+            <PageTitle>Approve CLI login</PageTitle>
             <CardDescription>Checking your terminal&apos;s login session…</CardDescription>
           </CardHeader>
           <CardContent>
@@ -250,7 +250,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Sign in to continue</CardTitle>
+            <PageTitle>Sign in to continue</PageTitle>
             <CardDescription>You need to be signed in to approve a CLI login.</CardDescription>
           </CardHeader>
         </Card>
@@ -263,7 +263,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Login session unavailable</CardTitle>
+            <PageTitle>Login session unavailable</PageTitle>
             <CardDescription>{load.message}</CardDescription>
           </CardHeader>
         </Card>
@@ -278,7 +278,7 @@ export default function CliAuthPage({
       <PageShell>
         <Card>
           <CardHeader>
-            <CardTitle>Type this code into your CLI</CardTitle>
+            <PageTitle>Type this code into your CLI</PageTitle>
             <CardDescription>
               {approve.kind === APPROVE.uncertain
                 ? "We couldn't confirm the approval over the network. If your terminal is asking for a code, enter this one; otherwise refresh and try again."
@@ -300,7 +300,7 @@ export default function CliAuthPage({
     <PageShell>
       <Card>
         <CardHeader>
-          <CardTitle>Approve CLI login for {tokenLabel}</CardTitle>
+          <PageTitle>Approve CLI login for {tokenLabel}</PageTitle>
           <CardDescription>
             Approving will issue a short-lived API token to your terminal. Only continue if you
             started this login.

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LayoutListIcon } from "lucide-react";
 import {
   Badge,
+  cn,
   type BadgeVariant,
   DataTable,
   type DataTableColumn,
@@ -65,7 +66,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         key: "fleet",
         header: "Fleet",
         cell: (lease) => (
-          <span className="truncate font-mono text-sm">{lease.fleet_name ?? lease.fleet_id}</span>
+          <span className={cn("truncate text-sm", !lease.fleet_name && "font-mono")}>{lease.fleet_name ?? lease.fleet_id}</span>
         ),
       },
       {
@@ -178,7 +179,7 @@ function WorkspaceCell({ lease }: { lease: RunnerLease }) {
 function OutcomeCell({ lease }: { lease: RunnerLease }) {
   if (lease.outcome === LEASE_OUTCOME.running) {
     return (
-      <span className="inline-flex items-center gap-md font-mono text-body-sm uppercase tracking-eyebrow text-pulse">
+      <span className="inline-flex items-center gap-md text-body-sm uppercase tracking-eyebrow text-pulse">
         <WakePulse live className="inline-block size-2 rounded-full bg-current" aria-hidden="true" />
         {OUTCOME_LABELS[lease.outcome]}
       </span>

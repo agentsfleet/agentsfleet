@@ -29,6 +29,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  UserProfile: ({ path, routing, appearance }: { path: string; routing: string; appearance: unknown }) => React.createElement("div", { "data-user-profile": path, "data-routing": routing, "data-appearance": JSON.stringify(appearance) }),
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
   SignIn: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-in": JSON.stringify(appearance) }),
   SignUp: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-up": JSON.stringify(appearance) }),
@@ -135,4 +136,13 @@ describe("app layouts and pages", () => {
     expect(signInMarkup).toContain("colorPrimary");
     expect(signUpMarkup).toContain("colorPrimary");
   });
+});
+
+it("renders account settings as a themed page with reloadable profile routes", async () => {
+  const { default: AccountPage } = await import("../app/(dashboard)/settings/account/[[...account]]/page");
+  const markup = renderToStaticMarkup(React.createElement(AccountPage));
+  expect(markup).toContain("Account settings");
+  expect(markup).toContain('data-user-profile="/settings/account"');
+  expect(markup).toContain('data-routing="path"');
+  expect(markup).toContain("colorPrimary");
 });

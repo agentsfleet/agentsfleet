@@ -10,7 +10,6 @@ import { auth } from "@clerk/nextjs/server";
 import {
   getConnector,
   getConnectorCatalog,
-  CONNECTOR_STATUS,
   type ConnectorCatalogEntry,
 } from "@/lib/api/connectors";
 import { ApiError } from "@/lib/api/errors";
@@ -35,8 +34,8 @@ export default async function IntegrationsPage({
 
   // The registry-driven catalog (the card list) plus the two connectors with a
   // bespoke status route (GitHub/Slack tri-state + the Slack team), fetched
-  // together. A missing/unbuilt endpoint degrades closed — an empty catalog or
-  // "not connected" — never fabricating a connected state. The workspace comes
+  // together. Failed status reads reach the retry boundary instead of claiming
+  // a connection has disappeared. The workspace comes
   // from the URL; the backend re-authorizes it (`ownsWithinTenant`) per call.
   const [catalogResult, githubConnector, slackConnector] = await Promise.all([
     // Capture the failure instead of swallowing it to []: an empty catalog is
@@ -53,13 +52,8 @@ export default async function IntegrationsPage({
               // rendered detail honest instead of a fabricated status 0.
               { code: "UZ-UNKNOWN", status: null },
       })),
-    getConnector("github", workspaceId, token).catch(() => ({
-      status: CONNECTOR_STATUS.notConnected,
-    })),
-    getConnector("slack", workspaceId, token).catch(() => ({
-      status: CONNECTOR_STATUS.notConnected,
-      team: null,
-    })),
+    getConnector("github", workspaceId, token),
+    getConnector("slack", workspaceId, token),
   ]);
   const catalog = catalogResult.entries;
   const catalogError = catalogResult.error;

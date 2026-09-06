@@ -113,7 +113,7 @@ describe("PrebuiltFleets", () => {
   it("keeps repository writes approval-gated and deployment human-owned", () => {
     renderFleets();
     const card = screen.getByTestId("fleet-card-diagnose");
-    expect(card).toHaveTextContent(/draft PR/i);
+    expect(card).toHaveTextContent(/draft pull request/i);
     expect(card).toHaveTextContent(/approve repository write access/i);
     expect(card).toHaveTextContent(/never merges or deploys/i);
   });

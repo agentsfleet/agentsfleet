@@ -60,6 +60,7 @@
 @theme inline {
   /* Color surface — the Tailwind utility names. */
   --color-background: var(--background);
+  --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
