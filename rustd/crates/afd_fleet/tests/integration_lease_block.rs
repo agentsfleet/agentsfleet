@@ -108,7 +108,10 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
         .await
         .expect("the refusal must write");
 
-    assert_eq!(ended, Ended::Now);
+    assert!(
+        matches!(ended, Ended::Now(_)),
+        "the first refusal decides, and carries the closing it wrote"
+    );
     let (label, detail) = failure_of(&fixtures, fleet.as_str(), &event).await;
     assert_eq!(label, FIRST_LABEL);
     assert_eq!(detail.as_deref(), Some(DETAIL));
@@ -143,7 +146,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
         .await
         .expect("a second refusal is not a fault");
 
-    assert_eq!(first, Ended::Now);
+    assert!(matches!(first, Ended::Now(_)));
     // Not an error, and not a write. The acknowledgement is still owed, so the
     // caller proceeds — it just did not decide anything this time.
     assert_eq!(second, Ended::Already);

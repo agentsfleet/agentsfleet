@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { groupSpan, groupThreadEvents, MIN_GROUP_RUN } from "@/lib/events/event-grouping";
 import { OUTCOME } from "@/lib/events/event-summary";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 const WEBHOOK = "webhook:github";
 const HEADLINE = "edited · agentsfleet/agentsfleet#541";

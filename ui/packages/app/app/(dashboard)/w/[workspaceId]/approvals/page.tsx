@@ -10,7 +10,7 @@ import {
 } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
-import { listApprovals } from "@/lib/api/approvals";
+import { APPROVALS_PAGE_LIMIT, listApprovals } from "@/lib/api/approvals";
 import ApprovalsList from "./components/ApprovalsList";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: str
   if (!token) return null;
 
   // A failed inbox read belongs to the retry boundary; it is not an empty inbox.
-  const initial = await listApprovals(workspaceId, token, { limit: 50, fleetId });
+  const initial = await listApprovals(workspaceId, token, { limit: APPROVALS_PAGE_LIMIT, fleetId });
 
   return (
     <Section asChild>

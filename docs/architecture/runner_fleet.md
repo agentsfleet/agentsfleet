@@ -493,7 +493,13 @@ NullClaw emits progress frames mid-run (tool started, response chunk, tool compl
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
 ```
 
-Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth. The bracket frames (`event_received` at lease, `event_complete` at report) are published by `agentsfleetd` itself, so the tail has open/close markers even before the runner forwards a single mid-run frame.
+Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth. The bracket frames are published by `agentsfleetd` itself (`afd_fleet::lease::bracket`, shapes in `afd_wire::tail::TailFrame`), so the tail has open/close markers even before the runner forwards a single mid-run frame:
+
+- `event_received` — when the lease verb writes the row, and when an approval's resolve writes the continuation row (the runner's pull finds that one already there, so the resolve is its one announcer): `event_id`, `actor`, `event_type`, and the row's own `created_at`, so a watcher never stamps a live turn with its clock.
+- `event_complete` — when a report or a gate refusal closes the row: the terminal row as the events list serves it (status, tokens, wall time, summed cost, failure label and detail) less `fleet_id` and `workspace_id`, plus `fleet_status` and `pending_approvals`, all read by the closing statement's `RETURNING` in the same round trip. A watcher folds it in and issues no read; a watcher that never saw the opening opens the row from it.
+- `gate_opened` / `gate_resolved` — when the gate plane parks an action and when the inbox or the sweeper answers it, each carrying `pending_approvals` so the count a console shows beside the fleet moves without a read. The count rides the statement that moved the row (`INSERT_GATE`, `RESOLVE_GATE`, `EXPIRE_GATES` each select it beside their write on one snapshot), so a gate frame costs its verb one publish and no read. `gate_resolved.event_id` is `null` for a gate raised outside a run.
+
+No daemon frame names its fleet or workspace: the tail is one fleet's channel, and the workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`). Every bracket and gate publish goes through `afd_redis::FleetStreams::publish_frame` and is best-effort like the runner's frames: the row is written first, the frame announces it, and a lost announcement is recovered by the client's reconnect backfill from the events list.
 
 ## Steer, kill, pause
 

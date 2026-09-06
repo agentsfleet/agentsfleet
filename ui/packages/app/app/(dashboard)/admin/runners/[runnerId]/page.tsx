@@ -87,10 +87,15 @@ export default async function RunnerDetailPage({
     fleet: singleFilterFrom(query[FLEET_FILTER_PARAM]),
   };
 
+  // The view read needs only the URL id, so it starts beside the runner read
+  // instead of behind it — the same shape the fleet console's view-data uses.
+  // Its failure mapping is attached at the start, so a runner read that ends in
+  // a redirect or not-found leaves no unhandled rejection behind.
+  const viewRead = startRunnerViewRead(view, runnerId, token, cursor, pageSize, leaseFilters);
   const runner = await loadRunner(runnerId, token);
   if (!runner) notFound();
 
-  const content = await loadRunnerView(view, runner, token, cursor, pageSize, leaseFilters);
+  const content = await renderRunnerView(runner, viewRead);
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -137,36 +142,60 @@ async function loadRunner(runnerId: string, token: string): Promise<RunnerDetail
   }
 }
 
+type LeaseFilters = { workspace: string | null; fleet: string | null };
+type ActivityInitial = Awaited<ReturnType<typeof listRunnerEvents>> | null;
+type LeasesInitial = Awaited<ReturnType<typeof listRunnerLeases>> | typeof REFUSED | null;
+type RunnerViewRead =
+  | { view: typeof RUNNER_VIEW.activity; pageSize: number; initial: Promise<ActivityInitial> }
+  | { view: typeof RUNNER_VIEW.leases; pageSize: number; initial: Promise<LeasesInitial> };
+
 // The view switch whose default arm is the page's main object: there is no
 // Overview — the runner lands on Leases (the strip riding above the table),
 // and Activity is the second rail item, lifecycle records only.
-async function loadRunnerView(
+//
+// A failed read resolves to null, never to an empty page: the tables' empty
+// states mean "this host has no history", and showing that for a database or
+// network failure tells the operator the opposite of the truth.
+function startRunnerViewRead(
   view: RunnerView,
-  runner: RunnerDetail,
+  runnerId: string,
   token: string,
   cursor: string | null,
   pageSize: number,
-  leaseFilters: { workspace: string | null; fleet: string | null },
-): Promise<ReactNode> {
-  // A failed read resolves to null, never to an empty page: the tables' empty
-  // states mean "this host has no history", and showing that for a database or
-  // network failure tells the operator the opposite of the truth. The strip
-  // still renders on the Leases view — it reads the runner, which succeeded.
+  leaseFilters: LeaseFilters,
+): RunnerViewRead {
   if (view === RUNNER_VIEW.activity) {
-    const initial = await listRunnerEvents(token, runner.id, {
-      limit: pageSize,
-      event_type: RUNNER_LIFECYCLE_EVENT_TYPES.join(","),
-      ...(cursor ? { starting_after: cursor } : {}),
-    }).catch(() => null);
-    if (initial === null) return <Alert variant="warning">{ACTIVITY_UNAVAILABLE}</Alert>;
-    return <ActivityTable initial={initial} pageSize={pageSize} />;
+    return {
+      view,
+      pageSize,
+      initial: listRunnerEvents(token, runnerId, {
+        limit: pageSize,
+        event_type: RUNNER_LIFECYCLE_EVENT_TYPES.join(","),
+        ...(cursor ? { starting_after: cursor } : {}),
+      }).catch(() => null),
+    };
   }
-  const initial = await listRunnerLeases(token, runner.id, {
-    limit: pageSize,
-    ...(cursor ? { starting_after: cursor } : {}),
-    ...(leaseFilters.workspace ? { workspace_id: leaseFilters.workspace } : {}),
-    ...(leaseFilters.fleet ? { fleet: leaseFilters.fleet } : {}),
-  }).catch((error: unknown) => (isRefusedRequest(error) ? REFUSED : null));
+  return {
+    view: RUNNER_VIEW.leases,
+    pageSize,
+    initial: listRunnerLeases(token, runnerId, {
+      limit: pageSize,
+      ...(cursor ? { starting_after: cursor } : {}),
+      ...(leaseFilters.workspace ? { workspace_id: leaseFilters.workspace } : {}),
+      ...(leaseFilters.fleet ? { fleet: leaseFilters.fleet } : {}),
+    }).catch((error: unknown) => (isRefusedRequest(error) ? REFUSED : null)),
+  };
+}
+
+// The strip still renders on the Leases view — it reads the runner, which
+// succeeded — whatever the lease read did.
+async function renderRunnerView(runner: RunnerDetail, read: RunnerViewRead): Promise<ReactNode> {
+  if (read.view === RUNNER_VIEW.activity) {
+    const initial = await read.initial;
+    if (initial === null) return <Alert variant="warning">{ACTIVITY_UNAVAILABLE}</Alert>;
+    return <ActivityTable initial={initial} pageSize={read.pageSize} />;
+  }
+  const initial = await read.initial;
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">
       <RunnerSandboxPanel runner={runner} />
@@ -181,7 +210,7 @@ async function loadRunnerView(
       ) : initial === null ? (
         <Alert variant="warning">{LEASES_UNAVAILABLE}</Alert>
       ) : (
-        <LeaseTable initial={initial} pageSize={pageSize} />
+        <LeaseTable initial={initial} pageSize={read.pageSize} />
       )}
     </div>
   );

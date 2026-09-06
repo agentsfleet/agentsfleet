@@ -35,6 +35,52 @@ INSERT INTO core.fleet_events
 VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, $8, $8)
 ON CONFLICT (fleet_id, event_id) DO NOTHING";
 
+/// What a closing statement hands back: the terminal row as the events list
+/// would serve it, joined to the two fleet facts the live tail publishes with
+/// it.
+///
+/// The row is the `RETURNING` of the guarded update, so it exists ONLY when
+/// the guard matched — a redelivery of an already-terminal event yields no row
+/// and the caller learns that from the absence rather than from a count. The
+/// column order is [`crate::EventRow`]'s fifteen, then the fleet's status,
+/// then its pending gate count, so one decoder reads every closing.
+///
+/// The fifteen are `shared_columns!` off the CTE's alias — the history read's
+/// own list, so `cost_nanos` is the same correlated subselect for the same
+/// reason: billing writes up to two ledger rows per event, and a join would
+/// return the event twice.
+macro_rules! closed_columns {
+    () => {
+        concat!(
+            "\n",
+            crate::history::statement::shared_columns!("c"),
+            ",\n       f.status AS fleet_status,\n",
+            "       (SELECT COUNT(*) FROM core.fleet_approval_gates g\n",
+            "         WHERE g.fleet_id = c.fleet_id AND g.status = "
+        )
+    };
+}
+
+/// The tail of [`closed_columns!`]: the pending-status bind, then the join.
+macro_rules! closed_from {
+    () => {
+        ") AS pending_approvals
+FROM closed c
+JOIN core.fleets f ON f.id = c.fleet_id"
+    };
+}
+
+/// The columns the guarded update hands to the closing select.
+macro_rules! returning_row {
+    () => {
+        "
+  RETURNING fleet_id, event_id, workspace_id, actor, event_type, status,
+            tokens, wall_ms, failure_label, failure_detail, checkpoint_id,
+            resumes_event_id, created_at, updated_at
+)"
+    };
+}
+
 /// End an event at a gate, naming what refused it.
 ///
 /// Guarded on `status = $6` — always [`status::RECEIVED`] — so a terminal row
@@ -42,28 +88,38 @@ ON CONFLICT (fleet_id, event_id) DO NOTHING";
 /// delivery with its own row (RULE IDMP), not a resurrection of this one, and
 /// the guard is what makes that structural rather than conventional.
 ///
-/// Zero rows affected is not an error: it means the row was already terminal,
-/// which happens when a refused delivery's earlier acknowledgement was lost.
-/// The acknowledgement is still owed, so the caller proceeds — which is why
-/// this returns a count rather than a success flag.
+/// No row is not an error: it means the row was already terminal, which
+/// happens when a refused delivery's earlier acknowledgement was lost. The
+/// acknowledgement is still owed, so the caller proceeds — which is why this
+/// answers an optional closing rather than a success flag. When the guard
+/// matched, the closing carries the terminal row and the fleet facts the live
+/// tail's completion frame publishes, so ending a run costs one statement.
 ///
 /// `NULLIF($7, '')` keeps the established row shape for the callers that carry
 /// no operator-readable detail: an empty detail stores `NULL`, not `''`, so a
 /// consumer testing `IS NULL` cannot be fooled by an empty string.
 ///
 /// `$1` fleet, `$2` event, `$3` new status, `$4` failure label, `$5` now,
-/// `$6` the status this transition is guarded on, `$7` detail.
-pub const UPDATE_FLEET_EVENT_FAILURE: &str = "\
-UPDATE core.fleet_events
-SET status = $3, failure_label = $4, updated_at = $5,
-    failure_detail = NULLIF($7, '')
-WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6";
+/// `$6` the status this transition is guarded on, `$7` detail, `$8` the gate
+/// status that counts as pending.
+pub const UPDATE_FLEET_EVENT_FAILURE: &str = concat!(
+    "\
+WITH closed AS (
+  UPDATE core.fleet_events
+  SET status = $3, failure_label = $4, updated_at = $5,
+      failure_detail = NULLIF($7, '')
+  WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6",
+    returning_row!(),
+    closed_columns!(),
+    "$8",
+    closed_from!()
+);
 
 /// End an event with the runner's verdict.
 ///
 /// The sibling of [`UPDATE_FLEET_EVENT_FAILURE`] and guarded the same way, on
 /// `status = $9` — always [`status::RECEIVED`]. A terminal row is never
-/// reopened, so a redelivery whose acknowledgement was lost moves zero rows and
+/// reopened, so a redelivery whose acknowledgement was lost yields no row and
 /// the settled result stands. That is the whole reason the guard is in the
 /// statement rather than in a prior read: a check-then-write would let two
 /// reports of one event race, and the second would overwrite the first.
@@ -74,11 +130,20 @@ WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6";
 ///
 /// `$1` fleet, `$2` event, `$3` new status, `$4` response text, `$5` tokens,
 /// `$6` wall milliseconds, `$7` now, `$8` failure label, `$9` the status this
-/// transition is guarded on, `$10` failure detail.
-pub const UPDATE_FLEET_EVENT_RESULT: &str = "\
-UPDATE core.fleet_events
-SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8, failure_detail = $10
-WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9";
+/// transition is guarded on, `$10` failure detail, `$11` the gate status that
+/// counts as pending.
+pub const UPDATE_FLEET_EVENT_RESULT: &str = concat!(
+    "\
+WITH closed AS (
+  UPDATE core.fleet_events
+  SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7,
+      failure_label = $8, failure_detail = $10
+  WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9",
+    returning_row!(),
+    closed_columns!(),
+    "$11",
+    closed_from!()
+);
 
 /// One event's current status.
 ///

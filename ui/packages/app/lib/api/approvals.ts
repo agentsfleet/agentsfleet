@@ -1,4 +1,10 @@
-import { request, requireApiOrigin } from "./client";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  classifyTransportFailure,
+  isTransportInterrupt,
+  request,
+  requireApiOrigin,
+} from "./client";
 import { ApiError } from "./errors";
 
 // Mirrors the server's inbox gate row
@@ -52,6 +58,10 @@ export type AlreadyResolvedResponse = ResolveResponse & {
 export type ResolveOutcome =
   | { kind: "resolved"; data: ResolveResponse }
   | { kind: "already_resolved"; data: AlreadyResolvedResponse };
+
+/** How many gates one inbox page carries — the first render, each poll, and
+ * every "load more" ask for the same page. */
+export const APPROVALS_PAGE_LIMIT = 50;
 
 export type ListApprovalsOpts = {
   status?: string;
@@ -117,17 +127,31 @@ async function resolveAction(
   // custom verb cannot ride the gate identifier — see `WorkspaceRoute::
   // ApprovalResolve` in `rustd/crates/afd_api`, which is the served spelling.
   const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}/${decision}`;
-  // Bypass `request()` so a 409 returns a body instead of throwing.
+  // Bypass `request()` so a 409 returns a body instead of throwing — but not
+  // the transport's timeout. Without one a hung resolve never settles: the
+  // inbox's optimistic row stays hidden with no error, and every later Server
+  // Action from that tab waits behind it in the router's action queue. A
+  // timeout here classifies exactly as it does in client.ts, so `withToken`
+  // hands the row back with the same `TIMEOUT` code.
   const base = typeof window === "undefined" ? requireApiOrigin() : "/backend";
-  const res = await fetch(`${base}${url}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body,
+  let res: Response;
+  try {
+    res = await fetch(`${base}${url}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body,
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+    });
+  } catch (cause) {
+    throw classifyTransportFailure(cause, url);
+  }
+  const json = await res.json().catch((cause: unknown) => {
+    if (isTransportInterrupt(cause)) throw classifyTransportFailure(cause, url);
+    return {};
   });
-  const json = await res.json().catch(() => ({}));
   if (res.status === 200) {
     return { kind: "resolved", data: json as ResolveResponse };
   }

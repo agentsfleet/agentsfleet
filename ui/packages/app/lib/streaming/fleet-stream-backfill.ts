@@ -5,6 +5,7 @@ import {
   type EventsPage,
   type EventsQuery,
 } from "@/lib/api/events";
+import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
 
 // The reconnect gap-recovery walk. Split out of the registry's lifecycle file
@@ -135,4 +136,33 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
   // are genuinely unrecovered. Say so — never present it as a full recovery.
   warnBackfillFailure(`recovery truncated at ${BACKFILL_MAX_PAGES} pages`);
   return { ok: true, watermark };
+}
+
+/**
+ * The reconnect gap-recovery walk for one registry entry. The watermark
+ * advances only on a completed (or explicitly-truncated) walk; a failure
+ * leaves it at the anchor so the next reconnect retries the same window.
+ * Merges are id-deduped, so the retry is idempotent. One walk at a time per
+ * entry: a second open during a walk waits for the next.
+ */
+export async function backfillEntry(
+  entry: Entry,
+  fleetId: string,
+  walk: Pick<BackfillRequest, "stillCurrent" | "onPage">,
+): Promise<void> {
+  if (entry.backfillInFlight) return;
+  entry.backfillInFlight = true;
+  try {
+    const outcome = await runBackfill({
+      workspaceId: entry.workspaceId,
+      fleetId,
+      anchorMs: entry.serverSinceMs,
+      ...walk,
+    });
+    if (outcome.ok) entry.serverSinceMs = outcome.watermark;
+  } catch (err) {
+    warnBackfillFailure(err);
+  } finally {
+    entry.backfillInFlight = false;
+  }
 }

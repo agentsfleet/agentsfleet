@@ -43,6 +43,9 @@ afd_redis.workspace = true
 # a config PATCH both store the JSON this produces, and neither may store a
 # document the lease path could not read back.
 afd_fleet_runtime.workspace = true
+# The gate status spelling the detail read counts pending approvals under —
+# read from the wire vocabulary, never restated here (RULE UFS).
+afd_wire.workspace = true
 # One fleet enumeration per workspace per tick, shared by every live stream
 # watching it — and `get`/`insert` coalesce the misses a cadence produces.
 moka.workspace = true

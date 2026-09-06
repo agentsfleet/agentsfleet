@@ -197,7 +197,9 @@ describe("SecretsList component", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/network down/),
     );
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
-    expect(routerRefresh).not.toHaveBeenCalled();
+    // A transport failure carries no status, so the outcome is unknown and
+    // the list re-reads the server once to learn whether the row survived.
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("unauthenticated action result surfaces Not authenticated", async () => {

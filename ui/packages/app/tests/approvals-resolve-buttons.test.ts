@@ -52,7 +52,7 @@ describe("ResolveButtons — rendering", () => {
 });
 
 describe("ResolveButtons — approve happy path", () => {
-  it("calls approveApprovalAction with reason and routes back to /approvals on success", async () => {
+  it("resolving from the detail page pushes once and does not refresh", async () => {
     approveActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -76,7 +76,13 @@ describe("ResolveButtons — approve happy path", () => {
     await waitFor(() => {
       expect(approveActionMock).toHaveBeenCalledWith(WORKSPACE_ID, GATE_ID, "looks good");
       expect(routerPush).toHaveBeenCalledWith(`/w/${WORKSPACE_ID}/approvals`);
-      expect(routerRefresh).toHaveBeenCalled();
+    });
+    // The inbox is a dynamic route: the push renders it fresh, so a refresh on
+    // top would be a second server render of the same page.
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    expect(routerRefresh).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(routerPush).toHaveBeenCalledTimes(1);
     });
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
@@ -140,6 +146,7 @@ describe("ResolveButtons — deny happy path", () => {
       expect(denyActionMock).toHaveBeenCalled();
       expect(routerPush).toHaveBeenCalledWith(`/w/${WORKSPACE_ID}/approvals`);
     });
+    expect(routerRefresh).not.toHaveBeenCalled();
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
       gate_id: GATE_ID,
       decision: APPROVAL_DECISION.DENY,

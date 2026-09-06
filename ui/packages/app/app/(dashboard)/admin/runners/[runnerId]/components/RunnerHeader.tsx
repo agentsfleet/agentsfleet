@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CircleHelpIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
-import { Alert, Badge, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
+import { ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
+import { Alert, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
 import {
-  SANDBOX_TIER_LABELS,
-  type CapabilityReport,
+  RUNNER_ADMIN_ACTION,
+  RUNNER_ADMIN_STATE,
+  type RunnerAdminState,
   type RunnerStateAction,
   type RunnerDetail,
   type RunnerListItem,
@@ -29,14 +30,13 @@ import {
   type RunnerDeleteConfirmTarget,
 } from "../../components/RunnerDialogs";
 import { updateRunnerAdminStateAction, deleteRunnerAction, requestRunnerSelftestAction } from "../../actions";
-import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
+import { RunnerIdentityLine } from "./RunnerIdentityLine";
 import {
   COPY_RUNNER_ID_LABEL,
   OPEN_GRAFANA_LABEL,
   REFRESH_RUNNER_LABEL,
   RUNNER_ACTIONS_LABEL,
   RUNNER_BREADCRUMB_LABEL,
-  RUNNER_STATES_DOC_URL,
   RUNNERS_CRUMB_LABEL,
 } from "./runner-copy";
 
@@ -48,26 +48,16 @@ import {
 // tier, labels — is one line below; enrolment is not repeated here because
 // Activity's registered record carries it with the real date.
 
-const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
 const SelftestIcon = SELFTEST_ACTION_CONFIG.icon;
-const ACHIEVABLE_PREFIX = "host reports";
-const MECHANISM_YES = "✓";
-const MECHANISM_NO = "✗";
 
-// The host's own report, rendered verbatim beside the assignment it failed —
-// what the kernel can actually enforce, mechanism by mechanism. No derived
-// "achievable tier": deriving one client-side would re-implement the server's
-// reconciliation and drift from it.
-function describeAchievable(cap: CapabilityReport): string {
-  const controllers = cap.cgroup_controllers.length > 0 ? cap.cgroup_controllers.join(",") : MECHANISM_NO;
-  return (
-    `${ACHIEVABLE_PREFIX} landlock ${cap.landlock ? MECHANISM_YES : MECHANISM_NO}` +
-    ` · seccomp ${cap.seccomp ? MECHANISM_YES : MECHANISM_NO}` +
-    ` · cgroups ${controllers}` +
-    ` · bubblewrap ${cap.bubblewrap ? MECHANISM_YES : MECHANISM_NO}` +
-    ` · egress ${cap.egress_enforcement ? MECHANISM_YES : MECHANISM_NO}`
-  );
-}
+// The state each PATCH verb moves the runner into — what the badge paints the
+// instant the operator confirms, before the daemon answers. The daemon remains
+// the authority: its answer, or the refresh that follows, replaces the paint.
+const OPTIMISTIC_ADMIN_STATE: Record<RunnerStateAction, RunnerAdminState> = {
+  [RUNNER_ADMIN_ACTION.cordon]: RUNNER_ADMIN_STATE.cordoned,
+  [RUNNER_ADMIN_ACTION.drain]: RUNNER_ADMIN_STATE.draining,
+  [RUNNER_ADMIN_ACTION.revoke]: RUNNER_ADMIN_STATE.revoked,
+};
 
 export function RunnerHeader({
   runner,
@@ -91,14 +81,37 @@ export function RunnerHeader({
   // closed for a self-test, so a shared slot would swallow the refusal.
   const [selftestError, setSelftestError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  // Painted at confirm, reconciled inside the same transition: success refreshes
+  // the server tree, and a 409 or any failure ends the transition so the badge
+  // falls back to the server-rendered state on its own.
+  const [adminState, paintAdminState] = useOptimistic(runner.admin_state);
 
   function requestAction(action: RunnerStateAction) {
     setError(null);
     setConfirmAction({ runner, action, ...ACTION_CONFIG[action] });
   }
 
-  function runAction(target: NonNullable<RunnerActionConfirmTarget>) {
-    startTransition(async () => {
+  // Both confirm-backed actions resolve when their transition settles, so the
+  // dialog (RunnerActionConfirm forwards the promise to ConfirmDialog) holds
+  // its buttons disabled and reads "Working…" until the daemon has answered —
+  // the kill switch's shape. A confirm that returned at once would leave the
+  // dialog live beside a badge already painted, and a second click would send
+  // a second PATCH against a state the page already claims.
+  function settled(work: () => Promise<void>): Promise<void> {
+    return new Promise<void>((resolve) => {
+      startTransition(async () => {
+        try {
+          await work();
+        } finally {
+          resolve();
+        }
+      });
+    });
+  }
+
+  function runAction(target: NonNullable<RunnerActionConfirmTarget>): Promise<void> {
+    return settled(async () => {
+      paintAdminState(OPTIMISTIC_ADMIN_STATE[target.action]);
       const result = await updateRunnerAdminStateAction(runner.id, target.action);
       if (!result.ok) {
         // A concurrent transition answers 409 with the real state; refreshing
@@ -133,8 +146,8 @@ export function RunnerHeader({
     });
   }
 
-  function runDelete(target: NonNullable<RunnerDeleteConfirmTarget>) {
-    startTransition(async () => {
+  function runDelete(target: NonNullable<RunnerDeleteConfirmTarget>): Promise<void> {
+    return settled(async () => {
       const result = await deleteRunnerAction(runner.id);
       if (!result.ok) {
         setError(
@@ -173,7 +186,7 @@ export function RunnerHeader({
               onSaved={() => router.refresh()}
             />
           ) : null}
-          {canWrite && canSelftest(runner.admin_state) ? (
+          {canWrite && canSelftest(adminState) ? (
             <Button
               variant="outline"
               size="sm"
@@ -187,7 +200,7 @@ export function RunnerHeader({
             </Button>
           ) : null}
           {canWrite
-            ? actionsFor(runner.admin_state).map((action) => {
+            ? actionsFor(adminState).map((action) => {
                 const config = ACTION_CONFIG[action];
                 const ActionIcon = config.icon;
                 // A not-yet-operable action renders disabled with its reason —
@@ -232,6 +245,9 @@ export function RunnerHeader({
                 );
               })
             : null}
+          {/* A destructive control renders from the state the server confirmed,
+              never from the optimistic paint: Delete must not appear while the
+              revoke that would allow it is still unanswered. */}
           {canWrite && canDelete(runner.admin_state) ? (
             <Button
               variant="destructive"
@@ -265,40 +281,7 @@ export function RunnerHeader({
           dialog, which a self-test never opens. */}
       {selftestError ? <Alert variant="destructive" className="mb-md">{selftestError}</Alert> : null}
 
-      <div className="mb-2xl flex flex-col gap-md">
-        <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-md">
-            <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
-            <a
-              href={RUNNER_STATES_DOC_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
-            >
-              <CircleHelpIcon size={13} aria-hidden="true" />
-              Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
-            </a>
-          </span>
-          <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
-            <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
-            {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
-            {runner.labels.map((label) => (
-              <Badge key={label}>{label}</Badge>
-            ))}
-          </span>
-        </div>
-        {/* The mismatch line renders ONLY when a real verdict contradicts a real
-            assignment: the reason names the specific missing mechanism, and the
-            achievable line states what the host reported — assigned against
-            achievable, side by side (Dimensions 4.1 / 4.2). */}
-        {runner.degraded && runner.degraded_reason ? (
-          <p className="font-sans text-body-sm text-destructive">
-            {ASSIGNMENT_UNMET_PREFIX}
-            {runner.degraded_reason}
-            {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}
-          </p>
-        ) : null}
-      </div>
+      <RunnerIdentityLine runner={runner} adminState={adminState} />
 
       <RunnerActionConfirm
         target={confirmAction}

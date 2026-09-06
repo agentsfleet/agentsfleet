@@ -20,26 +20,24 @@ export default async function AdminModelsPage() {
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  let initial;
-  try {
-    initial = await listAdminModels(token);
-  } catch (e) {
+  // Both reads depend only on the token, so they run together. The catalogue
+  // decides the page; the active platform default only badges a catalogue row —
+  // a non-essential indicator whose GET is gated on platform-key:read (a
+  // distinct scope from this page's model:read), so a model:read-only viewer
+  // 403s there, and a transient failure is likewise possible. Either way the
+  // badge degrades to "no default known" rather than failing the page.
+  const [catalogue, platformKeys] = await Promise.allSettled([
+    listAdminModels(token),
+    listPlatformKeys(token),
+  ]);
+  if (catalogue.status === "rejected") {
+    const e: unknown = catalogue.reason;
     if (e instanceof ApiError && e.status === 403) redirect(NOT_ADMIN);
     if (e instanceof ApiError && e.status === 401) redirect("/sign-in");
     throw e;
   }
+  const activeDefault: PlatformKey | null =
+    platformKeys.status === "fulfilled" ? activePlatformDefault(platformKeys.value) : null;
 
-  // The active platform default only badges a catalogue row — a non-essential
-  // indicator. Its GET is gated on platform-key:read (a distinct scope from this
-  // page's model:read), so a model:read-only viewer 403s here; a transient
-  // backend/network error is likewise possible. Any failure degrades to "no
-  // default known" rather than failing the whole page over a badge.
-  let activeDefault: PlatformKey | null = null;
-  try {
-    activeDefault = activePlatformDefault(await listPlatformKeys(token));
-  } catch {
-    activeDefault = null;
-  }
-
-  return <ModelsView initial={initial} activeDefault={activeDefault} />;
+  return <ModelsView initial={catalogue.value} activeDefault={activeDefault} />;
 }

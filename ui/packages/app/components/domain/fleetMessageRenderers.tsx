@@ -24,7 +24,7 @@ import {
   readText,
 } from "./fleetMessageReaders";
 import { RENDER_KIND } from "./useFleetThreadEntries";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { groupSpan } from "@/lib/events/event-grouping";
 import {
   eventLinkFrom,

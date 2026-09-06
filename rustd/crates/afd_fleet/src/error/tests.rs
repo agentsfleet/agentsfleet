@@ -235,6 +235,16 @@ fn invalid_vault_data_is_the_only_payload_free_permanent_failure() {
     assert_error(&invalid);
 }
 
+/// The first error the database layer can produce, for lifting through a
+/// downstream crate's `From`.
+fn first_db_error() -> Result<afd_db::Error, &'static str> {
+    afd_db::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .map(|(_kind, error)| error)
+        .ok_or("database test utility exposes no error")
+}
+
 #[test]
 fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
 -> Result<(), &'static str> {
@@ -254,27 +264,10 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
     let config = afd_fleet_runtime::FleetName::parse("")
         .err()
         .ok_or("fixture fleet name unexpectedly parsed")?;
-    let gate = afd_gate::Error::from(
-        afd_db::error::one_of_each_kind()
-            .into_iter()
-            .next()
-            .map(|(_kind, error)| error)
-            .ok_or("database test utility exposes no error")?,
-    );
-    let credential = afd_credential::Error::from(
-        afd_db::error::one_of_each_kind()
-            .into_iter()
-            .next()
-            .map(|(_kind, error)| error)
-            .ok_or("database test utility exposes no error")?,
-    );
-    let billing = afd_billing::Error::from(
-        afd_db::error::one_of_each_kind()
-            .into_iter()
-            .next()
-            .map(|(_kind, error)| error)
-            .ok_or("database test utility exposes no error")?,
-    );
+    let gate = afd_gate::Error::from(first_db_error()?);
+    let credential = afd_credential::Error::from(first_db_error()?);
+    let billing = afd_billing::Error::from(first_db_error()?);
+    let events = afd_events::Error::from(first_db_error()?);
     let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
@@ -291,6 +284,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         Error::from(gate),
         Error::from(credential),
         Error::from(billing),
+        Error::from(events),
         Error::from(entropy),
     ] {
         assert!(failure.source().is_some());

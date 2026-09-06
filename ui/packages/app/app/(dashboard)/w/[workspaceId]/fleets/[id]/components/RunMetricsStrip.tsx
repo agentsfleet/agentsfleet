@@ -9,7 +9,7 @@ import {
   DescriptionTerm,
 } from "@agentsfleet/design-system";
 import Link from "next/link";
-import type { EventRow } from "@/lib/api/events";
+import type { RunFigures } from "@/lib/events/run-summary";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { formatMs } from "@/lib/utils";
 import { outcomeFor } from "@/lib/events/event-summary";
@@ -17,7 +17,6 @@ import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import {
   METRICS_APPROVAL_LABEL,
   METRICS_APPROVALS_LABEL,
-  METRICS_APPROVALS_UNAVAILABLE,
   METRICS_COST_LABEL,
   METRICS_OUTCOME_LABEL,
   METRICS_STATUS_LABEL,
@@ -31,26 +30,24 @@ import {
 
 const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
 
-// Tokens · wall · cost for the latest run (§3). Every figure is a server field
-// off the event row — the strip does no token→cost arithmetic (Invariant 1);
-// `cost_nanos` is the summed telemetry credit, and a run with no telemetry
-// renders cost as "—", never a fabricated zero.
+// Tokens · wall · cost for the latest run. Every figure is a server field off
+// the event row — the strip does no token→cost arithmetic; `cost_nanos` is the
+// summed telemetry credit, and a run with no telemetry renders cost as "—",
+// never a fabricated zero. The pending count is the server's own, off the
+// fleet detail and then off the live tail's frames, so it is exact rather
+// than a page length with a "+".
 export default function RunMetricsStrip({
   status,
   latest,
   pendingApprovals,
-  pendingApprovalsHasMore,
   approvalsHref,
   summaryAvailable,
-  approvalsAvailable,
 }: {
   status: string;
-  latest: EventRow | null;
+  latest: RunFigures | null;
   pendingApprovals: number;
-  pendingApprovalsHasMore: boolean;
   approvalsHref: string;
   summaryAvailable: boolean;
-  approvalsAvailable: boolean;
 }) {
   return (
     <Card className="flex flex-col gap-lg p-lg xl:flex-row xl:items-center" aria-label={METRICS_STRIP_LABEL}>
@@ -67,14 +64,10 @@ export default function RunMetricsStrip({
         <Metric label={METRICS_COST_LABEL} value={formatCost(latest, summaryAvailable)} divided emphatic />
         <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} divided />
       </DescriptionList>
-      {!approvalsAvailable ? (
-        <span className="font-sans text-xs text-destructive">
-          {METRICS_APPROVALS_UNAVAILABLE}
-        </span>
-      ) : pendingApprovals > 0 ? (
+      {pendingApprovals > 0 ? (
         <Button asChild variant="outline" size="sm">
           <Link href={approvalsHref}>
-            {pendingApprovals}{pendingApprovalsHasMore ? "+" : ""}{" "}
+            {pendingApprovals}{" "}
             {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} →
           </Link>
         </Button>
@@ -128,7 +121,7 @@ function Metric({
 // A sentence, never a machine tag. The runner's failure classes read as plain
 // English through the shared vocabulary, so this strip cannot say
 // `startup_posture` where the events table says "Failed a startup safety check".
-function latestOutcome(latest: EventRow | null, available: boolean): string {
+function latestOutcome(latest: RunFigures | null, available: boolean): string {
   if (!available) return METRICS_UNAVAILABLE;
   if (latest === null) return METRICS_EMPTY;
   // The reply text is not on the list row any more (the list read carries no
@@ -138,28 +131,28 @@ function latestOutcome(latest: EventRow | null, available: boolean): string {
 
 // When the latest outcome happened, beside the sentence saying what it was —
 // the approved design carries both.
-function outcomeTime(latest: EventRow | null, available: boolean): ReactNode {
+function outcomeTime(latest: RunFigures | null, available: boolean): ReactNode {
   if (!available || latest === null) return null;
   const at = new Date(latest.created_at);
   if (!Number.isFinite(at.getTime())) return null;
   return <Time value={at} format="clock" />;
 }
 
-function formatTokens(latest: EventRow | null, available: boolean): string {
+function formatTokens(latest: RunFigures | null, available: boolean): string {
   if (!available) return METRICS_VALUE_UNKNOWN;
   return latest?.tokens === null || latest?.tokens === undefined
     ? METRICS_VALUE_UNKNOWN
     : COUNT_FORMATTER.format(latest.tokens);
 }
 
-function formatDuration(latest: EventRow | null, available: boolean): string {
+function formatDuration(latest: RunFigures | null, available: boolean): string {
   if (!available) return METRICS_VALUE_UNKNOWN;
   return latest?.wall_ms === null || latest?.wall_ms === undefined
     ? METRICS_VALUE_UNKNOWN
     : formatMs(latest.wall_ms);
 }
 
-function formatCost(latest: EventRow | null, available: boolean): string {
+function formatCost(latest: RunFigures | null, available: boolean): string {
   if (!available) return METRICS_VALUE_UNKNOWN;
   return latest?.cost_nanos === null || latest?.cost_nanos === undefined
     ? METRICS_VALUE_UNKNOWN

@@ -26,6 +26,7 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(async () => ({ getToken: getTokenMock })),
 }));
 vi.mock("@/lib/api/approvals", () => ({
+  APPROVALS_PAGE_LIMIT: 50,
   listApprovals: listApprovalsMock,
   getApproval: getApprovalMock,
 }));

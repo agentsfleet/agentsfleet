@@ -30,6 +30,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_events::Closed;
 use afd_redis::EventId;
 
 use crate::error::Result;
@@ -64,18 +65,21 @@ impl Leases {
     ///
     /// Guarded on the row still being `received`, so a terminal row is never
     /// reopened and a redelivery whose acknowledgement was lost cannot
-    /// overwrite the settled result. Zero rows moved is that case, and it is
-    /// logged rather than treated as a failure.
+    /// overwrite the settled result. No row is that case, and it is logged
+    /// rather than treated as a failure. The row that DID close comes back
+    /// with the fleet facts beside it, for the completion frame the caller
+    /// announces on the live tail.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer.
+    /// Reports a datastore that would not answer, and a closing this daemon
+    /// cannot read.
     pub async fn mark_terminal(
         &self,
         fleet_id: &Uuid7,
         event_id: &str,
         outcome: Terminal<'_>,
         now: UnixMillis,
-    ) -> Result<()> {
+    ) -> Result<Option<Closed>> {
         let Terminal {
             verdict,
             response_text,
@@ -83,7 +87,7 @@ impl Leases {
             wall_ms,
         } = outcome;
         let mut connection = self.pool().acquire().await?;
-        let moved = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
+        let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(verdict.status())
@@ -94,11 +98,12 @@ impl Leases {
             .bind(verdict.label())
             .bind(afd_core::event::status::RECEIVED)
             .bind(verdict.detail())
-            .execute(&mut *connection)
+            .bind(afd_wire::approval::status::PENDING)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(crate::error::query(CONTEXT_TERMINAL))?;
 
-        if moved.rows_affected() == 0 {
+        let Some(row) = closed else {
             let fleet = fleet_id.as_str();
             tracing::warn!(
                 fleet_id = fleet,
@@ -106,8 +111,9 @@ impl Leases {
                 event = "terminal_write_skipped_nonreceived",
                 "the event was already terminal; the settled result stands"
             );
-        }
-        Ok(())
+            return Ok(None);
+        };
+        Ok(Some(Closed::read(&row)?))
     }
 
     /// Record where this fleet's session resumes.

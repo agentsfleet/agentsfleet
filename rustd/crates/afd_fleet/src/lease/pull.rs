@@ -159,6 +159,11 @@ impl Plane {
         };
 
         let delivery = self.leases.record_received(&acquired, now).await?;
+        // The tail's opening bracket, once per row: a redelivery found the row
+        // already there, and its watchers already hold the marker.
+        if delivery == crate::lease::event::Delivery::First {
+            self.leases.publish_received(&acquired, now).await;
+        }
 
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
@@ -290,10 +295,10 @@ impl Plane {
 
     /// End the event, then answer no-work.
     ///
-    /// The refusal is written before the answer, and whether a row MOVED is not
-    /// checked: an already-terminal row is a redelivery whose earlier
-    /// acknowledgement was lost, and the runner is told the same thing either
-    /// way.
+    /// The refusal is written before the answer. Whether a row MOVED decides
+    /// only the tail's closing bracket: an already-terminal row is a
+    /// redelivery whose earlier acknowledgement was lost, its watchers already
+    /// hold the ending, and the runner is told the same thing either way.
     pub(super) async fn refused(
         &self,
         acquired: &Acquired,
@@ -302,7 +307,8 @@ impl Plane {
         reason: &str,
         now: UnixMillis,
     ) -> Result<String> {
-        self.leases
+        let ended = self
+            .leases
             .block(
                 &acquired.fleet_id,
                 &acquired.event_id,
@@ -310,6 +316,9 @@ impl Plane {
                 now,
             )
             .await?;
+        if let crate::lease::event::Ended::Now(closed) = ended {
+            self.leases.publish_completion(&closed).await;
+        }
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
