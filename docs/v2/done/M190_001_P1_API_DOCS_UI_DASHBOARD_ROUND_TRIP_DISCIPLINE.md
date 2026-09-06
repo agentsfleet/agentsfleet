@@ -17,6 +17,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Workstream:** 001
 **Date:** Sep 05, 2026
 **Status:** DONE
+
+**Follow-up disposition (2026-09-06):** PARKED, not shipped. The user said "park entire sse" after the subsequent performance review.
+The uncommitted versioned fleet-facts, SSE recovery, timeout, dependency, and acceptance changes remain preserved on `fix/sse-fleet-facts`.
+Their repository verification is incomplete, and no overall latency or cost improvement was established.
+The DONE status records the earlier merged work below; it does not certify the parked follow-up.
+DragonflyDB planning continues separately under M192 without depending on that follow-up.
 **Priority:** P1 — operator-facing latency and resilience on every dashboard write and on every watched chat; a watched chat never learned a run had finished, and everything else was slower and more brittle than the architecture doc already prescribes.
 **Categories:** API, DOCS, UI
 **Batch:** B11 — independent of the v2 cutover sequence; touches `ui/packages/app`, the daemon's lease, gate and inbox verbs, one additive field on the fleet detail, and three architecture docs.
