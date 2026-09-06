@@ -15,23 +15,23 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Redis connection budget | ≈ 9·R per deployment | 8 pooled + 1 SubscriptionHub connection per replica; no per-fleet, no per-viewer term | §Connection budget after the cutover |
+| Redis connection budget | 3·R at normal boot | one shared command socket, one hub socket, one outbound reader socket per replica | §Connection budget after the cutover |
 | Idle Upstash bill | `N_runners / poll_s` requests/sec | each idle poll = one bounded `HRANDFIELD` + one indexed auth read; ~72,000/hour at 20 runners, 1 s | §Per-request volume |
 | Idle-cost knob | `NO_WORK_RETRY_AFTER_MS` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
 | Per-poll fan-out ceiling | `MAX_READY_CANDIDATES_PER_POLL` = 64, compile-time | randomized readiness slice; per-poll cost independent of population, even when the index is wrong | §The per-poll bound |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Per-request volume |
 | Fleet count in the idle term | absent | fleet count appears only in the readiness *recovery* bound | §The per-poll bound |
-| SSE ceiling | `SSE_MAX_STREAMS` = 64 per replica | one dedicated detached thread (~0.25 MiB stack) per tail; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
+| SSE ceiling | `SSE_MAX_STREAMS` = 64 per replica | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Redis timeout | `REDIS_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
 | Redis connect timeout | `REDIS_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
 | Lease TTL | `LEASE_TTL_MS` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
-| Admission ceiling | `API_MAX_IN_FLIGHT_REQUESTS` = 256, api-class only | ops routes (`/healthz`, `/readyz`, `/metrics`) are NEVER shed | §Tuneup knobs |
+| Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
 | Recurring-read indexes | one slot per table, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
-| Idle pickup latency floor | ≤ `NO_WORK_RETRY_AFTER_MS` | a runner already mid-poll picks up immediately | §Event-delivery latency |
-| Outbound-answer consumer | non-blocking, `IDLE_POLL_MS` = 250 | rides the shared pool — adds requests, never connections | §Tuneup knobs |
-| Failover storm | bounded by 9·R re-dials | pool re-dials; the hub redials once and replays its SUBSCRIBEs | §Upstash failover |
+| Idle retry wait | up to `NO_WORK_RETRY_AFTER_MS` before another attempt | assignment and datastore work add latency; this is not a delivery bound | §Event-delivery latency |
+| Outbound-answer consumer | blocking read, up to 5 seconds | owns one dedicated Redis socket; does not block shared commands | §Tuneup knobs |
+| Failover reconnects | three connection owners per healthy replica | command managers reconnect; the hub retries and restores subscriptions; retry attempts are not bounded by socket count | §Upstash failover |
 
 ## Traps
 
@@ -52,8 +52,8 @@ No standalone diagram; the sizing procedure block in §"Sizing procedure" is the
 | Auth memo removed — read the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Per-request volume; M143_001, [`../AUTH.md`](../AUTH.md) §"Runner token" |
 | Readiness recorded at ingress; lease consults the index before Postgres | idle cost follows the pollers, not the population | §Per-request volume; M141 |
 | Bare `LIMIT` on the candidate scan rejected | an ordered scan silently starves every fleet past the bound; only a randomized slice + ceiling is fair | §Anti-patterns |
-| Evented SSE substrate stays gated | it only earns its keep above the thread/memory ceiling and must event the subscriber socket itself | §2; M88_001 |
-| Fixed pool sizing, no adaptive resize | revisit only if a post-landing bench shows contention | §"What is explicitly out of scope" |
+| Async SSE bodies share one subscription pump | waiting for frames does not reserve an operating-system thread per viewer | §2; `afd_sse` |
+| Multiplex ordinary Redis commands | cloned handles share one socket; blocking consumers own separate sockets | §Connection budget after the cutover |
 
 ---
 
@@ -63,19 +63,19 @@ Everything below is the full reference. Headings are stable — specs cite them 
 
 ## TL;DR — what the cutover changed
 
-**The old wall is gone.** Before the cutover, every fleet held one dedicated `XREADGROUP … BLOCK 5000` Redis connection, so the fleet was capped by the Upstash max-concurrent-connections ceiling at roughly one connection per fleet. **That tier no longer exists.** `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command. Runners hold **zero** Redis connections.
+**The old wall is gone.** Before the cutover, every fleet held one dedicated `XREADGROUP … BLOCK 5000` Redis connection, so the fleet was capped by the Upstash max-concurrent-connections ceiling at roughly one connection per fleet. **That tier no longer exists.** `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` inside the asynchronous `lease` handler over a shared command connection. Runners hold **zero** Redis connections.
 
-**The new binding constraint** is `agentsfleetd` API replicas + Postgres write throughput on the lease/report hot path — both horizontally scalable. Redis sees only pooled short-lived commands (`XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK`) plus the SSE `SUBSCRIBE` tier — the M106 `connector:outbound` answer-delivery consumer claims with the same non-blocking read + a 250 ms idle backoff, so it borrows the shared queue connection per-command like everything else. Runners scale out with no Redis coordination at all.
+**The new binding constraint** is `agentsfleetd` API replicas + Postgres write throughput on the lease/report hot path — both horizontally scalable. Redis sees shared short-lived commands plus dedicated pub/sub and outbound-reader connections. The outbound worker blocks on its own socket for up to five seconds. Runners scale out with no Redis coordination at all.
 
-**The idle Upstash bill** is no longer driven by N blocking `XREADGROUP` loops. It is driven by **runner lease-poll cadence**: each idle runner polls `lease` every `NO_WORK_RETRY_AFTER_MS` (1 s) and each poll does one bounded non-blocking `XREADGROUP` scan. The knob is the poll backoff, not `XREADGROUP BLOCK`.
+**The idle Upstash bill** is no longer driven by N blocking `XREADGROUP` loops. It is driven by **runner lease-poll cadence**: each idle runner polls `lease` every `NO_WORK_RETRY_AFTER_MS` (1 s) and each empty poll checks the readiness index without scanning fleet streams. The knob is the poll backoff, not `XREADGROUP BLOCK`.
 
 | What | Before (deleted) | Now |
 |---|---|---|
-| Per-fleet Redis connections | 1 dedicated blocking conn per fleet | 0 — `lease` uses a pooled non-blocking read |
+| Per-fleet Redis connections | 1 dedicated blocking conn per fleet | 0 — `lease` uses a shared non-blocking read |
 | Binding constraint | Upstash max-connections cap (~1/fleet) | `agentsfleetd` API replicas + Postgres write throughput |
 | Idle request driver | `(fleets + workers) × (3600 / BLOCK_s)` | `runners × (3600 / poll_s)` |
 | Idle-cost knob | `XREADGROUP BLOCK` | `NO_WORK_RETRY_AFTER_MS` (runner poll backoff) |
-| Redis dedicated connections | per-fleet XREADGROUP + watcher + SSE | **one SubscriptionHub conn per replica** (viewers share it; refcounted SUBSCRIBE per channel) — the M106 `connector:outbound` consumer polls non-blocking on the shared queue conn, no dedicated connection |
+| Redis dedicated connections | per-fleet XREADGROUP + watcher + SSE | one SubscriptionHub connection and one outbound-reader connection per replica; neither scales with fleet or viewer count |
 
 ---
 
@@ -83,25 +83,27 @@ Everything below is the full reference. Headings are stable — specs cite them 
 
 v2 ships hosted on Fly.io; the canonical Redis is **Upstash Redis**, accessed over Transport Layer Security (TLS) from every Fly machine. Three Upstash-specific properties still shape decisions, though the cutover changed which one binds:
 
-1. **Plan-bound max-connections cap.** Each Upstash database has a hard concurrent-connection ceiling. New dials past the cap are refused. **After the cutover this no longer scales with fleet count** — and since the SubscriptionHub, not with viewer count either: only with `agentsfleetd` API-pool connections + one hub connection per replica. It is rarely the first wall now.
-2. **Per-request pricing on Pay-as-you-go.** Every command is billable: `XADD`, the non-blocking `XREADGROUP` (one per idle lease poll), `PUBLISH`, `XACK`, SSE acknowledgements. The idle bill is the lease-poll loop — see §"Per-request volume".
+1. **Plan-bound max-connections cap.** Each Upstash database has a hard concurrent-connection ceiling. New dials past the cap are refused. **After the cutover this no longer scales with fleet count** — and since the SubscriptionHub, not with viewer count either: only with the shared command, hub, and outbound-reader connections per replica. It is rarely the first wall now.
+2. **Per-request pricing on Pay-as-you-go.** Every command is billable: `XADD`, the readiness `HRANDFIELD` (one per idle lease poll), `PUBLISH`, `XACK`, SSE acknowledgements. The idle bill is the lease-poll loop — see §"Per-request volume".
 3. **TLS dial cost + regional round-trip-time (RTT).** Pool warm-up matters because each dial pays a TLS handshake. Regional vs Global database choice sets the floor on every round-trip.
 
 ---
 
 ## Event-delivery latency
 
-The cutover added one hop (the runner long-poll) and removed another (the in-process worker dispatch). End-to-end latency for a steer:
+The cutover added one hop (the runner lease request) and removed another (the in-process worker dispatch). End-to-end latency for a steer:
 
 | Step | Typical cost (regional Upstash) |
 |---|---|
 | API handler receives steer / webhook | ~ms |
 | API `XADD fleet:{id}:events` round-trip | ~3–10 ms (Upstash regional RTT) |
-| Runner's next `lease` poll picks it up | **0 – `NO_WORK_RETRY_AFTER_MS` (≤ 1 s)** if the runner is idle-polling; immediate if a runner is already mid-poll |
+| Runner's next `lease` poll picks it up | up to the retry interval before another attempt, plus request and assignment time |
 | `lease` handler: non-blocking `XREADGROUP` + gates + secret resolve + issue lease | ~ms + PG round-trips |
 | Runner forks the sandboxed child, runs NullClaw | dominated by the fleet's own runtime |
 
-**The lease-poll interval is the floor on pickup latency for an idle fleet**, not a per-message delay — a runner already long-polling returns as soon as work is assignable. Tightening `NO_WORK_RETRY_AFTER_MS` lowers idle pickup latency at the cost of more idle `XREADGROUP` requests; it is the direct trade the old `XREADGROUP BLOCK` knob used to make, now on the runner side.
+An idle runner waits up to its retry interval before the next lease attempt.
+That interval is not an end-to-end latency bound: assignment, available workers, and datastore work add delay.
+Reducing `NO_WORK_RETRY_AFTER_MS` trades more readiness checks for shorter idle pickup waits.
 
 **Live-tail cadence.** The runner batches activity frames per flush window — one POST per batch — but ships the first frame of a run and the first response chunk eagerly on arrival (at most two eager POSTs per run, one-shot latches in the runner's activity forwarder). The first visible token therefore pays a round-trip, not the staleness window, while the chatty middle of a run keeps the batch economics.
 
@@ -109,24 +111,25 @@ The cutover added one hop (the runner long-poll) and removed another (the in-pro
 
 ## Connection budget after the cutover
 
-`agentsfleetd` holds the only Redis connections now. Per API replica:
+At normal boot, each `agentsfleetd` replica opens these Redis connections:
 
-| Surface | Connection type | Counted against Upstash plan? |
+| Owner | Connection | Count per replica |
 |---|---|---|
-| Pool (XADD ingress, non-blocking `XREADGROUP` on lease, PUBLISH activity, XACK on report) | Pooled, bursty (`max_idle=8`) | Yes — the **idle** pool count |
-| SubscriptionHub (all SSE viewers on the replica share it) | ONE dedicated `SUBSCRIBE` conn, long-lived | Yes — 1 per replica, regardless of viewer count |
-| `connector:outbound` consumer (M106 answer delivery, boot-started) | Pooled — one non-blocking `XREADGROUP` claim per 250 ms idle poll on the shared queue conn | No — rides the pool row above |
+| `afd_redis::Redis` | shared multiplexed command connection | 1 |
+| `SubscriptionHub` | dedicated pub/sub connection for all viewers | 1 |
+| `connector:outbound` | dedicated command connection for blocking reads | 1 |
 
-```
-agentsfleetd tier:  R replicas × REDIS_POOL_MAX_IDLE          ≈ 8·R
-sse tier:      1 SubscriptionHub conn per replica         ≈ R
-                                                          ──────────
-                                                          ≈ 9·R
-(the connector:outbound consumer polls non-blocking on the shared pool —
- it adds requests, not connections)
+```text
+R replicas * (1 shared + 1 hub + 1 outbound) = 3 * R Redis connections
 ```
 
-**There is no per-fleet term — and no per-viewer term.** Adding fleets adds Postgres writes and lease throughput, not Redis connections; a dashboard with 100 open tabs costs the hub one connection and one wire SUBSCRIBE per distinct fleet watched. Viewer count still drives per-replica **threads + memory** (the `SSE_MAX_STREAMS` knob), just not Upstash connections. Runners contribute **zero** Upstash connections.
+This is a normal-operation count, not a bound on reconnect attempts or transient sockets.
+A failed optional hub or outbound startup leaves fewer connections and reduced service.
+Viewer count adds response buffers and fan-out work, while runners open no Redis connections.
+
+Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
+[`Redis handle`](../../rustd/crates/afd_redis/src/client.rs), and
+[`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
 ### Per-request volume (the Upstash bill)
 
@@ -203,22 +206,21 @@ The Redis figures above are only half the idle bill. The other half is Postgres,
 
 | Knob | Default | What it scales with | Turn it when |
 |---|---|---|---|
-| `REDIS_POOL_MAX_IDLE` | 8 | Concurrent in-flight short-lived commands per `agentsfleetd` replica — **not** fleet count | p99 of `Pool.acquire` wait exceeds ~5 ms under load. The lease/report/ingress/activity commands all complete in single-digit ms over Upstash TLS; above 16 is unusual. |
-| `REDIS_POOL_EAGER_MIN` | 2 | Cold-boot dial cost (Upstash TLS handshake) | Cold-boot `agentsfleetd` latency p99 is dominated by dial time. |
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
 | `REDIS_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `REDIS_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
 | `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the most fleets one lease poll will examine, and the width of the randomized readiness slice. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). In `rustd/crates/afd_fleet/src/lease/assign.rs`, on the same axis `NO_WORK_RETRY_AFTER_MS` trades: per-poll cost against discovery latency. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-fleet runtime before reclaim (the renewal gap) | Raise to cover the longest expected fleet runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short fleets. |
-| `API_HTTP_THREADS` | 1 | Concurrent short-lived handlers **per worker** — the httpz handler-pool size. **No handler parks a pool thread anymore**: SSE streams run on dedicated detached threads (`startEventStream`), capped by `SSE_MAX_STREAMS`, not by this knob; the lease is a non-blocking single poll. | Sustained 429 shed (`agentsfleet_api_backpressure_rejections_total`) with idle CPU. Total request concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`. |
-| `API_HTTP_WORKERS` | 1 | Accept/event-loop threads (epoll/kqueue), each multiplexing up to `API_MAX_CLIENTS` idle connections as fds **and owning its own `API_HTTP_THREADS` handler pool**. | Scale toward core count on a multi-core VM. The accept layer is rarely the wall. |
-| `SSE_MAX_STREAMS` | 64 | Concurrent SSE tails per replica — each is a dedicated detached thread (~0.25 MiB stack; budget math at the const in `rustd/crates/agentsfleetd/src/preflight.rs`); all tails share the SubscriptionHub's one Redis connection. 0 is rejected at boot. | 503s on `GET /events/stream` (`agentsfleet_sse_backpressure_rejections_total`) while the box has memory headroom; watch `agentsfleet_sse_in_flight_streams`. |
-| `API_MAX_IN_FLIGHT_REQUESTS` | 256 | **api-class** admission ceiling → 429 + Retry-After. Route classes at dispatch: ops (`/healthz`, `/readyz`, `/metrics`) are NEVER shed — an overload must not blind the operators; the SSE tail (stream class) answers to `SSE_MAX_STREAMS` instead; everything else is api. | Incident lever: set below `API_HTTP_WORKERS × API_HTTP_THREADS` and redeploy to shed during an overload (dormant at the default — dispatch concurrency is physically below the ceiling). Watch `agentsfleet_api_backpressure_rejections_total`. |
+| `SSE_MAX_STREAMS` | 64 | Concurrent asynchronous SSE bodies per replica; shared by fleet and workspace tails. Zero is rejected at boot. | Raise only after measuring stream refusals, memory, CPU, and proxy capacity. Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
+| `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | `serve.rs` passes this constant directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP QPS (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
 | Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no Redis or coordination cost. Each idle runner adds one poll loop to the Upstash bill (tune via `NO_WORK_RETRY_AFTER_MS`). |
 | assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent leased fleets **per host** — the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the lease→execute→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. |
 
-**The `XREADGROUP BLOCK` knob is gone.** The lease uses a non-blocking read (the idle-cost-vs-latency trade moved to `NO_WORK_RETRY_AFTER_MS` on the runner side), and the M106 `connector:outbound` answer-delivery worker uses the same shape: a non-blocking claim plus a client-side idle backoff (const `IDLE_POLL_MS = 250`). There is no per-stream blocking loop anywhere; the consumer adds ~4 idle claims/second per replica to the request bill and bounds both answer-pickup lag and shutdown join at ≤250 ms.
+The lease path never passes `BLOCK` to Redis.
+The outbound reader uses `BLOCK_INTERVAL = 5000` ms on its dedicated socket, with cancellation raced against the read.
+Its worker also checks pending deliveries; include those commands when measuring idle request volume.
+Source: [`outbound worker`](../../rustd/crates/afd_outbound/src/worker.rs).
 
 ---
 
@@ -234,15 +236,25 @@ Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock c
 
 ### 2. Pub/sub fan-out on activity (unchanged in shape)
 
-`fleet:{id}:activity` PUBLISH is cheap server-side (`agentsfleetd` is the sole publisher); every SSE viewer on a replica shares the SubscriptionHub's ONE `SUBSCRIBE` connection, with one wire subscription per distinct fleet watched. A dashboard with 1000 simultaneous viewers costs Upstash one connection per replica and one delivery per frame per watched channel — the per-viewer fan-out happens in-process (bounded queues, drop-oldest for stalled tabs). Plan API-tier sizing around peak concurrent SSE *threads* (`SSE_MAX_STREAMS`), not connections.
+Each replica's async hub receives one delivery per published frame on each subscribed channel.
+A bounded broadcast queue holds 256 messages per channel and serves each subscriber independently.
+A lagging reader receives `catching_up`; a closed hub ends a per-fleet tail.
 
-**Each open SSE stream costs one dedicated detached thread** (`startEventStream` — never a handler-pool thread; a parked stream cannot black-hole pool batches). The per-replica SSE ceiling is the `SSE_MAX_STREAMS` env knob (default 64; ~0.25 MiB + 1 client fd per stream; the Redis side is the hub's shared connection, no per-viewer term). At the cap, new tails get 503 and the handler pool keeps serving everything else. An event-loop SSE substrate (a stream costs an fd, not a thread) stays a much later, gated lever — it only earns its keep above the thread/memory ceiling, and it must make the SSE *subscriber socket itself* evented, not merely offload the blocking read. See `docs/v2/done/M88_001_*` for the gated design (its premise is being re-anchored: the measured pain was pool poisoning + per-stream Redis connections, not raw httpz throughput).
+Each SSE response owns a semaphore permit until its body is dropped.
+The default `SSE_MAX_STREAMS` ceiling is 64 per replica; new streams receive 503 when full.
+Waiting bodies do not reserve dedicated operating-system threads.
 
-Symptom: `agentsfleet_sse_backpressure_rejections_total` climbing (503s) while memory has headroom; Upstash connection count climbing with viewer count. Fix, in order: raise `SSE_MAX_STREAMS`, then a larger VM, then more API replicas.
+Measure response-buffer memory, serialization work, network throughput, and proxy connection limits under the expected viewer count.
+HTTP/2 can share a socket across streams, but each HTTP hop negotiates independently.
+See [Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) for the browser proxy path and protocol limits.
+
+Source: [`stream ceiling`](../../rustd/crates/afd_sse/src/ceiling.rs),
+[`tail`](../../rustd/crates/afd_sse/src/tail.rs), and
+[`hub`](../../rustd/crates/afd_redis/src/hub.rs).
 
 ### 3. Upstash plan ceiling (now rarely first)
 
-Max concurrent connections, requests/sec, or daily request quota — whichever the plan tier defines first. After the cutover (and the SubscriptionHub) the connection axis is `9·R`, far below the pre-cutover `~fleets`. The request axis is the runner poll loop. Check current plan limits before sizing; the binding axis is usually #1 now, not this.
+Max concurrent connections, requests/sec, or daily request quota — whichever the plan tier defines first. After the cutover (and the SubscriptionHub) the normal connection count is `3·R`, far below the pre-cutover `~fleets`. The request axis is the runner poll loop. Check current plan limits before sizing; the binding axis is usually #1 now, not this.
 
 ---
 
@@ -266,16 +278,11 @@ Structured for an LLM fleet or a `agentsfleet`-driven scaling playbook. Each ste
 
 ```
 Step 1: Redis connection budget (no per-fleet, no per-viewer term)
-  redis_conns = R * (REDIS_POOL_MAX_IDLE + 1)        (+1 = the SubscriptionHub conn;
-                                                      the connector:outbound consumer
-                                                      polls non-blocking on the shared
-                                                      pool — requests, not connections)
-  ASSERT redis_conns + failover_burst <= P_conn
-    failover_burst ≈ R * REDIS_POOL_MAX_IDLE   (pool re-dials on failover; the hub
-                                                redials once and replays SUBSCRIBEs)
-    if violated → add Upstash capacity
-  NOTE: Z and S do not appear — fleets add PG writes, viewers add hub fan-out,
-        neither adds Redis connections. S sizes SSE_MAX_STREAMS (threads/memory).
+  redis_conns = R * 3       (shared commands + hub + outbound reader)
+  ASSERT redis_conns + measured_reconnect_headroom <= P_conn
+    if violated → increase datastore connection capacity
+  NOTE: Z and S do not appear in the steady-state Redis socket count.
+        S still sizes SSE_MAX_STREAMS, response memory, and HTTP capacity.
 
 Step 2: Idle Upstash request rate (the lease-poll loop)
   idle_rps = N / poll_s
@@ -288,8 +295,6 @@ Step 3: Hot-path throughput (the real wall)
   (PG connection pooler assumed; sizing in the deployment runbook)
 
 Step 4: Emit configuration
-  REDIS_POOL_MAX_IDLE      = 8       (override only with measured Pool.acquire p99 > 5ms)
-  REDIS_POOL_EAGER_MIN     = 2
   REDIS_REQUEST_TIMEOUT_MS = 5000    (do not raise)
   REDIS_CONNECT_TIMEOUT_MS = 5000    (raise only for a measured cross-region handshake)
   NO_WORK_RETRY_AFTER_MS   = <step 2 result>
@@ -300,12 +305,12 @@ Step 4: Emit configuration
 
 ### Anti-patterns (do NOT do these)
 
-1. **Size Redis connections by fleet or viewer count.** There is no per-fleet and no per-viewer connection. The connection budget is `9·R` (pool + one hub conn per replica; the `connector:outbound` consumer polls on the shared pool).
+1. **Size Redis connections by fleet or viewer count.** There is no per-fleet and no per-viewer connection. Normal boot opens `3·R` connections: shared commands, hub, and outbound reader.
 2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER_MS` for the idle-cost/latency trade.
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
 4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
-5. **Put `SUBSCRIBE` on the request pool.** A subscribed connection can serve nothing else — it lives outside the pool, on the SubscriptionHub, which holds exactly one and fans out in-process.
-6. **Size `API_HTTP_THREADS` to peak concurrent SSE tails.** Streams no longer touch the handler pool (dedicated detached threads, `SSE_MAX_STREAMS` cap); size the pool to request concurrency and the SSE knob to viewer concurrency — they are independent axes.
+5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
+6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
 7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Redis read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
 8. **Reach for a bare `LIMIT` on the candidate scan.** It was considered and rejected: a bare limit caps discovery throughput without removing the per-poll Postgres cost, and it silently starves every fleet past the bound because the scan is ordered, not sampled. The ceiling only works *because* the readiness slice above it is randomized.
 9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Every replica samples the same shared hash, so the fleet-wide value is any single instance's series. Summing multiplies it by replica count.
@@ -326,14 +331,19 @@ A new runner registers and starts polling `lease`. No rebalance of in-flight wor
 
 ### Upstash failover (provider-side primary swap)
 
-Only `agentsfleetd`'s pool + each replica's hub connection re-dial. `READONLY`-after-failover is resumable (connection recycled, retry against the new primary); transport errors close + re-dial (paying a TLS handshake). The storm is bounded by `9·R` re-dials — viewers notice nothing while their replica's hub redials and replays its SUBSCRIBEs (heartbeats continue from the stream threads).
+The shared and outbound command managers reconnect after connection loss.
+The hub retries with backoff and reissues subscriptions for channels that still have readers.
+Frames published while Redis pub/sub is disconnected are lost; an open HTTP stream can conceal that gap.
+
+Reconnect attempts are not bounded by the number of sockets.
+Measure provider-specific failover and command-error behavior on the intended deployment before claiming recovery guarantees.
 
 ---
 
 ## What is explicitly out of scope here
 
-- **Adaptive pool sizing.** Fixed `max_idle` cap is sufficient; revisit only if post-landing bench shows pool contention.
-- **Switching off Upstash.** Self-hosted Redis on Fly machines is a v3 consideration; the connection/request shape here still applies.
+- **Adaptive Redis pooling.** The Rust command path uses a multiplexed connection, so the retired pool knobs do not apply.
+- **Datastore cutover.** Redis remains the default. [Datastore scaling](./datastore_scaling.md) defines the required Dragonfly Cloud Swarm target and deployment proof.
 - **Postgres scaling.** Pgbouncer + plan sizing covered in the deployment runbook, not here — though after the cutover it is the **primary** scaling axis, so the runbook carries more weight than it did.
 - **Placement / scheduler.** Label-aware assignment (`required_tags ⊆ runner.labels`) is M85_001; capacity-aware placement and autoscale-by-queue-depth stay out of scope (the non-goals fence in runner_fleet.md).
-- **Multi-region Redis.** Single regional Upstash database assumed; co-locate with the Fly `agentsfleetd` region.
+- **Multi-region topology.** Follow [datastore scaling](./datastore_scaling.md); provider-specific latency and limits require measurements on the selected deployment.

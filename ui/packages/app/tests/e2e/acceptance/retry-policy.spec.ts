@@ -23,8 +23,8 @@ import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { cliEnv, makeCliStateDir, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
 
-const PROBE = path.join(__dirname, "fixtures", "retry-probe.ts");
-const APP_ROOT = path.resolve(__dirname, "..", "..", "..");
+const PROBE = path.join(import.meta.dirname, "fixtures", "retry-probe.ts");
+const APP_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const PROBE_TIMEOUT_MS = 60_000;
 
 type Probe = { settled: "answered" | "failed"; status: number | undefined; name: string | undefined; elapsedMs: number };

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { parseRetryAfterHeaderValue } from "@/lib/api/client";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
@@ -18,6 +19,29 @@ const IDEMPOTENT_METHODS = new Set(["GET", "PUT", "DELETE", "HEAD"]);
 const UNKNOWN_NETWORK_ERROR = "unknown network error";
 const NETWORK_RETRY_CAUSE = "network";
 
+const clerkErrors = z.object({ errors: z.array(z.object({ code: z.string() })) });
+
+export class ClerkRequestError extends Error {
+  readonly status: number;
+  readonly codes: ReadonlyArray<string>;
+
+  constructor(method: string, path: string, status: number, detail: string) {
+    super(`Clerk ${method} ${path} → ${status}: ${detail}`);
+    this.name = "ClerkRequestError";
+    this.status = status;
+    this.codes = readErrorCodes(detail);
+  }
+}
+
+function readErrorCodes(detail: string): ReadonlyArray<string> {
+  try {
+    const parsed = clerkErrors.safeParse(JSON.parse(detail));
+    return parsed.success ? parsed.data.errors.map((error) => error.code) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function clerkRequest<T>(
   method: string,
   path: string,
@@ -26,7 +50,7 @@ export async function clerkRequest<T>(
   const response = await requestClerkResponse(method, path, body);
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Clerk ${method} ${path} → ${response.status}: ${detail}`);
+    throw new ClerkRequestError(method, path, response.status, detail);
   }
   return (await response.json()) as T;
 }

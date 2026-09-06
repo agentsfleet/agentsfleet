@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -7,6 +9,7 @@ import {
   LIVE_FILE_CONCURRENCY,
   LIVE_HANDSHAKE_FILE,
   LIVE_SERIAL_FILE,
+  acceptanceTestCommand,
   liveExecutionPlan,
   parseLaneCounts,
 } from "./run-lane.ts";
@@ -24,6 +27,7 @@ const CLERK_PUBLISHABLE_KEY = "fixture-clerk-publishable-key";
 const CLERK_WEBHOOK_SECRET = "fixture-clerk-webhook-secret";
 const REGULAR_EMAIL = "regular@example.test";
 const ADMIN_EMAIL = "admin@example.test";
+const CHILD_DEADLINE_MS = 35_000;
 
 function completeLiveEnv(): NodeJS.ProcessEnv {
   return {
@@ -39,6 +43,48 @@ function completeLiveEnv(): NodeJS.ProcessEnv {
 }
 
 describe("CLI acceptance lane membership", () => {
+  it("keeps the live lane deadline after the shared unit preload runs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "agentsfleet-live-deadline-"));
+    try {
+      await Bun.write(path.join(directory, "bunfig.toml"), Bun.file(path.join(CLI_ROOT, "bunfig.toml")));
+      await symlink(path.join(CLI_ROOT, "test"), path.join(directory, "test"), "dir");
+      const fixture = path.join(directory, "deadline.test.ts");
+      // The real unit preload sets 15s. Crossing it proves the live preload
+      // restores the lane's existing 120s budget, beyond a source-string check.
+      await Bun.write(fixture, [
+        'import { it } from "bun:test";',
+        'it("live setup outlasts the unit deadline", async () => { await Bun.sleep(16_000); });',
+      ].join("\n"));
+      const child = Bun.spawn([...acceptanceTestCommand("live", [fixture])], {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH ?? "",
+          AGENTSFLEET_ACCEPTANCE_TARGET: API_URL,
+          AGENTSFLEET_STATE_DIR: path.join(directory, "state"),
+          AGENTSFLEET_TELEMETRY_DISABLED: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const deadline = setTimeout(() => child.kill(), CHILD_DEADLINE_MS);
+      try {
+        const [stdout, stderr, code] = await Promise.all([
+          new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+        ]);
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(parseLaneCounts(`${stdout}\n${stderr}`)).toEqual({
+          registered: 1, passed: 1, failed: 0, skipped: 0,
+        });
+      } finally {
+        clearTimeout(deadline);
+        if (child.exitCode === null) child.kill();
+        await child.exited;
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 45_000);
+
   it("classifies every acceptance spec into exactly one lane", async () => {
     const discovered: string[] = [];
     const glob = new Bun.Glob(ACCEPTANCE_SPEC_GLOB);
