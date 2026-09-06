@@ -48,4 +48,25 @@ describe("lazy workspace menu entry focus", () => {
     await waitFor(() => expect(document.activeElement).toBe(create));
     expect(create.tabIndex).toBe(0);
   });
+
+  it("does not jump to the first workspace on pointer leave and restores entry focus on reopening", async () => {
+    const workspaces = Array.from({ length: 32 }, (_, index) => ({
+      id: `ws_${index}`, name: `Workspace ${index}`, created_at: 1,
+    }));
+    const onOpenChange = vi.fn();
+    const view = render(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={onOpenChange} />);
+    const first = await screen.findByRole("menuitem", { name: "Workspace 0" });
+    await waitFor(() => expect(document.activeElement).toBe(first));
+    const user = userEvent.setup();
+    const later = screen.getByRole("menuitem", { name: "Workspace 28" });
+    await user.hover(later);
+    await waitFor(() => expect(document.activeElement).toBe(later));
+    await user.unhover(later);
+    expect(document.activeElement).toBe(screen.getByRole("menu"));
+
+    view.rerender(<WorkspaceSwitcherMenu open={false} workspaces={workspaces} onOpenChange={onOpenChange} />);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    view.rerender(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={onOpenChange} />);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Workspace 0" })));
+  });
 });
