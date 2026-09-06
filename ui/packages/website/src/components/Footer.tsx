@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
-import { APP_BASE_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
+import { WAITLIST_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 import { LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { trackNavigationClicked } from "../analytics/posthog";
@@ -52,7 +52,7 @@ function FooterColumns() {
         <h2 className={COL_LABEL}>product</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
           <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>use cases</a></ListItem>
-          <ListItem><a href={APP_BASE_URL} className={COL_LINK}>dashboard</a></ListItem>
+          <ListItem><a href={WAITLIST_URL} className={COL_LINK}>dashboard</a></ListItem>
         </List>
       </div>
 

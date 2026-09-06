@@ -16,14 +16,12 @@ export const LLMS_FULL_INTRO =
 export type LlmsTextInputs = {
   docsUrl: string;
   githubUrl: string;
-  installCommand: string;
   siteUrl: string;
 };
 
 export function buildLlmsIndexText({
   docsUrl,
   githubUrl,
-  installCommand,
   siteUrl,
 }: LlmsTextInputs): string {
   const root = siteUrl.replace(/\/$/, "");
@@ -40,7 +38,6 @@ export function buildLlmsIndexText({
     `- [Docs](${docsUrl})`,
     "- [OpenAPI](/openapi.json)",
     `- [Source](${githubUrl})`,
-    `- Install: \`${installCommand}\``,
     "",
   ].join("\n");
 }
@@ -76,7 +73,6 @@ export function buildLlmsFullText(inputs: LlmsTextInputs): string {
     "## Links",
     `- Docs: ${inputs.docsUrl}`,
     `- Source: ${inputs.githubUrl}`,
-    `- Install: ${inputs.installCommand}`,
     "",
   ].join("\n");
 }
