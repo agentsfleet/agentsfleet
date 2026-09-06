@@ -18,7 +18,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock }) 
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "agt_1";
 const SEED_AT = Date.UTC(2026, 4, 15, 18, 30, 0);
-const CHUNKS = 40;
+const WORKLOADS = [1, 10, 100];
+const fetchMock = vi.fn();
 
 function row(): EventRow {
   return {
@@ -69,6 +70,8 @@ beforeEach(() => {
   renders = 0;
   seen = null;
   refreshMock.mockReset();
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
   FakeEventSource.install();
   __resetRegistryForTests();
 });
@@ -76,15 +79,16 @@ afterEach(() => {
   cleanup();
   __resetRegistryForTests();
   FakeEventSource.uninstall();
+  vi.unstubAllGlobals();
 });
 
 describe("useFleetRunSummary — what a streaming reply costs the strip", () => {
-  it("the chunks of a reply re-render nothing; the completion re-renders once", () => {
+  it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", (chunks) => {
     render(React.createElement(Harness));
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: SEED_AT + 1 });
     const settled = renders;
 
-    for (let i = 0; i < CHUNKS; i += 1) {
+    for (let i = 0; i < chunks; i += 1) {
       emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "word " });
     }
     expect(renders).toBe(settled);
@@ -101,6 +105,30 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
     expect(renders).toBe(settled + 1);
     expect(seen?.latest).toMatchObject({ tokens: 1200 });
     expect(refreshMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it.each(WORKLOADS)("%i ordinary completions share one stream and need no HTTP refresh", (completions) => {
+    render(React.createElement(Harness));
+    const settled = renders;
+    for (let i = 0; i < completions; i += 1) {
+      emit({
+        kind: FRAME_KIND.EVENT_COMPLETE,
+        ...row(),
+        event_id: `evt_${i}`,
+        tokens: i + 1,
+        created_at: SEED_AT + i + 1,
+        fleet_status: INITIAL.status,
+        pending_approvals: 0,
+      });
+      expect(renders).toBe(settled + i + 1);
+      expect(seen?.latest).toMatchObject({ tokens: i + 1 });
+    }
+    expect(seen?.status).toBe(INITIAL.status);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(FakeEventSource.instances).toHaveLength(1);
   });
 
   it("a render the strip asked for does not roll back a frame that landed during it", () => {

@@ -13,7 +13,7 @@
  * lands as a composer below the fold, a message that never leaves the field,
  * or a clipped Skill view.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
@@ -22,6 +22,8 @@ import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
 const SEND_TIMEOUT_MS = 10_000;
+// An idle fleet first flushes through the proxy on the daemon's 15s heartbeat.
+const STREAM_OPEN_TIMEOUT_MS = 30_000;
 
 test.describe("fleet console", () => {
   test("test_e2e_operator_lives_on_the_console — reach the composer, send, navigate", async ({
@@ -33,7 +35,7 @@ test.describe("fleet console", () => {
     await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(ws, `fleets/${fleet.id}`));
+    await visitFleetAndCheckStream(page, ws, fleet.id);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
     // The console's local rail — one working surface at a time.
@@ -108,3 +110,33 @@ test.describe("fleet console", () => {
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "console-");
   });
 });
+
+/** Observe the page's own stream; this proves only the browser-to-app hop. */
+async function visitFleetAndCheckStream(page: Page, workspaceId: string, fleetId: string) {
+  const target = new URL(workspaceHref(workspaceId, `fleets/${fleetId}`), test.info().project.use.baseURL);
+  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleetId}/events/stream`;
+  const session = await page.context().newCDPSession(page);
+  let observed: { status: number; protocol: string | null; mimeType: string } | undefined;
+  try {
+    await session.send("Network.enable");
+    session.on("Network.responseReceived", ({ response, type }) => {
+      if (type !== "EventSource" || observed) return;
+      const url = new URL(response.url);
+      if (url.origin !== target.origin || url.pathname !== streamPath) return;
+      observed = { status: response.status, protocol: response.protocol ?? null, mimeType: response.mimeType };
+    });
+    await page.goto(target.href);
+    await expect.poll(() => observed, { timeout: STREAM_OPEN_TIMEOUT_MS }).toBeDefined();
+    await test.info().attach("fleet-sse-protocol", {
+      body: JSON.stringify({ hop: "browser-to-app", scheme: target.protocol, ...observed }),
+      contentType: "application/json",
+    });
+    expect(observed?.status).toBe(200);
+    expect(observed?.mimeType).toBe("text/event-stream");
+    const multiplexed = ["h2", "h3"];
+    const protocols = target.protocol === "https:" ? multiplexed : ["http/1.1", ...multiplexed];
+    expect(protocols).toContain(observed?.protocol);
+  } finally {
+    await session.detach();
+  }
+}

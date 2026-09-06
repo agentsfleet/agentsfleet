@@ -38,6 +38,7 @@ import * as path from "node:path";
 import type { Page } from "@playwright/test";
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { createSignInTicket } from "./clerk-admin";
+import { recordBrowserSession } from "./browser-sessions";
 import type { FixtureKey } from "./constants";
 
 export type { FixtureKey } from "./constants";
@@ -74,6 +75,10 @@ function getFixtureEntry(cache: JwtCache, key: FixtureKey): FixtureCacheEntry {
 export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
   const cache = loadCache();
   const entry = getFixtureEntry(cache, key);
+  await signInAsUser(page, entry.clerkUserId);
+}
+
+export async function signInAsUser(page: Page, clerkUserId: string): Promise<void> {
   await setupClerkTestingToken({ page });
   // clerk-js needs a Clerk-aware page mounted before it can mint a session.
   // /sign-in is the cheapest such page in the dashboard (no API fetches in
@@ -87,8 +92,8 @@ export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
     await page.goto("/sign-in");
     await page.waitForFunction(() => Boolean(window.Clerk?.client));
   }
-  const ticket = await createSignInTicket(entry.clerkUserId);
-  await page.evaluate(async (signInTicket) => {
+  const ticket = await createSignInTicket(clerkUserId);
+  const sessionId = await page.evaluate(async (signInTicket) => {
     const client = window.Clerk.client;
     if (!client) throw new Error("Clerk client unavailable during fixture sign-in");
     const attempt = await client.signIn.create({
@@ -98,11 +103,16 @@ export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
     if (attempt.status !== "complete" || !attempt.createdSessionId) {
       throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
     }
+    return attempt.createdSessionId;
+  }, ticket);
+  // Persist the session before activation or navigation can fail.
+  recordBrowserSession(sessionId);
+  await page.evaluate(async (createdSessionId) => {
     await window.Clerk.setActive({
-      session: attempt.createdSessionId,
+      session: createdSessionId,
       navigate: async () => {},
     });
-  }, ticket);
+  }, sessionId);
   await page.waitForFunction(() => Boolean(window.Clerk?.user));
   await page.goto("about:blank");
 }
