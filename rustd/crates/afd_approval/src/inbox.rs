@@ -26,7 +26,11 @@
 //! stopped and the run that followed from the answer. Re-opening the first
 //! would erase the fact that a person was ever asked.
 
+mod announce;
 mod row;
+mod sweep;
+
+use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -35,9 +39,12 @@ use afd_redis::streams::OnceScope;
 use afd_redis::{FleetStreams, Redis};
 use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
+use afd_wire::tail::TailFrame;
+use sqlx::Row as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
 
+use self::announce::Answer;
 use self::row::{read_gate, read_resolved};
 use crate::gate_status::GateStatus;
 
@@ -63,17 +70,16 @@ const KIND_INTEGRATION_GRANT: &str = "integration_grant";
 /// there is no second statement to keep in step.
 const NO_FILTER: &str = "";
 
-/// Who a swept gate records as its resolver.
-const SWEEPER: &str = "system:approval_gate_sweeper";
-
-/// What a swept gate records as its detail.
-const SWEPT_DETAIL: &str = "the approval window closed with no answer";
-
 const CONTEXT_PAGE: &str = "gate.inbox.page";
 const CONTEXT_ONE: &str = "gate.inbox.one";
 const CONTEXT_RESOLVE: &str = "gate.inbox.resolve";
-const CONTEXT_EXPIRE: &str = "gate.inbox.expire";
 const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
+
+/// The column the pending count sits in, after the resolved row's nine.
+const COLUMN_PENDING_APPROVALS: usize = 9;
+
+/// An approved gate held no run, so there was nothing to continue.
+const EVENT_NOTHING_TO_CONTINUE: &str = "gate_approved_without_run";
 
 /// The actor a continuation event records.
 ///
@@ -198,14 +204,7 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         if let Some(row) = won {
-            let mut resolved = read_resolved(&row)?;
-            // The continuation is part of RESOLVING, not something a caller
-            // remembers to do afterwards: an approval that landed without one
-            // is a run a person unblocked and nothing restarted.
-            if outcome.continues_the_run() {
-                resolved.continuation_event_id = self.continue_from(&resolved, now).await?;
-            }
-            return Ok(Resolution::Resolved(resolved));
+            return Ok(Resolution::Resolved(self.won(&row, outcome, now).await?));
         }
 
         // Nothing updated: either somebody answered first, or there was never
@@ -224,6 +223,55 @@ impl Inbox {
         })
     }
 
+    /// What winning the race owes: the continuation an approval lands, and
+    /// the announcement every answer does.
+    ///
+    /// The announcement runs whatever the continuation did. The row moved
+    /// when the statement returned it, so a watcher owed the answer is owed
+    /// it even when the run could not be restarted — the count on the frame
+    /// is the one the statement read, and an error from the continuation is
+    /// reported after the tail has heard.
+    async fn won(
+        &self,
+        row: &sqlx::postgres::PgRow,
+        outcome: Decision,
+        now: UnixMillis,
+    ) -> Result<Resolved> {
+        let mut resolved = read_resolved(row)?;
+        let pending_approvals: i64 = row
+            .try_get(COLUMN_PENDING_APPROVALS)
+            .map_err(error::query(CONTEXT_RESOLVE))?;
+        // The continuation is part of RESOLVING, not something a caller
+        // remembers to do afterwards: an approval that landed without one is
+        // a run a person unblocked and nothing restarted.
+        let continuation = match (outcome.continues_the_run(), resolved.event_id.as_deref()) {
+            (true, Some(event_id)) => self.continue_from(&resolved, event_id, now).await,
+            (true, None) => {
+                let fleet = resolved.fleet_id.as_str();
+                let gate = resolved.gate_id.as_str();
+                tracing::warn!(
+                    event = EVENT_NOTHING_TO_CONTINUE,
+                    fleet_id = fleet,
+                    gate_id = gate,
+                    "the approved gate parked no event; there is no run to continue"
+                );
+                Ok(None)
+            }
+            (false, _) => Ok(None),
+        };
+        self.announce(Answer {
+            fleet_id: &resolved.fleet_id,
+            gate_id: &resolved.gate_id,
+            event_id: resolved.event_id.as_deref(),
+            status: &resolved.status,
+            resolved_by: &resolved.resolved_by,
+            pending_approvals,
+        })
+        .await;
+        resolved.continuation_event_id = continuation?;
+        Ok(resolved)
+    }
+
     /// Lands the event that resumes the run an approved gate had blocked.
     ///
     /// The blocked row is NEVER reopened. This is a new event carrying
@@ -234,8 +282,18 @@ impl Inbox {
     /// Idempotent on the gate's ACTION: the stream append is `append_once`
     /// keyed by it, and the row insert carries the `(fleet_id, event_id)`
     /// conflict arm, so a retried resolve continues the run exactly once.
-    async fn continue_from(&self, resolved: &Resolved, now: UnixMillis) -> Result<Option<String>> {
-        let actor = format!("{CONTINUATION_ACTOR_PREFIX}{}", resolved.event_id);
+    ///
+    /// The row is announced on the fleet's tail as `event_received` when it
+    /// lands here, and only here: the lease verb announces the rows it
+    /// writes, and this one is already there when the runner pulls it, so a
+    /// watcher would otherwise never see the continued run open.
+    async fn continue_from(
+        &self,
+        resolved: &Resolved,
+        event_id: &str,
+        now: UnixMillis,
+    ) -> Result<Option<String>> {
+        let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
         let kind = afd_wire::event::EventType::Continuation.as_str();
         let created_at = now.as_millis().to_string();
         let appended = FleetStreams::new(self.queue.clone())
@@ -254,43 +312,37 @@ impl Inbox {
             )
             .await?;
 
-        let mut connection = self.database.acquire().await?;
-        sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
-            .bind(&resolved.fleet_id)
-            .bind(appended.id.as_str())
-            .bind(&resolved.workspace_id)
-            .bind(&actor)
-            .bind(kind)
-            .bind(CONTINUATION_BODY)
-            .bind(&resolved.event_id)
-            .bind(now.as_millis())
-            .bind(afd_core::event::status::RECEIVED)
-            .execute(&mut *connection)
-            .await
-            .map_err(error::query(CONTEXT_CONTINUE))?;
+        let landed = {
+            let mut connection = self.database.acquire().await?;
+            sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+                .bind(&resolved.fleet_id)
+                .bind(appended.id.as_str())
+                .bind(&resolved.workspace_id)
+                .bind(&actor)
+                .bind(kind)
+                .bind(CONTINUATION_BODY)
+                .bind(event_id)
+                .bind(now.as_millis())
+                .bind(afd_core::event::status::RECEIVED)
+                .execute(&mut *connection)
+                .await
+                .map_err(error::query(CONTEXT_CONTINUE))?
+        };
+        // Once, on the write that landed the row: a retried resolve finds the
+        // row already there and announces nothing, the same rule the lease
+        // verb keeps for a redelivery.
+        if landed.rows_affected() > 0 {
+            let frame = TailFrame::EventReceived {
+                event_id: Cow::Borrowed(appended.id.as_str()),
+                actor: Cow::Borrowed(&actor),
+                event_type: Cow::Borrowed(kind),
+                created_at: now.as_millis(),
+            };
+            FleetStreams::new(self.queue.clone())
+                .publish_frame(&resolved.fleet_id, &frame)
+                .await;
+        }
 
         Ok(Some(appended.id.as_str().to_owned()))
-    }
-
-    /// Expires every gate whose deadline has passed, reporting how many.
-    ///
-    /// Scoped to PENDING rows, so an answer that landed a millisecond before
-    /// the deadline is not overwritten: the operator's decision outranks the
-    /// clock's.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn expire(&self, now: UnixMillis) -> Result<u64> {
-        let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::EXPIRE_GATES)
-            .bind(status::TIMED_OUT)
-            .bind(status::PENDING)
-            .bind(SWEEPER)
-            .bind(SWEPT_DETAIL)
-            .bind(now.as_millis())
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(error::query(CONTEXT_EXPIRE))?;
-        Ok(rows.len() as u64)
     }
 }

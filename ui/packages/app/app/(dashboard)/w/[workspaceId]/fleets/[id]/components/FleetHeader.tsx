@@ -38,7 +38,7 @@ function FleetBreadcrumb({
   );
 }
 
-export default function FleetHeader({
+export function FleetHeader({
   workspaceId,
   fleet,
   exhaustedAt,

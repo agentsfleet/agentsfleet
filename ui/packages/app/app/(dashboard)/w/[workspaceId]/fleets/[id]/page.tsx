@@ -22,12 +22,12 @@ import {
   cursorTrailFrom,
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
-import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
-import FleetHeader from "./components/FleetHeader";
 import SkillEditor from "./components/SkillEditor";
 import MemoryPanel from "./components/MemoryPanel";
-import RunMetricsStrip from "./components/RunMetricsStrip";
+import { ChatView } from "./components/ChatView";
+import { FleetHeader } from "./components/FleetHeader";
+import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
@@ -203,34 +203,22 @@ async function loadChatView(
 ) {
   // The transcript is the one surface that genuinely wants the bodies: it
   // renders what was said. The thread read carries them in ONE request — the
-  // list-then-one-detail-per-turn fan-out this view used to issue is gone.
-  const [threadResult, approvalsResult] = await Promise.all([
-    data.thread,
-    data.approvals,
-  ]);
+  // list-then-one-detail-per-turn fan-out this view used to issue is gone. The
+  // strip's first figures come off that same page, and its pending count off
+  // the fleet detail the page already holds: the chat opens on two reads, and
+  // the live tail moves both from there.
+  const threadResult = await data.thread;
   const turns = threadResult?.items ?? [];
-  const approvals = approvalsResult ?? { items: [], next_cursor: null };
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
-      <div className="shrink-0">
-        <RunMetricsStrip
-          status={fleet.status}
-          latest={turns[0] ?? null}
-          pendingApprovals={approvals.items.length}
-          pendingApprovalsHasMore={approvals.next_cursor !== null}
-          approvalsHref={approvalsHref}
-          summaryAvailable={threadResult !== null}
-          approvalsAvailable={approvalsResult !== null}
-        />
-      </div>
-      <FleetThreadDynamic
-        workspaceId={workspaceId}
-        fleetId={fleet.id}
-        fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
-        initial={turns}
-      />
-    </div>
+    <ChatView
+      workspaceId={workspaceId}
+      fleetId={fleet.id}
+      fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
+      initial={turns}
+      initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
+      approvalsHref={approvalsHref}
+    />
   );
 }
 

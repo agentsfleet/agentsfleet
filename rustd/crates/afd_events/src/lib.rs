@@ -31,11 +31,13 @@
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.
 
+mod closed;
 mod error;
 mod history;
 pub mod sql;
 mod steer;
 
+pub use self::closed::Closed;
 pub use self::error::{Error, Result};
 pub use self::history::{
     Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,

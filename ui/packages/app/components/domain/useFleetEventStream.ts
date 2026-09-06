@@ -14,9 +14,8 @@ import {
   retryConnection as registryRetryConnection,
   subscribe,
   type ConnectionStatus,
-  type FleetEvent,
-  type FleetEventStatus,
 } from "@/lib/streaming/fleet-stream-registry";
+import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import type { InstallStepId } from "@/lib/streaming/install-steps";
 
 // Public re-exports so existing consumers keep their import surface.

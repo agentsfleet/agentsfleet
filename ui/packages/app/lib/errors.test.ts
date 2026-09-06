@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURATED_ERROR_CODES, presentError, presentErrorString } from "./errors";
+import { RETRY_CODE_TIMEOUT } from "./api/retry";
 
 describe("presentError", () => {
   it("maps a known errorCode to the curated title + body", () => {
@@ -65,11 +66,23 @@ describe("CODE_MAP — shrunk to client-minted entries", () => {
   it("contains exactly the codes that cannot be backend-authored", () => {
     // UZ-AUTH-401/UZ-AUTH-022: client-minted (with-token.ts / require-scope.ts),
     // never round-trip to a real backend response for that code path.
+    // TIMEOUT: minted by the transport when the backend never answered.
     // UZ-VALIDATION-001/UZ-CRED-003 (dead, no backend code, never client-minted)
     // were deleted rather than left in place.
     expect([...CURATED_ERROR_CODES].sort()).toEqual(
-      ["UZ-AUTH-401", "UZ-AUTH-022"].sort(),
+      ["UZ-AUTH-401", "UZ-AUTH-022", RETRY_CODE_TIMEOUT].sort(),
     );
+  });
+
+  it("a client-side timeout reads as operator copy, never as the backend path", () => {
+    const p = presentError({
+      errorCode: RETRY_CODE_TIMEOUT,
+      message: "request to /v1/workspaces/ws_1/fleets/agt_1 timed out",
+      action: "refresh the run summary",
+    });
+    expect(p.title).toBe("The request timed out");
+    expect(p.body).toBe("The backend took too long to answer. Try again in a moment.");
+    expect(presentErrorString({ errorCode: RETRY_CODE_TIMEOUT, action: "x" })).not.toMatch(/\/v1\//);
   });
 
   it("no longer maps any of the 26 codes migrated to the backend registry", () => {

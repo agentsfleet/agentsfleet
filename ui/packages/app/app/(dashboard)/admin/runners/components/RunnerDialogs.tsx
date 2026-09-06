@@ -32,7 +32,9 @@ export function RunnerActionConfirm<T extends RunnerConfirmCopy>({
   target: T | null;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (target: T) => void;
+  /** A promise is forwarded to the dialog, which holds its buttons disabled
+   * and reads "Working…" until it settles. */
+  onConfirm: (target: T) => void | Promise<void>;
 }) {
   return (
     <ConfirmDialog

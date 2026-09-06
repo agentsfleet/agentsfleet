@@ -1,7 +1,7 @@
 import type { MessageState } from "@assistant-ui/react";
 
 import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
 // split out of `fleetMessageRenderers` at its length cap. `convertEvent`

@@ -34,8 +34,13 @@
 //! than done quietly, because "row-equivalent" is this milestone's graded
 //! claim and a Redis key is not a row.
 
+use std::borrow::Cow;
+
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_redis::streams::FleetStreams;
+use afd_wire::tail::TailFrame;
+use sqlx::Row as _;
 
 use super::sql;
 use crate::error::{Error, Result, query};
@@ -113,9 +118,10 @@ impl Gates {
             return Self::unavailable(&request, WRITE_ROW, None);
         };
 
-        if let Err(fault) = self.record_row(&request, &reference, now).await {
-            return Self::unavailable(&request, WRITE_ROW, Some(&fault));
-        }
+        let (gate_id, pending_approvals) = match self.record_row(&request, &reference, now).await {
+            Ok(recorded) => recorded,
+            Err(fault) => return Self::unavailable(&request, WRITE_ROW, Some(&fault)),
+        };
         // Last, and the ordering the module note argues for. A reference that
         // fails to land leaves a `pending` row nothing points at: the event
         // re-polls, finds no reference, and parks again — which is why
@@ -127,6 +133,7 @@ impl Gates {
         {
             return Self::unavailable(&request, WRITE_REFERENCE, Some(&fault));
         }
+        self.announce(&request, &gate_id, pending_approvals).await;
 
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
@@ -140,13 +147,33 @@ impl Gates {
         Parked::Awaiting(reference)
     }
 
-    /// Insert the row a resolve updates and the mint spends against.
+    /// Tell the fleet's live tail a human has been asked, best-effort.
+    ///
+    /// After both writes, so a watcher reacting to the frame finds the row it
+    /// names. The count rode the insert, so the frame costs the park one
+    /// publish and no read; a publish that fails costs the tail one frame and
+    /// the park nothing — the row is down, the reference is down, and the
+    /// card is what the answer lands on.
+    async fn announce(&self, request: &Park<'_>, gate_id: &Uuid7, pending_approvals: i64) {
+        let frame = TailFrame::GateOpened {
+            gate_id: Cow::Borrowed(gate_id.as_str()),
+            event_id: Cow::Borrowed(request.event_id),
+            pending_approvals,
+        };
+        FleetStreams::new(self.queue().clone())
+            .publish_frame(request.fleet_id.as_str(), &frame)
+            .await;
+    }
+
+    /// Insert the row a resolve updates and the mint spends against, and
+    /// answer the identifier it was recorded under beside how many of the
+    /// fleet's gates now wait, this one counted.
     async fn record_row(
         &self,
         request: &Park<'_>,
         reference: &GateRef,
         now: UnixMillis,
-    ) -> Result<()> {
+    ) -> Result<(Uuid7, i64)> {
         let gate_id = self.mint(now)?;
         // Recorded so the write mint can compare the approved reach against the
         // fleet's current config without trusting anything PATCHable.
@@ -160,7 +187,7 @@ impl Gates {
             })?;
 
         let mut connection = self.database().acquire().await?;
-        sql::PendingRow {
+        let row = sql::PendingRow {
             gate_id: &gate_id,
             fleet_id: request.fleet_id,
             workspace_id: request.workspace_id,
@@ -176,10 +203,11 @@ impl Gates {
             now,
         }
         .bind()
-        .execute(&mut *connection)
+        .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT_PARK))?;
-        Ok(())
+        let pending_approvals = row.try_get(0).map_err(query(CONTEXT_PARK))?;
+        Ok((gate_id, pending_approvals))
     }
 
     /// Draw one identifier for a gate.

@@ -4,19 +4,17 @@ import {
   type EventsPage,
   type ThreadPage,
 } from "@/lib/api/events";
-import { listApprovals } from "@/lib/api/approvals";
 import { listAllMemories } from "@/lib/api/memory";
 import { FLEET_VIEW, type FleetView } from "./FleetSubnavigation";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
 export const CHAT_TURNS = 20;
-const CHAT_APPROVALS_LIMIT = 50;
 
-/** Chat opens on the transcript plus the approvals waiting on it. */
+/** Chat opens on the transcript; the approvals waiting on the fleet ride the
+ * fleet detail the page already reads. */
 export type ChatViewData = {
   view: typeof FLEET_VIEW.chat;
   thread: Promise<ThreadPage | null>;
-  approvals: Promise<Awaited<ReturnType<typeof listApprovals>> | null>;
 };
 
 /** Events opens on the page the URL cursor names. */
@@ -90,10 +88,6 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
         view,
         thread: listFleetMessages(args.workspaceId, args.fleetId, args.token, {
           limit: CHAT_TURNS,
-        }).catch(() => null),
-        approvals: listApprovals(args.workspaceId, args.token, {
-          fleetId: args.fleetId,
-          limit: CHAT_APPROVALS_LIMIT,
         }).catch(() => null),
       };
   }

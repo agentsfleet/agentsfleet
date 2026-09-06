@@ -165,6 +165,13 @@ pub struct FleetDetailResponse<'a> {
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
     pub budget_used_nanos: i64,
+    /// How many approval gates wait on a human's answer for this Fleet.
+    ///
+    /// Counted on the read, so a console showing "N approvals waiting" opens
+    /// on this one request rather than paging the approvals inbox for a
+    /// number. The live tail's completion and gate frames carry the same
+    /// count, so the figure moves without another read.
+    pub pending_approvals: i64,
     /// When it was installed.
     pub created_at: i64,
     /// When it last changed.

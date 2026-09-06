@@ -254,3 +254,18 @@ describe("steerFleet", () => {
     expect(err.status).toBe(400);
   });
 });
+
+describe("path encoding", () => {
+  it("encodes the workspace and fleet ids so a slashy id can not escape the route", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: (k: string) => (k.toLowerCase() === "etag" ? '"v1"' : null) },
+      json: async () => detail,
+    });
+    const { getFleet } = await import("./fleets");
+    await getFleet("ws/1", "z 2", "tok");
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("/v1/workspaces/ws%2F1/fleets/z%202");
+  });
+});

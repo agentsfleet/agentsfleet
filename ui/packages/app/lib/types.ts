@@ -59,6 +59,9 @@ export type FleetDetail = {
   triggers: FleetTrigger[] | null;
   events_processed: number;
   budget_used_nanos: number;
+  /** Approval gates a human still owes this fleet an answer on, counted on the
+   * read so the console opens on the fleet and its thread alone. */
+  pending_approvals: number;
   created_at: number;
   updated_at: number;
 };
