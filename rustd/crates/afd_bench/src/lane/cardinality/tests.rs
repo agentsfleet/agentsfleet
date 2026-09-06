@@ -1,6 +1,7 @@
 //! The ladder's rungs, and what a plan line yields.
 
-use super::{EXECUTION_TIME, PLANNING_TIME, plan_time, rungs};
+use super::probe::{EXECUTION_TIME, PLANNING_TIME, plan_time};
+use super::rungs;
 
 #[test]
 fn test_the_ladder_climbs_by_tens_to_its_ceiling() {
