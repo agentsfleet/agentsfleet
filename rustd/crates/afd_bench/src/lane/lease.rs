@@ -29,6 +29,7 @@ use std::time::Instant;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::Leases;
 
+use crate::abort::Abort;
 use crate::datastores::{Datastores, redis_calls};
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
@@ -109,6 +110,7 @@ pub async fn run(
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
+    let abort = std::sync::Arc::new(Abort::new(profile.caps().abort_error_rate));
     let instrument = LeaseInstrument::install()?;
     let leases = Leases::new(
         stores.database.clone(),
@@ -127,6 +129,7 @@ pub async fn run(
         &runners,
         parameters.window,
         Some(parameters.fleets),
+        &abort,
     )
     .await?;
     // Emptying the index is what MAKES the next window idle. Issuing a lease
@@ -144,6 +147,7 @@ pub async fn run(
         &runners,
         IDLE_WINDOW,
         None,
+        &abort,
     )
     .await?;
 
@@ -153,6 +157,7 @@ pub async fn run(
     report.parameter(Parameter::Runners.name(), parameters.runners);
     contended.record(&mut report, &instrument)?;
     idle.record_idle(&mut report);
+    report.abort = abort.recorded();
     report.fixture = Fixture::of(prefix, ledger);
     Ok(report)
 }
@@ -218,6 +223,7 @@ async fn measure(
     runners: &[afd_core::id::Uuid7],
     window: Duration,
     stop_after: Option<u64>,
+    abort: &std::sync::Arc<Abort>,
 ) -> Result<Window> {
     // The instrument is the CALLER's. Installing a second one here read zero
     // round trips off a provider nothing records into: `producers::install`
@@ -232,10 +238,11 @@ async fn measure(
     for runner in runners {
         let leases = leases.clone();
         let runner = runner.clone();
+        let abort = std::sync::Arc::clone(abort);
         // Per runner, because the thing under measurement is what happens when
         // R of them reach the same readiness index at the same instant.
         tasks.push(tokio::spawn(async move {
-            drive::poll_until(&leases, &runner, deadline, stop_after).await
+            drive::poll_until(&leases, &runner, deadline, stop_after, &abort).await
         }));
     }
 

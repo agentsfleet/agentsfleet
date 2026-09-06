@@ -68,7 +68,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_bench/src/bin/compare.rs` | CREATE | the comparison command behind `make bench-compare` |
 | `bench/baselines/*.json` | CREATE | one committed baseline per lane per profile |
 | `rustd/Cargo.toml` | EDIT | registers `afd_bench` as a workspace member |
-| `.github/workflows/bench.yml` | EDIT | runs the lanes on the rig and, on dispatch, against a named deployed environment |
+| `.github/workflows/bench.yml` | DEFERRED | the lanes job lands in a follow-up; see Discovery for the acknowledgement |
 | `docs/architecture/scaling.md` | EDIT | records the measured ceilings beside the design they grade |
 
 **Layout amendment (CHORE(open)).** The table above moved the bench crate from
@@ -190,7 +190,7 @@ A number nobody compares against is a number nobody reads, and a number with no 
 
 - **Dimension 6.1** — DONE — every lane writes one result file carrying lane, profile, parameters, measurements, and a per-datastore breakdown → Test `test_each_lane_writes_a_parseable_result`
 - **Dimension 6.2** — DONE — a comparison command prints the delta between a result and its per-profile baseline and exits zero regardless of direction → Test `test_the_comparison_reports_a_delta_without_gating`
-- **Dimension 6.3** — the dispatch-only workflow runs every lane on the rig, accepts a deployed environment as an input, and uploads every result → Test `test_the_workflow_runs_the_rig_and_accepts_an_environment`
+- **Dimension 6.3** — DEFERRED — — the dispatch-only workflow runs every lane on the rig, accepts a deployed environment as an input, and uploads every result → Test `test_the_workflow_runs_the_rig_and_accepts_an_environment`
 
 ## Interfaces
 
@@ -352,6 +352,11 @@ total / 56.6M in ninety days, hdrhistogram 111M / 19.6M, `quantiles` last
 released 2018.
 
 > Kishore (2026-09-06): "Okay use hrdhistogram" — context: the p95/p99 computation. `hdrhistogram = "7.6.0"` added to `[workspace.dependencies]`, `default-features = false`. Criterion was considered and rejected on fitness rather than popularity: it reports the spread of per-iteration mean times, controls its own iteration count against the profile caps, and re-runs a stateful operation against a growing datastore.
+
+**Deferral — the dispatch-only workflow (Dimension 6.3).** Asked whether to
+add a lanes job to `bench.yml`, defer it, or open a separate workflow file.
+
+> Kishore (2026-09-07): "Defer the workflow to a follow-up" — context: Dimension 6.3 and the `.github/workflows/bench.yml` row. The four lanes run by `make bench-<lane>` on any machine with docker; nothing runs them in CI until the follow-up, which will also carry the deployed-environment input once a target exists. `test_the_workflow_runs_the_rig_and_accepts_an_environment` is not written, for the same reason.
 
 **Deferral — a real deployed run.** No `dev` target was named either, so the
 deployed-profile *runs* against a live environment are deferred; the deployed
