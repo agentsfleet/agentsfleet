@@ -19,12 +19,8 @@ import {
   PlugIcon,
   TicketIcon,
 } from "lucide-react";
-import {
-  CONNECTOR_NOT_CONFIGURED_DOCS_URI,
-  CONNECTOR_STATUS,
-  type ConnectorCatalogEntry,
-  type ConnectorStatus,
-} from "@/lib/api/connectors";
+import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
+import { CONNECTOR_NOT_CONFIGURED_DOCS_URI, CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString } from "@/lib/errors";
 

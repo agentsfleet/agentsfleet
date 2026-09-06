@@ -74,8 +74,10 @@ describe("lib/api/fleets", () => {
       ok: false,
       status: 500,
       statusText: "Server Error",
+      // What `Response.json()` throws for a body that is not JSON; any other
+      // error is a broken stream, which the transport hands to the retry policy.
       json: async () => {
-        throw new Error("bad json");
+        throw new SyntaxError("bad json");
       },
     });
     const mod = await import("../lib/api/fleets");
@@ -223,8 +225,10 @@ describe("lib/api/tenant_billing", () => {
       ok: false,
       status: 500,
       statusText: "Server Error",
+      // What `Response.json()` throws for a body that is not JSON; any other
+      // error is a broken stream, which the transport hands to the retry policy.
       json: async () => {
-        throw new Error("bad json");
+        throw new SyntaxError("bad json");
       },
     });
     const mod = await import("../lib/api/tenant_billing");

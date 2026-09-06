@@ -5,13 +5,17 @@ import {
   request,
   requireApiOrigin,
 } from "./client";
+
 import { ApiError } from "./errors";
+import { APPROVAL_DECISION } from "./approvals-types";
+import type { ApprovalDecision } from "./approvals-types";
 
 // Mirrors the server's inbox gate row
 // (`GateRow` in rustd/crates/afd_approval/src/inbox/row.rs)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";
+
 export type ApprovalStatusValue = ApprovalStatus | (string & {});
 
 export type ApprovalGate = {
@@ -57,11 +61,8 @@ export type AlreadyResolvedResponse = ResolveResponse & {
 
 export type ResolveOutcome =
   | { kind: "resolved"; data: ResolveResponse }
-  | { kind: "already_resolved"; data: AlreadyResolvedResponse };
 
-/** How many gates one inbox page carries — the first render, each poll, and
- * every "load more" ask for the same page. */
-export const APPROVALS_PAGE_LIMIT = 50;
+  | { kind: "already_resolved"; data: AlreadyResolvedResponse };
 
 export type ListApprovalsOpts = {
   status?: string;
@@ -100,15 +101,6 @@ export async function getApproval(
     token,
   );
 }
-
-// Wire-protocol values the API understands for the `/approve` / `/deny` POST
-// paths. Single source of truth — dashboard components import these so the
-// decision flow has one place that pins the literal.
-export const APPROVAL_DECISION = {
-  APPROVE: "approve",
-  DENY: "deny",
-} as const;
-export type ApprovalDecision = typeof APPROVAL_DECISION[keyof typeof APPROVAL_DECISION];
 
 // Resolve. The server returns 200 with ResolveResponse on success and 409 with
 // AlreadyResolvedResponse when another channel got there first. Both are

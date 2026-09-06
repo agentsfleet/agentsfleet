@@ -34,7 +34,7 @@ import {
   parseRegistryAllowlist,
   type AssignedPolicy,
   type SandboxTier,
-} from "@/lib/api/runners";
+} from "@/lib/api/runners-types";
 import {
   BIND_MODES,
   MAX_EXTRA_BINDS,

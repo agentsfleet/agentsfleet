@@ -1,5 +1,37 @@
 export type UzErrorCode = string;
 
+/**
+ * The status a client-side timeout is reported under. 408 is the closest
+ * standard meaning (the request did not complete in time). Declared beside
+ * `ApiError` so a client component can read it without importing the retry
+ * policy, whose dependency is server-only.
+ */
+export const HTTP_STATUS_REQUEST_TIMEOUT = 408;
+
+/**
+ * The `ApiError.code` a client-side request timeout carries — the retry
+ * layer's own class, distinct from any `UZ-` wire code. The transport, the
+ * classifier and the operator copy all read it, so it is declared once here.
+ */
+export const RETRY_CODE_TIMEOUT = "TIMEOUT";
+
+/** Where the client-error class begins and ends. */
+const HTTP_STATUS_CLIENT_ERROR_FLOOR = 400;
+const HTTP_STATUS_SERVER_ERROR_FLOOR = 500;
+
+/**
+ * Whether a failed write's outcome is settled by its status: a client-class
+ * refusal other than a timeout means the server saw the request and said no,
+ * so nothing changed. Anything else — no status at all (a transport fault),
+ * a timeout, a server or gateway error — leaves the server's state in doubt,
+ * and a surface that painted the write optimistically re-reads before it
+ * trusts its own rollback.
+ */
+export function isDefiniteRefusal(status: number | undefined): boolean {
+  if (status === undefined || status === HTTP_STATUS_REQUEST_TIMEOUT) return false;
+  return status >= HTTP_STATUS_CLIENT_ERROR_FLOOR && status < HTTP_STATUS_SERVER_ERROR_FLOOR;
+}
+
 export class ApiError extends Error {
   status: number;
   code: UzErrorCode;

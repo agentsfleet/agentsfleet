@@ -33,12 +33,8 @@ vi.mock("lucide-react", () => {
 });
 
 import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
-import {
-  CONNECTOR_STATUS,
-  CONNECTOR_NOT_CONFIGURED_DOCS_URI,
-  type ConnectorCatalogEntry,
-  type ConnectorStatus,
-} from "@/lib/api/connectors";
+import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
+import { CONNECTOR_STATUS, CONNECTOR_NOT_CONFIGURED_DOCS_URI, type ConnectorStatus } from "@/lib/api/connectors-types";
 
 const WS = "ws_test";
 
