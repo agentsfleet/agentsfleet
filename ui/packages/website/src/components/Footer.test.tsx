@@ -1,4 +1,4 @@
-import { APP_BASE_URL } from "../config";
+import { WAITLIST_URL } from "../config";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -49,7 +49,7 @@ describe("Footer", () => {
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^Use cases$/i })).toHaveAttribute("href", "/#operational-loop");
     expect(screen.queryByRole("link", { name: /^early access$/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Dashboard$/i })).toHaveAttribute("href", APP_BASE_URL);
+    expect(screen.getByRole("link", { name: /^Dashboard$/i })).toHaveAttribute("href", WAITLIST_URL);
   });
 
   it("offers docs and agent resources", () => {

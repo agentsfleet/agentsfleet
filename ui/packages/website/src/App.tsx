@@ -3,7 +3,7 @@ import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { APP_BASE_URL, DOCS_URL } from "./config";
+import { WAITLIST_URL, DOCS_URL } from "./config";
 import { trackNavigationClicked } from "./analytics/posthog";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
@@ -92,7 +92,7 @@ function DashboardAction() {
   return (
     <Button wrap asChild className="min-h-11" data-testid="header-install-cta">
       <a
-        href={APP_BASE_URL}
+        href={WAITLIST_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() =>

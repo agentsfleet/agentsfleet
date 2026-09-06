@@ -21,15 +21,8 @@ test.describe("Home page", () => {
   });
 
   test("renders hero CTAs", async ({ page }) => {
-    // The install one-liner sits in a copy-row; the primary CTA is a
-    // copy-only button (no docs anchor, no scroll).
-    const command = page.getByTestId("hero-install-command");
-    await expect(command).toContainText("curl -fsSL https://agentsfleet.dev | bash");
-    const install = page.getByTestId("hero-cta-primary");
-    await expect(install).toBeVisible();
-    await expect(install).toHaveJSProperty("tagName", "BUTTON");
-    await expect(install).not.toHaveAttribute("href", /./);
-    await expect(install).toContainText(/copy/i);
+    await expect(page.getByTestId("hero-install-command")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /copy the install command/i })).toHaveCount(0);
 
     // The promo pill opens early-access information without quoting a price.
     const pill = page.getByTestId("hero-promo-pill");
@@ -50,11 +43,11 @@ test.describe("Home page", () => {
     await expect(page.getByTestId("hero-cli")).toHaveCount(0);
   });
 
-  test("topbar opens the dashboard and retains the brand-mark pulse", async ({ page }) => {
+  test("topbar opens the waitlist and retains the brand-mark pulse", async ({ page }) => {
     const cta = page.getByTestId("header-install-cta");
     await expect(cta).toBeVisible();
     await expect(cta).toHaveText("dashboard");
-    await expect(cta).toHaveAttribute("href", /^https:\/\/app\.(dev\.)?agentsfleet\.net\/?$/);
+    await expect(cta).toHaveAttribute("href", /\/waitlist$/);
 
     const brandMark = page.getByTestId("brand-mark");
     await expect(brandMark).toHaveAttribute("data-live", "true");

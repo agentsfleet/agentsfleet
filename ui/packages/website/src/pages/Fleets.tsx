@@ -1,5 +1,5 @@
 import { Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
-import { DOCS_QUICKSTART_URL, DOCS_URL, INSTALL_COMMAND } from "../config";
+import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -11,8 +11,7 @@ const jsonLd = {
 };
 
 const bootstrapScript = `# 1. Shell — one command installs the Command-Line Interface (CLI) + the skill bundle
-${INSTALL_COMMAND}
-#    (or with npm: npm install -g @agentsfleet/cli && npx skills add agentsfleet/skills)
+npm install -g @agentsfleet/cli && npx skills add agentsfleet/skills
 agentsfleet login
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), ask:

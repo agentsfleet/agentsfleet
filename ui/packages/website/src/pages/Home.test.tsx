@@ -41,14 +41,10 @@ describe("Home", () => {
     expect(hero.textContent).toMatch(/you control access and decide what ships/i);
   });
 
-  it("renders the install command copy-row in the hero", () => {
+  it("hides the unavailable installer", () => {
     renderHome();
-    expect(screen.getByTestId("hero-install-command").textContent).toContain(
-      "curl -fsSL https://agentsfleet.dev | bash",
-    );
-    const cta = screen.getByTestId("hero-cta-primary");
-    expect(cta.tagName).toBe("BUTTON");
-    expect(cta.textContent).toMatch(/copy/i);
+    expect(screen.queryByTestId("hero-install-command")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy the install command/i })).not.toBeInTheDocument();
   });
 
   it("does not render Talk to us in the hero", () => {

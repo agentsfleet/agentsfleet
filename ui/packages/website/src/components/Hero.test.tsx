@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,23 +18,12 @@ import {
 } from "../lib/marketing-copy";
 import { WAITLIST_URL } from "../config";
 
-const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-
 function renderHero() {
   return render(
     <BrowserRouter>
       <Hero />
     </BrowserRouter>
   );
-}
-
-function installClipboard() {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText },
-  });
-  return writeText;
 }
 
 describe("Hero", () => {
@@ -68,165 +57,7 @@ describe("Hero", () => {
     );
   });
 
-  it("renders the install command in a copy-row with a copy-only Copy button", () => {
-    installClipboard();
-    renderHero();
-    // The long command lives in its own copy-row, not inside the button.
-    const command = screen.getByTestId("hero-install-command");
-    expect(command.textContent).toContain(INSTALL_COMMAND);
-    const cta = screen.getByTestId("hero-cta-primary");
-    expect(cta.tagName).toBe("BUTTON");
-    expect(cta.textContent).toMatch(/copy/i);
-    expect(cta.getAttribute("href")).toBeNull();
-  });
-
-  it("writes the install command to the clipboard on primary CTA click", async () => {
-    const writeText = installClipboard();
-    renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-primary"));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe(INSTALL_COMMAND);
-    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
-  });
-
-  it("copies only — does not scroll or navigate on primary call-to-action click", async () => {
-    const writeText = installClipboard();
-    // A real anchor exists on the page; the old hero scrolled away on click.
-    // The copy-row must NOT — that was the "jumps to a different
-    // page" bug. Clicking copies and stays put.
-    const anchor = document.createElement("section");
-    anchor.id = HOW_IT_WORKS_ANCHOR_ID;
-    const scrollIntoView = vi.fn();
-    anchor.scrollIntoView = scrollIntoView;
-    document.body.appendChild(anchor);
-    try {
-      renderHero();
-      fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-      expect(scrollIntoView).not.toHaveBeenCalled();
-    } finally {
-      document.body.removeChild(anchor);
-    }
-  });
-
-  it("shows the copied toast then dismisses it after the visible window", async () => {
-    vi.useFakeTimers();
-    installClipboard();
-    renderHero();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      // Two microtask flushes — one for clipboard.writeText resolve, one
-      // for the React state update that paints the toast.
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
-      /Copied — paste into your terminal/i,
-    );
-    // Toast arms its fade-out unmount timer only after the `visible=false`
-    // render commits, and React flushes that passive effect at the act()
-    // boundary. So cross the 2 s visible window in one act (which arms the
-    // 240 ms unmount timer), then advance through the fade in a second act
-    // to fire it. The two act() boundaries are the synchronization points —
-    // this is deterministic, not a timing race on a single advance.
-    await act(async () => {
-      vi.advanceTimersByTime(2000);
-    });
-    await act(async () => {
-      vi.advanceTimersByTime(MS_PER_SECOND);
-    });
-    expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
-  });
-
-  it("keeps the toast text mounted through the fade-out after the visible window ends", async () => {
-    vi.useFakeTimers();
-    installClipboard();
-    renderHero();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
-      /Copied — paste into your terminal/i,
-    );
-    // Land inside the fade-out: 2100 ms is past the 2 s visible window (so
-    // `visible` is false and the fade is running) but short of the 240 ms
-    // fade unmount. The text must still be mounted so it fades visibly
-    // rather than snapping to empty the same paint the toast hides — Hero
-    // keeps passing the message after `toast` clears via the last-shown ref.
-    await act(async () => {
-      vi.advanceTimersByTime(2100);
-    });
-    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
-      /Copied — paste into your terminal/i,
-    );
-  });
-
-  it("survives unmount-mid-toast without spurious setState (page-navigate / refresh scenario)", async () => {
-    vi.useFakeTimers();
-    installClipboard();
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { unmount } = renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-primary"));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    unmount();
-    await act(async () => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(errSpy).not.toHaveBeenCalled();
-    errSpy.mockRestore();
-  });
-
-  it("falls back to the manual-copy toast when the clipboard API rejects", async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error("blocked"));
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-primary"));
-    await waitFor(() =>
-      expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
-        /Clipboard blocked/i,
-      ),
-    );
-  });
-
-  it("renders the manual toast as a warning and holds that severity through the fade-out", async () => {
-    // The fade-out fix derives BOTH text and severity from the last-shown
-    // kind. This pins the severity half: a warning toast must stay a warning
-    // (assertive live region) while it fades, not silently revert to the
-    // info/polite default the same paint `toast` clears.
-    vi.useFakeTimers();
-    const writeText = vi.fn().mockRejectedValue(new Error("blocked"));
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    renderHero();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    const toast = screen.getByTestId("hero-cta-toast");
-    expect(toast.textContent).toMatch(/Clipboard blocked/i);
-    // warning → assertive (info would be polite).
-    expect(toast.getAttribute("aria-live")).toBe("assertive");
-    // Past the 2 s visible window, inside the 240 ms fade: severity holds.
-    await act(async () => {
-      vi.advanceTimersByTime(2100);
-    });
-    const fading = screen.getByTestId("hero-cta-toast");
-    expect(fading.textContent).toMatch(/Clipboard blocked/i);
-    expect(fading.getAttribute("aria-live")).toBe("assertive");
-  });
-
-  it("renders early-access as a waitlist link and loop CTA without replacing the copy-row", () => {
+  it("renders early-access as a waitlist link and loop CTA", () => {
     renderHero();
     const earlyAccess = screen.getByTestId("hero-cta-early-access");
     expect(earlyAccess).toHaveTextContent(HERO_PRIMARY_LABEL);
@@ -241,7 +72,8 @@ describe("Hero", () => {
       "href",
       `/#${HOW_IT_WORKS_ANCHOR_ID}`,
     );
-    expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
+    expect(screen.queryByTestId("hero-install-command")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy the install command/i })).not.toBeInTheDocument();
   });
 
   it("tracks a signup when the early-access waitlist CTA is clicked", () => {
@@ -300,4 +132,3 @@ describe("Hero", () => {
     });
   });
 });
-const MS_PER_SECOND = 1000 as const;
