@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import {
   INSTALL_STEP,
   advanceInstallStep,

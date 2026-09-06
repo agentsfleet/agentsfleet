@@ -26,7 +26,8 @@ import {
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { InfoIcon, PlusIcon } from "lucide-react";
-import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
+import { type CreatedApiKey } from "@/lib/api/api_keys";
+import { KEY_NAME_REGEX, DESCRIPTION_MAX } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";
 import { EVENTS } from "@/lib/analytics/events";

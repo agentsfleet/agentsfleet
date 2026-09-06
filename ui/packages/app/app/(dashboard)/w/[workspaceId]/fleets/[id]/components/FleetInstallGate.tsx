@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { workspacePath } from "@/lib/workspace-routes";
 import { InstallStreamSteps } from "../../new/InstallStreamSteps";
 import { InstallShell } from "../../new/install-state-list";

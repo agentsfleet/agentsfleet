@@ -15,12 +15,7 @@ import {
   Label,
   Spinner,
 } from "@agentsfleet/design-system";
-import {
-  hasWorkspaceNameContent,
-  isWorkspaceNameSafe,
-  trimWorkspaceName,
-  WORKSPACE_NAME_MAX_CODEPOINTS,
-} from "@/lib/api/workspaces";
+import { hasWorkspaceNameContent, isWorkspaceNameSafe, trimWorkspaceName, WORKSPACE_NAME_MAX_CODEPOINTS } from "@/lib/api/workspaces-types";
 
 type Props = {
   open: boolean;

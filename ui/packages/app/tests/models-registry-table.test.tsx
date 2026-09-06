@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
-import type { ModelLibrary } from "@/lib/api/model_library";
+import type { ModelLibrary } from "@/lib/api/model-library-types";
 
 const MODEL_REGISTRY_HEADER_ORDER = [
   "Provider",

@@ -1,4 +1,4 @@
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { NANOS_PER_USD } from "@/lib/types";
 import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";

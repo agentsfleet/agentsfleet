@@ -1,4 +1,5 @@
 import { request } from "./client";
+import type { ConnectorStatus } from "./connectors-types";
 
 // Connectors API client. The dashboard renders its cards from the registry-driven
 // catalog (`getConnectorCatalog`) — the provider list, archetypes, and display
@@ -9,13 +10,6 @@ import { request } from "./client";
 // GitHub and Slack — additionally expose a bespoke per-provider status route
 // (`getConnector`) richer than the catalog's `connected` bool (reconnect state;
 // Slack's connected team). No secret ever crosses this API on a read.
-
-export const CONNECTOR_STATUS = {
-  connected: "connected",
-  reconnectRequired: "reconnect_required",
-  notConnected: "not_connected",
-} as const;
-export type ConnectorStatus = (typeof CONNECTOR_STATUS)[keyof typeof CONNECTOR_STATUS];
 
 export interface GithubConnectorState {
   status: ConnectorStatus;
@@ -100,6 +94,7 @@ export const CONNECTOR_ARCHETYPE = {
   oauth2: "oauth2",
   appInstall: "app_install",
 } as const;
+
 export type ConnectorArchetype = (typeof CONNECTOR_ARCHETYPE)[keyof typeof CONNECTOR_ARCHETYPE];
 
 export interface ConnectorCatalogEntry {
@@ -109,14 +104,6 @@ export interface ConnectorCatalogEntry {
   configured: boolean;
   connected: boolean;
 }
-
-// The docs anchor an unconfigured OAuth connector's card links to. The backend
-// reports `configured:false` for the same condition it raises 503 UZ-CONN-001 on
-// (a missing `<provider>-app` platform bag); the catalog carries no error body to
-// read `docs_uri` from, so the one deep link lives here. Not a provider list — a
-// single documentation pointer.
-export const CONNECTOR_NOT_CONFIGURED_DOCS_URI =
-  "https://docs.agentsfleet.net/api-reference/error-codes#UZ-CONN-001";
 
 export async function getConnectorCatalog(
   workspaceId: string,

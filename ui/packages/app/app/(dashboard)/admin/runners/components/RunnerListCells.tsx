@@ -3,12 +3,7 @@
 // wall replaced). Presentation-only; the callers own state and data flow.
 
 import { BanIcon, HourglassIcon, ListChecksIcon, ShieldXIcon, type LucideIcon } from "lucide-react";
-import {
-  RUNNER_ADMIN_ACTION,
-  RUNNER_ADMIN_STATE,
-  type RunnerStateAction,
-  type RunnerAdminState,
-} from "@/lib/api/runners";
+import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE, type RunnerAdminState, type RunnerStateAction } from "@/lib/api/runners-types";
 
 // Cordon and drain render but do not operate yet: their PATCH verbs land in a
 // later milestone, and a control that pretends to work is worse than one that

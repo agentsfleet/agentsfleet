@@ -1,9 +1,6 @@
 import { cn, WakePulse } from "@agentsfleet/design-system";
-import {
-  RUNNER_ADMIN_STATE,
-  type RunnerAdminState,
-  type RunnerLiveness,
-} from "@/lib/api/runners";
+import { type RunnerLiveness } from "@/lib/api/runners";
+import { RUNNER_ADMIN_STATE, type RunnerAdminState } from "@/lib/api/runners-types";
 
 // The Fleets status treatment for a host: a dot plus uppercase mono text,
 // administrative state before liveness — what the operator DECIDED, then what

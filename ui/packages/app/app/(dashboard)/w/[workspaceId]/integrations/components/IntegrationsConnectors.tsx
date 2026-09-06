@@ -2,11 +2,8 @@
 
 import { DashboardRowGroup, EmptyState } from "@agentsfleet/design-system";
 import { PlugIcon } from "lucide-react";
-import {
-  CONNECTOR_STATUS,
-  type ConnectorCatalogEntry,
-  type ConnectorStatus,
-} from "@/lib/api/connectors";
+import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
+import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
 
 // The diagnosable shape of a failed catalog fetch, captured server-side in

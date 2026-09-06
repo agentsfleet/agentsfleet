@@ -1,0 +1,199 @@
+{
+  "$comment": "The retry policy's parity table. The dashboard (ui/packages/app/lib/api/retry.ts) and the CLI (cli/src/lib/http-retry.ts) each replay every case through their own transport and must make the same number of attempts. A script entry is either an answer, `{ \"status\": N }` with an optional `retryAfterSeconds`, or a failure before an answer, `{ \"error\": CODE }` where CODE is a socket code Node's fetch puts on the error's cause, or `timeout` for the transport's own clock running out. Attempts beyond the script repeat its last entry. `preSendCodes` is the set of cause codes that prove a request never left; both classifiers assert their own set equals it. Both cap a `Retry-After` at `policy.retryAfterCapSeconds` and fail at once beyond it.",
+  "policy": {
+    "maxAttempts": 3,
+    "retryAfterCapSeconds": 10
+  },
+  "preSendCodes": [
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "ConnectionRefused"
+  ],
+  "cases": [
+    {
+      "name": "a read recovers from a blip",
+      "method": "GET",
+      "script": [
+        {
+          "status": 503
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "the ceiling holds against a backend that stays down",
+      "method": "GET",
+      "script": [
+        {
+          "status": 503
+        }
+      ],
+      "attempts": 3
+    },
+    {
+      "name": "a refusal is final",
+      "method": "GET",
+      "script": [
+        {
+          "status": 400
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a read obeys a rate limit",
+      "method": "GET",
+      "script": [
+        {
+          "status": 429,
+          "retryAfterSeconds": 1
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a read that timed out on the client is read again",
+      "method": "GET",
+      "script": [
+        {
+          "error": "timeout"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a read reset after sending is read again",
+      "method": "GET",
+      "script": [
+        {
+          "error": "ECONNRESET"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "the replay-safe write is sent again after a gateway error",
+      "method": "PUT",
+      "script": [
+        {
+          "status": 503
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write is not sent again after a gateway error",
+      "method": "POST",
+      "script": [
+        {
+          "status": 503
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a write obeys a rate limit: the server did not run it",
+      "method": "POST",
+      "script": [
+        {
+          "status": 429,
+          "retryAfterSeconds": 1
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write declined as a server timeout is sent again",
+      "method": "POST",
+      "script": [
+        {
+          "status": 408
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write that timed out on the client is sent once",
+      "method": "POST",
+      "script": [
+        {
+          "error": "timeout"
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a write refused at connect never left and is sent again",
+      "method": "POST",
+      "script": [
+        {
+          "error": "ECONNREFUSED"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write reset after sending is sent once",
+      "method": "POST",
+      "script": [
+        {
+          "error": "ECONNRESET"
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a write whose name did not resolve is sent again",
+      "method": "POST",
+      "script": [
+        {
+          "error": "ENOTFOUND"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a Retry-After beyond the cap fails at once, with the 429 in hand",
+      "method": "GET",
+      "script": [
+        {
+          "status": 429,
+          "retryAfterSeconds": 120
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 1
+    }
+  ]
+}

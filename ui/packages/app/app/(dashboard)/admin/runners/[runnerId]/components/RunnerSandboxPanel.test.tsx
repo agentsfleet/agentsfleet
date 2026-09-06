@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import type { AssignedPolicy, RunnerDetail, SelftestReport } from "@/lib/api/runners";
+import type { RunnerDetail, SelftestReport } from "@/lib/api/runners";
+import type { AssignedPolicy } from "@/lib/api/runners-types";
 import { RunnerSandboxPanel } from "./RunnerSandboxPanel";
 
 afterEach(() => cleanup());

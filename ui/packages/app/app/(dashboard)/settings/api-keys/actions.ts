@@ -1,16 +1,8 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import {
-  listApiKeys,
-  createApiKey,
-  revokeApiKey,
-  deleteApiKey,
-  type ApiKeyListResponse,
-  type ApiKeySort,
-  type CreatedApiKey,
-  type RevokedApiKey,
-} from "@/lib/api/api_keys";
+import { listApiKeys, createApiKey, revokeApiKey, deleteApiKey, type ApiKeyListResponse, type CreatedApiKey, type RevokedApiKey } from "@/lib/api/api_keys";
+import { type ApiKeySort } from "@/lib/api/api-keys-types";
 
 export async function listApiKeysAction(sort?: ApiKeySort): Promise<ActionResult<ApiKeyListResponse>> {
   return withToken((t) => listApiKeys(t, sort));

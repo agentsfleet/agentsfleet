@@ -3,7 +3,7 @@
 // vocabulary in lib/events/event-summary.ts, the single source every surface
 // reads (a second failure vocabulary is a defect).
 
-import { LEASE_OUTCOME, type LeaseOutcome } from "@/lib/api/runners";
+import { LEASE_OUTCOME, type LeaseOutcome } from "@/lib/api/runners-types";
 
 export const RUNNERS_CRUMB_LABEL = "Runners";
 export const RUNNER_BREADCRUMB_LABEL = "Breadcrumb";

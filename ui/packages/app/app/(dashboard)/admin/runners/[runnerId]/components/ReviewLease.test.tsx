@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { LEASE_OUTCOME, type RunnerLease } from "@/lib/api/runners";
+import { type RunnerLease } from "@/lib/api/runners";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { ReviewLease } from "./ReviewLease";
 
 // The wrapper here stands in for a real ancestor, not for a missing one:

@@ -15,7 +15,8 @@
  * the operator fixture — the only identity whose scopes open /admin surfaces.
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { LEASE_OUTCOME, type RunnerLeaseResponse, type RunnerListResponse } from "@/lib/api/runners";
+import { type RunnerLeaseResponse, type RunnerListResponse } from "@/lib/api/runners";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   CLEAR_WORKSPACE_FILTER_LABEL,
   LEASES_EMPTY_TITLE,

@@ -12,7 +12,8 @@ import {
   TooltipButton,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
+import { type Fleet } from "@/lib/api/fleets";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
 import { listFleetsAction } from "../actions";
 import { workspacePath } from "@/lib/workspace-routes";

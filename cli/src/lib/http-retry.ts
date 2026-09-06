@@ -1,8 +1,13 @@
 // HTTP retry-with-backoff layer over the core `apiRequest` transport.
 // Owns retry classification, exponential backoff + jitter, Retry-After
-// honoring, the AGENTSFLEET_NO_RETRY escape hatch, and the server-5xx
-// idempotency gate. Split out of http.ts so transport and retry concerns
-// stay separable and each module stays under the line cap.
+// honoring, the AGENTSFLEET_NO_RETRY escape hatch, and the replay gate:
+// a non-idempotent method is sent again only when the failure provably
+// happened before the request left, or when the server answered without
+// running it. Split out of http.ts so transport and retry concerns stay
+// separable and each module stays under the line cap. The dashboard's
+// policy (ui/packages/app/lib/api/retry.ts) makes the same decisions;
+// samples/fixtures/retry-policy/cases.json is the table both are proven
+// against.
 
 import { ApiError, apiRequest, type ApiRequestOptions } from "./http.ts";
 
@@ -10,6 +15,9 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
+// The longest wait a server or intermediary can ask for and still be obeyed;
+// above it the answer is surfaced at once. The dashboard's policy caps at the same value.
+const DEFAULT_RETRY_AFTER_CAP_MS = 10_000;
 const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
 const RETRY_REASON_429 = "429" as const;
 const RETRY_REASON_5XX = "5xx" as const;
@@ -17,6 +25,23 @@ const HTTP_METHOD_GET = "GET" as const;
 const RETRY_REASON_NETWORK = "network" as const;
 const TYPE_OBJECT = "object" as const;
 const STATUS_TIMEOUT = "timeout" as const;
+const HTTP_STATUS_SERVER_ERROR_FLOOR = 500;
+// The request provably never left this process.
+const PROVENANCE_PRE_SEND = "pre-send" as const;
+// The server may hold the request: a reset after sending, a timeout, a 5xx.
+const PROVENANCE_POST_SEND = "post-send" as const;
+// The server answered and declined to run the request.
+const PROVENANCE_ANSWERED = "answered" as const;
+// Socket and resolver codes that prove the request never left. Node's fetch
+// puts them on the error's `cause` (`UND_ERR_CONNECT_TIMEOUT` is undici's);
+// Bun's puts them on the error itself (`ConnectionRefused` is Bun's).
+export const PRE_SEND_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ConnectionRefused",
+]);
 
 // Reasons surfaced on the `onRetry` callback so the analytics layer
 // can attribute the retry to a concrete failure class.
@@ -26,6 +51,16 @@ export type RetryReason =
   | typeof RETRY_REASON_5XX
   | typeof RETRY_REASON_NETWORK;
 
+type Provenance =
+  | typeof PROVENANCE_PRE_SEND
+  | typeof PROVENANCE_POST_SEND
+  | typeof PROVENANCE_ANSWERED;
+
+interface Classified {
+  readonly reason: RetryReason;
+  readonly provenance: Provenance;
+}
+
 function hasRetryOptOut(body: unknown): boolean {
   if (body === null || typeof body !== TYPE_OBJECT) return false;
   const errField = (body as { error?: unknown }).error;
@@ -33,30 +68,38 @@ function hasRetryOptOut(body: unknown): boolean {
   return (errField as { retry_after_seconds?: unknown }).retry_after_seconds === 0;
 }
 
-function classifyRetryable(err: unknown): RetryReason | null {
+function codeOf(value: unknown): string | undefined {
+  if (!(value instanceof Object) || !("code" in value)) return undefined;
+  return typeof value.code === "string" ? value.code : undefined;
+}
+
+// The code is on the error under Bun and on its cause under Node.
+function socketCode(err: Error): string | undefined {
+  return codeOf(err) ?? codeOf(err.cause);
+}
+
+function classifyRetryable(err: unknown): Classified | null {
   if (err instanceof ApiError) {
-    if (err.code === "TIMEOUT") return STATUS_TIMEOUT;
+    // The transport's own clock ran out with the request on the wire.
+    if (err.code === "TIMEOUT") return { reason: STATUS_TIMEOUT, provenance: PROVENANCE_POST_SEND };
     if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
       if (hasRetryOptOut(err.body)) return null;
-      if (err.status === 429) return RETRY_REASON_429;
-      return RETRY_REASON_5XX;
+      if (err.status === 429) return { reason: RETRY_REASON_429, provenance: PROVENANCE_ANSWERED };
+      // A 408 or 425 is the server declining to run the request; a 5xx is a
+      // gateway answering for a handler that may have run.
+      const provenance = err.status >= HTTP_STATUS_SERVER_ERROR_FLOOR ? PROVENANCE_POST_SEND : PROVENANCE_ANSWERED;
+      return { reason: RETRY_REASON_5XX, provenance };
     }
     return null;
   }
-  if (
-    err instanceof TypeError
-    && typeof err.message === "string"
-    && err.message.toLowerCase().includes("fetch failed")
-  ) {
-    return RETRY_REASON_NETWORK;
-  }
-  if (err !== null && typeof err === TYPE_OBJECT) {
-    const code = (err as { code?: unknown }).code;
-    if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") {
-      return RETRY_REASON_NETWORK;
-    }
+  // A network failure is a TypeError carrying the socket code, or none at
+  // all — which is read as sent, since nothing proves otherwise.
+  if (err instanceof TypeError) {
+    const code = socketCode(err);
+    const provenance = code !== undefined && PRE_SEND_CODES.has(code) ? PROVENANCE_PRE_SEND : PROVENANCE_POST_SEND;
+    return { reason: RETRY_REASON_NETWORK, provenance };
   }
   return null;
 }
@@ -94,6 +137,7 @@ export interface RetryConfig {
   maxAttempts?: number;
   baseDelayMs?: number;
   capDelayMs?: number;
+  retryAfterCapMs?: number;
 }
 
 export interface AttemptInfo {
@@ -136,6 +180,7 @@ interface ResolvedRetryRuntime {
   maxAttempts: number;
   baseDelayMs: number;
   capDelayMs: number;
+  retryAfterCapMs: number;
   sleep: (ms: number) => Promise<void>;
   randomFn: () => number;
   onAttempt: ((info: AttemptInfo) => void) | undefined;
@@ -158,6 +203,7 @@ function resolveRetryRuntime(options: ApiRequestWithRetryOptions): ResolvedRetry
     maxAttempts: noRetryEnv(env) ? 1 : maxAttemptsRaw,
     baseDelayMs: retryCfg.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
     capDelayMs: retryCfg.capDelayMs ?? DEFAULT_CAP_DELAY_MS,
+    retryAfterCapMs: retryCfg.retryAfterCapMs ?? DEFAULT_RETRY_AFTER_CAP_MS,
     sleep: options.sleepImpl ?? defaultSleep,
     randomFn: options.randomFn ?? Math.random,
     onAttempt: options.onAttempt,
@@ -184,21 +230,22 @@ interface AttemptContext {
 }
 
 // Decides whether a failed attempt retries. Returns the backoff delay (and
-// fires onRetry) when it should, else null. The server-5xx idempotency gate
-// blocks replay of non-idempotent methods.
+// fires onRetry) when it should, else null. The replay gate blocks a
+// non-idempotent method whenever the server may hold the request.
 function planRetry(
   err: unknown,
   cfg: ResolvedRetryRuntime,
   ctx: AttemptContext,
 ): { delayMs: number } | null {
-  const reason = classifyRetryable(err);
-  const isServer5xx = ctx.status !== undefined && ctx.status >= 500;
-  const unsafeReplay = reason === "5xx" && isServer5xx && !isIdempotentMethod(cfg.method);
-  if (reason === null || unsafeReplay || ctx.attempt >= cfg.maxAttempts) return null;
-  if (cfg.onRetry !== undefined) {
-    cfg.onRetry({ attempt: ctx.attempt, status: ctx.status, durationMs: ctx.durationMs, reason });
-  }
+  const classified = classifyRetryable(err);
+  if (classified === null) return null;
+  const unsafeReplay = classified.provenance === PROVENANCE_POST_SEND && !isIdempotentMethod(cfg.method);
   const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
+  const waitTooLong = retryAfterMs !== null && retryAfterMs > cfg.retryAfterCapMs;
+  if (unsafeReplay || waitTooLong || ctx.attempt >= cfg.maxAttempts) return null;
+  if (cfg.onRetry !== undefined) {
+    cfg.onRetry({ attempt: ctx.attempt, status: ctx.status, durationMs: ctx.durationMs, reason: classified.reason });
+  }
   const delayMs = backoffDelay({
     attempt: ctx.attempt,
     baseDelayMs: cfg.baseDelayMs,

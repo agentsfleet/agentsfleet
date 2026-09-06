@@ -11,7 +11,7 @@ import {
   WORKSPACE_CONNECTION_STATUS,
   type BackfillFn,
 } from "./workspace-stream";
-import { FRAME_KIND } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 
 // Mirrors the FakeEventSource pattern in fleet-stream-registry.test.ts.
 class FakeEventSource {

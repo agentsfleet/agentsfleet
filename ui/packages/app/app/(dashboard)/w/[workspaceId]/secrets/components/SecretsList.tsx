@@ -14,7 +14,7 @@ import {
 import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
-import { isDefiniteRefusal } from "@/lib/api/retry";
+import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
 import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";

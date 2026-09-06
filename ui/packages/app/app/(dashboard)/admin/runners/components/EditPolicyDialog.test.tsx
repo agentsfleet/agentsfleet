@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AssignedPolicy } from "@/lib/api/runners";
+import type { AssignedPolicy } from "@/lib/api/runners-types";
 
 const updateRunnerPolicyActionMock = vi.fn();
 vi.mock("../actions", () => ({
