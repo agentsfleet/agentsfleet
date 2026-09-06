@@ -99,8 +99,6 @@ jobs:
       contains(github.event.deployment.environment, 'agentsfleet-agents-dev')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
       - name: Smoke the production installer
         run: |
           BASE_URL="https://agentsfleet.dev"
