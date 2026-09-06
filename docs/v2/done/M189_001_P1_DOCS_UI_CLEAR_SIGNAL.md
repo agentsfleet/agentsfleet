@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — readable product surfaces and accurate launch copy
 **Categories:** DOCS, UI
 **Batch:** B1 — independent of the outbound repair
-**Branch:** feat/m189-clear-signal
+**Branch:** `feat/m189-clear-signal`
 **Test Baseline:** User directs full unit and integration suites to run only immediately before the PR. No passing baseline recorded.
 **Depends on:** none for visual work; connector acceptance remains with its existing workstream
 **Provenance:** LLM-drafted from the user's approved design proposal
