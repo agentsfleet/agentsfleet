@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
-import { DEFAULT_REQUEST_TIMEOUT_MS, request } from "./client";
+import { attemptTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS, request, requestWithRetry } from "./client";
 import { RETRY_DEFAULTS } from "./retry";
 import {
   readWorkspaceFetchAudit,
@@ -20,6 +20,8 @@ const PATH = "/v1/thing";
 const TOKEN = "tok";
 const OK_BODY = { ok: 1 };
 const TRANSIENT_STATUS = 503;
+// Shorter than the default per-attempt timeout, so the deadline is what binds.
+const SHORT_DEADLINE_MS = 1_000;
 // The policy's two default backoffs (250ms, 500ms, each ±20%) both fit inside
 // one cap-sized advance per gap; two gaps sit inside three attempts.
 const PAST_ALL_BACKOFFS_MS = RETRY_DEFAULTS.capDelayMs * 2;
@@ -155,6 +157,26 @@ describe("request — default timeout", () => {
     expect(err.code).toBe(RETRY_CODE_TIMEOUT);
     expect(err.message).toContain(PATH);
     expect(fetchMock).toHaveBeenCalledTimes(RETRY_DEFAULTS.maxAttempts);
+  });
+
+  it("the default timeout is no longer than what remains of the deadline", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, OK_BODY));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+
+    await requestWithRetry(PATH, {}, TOKEN, { deadlineMs: SHORT_DEADLINE_MS });
+
+    // The run started moments before the attempt, so the budget it was told
+    // is the short deadline less what has already elapsed — never the default.
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    const granted = timeoutSpy.mock.calls[0]?.[0];
+    expect(granted).toBeLessThanOrEqual(SHORT_DEADLINE_MS);
+    expect(granted).toBeGreaterThan(0);
+    expect(sentSignal(0)).toBe(timeoutSpy.mock.results[0]?.value);
+  });
+
+  it("attemptTimeoutMs is the smaller of the default and the remaining budget", () => {
+    expect(attemptTimeoutMs(DEFAULT_REQUEST_TIMEOUT_MS * 2)).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(attemptTimeoutMs(SHORT_DEADLINE_MS)).toBe(SHORT_DEADLINE_MS);
   });
 
   it("a caller signal wins over the default timeout", async () => {

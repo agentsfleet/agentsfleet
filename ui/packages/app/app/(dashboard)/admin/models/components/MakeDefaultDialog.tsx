@@ -14,7 +14,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { type AdminModel } from "@/lib/api/admin_model_library";
-import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin-model-library-types";
+import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";

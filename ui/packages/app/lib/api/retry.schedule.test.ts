@@ -82,6 +82,28 @@ describe("the deadline and the cap", () => {
     expect(now).toBe(3 * ATTEMPT_MS);
   });
 
+  it("each attempt is told what remains of the deadline, so the last one cannot outrun it", async () => {
+    let now = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const budgets: number[] = [];
+    const attempt = vi.fn(async (remainingMs: number) => {
+      budgets.push(remainingMs);
+      now += ATTEMPT_MS;
+      throw transient();
+    });
+    const { sleepImpl } = recordingSleep();
+    await expect(
+      runWithRetry(attempt, "GET", {
+        maxAttempts: RETRY_DEFAULTS.hardCap,
+        deadlineMs: DEADLINE_MS,
+        sleepImpl,
+        randomFn: NO_DELAY,
+      }),
+    ).rejects.toMatchObject({ status: TRANSIENT_STATUS });
+    // The whole deadline at the start, then what each earlier attempt left.
+    expect(budgets).toEqual([DEADLINE_MS, DEADLINE_MS - ATTEMPT_MS, DEADLINE_MS - 2 * ATTEMPT_MS]);
+  });
+
   it("a sleep that would end past the deadline is not taken", async () => {
     let now = 0;
     vi.spyOn(Date, "now").mockImplementation(() => now);
