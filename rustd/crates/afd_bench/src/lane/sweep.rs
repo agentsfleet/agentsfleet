@@ -15,9 +15,10 @@
 //! fleets reference workspaces, workspaces reference tenants.
 
 use afd_db::Db;
-use afd_redis::{FleetStreams, ReadyIndex, Redis};
+use afd_redis::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
 use sqlx::Row as _;
 
+use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
 use crate::error::Result;
 use crate::fixture::RunPrefix;
 
@@ -91,20 +92,39 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     Ok(removed)
 }
 
-/// Remove this run's entries from the shared outbound stream.
+/// Delete the outbound entries this run appended, by the ids it was handed.
 ///
-/// The outbound queue is ONE stream at a fixed key, shared by every producer,
-/// so a lane cannot drop it the way it forgets a fleet's own stream — on a
-/// deployed target that key carries real answers. Instead the entries this run
-/// appended are found by the run prefix they carry in `workspace_id` and
-/// deleted individually, which is prefix-scoped like every other sweep here.
+/// The happy path: a lane holds every id `enqueue` returned, so it removes
+/// exactly those and never reads the shared stream to find them. Returns how
+/// many the server actually removed, which is what the ledger compares.
+///
+/// # Errors
+///
+/// [`crate::Error::QueueUnavailable`] when the stream will not answer.
+pub async fn outbound_entries(queue: &Redis, ids: &[String]) -> Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let mut del = redis::cmd(XDEL);
+    del.arg(OUTBOUND_STREAM_KEY);
+    for id in ids {
+        del.arg(id);
+    }
+    Ok(queue.command(XDEL, OUTBOUND_STREAM_KEY, &del).await?)
+}
+
+/// Remove this run's entries from the shared outbound stream by prefix.
+///
+/// The fallback for a run that failed before it could hand its ids to
+/// [`outbound_entries`]: the entries are found by the run prefix they carry
+/// in `workspace_id`. This reads the stream to do it, which on the rig is the
+/// run's own entries and little else; the paged, deployed-safe form of this
+/// scan is deferred with the deployed-environment follow-up.
 ///
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when the stream will not answer.
 pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
-    use afd_redis::OUTBOUND_STREAM_KEY;
-
     let mut range = redis::cmd(XRANGE);
     range
         .arg(OUTBOUND_STREAM_KEY)
@@ -122,29 +142,8 @@ pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
         })
         .map(|(id, _fields)| id)
         .collect();
-    if mine.is_empty() {
-        return Ok(0);
-    }
-    let mut del = redis::cmd(XDEL);
-    del.arg(OUTBOUND_STREAM_KEY);
-    for id in &mine {
-        del.arg(id);
-    }
-    let removed: u64 = queue.command(XDEL, OUTBOUND_STREAM_KEY, &del).await?;
-    Ok(removed)
+    outbound_entries(queue, &mine).await
 }
-
-/// Read a stream from its first entry.
-const XRANGE: &str = "XRANGE";
-
-/// Delete named entries from a stream.
-const XDEL: &str = "XDEL";
-
-/// The smallest stream id, so a range reads from the beginning.
-const RANGE_START: &str = "-";
-
-/// The largest stream id, so a range reads to the end.
-const RANGE_END: &str = "+";
 
 /// The entry field the outbound producer writes the workspace into.
 const WORKSPACE_FIELD: &str = "workspace_id";

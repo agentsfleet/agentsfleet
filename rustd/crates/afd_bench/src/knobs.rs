@@ -12,6 +12,15 @@
 
 use crate::error::{Error, Result};
 
+/// How long a lane's measured window may run, in whole seconds.
+pub const WINDOW_VARIABLE: &str = "BENCH_WINDOW_SECONDS";
+
+/// Fraction of delivery destinations scripted slow.
+pub const SLOW_FRACTION_VARIABLE: &str = "BENCH_SLOW_FRACTION";
+
+/// Fraction of delivery destinations scripted to refuse.
+pub const RETRYABLE_FRACTION_VARIABLE: &str = "BENCH_RETRYABLE_FRACTION";
+
 /// The environment as a lookup.
 pub type Lookup<'a> = &'a dyn Fn(&str) -> Option<String>;
 

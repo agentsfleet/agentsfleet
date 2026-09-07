@@ -1,6 +1,8 @@
 //! The ladder's rungs, and what a plan line yields.
 
-use super::probe::{EXECUTION_TIME, PLANNING_TIME, plan_time};
+use core::time::Duration;
+
+use super::probe::{EXECUTION_TIME, PLANNING_TIME, median_ms, plan_time};
 use super::rungs;
 
 #[test]
@@ -42,4 +44,33 @@ fn test_plan_times_are_read_off_their_labelled_lines() {
 fn test_a_plan_without_timing_reports_no_time_rather_than_zero() {
     let untimed: Vec<String> = vec!["Seq Scan on fleets".to_owned()];
     assert_eq!(plan_time(&untimed, EXECUTION_TIME), None);
+}
+
+#[test]
+fn test_a_ceiling_of_zero_has_no_rungs() {
+    assert!(
+        rungs(0).is_empty(),
+        "a rung of zero fleets measures nothing, including the top one"
+    );
+}
+
+#[test]
+fn test_the_median_is_the_middle_sample_and_nothing_has_none() {
+    let odd = vec![
+        Duration::from_millis(3),
+        Duration::from_millis(1),
+        Duration::from_millis(2),
+    ];
+    assert_eq!(median_ms(odd), Some(2.0));
+    let even = vec![Duration::from_millis(1), Duration::from_millis(4)];
+    assert_eq!(
+        median_ms(even),
+        Some(4.0),
+        "the upper middle, so a tail is never rounded away"
+    );
+    assert_eq!(
+        median_ms(Vec::new()),
+        None,
+        "no samples is not a latency of zero"
+    );
 }

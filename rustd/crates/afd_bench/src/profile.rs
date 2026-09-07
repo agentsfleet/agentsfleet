@@ -22,8 +22,17 @@ use core::time::Duration;
 
 use crate::error::{Error, Result};
 
+/// Variable every lane reads its profile from; absent means the rig.
+pub const PROFILE_VARIABLE: &str = "BENCH_PROFILE";
+
 /// Variable a deployed profile reads its target address from.
 pub const TARGET_VARIABLE: &str = "BENCH_TARGET";
+
+/// The least of any parameter a lane will run with.
+///
+/// Zero runners spawn nothing and zero fleets seed nothing; either would
+/// write a rate of zero over the last real result under the same name.
+const PARAMETER_FLOOR: u64 = 1;
 
 /// What [`Profile::Rig`] is called on a command line and in a result file.
 const RIG_NAME: &str = "rig";
@@ -194,6 +203,13 @@ impl Profile {
     ///
     /// [`Error::CapExceeded`] when `requested` is over the cap.
     pub fn check(self, parameter: Parameter, requested: u64) -> Result<()> {
+        if requested < PARAMETER_FLOOR {
+            return Err(Error::BelowFloor {
+                parameter: parameter.name(),
+                requested,
+                floor: PARAMETER_FLOOR,
+            });
+        }
         let cap = self.caps().ceiling(parameter);
         if requested > cap {
             return Err(Error::CapExceeded {
@@ -201,6 +217,23 @@ impl Profile {
                 parameter: parameter.name(),
                 requested,
                 cap,
+            });
+        }
+        Ok(())
+    }
+
+    /// Refuse a window shorter than this profile's warmup floor.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::WindowTooShort`] naming the floor.
+    pub fn check_window(self, window: Duration) -> Result<()> {
+        let floor = self.caps().warmup;
+        if window < floor {
+            return Err(Error::WindowTooShort {
+                profile: self,
+                requested_ms: window.as_millis(),
+                floor_ms: floor.as_millis(),
             });
         }
         Ok(())
@@ -250,7 +283,10 @@ impl Profile {
         if !self.is_deployed() {
             return Ok(Target::Rig);
         }
-        match env(TARGET_VARIABLE).unwrap_or_default() {
+        // Trimmed, so a variable set to whitespace is unset rather than an
+        // address of one space; the knobs module reads every other variable
+        // the same way.
+        match env(TARGET_VARIABLE).unwrap_or_default().trim().to_owned() {
             address if address.is_empty() => Err(Error::TargetMissing {
                 profile: self,
                 variable: TARGET_VARIABLE,

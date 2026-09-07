@@ -147,12 +147,59 @@ pub enum Error {
         variable: &'static str,
     },
 
-    /// A runner's polling task did not come back.
+    /// A task the lane spawned did not come back.
     ///
     /// No source: a join failure is a panic or a cancellation in this process,
     /// and the panic's own message has already been printed by the runtime.
-    #[error("a runner's polling task was lost, so the window measured less than it drove")]
-    RunnerTaskLost,
+    /// The role names which task, because a lost readiness sampler and a lost
+    /// delivery worker are different failures to a reader.
+    #[error("the {role} task was lost, so the window measured less than it drove")]
+    TaskLost {
+        /// What the task was doing.
+        role: &'static str,
+    },
+
+    /// A parameter below the floor every run needs.
+    ///
+    /// The caps bound from above; this bounds from below. Zero runners spawn
+    /// nothing and would write a rate of zero over the last real result.
+    #[error("{parameter} of {requested} is below the floor of {floor}")]
+    BelowFloor {
+        /// Which knob.
+        parameter: &'static str,
+        /// What was asked for.
+        requested: u64,
+        /// The least the lane will run with.
+        floor: u64,
+    },
+
+    /// A window shorter than the profile's warmup floor.
+    #[error(
+        "a window of {requested_ms} ms is under the {profile} warmup floor of {floor_ms} ms: a rate measured across a cold cache is not a rate"
+    )]
+    WindowTooShort {
+        /// The profile whose floor refused it.
+        profile: Profile,
+        /// What was asked for.
+        requested_ms: u128,
+        /// The floor.
+        floor_ms: u128,
+    },
+
+    /// More concurrent runners than the pool has connections.
+    ///
+    /// Refused rather than measured: above the pool size every poll's latency
+    /// is sqlx acquire-wait inside the bench process, and the p95 would be a
+    /// property of the harness reported under the datastore's name.
+    #[error(
+        "{runners} runners over a pool of {pool} connections would measure the pool, not Postgres: raise DATABASE_POOL_SIZE_API or lower BENCH_RUNNERS"
+    )]
+    RunnersExceedPool {
+        /// Runners asked for.
+        runners: u64,
+        /// Connections the pool may open.
+        pool: u32,
+    },
 
     /// A runner would not enrol.
     #[error("the bench runner would not enrol")]
@@ -248,6 +295,14 @@ pub enum Error {
         source: hdrhistogram::CreationError,
     },
 
+    /// Two distributions that would not fold together.
+    #[error("two latency distributions would not merge")]
+    LatencyUnmergeable {
+        /// What `HdrHistogram` refused.
+        #[from]
+        source: hdrhistogram::errors::AdditionError,
+    },
+
     /// A measured duration the histogram would not hold.
     #[error("a measured latency would not be recorded")]
     LatencyUnrecordable {
@@ -271,44 +326,4 @@ pub enum Error {
     },
 }
 
-impl Error {
-    /// Whether this refusal happened before anything was opened or created.
-    ///
-    /// Every variant currently answers `true`, and the method exists so that
-    /// stays a decision rather than an accident: a future variant raised after
-    /// a connection opens has to add its own arm, and the caller that reports
-    /// "no fixture was created" will stop being able to say so for free.
-    #[must_use]
-    pub const fn is_pre_flight(&self) -> bool {
-        // One arm per answer rather than one per family: clippy is right that
-        // grouping by cause and then giving two groups the same body is a
-        // distinction the code does not make. What decides this is whether a
-        // connection was open when the failure was raised.
-        match self {
-            Self::UnknownProfile { .. }
-            | Self::CapExceeded { .. }
-            | Self::AcknowledgementMissing { .. }
-            | Self::TargetMissing { .. }
-            | Self::VariableUnset { .. }
-            | Self::VariableUnreadable { .. }
-            | Self::UnknownLane { .. } => true,
-            Self::LatencyUnavailable { .. }
-            | Self::LatencyUnrecordable { .. }
-            | Self::ResultUnrenderable { .. }
-            | Self::ResultUnwritable { .. }
-            | Self::ResultUnreadable { .. }
-            | Self::ResultUnparseable { .. }
-            | Self::InstrumentUnavailable { .. }
-            | Self::InstrumentUnflushable { .. }
-            | Self::InstrumentPoisoned
-            | Self::DatabaseUnavailable { .. }
-            | Self::QueueUnavailable { .. }
-            | Self::LeasePathFaulted { .. }
-            | Self::SteerPathFaulted { .. }
-            | Self::FixtureUnseedable { .. }
-            | Self::RunnerUnenrollable { .. }
-            | Self::RunnerTaskLost
-            | Self::CounterUnreadable { .. } => false,
-        }
-    }
-}
+mod pre_flight;

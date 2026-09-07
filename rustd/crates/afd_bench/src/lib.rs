@@ -29,6 +29,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod abort;
+pub mod cli;
 pub mod datastores;
 pub mod error;
 pub mod fixture;

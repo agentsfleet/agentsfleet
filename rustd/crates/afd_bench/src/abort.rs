@@ -21,10 +21,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio_util::sync::CancellationToken;
 
-use crate::report::Abort as Recorded;
+use crate::report::AbortRecord as Recorded;
 
 /// Outcomes that must land before the fraction is judged.
 pub const MINIMUM_SAMPLE: u64 = 20;
+
+/// Failures in a row that stop a run whatever the cumulative fraction says.
+///
+/// A target that starts refusing LATE has a long healthy history to dilute
+/// its failures: at a ten percent threshold, a thousand successes buy a
+/// hundred and eleven refusals before the fraction trips, each one costing a
+/// timeout against the target the monitor exists to spare. A run of refusals
+/// is the same signal without the dilution.
+pub const CONSECUTIVE_FAILURES: u64 = 10;
 
 /// Watches a run's failure fraction and cancels it past the threshold.
 #[derive(Debug)]
@@ -32,6 +41,7 @@ pub struct Abort {
     threshold: f64,
     attempts: AtomicU64,
     failures: AtomicU64,
+    streak: AtomicU64,
     token: CancellationToken,
 }
 
@@ -43,6 +53,7 @@ impl Abort {
             threshold,
             attempts: AtomicU64::new(0),
             failures: AtomicU64::new(0),
+            streak: AtomicU64::new(0),
             token: CancellationToken::new(),
         }
     }
@@ -56,12 +67,18 @@ impl Abort {
     /// Record one operation's outcome, cancelling if the run should stop.
     pub fn record(&self, succeeded: bool) {
         let attempts = self.attempts.fetch_add(1, Ordering::Relaxed) + 1;
-        let failures = if succeeded {
-            self.failures.load(Ordering::Relaxed)
+        let (failures, streak) = if succeeded {
+            self.streak.store(0, Ordering::Relaxed);
+            (self.failures.load(Ordering::Relaxed), 0)
         } else {
-            self.failures.fetch_add(1, Ordering::Relaxed) + 1
+            (
+                self.failures.fetch_add(1, Ordering::Relaxed) + 1,
+                self.streak.fetch_add(1, Ordering::Relaxed) + 1,
+            )
         };
-        if attempts >= MINIMUM_SAMPLE && fraction(failures, attempts) > self.threshold {
+        let past_fraction =
+            attempts >= MINIMUM_SAMPLE && fraction(failures, attempts) > self.threshold;
+        if past_fraction || streak >= CONSECUTIVE_FAILURES {
             self.token.cancel();
         }
     }

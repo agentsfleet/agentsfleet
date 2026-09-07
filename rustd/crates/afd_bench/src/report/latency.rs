@@ -67,6 +67,23 @@ impl Latency {
             .map_err(|source| Error::LatencyUnrecordable { source })
     }
 
+    /// Fold another distribution into this one.
+    ///
+    /// Each driver task records into its own histogram so nothing is shared
+    /// inside a timed loop; the lane merges them once at join time. Bucketed
+    /// values add exactly, so the merged quantiles are what one histogram
+    /// would have reported had every task recorded into it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::LatencyUnmergeable`] when the other histogram holds a value
+    /// this one cannot, which cannot happen for two built by [`Latency::new`].
+    pub fn merge(&mut self, other: &Self) -> Result<()> {
+        self.histogram
+            .add(&other.histogram)
+            .map_err(|source| Error::LatencyUnmergeable { source })
+    }
+
     /// How many operations were recorded.
     #[must_use]
     pub fn count(&self) -> u64 {

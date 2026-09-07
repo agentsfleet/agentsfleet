@@ -7,5 +7,6 @@
 pub mod cardinality;
 pub mod lease;
 pub mod outbound;
+pub mod outcomes;
 pub mod steer;
 pub mod sweep;

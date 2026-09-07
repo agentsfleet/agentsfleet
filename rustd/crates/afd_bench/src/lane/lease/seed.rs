@@ -50,17 +50,28 @@ pub const ROWS_PER_FLEET: u64 = 3;
 /// Rows one enrolled runner inserts.
 pub const ROWS_PER_RUNNER: u64 = 1;
 
-/// The actor every seeded event carries.
-const ACTOR: &str = "bench:steer";
+/// The actor every bench-written event carries, seeded or steered.
+///
+/// One spelling, so a reader grepping a stream for bench entries has one
+/// thing to grep for.
+pub const BENCH_ACTOR: &str = "bench:steer";
 
 /// The event type every seeded event carries.
 const EVENT_TYPE: &str = "steer";
 
-/// The body every seeded event carries.
+/// The body every bench-written event carries.
 ///
 /// Generated content, never a tenant row echoed back: a fixture that copied
-/// real request text would put customer data in a bench result.
-const REQUEST_JSON: &str = "{\"prompt\":\"bench\"}";
+/// real request text would put customer data in a bench result (RULE PRI).
+pub const BENCH_REQUEST_JSON: &str = "{\"prompt\":\"bench\"}";
+
+/// The clock every seeded row is stamped with, and the instant a poll is given.
+///
+/// A fixed past instant rather than "now": the candidate query orders by
+/// enrolment, and a population seeded across a moving clock would order by the
+/// accident of how long seeding took. One constant for every lane, so no two
+/// lanes seed against different clocks.
+pub const SEEDED_AT: i64 = 1_767_225_600_000;
 
 /// The status a leasable fleet carries.
 const FLEET_STATUS: &str = "active";
@@ -235,9 +246,9 @@ async fn enqueue(queue: &Redis, seeded: &SeededFleet, now: i64) -> Result<()> {
             &seeded.fleet,
             &[
                 ("type", EVENT_TYPE),
-                ("actor", ACTOR),
+                ("actor", BENCH_ACTOR),
                 ("workspace_id", seeded.workspace.as_str()),
-                ("request", REQUEST_JSON),
+                ("request", BENCH_REQUEST_JSON),
                 ("created_at", created.as_str()),
             ],
         )

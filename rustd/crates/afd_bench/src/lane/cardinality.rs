@@ -19,24 +19,25 @@
 //!
 //! Creating a million streams in a shared environment is not a measurement
 //! anyone consented to. Against a deployed target the lane reads what is
-//! there, reports it in the same shape, and says `created: false`.
-
-use afd_redis::ReadyIndex;
-
-use crate::datastores::Datastores;
-use crate::error::Result;
-use crate::fixture::{FixtureLedger, RunPrefix};
-use crate::lane::lease::seed;
-use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Fixture, Lane, Report};
+//! there — the fleet population from Postgres, the readiness depth from Redis,
+//! each under its own name — reports it in the same shape, and says
+//! `created: false`.
 
 mod probe;
 
-use self::probe::{
-    FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes, used_memory,
-};
+use afd_redis::ReadyIndex;
 
-/// Series key: the population at each rung.
+use self::probe::{
+    FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
+};
+use crate::datastores::{Datastores, redis_used_memory};
+use crate::error::Result;
+use crate::fixture::{FixtureLedger, RunPrefix};
+use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
+use crate::profile::{Parameter, Profile, Target};
+use crate::report::{Fixture, Lane, Report, count, ratio};
+
+/// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
 
 /// Series key: Redis bytes per fleet at each rung, over the rung below.
@@ -51,15 +52,16 @@ const STREAM_READ_MS: &str = "stream_read_ms";
 /// Measurement key: Redis bytes the whole population added.
 const REDIS_BYTES_TOTAL: &str = "redis_bytes_total";
 
+/// Measurement key: how many fleets the readiness index holds on a deployed
+/// target. Its own name, because it is not the population.
+const READY_DEPTH: &str = "ready_depth";
+
 /// How many rungs the ladder has below its ceiling, each ten times the last.
 ///
 /// Three, so a ceiling of a million is reached through 1 000, 10 000 and
 /// 100 000 — enough points to see a slope, few enough that seeding stays a
 /// fraction of the run.
 const RUNGS_BELOW_CEILING: u32 = 3;
-
-/// The clock a seeded row is stamped with.
-const SEEDED_AT: i64 = 1_767_225_600_000;
 
 /// What the caller asked this lane to measure.
 #[derive(Debug, Clone, Copy)]
@@ -69,11 +71,11 @@ pub struct Parameters {
 }
 
 impl Parameters {
-    /// Refuse a ceiling above the profile's cap, before a connection opens.
+    /// Refuse a ceiling outside the profile's bounds, before a connection opens.
     ///
     /// # Errors
     ///
-    /// [`crate::Error::CapExceeded`] naming the cap and the profile.
+    /// A cap or a floor, named.
     pub fn admit(self, profile: Profile) -> Result<()> {
         profile.check(Parameter::Fleets, self.fleets)
     }
@@ -110,8 +112,11 @@ pub async fn run(
     Ok(report)
 }
 
-/// The rungs up to and including the ceiling.
+/// The rungs up to and including the ceiling; none for a ceiling of zero.
 pub(crate) fn rungs(ceiling: u64) -> Vec<u64> {
+    if ceiling == 0 {
+        return Vec::new();
+    }
     let mut rungs: Vec<u64> = (1..=RUNGS_BELOW_CEILING)
         .rev()
         .map(|below| ceiling / 10_u64.pow(below))
@@ -132,8 +137,8 @@ async fn climb(
 ) -> Result<()> {
     let tag = seed::placement_tag(prefix);
     let runner = seed::runner(&stores.database, &prefix.name("host"), &tag, SEEDED_AT).await?;
-    ledger.created(seed::ROWS_PER_RUNNER);
-    let baseline = used_memory(&stores.queue).await?;
+    ledger.created(ROWS_PER_RUNNER);
+    let baseline = redis_used_memory(&stores.queue).await?;
 
     let mut seeded_to = 0;
     let mut previous_bytes = baseline;
@@ -151,11 +156,11 @@ async fn climb(
             )
             .await?;
             last_fleet = fleet.fleet;
-            ledger.created(seed::ROWS_PER_FLEET);
+            ledger.created(ROWS_PER_FLEET);
         }
         seeded_to = rung;
 
-        let bytes = used_memory(&stores.queue).await?;
+        let bytes = redis_used_memory(&stores.queue).await?;
         let added = bytes.saturating_sub(previous_bytes);
         let fleets_added = rung.saturating_sub(previous_rung);
         push(report, LADDER, count(rung));
@@ -178,11 +183,20 @@ async fn climb(
 
 /// Read the population that is already there, creating nothing.
 async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
-    let population = ReadyIndex::new(stores.queue.clone()).len().await?;
-    push(report, LADDER, count(population));
+    push(
+        report,
+        LADDER,
+        count(probe::fleet_population(&stores.database).await?),
+    );
+    report.measurement(
+        READY_DEPTH,
+        count(ReadyIndex::new(stores.queue.clone()).len().await?),
+    );
     push(report, PEEK_MS, peek_ms(&stores.queue).await?);
-    let sizes = table_sizes(&stores.database).await?;
-    report.measurement(FLEETS_TABLE_BYTES, count(sizes));
+    report.measurement(
+        FLEETS_TABLE_BYTES,
+        count(table_sizes(&stores.database).await?),
+    );
     Ok(())
 }
 
@@ -193,25 +207,6 @@ fn push(report: &mut Report, series: &str, value: f64) {
         .entry(series.to_owned())
         .or_default()
         .push(value);
-}
-
-/// A count as a ratio's operand.
-pub(super) fn count(value: u64) -> f64 {
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a count past f64's exact range is not a population this ladder reaches"
-    )]
-    {
-        value as f64
-    }
-}
-
-/// `numerator / denominator`, or zero when nothing was added.
-fn ratio(numerator: u64, denominator: u64) -> f64 {
-    if denominator == 0 {
-        return 0.0;
-    }
-    count(numerator) / count(denominator)
 }
 
 #[cfg(test)]
