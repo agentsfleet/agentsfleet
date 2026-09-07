@@ -111,6 +111,13 @@ ignore:
   - "zig-pkg/**"
   - "tests/**"
   - "rustd/target/**"
+  # The bench crate is a measuring instrument, not shipped code, and leaves
+  # the measurement on Indy's call (2026-09-07): "the afd_bench/ crate must be
+  # ignored from codecov and the coverage we conduct, that is just an optional
+  # crate to measure bench and no where used in production". The lane's own
+  # grade excludes the same path through RUSTD_COVERAGE_IGNORE in
+  # make/test-integration-rustd.mk, so the two gates read one denominator.
+  - "rustd/crates/afd_bench/**"
   - "**/*.test.ts"
   - "**/*.test.tsx"
   - "**/*.spec.ts"
