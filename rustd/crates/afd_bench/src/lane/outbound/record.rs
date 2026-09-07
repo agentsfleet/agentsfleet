@@ -7,7 +7,7 @@ use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
-use super::poster::{Behaviour, Scripted};
+use super::poster::{Attempt, Behaviour, Scripted, Seen};
 use crate::error::Result;
 use crate::report::{
     AbortRecord, DatastoreCost, DatastoreCosts, Latency, Report, count, per_second,
@@ -44,6 +44,17 @@ pub(super) struct Drained {
     pub(super) settled: u64,
     pub(super) redis_calls: u64,
     pub(super) transactions: u64,
+}
+
+/// When the window closed: the last answer this run's jobs received, which is
+/// the last attempt stamped plus the delay the script gave it. Only when no
+/// attempt was ever made does the deadline stand in.
+pub(super) fn window_end(seen: &Seen, deadline: Instant) -> Instant {
+    seen.attempts()
+        .values()
+        .filter_map(|attempts| attempts.last().map(Attempt::settled_at))
+        .max()
+        .unwrap_or(deadline)
 }
 
 /// Write the drain's numbers into the report.

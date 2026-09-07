@@ -42,7 +42,7 @@ use afd_redis::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
 use tokio_util::sync::CancellationToken;
 
 use self::poster::{Behaviour, Scripted};
-use self::record::{Drained, record};
+use self::record::{Drained, record, window_end};
 use crate::datastores::{Datastores, postgres_transactions, redis_calls};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
@@ -243,16 +243,9 @@ async fn drain(
         .map_err(|_elapsed| Error::TaskLost { role: WORKER_ROLE })?
         .map_err(|_joined| Error::TaskLost { role: WORKER_ROLE })?;
 
-    // The window ends at the last settlement this run saw, which is the last
-    // attempt the poster stamped plus the delay it answered with; falling back
-    // to the deadline only when nothing settled at all.
-    let ended = poster
-        .seen()
-        .attempts()
-        .values()
-        .filter_map(|attempts| attempts.last().map(|last| last.at))
-        .max()
-        .unwrap_or(deadline);
+    // The window ends at the last answer this run's jobs received, not at the
+    // last attempt's start; the deadline stands in only when nothing was asked.
+    let ended = window_end(&poster.seen(), deadline);
 
     Ok(Drained {
         started,
