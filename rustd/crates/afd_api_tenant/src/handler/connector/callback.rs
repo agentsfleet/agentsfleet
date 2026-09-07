@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 
-use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback};
+use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback, github};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use axum::extract::{Path, RawQuery, State};
@@ -65,6 +65,12 @@ const DETAIL_MISSING_CODE: &str = "Missing code";
 
 /// The refusal a query this daemon cannot decode earns.
 const DETAIL_BAD_QUERY: &str = "Bad query string";
+
+/// The refusal a claimed installation id that is not one earns.
+///
+/// `github/callback.zig`'s sentence. Shape only — digits, bounded — checked
+/// before any store is asked; whether the person REACHES it is the finish's.
+const DETAIL_MALFORMED_INSTALLATION: &str = "Malformed installation_id";
 
 /// The refusal a state that did not survive its checks earns.
 ///
@@ -161,9 +167,11 @@ pub(crate) async fn relay<D: Services>(
 ///
 /// # Errors
 /// `UZ-CONN-004` for an unshipped provider, `UZ-REQ-001` for a missing state or
-/// code, `UZ-CONN-002` for a state that is forged, expired, spent or somebody
-/// else's, `UZ-AUTH-003` for a caller who does not hold the workspace the state
-/// names, `UZ-CONN-001` for a provider this deployment configured no app for,
+/// code or a malformed `installation_id`, `UZ-CONN-002` for a state that is
+/// forged, expired, spent or somebody else's, `UZ-AUTH-001` for a caller who
+/// does not hold the workspace the state names, `UZ-CONN-001` for a provider
+/// this deployment configured no app for, `UZ-CONN-008` for a GitHub
+/// authorization that reaches no single installation this workspace may bind,
 /// and the vendor and datastore failures the exchange can raise.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
@@ -213,6 +221,19 @@ pub(crate) async fn complete<D: Services>(
     let code = optional(&query, PARAM_CODE)?
         .ok_or_else(|| Refusal::coded(error_code::INVALID_REQUEST, DETAIL_MISSING_CODE))?;
     let location = optional(&query, PARAM_LOCATION)?;
+    // Shape-checked here and PROBED in the finish: a claimed id is what
+    // GitHub's install return carries, and it is taken only once the person's
+    // token has been shown to open it.
+    let installation_id = optional(&query, PARAM_INSTALLATION_ID)?;
+    if installation_id
+        .as_deref()
+        .is_some_and(|claimed| !github::is_installation_id(claimed))
+    {
+        return Err(Refusal::coded(
+            error_code::INVALID_REQUEST,
+            DETAIL_MALFORMED_INSTALLATION,
+        ));
+    }
 
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(unconfigured());
@@ -273,6 +294,7 @@ pub(crate) async fn complete<D: Services>(
                 spent: &spent,
                 code: &code,
                 location: location.as_deref(),
+                installation_id: installation_id.as_deref(),
                 redirect_uri: &redirect_uri,
             },
             services.now(),

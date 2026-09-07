@@ -37,6 +37,13 @@ use super::github::{Ingest, Policy, classify};
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_github_append_failed";
 
+/// The source this route is addressed for, as a trigger's `source` names it.
+///
+/// Passed to the binding read so a fleet declaring another provider's webhook
+/// first is still measured on its GitHub trigger here — see
+/// [`afd_ingress::Ingress::binding`].
+const SOURCE: &str = "github";
+
 /// `POST /v1/webhooks/{fleet_id}/github`.
 ///
 /// # Errors
@@ -102,7 +109,7 @@ pub(crate) async fn receive<D: Services>(
         .to_owned();
 
     // Nothing above this line has read the body as anything but bytes.
-    let proven = webhook::verified(&services, &fleet, &headers, body).await?;
+    let proven = webhook::verified(&services, &fleet, Some(SOURCE), &headers, body).await?;
 
     // Checked against the HEADER's word for the delivery, before the payload is
     // parsed: an author's allow-list is written in GitHub's event vocabulary.

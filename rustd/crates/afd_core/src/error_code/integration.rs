@@ -195,6 +195,17 @@ pub const CONNECTOR_VENDOR_DEADLINE: ErrorCode = ErrorCode::declare("UZ-CONN-003
 /// it into existence, so there is no retry loop to protect.
 pub const CONNECTOR_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-CONN-004");
 
+/// A GitHub installation could not be proven to belong to the person connecting.
+///
+/// `ERR_CONNECTOR_INSTALLATION_OWNERSHIP` (`error_registry.zig:241`). A 403 on
+/// the callback, and the whole GitHub archetype turns on it: a user
+/// authorization proves the PERSON, and this is what refuses to bind an
+/// installation that person cannot reach — none listed, more than one listed
+/// so that choosing would be guessing an organisation, a claimed id the token
+/// does not open, or an installation another workspace already routes. Nothing
+/// is sealed or routed on this answer.
+pub const CONNECTOR_INSTALLATION_OWNERSHIP: ErrorCode = ErrorCode::declare("UZ-CONN-008");
+
 /// No human approved a repository-write gate for this event.
 ///
 /// `ERR_REPAIR_WRITE_UNAPPROVED` (`error_registry.zig:199`). The run is not

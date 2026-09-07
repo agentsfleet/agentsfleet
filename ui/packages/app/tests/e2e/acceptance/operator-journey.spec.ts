@@ -149,7 +149,7 @@ test.describe("operator journey", () => {
     // run created depends on neither, so a journey that fails anywhere
     // after fleet creation still tears down its cron-carrying rows.
     for (const wsId of createdWorkspaceIds) {
-      await cleanWorkspaceFleets(FIXTURE_KEY.admin, wsId, `${JOURNEY_FLEET_PREFIX}-`).catch(
+      await cleanWorkspaceFleets(FIXTURE_KEY.admin, wsId, JOURNEY_FLEET_PREFIX).catch(
         (err: unknown) => {
           console.error(`[e2e:journey] fleet sweep failed for workspace ${wsId}:`, err);
         },
@@ -171,7 +171,8 @@ test.describe("operator journey", () => {
 
     const primaryWorkspaceName = uniqueName("journey-primary");
     const secondaryWorkspaceName = uniqueName("journey-secondary");
-    const fleetName = uniqueName(JOURNEY_FLEET_PREFIX);
+    // The template is stable; the fleet takes its name, suffixed by the server
+    // if the run's fresh workspace somehow already holds it. Read back below.
     const apiKeyName = uniqueName("journey-key");
 
     await signInAs(page, FIXTURE_KEY.admin);
@@ -195,7 +196,7 @@ test.describe("operator journey", () => {
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
     await page.getByRole("link", { name: /install a fleet/i }).first().click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
-    const fleetId = await installViaUI(page, fleetName, {
+    const fleetId = await installViaUI(page, JOURNEY_FLEET_PREFIX, {
       handle: FIXTURE_KEY.admin,
       workspaceId: wsId,
     });
@@ -244,7 +245,7 @@ test.describe("operator journey", () => {
       throw new Error(`agentsfleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
     const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
-    expect(cliList.items?.some((fleet) => fleet.id === fleetId && fleet.name === fleetName)).toBe(true);
+    expect(cliList.items?.some((fleet) => fleet.id === fleetId && (fleet.name ?? "").startsWith(JOURNEY_FLEET_PREFIX))).toBe(true);
 
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await stopFleet(page);

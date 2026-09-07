@@ -125,6 +125,28 @@ function galleryCards(page: Page) {
   return page.getByTestId(`library-card-${SAMPLE_ENTRY_ID}`);
 }
 
+// The gallery is one merged page, newest first, and a person reaches the rest
+// through "Load more". A published platform entry keeps the `created_at` it
+// had as a draft, so in a workspace with uploads of its own it can sit pages
+// deep — and whether a card is THERE is a question about the whole gallery,
+// reached the way a person reaches it. Bounded in clicks, never in waiting:
+// a gallery still offering more past the bound is its own failure.
+const LOAD_MORE_LABEL = /^load more$/i;
+const GALLERY_SECTION_LABEL = "Fleet library";
+const GALLERY_PAGE_BOUND = 20;
+
+async function loadWholeGallery(page: Page) {
+  await expect(page.getByText(GALLERY_SECTION_LABEL, { exact: true })).toBeVisible();
+  const loadMore = page.getByRole("button", { name: LOAD_MORE_LABEL });
+  for (let pages = 0; pages < GALLERY_PAGE_BOUND; pages += 1) {
+    if (!(await loadMore.isVisible())) return;
+    const shown = await page.getByRole("article").count();
+    await loadMore.click();
+    await expect(page.getByRole("article")).not.toHaveCount(shown);
+  }
+  throw new Error(`the gallery still offered more after ${GALLERY_PAGE_BOUND} pages`);
+}
+
 test.describe("platform fleet catalog", () => {
   test.describe.configure({ timeout: PLATFORM_JOURNEY_TIMEOUT });
 
@@ -213,6 +235,7 @@ test.describe("platform fleet catalog", () => {
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
     const workspacePath = new URL(page.url()).pathname.match(/^\/w\/[^/]+/)![0];
     await page.goto(`${workspacePath}/fleets/new`);
+    await loadWholeGallery(page);
     await expect(galleryCards(page)).toHaveCount(0);
 
     // The operator publishes. This is the only act that opens the door.
@@ -226,6 +249,7 @@ test.describe("platform fleet catalog", () => {
     // upserts rather than minting a second entry.
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(`${workspacePath}/fleets/new`);
+    await loadWholeGallery(page);
     await expect(galleryCards(page).first()).toBeVisible({ timeout: 30_000 });
     await expect(galleryCards(page)).toHaveCount(1);
 
@@ -238,6 +262,7 @@ test.describe("platform fleet catalog", () => {
 
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(`${workspacePath}/fleets/new`);
+    await loadWholeGallery(page);
     await expect(galleryCards(page)).toHaveCount(0);
   });
 

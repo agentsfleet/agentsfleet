@@ -86,12 +86,27 @@ export function SelectTrigger({
   );
 }
 
+/**
+ * The height a popper-positioned list may take, measured by Radix against the
+ * space between the trigger and the edge of the window.
+ *
+ * Without it the list is exactly as tall as its items, and a list longer than
+ * the window runs off the bottom with nothing to scroll: the panel itself is
+ * `overflow-hidden`, so the overflow is clipped rather than reachable. A
+ * provider list is over a hundred entries, which is where this stopped being
+ * theoretical.
+ */
+const AVAILABLE_HEIGHT = "max-h-[var(--radix-select-content-available-height)]";
+
+/** The positioning mode the available-height bound is measured against. */
+const POSITION_POPPER = "popper";
+
 export type SelectContentProps = ComponentProps<typeof SelectPrimitive.Content>;
 
 export function SelectContent({
   className,
   children,
-  position = "popper",
+  position = POSITION_POPPER,
   ref,
   ...props
 }: SelectContentProps) {
@@ -102,17 +117,21 @@ export function SelectContent({
         position={position}
         className={cn(
           "relative z-50 min-w-[8rem] overflow-hidden rounded-md border border-border",
+          // The bound goes on the panel and the scrolling on the viewport
+          // inside it, so the border and the rounding stay put while the
+          // items move.
+          position === POSITION_POPPER && AVAILABLE_HEIGHT,
           "bg-card text-card-foreground shadow-md",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-          position === "popper" &&
+          position === POSITION_POPPER &&
             "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
           className,
         )}
         {...props}
       >
-        <SelectPrimitive.Viewport className="p-1">
+        <SelectPrimitive.Viewport className="max-h-full overflow-y-auto p-1">
           {children}
         </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>

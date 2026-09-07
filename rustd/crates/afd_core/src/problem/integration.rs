@@ -236,6 +236,15 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::CONNECTOR_INSTALLATION_OWNERSHIP,
+        status: 403,
+        title: "Connector installation ownership not verified",
+        hint: "The GitHub user authorization did not prove access to exactly one App installation this workspace may bind. Install the App on the account you mean, or sign in with the account that owns it, then connect again.",
+        user_message: Some(
+            "We couldn't verify that this GitHub installation belongs to you. Sign in with the owning GitHub account and try again.",
+        ),
+    },
+    Problem {
         code: error_code::REPAIR_WRITE_UNAPPROVED,
         status: 403,
         title: "Write mint requires an approved gate",

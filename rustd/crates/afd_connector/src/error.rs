@@ -32,7 +32,10 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 
-pub(crate) use self::raise::{exchange_refused, exchange_unreadable, query};
+pub(crate) use self::raise::{
+    exchange_refused, exchange_unreadable, installation_held_elsewhere, installation_unresolved,
+    query,
+};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -121,6 +124,10 @@ pub(crate) enum ErrorKind {
     /// missing the access token, a body that is not JSON at all.
     #[error("the connector's provider answered the exchange with no readable grant")]
     GrantUnreadable,
+    #[error("the authorized person reaches no single App installation to bind ({reason})")]
+    InstallationUnresolved { reason: &'static str },
+    #[error("the App installation is already routed to another workspace")]
+    InstallationHeldElsewhere,
 }
 
 impl Error {
@@ -157,6 +164,10 @@ impl Error {
             ErrorKind::ExchangeRefused { .. } | ErrorKind::GrantUnreadable => (
                 error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
                 detail::EXCHANGE_FAILED,
+            ),
+            ErrorKind::InstallationUnresolved { .. } | ErrorKind::InstallationHeldElsewhere => (
+                error_code::CONNECTOR_INSTALLATION_OWNERSHIP,
+                detail::INSTALLATION_OWNERSHIP,
             ),
             ErrorKind::Queue { .. }
             | ErrorKind::Vault { .. }

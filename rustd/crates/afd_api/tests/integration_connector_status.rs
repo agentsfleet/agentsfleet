@@ -61,6 +61,9 @@ const STATUS_CONNECTED: &str = "connected";
 /// See [`STATUS_CONNECTED`].
 const STATUS_NOT_CONNECTED: &str = "not_connected";
 
+/// The provider account the held connection routes inbound events from.
+const ROUTED_ACCOUNT: &str = "T0STATUSFIXTURE";
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() {
@@ -80,6 +83,7 @@ async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() 
     .router();
 
     fixture.seal_handle(HELD, &handle(LABEL)).await;
+    fixture.route(HELD, ROUTED_ACCOUNT).await;
 
     a_held_handle_reads_as_connected(&router, &fixture).await;
     a_provider_with_no_handle_reads_as_not_connected(&router, &fixture).await;
@@ -88,166 +92,6 @@ async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() 
     a_secret_that_is_not_a_connector_handle_is_not_a_connection(&router, &fixture).await;
 
     fixture.cleanup().await;
-}
-
-/// The sealed handle opens, carries its marker, and names itself.
-async fn a_held_handle_reads_as_connected(router: &axum::Router, fixture: &Fixture) {
-    let read = send(
-        router,
-        Method::GET,
-        &fixture.one(HELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    let status = read.status();
-    let document = json_body(read).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("status").and_then(Value::as_str),
-        Some(STATUS_CONNECTED),
-        "{document}"
-    );
-    assert_eq!(
-        document.get("label").and_then(Value::as_str),
-        Some(LABEL),
-        "the label is what a person recognises the connection by: {document}"
-    );
-}
-
-/// A provider whose key the vault holds nothing under is absent, not an error.
-async fn a_provider_with_no_handle_reads_as_not_connected(
-    router: &axum::Router,
-    fixture: &Fixture,
-) {
-    let read = send(
-        router,
-        Method::GET,
-        &fixture.one(UNHELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    let status = read.status();
-    let document = json_body(read).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("status").and_then(Value::as_str),
-        Some(STATUS_NOT_CONNECTED),
-        "{document}"
-    );
-}
-
-/// The catalogue's `connected` column comes from the vault listing.
-///
-/// One listing and no decryption — the grant key IS the provider id — so this
-/// is the assertion that the listing is filtered by the registry rather than
-/// the other way round: an ordinary workspace secret must not add a row.
-async fn the_catalogue_marks_only_what_is_held(router: &axum::Router, fixture: &Fixture) {
-    let listed = send(
-        router,
-        Method::GET,
-        &fixture.all(),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    let status = listed.status();
-    let document = json_body(listed).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    let rows = document.as_array().expect("the catalogue is a bare array");
-    assert_eq!(
-        rows.len(),
-        Provider::ALL.len(),
-        "every shipped connector gets a card, held or not: {document}"
-    );
-    for row in rows {
-        let id = row
-            .get("id")
-            .and_then(Value::as_str)
-            .expect("a row names its provider");
-        let connected = row.get("connected").and_then(Value::as_bool);
-        assert_eq!(
-            connected,
-            Some(id == HELD.id()),
-            "`{id}` is connected exactly when its handle is held: {document}"
-        );
-    }
-}
-
-/// A disconnect removes the handle, and a second press is still 204.
-async fn a_disconnect_removes_the_handle_and_repeats_harmlessly(
-    router: &axum::Router,
-    fixture: &Fixture,
-) {
-    let gone = send(
-        router,
-        Method::DELETE,
-        &fixture.one(HELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(gone.status(), StatusCode::NO_CONTENT);
-
-    let read = send(
-        router,
-        Method::GET,
-        &fixture.one(HELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    let document = json_body(read).await;
-    assert_eq!(
-        document.get("status").and_then(Value::as_str),
-        Some(STATUS_NOT_CONNECTED),
-        "the handle the disconnect removed must not still read: {document}"
-    );
-
-    // Idempotent in the way a delete is asked to be. A 404 for the second press
-    // would make a person believe their first one had failed.
-    let again = send(
-        router,
-        Method::DELETE,
-        &fixture.one(HELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(again.status(), StatusCode::NO_CONTENT);
-}
-
-/// A workspace secret sharing a provider's name is not a connection.
-async fn a_secret_that_is_not_a_connector_handle_is_not_a_connection(
-    router: &axum::Router,
-    fixture: &Fixture,
-) {
-    fixture
-        .seal_handle(HELD, r#"{"note":"an ordinary workspace secret"}"#)
-        .await;
-
-    let read = send(
-        router,
-        Method::GET,
-        &fixture.one(HELD),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    let document = json_body(read).await;
-    assert_eq!(
-        document.get("status").and_then(Value::as_str),
-        Some(STATUS_NOT_CONNECTED),
-        "an envelope with no `integration` marker is somebody's own secret, and \
-         offering a disconnect for it would delete something they stored: \
-         {document}"
-    );
-}
-
-/// A stored connector handle, as `land` writes one.
-fn handle(label: &str) -> String {
-    format!(r#"{{"integration":"{}","label":"{label}"}}"#, HELD.id())
 }
 
 /// A tenant, its workspace, the person acting, and their key.
@@ -277,6 +121,40 @@ impl Fixture {
             token: format!("agt_t{first}{second}"),
             lane,
         }
+    }
+
+    /// Routes `account` to this workspace, as a landed connect would have.
+    async fn route(&self, provider: Provider, account: &str) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.connector_installs \
+               (id, provider, external_account_id, workspace_id, installed_by, \
+                scopes, created_at, updated_at) \
+             VALUES ($1::uuid, $2, $3, $4::uuid, $5, ARRAY[]::TEXT[], 1, 1)",
+        )
+        .bind(mint_id())
+        .bind(provider.id())
+        .bind(account)
+        .bind(self.workspace.as_str())
+        .bind(&self.subject)
+        .execute(&mut *connection)
+        .await
+        .expect("the routing row seeds");
+    }
+
+    /// How many routing rows name `account` for this workspace.
+    async fn routed(&self, provider: Provider, account: &str) -> i64 {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar(
+            "SELECT count(*) FROM core.connector_installs \
+             WHERE provider = $1 AND external_account_id = $2 AND workspace_id = $3::uuid",
+        )
+        .bind(provider.id())
+        .bind(account)
+        .bind(self.workspace.as_str())
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the routing rows count")
     }
 
     /// `…/connectors/{provider}` for this workspace.
@@ -366,3 +244,8 @@ impl Fixture {
         self.lane.cleanup().await;
     }
 }
+
+#[path = "integration_connector_status/checks.rs"]
+mod checks;
+
+use checks::*;

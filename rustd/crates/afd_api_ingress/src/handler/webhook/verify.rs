@@ -66,12 +66,13 @@ pub(crate) struct Verified {
 pub(crate) async fn verified<D: Services>(
     services: &Arc<D>,
     fleet: &Uuid7,
+    source: Option<&str>,
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<Verified, Refusal> {
     let binding = services
         .ingress()
-        .binding(fleet)
+        .binding(fleet, source)
         .await
         .map_err(Refusal::at(EVENT_BINDING))?
         .ok_or_else(|| {

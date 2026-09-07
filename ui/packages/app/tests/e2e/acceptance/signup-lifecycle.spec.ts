@@ -40,9 +40,9 @@ function uniqueEmail(): string {
   return `signup-lifecycle-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
-function uniqueName(): string {
-  return `lifecycle-${crypto.randomBytes(4).toString("hex")}`;
-}
+// The workspace is this run's own, so the name is stable for consistency with
+// every other dashboard install rather than for convergence.
+const LIFECYCLE_TEMPLATE = "lifecycle";
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
@@ -98,8 +98,7 @@ test.describe("signup → install → lifecycle", () => {
     // one auto-provisioned workspace (signup.workspaceId) — the one active in
     // the browser — so the onboard targets it and its card renders here. The
     // onboard reuses the signup session's own JWT (no persistent fixture).
-    const name = uniqueName();
-    const fleetId = await installViaUI(page, name, {
+    const fleetId = await installViaUI(page, LIFECYCLE_TEMPLATE, {
       handle: { sessionJwt: signup.sessionJwt },
       workspaceId,
     });

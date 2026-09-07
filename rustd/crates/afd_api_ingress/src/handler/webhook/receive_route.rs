@@ -88,7 +88,9 @@ pub(crate) async fn receive<D: Services>(
     webhook::within_cap(&body)?;
 
     // Nothing above this line has read the body as anything but bytes.
-    let proven = webhook::verified(&services, &fleet, &headers, body).await?;
+    // The bare route names no provider, so the binding is the first webhook
+    // trigger the document declares — the rule `afd_ingress::binding` states.
+    let proven = webhook::verified(&services, &fleet, None, &headers, body).await?;
 
     let event_id = afd_ingress::replay_id(&proven.body);
     super::delivery::deliver(services.as_ref(), proven, &event_id, EVENT_APPEND).await
