@@ -12,9 +12,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import acceptanceConfig from "../playwright.acceptance.config";
+import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   classifyApiFailure,
   classifyReportMissing,
+  classifyStillRunning,
   classifyTerminalEvent,
   classifyUnleased,
   ENVIRONMENT_FAILURE_CLASSES,
@@ -94,6 +96,22 @@ describe("the terminal row is classified before it is trusted", () => {
     expect(() => failWith(classifyReportMissing("succeeded"))).toThrow(
       `[${VERDICT_KIND.product}] ${JOURNEY_LEG.execute}: `,
     );
+  });
+
+  it("a lease still running past the budget is the environment, not a scheduler regression", () => {
+    // The confusion RULE ECL exists to prevent: this state and "never leased"
+    // are both "no terminal row", and only one of them is a defect. Reported as
+    // product, a slow provider minute reads as a scheduler regression.
+    const running = classifyStillRunning(LEASE_OUTCOME.running);
+    expect(running).toMatchObject({
+      kind: VERDICT_KIND.environment,
+      leg: JOURNEY_LEG.execute,
+    });
+    expect(running.detail).toContain(LEASE_OUTCOME.running);
+    expect(leaseIsSettled(LEASE_OUTCOME.running)).toBe(false);
+    // The verdict it must NOT share.
+    expect(classifyUnleased(true)).toMatchObject({ kind: VERDICT_KIND.product });
+    expect(running.kind).not.toBe(classifyUnleased(true).kind);
   });
 
   it("a delivery nobody leased is the runner when none is live, and the product when one is", () => {

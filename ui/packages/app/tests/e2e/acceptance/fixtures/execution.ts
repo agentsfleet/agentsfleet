@@ -108,6 +108,8 @@ const DETAIL_GATE_BLOCKED = "the delivery is waiting on an approval no journey g
 const DETAIL_RUNNER_OFFLINE = "no runner was online to lease the delivery";
 const DETAIL_NEVER_LEASED = "an online runner never leased the delivery";
 const DETAIL_REPORT_MISSING = "the lease settled and no terminal row followed";
+const DETAIL_STILL_RUNNING =
+  "the lease was still running when the execution budget expired";
 const DETAIL_UNKNOWN_CLASS = "an unrecognised failure class";
 const DETAIL_API_UNREACHABLE = "the API could not be reached";
 
@@ -187,6 +189,24 @@ export function classifyReportMissing(outcome: string): FailedVerdict {
     kind: VERDICT_KIND.product,
     leg: JOURNEY_LEG.execute,
     detail: `${DETAIL_REPORT_MISSING} (lease ${outcome})`,
+  };
+}
+
+/**
+ * What a lease still RUNNING past the execution budget says.
+ *
+ * The environment, not the scheduler. The delivery was leased and started; the
+ * clock ran out before the work came back, which is what a slow provider minute
+ * looks like from here. [`classifyUnleased`] reads the same state as "an online
+ * runner never leased the delivery" — a scheduler regression that did not
+ * happen — so this branch exists to keep RULE ECL's two failures apart at the
+ * one moment they are easiest to confuse.
+ */
+export function classifyStillRunning(outcome: string): FailedVerdict {
+  return {
+    kind: VERDICT_KIND.environment,
+    leg: JOURNEY_LEG.execute,
+    detail: `${DETAIL_STILL_RUNNING} (lease ${outcome})`,
   };
 }
 

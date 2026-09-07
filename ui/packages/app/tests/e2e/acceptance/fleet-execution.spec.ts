@@ -34,6 +34,7 @@ import {
   assertPassed,
   classifyApiFailure,
   classifyReportMissing,
+  classifyStillRunning,
   classifyTerminalEvent,
   classifyUnleased,
   failWith,
@@ -243,6 +244,10 @@ test.describe("fleet execution", () => {
       if (settled !== null && leaseIsSettled(settled.outcome)) {
         failWith(classifyReportMissing(settled.outcome));
       }
+      // A lease that exists and has NOT settled is still running. Falling
+      // through to `classifyUnleased` here would report "an online runner never
+      // leased the delivery" about a delivery this journey watched get leased.
+      if (settled !== null) failWith(classifyStillRunning(settled.outcome));
       failWith(classifyUnleased(await anyRunnerLive()));
     }
     await testInfo.attach("terminal-turn", {
