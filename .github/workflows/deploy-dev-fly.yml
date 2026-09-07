@@ -51,6 +51,8 @@ jobs:
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
+      - uses: 1password/install-cli-action@v4
+
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
       - name: Ensure the OTLP collector is running
         # The collector must be serving BEFORE the daemon's endpoint is
@@ -91,7 +93,7 @@ jobs:
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
-            LOG_LEVEL="debug" \
+            AGENTSFLEET_LOG_LEVEL="debug" \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             REDIS_URL_API="$REDIS_URL_API" \
@@ -157,6 +159,23 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      # AFTER the deploy, because the write goes through the daemon's own
+      # secrets API and there is nothing to accept it until the app is serving.
+      #
+      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
+      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # reads it as an admin-workspace vault row, and nothing carried the value
+      # across at cutover — so every connector answered 503 UZ-CONN-001 on a
+      # deployment whose Fly secret was set and correct. Seeding here is what
+      # makes the two ends one fact again.
+      - name: Seed platform vault secrets
+        run: ENV=dev ./playbooks/lib/platform_secret_sync.sh approval-signing
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT: ${{ vars.VAULT_DEV }}
+          ALLOW_VAULT_READS: "1"
+          ALLOW_PLATFORM_SECRET_WRITES: "1"
 
       # always(): the point of this notification is the deploy that failed.
       # job.status is read after the deploy step, so it carries that verdict.
