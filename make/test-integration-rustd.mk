@@ -188,7 +188,19 @@ RUSTD_COVERAGE_FLOOR ?= 97
 # filename filter cannot see a block. The exclusion is therefore partial by
 # construction, and that is recorded here rather than discovered later by
 # someone reconciling two numbers.
-RUSTD_COVERAGE_IGNORE ?= /src/test_util\.rs$$
+#
+# The bench crate leaves the DENOMINATOR too, on Indy's call (2026-09-07):
+# "the afd_bench/ crate must be ignored from codecov and the coverage we
+# conduct, that is just an optional crate to measure bench and no where used
+# in production". `crates/afd_bench` is a measuring instrument -- five lane
+# binaries and the harness they share -- with no consumer in the workspace
+# (`rustd/Cargo.toml` lists it as a member; nothing depends on it) and no path
+# into a shipped binary. Its tests still RUN in this lane, so the lanes stay
+# proven; their lines are no longer graded as production surface. On PR #667
+# the crate's five `main`s and their shared preamble were 111 of the 167 unhit
+# lines behind a 90.8% patch grade against the 97 floor. codecov.yml ignores
+# the same path, so the two gates read one denominator.
+RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/)
 
 # The floor's verdict, carrying the number that decided it.
 #

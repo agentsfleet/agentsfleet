@@ -258,6 +258,39 @@ Max concurrent connections, requests/sec, or daily request quota — whichever t
 
 ---
 
+## Measured ceilings
+
+Numbers, not estimates. Each row is what a lane in `rustd/crates/afd_bench`
+measured on one developer machine against a freshly reset compose Postgres and
+Redis — `make bench-<lane> PROFILE=rig` — and the committed result sits beside
+it in `bench/baselines/`. Absolute rates move with hardware; the shapes below
+do not. Every row was re-measured after the pre-landing review found the first
+lease numbers tail-dominated, and a baseline that moves takes its row here with
+it in the same commit.
+
+| Path | What it costs | The number that decides |
+|------|---------------|-------------------------|
+| Idle lease poll | 1.00 Redis command, 0 Postgres round trips (61 562 polls, index depth 0) | Idle cost scales with runners, not fleets. A million idle fleets add nothing to it. |
+| Contended lease | 79.8 leases/s; 36.6 Postgres round trips per issued lease; 6.1% of polls find nothing; p95 175 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | The candidate loop tries up to 64 fleets in turn, so a lease costs tens of round trips under contention. This is the refactor's target. |
+| Steer ingress | 2.0003 Redis commands per steer, 0.0007 Postgres transactions; 14 435/s at p95 0.74 ms (8 submitters, 50 fleets) | Ingress never reaches Postgres. The readiness index fills to the population and holds until a runner drains it. |
+| Delivery, healthy | 48.3 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from — but see the next row. |
+| Delivery, head-of-line | the OTHER fifteen destinations' p95 3 848 ms against the slow one's 3 860 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
+| Delivery, retry | 95.9% of the window in the ladder with two refusing destinations in sixteen | Eight jobs that never resolve cost every job behind them the whole ladder. |
+| Cardinality | 4.6 KB of Redis per idle fleet, flat from 10 to 10 000 (4 616 / 4 474 / 4 659 / 4 647 B); peek 0.27–0.36 ms, stream read 0.19–0.23 ms, candidate query 1.06 ms at 10 000 | Linear. A million idle fleets is roughly 4.6 GB of Redis and no slower a hot path. |
+
+Two of those rows change what the section below assumes. The idle row says the
+per-poll bound holds all the way up: cost tracks runner count and never fleet
+count, which is what makes the "idle deployment" line in the sizing procedure a
+measurement rather than an argument. The head-of-line row says the delivery
+worker's ceiling is not its rate but its ORDERING — a single slow vendor sets
+the latency for every vendor — and that is a shape a replica count cannot fix.
+
+What is deliberately not here: a production number, because nothing is
+deployed; behaviour under real customer traffic, because there is none yet; and
+any threshold, because the lanes print a delta against their baseline and never
+fail a build on it. The rig measures one process against local datastores,
+which is a floor and not a capacity plan.
+
 ## Sizing procedure (fleet- and playbook-readable)
 
 Structured for an LLM fleet or a `agentsfleet`-driven scaling playbook. Each step has explicit inputs, a formula, a decision rule, and an emit target.
