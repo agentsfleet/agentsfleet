@@ -56,6 +56,15 @@ pub(crate) struct Fixture {
     pub(crate) database: Db,
     pub(crate) queue: Redis,
     pub(crate) subject: String,
+    /// The provider account this fixture's grant is scoped to.
+    ///
+    /// Minted per fixture for the same reason [`SUBJECT_PREFIX`] is:
+    /// `core.connector_installs` is unique on `(provider, external_account_id)`
+    /// deployment-wide, and these tests run in parallel against one database.
+    /// A team id named once for the file makes every fixture contend for a
+    /// single row — the first to land holds it, and a sibling asserting that
+    /// ITS connect left no row reads the neighbour's instead of its own.
+    pub(crate) team: String,
     /// A second authenticated person, who did not start the connect.
     pub(crate) bystander: String,
     tenant: String,
@@ -78,6 +87,7 @@ impl Fixture {
             database: lane.open(DbRole::Api, &[]).await,
             queue: harness::connect_redis().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
+            team: format!("T0FIX{}", mint_id().replace('-', "").to_uppercase()),
             bystander: format!("{SUBJECT_PREFIX}bystander_{}", mint_id()),
             tenant: mint_id(),
             workspace: minted(),

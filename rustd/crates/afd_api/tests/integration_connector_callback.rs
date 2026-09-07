@@ -56,9 +56,6 @@ const BOT_TOKEN: &str = "xoxb-fixture-bot-token";
 /// The second one, for the reconnect.
 const REPLACEMENT_TOKEN: &str = "xoxb-fixture-rotated-token";
 
-/// The team the grant is scoped to.
-const TEAM_ID: &str = "T0FIXTURE01";
-
 /// The authorization code the provider hands back.
 pub(crate) const CODE: &str = "vendor-authorization-code";
 
@@ -69,11 +66,12 @@ const HANDLE_BOT_TOKEN: &str = "bot_token";
 const HANDLE_INTEGRATION: &str = "integration";
 
 /// A token endpoint's answer, in the shape `oauth.v2.access` returns.
-fn slack_answer(token: &str) -> String {
+fn slack_answer(fixture: &Fixture, token: &str) -> String {
+    let team = &fixture.team;
     format!(
         r#"{{"ok":true,"access_token":"{token}","bot_user_id":"U0FIXTUREBOT",
             "scope":"chat:write,channels:read",
-            "team":{{"id":"{TEAM_ID}","name":"Fixture Workspace"}},
+            "team":{{"id":"{team}","name":"Fixture Workspace"}},
             "authed_user":{{"id":"U0FIXTUREPERSON"}}}}"#
     )
 }
@@ -177,7 +175,7 @@ async fn a_bystander_cannot_finish_somebody_elses_connect_and_the_starter_still_
     // first assertion and fail the second.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
     let starter = fixture.router(&provider);
     let bystander = fixture.router_as(&provider, &fixture.bystander);
 
@@ -226,7 +224,7 @@ async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
     // reads one.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
     let refusing = fixture.refuse_seals().await;
 
@@ -241,7 +239,7 @@ async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
         "the code was redeemed — the failure is past the vendor, at the seal"
     );
     assert_eq!(
-        fixture.routed_to(PROVIDER, TEAM_ID).await,
+        fixture.routed_to(PROVIDER, &fixture.team).await,
         Vec::<String>::new(),
         "the routing row wrote in the same transaction as the seal that failed, \
          and unwound with it"
@@ -258,7 +256,7 @@ async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
 async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture, PROVIDER).await;
