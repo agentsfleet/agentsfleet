@@ -66,3 +66,25 @@ fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
 
     assert!(matches!(refused, Error::InstrumentPoisoned));
 }
+
+#[test]
+fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
+    let mut report = Report::new(Lane::Outbound, Profile::Rig);
+    report.fixture.created = 200;
+    report.fixture.swept = 200;
+    let scratch = std::env::temp_dir().join(format!("afd-bench-finish-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&scratch);
+    let previous = std::env::current_dir().expect("a cwd");
+    std::env::set_current_dir(&scratch).expect("scratch is enterable");
+
+    let written = finish(Lane::Outbound, Profile::Rig, Ok(report), Ok(0));
+
+    std::env::set_current_dir(previous).expect("cwd restored");
+    let path = written.expect("a finished run writes");
+    let read = Report::read(std::path::Path::new(&scratch).join(path).as_path()).expect("readable");
+    let _ = std::fs::remove_dir_all(&scratch);
+    assert_eq!(
+        read.fixture.swept, 200,
+        "a fallback that found nothing must not erase what the lane swept"
+    );
+}

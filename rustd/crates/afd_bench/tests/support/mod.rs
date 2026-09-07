@@ -58,6 +58,20 @@ pub(crate) async fn datastores() -> Datastores {
         .expect("the rig's datastores must be reachable")
 }
 
+/// Sweep a lane's prefix whether the lane succeeded or not, then hand back
+/// the lane's own outcome — the binaries do the same, and a test that swept
+/// only on success would leave its population for the next test to trip over.
+pub(crate) async fn swept<T>(
+    stores: &Datastores,
+    prefix: &afd_bench::RunPrefix,
+    measured: Result<T, afd_bench::Error>,
+) -> T {
+    afd_bench::lane::sweep::everything(&stores.database, &stores.queue, prefix)
+        .await
+        .expect("the sweep must run");
+    measured.expect("the lane runs on the rig")
+}
+
 /// A measurement a lane wrote, by key.
 pub(crate) fn measurement(report: &Report, key: &str) -> f64 {
     *report.measurements.get(key).unwrap_or_else(|| {
