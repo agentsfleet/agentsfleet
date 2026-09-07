@@ -6,12 +6,12 @@
 **Milestone:** M187
 **Workstream:** 001
 **Date:** Sep 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the cutover family proves the Rust daemon SERVES; nothing yet proves a customer's fleet finishes its job on it.
 **Categories:** API, CLI, INFRA, UI
 **Batch:** B10 — last in the v2 sequence; runs against the binary M181_006 leaves serving.
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m187-fleet-e2e-acceptance`
+**Test Baseline:** unit=5801 (cargo 2459 + app 2637 + cli 146 + design-system 559, `make test-unit-all`, Sep 07, 2026) integration=<M> (`make test-integration-rustd`, recorded in the first EXECUTE commit)
 **Depends on:** M181_006 (the production swap — this spec grades the daemon that swap leaves serving, so it cannot start before it); M181_002 (the route surface every journey below walks); M135_002 (an online runner whose heartbeat advances, without which nothing executes); M186_001 (the live connector proof this spec ports and supersedes — see Decomposition)
 **Provenance:** human-directed — Indy, Sep 01, 2026: the end-to-end verification born as M136_001 and renumbered M186_001 must be PORTED to Rust rather than landed as Zig; the fleet sequence is proven first and its defects fixed after; a human eyeball pass rides beside the automated lane. The deletion this spec originally carried moved to M181_006 §4 on Sep 04, 2026 — see the scope change above.
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
@@ -41,7 +41,7 @@
 
 **Goal (testable):** one fleet completes install → activate → trigger → lease → execute → observe against the Rust daemon on the development environment, graded by the `deploy-dev / acceptance` lane and countersigned by a recorded human visual pass, with every defect that walk surfaces fixed inside this milestone.
 
-**Problem:** the cutover family proves the Rust daemon answers every route, holds its budgets and can be rolled back. None of that is a customer finishing a job. The 41 acceptance journeys under `ui/packages/app/tests/e2e/acceptance/` run against the daemon serving `api-dev`, and the one that reaches a real runner lease — `runner-detail.spec.ts` — is deliberately built to FAIL closed before the model call, because an empty SKILL.md body is the only model-free way to place a failed lease from the outside. So the repository has never asserted that a fleet runs to a real result. M186_001 was written to close exactly that gap and its §1–§5 never ran; its Files Changed still names Zig paths, so running it as written would land connector code into a tree that is being deleted.
+**Problem:** the cutover family proves the Rust daemon answers every route, holds its budgets and can be rolled back. None of that is a customer finishing a job. The 44 acceptance journeys under `ui/packages/app/tests/e2e/acceptance/` run against the daemon serving `api-dev`, and the one that reaches a real runner lease — `runner-detail.spec.ts` — is deliberately built to FAIL closed before the model call, because an empty SKILL.md body is the only model-free way to place a failed lease from the outside. So the repository has never asserted that a fleet runs to a real result. M186_001 was written to close exactly that gap and its §1–§5 never ran; its Files Changed still names Zig paths, so running it as written would land connector code into a tree that is being deleted.
 
 **Solution summary:** re-point the existing acceptance corpus at the Rust-served environment and add the leg it has never had — a fleet that executes to a real result and is observed doing so — then fix what that surfaces rather than filing it. Port M186_001's connector proof onto `rustd/crates/afd_connector/**`, keeping its dimensions and discarding its Zig paths. Add one human visual pass with a recorded checklist, because a green Playwright run and a dashboard a person would trust are different claims.
 
@@ -53,13 +53,13 @@
 
 ## Implementing agent — read these first
 
-1. `ui/packages/app/tests/e2e/acceptance/` — the 41 journeys that exist; `login-install-lifecycle.spec.ts` is the closest walk and `runner-detail.spec.ts` is the only one that reaches a lease.
+1. `ui/packages/app/tests/e2e/acceptance/` — the 44 journeys that exist; `login-install-lifecycle.spec.ts` is the closest walk and `runner-detail.spec.ts` is the only one that reaches a lease.
 2. `.github/workflows/deploy-dev-acceptance.yml` — the `qa` / `acceptance-e2e` / `acceptance-cli` / `results` jobs this spec extends, and the gate they report into.
 3. `make/acceptance.mk` — `acceptance-e2e` and `cli-acceptance`, the local twins CI runs.
 4. `docs/v2/done/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` — the dimensions §3 ports; read its §0 setup-drift list before assuming the environment is clean. It sits in `done/` as a superseded record, not as work — nothing in it is scheduled.
 5. `docs/architecture/runner_fleet.md` — the online-heartbeat prerequisite and the execution boundary a lease crosses.
 6. `docs/architecture/data_flow.md` — one workspace stream, fleet-tagged frames, reconnect backfill.
-7. `docs/v2/pending/M181_006_P0_API_INFRA_OBS_STAGING_SOAK_AND_SWAP.md` §Dead Code Sweep — the rollback window this spec closes, and why the deletion waits for it.
+7. `docs/v2/done/M181_006_P0_API_INFRA_OBS_STAGING_SOAK_AND_SWAP.md` §4 — the Zig daemon deletion that already landed there; this spec grades the tree it left behind and touches no Zig.
 
 ## Files Changed (blast radius)
 
@@ -67,12 +67,13 @@
 |------|--------|-----|
 | `ui/packages/app/tests/e2e/acceptance/fleet-execution.spec.ts` | CREATE | the leg no journey has: install, activate, trigger, lease, execute to a real result, observe. §1's oracle. |
 | `ui/packages/app/tests/e2e/acceptance/fixtures/**` | EDIT | an execution fixture beside the existing install and lifecycle helpers — a bundle whose SKILL.md body is real work, not the empty body `runner-detail` relies on. |
-| `.github/workflows/deploy-dev-acceptance.yml` | EDIT | the execution journey joins `acceptance-e2e`; the human-pass evidence joins `results` as a recorded artifact rather than a chat message. |
+| `.github/workflows/deploy-dev-acceptance.yml` | NONE | the execution journey joins `acceptance-e2e` by the directory glob it already runs; the human verdict is a committed file, not a job output (Indy, Sep 07, 2026 — see Discovery). |
 | `make/acceptance.mk` | EDIT | a local twin for the execution journey, so a developer runs what CI runs. |
 | `rustd/crates/afd_connector/**` | EDIT | M186_001's §0 connector repairs, ported: user-authorized connect that restores an existing installation, idempotent disconnect, one workspace/provider writer guard, identity-bound state completion. |
 | `rustd/crates/afd_api_tenant/src/handler/connector/**` | EDIT | the routes those repairs surface through. |
 | `rustd/crates/**` | EDIT | whatever §1 surfaces — bounded by §2's rule that a fix lands with the test that caught it, never on its own. |
 | `playbooks/operations/acceptance/001_playbook.md` | CREATE | the human pass: what a person opens, in what order, what they must see, and where the evidence lands. |
+| `playbooks/operations/acceptance/verdicts/<build-sha>.md` | CREATE | the recorded human verdict for the graded build: reviewer, build, defects raised. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | the proof punch list this spec finally closes. |
 | `docs/v2/done/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | DONE (Sep 03, 2026) | superseded — its dimensions moved here and the file records where they went; closed to `done/` on main ahead of this spec's CHORE(open), so no edit rides this milestone's diff. |
 
@@ -89,7 +90,7 @@
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| CI/CD edit approval | yes | `.github/workflows/**` edits in §1 need Indy's explicit approval — sought at PLAN, not at commit |
+| CI/CD edit approval | no | sought at PLAN; Indy chose to leave CI alone, and the journey needs no workflow edit to be required |
 | UI / DESIGN TOKEN | yes | journeys assert on design-system selectors, never on arbitrary class strings |
 | LENGTH / UFS | yes | journeys and fixtures under the caps; selectors and fixture ids as named constants |
 | SCHEMA GUARD | no | no schema change |
@@ -109,13 +110,13 @@
 
 The first deliverable, and deliberately first: before any connector work, prove the ordinary path. One fleet, from a gallery card to a finished job, against the Rust daemon on the development environment — then keep proving it on every deploy.
 
-**Why the existing corpus is not already this.** The 41 journeys cover auth, install, navigation, billing and lifecycle, and they are real. What none of them asserts is a fleet producing a RESULT: the closest, `runner-detail.spec.ts`, seeds a bundle with an empty SKILL.md body precisely so the lease fails closed before the model call, because that was the only model-free way to place a failed lease from outside. That made a triage journey possible and left the success path unproven.
+**Why the existing corpus is not already this.** The 44 journeys cover auth, install, navigation, billing and lifecycle, and they are real. What none of them asserts is a fleet producing a RESULT: the closest, `runner-detail.spec.ts`, seeds a bundle with an empty SKILL.md body precisely so the lease fails closed before the model call, because that was the only model-free way to place a failed lease from outside. That made a triage journey possible and left the success path unproven.
 
 - **Dimension 1.1** — a fleet installed from the gallery reaches the active state on the Rust daemon, through the same dashboard walk an operator uses → Test `a gallery install reaches active without a confirm step`
 - **Dimension 1.2** — an online runner leases that fleet's delivery, and the lease is observable as the operator's own view of it → Test `the delivery is leased by an online runner`
 - **Dimension 1.3** — the lease executes to a REAL result rather than failing closed: the fleet's work completes, and the result is readable from the fleet's thread → Test `the lease finishes and its result reaches the thread`
 - **Dimension 1.4** — the workspace stream carries that activity exactly once, to the acting fleet's tile and no other → Test `activity routes to one tile over one workspace stream`
-- **Dimension 1.5** — the whole walk runs unattended in `deploy-dev / acceptance` and fails the gate when any leg breaks → Test `the execution journey is a required acceptance job`
+- **Dimension 1.5** — the whole walk runs unattended inside the `acceptance-e2e` job of `deploy-dev / acceptance`, which is already required, and a red journey is a red job → Test `the execution journey is a required acceptance job` (the Playwright acceptance project globs the directory, pinned by a unit test over the config)
 - **Dimension 1.6** — the journey distinguishes a PRODUCT failure from an environment one and names which it saw, so a provider outage never reads as a regression (RULE ECL) → Test `an unreachable dependency is reported as environment, not defect`
 
 ### §2 — What §1 surfaces gets fixed here, with the test that caught it
@@ -133,7 +134,7 @@ M186_001's dimensions, re-planned onto the Rust tree. The proof is unchanged; th
 
 - **Dimension 3.1** — `Connect` authorizes the GitHub user and restores the unique accessible existing installation to the selected workspace → Test `connect restores an existing installation`
 - **Dimension 3.2** — `Disconnect` removes the vault handle and reverse-routing row, is safe to retry, and does not uninstall the external App → Test `disconnect is idempotent and leaves the external app alone`
-- **Dimension 3.3** — every provider callback and disconnect commits its rows under one workspace/provider writer guard → Test `connector writers wait on the shared workspace provider lock`
+- **Dimension 3.3** — every provider callback commits its routing row and its sealed grant in ONE transaction, and a disconnect removes both or neither; no advisory lock, because the transaction is the guard (Indy, Sep 07, 2026 — see Discovery) → Test `a connect that cannot seal its grant leaves no routing row`
 - **Dimension 3.4** — a provider return completes only for the identity that started its signed state → Test `completion rejects a different identity without consuming the state`
 - **Dimension 3.5** — one signed GitHub delivery creates exactly one fleet event and one fleet-authored review; the replay of that exact delivery creates neither again → Test `a replayed delivery adds no second event or review`
 - **Dimension 3.6** — the fleet receives no material from a provider its trigger does not declare → Test `an undeclared connector is never injected`
@@ -143,17 +144,19 @@ M186_001's dimensions, re-planned onto the Rust tree. The proof is unchanged; th
 A green Playwright run and a dashboard an operator would trust are different claims, and only the first is automated. This section is the second, made repeatable: a written walk, a recorded verdict, and evidence that lands in the lane's artifacts rather than in a chat message.
 
 - **Dimension 4.1** — the playbook states the walk as ordered steps with an explicit "you must see" per step, so two people running it reach the same verdict → Test `the acceptance playbook carries a see-this assertion per step`
-- **Dimension 4.2** — the human verdict is recorded as an artifact the `results` job reads, with the reviewer, the build, and any defect raised → Test `the results job fails when the human verdict artifact is absent or stale`
+- **Dimension 4.2** — the human verdict is a committed file under `playbooks/operations/acceptance/verdicts/`, naming the reviewer, the build sha and any defect raised; CHORE(close) grades its presence for the build the PR ships → Test `the verdict file names the reviewer and the build` (a shell check in the playbook, run by hand)
 - **Dimension 4.3** — the walk is signed off against the Rust daemon by a person, with screenshots attached to the milestone's PR → graded by Indy's explicit go in Discovery, not by a command
 
 ## Interfaces
 
 ```text
-POST /v1/workspaces/{workspace_id}/fleets            install a fleet
-POST /v1/fleets/{fleet_id}/steer                     trigger one delivery
-GET  /v1/workspaces/{workspace_id}/events            the one workspace stream
-GET  /v1/fleets/runners                              runner liveness
-POST /v1/webhooks/{fleet_id}/github                  the signed delivery §3.5 replays
+POST /v1/workspaces/{workspace_id}/fleets                       install a fleet
+POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   trigger one delivery (the steer)
+GET  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   the thread, with response_text
+GET  /v1/workspaces/{workspace_id}/events/stream                the one workspace SSE stream
+GET  /v1/workspaces/{workspace_id}/events                       its durable backfill
+GET  /v1/fleets/runners                                         runner liveness
+POST /v1/webhooks/{fleet_id}/github                             the signed delivery §3.5 replays
 ```
 
 No new endpoint. Every route above ships before this spec starts; what changes is that a journey walks all of them in one sequence.
@@ -168,19 +171,19 @@ No new endpoint. Every route above ships before this spec starts; what changes i
 
 ## Invariants
 
-2. Every acceptance assertion added here is made red before it is trusted (RULE TCF) — a journey that passes against a broken daemon is worse than none, because it reads like evidence.
-3. A defect §1 surfaces leaves this milestone as a fix with a test, or as an Indy-acked verbatim quote. There is no third disposition.
-4. The human pass produces a file, not a recollection — Dimension 4.2 fails the gate when the verdict artifact is missing or names a different build.
+1. Every acceptance assertion added here is made red before it is trusted (RULE TCF) — a journey that passes against a broken daemon is worse than none, because it reads like evidence.
+2. A defect §1 surfaces leaves this milestone as a fix with a test, or as an Indy-acked verbatim quote. There is no third disposition.
+3. The human pass produces a file, not a recollection — Dimension 4.2 fails the gate when the verdict artifact is missing or names a different build.
 4. No Zig is written in this milestone, and none is deleted either — §3 ports onto the Rust tree, and the sunset is M181_006 §4's.
 
 ## Metrics & Observability
 
-The acceptance lane is the operator-facing signal and it already reports through the `results` job; this spec adds two rows to what that job carries — whether the execution journey passed, and whether a human signed the build off. No new product analytics event: the journeys observe surfaces that already emit, and a journey that needed a new event to be observable would be asserting on instrumentation rather than behaviour.
+The acceptance lane is the operator-facing signal and it already reports through the `results` job; this spec adds one journey to what that job runs, and one committed file per human sign-off. No new product analytics event: the journeys observe surfaces that already emit, and a journey that needed a new event to be observable would be asserting on instrumentation rather than behaviour.
 
 | Signal | Where | Proof |
 |---|---|---|
-| Execution journey verdict | `deploy-dev / acceptance` → `results` | Dimension 1.5 |
-| Human visual verdict + reviewer + build | `results` artifact | Dimension 4.2 |
+| Execution journey verdict | `deploy-dev / acceptance` → `acceptance-e2e` | Dimension 1.5 |
+| Human visual verdict + reviewer + build | `playbooks/operations/acceptance/verdicts/` | Dimension 4.2 |
 | Environment-vs-defect classification | journey output | Dimension 1.6 |
 
 ## Test Specification (tiered)
@@ -188,7 +191,7 @@ The acceptance lane is the operator-facing signal and it already reports through
 | Tier | Scope | Runner |
 |---|---|---|
 | e2e (required) | §1's execution journey, §3.5's delivery and replay | `make acceptance-e2e` → `deploy-dev / acceptance` |
-| e2e (existing) | the 41 journeys, re-pointed at the Rust-served environment | `make acceptance-e2e` |
+| e2e (existing) | the 44 journeys, re-pointed at the Rust-served environment | `make acceptance-e2e` |
 | cli | the CLI leg of the install and lifecycle walk | `make cli-acceptance` |
 | integration | §3's connector writers, guards and identity binding | `make test-integration-rustd` |
 | unit | §3's ported pure logic; §2's regression tests where the defect is unit-shaped | `make test-unit-all` |
@@ -201,11 +204,11 @@ The acceptance lane is the operator-facing signal and it already reports through
 | # | Outcome | Verify command | Expected | Priority | Graded |
 |---|---|---|---|---|---|
 | R1 | A fleet executes end to end (§1) | `make acceptance-e2e` | exit 0, the execution journey among the passing specs | P0 | |
-| R2 | The journey is a required gate (§1.5) | `gh workflow view "deploy-dev / acceptance" --yaml \| grep -c fleet-execution` | at least 1 | P0 | |
+| R2 | The journey is a required gate (§1.5) | `cd ui/packages/app && bun run test -- playwright.acceptance` (the config pin) and the `acceptance-e2e` run for HEAD | the pin passes; the run lists `fleet-execution.spec.ts` | P0 | |
 | R3 | The CLI leg holds (§1) | `make cli-acceptance` | exit 0 | P0 | |
 | R4 | Connector proof green on the Rust tree (§3) | `make test-integration-rustd` | exit 0 | P0 | |
 | R5 | Every §1 defect resolved or quoted (§2) | inspect Discovery's defect table | no row without a commit or a verbatim quote | P0 | |
-| R6 | Human verdict recorded (§4) | the `results` job artifact for the graded build | present, names the reviewer and the build | P0 | |
+| R6 | Human verdict recorded (§4) | `ls playbooks/operations/acceptance/verdicts/` | a file for the graded build naming the reviewer | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -229,15 +232,15 @@ produces, and it may well land before §1 here even starts.
 - New product features. Every route this spec walks ships before it starts.
 - Performance and soak budgets — M181_006 owns those; this spec asks whether the work COMPLETES, not how fast.
 - The OpenAPI coverage gate (M181_003), the export (M181_004), the collectors (M181_005).
-- Rewriting the 41 existing journeys. They are re-pointed and fixed where they break; a redesign is separate scope.
+- Rewriting the 44 existing journeys. They are re-pointed and fixed where they break; a redesign is separate scope.
 
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — an operator installs a fleet from the gallery, watches it pick up work and finish, and reads the result. Today no test asserts that moment exists.
 2. **Preserved user behaviour** — every existing journey keeps passing; the install, lifecycle and billing walks are unchanged.
 3. **Optimal-way check** — the optimal proof is the walk a customer takes, run unattended on every deploy. A synthetic harness that stubbed the runner would prove the harness.
-4. **Rebuild vs iterate** — iterate. 41 journeys, their fixtures, auth and teardown already exist; this adds one journey and re-points the rest.
-5. **What we build** — the execution journey, the connector port, the human playbook, and the deletion.
+4. **Rebuild vs iterate** — iterate. 44 journeys, their fixtures, auth and teardown already exist; this adds one journey and re-points the rest.
+5. **What we build** — the execution journey, the connector port, and the human playbook.
 6. **What we do NOT build** — new endpoints, new dashboards, new analytics events, a second acceptance framework.
 7. **Fit with existing features** — rides `deploy-dev / acceptance` as it stands; the new journey is one more spec in a suite that already reports into `results`.
 8. **Surface order** — dashboard first (it is the operator's own view), CLI second, API assertions only where the UI cannot observe the fact.
@@ -258,7 +261,13 @@ produces, and it may well land before §1 here even starts.
 | Sep 01, 2026 | Indy — human pass | "it could have human part to eyeball manually as well and then lets add the tests as needed to verify it in acceptance* job or so." §4 is the eyeball; §1.5 is the acceptance job. |
 | Sep 01, 2026 | Indy — deletion | "all is good with this spec the agentsfleet zig related and its files must be deleted." Was §5, gated behind §1–§4 by Invariant 1. **The decision stands; its home moved to M181_006 §4 on Sep 04, 2026** — the gate's stated reason (the tree is the rollback) had dissolved. |
 | Sep 02, 2026 | Agent — blast-radius grep (`dispatch/write_spec.md` §Authoring discipline) | The teardown grep §5 never ran. `git grep -rn -w 'agentsfleet-runner'` returns live hits in `release.yml`, `deploy-dev-build.yml`, `deploy-dev-metal.yml`, `deploy/baremetal/agentsfleet-runner.service`, `build.zig:185`, `build_runner.zig`, `README.md:43`, `SECURITY.md:19,23,24,27` and `AGENTS.md:12`. The runner is Zig-only with no Rust counterpart; §5's runner rows are BLOCKED pending the row below. |
-| Sep 02, 2026 | Indy — runner disposition | "the src/runner will be on zig no action needed there." The runner is not part of the cutover. §5 scopes to `src/agentsfleetd/**`; R9 and Dimension 5.4 assert the runner build survives it. |
+| Sep 02, 2026 | Indy — runner disposition | "the src/runner will be on zig no action needed there." The runner is not part of the cutover. The deletion (then §5, now M181_006 §4) scoped to `src/agentsfleetd/**`; the runner-survives assertions went with it. |
+
+| Sep 07, 2026 | Agent — execution path | No model-free execution exists from outside: `src/runner/child_exec.zig:145` fails closed on an empty body, and every non-empty body reaches the provider through `src/runner/engine/runner.zig:184`; the stub is a comptime flag. §1.3 makes one real model call and asserts outcome, never text; §1.6 classifies provider failure as environment. |
+| Sep 07, 2026 | Indy — CI edit | "I think leave CI alone, since the current acceptance-e2e fails, if it passes take it as a go." No workflow edit; the journey joins `acceptance-e2e` by glob and that job's result is the gate. |
+| Sep 07, 2026 | Indy — writer guard | "Why doyou need the advisory lock" — it is not needed: `grant.rs:185-214` already commits both rows in one transaction. 3.3 amended to assert that property. |
+| Sep 07, 2026 | Indy — human verdict | "I donot understand this? the acceptance-e2e can be assumed for red or green" — the job result is the automated gate; the human verdict is a committed file, no job reads it. 4.2 amended. |
+| Sep 07, 2026 | Agent — Interfaces | The steer route is `POST …/fleets/{id}/messages` (`afd_api_tenant/src/lib.rs:110`) and the stream is `…/events/stream` (`stream.rs:166`); the Interfaces block is corrected. |
 
 **Defect table (§2)** — populated during §1; every row resolves to a commit or a verbatim quote before CHORE(close).
 
