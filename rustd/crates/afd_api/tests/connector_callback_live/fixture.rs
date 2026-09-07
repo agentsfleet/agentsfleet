@@ -56,12 +56,18 @@ pub(crate) struct Fixture {
     pub(crate) database: Db,
     pub(crate) queue: Redis,
     pub(crate) subject: String,
+    /// A second authenticated person, who did not start the connect.
+    pub(crate) bystander: String,
     tenant: String,
     pub(crate) workspace: Uuid7,
     admin: Uuid7,
     user: String,
     key: String,
     pub(crate) token: String,
+    /// The bystander's own row and credential — see [`Self::bystander`].
+    bystander_user: String,
+    bystander_key: String,
+    pub(crate) bystander_token: String,
 }
 
 impl Fixture {
@@ -72,12 +78,20 @@ impl Fixture {
             database: lane.open(DbRole::Api, &[]).await,
             queue: harness::connect_redis().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
+            bystander: format!("{SUBJECT_PREFIX}bystander_{}", mint_id()),
             tenant: mint_id(),
             workspace: minted(),
             admin: minted(),
             user: mint_id(),
             key: mint_id(),
             token: format!("agt_t{bits}"),
+            bystander_user: mint_id(),
+            bystander_key: mint_id(),
+            bystander_token: format!(
+                "agt_t{}{}",
+                mint_id().replace('-', ""),
+                mint_id().replace('-', "")
+            ),
             lane,
         }
     }
@@ -85,9 +99,18 @@ impl Fixture {
     /// The production router over live stores, with `provider` standing in
     /// for the real one's token endpoint.
     pub(crate) fn router(&self, provider: &FakeProvider) -> axum::Router {
+        self.router_as(provider, &self.subject)
+    }
+
+    /// The same daemon, with `subject` as the person holding the bearer.
+    ///
+    /// The bystander case: another authenticated person, who even OWNS the
+    /// workspace, presenting the starter's callback. Everything else about
+    /// the daemon is identical, so the one refusal that fires is the state's.
+    pub(crate) fn router_as(&self, provider: &FakeProvider, subject: &str) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
-            &self.subject,
+            subject,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(self.workspace.clone())
@@ -96,136 +119,117 @@ impl Fixture {
         .router()
     }
 
-    pub(crate) async fn seed(&self) {
-        self.seed_rows().await;
-        self.seal(
-            STATE_KEY,
-            &format!(r#"{{"{SECRET_FIELD}":"{STATE_SECRET}"}}"#),
-        )
-        .await;
-        self.seal(
-            &Provider::Slack.app_key(),
-            &format!(r#"{{"client_id":"{CLIENT_ID}","client_secret":"{CLIENT_SECRET}"}}"#),
-        )
-        .await;
-    }
-
-    /// The tenant, the connected workspace, the admin workspace, and the owner.
-    async fn seed_rows(&self) {
-        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
+    /// The workspaces `core.connector_installs` routes `account` to, for
+    /// `provider` — empty when nothing routes it.
+    pub(crate) async fn routed_to(&self, provider: Provider, account: &str) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector callback live', 1, 1) \
-             ), workspaces AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connected', $3, 1), \
-                      ($4::uuid, $1::uuid, 'platform-admin', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, $3, 'connector-live@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, 'fixture', '', $7, $3, TRUE, NULL, 1, 1)",
+            "SELECT workspace_id::text FROM core.connector_installs \
+             WHERE provider = $1 AND external_account_id = $2 ORDER BY workspace_id",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(self.admin.as_str())
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant, its workspaces and its owner seed");
-    }
-
-    /// Seals `document` into the admin workspace under `key`.
-    ///
-    /// Through the real vault under the harness's own key rather than an INSERT
-    /// of ciphertext: a row this fixture hand-wrote would be one the route could
-    /// not open, and every reader here answers "not configured" for that — a
-    /// refusal indistinguishable from having stored nothing at all.
-    pub(crate) async fn seal(&self, key: &str, document: &str) {
-        let raw = serde_json::value::RawValue::from_string(document.to_owned())
-            .expect("the fixture credential is an object");
-        let sealed = harness::vault(self.database.clone())
-            .create(
-                &self.admin,
-                &SecretName::parse(key).expect("the vault key is a storable name"),
-                &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
-            )
-            .await;
-        // Named in the message rather than left to `expect`: this seals two
-        // secrets under different keys, and a failure that did not say which
-        // reads as the route being unconfigured for both.
-        assert!(sealed.is_ok(), "the fixture secret {key} seals: {sealed:?}");
-    }
-
-    /// The grant this workspace holds for `provider`, opened.
-    ///
-    /// Read through the vault rather than off the row, because the row holds
-    /// ciphertext: what the assertion is about is the HANDLE a runner will open
-    /// when a fleet declares this integration.
-    pub(crate) async fn grant(&self, provider: Provider) -> Option<serde_json::Value> {
-        let name = SecretName::parse(provider.grant_key()).expect("a provider key is storable");
-        let opened = harness::vault(self.database.clone())
-            .load(&self.workspace, &name)
-            .await
-            .expect("the vault answers");
-        opened.map(|bytes| {
-            serde_json::from_slice(bytes.expose()).expect("a sealed grant is a JSON object")
-        })
-    }
-
-    /// How many secrets this workspace holds, by name.
-    ///
-    /// A count as well as a read: a second connect that sealed under a second
-    /// name would leave the first grant intact and pass a read-only assertion
-    /// while a runner opened the wrong one.
-    pub(crate) async fn secret_names(&self) -> Vec<String> {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
-        )
-        .bind(self.workspace.as_str())
+        .bind(provider.id())
+        .bind(account)
         .fetch_all(&mut *connection)
         .await
-        .expect("the workspace's secret names read")
+        .expect("the routing rows read")
         .iter()
-        .map(|row| row.get("key_name"))
+        .map(|row| row.get("workspace_id"))
         .collect()
     }
 
-    pub(crate) async fn cleanup(self) {
+    /// The admin workspace's id — the "other workspace" of the exclusive
+    /// claim's refusal.
+    pub(crate) fn admin_workspace(&self) -> &str {
+        self.admin.as_str()
+    }
+
+    /// Routes `account` to the ADMIN workspace — some other workspace, from the
+    /// tenant workspace's point of view — as an earlier connect would have.
+    pub(crate) async fn route_elsewhere(&self, provider: Provider, account: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let mut transaction = sqlx::Acquire::begin(&mut *connection)
-            .await
-            .expect("the cleanup transaction opens");
-        for workspace in [&self.workspace, &self.admin] {
-            sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-                .bind(workspace.as_str())
-                .execute(&mut *transaction)
-                .await
-                .expect("the fixture's sealed secrets clean up");
-        }
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
-            .bind(&self.tenant)
-            .execute(&mut *transaction)
-            .await
-            .expect("the scoped fixture cleans up");
-        transaction
-            .commit()
-            .await
-            .expect("the scoped cleanup commits");
+        sqlx::query(
+            "INSERT INTO core.connector_installs \
+               (id, provider, external_account_id, workspace_id, installed_by, \
+                scopes, created_at, updated_at) \
+             VALUES ($1::uuid, $2, $3, $4::uuid, '', ARRAY[]::TEXT[], 1, 1)",
+        )
+        .bind(mint_id())
+        .bind(provider.id())
+        .bind(account)
+        .bind(self.admin.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("the foreign routing row seeds");
+    }
+
+    /// Makes the vault refuse every seal for THIS workspace, as a datastore
+    /// that fails mid-transaction would.
+    ///
+    /// A `BEFORE INSERT` trigger on `vault.secrets`, scoped to the fixture's
+    /// workspace so a sibling test's seals are untouched, installed under the
+    /// migrator role that owns the schema. Failure injection at the second
+    /// write of the landing transaction, which is the one place a stub cannot
+    /// reach: the property under test is that the FIRST write unwinds with it.
+    pub(crate) async fn refuse_seals(&self) -> RefusedSeals {
+        let migrator = self.lane.open(DbRole::Migrator, &[]).await;
+        let name = format!("fixture_refuse_seal_{}", mint_id().replace('-', ""));
+        let mut connection = migrator.acquire().await.expect("a migrator connection");
+        // `AssertSqlSafe`: DDL takes no bind parameter, and every interpolated
+        // value is this fixture's own — a minted identifier and a workspace id
+        // it minted — never a caller's.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE FUNCTION {name}() RETURNS trigger AS $$ BEGIN \
+               IF NEW.workspace_id = '{}'::uuid THEN \
+                 RAISE EXCEPTION 'fixture: the vault refuses this seal'; \
+               END IF; \
+               RETURN NEW; \
+             END $$ LANGUAGE plpgsql",
+            self.workspace.as_str()
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the refusing function installs");
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE TRIGGER {name} BEFORE INSERT ON vault.secrets \
+             FOR EACH ROW EXECUTE FUNCTION {name}()"
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the refusing trigger installs");
         drop(connection);
-        drop(self.database);
-        self.lane.cleanup().await;
+        RefusedSeals { migrator, name }
+    }
+}
+
+/// A vault refusal in force — see [`Fixture::refuse_seals`]. Lifted by
+/// [`Self::lift`], which a test calls before its cleanup.
+pub(crate) struct RefusedSeals {
+    migrator: Db,
+    name: String,
+}
+
+impl RefusedSeals {
+    /// Removes the trigger and its function.
+    pub(crate) async fn lift(self) {
+        let mut connection = self
+            .migrator
+            .acquire()
+            .await
+            .expect("a migrator connection");
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP TRIGGER IF EXISTS {} ON vault.secrets",
+            self.name
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the refusing trigger lifts");
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP FUNCTION IF EXISTS {}()",
+            self.name
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the refusing function lifts");
     }
 }
 
@@ -233,3 +237,6 @@ impl Fixture {
 fn minted() -> Uuid7 {
     Uuid7::parse(&mint_id()).expect("a minted workspace is canonical")
 }
+
+#[path = "fixture/seeding.rs"]
+mod seeding;

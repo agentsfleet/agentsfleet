@@ -124,9 +124,9 @@ The gate + billing path is identical to every other event — see [`../billing_a
 ## 9. Remaining proof punch list
 
 1. ✅ Run the local database-and-Redis App-ingress suite without a skipped test.
-2. Connect a test workspace to the GitHub App and bind the `github-pr-reviewer` fleet to a dedicated repository.
-3. Open a Pull Request in that repository and observe exactly one queued event for the bound fleet.
+2. ✅ Connect a workspace to the GitHub App. The Rust callback lists the installations the authorized person reaches and binds exactly one (`rustd/crates/afd_connector/src/github.rs`); a claimed `installation_id` is probed first. Proven against a fake vendor in `afd_api/tests/integration_connector_github.rs`. Binding a real repository to `github-pr-reviewer` is the live half and stays open.
+3. ✅ (event half) One signed delivery wakes a fleet exactly once: `fleet-webhook-delivery.spec.ts` in the acceptance lane posts a captured `workflow_run` delivery and reads one durable event. A Pull Request in a real repository is the live half and stays open.
 4. Let the fleet read the diff and post its review through a short-lived installation token.
-5. Replay the same GitHub delivery and confirm no second fleet event or review is created.
+5. ✅ (event half) The exact replay is reported as one and creates no second event — the same journey, and `afd_api/tests/integration_ingress_live.rs`. No second review is the live half and stays open.
 
-Until all five checks pass, `github-pr-reviewer` is implemented plumbing with an outstanding repository-level proof, not a completed end-to-end scenario.
+The live halves of 2, 3 and 5, and all of 4, need the GitHub App installed on a dedicated repository in the development environment and a person opening a Pull Request there. Until they pass, `github-pr-reviewer` is proven plumbing with an outstanding repository-level proof, not a completed end-to-end scenario.

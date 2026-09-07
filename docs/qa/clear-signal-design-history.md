@@ -148,7 +148,6 @@ The app root returned HTTP 500 with Clerk's missing-publishable-key error. No au
 | Static checks | Package lint and typecheck | App, website, shared components, and CLI completed successfully |
 | Conform | `make harness-verify` | All staged gates green |
 | Flat fills | `bash audits/design-tokens.sh --all` | Named utilities and flat fills verified |
-| Rate parity | `bash audits/cross-tier-rates.sh` | One rate constant agrees across three remaining consumers |
 | Secrets | `gitleaks protect --staged --redact --no-banner` | No leaks found |
 
 Review fixes remove stale pricing links, preserve diagnosis-only outcomes, and keep clipboard clicks out of signup analytics.

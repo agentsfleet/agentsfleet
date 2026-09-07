@@ -65,6 +65,28 @@ describe("Select", () => {
     expect(onValueChange).toHaveBeenCalledWith("gpt");
   });
 
+  // A list longer than the window used to render past the bottom edge with no
+  // way to reach the rest: the panel clips its overflow, and nothing bounded
+  // its height or made the items scroll. Both halves are asserted, because
+  // either one alone leaves the list unreachable — a bound with no scroll
+  // clips it, and a scroll with no bound never has anything to scroll.
+  it("bounds a popper list to the window and lets its items scroll", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByLabelText("provider"));
+
+    // Radix's own hooks rather than the classes under test, so the assertions
+    // below are about what the component sets and not about how it was found.
+    const viewport = document.querySelector("[data-radix-select-viewport]");
+    expect(viewport, "the open list renders a viewport").not.toBeNull();
+    expect(viewport?.className).toContain("overflow-y-auto");
+
+    const panel = viewport?.parentElement;
+    expect(panel, "the viewport sits inside the panel").not.toBeNull();
+    expect(panel?.className).toContain(
+      "max-h-[var(--radix-select-content-available-height)]",
+    );
+  });
+
   it("respects disabled items", () => {
     render(<Harness />);
     const trigger = screen.getByRole("combobox", { name: /provider/i });

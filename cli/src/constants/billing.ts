@@ -1,7 +1,6 @@
 // Wire-format constants for billing endpoints. Mirrors the canonical
-// definitions in src/state/fleet_telemetry_store.zig (`ChargeType`) and
-// src/state/tenant_provider.zig (`Mode`). Keep values verbatim — the API
-// rejects anything else.
+// definitions the daemon serves. Keep values verbatim — the API rejects
+// anything else.
 
 export const CHARGE_TYPE = Object.freeze({
   receive: "receive",
@@ -17,9 +16,11 @@ export const PROVIDER_MODE = Object.freeze({
 // (≤ 2^53 ≈ 9e15 nanos / ~$9M) without loss.
 export const NANOS_PER_USD = 1_000_000_000;
 
-// Rate constants — mirror src/state/tenant_billing.zig identifier-for-identifier
-// (cross-tier parity rule). Bump these only as part of a paired rate change
-// across Zig + ui/packages/website + ui/packages/app + ~/Projects/docs/snippets/rates.mdx.
+// Rate constants — mirror rustd/crates/afd_billing/src/nanos.rs
+// identifier-for-identifier (cross-tier parity rule). Bump these only as part
+// of a paired rate change across afd_billing + ui/packages/app +
+// ~/Projects/docs/snippets/rates.mdx. afd_billing's cross_runtime_rates test
+// reads this file and fails on drift.
 // Held as Number; every value here fits in 2^53 so no precision loss.
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;

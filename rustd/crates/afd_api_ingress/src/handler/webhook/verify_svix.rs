@@ -65,9 +65,12 @@ pub(crate) async fn verified_svix<D: Services>(
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<SvixVerified, Refusal> {
+    // The Svix route names no provider in its path — a Svix-signed source is
+    // whichever the trigger's signature block declares — so it takes the
+    // first webhook trigger, as the bare route does.
     let binding = services
         .ingress()
-        .binding(fleet)
+        .binding(fleet, None)
         .await
         .map_err(Refusal::at(EVENT_BINDING))?
         .ok_or_else(|| {
