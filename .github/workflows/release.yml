@@ -661,23 +661,6 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_APP_PROD: ${{ vars.FLY_APP_PROD }}
 
-      # After the scale gate, because the write goes through the daemon's own
-      # secrets API and wants a serving app, not merely a deployed one.
-      #
-      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
-      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
-      # reads it as an admin-workspace vault row. The Fly secret above is still
-      # staged for anything that reads the environment, but it is NOT what the
-      # connector flow resolves — without this row every provider answers 503
-      # UZ-CONN-001 on a deployment whose Fly secret is set and correct.
-      - name: Seed platform vault secrets
-        run: ENV=prod ./playbooks/lib/platform_secret_sync.sh approval-signing
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          VAULT: ${{ vars.VAULT_PROD }}
-          ALLOW_VAULT_READS: "1"
-          ALLOW_PLATFORM_SECRET_WRITES: "1"
-
       - name: Ensure cloudflared-prod tunnel is running
         # cloudflared-prod bridges Cloudflare Edge to
         # agentsfleetd-prod.internal:3000 over Fly's private IPv6 network (6PN).
@@ -735,6 +718,26 @@ jobs:
             exit 1
           fi
           curl -sf https://api.agentsfleet.net/readyz | jq -e '.ready == true'
+
+      # AFTER the rollout verification, not before the tunnel: the write goes
+      # through the daemon's own secrets API at api.agentsfleet.net, reachable
+      # only once cloudflared-prod is up and the rollout has answered green.
+      # Placed earlier, its fail-fast curl would abort the release for exactly
+      # the condition the tunnel step above exists to repair.
+      #
+      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
+      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # reads it as an admin-workspace vault row. The Fly secret staged above is
+      # still set for anything reading the environment, but it is NOT what the
+      # connector flow resolves — without this row every provider answers 503
+      # UZ-CONN-001 on a deployment whose Fly secret is set and correct.
+      - name: Seed platform vault secrets
+        run: ENV=prod ./playbooks/lib/platform_secret_sync.sh approval-signing
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT: ${{ vars.VAULT_PROD }}
+          ALLOW_VAULT_READS: "1"
+          ALLOW_PLATFORM_SECRET_WRITES: "1"
 
   # ── 7. Deploy: canary runner (first host) ────────────────────────────────
   deploy-metal-canary-prod:
