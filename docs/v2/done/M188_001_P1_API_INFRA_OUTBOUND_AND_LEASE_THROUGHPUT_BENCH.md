@@ -80,6 +80,24 @@ states. The lanes are binaries of one crate rather than four members, which is
 what keeps the harness a library they share instead of a directory they copy.
 `bench/baselines/` stays where it is: it is committed JSON, not Rust.
 
+**Blast-radius amendment (VERIFY, R7).** The diff against `origin/main`
+carries 70 paths. The table above names the crate by the five files it was
+planned as; the rows below name what it became, so R7 grades against the
+complete list rather than the planning sketch.
+
+| File | Action | Why |
+|------|--------|-----|
+| `rustd/crates/afd_bench/src/**` — `abort`, `cli`, `datastores`, `error`, `fixture`, `instrument`, `knobs`, `lane/*`, `report/*`, each with its `tests.rs` sibling | CREATE | the harness split by concern under the 350-line cap; the five planned files became modules of one library |
+| `rustd/crates/afd_bench/tests/**` — `lanes_*.rs`, `abort_wiring.rs`, `bench_targets.rs`, `lease_instrument.rs`, `support/mod.rs` | CREATE | the `#[ignore]` integration lanes and the make-target parity tests |
+| `rustd/crates/afd_fleet/src/lease/assign.rs` | EDIT | one line: `MAX_READY_CANDIDATES_PER_POLL` becomes `pub`, so the cardinality probe asks for the ceiling the lease path uses instead of keeping a copy (review disposition) |
+| `rustd/crates/afd_fleet/src/lease/assign/tests.rs` | CREATE | the file above stood at 393 lines before this branch touched it; its inline test module moves to the sibling `mint/` already uses, which is the split the LENGTH gate names first (350/350 after, no headroom — a product split of `assign.rs` is its own change) |
+| `bench/baselines/README.md` | CREATE | what a baseline is, how it is regenerated, and that `bench/results/` is not tracked |
+| `.gitignore` | EDIT | `bench/results/`: a result is one run on one machine; the baseline beside it is the committed reference |
+| `rustd/Cargo.lock` | EDIT | `hdrhistogram` and the new workspace member |
+| `VERSION`, `build.zig.zon`, `cli/package.json` | EDIT | release sync to 0.29.0 (`make check-version`) |
+| `docs/architecture/roadmap.md` | EDIT | the M188_001 link follows the spec from `pending/` to `done/` |
+| `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md` | EDIT | this spec: CHORE(open), amendments, grading |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — **UFS** (every cap, threshold, duration and key name a named constant), **FLL** (four binaries plus a shared harness; split driver from reporter from the first commit), **NDC** (a lane measuring nothing a rubric row reads is dead code), **TST-NAM** (no milestone identifiers in bench source), **ECL** (a datastore that will not answer is unavailable, never a zero reported as a measurement), **PRI** (fixture content is generated, never echoed from a tenant row).
@@ -277,19 +295,24 @@ result file shape (every lane):
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every lane reports a rate on the rig (§2–§5) | `make bench-steer PROFILE=rig && make bench-lease PROFILE=rig && make bench-outbound PROFILE=rig && make bench-cardinality PROFILE=rig` | exit 0, four result files written | P0 | |
-| R2 | Cost is attributed to a datastore (§2, §3) | `python3 -c "import json;d=json.load(open('bench/results/lease.rig.json'))['datastores'];print(d['redis']['commands'], d['postgres']['roundtrips'])"` | two numbers, both greater than 0 | P0 | |
-| R3 | Cardinality reaches the declared population (§5) | `python3 -c "import json;print(json.load(open('bench/results/cardinality.rig.json'))['parameters']['fleets'])"` | the ladder's declared maximum | P0 | |
-| R4 | A deployed-profile run creates nothing it does not sweep (§1) | `make bench-lease PROFILE=dev BENCH_TARGET=rig && python3 -c "import json;f=json.load(open('bench/results/lease.dev.json'))['fixture'];print(f['created']==f['swept'])"` | `True` | P0 | |
-| R5 | Production refuses without acknowledgement (§1) | `make bench-lease PROFILE=prod; echo $?` | non-zero | P0 | |
-| R6 | A regression never fails a lane (§6) | `make bench-compare LANE=lease PROFILE=rig; echo $?` | `0` | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration tier green | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks git --no-banner` | exit 0 | P0 | |
+| R1 | Every lane reports a rate on the rig (§2–§5) | `make bench-steer PROFILE=rig && make bench-lease PROFILE=rig && make bench-outbound PROFILE=rig && make bench-cardinality PROFILE=rig` | exit 0, four result files written | P0 | ✅ `R1 exit=0`; four `wrote bench/results/<lane>.rig.json` lines (steer, lease, outbound, cardinality) |
+| R2 | Cost is attributed to a datastore (§2, §3) | `python3 -c "import json;d=json.load(open('bench/results/lease.rig.json'))['datastores'];print(d['redis']['operations'], d['postgres']['operations'])"` | two numbers, both greater than 0 | P0 | ✅ `1885 6688` |
+| R3 | Cardinality reaches the declared population (§5) | `python3 -c "import json;print(json.load(open('bench/results/cardinality.rig.json'))['parameters']['BENCH_FLEETS'])"` | the ladder's declared maximum | P0 | ✅ `10000` — the default top rung (`bin/cardinality.rs`); the rig's 1 000 000 cap is reachable with `BENCH_FLEETS` |
+| R4 | A deployed-profile run creates nothing it does not sweep (§1) | `make bench-lease PROFILE=dev BENCH_TARGET=rig && python3 -c "import json;f=json.load(open('bench/results/lease.dev.json'))['fixture'];print(f['created']==f['swept'])"` | `True` | P0 | ✅ `True` |
+| R5 | Production refuses without acknowledgement (§1) | `make bench-lease PROFILE=prod; echo $?` | non-zero | P0 | ✅ `2` — `bench-lease refused: profile prod refuses to run without BENCH_LOAD_PRODUCTION=i-accept-the-blast-radius` |
+| R6 | A regression never fails a lane (§6) | `make bench-compare LANE=lease PROFILE=rig; echo $?` | `0` | P0 | ✅ `0` after a 15-row delta table (`rate_per_second 79.751 -> 85.785 +7.6%`) |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 70 paths changed, every one in the table or its blast-radius amendment |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN ── ready for VERIFY` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `2458` cargo, app `Tests 2637 passed`, website `146 passed`, design-system `559 passed`; `All package coverage gates passed` |
+| S3 | Integration tier green | `make test-integration-rustd` | exit 0 | P0 | ✅ `✓ [rustd] integration suite — 398 passed` |
+| S4 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S5 | No secrets | `gitleaks git --no-banner` | exit 0 | P0 | ✅ `no leaks found` (5246 commits scanned) |
 | S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+
+**Command amendments (VERIFY).** R2 and R3 were authored against a guessed
+result shape. The result file attributes cost as `datastores.<store>.operations`
+(`report.rs`) and records the ladder's population as `parameters.BENCH_FLEETS`;
+the commands above read those keys. Both Expected columns are unchanged.
 
 **Command source rule:** every S-row Verify command is copied **verbatim from `.oracle/orly.json`** (`conform`, `verify.*`) — the same set `orly gate` runs, so the rubric and the mechanical PR gate grade one boundary. The gate BLOCKs a staged pending/active spec whose rubric omits the declared `conform` or `verify.unit` command; a rubric naming a runner the repository does not declare is wrong by construction. `.oracle/orly.json` still a seed → complete it first (`dispatch/lifecycle.md` §Bootstrap); authoring against an unseeded config is the nondeterminism this rule exists to kill.
 
@@ -383,6 +406,32 @@ the prefix, ids derived from the prefix, and a `bench-sweep` orphan target.
 add a lanes job to `bench.yml`, defer it, or open a separate workflow file.
 
 > Kishore (2026-09-07): "Defer the workflow to a follow-up" — context: Dimension 6.3 and the `.github/workflows/bench.yml` row. The four lanes run by `make bench-<lane>` on any machine with docker; nothing runs them in CI until the follow-up, which will also carry the deployed-environment input once a target exists. `test_the_workflow_runs_the_rig_and_accepts_an_environment` is not written, for the same reason.
+
+**Findings at VERIFY (no code change to the lanes).** The 41 readiness
+marks the first idle-window measurement met were attributed to killed lane
+runs; VERIFY measured where they come from. `make _reset-test-db` leaves
+`fleet:ready` at 0. A full `make test-integration-rustd` leaves it at 41 (the
+same count every run), every id in the `unique_ids` shape of
+`afd_fleet/tests/support/fleet_lease_seed.rs` or a fixed fixture id — the
+suite's own integration tests seed fleets and never `clear_ready` them. The six
+bench test binaries and the four lanes each left the count unchanged
+(`HLEN fleet:ready` 41 → 41 around every one), so the lanes' sweep is not the
+source. The lease result records the depth it polled against, and
+`bench/baselines/README.md` now says to reset the rig before regenerating.
+`test_lease_bench_reports_idle_poll_cost` fails on a polluted rig for the same
+reason, which is the assertion doing its job; the suite resets first, so it is
+green there. Clearing the marks in the afd_fleet fixtures is that suite's
+change, not this one's. One of three integration runs of the final tree failed
+`integration_report_settle::test_report_stale_fence_rejected` (afd_fleet,
+untouched here: `left: Some("1000") right: None` at its line 160); the runs
+before and after passed 398 of 398, so it is intermittent and lives with
+that suite.
+
+The `pub` on `afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL` touched
+a file already at 393 lines on `main`; its inline test module moved to
+`assign/tests.rs`, the sibling shape `mint/` uses, so the LENGTH gate reads
+350/350. No headroom is left, and a product split of `assign.rs` is its own
+change.
 
 **Deferral — a real deployed run.** No `dev` target was named either, so the
 deployed-profile *runs* against a live environment are deferred; the deployed
