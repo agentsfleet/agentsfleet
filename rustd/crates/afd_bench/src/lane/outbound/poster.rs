@@ -17,6 +17,12 @@
 //! held the only worker. Both fall out of one `Instant` per attempt — taken
 //! BEFORE the lock, so a reader snapshotting the map never delays a stamp.
 //!
+//! The window is a different instant. A job settles when the vendor ANSWERS,
+//! which is the attempt plus the delay the script gave it; each attempt
+//! carries that delay, [`Attempt::settled_at`] adds it, and the settled count
+//! moves only after the answer. A drain that closed on the last attempt's
+//! start left the last answer out of the denominator.
+//!
 //! # Only this run's jobs count
 //!
 //! The worker reads the shared stream, so an entry an earlier, unswept run
@@ -54,6 +60,16 @@ pub struct Attempt {
     pub at: Instant,
     /// Which destination the job was for.
     pub behaviour: Behaviour,
+    /// How long the scripted vendor took to answer.
+    pub delay: Duration,
+}
+
+impl Attempt {
+    /// When the vendor answered: the attempt plus its scripted delay.
+    #[must_use]
+    pub fn settled_at(&self) -> Instant {
+        self.at.checked_add(self.delay).unwrap_or(self.at)
+    }
 }
 
 /// Everything the poster saw of THIS run's jobs, keyed by stream entry id.
@@ -139,11 +155,23 @@ impl Scripted {
         self.behaviours.get(destination).copied()
     }
 
-    /// Record an attempt at the instant it was made.
-    fn stamp(&self, id: &str, behaviour: Behaviour, at: Instant, terminal: bool) {
+    /// Record an attempt at the instant it was made, and say whether the
+    /// answer to it will settle the job.
+    fn stamp(
+        &self,
+        id: &str,
+        behaviour: Behaviour,
+        at: Instant,
+        delay: Duration,
+        terminal: bool,
+    ) -> bool {
         let attempts_so_far = if let Ok(mut seen) = self.seen.lock() {
             let attempts = seen.attempts.entry(id.to_owned()).or_default();
-            attempts.push(Attempt { at, behaviour });
+            attempts.push(Attempt {
+                at,
+                behaviour,
+                delay,
+            });
             attempts.len()
         } else {
             0
@@ -151,10 +179,7 @@ impl Scripted {
         // Terminal for the drain means delivered OR the ladder exhausted,
         // which is this many attempts on one job; the poster is not told
         // when the worker gives up, so it counts.
-        if terminal || attempts_so_far == DELIVERY_ATTEMPTS {
-            self.settled.fetch_add(1, Ordering::Release);
-            self.settled_signal.notify_waiters();
-        }
+        terminal || attempts_so_far == DELIVERY_ATTEMPTS
     }
 
     fn foreign(&self) {
@@ -176,17 +201,26 @@ impl Deliver for Scripted {
             // on the rig that is an earlier run's leftover — and never counted.
             None => (Duration::ZERO, Verdict::Delivered),
         };
-        match scripted {
-            Some(behaviour) => self.stamp(
+        let settles = if let Some(behaviour) = scripted {
+            self.stamp(
                 job.id.as_str(),
                 behaviour,
                 at,
+                delay,
                 verdict == Verdict::Delivered,
-            ),
-            None => self.foreign(),
-        }
+            )
+        } else {
+            self.foreign();
+            false
+        };
+        let settled = Arc::clone(&self.settled);
+        let settled_signal = Arc::clone(&self.settled_signal);
         async move {
             tokio::time::sleep(delay).await;
+            if settles {
+                settled.fetch_add(1, Ordering::Release);
+                settled_signal.notify_waiters();
+            }
             verdict
         }
     }

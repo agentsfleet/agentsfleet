@@ -433,6 +433,21 @@ a file already at 393 lines on `main`; its inline test module moved to
 350/350. No headroom is left, and a product split of `assign.rs` is its own
 change.
 
+**Finding after push (Greptile on PR #667, P1).** The outbound window
+closed at the last attempt's START: the poster stamped an attempt and counted
+it settled before the scripted answer delay elapsed, so the last answer
+(20 ms fast, 250 ms slow) was missing from the rate's denominator, and the
+code's own comment claimed otherwise. Fixed: each attempt carries its delay,
+`Attempt::settled_at` adds it, `record::window_end` closes the window on the
+last answer, and the settled count moves only after the answer
+(`test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_for`).
+The outbound baseline was re-measured on a reset rig in the same commit:
+49.99 → 48.26 jobs/s, others' p95 3 719 → 3 848 ms, slow p95 3 731 →
+3 860 ms; `scaling.md` and the changelog follow it. Delivery latency itself is
+unchanged by design: it is enqueue-to-first-attempt, the queueing cost, as
+`poster.rs` documents. Greptile's six other findings are the blast-radius
+shape already deferred above, each answered on the PR with that quote.
+
 **Deferral — a real deployed run.** No `dev` target was named either, so the
 deployed-profile *runs* against a live environment are deferred; the deployed
 *semantics* are not. Both are built and proved against the compose rig via

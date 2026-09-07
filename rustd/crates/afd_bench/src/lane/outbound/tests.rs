@@ -6,8 +6,13 @@
 )]
 
 use core::time::Duration;
+use std::collections::BTreeMap;
 
-use super::poster::Behaviour;
+use afd_outbound::Deliver as _;
+use afd_redis::{EventId, OutboundDelivery};
+
+use super::poster::{Behaviour, Scripted};
+use super::record::window_end;
 use super::{DESTINATIONS, Parameters, fraction_of, script};
 use crate::fixture::RunPrefix;
 
@@ -78,5 +83,40 @@ fn test_two_scripts_of_one_prefix_deal_destinations_in_the_same_order() {
     assert!(
         first.windows(2).all(|pair| pair[0] < pair[1]),
         "and it is sorted"
+    );
+}
+
+/// The window closes when the last answer lands, not when the worker asked.
+///
+/// The first version stamped the attempt and counted it settled before the
+/// scripted delay elapsed, so the slow lane's denominator lost its last 250 ms.
+/// The delay here is real and short: the equality below is exact whatever the
+/// clock did, and the count is read on either side of the await.
+#[tokio::test]
+async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_for() {
+    let slow = Duration::from_millis(20);
+    let mut behaviours = BTreeMap::new();
+    behaviours.insert("slow".to_owned(), Behaviour::Slow);
+    let poster = Scripted::new(behaviours, Duration::ZERO, slow);
+    let job = OutboundDelivery {
+        id: EventId::of("1-0"),
+        provider: "slack".to_owned(),
+        workspace_id: "w".to_owned(),
+        fleet_id: "slow".to_owned(),
+        event_id: "e".to_owned(),
+        answer: "a".to_owned(),
+    };
+
+    let answer = poster.deliver(&job);
+    assert_eq!(poster.settled(), 0, "asked is not yet answered");
+    answer.await;
+    assert_eq!(poster.settled(), 1, "the answer is what settles it");
+
+    let seen = poster.seen();
+    let asked = seen.attempts()["1-0"][0].at;
+    assert_eq!(
+        window_end(&seen, asked).saturating_duration_since(asked),
+        slow,
+        "the window closes when the slow answer lands"
     );
 }
