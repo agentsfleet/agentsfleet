@@ -26,6 +26,8 @@ jobs:
       # from-scratch deploy branch needs the repo checked out.
       - uses: actions/checkout@v7
 
+      - uses: 1password/install-cli-action@v4
+
       - name: Ensure cloudflared-dev tunnel is running
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to
         # agentsfleetd-dev.internal:3000 over 6PN. If its machines are stopped/crashed
@@ -111,6 +113,26 @@ jobs:
       - name: Check /readyz
         run: |
           curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
+
+      # HERE rather than in the fly job, and after /readyz rather than before
+      # it: the write goes through the daemon's own secrets API at
+      # api-dev.agentsfleet.net, which is reachable only once the cloudflared
+      # tunnel above is up. Seeding in the fly job would call the API before
+      # any step had repaired the tunnel, and its fail-fast curl would abort
+      # the deploy for a reason the next step exists to fix.
+      #
+      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
+      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # reads it as an admin-workspace vault row, and nothing carried the value
+      # across at cutover — so every connector answered 503 UZ-CONN-001 on a
+      # deployment whose Fly secret was set and correct.
+      - name: Seed platform vault secrets
+        run: ENV=dev ./playbooks/lib/platform_secret_sync.sh approval-signing
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT: ${{ vars.VAULT_DEV }}
+          ALLOW_VAULT_READS: "1"
+          ALLOW_PLATFORM_SECRET_WRITES: "1"
 
       - name: Diagnose tunnel failure
         if: failure()

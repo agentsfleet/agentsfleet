@@ -74,6 +74,35 @@ export function triggerMd(name: string): string {
   ].join("\n");
 }
 
+// A TRIGGER.md woken by a signed GitHub delivery rather than a cron: the
+// per-fleet webhook route measures a delivery against the events listed here
+// and verifies it with the workspace secret `credentialName` names. Same
+// required keys as `triggerMd` (name, triggers, tools, budget), so the
+// importer accepts it for the same reason.
+export const WEBHOOK_SOURCE_GITHUB = "github";
+export const WEBHOOK_EVENT_WORKFLOW_RUN = "workflow_run";
+
+export function webhookTriggerMd(name: string, credentialName: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    "",
+    "x-agentsfleet:",
+    "  triggers:",
+    "    - type: webhook",
+    `      source: ${WEBHOOK_SOURCE_GITHUB}`,
+    "      events:",
+    `        - ${WEBHOOK_EVENT_WORKFLOW_RUN}`,
+    `      credential_name: ${credentialName}`,
+    "  tools:",
+    "    - agentmail",
+    "  budget:",
+    "    daily_dollars: 1.0",
+    "---",
+    "",
+  ].join("\n");
+}
+
 export function skillMd(name: string): string {
   // SKILL.md frontmatter requires name (kebab), description, version (semver).
   // Mirrors tests/fixtures/fleetbundle/skill/name_mismatch/SKILL.md.
@@ -102,6 +131,29 @@ export function emptyBodySkillMd(name: string): string {
     "description: Fixture skill with an empty body; every delivery fails its startup check.",
     "version: 0.1.0",
     "---",
+    "",
+  ].join("\n");
+}
+
+// Same frontmatter again, body a REAL instruction: the one bundle in this tree
+// whose delivery is meant to reach the provider and come back with an answer.
+// Deterministic in shape (one line, no tools) so the journey can assert that a
+// reply exists without asserting what a model chose to say.
+export const EXECUTION_REPLY_PREFIX = "ACK";
+
+export function executionSkillMd(name: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    "description: Acceptance probe; answers every message with one acknowledging line.",
+    "version: 0.1.0",
+    "---",
+    "",
+    `# ${name}`,
+    "",
+    "You are an acceptance probe. When you receive a message, reply with exactly",
+    `one line: the word ${EXECUTION_REPLY_PREFIX}, a space, then the message text verbatim.`,
+    "Do not call any tool. Do not add anything before or after that line.",
     "",
   ].join("\n");
 }
@@ -184,6 +236,18 @@ export async function waitForFleetActive(
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+}
+
+/** The name the server stored for a fleet — the template's, or a suffixed one. */
+export async function readFleetName(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<string> {
+  const fleet = await clientFor(handle).get<{ name: string }>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+  );
+  return fleet.name;
 }
 
 export async function listFleets(handle: ClientHandle, workspaceId: string): Promise<Fleet[]> {

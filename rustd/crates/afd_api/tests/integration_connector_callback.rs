@@ -56,9 +56,6 @@ const BOT_TOKEN: &str = "xoxb-fixture-bot-token";
 /// The second one, for the reconnect.
 const REPLACEMENT_TOKEN: &str = "xoxb-fixture-rotated-token";
 
-/// The team the grant is scoped to.
-const TEAM_ID: &str = "T0FIXTURE01";
-
 /// The authorization code the provider hands back.
 pub(crate) const CODE: &str = "vendor-authorization-code";
 
@@ -69,11 +66,12 @@ const HANDLE_BOT_TOKEN: &str = "bot_token";
 const HANDLE_INTEGRATION: &str = "integration";
 
 /// A token endpoint's answer, in the shape `oauth.v2.access` returns.
-fn slack_answer(token: &str) -> String {
+fn slack_answer(fixture: &Fixture, token: &str) -> String {
+    let team = &fixture.team;
     format!(
         r#"{{"ok":true,"access_token":"{token}","bot_user_id":"U0FIXTUREBOT",
             "scope":"chat:write,channels:read",
-            "team":{{"id":"{TEAM_ID}","name":"Fixture Workspace"}},
+            "team":{{"id":"{team}","name":"Fixture Workspace"}},
             "authed_user":{{"id":"U0FIXTUREPERSON"}}}}"#
     )
 }
@@ -130,11 +128,127 @@ pub(crate) async fn complete(
     provider: Provider,
     state: &str,
 ) -> axum::response::Response {
+    complete_with(router, fixture, provider, state, "").await
+}
+
+/// The same completion, with `extra` appended to the callback query — how a
+/// provider's return carries more than a code, GitHub's `installation_id`
+/// being the one this suite arranges.
+pub(crate) async fn complete_with(
+    router: &axum::Router,
+    fixture: &Fixture,
+    provider: Provider,
+    state: &str,
+    extra: &str,
+) -> axum::response::Response {
+    complete_as(router, provider, state, &fixture.token, extra).await
+}
+
+/// The same completion, presented by whoever holds `token`.
+///
+/// Takes the token rather than the fixture because the one case that needs it
+/// is a person who is NOT the fixture's owner: the live directory resolves a
+/// token to its api-key row, so a bystander has to present their own or they
+/// are simply the starter again.
+pub(crate) async fn complete_as(
+    router: &axum::Router,
+    provider: Provider,
+    state: &str,
+    token: &str,
+    extra: &str,
+) -> axum::response::Response {
     let target = format!(
-        "/v1/connectors/{}/callback?code={CODE}&state={state}",
+        "/v1/connectors/{}/callback?code={CODE}&state={state}{extra}",
         provider.id()
     );
-    send(router, Method::POST, &target, Some(&fixture.token), "").await
+    send(router, Method::POST, &target, Some(token), "").await
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_bystander_cannot_finish_somebody_elses_connect_and_the_starter_still_can() {
+    // Both halves of the identity binding, in one walk. The refusal alone is
+    // proven with no store in `afd_connector/tests/connect_verify.rs`; what
+    // only a live run can show is the NON-CONSUMPTION — that the bystander's
+    // attempt did not burn the starter's slot, so the starter's own return
+    // still lands. A verify that consumed before it compared would pass the
+    // first assertion and fail the second.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
+    let starter = fixture.router(&provider);
+    let bystander = fixture.router_as(&provider, &fixture.bystander);
+
+    let state = start_connect(&starter, &fixture, PROVIDER).await;
+
+    let refused = complete_as(&bystander, PROVIDER, &state, &fixture.bystander_token, "").await;
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::CONNECTOR_STATE_INVALID.as_str()),
+        "another person's genuine state is refused as invalid, never told apart: {document}"
+    );
+    assert_eq!(
+        provider.exchanges(),
+        0,
+        "the bystander's attempt must not redeem the code"
+    );
+    assert!(
+        fixture.grant(PROVIDER).await.is_none(),
+        "nothing is sealed for a refused completion"
+    );
+
+    let landed = complete(&starter, &fixture, PROVIDER, &state).await;
+    assert_eq!(
+        landed.status(),
+        StatusCode::FOUND,
+        "the starter's slot survived the bystander: the verify compared before it consumed"
+    );
+    assert_eq!(provider.exchanges(), 1);
+    assert!(fixture.grant(PROVIDER).await.is_some());
+
+    provider.close();
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
+    // The landing transaction, proven by breaking its second write. The
+    // routing row is written first and the grant sealed second, inside one
+    // transaction; a vault that refuses the seal must take the row with it,
+    // or an inbound delivery would resolve a workspace whose credential is not
+    // there. Mutation: commit the row before the seal, and the count below
+    // reads one.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
+    let router = fixture.router(&provider);
+    let refusing = fixture.refuse_seals().await;
+
+    let state = start_connect(&router, &fixture, PROVIDER).await;
+    let failed = complete(&router, &fixture, PROVIDER, &state).await;
+    let status = failed.status();
+    let document = json_body(failed).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{document}");
+    assert_eq!(
+        provider.exchanges(),
+        1,
+        "the code was redeemed — the failure is past the vendor, at the seal"
+    );
+    assert_eq!(
+        fixture.routed_to(PROVIDER, &fixture.team).await,
+        Vec::<String>::new(),
+        "the routing row wrote in the same transaction as the seal that failed, \
+         and unwound with it"
+    );
+    assert!(fixture.grant(PROVIDER).await.is_none());
+
+    refusing.lift().await;
+    provider.close();
+    fixture.cleanup().await;
 }
 
 #[tokio::test]
@@ -142,7 +256,7 @@ pub(crate) async fn complete(
 async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture, PROVIDER).await;
@@ -179,95 +293,5 @@ async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     fixture.cleanup().await;
 }
 
-#[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
-async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
-    // The single-use slot, against the Redis that holds it. Without it, anyone
-    // who saw a callback URL — a browser history, a proxy log, a referrer —
-    // could replay it, and each replay would redeem the code again.
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
-    let router = fixture.router(&provider);
-
-    let state = start_connect(&router, &fixture, PROVIDER).await;
-    assert_eq!(
-        complete(&router, &fixture, PROVIDER, &state).await.status(),
-        StatusCode::FOUND
-    );
-
-    let replayed = complete(&router, &fixture, PROVIDER, &state).await;
-    let status = replayed.status();
-    let document = json_body(replayed).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{document}");
-    assert_eq!(
-        document.get("error_code").and_then(Value::as_str),
-        Some(error_code::CONNECTOR_STATE_INVALID.as_str()),
-        "a spent slot answers exactly as a forged state does: both mean start \
-         the connect again, and telling them apart is a probe"
-    );
-    assert_eq!(
-        provider.exchanges(),
-        1,
-        "the replay must not reach the vendor at all — a second redemption \
-         would be invisible in the vault, which is why the count is the proof"
-    );
-
-    provider.close();
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
-async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
-    // A person re-authorising an integration whose token was revoked presses
-    // the same button, and the name is already taken. Refusing would leave the
-    // dead token in place with no way to replace it but a delete; sealing under
-    // a second name would leave a runner opening whichever it found first.
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    // One fake answering two tokens in order. A second server would restart
-    // the exchange count, and the count is what separates "two connects, one
-    // code each" from "one connect that redeemed twice".
-    let provider =
-        FakeProvider::answering(&[&slack_answer(BOT_TOKEN), &slack_answer(REPLACEMENT_TOKEN)])
-            .await;
-    let router = fixture.router(&provider);
-
-    let first = start_connect(&router, &fixture, PROVIDER).await;
-    assert_eq!(
-        complete(&router, &fixture, PROVIDER, &first).await.status(),
-        StatusCode::FOUND
-    );
-
-    let again = start_connect(&router, &fixture, PROVIDER).await;
-    assert_eq!(
-        complete(&router, &fixture, PROVIDER, &again).await.status(),
-        StatusCode::FOUND,
-        "a reconnect is the same action as a connect, not a conflict"
-    );
-    assert_eq!(
-        provider.exchanges(),
-        2,
-        "each connect redeemed its own code"
-    );
-
-    assert_eq!(
-        fixture.secret_names().await,
-        vec![PROVIDER.grant_key().to_owned()],
-        "one name, so a runner cannot open the token that was rotated away"
-    );
-    assert_eq!(
-        fixture
-            .grant(PROVIDER)
-            .await
-            .expect("the workspace still holds a grant")
-            .get(HANDLE_BOT_TOKEN)
-            .and_then(Value::as_str),
-        Some(REPLACEMENT_TOKEN),
-        "the standing grant is the newer one"
-    );
-
-    provider.close();
-    fixture.cleanup().await;
-}
+#[path = "integration_connector_callback/second_time.rs"]
+mod second_time;

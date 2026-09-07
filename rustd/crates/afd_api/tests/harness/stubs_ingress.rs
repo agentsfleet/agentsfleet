@@ -108,6 +108,9 @@ pub(crate) struct Scripted {
     over_ceiling: Option<usize>,
     /// Every append, in the order the route made them.
     log: Mutex<Vec<Recorded>>,
+    /// The source each binding read named, in order — `None` for the routes
+    /// whose URL names no provider.
+    asked: Mutex<Vec<Option<String>>>,
     /// The first id each claim key was answered with.
     claimed: Mutex<BTreeMap<String, String>>,
 }
@@ -168,6 +171,14 @@ impl Scripted {
         self
     }
 
+    /// The source each binding read named, in the order the routes asked.
+    pub(crate) fn sources_asked(&self) -> Vec<Option<String>> {
+        self.asked
+            .lock()
+            .expect("no test holds this lock across a panic")
+            .clone()
+    }
+
     /// Every append this store was asked for, in order.
     pub(crate) fn deliveries(&self) -> Vec<Recorded> {
         self.log
@@ -178,10 +189,17 @@ impl Scripted {
 }
 
 impl WebhookIngress for HarnessIngress {
-    async fn binding(&self, fleet: &Uuid7) -> IngressResult<Option<Binding>> {
+    async fn binding(&self, fleet: &Uuid7, source: Option<&str>) -> IngressResult<Option<Binding>> {
         match self {
-            Self::Unreachable(ingress) => ingress.binding(fleet).await,
-            Self::Scripted(scripted) => Ok(scripted.binding.clone()),
+            Self::Unreachable(ingress) => ingress.binding(fleet, source).await,
+            Self::Scripted(scripted) => {
+                scripted
+                    .asked
+                    .lock()
+                    .expect("no test holds this lock across a panic")
+                    .push(source.map(str::to_owned));
+                Ok(scripted.binding.clone())
+            }
         }
     }
 

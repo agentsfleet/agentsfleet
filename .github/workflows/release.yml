@@ -534,6 +534,8 @@ jobs:
           R2_ACCESS_KEY_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/access-key-id
           R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_PROD }}/cloudflare-r2/secret-access-key
           R2_BUCKET: op://${{ vars.VAULT_PROD }}/cloudflare-r2/bucket
+      - uses: 1password/install-cli-action@v4
+
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
       - name: Ensure the OTLP collector is running
         # Must be serving BEFORE the daemon's repointed endpoint takes effect on
@@ -716,6 +718,26 @@ jobs:
             exit 1
           fi
           curl -sf https://api.agentsfleet.net/readyz | jq -e '.ready == true'
+
+      # AFTER the rollout verification, not before the tunnel: the write goes
+      # through the daemon's own secrets API at api.agentsfleet.net, reachable
+      # only once cloudflared-prod is up and the rollout has answered green.
+      # Placed earlier, its fail-fast curl would abort the release for exactly
+      # the condition the tunnel step above exists to repair.
+      #
+      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
+      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # reads it as an admin-workspace vault row. The Fly secret staged above is
+      # still set for anything reading the environment, but it is NOT what the
+      # connector flow resolves — without this row every provider answers 503
+      # UZ-CONN-001 on a deployment whose Fly secret is set and correct.
+      - name: Seed platform vault secrets
+        run: ENV=prod ./playbooks/lib/platform_secret_sync.sh approval-signing
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT: ${{ vars.VAULT_PROD }}
+          ALLOW_VAULT_READS: "1"
+          ALLOW_PLATFORM_SECRET_WRITES: "1"
 
   # ── 7. Deploy: canary runner (first host) ────────────────────────────────
   deploy-metal-canary-prod:

@@ -286,15 +286,15 @@ export type FleetListResponse = {
 
 // Canonical billing unit: 1 USD = 1_000_000_000 nanos. JS Number holds the
 // full range (≤ 2^53 ≈ 9e15 nanos / ~$9M tenant balance) without precision
-// loss. Mirrors `NANOS_PER_USD` in src/state/tenant_billing.zig and
-// cli/src/constants/billing.js — keep all three in lockstep.
+// loss. Mirrors `NANOS_PER_USD` in rustd/crates/afd_billing/src/nanos.rs and
+// cli/src/constants/billing.ts — keep all three in lockstep.
 export const NANOS_PER_USD = 1_000_000_000;
 
-// Rate constants — mirror src/state/tenant_billing.zig identifier-for-identifier
-// (cross-tier parity rule). The dashboard reads tenant balances and ledger
-// rows in nanos; surfaces that quote an absolute rate import from here so a
-// bump shows up everywhere on the same commit. Paired pin tests live in
-// agentsfleet tests + tenant_billing_test.zig.
+// Rate constants — mirror rustd/crates/afd_billing/src/nanos.rs
+// identifier-for-identifier (cross-tier parity rule). The dashboard reads
+// tenant balances and ledger rows in nanos; surfaces that quote an absolute
+// rate import from here so a bump shows up everywhere on the same commit.
+// afd_billing's cross_runtime_rates test reads this file and fails on drift.
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;
 // Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
@@ -303,7 +303,7 @@ export const EVENT_NANOS = 0;
 export const RUN_NANOS_PER_SEC = 100_000;
 
 // Unix-epoch timestamps on this type are **milliseconds**, matching the
-// server's `*_at_ms` fields (src/state/tenant_billing.zig). Pass them
+// server's `*_at_ms` fields (rustd/crates/afd_billing/src/nanos.rs). Pass them
 // straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
   balance_nanos: number;

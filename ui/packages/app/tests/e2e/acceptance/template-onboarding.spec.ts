@@ -7,7 +7,6 @@
  * API; the success path uses an upload fixture because the public agentsfleet
  * template repos do not currently expose root-level SKILL.md files.
  */
-import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./fixtures/api-client";
@@ -17,6 +16,7 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const INVALID_GITHUB_SOURCE_REF = "agentsfleet/not-a-real-fleet-library";
+const STABLE_TEMPLATE_NAME = "tmpl-onboarding-probe";
 const FLOW_TIMEOUT_MS = 120_000;
 
 function fixtureSkillMd(name: string): string {
@@ -43,7 +43,9 @@ test.describe("template onboarding", () => {
 
   test("test_onboarded_template_renders_in_gallery", async ({ page }) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const templateName = `tmpl-${crypto.randomBytes(4).toString("hex")}`;
+    // Stable across runs: the onboard converges on one library row, and the
+    // gallery renders that row whether this run created it or found it.
+    const templateName = STABLE_TEMPLATE_NAME;
     const client = clientFor(FIXTURE_KEY.regular);
     const resp = await client.post<OnboardTemplateResp>(
       `/v1/workspaces/${workspaceId}/fleet-libraries`,

@@ -89,8 +89,8 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
           restoreFocus={() => mobileTriggerRef.current?.focus()}
         />
       ) : null}
-      <SidebarToggle sidebarNavId={sidebarNavId} />
       <BrandLink workspaceId={linkWorkspaceId} />
+      <SidebarToggle sidebarNavId={sidebarNavId} />
     </>
   );
 }
@@ -136,7 +136,7 @@ function SidebarToggle({ sidebarNavId }: Pick<ShellControlsProps, "sidebarNavId"
       aria-controls={sidebarNavId}
       variant="ghost"
       size="icon"
-      className="hidden md:inline-flex -ml-2"
+      className="hidden md:inline-flex"
       onClick={shellSidebarState.toggle}
     >
       {collapsed ? (

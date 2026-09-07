@@ -82,7 +82,8 @@
     "credentialed_feed": "pending — the vendor publishes rates only behind an authenticated endpoint; not verifiable during curation.",
     "no_public_rates": "pending — the vendor publishes no per-token rate table at all.",
     "awaiting_curation": "pending — newly derived from a NullClaw bump and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
-    "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one."
+    "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one.",
+    "duplicate_spelling": "permanent — a second NullClaw spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
   },
   "nullclaw_alias_collisions": {
     "_readme": [
@@ -112,8 +113,10 @@
       "source": "manual",
       "source_url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
       "models": [
+        { "model_id": "claude-fable-5-1", "context_cap_tokens": 1000000, "input": 10, "cached_input": 0.25, "output": 50, "note": "Cache hits are 0.025x base input on Fable 5.1 (the page's footnote), not the 0.1x every other model uses. Verified 2026-09-07." },
+        { "model_id": "claude-opus-5", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25, "note": "Verified 2026-09-07." },
         { "model_id": "claude-opus-4-8", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25 },
-        { "model_id": "claude-sonnet-5", "context_cap_tokens": 1000000, "input": 3, "cached_input": 0.3, "output": 15, "note": "STANDARD rate. Introductory 2.00/0.20/10.00 runs to Aug 31 2026; standard applies from Sep 1 2026. Seeded standard deliberately — see decisions.sonnet_5." },
+        { "model_id": "claude-sonnet-5", "context_cap_tokens": 1000000, "input": 2, "cached_input": 0.2, "output": 10, "note": "The introductory 2.00/0.20/10.00 became the STANDARD price: the page states the Sep 1 2026 increase to 3/15 will not occur. Verified 2026-09-07." },
         { "model_id": "claude-fable-5", "context_cap_tokens": 1000000, "input": 10, "cached_input": 1, "output": 50 },
         { "model_id": "claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1, "cached_input": 0.1, "output": 5 }
       ]
@@ -124,9 +127,10 @@
       "source": "manual",
       "source_url": "https://developers.openai.com/api/docs/pricing",
       "models": [
-        { "model_id": "gpt-5.6-sol", "context_cap_tokens": 1050000, "input": 5, "cached_input": 0.5, "output": 30 },
-        { "model_id": "gpt-5.6-terra", "context_cap_tokens": 1050000, "input": 2.5, "cached_input": 0.25, "output": 15 },
-        { "model_id": "gpt-5.6-luna", "context_cap_tokens": 1050000, "input": 1, "cached_input": 0.1, "output": 6 },
+        { "model_id": "gpt-6-astra", "context_cap_tokens": 1050000, "input": 20, "cached_input": 2, "output": 100, "tier": "upper", "note": "Base tier is 10/1/50; the page states long-context requests double every rate, so the upper tier is seeded per tiering_note. 1,050,000 context, 922,000 max input, 128,000 max output. Verified 2026-09-07." },
+        { "model_id": "gpt-5.6-sol", "context_cap_tokens": 1050000, "input": 8, "cached_input": 0.8, "output": 40, "tier": "upper", "note": "Base tier is 4/0.40/20 (down from the 5/0.50/30 seeded 2026-08-17); long context doubles it. Verified 2026-09-07." },
+        { "model_id": "gpt-5.6-terra", "context_cap_tokens": 1050000, "input": 4, "cached_input": 0.4, "output": 24, "tier": "upper", "note": "Base tier is 2/0.20/12; long context doubles it. Verified 2026-09-07." },
+        { "model_id": "gpt-5.6-luna", "context_cap_tokens": 1050000, "input": 0.4, "cached_input": 0.04, "output": 2.4, "tier": "upper", "note": "Base tier is 0.20/0.02/1.20; long context doubles it. Verified 2026-09-07." },
         { "model_id": "gpt-5.5-pro", "context_cap_tokens": 1050000, "input": 30, "cached_input": 30, "output": 180, "note": "cached_input == input on purpose: OpenAI documents that this model offers NO cached-input discount." },
         { "model_id": "gpt-5.3-codex", "context_cap_tokens": 400000, "input": 1.75, "cached_input": 0.175, "output": 14 }
       ]
@@ -173,6 +177,8 @@
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
       "models": [
+        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
       "note": "Keyed `glm`, not `zai`, on purpose: nullclaw's `zai` alias resolves to the CODING endpoint (api.z.ai/api/coding/paas/v4) while `glm` resolves to the general paas path priced here. GLM-5.2 is a general model, so `glm` is the alias that matches."
@@ -295,12 +301,14 @@
         { "model_id": "accounts/fireworks/models/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
         { "model_id": "accounts/fireworks/models/kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
         { "model_id": "accounts/fireworks/models/kimi-k2p7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4 },
+        { "model_id": "accounts/fireworks/models/glm-5p3", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "accounts/fireworks/models/glm-5p3-flash", "context_cap_tokens": 1048576, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "Verified 2026-09-07." },
         { "model_id": "accounts/fireworks/models/glm-5p2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.14, "output": 4.4 },
         { "model_id": "accounts/fireworks/models/qwen3p7-plus", "context_cap_tokens": 262144, "input": 0.4, "cached_input": 0.08, "output": 1.6 },
         { "model_id": "accounts/fireworks/models/minimax-m3", "context_cap_tokens": 512000, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
         { "model_id": "accounts/fireworks/models/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.015, "output": 0.6 }
       ],
-      "note": "Fireworks' page claims a default 50% cached-input rate; real per-model ratios are 8-20% on the flagships. Always read the per-model row."
+      "note": "The only priced Fireworks spelling \u2014 `fireworks-ai` is the same host and carries none (duplicate_spelling). Fireworks' page claims a default 50% cached-input rate; real per-model ratios are 8-20% on the flagships. Always read the per-model row."
     },
     "together-ai": {
       "dial": "native",
@@ -329,6 +337,8 @@
         { "model_id": "moonshotai/kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4 },
         { "model_id": "deepseek/deepseek-v4-pro", "context_cap_tokens": 1048576, "input": 1.6, "cached_input": 0.135, "output": 3.2 },
         { "model_id": "deepseek/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
+        { "model_id": "zai-org/glm-5.3", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "zai-org/glm-5.3-flash", "context_cap_tokens": 1048576, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price; Novita shows the same 50% promotion Z.ai does. Verified 2026-09-07." },
         { "model_id": "zai-org/glm-5.2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4 },
         { "model_id": "qwen/qwen3.7-max", "context_cap_tokens": 1000000, "input": 1.25, "cached_input": 0.25, "output": 3.75 }
       ]
@@ -590,17 +600,9 @@
       "display": "Fireworks AI",
       "source": "manual",
       "source_url": "https://docs.fireworks.ai/serverless/pricing",
-      "models": [
-        { "model_id": "accounts/fireworks/models/deepseek-v4-pro", "context_cap_tokens": 1048576, "input": 1.74, "cached_input": 0.145, "output": 3.48 },
-        { "model_id": "accounts/fireworks/models/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
-        { "model_id": "accounts/fireworks/models/kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "accounts/fireworks/models/kimi-k2p7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4 },
-        { "model_id": "accounts/fireworks/models/glm-5p2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.14, "output": 4.4 },
-        { "model_id": "accounts/fireworks/models/qwen3p7-plus", "context_cap_tokens": 262144, "input": 0.4, "cached_input": 0.08, "output": 1.6 },
-        { "model_id": "accounts/fireworks/models/minimax-m3", "context_cap_tokens": 512000, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
-        { "model_id": "accounts/fireworks/models/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.015, "output": 0.6 }
-      ],
-      "note": "International endpoint for Fireworks AI; rates mirror the `fireworks` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `fireworks` \u2014 same host, same rates. Priced ONCE under `fireworks` (Indy, Sep 07, 2026: \"two FIREWORKS and FIREWORKS-AI? keep one\"), because every row seeded here rendered a second copy of every Fireworks model in the dashboard's catalogue. A tenant whose credential names `fireworks-ai` resolves to the same endpoint and should be pointed at `fireworks`."
     },
     "github-copilot": {
       "dial": "native",
@@ -627,6 +629,8 @@
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
       "models": [
+        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
       "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
@@ -1207,6 +1211,8 @@
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
       "models": [
+        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
       "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
@@ -1227,6 +1233,8 @@
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
       "models": [
+        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
+        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
       "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."

@@ -62,6 +62,56 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_undeclared_connector_is_never_injected() {
+    // The workspace holds TWO connector handles; the fleet declares one. The
+    // lease's declared set must carry exactly the one, in both halves — the
+    // static map and the mintable list — and nothing of the other. The
+    // positive case beside this proves what declared names resolve to; this is
+    // the negative it was missing: an undeclared name is not merely absent
+    // from the request, it is absent from the answer.
+    let fixture = Fixture::create().await;
+    fixture
+        .seed(
+            "github",
+            br#"{"integration":"github","installation_id":"42","app_id":"7"}"#,
+        )
+        .await;
+    fixture
+        .seed(
+            "slack",
+            br#"{"integration":"slack","bot_token":"xoxb-never-injected","team_id":"TEAMFIXTURE"}"#,
+        )
+        .await;
+    let connectors = Registry::default();
+    let declared = fixture
+        .vault
+        .declared(&fixture.workspace, &["github"], &connectors)
+        .await
+        .expect("the one declared credential resolves");
+    assert!(
+        declared.secrets_map().get("slack").is_none(),
+        "the undeclared Slack handle is not in the static map"
+    );
+    let mintable: Vec<&str> = declared
+        .mintable()
+        .iter()
+        .map(|entry| &*entry.name)
+        .collect();
+    assert_eq!(
+        mintable,
+        vec!["github"],
+        "only the declared connector is mintable"
+    );
+    let rendered = format!("{:?}", declared.secrets_map());
+    assert!(
+        !rendered.contains("xoxb-never-injected"),
+        "the undeclared token reaches nothing the lease is built from"
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn declared_credentials_batch_static_and_mintable_rows_without_leaking_handles() {
     let fixture = Fixture::create().await;
     fixture.seed("static", br#"{"token":"stored-value"}"#).await;

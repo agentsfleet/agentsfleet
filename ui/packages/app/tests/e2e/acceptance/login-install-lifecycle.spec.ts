@@ -13,7 +13,6 @@
  * not the login mechanism — cookie-mount keeps every PROD deploy run fast
  * and isolates the spec from Clerk SignIn component drift.
  */
-import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -30,11 +29,10 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLOW_TIMEOUT_MS = 120_000;
-const FLEET_PREFIX = "login-lifecycle-";
-
-function uniqueName(): string {
-  return `${FLEET_PREFIX}${crypto.randomBytes(4).toString("hex")}`;
-}
+// One stable template per spec: the install names the fleet after it and the
+// server suffixes a repeat (`login-lifecycle-001`), so the sweep's prefix still
+// reaches every row this spec made while the library row converges on one.
+const FLEET_PREFIX = "login-lifecycle";
 
 test.describe("login → install → lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
@@ -48,13 +46,12 @@ test.describe("login → install → lifecycle", () => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Install via the dashboard template gallery. Random name avoids the
-    // (workspace_id, name) uniqueness collision if a previous interrupted
-    // run left a killed-but-not-deleted row. The onboard targets the fixture's
-    // default workspace — the one active in the browser here.
+    // Install via the dashboard template gallery. A killed-but-not-deleted
+    // row from an interrupted run is the server's to suffix around. The
+    // onboard targets the fixture's default workspace — the one active in the
+    // browser here.
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const name = uniqueName();
-    const fleetId = await installViaUI(page, name, {
+    const fleetId = await installViaUI(page, FLEET_PREFIX, {
       handle: FIXTURE_KEY.regular,
       workspaceId,
     });

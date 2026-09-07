@@ -82,12 +82,31 @@ const MS_PER_SECOND: i64 = 1_000;
 /// the delivery carries.
 #[derive(Debug, Clone)]
 pub struct Install {
-    /// The provider's own id for the account — Slack's `team.id`.
+    /// The provider's own id for the account — Slack's `team.id`, GitHub's
+    /// installation id.
     pub external_account_id: String,
     /// Who pressed Connect, as the provider names them.
     pub installed_by: String,
     /// What the install actually granted, which may be less than was asked.
     pub scopes: Vec<String>,
+    /// What landing this row does to one another workspace already holds.
+    pub claim: InstallClaim,
+}
+
+/// How a routing row treats an account another workspace already routes.
+///
+/// Two answers because they are two situations. A Slack team reinstalling the
+/// app into a different workspace is one account choosing again, and the row
+/// follows it — `sql::UPSERT_INSTALL`'s whole reason. A GitHub installation is
+/// an organisation's pull requests, and a second workspace claiming it is not
+/// a choice this daemon may make for the first: the row stays, the connect is
+/// refused (`docs/AUTH.md` §GitHub, the ownership code).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallClaim {
+    /// The account follows the latest connect.
+    Repoint,
+    /// The account stays with the workspace that holds it; a second is refused.
+    Exclusive,
 }
 
 /// A parsed grant: the document to seal, and the routing row it implies.
@@ -154,6 +173,7 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
                 .filter(|granted| !granted.is_empty())
                 .map(Into::into)
                 .collect(),
+            claim: InstallClaim::Repoint,
         }),
     })
 }
