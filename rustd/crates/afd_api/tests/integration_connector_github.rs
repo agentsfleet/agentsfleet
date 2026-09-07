@@ -256,7 +256,6 @@ async fn a_claimed_installation_is_probed_and_bound_only_when_the_token_opens_it
     fixture.cleanup().await;
 }
 
-
 #[path = "integration_connector_github/refusals.rs"]
 mod refusals;
 

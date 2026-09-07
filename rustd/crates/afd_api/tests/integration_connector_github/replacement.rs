@@ -8,10 +8,6 @@
 //! longer spend a credential for is a delivery routed into a failure.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "integration preconditions should fail the test loudly"
-)]
 
 use super::*;
 
