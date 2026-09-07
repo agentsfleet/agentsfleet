@@ -42,7 +42,7 @@ pub(crate) const FLEET_STATUS_ACTIVE: &str = "active";
 /// `constants.zig`'s `MAX_READY_CANDIDATES_PER_POLL`. The ceiling is what makes
 /// per-poll cost independent of how many fleets exist — without it a runner
 /// polling an idle deployment pays for every fleet on it, every second.
-const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
+pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
 /// The readiness index would not answer.
 ///

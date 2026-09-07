@@ -78,6 +78,12 @@ pub enum Lane {
 }
 
 impl Lane {
+    /// Every lane, in the order the make targets list them.
+    ///
+    /// The one list a binary iterates and the one a usage line is built from,
+    /// so adding a lane is the enum arm and nothing else.
+    pub const ALL: [Self; 4] = [Self::Steer, Self::Lease, Self::Outbound, Self::Cardinality];
+
     /// The name this lane is written and asked for under.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -107,6 +113,20 @@ impl Lane {
     }
 }
 
+impl core::str::FromStr for Lane {
+    type Err = Error;
+
+    fn from_str(name: &str) -> Result<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|lane| lane.name() == name)
+            .ok_or(Error::UnknownLane { usage: LANE_USAGE })
+    }
+}
+
+/// How the lane names are spelled, for the refusal an unknown one raises.
+const LANE_USAGE: &str = "expected one of steer, lease, outbound, cardinality";
+
 /// What a datastore was asked to do, and how long it spent doing it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCost {
@@ -122,8 +142,12 @@ pub struct DatastoreCost {
 }
 
 /// Where a run's cost landed, which is what says WHAT to fix.
+///
+/// Named for what it holds rather than `Datastores`, which is the pair of
+/// live handles in [`crate::datastores`]; two types under one name meant
+/// every lane renamed one on import.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-pub struct Datastores {
+pub struct DatastoreCosts {
     /// The Redis half.
     pub redis: DatastoreCost,
     /// The Postgres half.
@@ -155,7 +179,7 @@ impl Fixture {
 
 /// Why a run stopped before its window elapsed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Abort {
+pub struct AbortRecord {
     /// What the lane observed.
     pub observed_error_rate: f64,
     /// The profile threshold it crossed.
@@ -179,12 +203,12 @@ pub struct Report {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub series: BTreeMap<String, Vec<f64>>,
     /// Where the cost landed.
-    pub datastores: Datastores,
+    pub datastores: DatastoreCosts,
     /// What was created and what was swept.
     pub fixture: Fixture,
     /// Present only when the run stopped early.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub abort: Option<Abort>,
+    pub abort: Option<AbortRecord>,
 }
 
 impl Report {
@@ -198,7 +222,7 @@ impl Report {
             parameters: BTreeMap::new(),
             measurements: BTreeMap::new(),
             series: BTreeMap::new(),
-            datastores: Datastores::default(),
+            datastores: DatastoreCosts::default(),
             fixture: Fixture::default(),
             abort: None,
         }
@@ -219,13 +243,19 @@ impl Report {
     /// Every lane reports these four, so spelling them once here is what stops
     /// one lane calling its tail `p95` and another `p95_millis`.
     pub fn latency(&mut self, elapsed_seconds: f64, latency: &Latency) {
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "an operation count past f64's exact range is not a run that finished"
-        )]
-        let operations = latency.count() as f64;
+        // No rate over no window: dividing by zero seconds is not a
+        // measurement, and a zero written in its place would be read as one.
         if elapsed_seconds > 0.0 {
-            self.measurement(RATE_PER_SECOND, operations / elapsed_seconds);
+            self.measurement(
+                RATE_PER_SECOND,
+                per_second(latency.count(), elapsed_seconds),
+            );
+        }
+        // A distribution nothing landed in has no tail. HdrHistogram answers
+        // zero for every quantile of nothing, and a zero tail in the file is
+        // the unmeasured zero RULE ECL forbids.
+        if latency.is_empty() {
+            return;
         }
         self.measurement(P95_MS, latency.quantile_ms(latency::P95));
         self.measurement(P99_MS, latency.quantile_ms(latency::P99));
@@ -236,8 +266,9 @@ impl Report {
     ///
     /// # Errors
     ///
+    /// [`Error::ResultUnrenderable`] when the report will not serialise, and
     /// [`Error::ResultUnwritable`] when the directory cannot be created, the
-    /// render fails, or the rename does not land.
+    /// pending file cannot be written, or the rename does not land.
     pub fn write(&self, path: &Path) -> Result<()> {
         let rendered = serde_json::to_string_pretty(self)
             .map_err(|source| Error::ResultUnrenderable { source })?;
@@ -274,6 +305,38 @@ impl Report {
             source,
         })
     }
+}
+
+/// A count as a ratio's operand.
+///
+/// One home for the cast every lane needs, with the one reason it is sound.
+#[must_use]
+pub fn count(value: u64) -> f64 {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count past f64's exact range is not a run that finished"
+    )]
+    {
+        value as f64
+    }
+}
+
+/// `numerator / denominator`, or zero when nothing was counted underneath.
+#[must_use]
+pub fn ratio(numerator: u64, denominator: u64) -> f64 {
+    if denominator == 0 {
+        return 0.0;
+    }
+    count(numerator) / count(denominator)
+}
+
+/// A count over a span of seconds, or zero when the span is empty.
+#[must_use]
+pub fn per_second(value: u64, seconds: f64) -> f64 {
+    if seconds <= 0.0 {
+        return 0.0;
+    }
+    count(value) / seconds
 }
 
 #[cfg(test)]

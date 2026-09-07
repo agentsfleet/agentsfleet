@@ -353,6 +353,20 @@ released 2018.
 
 > Kishore (2026-09-06): "Okay use hrdhistogram" — context: the p95/p99 computation. `hdrhistogram = "7.6.0"` added to `[workspace.dependencies]`, `default-features = false`. Criterion was considered and rejected on fitness rather than popularity: it reports the spread of per-iteration mean times, controls its own iteration count against the profile caps, and re-runs a stateful operation against a growing datastore.
 
+**Deferral — the blast-radius shape (REVIEW).** The pre-landing review
+(security, adversarial and red-team passes, converging) found that the profile
+guard keys off the `BENCH_PROFILE` label rather than the datastore address:
+`TEST_DATABASE_URL=<prod> make bench-lease` would run rig caps unacknowledged;
+on a deployed target the lease lane can claim real fleets (an empty
+`required_tags` is a subset of any label set), the outbound lane joins the
+shared production consumer group and its scripted poster would acknowledge
+real answers, 200 bench marks would starve real runners' `HRANDFIELD 64`
+samples, and Ctrl-C mid-run sweeps nothing. Proposed shape: creating lanes
+rig-only, URLs bound to the profile, a signal-handled sweep, a separator on
+the prefix, ids derived from the prefix, and a `bench-sweep` orphan target.
+
+> Kishore (2026-09-07): "Defer to the deployed-environment follow-up" — context: the blast-radius findings above, all of which are reachable only against a deployed target. None exists; every `make bench-*` target pins its URLs to the loopback compose stack (`make/test-infra.mk:112,128`), so the make surface is safe today and the binaries' guard stays a string comparison until that follow-up.
+
 **Deferral — the dispatch-only workflow (Dimension 6.3).** Asked whether to
 add a lanes job to `bench.yml`, defer it, or open a separate workflow file.
 

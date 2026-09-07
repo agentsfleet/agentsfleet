@@ -14,15 +14,27 @@
 //!
 //! Delivery latency is enqueue-to-first-attempt; retry occupancy is the gap
 //! between one attempt and the next on the same job, which is time the ladder
-//! held the only worker. Both fall out of one `Instant` per attempt.
+//! held the only worker. Both fall out of one `Instant` per attempt — taken
+//! BEFORE the lock, so a reader snapshotting the map never delays a stamp.
+//!
+//! # Only this run's jobs count
+//!
+//! The worker reads the shared stream, so an entry an earlier, unswept run
+//! left behind reaches this poster too. Its destination is one this script
+//! never named, and such a job is answered but never counted: not as an
+//! attempt, not as settled. Counting it would end the drain before this run's
+//! own jobs had all been reached.
 
 use core::time::Duration;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Verdict};
 use afd_redis::OutboundDelivery;
+use tokio::sync::Notify;
 
 /// What one destination does when asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,107 +56,141 @@ pub struct Attempt {
     pub behaviour: Behaviour,
 }
 
-/// Everything the poster saw, keyed by the job's stream entry id.
+/// Everything the poster saw of THIS run's jobs, keyed by stream entry id.
 #[derive(Debug, Default)]
 pub struct Seen {
     attempts: HashMap<String, Vec<Attempt>>,
-    /// Jobs whose LAST verdict was terminal, so the worker acknowledged them.
-    terminal: u64,
+    /// Jobs answered with a foreign destination: left by an earlier run.
+    foreign: u64,
 }
 
 impl Seen {
     /// Every attempt, in the order it happened, per job.
     #[must_use]
-    pub fn attempts(&self) -> &HashMap<String, Vec<Attempt>> {
+    pub const fn attempts(&self) -> &HashMap<String, Vec<Attempt>> {
         &self.attempts
     }
 
-    /// How many jobs reached a terminal verdict.
+    /// Jobs this poster answered that were not this run's.
     #[must_use]
-    pub const fn terminal(&self) -> u64 {
-        self.terminal
+    pub const fn foreign(&self) -> u64 {
+        self.foreign
     }
 }
 
 /// The scripted destination the worker delivers to.
 #[derive(Debug, Clone)]
 pub struct Scripted {
-    behaviours: Arc<HashMap<String, Behaviour>>,
+    behaviours: Arc<BTreeMap<String, Behaviour>>,
     fast: Duration,
     slow: Duration,
     seen: Arc<Mutex<Seen>>,
+    /// Jobs of this run that reached a terminal state: delivered, or the
+    /// ladder exhausted. Read without the lock by whoever waits for the drain.
+    settled: Arc<AtomicU64>,
+    /// Woken on every settlement, so the drain need not poll.
+    settled_signal: Arc<Notify>,
 }
 
 impl Scripted {
     /// A poster over `behaviours`, keyed by destination (the job's fleet id).
     #[must_use]
-    pub fn new(behaviours: HashMap<String, Behaviour>, fast: Duration, slow: Duration) -> Self {
+    pub fn new(behaviours: BTreeMap<String, Behaviour>, fast: Duration, slow: Duration) -> Self {
         Self {
             behaviours: Arc::new(behaviours),
             fast,
             slow,
             seen: Arc::new(Mutex::new(Seen::default())),
+            settled: Arc::new(AtomicU64::new(0)),
+            settled_signal: Arc::new(Notify::new()),
         }
+    }
+
+    /// How many of this run's jobs have reached a terminal state.
+    #[must_use]
+    pub fn settled(&self) -> u64 {
+        self.settled.load(Ordering::Acquire)
+    }
+
+    /// Wait until a settlement is recorded, or the given time passes.
+    pub async fn settlement(&self, at_most: Duration) {
+        let _ = tokio::time::timeout(at_most, self.settled_signal.notified()).await;
     }
 
     /// A snapshot of everything seen so far.
     ///
-    /// A poisoned lock yields the default rather than a panic: a job that
-    /// panicked mid-delivery has already ended the run, and the reader here
-    /// is the reporter deciding what to write.
+    /// Taken once, by the reporter, after the worker is stopped: cloning the
+    /// map under the lock while the worker is still stamping would delay a
+    /// stamp by the length of the clone.
     #[must_use]
     pub fn seen(&self) -> Seen {
         self.seen
             .lock()
             .map(|seen| Seen {
                 attempts: seen.attempts.clone(),
-                terminal: seen.terminal,
+                foreign: seen.foreign,
             })
             .unwrap_or_default()
     }
 
-    /// The behaviour scripted for a destination; a job for an unknown one is
-    /// treated as fast, because the alternative is a Permanent the report
-    /// would then have to explain.
-    fn behaviour_of(&self, destination: &str) -> Behaviour {
-        self.behaviours
-            .get(destination)
-            .copied()
-            .unwrap_or(Behaviour::Fast)
+    /// The behaviour scripted for a destination, or `None` for a job that is
+    /// not this run's.
+    fn behaviour_of(&self, destination: &str) -> Option<Behaviour> {
+        self.behaviours.get(destination).copied()
     }
 
-    fn stamp(&self, id: &str, behaviour: Behaviour, terminal: bool) {
+    /// Record an attempt at the instant it was made.
+    fn stamp(&self, id: &str, behaviour: Behaviour, at: Instant, terminal: bool) {
+        let attempts_so_far = if let Ok(mut seen) = self.seen.lock() {
+            let attempts = seen.attempts.entry(id.to_owned()).or_default();
+            attempts.push(Attempt { at, behaviour });
+            attempts.len()
+        } else {
+            0
+        };
+        // Terminal for the drain means delivered OR the ladder exhausted,
+        // which is this many attempts on one job; the poster is not told
+        // when the worker gives up, so it counts.
+        if terminal || attempts_so_far == DELIVERY_ATTEMPTS {
+            self.settled.fetch_add(1, Ordering::Release);
+            self.settled_signal.notify_waiters();
+        }
+    }
+
+    fn foreign(&self) {
         if let Ok(mut seen) = self.seen.lock() {
-            seen.attempts
-                .entry(id.to_owned())
-                .or_default()
-                .push(Attempt {
-                    at: Instant::now(),
-                    behaviour,
-                });
-            if terminal {
-                seen.terminal += 1;
-            }
+            seen.foreign += 1;
         }
     }
 }
 
 impl Deliver for Scripted {
     fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
-        let behaviour = self.behaviour_of(&job.fleet_id);
-        let (delay, verdict) = match behaviour {
-            Behaviour::Fast => (self.fast, Verdict::Delivered),
-            Behaviour::Slow => (self.slow, Verdict::Delivered),
-            // Retryable never resolves: the worker's ladder gives up after its
-            // attempt budget and treats the job as permanent, and THAT is the
-            // terminal event — counted by the reporter from the attempt count,
-            // since the poster is not told the ladder ended.
-            Behaviour::Retryable => (self.fast, Verdict::Retryable),
+        let at = Instant::now();
+        let scripted = self.behaviour_of(&job.fleet_id);
+        let (delay, verdict) = match scripted {
+            Some(Behaviour::Fast) => (self.fast, Verdict::Delivered),
+            Some(Behaviour::Slow) => (self.slow, Verdict::Delivered),
+            Some(Behaviour::Retryable) => (self.fast, Verdict::Retryable),
+            // Not this run's job. Delivered at once so it leaves the queue —
+            // on the rig that is an earlier run's leftover — and never counted.
+            None => (Duration::ZERO, Verdict::Delivered),
         };
-        self.stamp(job.id.as_str(), behaviour, verdict == Verdict::Delivered);
+        match scripted {
+            Some(behaviour) => self.stamp(
+                job.id.as_str(),
+                behaviour,
+                at,
+                verdict == Verdict::Delivered,
+            ),
+            None => self.foreign(),
+        }
         async move {
             tokio::time::sleep(delay).await;
             verdict
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

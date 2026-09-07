@@ -14,7 +14,9 @@ finding nothing.
 
 Replacing a baseline is a deliberate act. Copy the result over it in the same
 commit as the change that moved it, and say in the commit message which number
-moved and why — a baseline updated silently is a regression nobody saw.
+moved and why — a baseline updated silently is a regression nobody saw. The
+"Measured ceilings" table in `docs/architecture/scaling.md` quotes these files
+by hand; a baseline that moves takes that row with it in the same commit.
 
 No baseline exists for the `prod` profile and none should: that profile is
 built as a refusal and never runs.

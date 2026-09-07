@@ -1,6 +1,6 @@
 //! What the counter parsers read, and what they refuse to invent.
 
-use super::redis_calls_in;
+use super::{redis_calls_in, used_memory_in};
 
 /// Two commands' worth of `INFO commandstats`, as Redis prints it.
 const COMMANDSTATS: &str = "# Commandstats\r\n\
@@ -26,4 +26,18 @@ fn test_a_reply_with_no_call_counts_is_refused_rather_than_read_as_zero() {
 fn test_a_malformed_count_is_skipped_and_the_rest_still_read() {
     let mixed = "cmdstat_get:calls=abc,usec=1\r\ncmdstat_set:calls=7,usec=1\r\n";
     assert_eq!(redis_calls_in(mixed), Some(7));
+}
+
+#[test]
+fn test_used_memory_is_read_off_its_own_line() {
+    let info = "# Memory\r\nused_memory:1048576\r\nused_memory_human:1.00M\r\n";
+    assert_eq!(used_memory_in(info), Some(1_048_576));
+}
+
+#[test]
+fn test_a_memory_reply_without_the_field_is_refused_rather_than_read_as_zero() {
+    assert_eq!(
+        used_memory_in("# Memory\r\nused_memory_human:1.00M\r\n"),
+        None
+    );
 }

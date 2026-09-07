@@ -8,9 +8,9 @@
 //! `Redis` handle. A steer becomes a row when a runner LEASES it, and that cost
 //! belongs to the lease lane, which already counts it.
 //!
-//! So the Postgres number this lane reports is expected to be zero, and it is
-//! read from `pg_stat_database` rather than assumed: a zero nobody measured is
-//! indistinguishable from a measurement nobody took.
+//! So the Postgres number this lane reports is expected to be near zero, and
+//! it is read from `pg_stat_database` rather than assumed: a zero nobody
+//! measured is indistinguishable from a measurement nobody took.
 //!
 //! # The readiness index is the interesting part
 //!
@@ -18,62 +18,60 @@
 //! `fleet:ready`. That is the first structure a million fleets contend on, and
 //! the depth series this lane records is how growth outrunning drain becomes a
 //! number rather than a stall somebody notices later.
+//!
+//! # The window is the submitters' window
+//!
+//! Its length is taken the moment the last submitter returns — before the
+//! depth sampler is joined, before any histogram work. Under an abort the
+//! submitters stop early and the window is that short; the first version
+//! took the length after the sampler, which runs to the deadline, and would
+//! have reported an aborted run's rate over a window it never used.
 
 use core::time::Duration;
+use std::sync::Arc;
 use std::time::Instant;
 
 use afd_events::Steer;
 use afd_redis::{ReadyIndex, Redis};
+use tokio_util::sync::CancellationToken;
 
 use crate::abort::Abort;
 use crate::datastores::{Datastores, postgres_transactions, redis_calls};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
-use crate::lane::lease::drive::Polled;
-use crate::lane::lease::seed;
-use crate::profile::{Parameter, Profile};
-use crate::report::{
-    DatastoreCost, Datastores as ReportDatastores, Fixture, Lane, Latency, Report,
+use crate::lane::lease::seed::{
+    self, BENCH_ACTOR, BENCH_REQUEST_JSON, ROWS_PER_FLEET, SEEDED_AT, SeededFleet,
 };
+use crate::lane::outcomes::Outcomes;
+use crate::profile::{Parameter, Profile};
+use crate::report::{DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, ratio};
 
 /// Measurement key: how many steers the window appended in total.
 const ACCEPTED: &str = "accepted";
+
+/// Measurement key: appends the path refused.
+const FAILURES: &str = "failures";
+
+/// Measurement key: the fraction of everything tried that the path refused.
+const ERROR_RATE: &str = "error_rate";
 
 /// Measurement key: Redis commands each accepted steer cost.
 const REDIS_CALLS_PER_STEER: &str = "redis_calls_per_steer";
 
 /// Measurement key: Postgres transactions each accepted steer cost.
 ///
-/// Reported as a RATIO rather than only as a total, because the total is not
-/// zero and a reader deserves to see why. `pg_stat_database` counts every
-/// transaction the database served during the window, and the pool keeps its
-/// own connections alive underneath a lane that never queries. The ratio is
-/// what shows that residue for what it is: a few hundredths of a transaction
-/// per steer is background noise, where the ingress path issuing one would
-/// read as 1.0.
+/// A RATIO, because the total is not zero and a reader deserves to see why:
+/// `pg_stat_database` counts every transaction the database served in the
+/// window, including the pool keeping its connections alive and this lane's
+/// own two readings of the statistic. A few hundred-thousandths per steer is
+/// that residue; the ingress path issuing one would read as 1.0.
 const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
 
 /// Series key: readiness-index depth, sampled through the run.
 const READY_DEPTH: &str = "ready_depth";
 
 /// How often the readiness index is sampled.
-///
-/// Frequent enough that a run of a few seconds still produces a series with
-/// shape, rare enough that the sampler is not itself a load generator against
-/// the structure it is watching.
 const DEPTH_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
-
-/// The clock a seeded row is stamped with.
-const SEEDED_AT: i64 = 1_767_225_600_000;
-
-/// The body every submitted steer carries.
-///
-/// Generated, never echoed from a tenant row: a fixture built from real
-/// request text would put customer data in a bench result (RULE PRI).
-const REQUEST_JSON: &str = "{\"prompt\":\"bench steer\"}";
-
-/// The actor every submitted steer records.
-const ACTOR: &str = "steer:bench";
 
 /// What the caller asked this lane to measure.
 #[derive(Debug, Clone, Copy)]
@@ -87,14 +85,15 @@ pub struct Parameters {
 }
 
 impl Parameters {
-    /// Refuse anything above the profile's ceiling, before a connection opens.
+    /// Refuse anything outside the profile's bounds, before a connection opens.
     ///
     /// # Errors
     ///
-    /// [`crate::Error::CapExceeded`] naming the cap and the profile.
+    /// A cap, a floor, or a window under the warmup floor, each named.
     pub fn admit(self, profile: Profile) -> Result<()> {
         profile.check(Parameter::Fleets, self.fleets)?;
-        profile.check(Parameter::Concurrency, self.concurrency)
+        profile.check(Parameter::Concurrency, self.concurrency)?;
+        profile.check_window(self.window)
     }
 }
 
@@ -102,7 +101,7 @@ impl Parameters {
 ///
 /// # Errors
 ///
-/// A cap refusal, or a datastore that would not answer.
+/// A cap refusal, a datastore that would not answer, or a lost task.
 pub async fn run(
     profile: Profile,
     parameters: Parameters,
@@ -110,7 +109,7 @@ pub async fn run(
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
-    let abort = std::sync::Arc::new(Abort::new(profile.caps().abort_error_rate));
+    let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
     let tag = seed::placement_tag(prefix);
     let mut ledger = FixtureLedger::new();
 
@@ -127,7 +126,7 @@ pub async fn run(
             )
             .await?,
         );
-        ledger.created(seed::ROWS_PER_FLEET);
+        ledger.created(ROWS_PER_FLEET);
     }
 
     let measured = submit(stores, &fleets, parameters, &abort).await?;
@@ -144,189 +143,169 @@ pub async fn run(
 
 /// One window of concurrent appends, with the cost either side of it.
 struct Submitted {
-    polled: Polled,
-    elapsed: Duration,
+    outcomes: Outcomes,
+    length: Duration,
     redis_calls: u64,
     transactions: u64,
     depth: Vec<f64>,
-    latency: Latency,
 }
+
+/// Each submitter's slice of the population: fleet id and the workspace that
+/// owns it, so an appended entry carries the workspace of its own fleet.
+type Slice = Vec<(String, String)>;
 
 /// Drive every submitter concurrently, sampling the index while they run.
 async fn submit(
     stores: &Datastores,
-    fleets: &[seed::SeededFleet],
+    fleets: &[SeededFleet],
     parameters: Parameters,
-    abort: &std::sync::Arc<Abort>,
+    abort: &Arc<Abort>,
 ) -> Result<Submitted> {
+    // Every slice is built BEFORE the window opens, so partitioning the
+    // population is not charged to the rate and every submitter starts on
+    // the same instant rather than as its slice finishes.
+    let slices = partition(fleets, parameters.concurrency);
+    let stop = CancellationToken::new();
+    let sampler = tokio::spawn(sample_depth(stores.queue.clone(), stop.clone()));
     let redis_before = redis_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
-    let deadline = Instant::now() + parameters.window;
     let started = Instant::now();
+    let deadline = started + parameters.window;
 
-    let sampler = tokio::spawn(sample_depth(stores.queue.clone(), deadline));
-    let mut tasks = Vec::new();
-    for submitter in 0..parameters.concurrency {
+    let mut tasks = Vec::with_capacity(slices.len());
+    for mine in slices {
         let steer = Steer::new(stores.queue.clone());
-        // Each submitter walks its own slice of the population, so two
-        // submitters are not serialised behind one stream's key.
-        let mine: Vec<String> = fleets
-            .iter()
-            .enumerate()
-            .filter(|(index, _fleet)| (*index as u64) % parameters.concurrency == submitter)
-            .map(|(_index, fleet)| fleet.fleet.clone())
-            .collect();
-        let workspace = fleets.first().map(|fleet| fleet.workspace.clone());
-        let abort = std::sync::Arc::clone(abort);
+        let abort = Arc::clone(abort);
         tasks.push(tokio::spawn(async move {
-            append_until(
-                &steer,
-                &mine,
-                workspace.unwrap_or_default(),
-                deadline,
-                &abort,
-            )
-            .await
+            append_until(&steer, &mine, deadline, &abort).await
         }));
     }
-
-    let mut polled = Polled::default();
+    let mut outcomes = Outcomes::new()?;
     for task in tasks {
-        polled.absorb(
-            task.await
-                .map_err(|_joined| crate::Error::RunnerTaskLost)??,
-        );
+        let theirs = task
+            .await
+            .map_err(|_joined| Error::TaskLost { role: "submitter" })??;
+        outcomes.absorb(&theirs)?;
     }
-    let depth = sampler
-        .await
-        .map_err(|_joined| crate::Error::RunnerTaskLost)?;
+    // The window is the submitters', measured the instant they are all back.
+    let length = started.elapsed();
+    let redis_calls = redis_calls(&stores.queue)
+        .await?
+        .saturating_sub(redis_before);
+    let transactions = postgres_transactions(&stores.database)
+        .await?
+        .saturating_sub(transactions_before);
+    stop.cancel();
+    let depth = sampler.await.map_err(|_joined| Error::TaskLost {
+        role: "readiness sampler",
+    })?;
 
-    let mut latency = Latency::new()?;
-    for duration in &polled.durations {
-        latency.record(*duration)?;
-    }
     Ok(Submitted {
-        elapsed: started.elapsed(),
-        redis_calls: redis_calls(&stores.queue)
-            .await?
-            .saturating_sub(redis_before),
-        transactions: postgres_transactions(&stores.database)
-            .await?
-            .saturating_sub(transactions_before),
+        outcomes,
+        length,
+        redis_calls,
+        transactions,
         depth,
-        latency,
-        polled,
     })
 }
 
-/// Append to each fleet in turn until the deadline.
+/// Deal the population out to `concurrency` submitters, round-robin.
+fn partition(fleets: &[SeededFleet], concurrency: u64) -> Vec<Slice> {
+    let lanes = usize::try_from(concurrency).unwrap_or(1).max(1);
+    let mut slices: Vec<Slice> = vec![Vec::new(); lanes];
+    for (index, fleet) in fleets.iter().enumerate() {
+        if let Some(slice) = slices.get_mut(index % lanes) {
+            slice.push((fleet.fleet.clone(), fleet.workspace.clone()));
+        }
+    }
+    slices
+        .into_iter()
+        .filter(|slice| !slice.is_empty())
+        .collect()
+}
+
+/// Append to each fleet in turn until the deadline or the monitor fires.
 async fn append_until(
     steer: &Steer,
-    fleets: &[String],
-    workspace: String,
+    fleets: &[(String, String)],
     deadline: Instant,
     abort: &Abort,
-) -> Result<Polled> {
-    let mut polled = Polled::default();
-    if fleets.is_empty() {
-        return Ok(polled);
-    }
+) -> Result<Outcomes> {
+    let mut outcomes = Outcomes::new()?;
     let token = abort.token();
-    // Round-robin over the slice: cycling the iterator means the fleet is
-    // always present, so there is no index to check and no arm for an empty
-    // slice past the guard above.
-    let mut round_robin = fleets.iter().cycle();
-    while Instant::now() < deadline && !token.is_cancelled() {
-        let Some(fleet) = round_robin.next() else {
+    // A slice is never empty (`partition` drops empty ones), so cycling it
+    // always yields; the deadline and the token are what end the loop.
+    for (fleet, workspace) in fleets.iter().cycle() {
+        if Instant::now() >= deadline || token.is_cancelled() {
             break;
-        };
+        }
         let started = Instant::now();
-        // A refused append is counted and reported through the monitor, not
-        // propagated: the monitor decides when refusing often enough is the
-        // end of the window.
-        match steer.append(fleet, &workspace, ACTOR, REQUEST_JSON).await {
+        match steer
+            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON)
+            .await
+        {
             Ok(_id) => {
-                polled.durations.push(started.elapsed());
-                polled.leases += 1;
+                outcomes.succeeded(started.elapsed())?;
                 abort.record(true);
             }
             Err(_refused) => {
-                polled.failures += 1;
+                outcomes.failed();
                 abort.record(false);
             }
         }
     }
-    Ok(polled)
+    Ok(outcomes)
 }
 
-/// Sample the readiness index until the deadline.
+/// Sample the readiness index until told to stop.
 ///
 /// A separate task rather than a reading taken by each submitter: the depth is
 /// a property of the index over TIME, and a sample taken inside an append loop
-/// would be a sample taken at whatever rate that loop happened to run.
-async fn sample_depth(queue: Redis, deadline: Instant) -> Vec<f64> {
+/// would be a sample taken at whatever rate that loop happened to run. It
+/// stops on the lane's signal, not on the deadline, so an aborted window does
+/// not leave it running alone.
+async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<f64> {
     let index = ReadyIndex::new(queue);
     let mut series = Vec::new();
-    while Instant::now() < deadline {
+    while !stop.is_cancelled() {
         if let Ok(depth) = index.len().await {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "a readiness depth past f64's exact range is not a deployment"
-            )]
-            series.push(depth as f64);
+            series.push(count(depth));
         }
-        tokio::time::sleep(DEPTH_SAMPLE_INTERVAL).await;
+        tokio::select! {
+            () = stop.cancelled() => break,
+            () = tokio::time::sleep(DEPTH_SAMPLE_INTERVAL) => {}
+        }
     }
     series
 }
 
 impl Submitted {
-    /// A cost divided across the steers that were accepted.
-    fn per_steer(&self, total: u64) -> f64 {
-        if self.polled.leases == 0 {
-            return 0.0;
-        }
-        count(total) / count(self.polled.leases)
-    }
-
     /// Write this window's numbers into the report.
     fn record(&self, report: &mut Report) {
-        let seconds = self.elapsed.as_secs_f64();
-        report.latency(seconds, &self.latency);
-        report.measurement(ACCEPTED, count(self.polled.leases));
-        // `rate_per_second` already carries accepted-per-second: every append
-        // records exactly one latency sample, so the shared key and a
-        // lane-specific one would be the same number under two names.
-        report.measurement(REDIS_CALLS_PER_STEER, self.per_steer(self.redis_calls));
+        report.latency(self.length.as_secs_f64(), &self.outcomes.latency);
+        report.measurement(ACCEPTED, count(self.outcomes.successes));
+        report.measurement(FAILURES, count(self.outcomes.failures));
+        report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
+        report.measurement(
+            REDIS_CALLS_PER_STEER,
+            ratio(self.redis_calls, self.outcomes.successes),
+        );
         report.measurement(
             POSTGRES_TRANSACTIONS_PER_STEER,
-            self.per_steer(self.transactions),
+            ratio(self.transactions, self.outcomes.successes),
         );
         report
             .series
             .insert(READY_DEPTH.to_owned(), self.depth.clone());
-        report.datastores = ReportDatastores {
+        report.datastores = DatastoreCosts {
             redis: DatastoreCost {
                 operations: self.redis_calls,
                 time_ms: None,
             },
-            // Expected to be zero, and read from the server rather than
-            // assumed: the ingress path never reaches Postgres.
             postgres: DatastoreCost {
                 operations: self.transactions,
                 time_ms: None,
             },
         };
-    }
-}
-
-/// A count as a ratio's operand.
-fn count(value: u64) -> f64 {
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a count past f64's exact range is not a run that finished"
-    )]
-    {
-        value as f64
     }
 }

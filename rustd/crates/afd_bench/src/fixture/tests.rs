@@ -4,6 +4,16 @@
 use super::{FixtureLedger, PREFIX_TOKEN, RunPrefix};
 
 #[test]
+fn test_a_prefix_disowns_another_runs_names() {
+    let ours = RunPrefix::mint();
+
+    assert!(
+        !ours.owns("bench-1-2-fleet-7"),
+        "sweeping by prefix must not reach another run's objects"
+    );
+}
+
+#[test]
 fn test_a_minted_prefix_owns_the_names_it_builds() {
     let prefix = RunPrefix::mint();
 
@@ -17,45 +27,6 @@ fn test_a_minted_prefix_owns_the_names_it_builds() {
         name.starts_with(PREFIX_TOKEN),
         "every created name leads with the bench token, so a human reading a \
          console can tell what made it"
-    );
-}
-
-#[test]
-fn test_a_prefix_disowns_another_runs_names() {
-    let ours = RunPrefix::mint();
-    let theirs = RunPrefix::adopt("bench-1-2-fleet-7".to_owned());
-
-    assert!(
-        !ours.owns(theirs.as_str()),
-        "sweeping by prefix must not reach another run's objects"
-    );
-}
-
-#[test]
-fn test_an_orphan_from_an_earlier_run_is_still_recognisably_bench_owned() {
-    let orphan = "bench-1700000000000-42-fleet-3";
-
-    assert!(
-        RunPrefix::is_bench_owned(orphan),
-        "a run that died between create and sweep leaves objects a LATER run \
-         must be able to recognise"
-    );
-    assert!(
-        !RunPrefix::is_bench_owned("tenant-real-fleet-3"),
-        "recognising an orphan must never widen to somebody's real object"
-    );
-}
-
-#[test]
-fn test_an_adopted_prefix_sweeps_what_the_run_that_minted_it_created() {
-    let minted = RunPrefix::mint();
-    let created = minted.name("stream-1");
-
-    let adopted = RunPrefix::adopt(minted.as_str().to_owned());
-
-    assert!(
-        adopted.owns(&created),
-        "adopting a prefix is how a following run finishes an interrupted sweep"
     );
 }
 

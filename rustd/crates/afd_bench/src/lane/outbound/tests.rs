@@ -1,5 +1,10 @@
 //! How destinations are scripted from the requested fractions.
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
 use core::time::Duration;
 
 use super::poster::Behaviour;
@@ -58,5 +63,20 @@ fn test_a_fraction_that_selects_less_than_one_destination_selects_none() {
         fraction_of(DESTINATIONS, 0.01),
         0,
         "rounded down, so a run does not get a slow destination it did not ask for"
+    );
+}
+
+#[test]
+fn test_two_scripts_of_one_prefix_deal_destinations_in_the_same_order() {
+    let prefix = RunPrefix::mint();
+    let first: Vec<String> = script(&prefix, parameters(0.25, 0.0)).into_keys().collect();
+    let second: Vec<String> = script(&prefix, parameters(0.25, 0.0)).into_keys().collect();
+    assert_eq!(
+        first, second,
+        "the interleaving is a function of the parameters, not a hash seed"
+    );
+    assert!(
+        first.windows(2).all(|pair| pair[0] < pair[1]),
+        "and it is sorted"
     );
 }

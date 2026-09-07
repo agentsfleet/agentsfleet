@@ -177,6 +177,15 @@ pub struct LeaseInstrument {
 /// The one instrument this process has, once anything has installed it.
 static INSTALLED: OnceLock<LeaseInstrument> = OnceLock::new();
 
+/// Serialises the first build.
+///
+/// Two first callers each building a provider would let `producers::install`
+/// bind to one while `INSTALLED` kept the other — after which every read
+/// flushes a provider nothing records into and reports zero forever. One
+/// builder at a time means the provider that is kept is the one that was
+/// bound.
+static BUILDING: Mutex<()> = Mutex::new(());
+
 impl LeaseInstrument {
     /// Install the process-wide producer set over an in-memory reader.
     ///
@@ -188,9 +197,15 @@ impl LeaseInstrument {
         if let Some(installed) = INSTALLED.get() {
             return Ok(installed.clone());
         }
+        let _one_builder = BUILDING
+            .lock()
+            .map_err(|_poisoned| Error::InstrumentPoisoned)?;
+        // Re-checked under the lock: the builder that lost the race finds the
+        // winner's instrument here and hands that back.
+        if let Some(installed) = INSTALLED.get() {
+            return Ok(installed.clone());
+        }
         let built = Self::build()?;
-        // A racing installer may have set it first; either way what is handed
-        // back is the one the producers are bound to.
         let _ = INSTALLED.set(built);
         INSTALLED.get().cloned().ok_or(Error::InstrumentPoisoned)
     }
@@ -224,8 +239,8 @@ impl LeaseInstrument {
     ///
     /// # Errors
     ///
-    /// [`Error::InstrumentUnreadable`] when the provider will not flush or the
-    /// captured reading cannot be taken.
+    /// [`Error::InstrumentUnflushable`] when the provider will not flush, and
+    /// [`Error::InstrumentPoisoned`] when the capture lock's holder panicked.
     pub fn read(&self) -> Result<PollCounters> {
         self.provider.force_flush()?;
         self.captured

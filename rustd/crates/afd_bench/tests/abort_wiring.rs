@@ -12,10 +12,12 @@
 )]
 
 use core::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 
 use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
-use afd_bench::lane::lease::drive::poll_until;
+use afd_bench::lane::lease::drive::{Shared, poll_until};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::Leases;
@@ -47,27 +49,30 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
     .expect("a lazy handle opens no socket and cannot fail");
     let leases = Leases::new(afd_db::Db::unreachable(&no_pool()), queue, Entropy::new());
     let runner = Uuid7::parse(RUNNER).expect("a v7 spelling");
-    let abort = Abort::new(0.5);
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let abort = Arc::new(Abort::new(0.5));
+    let shared = Shared {
+        deadline: Instant::now() + Duration::from_secs(30),
+        leased: AtomicU64::new(0),
+        stop_after: None,
+        abort: Arc::clone(&abort),
+    };
 
     let started = Instant::now();
-    let polled = poll_until(&leases, &runner, deadline, None, &abort)
+    let (outcomes, last_lease) = poll_until(&leases, &runner, &shared)
         .await
         .expect("a refusing target is counted, never propagated");
 
+    assert!(abort.fired(), "every poll refused must trip the monitor");
     assert!(
-        abort.fired(),
-        "every poll refused must trip a fifty percent threshold"
-    );
-    assert!(
-        polled.failures >= MINIMUM_SAMPLE,
-        "the monitor judges only after its minimum sample"
+        outcomes.failures >= afd_bench::abort::CONSECUTIVE_FAILURES.min(MINIMUM_SAMPLE),
+        "the monitor judges only after its sample"
     );
     assert_eq!(
-        polled.leases + polled.misses,
+        outcomes.attempts(),
         0,
         "nothing was measured off a target that refused"
     );
+    assert!(last_lease.is_none(), "no lease was ever issued");
     assert!(
         started.elapsed() < Duration::from_secs(25),
         "the run stopped on the abort, not on its deadline"

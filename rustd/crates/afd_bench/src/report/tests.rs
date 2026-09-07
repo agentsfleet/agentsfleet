@@ -11,7 +11,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    Datastores, Fixture, Lane, Latency, P95_MS, P99_MS, RATE_PER_SECOND, RESULTS_DIRECTORY, Report,
+    DatastoreCosts, Fixture, Lane, Latency, P95_MS, P99_MS, RATE_PER_SECOND, RESULTS_DIRECTORY,
+    Report,
 };
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::profile::Profile;
@@ -62,7 +63,7 @@ fn filled_report() -> Report {
     report.parameter("runners", 64);
     report.measurement(RATE_PER_SECOND, 812.5);
     report.measurement(P95_MS, 14.25);
-    report.datastores = Datastores {
+    report.datastores = DatastoreCosts {
         redis: super::DatastoreCost {
             operations: 4_000,
             time_ms: Some(120.0),
@@ -222,4 +223,19 @@ fn test_the_fixture_block_reads_off_the_ledger() {
     assert_eq!(fixture.run_prefix, prefix.as_str());
     assert_eq!(fixture.created, 12);
     assert_eq!(fixture.swept, 12);
+}
+
+#[test]
+fn test_an_empty_distribution_reports_no_tail() {
+    let latency = Latency::new().expect("buildable");
+    let mut report = Report::new(Lane::Steer, Profile::Rig);
+
+    report.latency(2.0, &latency);
+
+    for key in [P95_MS, P99_MS, super::MAX_MS] {
+        assert!(
+            !report.measurements.contains_key(key),
+            "{key} on nothing recorded is a zero nobody measured"
+        );
+    }
 }

@@ -7,14 +7,25 @@
 //! backoff its reply carries, and modelling that here would measure the model.
 //! What this measures is how fast the pass answers when asked continuously.
 //!
-//! # A miss is data, not a failure
+//! # The window ends when the POPULATION is exhausted
 //!
-//! `Ok(None)` means nothing was leasable this pass. Under contention that is
-//! the interesting case: it is a poll that cost a readiness peek, possibly a
-//! candidate query, and produced no work — which is what a runner fleet larger
-//! than its ready depth spends most of its time doing.
+//! Every runner shares one lease total, and every runner stops the moment it
+//! reaches the population. A ceiling checked against a runner's OWN count
+//! never fires with more than one runner — no runner leases everything — and
+//! the window then runs to its deadline in miss mode, which is what made the
+//! first baselines report leases over the whole window rather than over the
+//! time it took to hand the work out.
+//!
+//! # A miss is data; a refusal is counted and judged, not propagated
+//!
+//! `Ok(None)` is a poll that cost a peek and possibly a candidate query and
+//! produced no work — under contention, the interesting case. `Err` is a
+//! datastore that would not answer: it is counted, reported, and handed to
+//! the abort monitor, which decides when refusing often enough ends the run.
 
 use core::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use afd_core::clock::UnixMillis;
@@ -23,97 +34,73 @@ use afd_fleet::lease::Leases;
 
 use crate::abort::Abort;
 use crate::error::Result;
+use crate::lane::outcomes::Outcomes;
 
-/// What one runner's loop did in its window.
-#[derive(Debug, Clone, Default)]
-pub struct Polled {
-    /// Polls that issued a lease.
-    pub leases: u64,
-    /// Polls that found nothing leasable.
-    pub misses: u64,
-    /// Polls the pass refused: a datastore that would not answer.
-    pub failures: u64,
-    /// How long each poll took, in order.
-    pub durations: Vec<Duration>,
+/// What every runner in a window shares: the deadline, the lease total and
+/// the ceiling it stops at, and the monitor that can end the window early.
+#[derive(Debug)]
+pub struct Shared {
+    /// When the window ends whatever else happens.
+    pub deadline: Instant,
+    /// Leases issued by every runner so far.
+    pub leased: AtomicU64,
+    /// Stop once `leased` reaches this; `None` polls to the deadline.
+    pub stop_after: Option<u64>,
+    /// The monitor every outcome is reported to.
+    pub abort: Arc<Abort>,
 }
 
-impl Polled {
-    /// Fold another runner's loop into this one.
-    pub fn absorb(&mut self, other: Self) {
-        self.leases += other.leases;
-        self.misses += other.misses;
-        self.failures += other.failures;
-        self.durations.extend(other.durations);
+impl Shared {
+    /// Whether the population is exhausted.
+    fn exhausted(&self) -> bool {
+        self.stop_after
+            .is_some_and(|ceiling| self.leased.load(Ordering::Relaxed) >= ceiling)
     }
 
-    /// Every poll, whether or not it issued a lease.
+    /// The instant the last lease was issued, for a window's true length.
     #[must_use]
-    pub const fn polls(&self) -> u64 {
-        self.leases + self.misses
-    }
-
-    /// Polls that cost something and produced no work.
-    ///
-    /// Measured from OUTSIDE the pass, because the pass does not publish a
-    /// per-poll reason: a miss here is any poll that found nothing leasable,
-    /// which under contention is dominated by fleets another runner claimed
-    /// first. It is an upper bound on wasted claims, not a count of them.
-    #[must_use]
-    pub fn wasted_fraction(&self) -> f64 {
-        let polls = self.polls();
-        if polls == 0 {
-            return 0.0;
-        }
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "a poll count past f64's exact range is not a run that finished"
-        )]
-        {
-            self.misses as f64 / polls as f64
-        }
+    pub fn leased_so_far(&self) -> u64 {
+        self.leased.load(Ordering::Relaxed)
     }
 }
 
-/// Poll until the deadline, `stop_after` leases, or the abort monitor fires.
+/// Poll until the population is exhausted, the deadline passes, or the monitor fires.
 ///
-/// A pass that FAULTS is counted, not propagated: the monitor decides when a
-/// target refusing often enough is a reason to stop, and one refusal is data
-/// about the window rather than the end of it.
+/// Answers what this runner did and WHEN it issued its last lease, so the lane
+/// can end the window at exhaustion rather than at the deadline.
 ///
 /// # Errors
 ///
-/// None today; the signature keeps the seam a future refusal can use.
+/// [`crate::Error::LatencyUnavailable`] or [`crate::Error::LatencyUnrecordable`]
+/// from the histogram; never a refusal from the path, which is counted.
 pub async fn poll_until(
     leases: &Leases,
     runner: &Uuid7,
-    deadline: Instant,
-    stop_after: Option<u64>,
-    abort: &Abort,
-) -> Result<Polled> {
-    let mut polled = Polled::default();
-    let token = abort.token();
-    while Instant::now() < deadline && !token.is_cancelled() {
-        if stop_after.is_some_and(|ceiling| polled.leases >= ceiling) {
-            break;
-        }
+    shared: &Shared,
+) -> Result<(Outcomes, Option<Instant>)> {
+    let mut outcomes = Outcomes::new()?;
+    let mut last_lease = None;
+    let token = shared.abort.token();
+    while Instant::now() < shared.deadline && !token.is_cancelled() && !shared.exhausted() {
         let started = Instant::now();
         match leases.select(runner, now()).await {
-            Ok(acquired) => {
-                polled.durations.push(started.elapsed());
-                abort.record(true);
-                if acquired.is_some() {
-                    polled.leases += 1;
-                } else {
-                    polled.misses += 1;
-                }
+            Ok(Some(_acquired)) => {
+                outcomes.succeeded(started.elapsed())?;
+                shared.leased.fetch_add(1, Ordering::Relaxed);
+                last_lease = Some(Instant::now());
+                shared.abort.record(true);
+            }
+            Ok(None) => {
+                outcomes.missed(started.elapsed())?;
+                shared.abort.record(true);
             }
             Err(_refused) => {
-                polled.failures += 1;
-                abort.record(false);
+                outcomes.failed();
+                shared.abort.record(false);
             }
         }
     }
-    Ok(polled)
+    Ok((outcomes, last_lease))
 }
 
 /// The wall clock, in the shape the assignment pass is given.
@@ -123,4 +110,19 @@ fn now() -> UnixMillis {
         .unwrap_or_default()
         .as_millis();
     UnixMillis::from_millis(i64::try_from(millis).unwrap_or(i64::MAX))
+}
+
+/// A window's length: from its start to its last lease when the population
+/// was exhausted, or to its end when it was not.
+#[must_use]
+pub fn window_length(
+    started: Instant,
+    ended: Instant,
+    last_lease: Option<Instant>,
+    exhausted: bool,
+) -> Duration {
+    match (exhausted, last_lease) {
+        (true, Some(last)) => last.saturating_duration_since(started),
+        _ => ended.saturating_duration_since(started),
+    }
 }

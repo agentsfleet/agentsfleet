@@ -13,6 +13,10 @@
 //! The acceptance suite reaches the same conclusion in
 //! `ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts`, which sweeps by
 //! run prefix inside a fixture workspace rather than by age.
+//!
+//! Collecting an EARLIER run's orphans is not built yet: it needs an age floor
+//! below which another run's prefix is fair game, and that number is deferred
+//! with the deployed-environment follow-up in the spec's Discovery.
 
 use core::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,12 +24,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Leading token on every object a lane creates, so a sweep can recognise its
 /// own work and a human can recognise it in a console.
 pub const PREFIX_TOKEN: &str = "bench";
-
-/// The workspace slug a deployed run is confined to.
-///
-/// Deployed lanes create nothing outside it, which is the reason a run against
-/// a shared environment is acceptable at all.
-pub const FIXTURE_WORKSPACE_SLUG: &str = "bench-fixture";
 
 /// Identifies one run's objects, for the whole life of those objects.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,12 +50,6 @@ impl RunPrefix {
         }
     }
 
-    /// Rebuild a prefix a previous run minted, to sweep what it left behind.
-    #[must_use]
-    pub fn adopt(value: String) -> Self {
-        Self { value }
-    }
-
     /// The prefix itself, for writing into a created object's name.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -74,13 +66,6 @@ impl RunPrefix {
     #[must_use]
     pub fn owns(&self, name: &str) -> bool {
         name.starts_with(&self.value)
-    }
-
-    /// Whether a name belongs to ANY bench run, including an earlier one whose
-    /// sweep never happened.
-    #[must_use]
-    pub fn is_bench_owned(name: &str) -> bool {
-        name.starts_with(PREFIX_TOKEN)
     }
 }
 
