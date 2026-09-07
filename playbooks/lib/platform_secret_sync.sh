@@ -59,6 +59,18 @@ case "$secret_name" in
       "client_secret|$secret_name/client_secret"
     )
     ;;
+  approval-signing)
+    # The deployment-level HMAC key, read by the Rust daemon as a vault row
+    # rather than from the environment the way the Zig daemon read it. The row
+    # name and the 1Password item name differ on purpose: the daemon's key is
+    # `approval-signing` (APPROVAL_IDENTITY) while the item has always been
+    # `approval-signing-secret`, and renaming either would rotate a live key.
+    # `webhook_secret` is the field name the reader projects — see
+    # `afd_ingress::secret::webhook_secret_field`.
+    field_refs=(
+      "webhook_secret|approval-signing-secret/credential"
+    )
+    ;;
   qstash)
     field_refs=(
       "token|qstash/token"

@@ -127,6 +127,12 @@ case "$EXPECTED_NAME" in
       and ((.data // {}) | keys == ["client_id", "client_secret"])
     ' "$payload" >/dev/null
     ;;
+  approval-signing)
+    jq -e '
+      (.name == "approval-signing" or .data != null)
+      and ((.data // {}) | keys == ["webhook_secret"])
+    ' "$payload" >/dev/null
+    ;;
 esac
 
 printf '%s|%s\n' "$method" "$url" >>"$CALLS_FILE"
@@ -205,7 +211,7 @@ test_replaces_existing_bag_in_one_put() {
 test_maps_every_provider_field_name() {
   local name="maps every provider field name"
   local secret_name output status
-  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash)
+  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash approval-signing)
   for secret_name in "${secret_names[@]}"; do
     : >"$work_dir/calls"
     status=0
