@@ -48,6 +48,7 @@ VALID_REASONS = frozenset(
         "credentialed_feed",
         "no_public_rates",
         "awaiting_curation",
+        "duplicate_spelling",
         "operator_hosted",
     }
 )

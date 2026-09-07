@@ -30,3 +30,13 @@ pub const VENDOR_UNREACHABLE: &str = "Token exchange did not complete in time";
 /// client secret are the same sentence to whoever pressed Connect, and the
 /// difference is in the operator's log rather than in the answer.
 pub const EXCHANGE_FAILED: &str = "Token exchange failed";
+
+/// What a person is told when no single GitHub installation could be bound.
+///
+/// `github/callback.zig`'s ownership refusal sentence. One sentence for none
+/// listed, several listed, a claim the token does not open and an
+/// installation another workspace routes: every one of them is answered by
+/// installing the App on the right account, or signing in as the account
+/// that owns it, and connecting again — and which one it was is in the
+/// operator's log rather than the answer.
+pub const INSTALLATION_OWNERSHIP: &str = "GitHub installation ownership could not be verified";

@@ -91,7 +91,7 @@ jobs:
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
-            LOG_LEVEL="debug" \
+            AGENTSFLEET_LOG_LEVEL="debug" \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             REDIS_URL_API="$REDIS_URL_API" \

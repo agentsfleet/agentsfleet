@@ -338,6 +338,59 @@ test_workflows_load_only_current_connector_boot_secret() {
   ok "$name"
 }
 
+# The Fly environment variable checked above is NOT what the connector flow
+# resolves. The Zig daemon read `approval_signing_secret` from the environment;
+# the Rust daemon reads an admin-workspace vault row named `approval-signing`
+# (`afd_http::services::ingress::APPROVAL_IDENTITY`), and `state_secret` refuses
+# the whole connect with 503 UZ-CONN-001 when it is absent — for every provider,
+# before any provider bag is read, and without logging a line.
+#
+# Dev ran that way for the entire cutover: the Fly secret was set and correct,
+# the catalogue reported `configured: true` for all five providers, and every
+# connect answered 503. The check above stayed green throughout, because it
+# proves the OLD wiring. This one proves the wiring the daemon actually reads.
+test_workflows_seed_the_connector_signing_row() {
+  local name="workflows seed the connector signing vault row"
+  local family workflow env_name
+
+  for workflow in deploy-dev release; do
+    env_name=dev
+    [ "$workflow" = release ] && env_name=prod
+    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
+    if ! rg --fixed-strings --quiet \
+      "ENV=$env_name ./playbooks/lib/platform_secret_sync.sh approval-signing" \
+      <<<"$family"; then
+      bad "$name" "$workflow workflow family does not seed the approval-signing vault row"
+      return
+    fi
+  done
+  ok "$name"
+}
+
+# The daemon reads AGENTSFLEET_LOG_LEVEL (`agentsfleetd/src/logs.rs:44`) and
+# falls back to INFO. The dev deploy set `LOG_LEVEL` — the Zig-era spelling —
+# from the cutover until Sep 07, 2026, so dev ran at INFO the whole time and
+# every `tracing::debug!` was unreachable. That is not a cosmetic gap: two
+# sessions of connector debugging reasoned from the ABSENCE of a debug line
+# (`secret_opened`) that could never have been emitted. A deployment that
+# believes it is in debug and is not is worse than one that knows it is at INFO.
+test_dev_deploy_sets_the_daemons_own_log_level() {
+  local name="dev deploy sets the daemon's own log level variable"
+  local workflow="$repo_root/.github/workflows/deploy-dev-fly.yml"
+
+  if ! rg --fixed-strings --quiet 'AGENTSFLEET_LOG_LEVEL="debug"' "$workflow"; then
+    bad "$name" "deploy-dev-fly.yml does not set AGENTSFLEET_LOG_LEVEL"
+    return
+  fi
+  # The bare spelling is read by nothing in `rustd/`; setting it again would be
+  # the same silent no-op this check exists to prevent.
+  if rg --quiet '^\s+LOG_LEVEL=' "$workflow"; then
+    bad "$name" "deploy-dev-fly.yml still sets the dead LOG_LEVEL variable"
+    return
+  fi
+  ok "$name"
+}
+
 test_issue_tracker_docs_pin_current_source_scopes() {
   local name="issue-tracker docs pin current source scopes"
   # Both providers declare their scopes in one Rust registry now; the Jira
@@ -389,6 +442,8 @@ test_prod_rejects_malformed_discord_webhook
 test_discord_notifications_route_by_release_stage
 test_workflows_use_deployment_stage_without_generated_pointer
 test_workflows_load_only_current_connector_boot_secret
+test_workflows_seed_the_connector_signing_row
+test_dev_deploy_sets_the_daemons_own_log_level
 test_issue_tracker_docs_pin_current_source_scopes
 test_unknown_stage_fails_closed
 

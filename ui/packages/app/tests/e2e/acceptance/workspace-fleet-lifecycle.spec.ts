@@ -34,7 +34,9 @@ import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/na
 
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
-const SEED_PREFIX = "ws-life-";
+// Stable, so the secondary workspace's library converges on one row — see
+// `installViaUI` on why a per-run name is a leak.
+const SEED_PREFIX = "ws-life";
 
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
@@ -58,8 +60,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     // Onboard + install against the secondary workspace — the one now active
     // in the browser, so the onboarded card renders on /w/<secondary>/fleets/new.
-    const name = `${SEED_PREFIX}${Math.random().toString(36).slice(2, 8)}`;
-    const fleetId = await installViaUI(page, name, {
+    const fleetId = await installViaUI(page, SEED_PREFIX, {
       handle: FIXTURE_KEY.regular,
       workspaceId: secondary.id,
     });

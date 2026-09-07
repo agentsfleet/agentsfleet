@@ -39,6 +39,10 @@ const INSTALL_TIMEOUT_MS = 60_000;
 export interface InstallAuth {
   handle: ClientHandle;
   workspaceId: string;
+  // The SKILL.md the onboarded template carries. Absent, the placeholder body
+  // below: enough for a lifecycle walk that never delivers. A journey that
+  // needs the fleet to actually answer passes a body with instructions in it.
+  skillMarkdown?: string;
 }
 
 function fixtureTriggerMd(name: string): string {
@@ -88,7 +92,7 @@ async function onboardTemplate(auth: InstallAuth, templateName: string): Promise
     `/v1/workspaces/${auth.workspaceId}/fleet-libraries`,
     {
       source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: fixtureSkillMd(templateName),
+      skill_markdown: auth.skillMarkdown ?? fixtureSkillMd(templateName),
       trigger_markdown: fixtureTriggerMd(templateName),
     },
   );
@@ -99,11 +103,15 @@ async function onboardTemplate(auth: InstallAuth, templateName: string): Promise
 }
 
 export async function installViaUI(page: Page, name: string, auth: InstallAuth): Promise<string> {
-  // Onboard a tenant template under the CALLER'S unique name: the one-step
+  // Onboard a tenant template under the caller's STABLE name. The one-step
   // install takes the template's own name (no confirm step, no name field), so
-  // naming the template names the fleet. Callers pass per-run unique slugs,
-  // and workspaces accumulate templates across runs — cleanup only deletes
-  // fleets — so uniqueness also disambiguates the gallery card.
+  // the template names the fleet, and the server suffixes a taken name
+  // (`{template}-NNN`) rather than refusing it. The name must be the same on
+  // every run: an onboard of identical bytes converges on one library row per
+  // workspace, where a per-run unique name minted a row per run that nothing
+  // deletes — the fixture workspace's gallery reached a hundred of them and
+  // pushed the platform catalogue off its first page. Cleanup sweeps fleets by
+  // this same prefix, which the suffixed name still carries.
   await onboardTemplate(auth, name);
 
   await page.goto(workspaceHref(auth.workspaceId, "fleets/new"));
@@ -112,7 +120,7 @@ export async function installViaUI(page: Page, name: string, auth: InstallAuth):
   // One step: click this template's card action — the install starts. Scope to
   // the card's <article> so the click targets the right "Install" among any
   // sibling cards.
-  const card = page.getByRole("article").filter({ hasText: name });
+  const card = page.getByRole("article").filter({ has: page.getByText(name, { exact: true }) });
   await card.getByRole("button", { name: "Install" }).click();
 
   // Install runs inline through the live "Install states" stream; on

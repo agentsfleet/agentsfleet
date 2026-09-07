@@ -8,7 +8,10 @@
  *  - no spec re-grows a private bundle builder — the drifted copies are how
  *    installs started failing with UZ-BUNDLE-001;
  *  - no test waits on `networkidle`, which is unreachable while the Clerk
- *    testing proxy holds retried FAPI requests in-flight.
+ *    testing proxy holds retried FAPI requests in-flight;
+ *  - every dashboard install names its template with a CONSTANT — a per-run
+ *    unique template minted a library row per run that nothing deletes, and
+ *    the fixture workspace's gallery reached a hundred of them.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
@@ -20,6 +23,10 @@ const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_DIR = path.join(TESTS_DIR, "e2e", "acceptance");
 const SHARED_FIXTURES_SUFFIX = path.join("fixtures", "seed.ts");
 const LOAD_STATE_NO_TEST_MAY_AWAIT = "networkidle";
+// `installViaUI(page, <TEMPLATE>, …)` — the template argument must be a
+// SCREAMING_SNAKE identifier, never a template literal or a call.
+const INSTALL_CALL = /installViaUI\(\s*page,\s*([^,]+),/g;
+const CONSTANT_IDENTIFIER = /^[A-Z][A-Z0-9_]*$/;
 
 function acceptanceSources(): string[] {
   return readdirSync(ACCEPTANCE_DIR, { recursive: true, encoding: "utf8" })
@@ -42,6 +49,18 @@ test("test_no_spec_local_bundle_builders_remain", () => {
     .filter((file) =>
       /function (triggerMd|skillMd|emptyBodySkillMd)/.test(readFileSync(file, "utf8")),
     );
+  expect(offenders).toEqual([]);
+});
+
+test("test_every_dashboard_install_names_a_constant_template", () => {
+  const offenders: string[] = [];
+  for (const file of acceptanceSources()) {
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(INSTALL_CALL)) {
+      const argument = (match[1] ?? "").trim();
+      if (!CONSTANT_IDENTIFIER.test(argument)) offenders.push(`${path.basename(file)}: ${argument}`);
+    }
+  }
   expect(offenders).toEqual([]);
 });
 

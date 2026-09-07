@@ -41,7 +41,7 @@ use crate::provider::Provider;
 use crate::sql;
 
 pub use self::holding::{Connection, Forgotten};
-pub use self::parse::{Grant, Install};
+pub use self::parse::{Grant, Install, InstallClaim};
 
 /// The context a failed install write reports under.
 const CONTEXT_INSTALL: &str = "record a connector install";
@@ -240,7 +240,26 @@ impl Grants {
         entropy.fill(&mut bytes)?;
         let id = Uuid7::encode(now, bytes)?;
 
-        sqlx::query(sql::UPSERT_INSTALL)
+        // Let go of any OTHER account this workspace still routes for the
+        // provider, before claiming this one. The vault holds one handle per
+        // workspace and provider, so a surviving second row would send that
+        // account's deliveries here to be answered with the new account's
+        // credential — the silent state this function's own note argues
+        // against, reached by a second row rather than a half-written one.
+        // Same transaction, so a claim that fails takes the release with it.
+        sqlx::query(sql::RELEASE_OTHER_INSTALLS)
+            .bind(provider.id())
+            .bind(workspace.as_str())
+            .bind(&install.external_account_id)
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(CONTEXT_INSTALL))?;
+
+        let statement = match install.claim {
+            InstallClaim::Repoint => sql::UPSERT_INSTALL,
+            InstallClaim::Exclusive => sql::CLAIM_INSTALL,
+        };
+        let claimed = sqlx::query(statement)
             .bind(id.as_str())
             .bind(provider.id())
             .bind(&install.external_account_id)
@@ -251,6 +270,12 @@ impl Grants {
             .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_INSTALL))?;
+        // An exclusive claim that touched no row met one another workspace
+        // holds. Raised inside the transaction, so the `?` above it unwinds
+        // the vault write too — see the paragraph in [`Self::land`].
+        if claimed.rows_affected() == 0 {
+            return Err(crate::error::installation_held_elsewhere());
+        }
         Ok(())
     }
 }

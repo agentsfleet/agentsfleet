@@ -66,7 +66,6 @@
     ".opencode/skills/orly-write-integration-test/SKILL.md",
     ".opencode/skills/orly-write-unit-test/SKILL.md",
     "AGENTS.orly.md",
-    "audits/cross-tier-rates.sh",
     "audits/deinit-pairs.sh",
     "audits/design-tokens.sh",
     "audits/doc-read.sh",

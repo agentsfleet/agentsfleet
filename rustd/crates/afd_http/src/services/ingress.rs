@@ -26,8 +26,11 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
     /// and a stored document that no longer parses. A fleet with no row and one
     /// with no webhook trigger are both `Ok(None)` — see
     /// [`afd_ingress::Ingress::binding`] on why they are not told apart.
-    fn binding(&self, fleet: &Uuid7)
-    -> impl Future<Output = IngressResult<Option<Binding>>> + Send;
+    fn binding(
+        &self,
+        fleet: &Uuid7,
+        source: Option<&str>,
+    ) -> impl Future<Output = IngressResult<Option<Binding>>> + Send;
 
     /// The shared secret this fleet's provider signs with.
     ///
@@ -109,8 +112,9 @@ impl WebhookIngress for Ingress {
     fn binding(
         &self,
         fleet: &Uuid7,
+        source: Option<&str>,
     ) -> impl Future<Output = IngressResult<Option<Binding>>> + Send {
-        Self::binding(self, fleet)
+        Self::binding(self, fleet, source)
     }
 
     fn signing_secret(
@@ -268,7 +272,9 @@ mod tests {
             .expect("the fixture fleet is canonical");
         let held = binding();
 
-        assert!(refused(&WebhookIngress::binding(&ingress, &fleet).await));
+        assert!(refused(
+            &WebhookIngress::binding(&ingress, &fleet, None).await
+        ));
         assert!(refused(
             &WebhookIngress::signing_secret(&ingress, &held).await
         ));

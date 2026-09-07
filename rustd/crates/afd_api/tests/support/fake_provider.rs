@@ -40,37 +40,40 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::Router;
-use axum::routing::post;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use tokio::task::JoinHandle;
 
-/// The path this stands the token endpoint at.
-///
-/// Any path serves: the daemon posts wherever `Exchange::pointed_at` aims it,
-/// and what a provider calls its own endpoint is the registry's business.
 const TOKEN_PATH: &str = "/oauth/access";
 
-/// A token endpoint that answers a sequence of bodies and counts its callers.
+/// One GET the vendor answers beside the exchange: its path, status and body.
+///
+/// GitHub's connect asks two more questions after the exchange — which
+/// installations the person reaches, and whether a claimed one opens — and
+/// both go to the origin the exchange was pinned at (`afd_connector::endpoint`).
+/// A read is answered by PATH so a test arranges the vendor's state ("this
+/// person reaches one installation") rather than an outcome.
+pub(crate) struct Read {
+    pub(crate) path: String,
+    pub(crate) status: u16,
+    pub(crate) body: String,
+}
+
 pub(crate) struct FakeProvider {
-    /// Where [`Exchange::pointed_at`] should be aimed.
     url: String,
-    /// How many codes have been redeemed here.
     exchanges: Arc<AtomicUsize>,
-    /// Aborted by [`FakeProvider::close`] — see there.
+    reads: Arc<AtomicUsize>,
     handle: JoinHandle<()>,
 }
 
 impl FakeProvider {
-    /// Serves `bodies` in order, then repeats the last, counting every call.
-    ///
-    /// Repeating rather than running out: a test that sent one request too many
-    /// should fail on the assertion it was making, not on a transport error
-    /// from a server that had nothing left to say.
-    ///
-    /// Through `axum::serve` rather than a hand-written response: this crate
-    /// already depends on axum with the `tokio` feature, and framing HTTP by
-    /// hand to answer a fixed document is the kind of parser RULE PSR exists to
-    /// stop.
     pub(crate) async fn answering(bodies: &[&str]) -> Self {
+        Self::answering_with_reads(bodies, Vec::new()).await
+    }
+
+    /// A vendor that answers the exchange from `bodies` and each GET in
+    /// `reads` from its own path.
+    pub(crate) async fn answering_with_reads(bodies: &[&str], reads: Vec<Read>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -78,7 +81,6 @@ impl FakeProvider {
             "http://{}{TOKEN_PATH}",
             listener.local_addr().expect("a bound address")
         );
-
         let exchanges = Arc::new(AtomicUsize::new(0));
         let counted = Arc::clone(&exchanges);
         let answers: Vec<serde_json::Value> = bodies
@@ -89,13 +91,10 @@ impl FakeProvider {
             !answers.is_empty(),
             "a fake provider answers at least one body"
         );
-
-        let router = Router::new().route(
+        let mut router = Router::new().route(
             TOKEN_PATH,
             post(move || {
                 let asked = counted.fetch_add(1, Ordering::SeqCst);
-                // `get` then `last` rather than a clamped index: the repeat is the
-                // rule being stated, and indexing to express it can panic.
                 let answer = answers
                     .get(asked)
                     .or_else(|| answers.last())
@@ -104,14 +103,28 @@ impl FakeProvider {
                 async move { axum::Json(answer) }
             }),
         );
-
+        let served = Arc::new(AtomicUsize::new(0));
+        for read in reads {
+            let status = StatusCode::from_u16(read.status).expect("a fixture status is one");
+            let body: serde_json::Value =
+                serde_json::from_str(&read.body).expect("a fixture read answer is JSON");
+            let counted = Arc::clone(&served);
+            router = router.route(
+                &read.path,
+                get(move || {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    let body = body.clone();
+                    async move { (status, axum::Json(body)) }
+                }),
+            );
+        }
         let handle = tokio::spawn(async move {
             let _served = axum::serve(listener, router).await;
         });
-
         Self {
             url,
             exchanges,
+            reads: served,
             handle,
         }
     }
@@ -120,16 +133,15 @@ impl FakeProvider {
         self.url.clone()
     }
 
-    /// How many codes have been redeemed here.
     pub(crate) fn exchanges(&self) -> usize {
         self.exchanges.load(Ordering::SeqCst)
     }
 
-    /// Stops the server.
-    ///
-    /// Called rather than left to the drop: the spawned task owns the listener,
-    /// so a fixture that only dropped its handle would leave the port bound for
-    /// as long as the test binary runs.
+    /// How many of the arranged GETs were asked.
+    pub(crate) fn reads(&self) -> usize {
+        self.reads.load(Ordering::SeqCst)
+    }
+
     pub(crate) fn close(self) {
         self.handle.abort();
     }

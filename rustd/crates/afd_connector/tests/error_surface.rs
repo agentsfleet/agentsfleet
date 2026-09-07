@@ -102,6 +102,7 @@ fn every_sentence_is_one_of_the_declared_details() {
         detail::OPERATION_FAILED,
         detail::VENDOR_UNREACHABLE,
         detail::EXCHANGE_FAILED,
+        detail::INSTALLATION_OWNERSHIP,
     ];
     for (label, error) in one_of_each_kind() {
         assert!(

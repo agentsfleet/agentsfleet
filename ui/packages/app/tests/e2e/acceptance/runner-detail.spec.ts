@@ -39,6 +39,10 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLEET_NAME_PREFIX = "runner-detail-";
+// The empty-body bundle is onboarded ONCE per workspace under this name and
+// every fleet below installs from it by explicit name: identical bytes
+// converge on one library row, where a per-fleet bundle left one row per run.
+const EMPTY_BODY_LIBRARY_NAME = "runner-detail-empty-body";
 const RENDER_TIMEOUT_MS = 15_000;
 // The failure must ride delivery → lease → child start → terminal report →
 // event settle. No model round-trip is involved, but the pipeline crosses the
@@ -126,8 +130,8 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
     `/v1/workspaces/${ws}/fleet-libraries`,
     {
       source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: emptyBodySkillMd(name),
-      trigger_markdown: triggerMd(name),
+      skill_markdown: emptyBodySkillMd(EMPTY_BODY_LIBRARY_NAME),
+      trigger_markdown: triggerMd(EMPTY_BODY_LIBRARY_NAME),
     },
   );
   const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {

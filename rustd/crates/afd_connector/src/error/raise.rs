@@ -44,6 +44,20 @@ pub(crate) fn exchange_unreadable() -> Error {
     ErrorKind::GrantUnreadable.into()
 }
 
+/// Reports a GitHub authorization that reaches no single installation.
+///
+/// `reason` is the [`crate::github::Found`] word, kept for the operator's log:
+/// none, several and an unopened claim are the same sentence to the person
+/// and different next moves to whoever reads the log.
+pub(crate) fn installation_unresolved(reason: &'static str) -> Error {
+    ErrorKind::InstallationUnresolved { reason }.into()
+}
+
+/// Reports an installation another workspace already routes.
+pub(crate) fn installation_held_elsewhere() -> Error {
+    ErrorKind::InstallationHeldElsewhere.into()
+}
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument `afd_db::error` makes for its
@@ -110,6 +124,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("exchange refused", exchange_refused(400)),
         ("exchange unreadable", exchange_unreadable()),
         ("grant unreadable", ErrorKind::GrantUnreadable.into()),
+        (
+            "installation unresolved",
+            installation_unresolved("no_accessible_installation"),
+        ),
+        ("installation held elsewhere", installation_held_elsewhere()),
     ]
 }
 

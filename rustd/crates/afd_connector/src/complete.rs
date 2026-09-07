@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 use crate::connect::{Connectors, Spent};
 use crate::error::{self, Result};
 use crate::exchange::Exchanged;
+use crate::github::{self, Found};
 use crate::grant::{Grant, parse};
 use crate::provider::Provider;
 use crate::registry::Archetype;
@@ -57,6 +58,11 @@ pub struct Finishing<'f> {
     pub code: &'f str,
     /// Which data centre issued it, for the one provider that has several.
     pub location: Option<&'f str>,
+    /// The App installation GitHub's return claimed, when it claimed one.
+    ///
+    /// Already shape-checked by the handler; the claim is PROBED here, never
+    /// trusted — see [`crate::github`].
+    pub installation_id: Option<&'f str>,
     /// The callback URI the code was minted against, echoed exactly.
     pub redirect_uri: &'f str,
 }
@@ -88,6 +94,7 @@ impl Connectors {
             spent,
             code,
             location,
+            installation_id,
             redirect_uri,
         } = finishing;
         let Some(credentials) = self.app.credentials(admin, provider).await? else {
@@ -100,7 +107,9 @@ impl Connectors {
             .redeem(provider, &endpoint, &credentials, code, redirect_uri)
             .await?;
 
-        let grant = self.read(provider, &exchanged, location, now).await?;
+        let grant = self
+            .read(provider, &exchanged, location, installation_id, now)
+            .await?;
         self.grants
             .land(spent.workspace(), provider, &grant, now)
             .await?;
@@ -113,6 +122,7 @@ impl Connectors {
         provider: Provider,
         exchanged: &Exchanged,
         location: Option<&str>,
+        installation_id: Option<&str>,
         now: UnixMillis,
     ) -> Result<Grant> {
         let body: Value = serde_json::from_str(exchanged.body())
@@ -143,16 +153,52 @@ impl Connectors {
                 connected_at,
                 Map::new(),
             ),
-            // A GitHub App's user-authorization answer is a bearer with no
-            // refresh half and no install behind it yet, so it takes the Slack
-            // shape's place rather than the triple's. It is not reachable
-            // today — the App-install completion is its own callback — and it
-            // is an arm rather than an absence so that stays a statement
-            // somebody reads rather than a gap they discover.
-            Provider::GitHub => None,
+            // A GitHub App's user-authorization answer is a bearer for the
+            // PERSON, with no installation behind it. The installation is the
+            // second round trip — see [`crate::github`] — and it is the one
+            // arm here that can refuse on its own terms rather than as an
+            // unreadable exchange.
+            Provider::GitHub => {
+                return self.read_github(&body, installation_id, connected_at).await;
+            }
         };
 
         grant.ok_or_else(error::exchange_unreadable)
+    }
+
+    /// GitHub's grant: the one installation the authorized person reaches.
+    ///
+    /// # Errors
+    /// The ownership code for none, several, or a claim the token does not
+    /// open — nothing is sealed on any of them — beside the vendor failures
+    /// the second call can raise.
+    async fn read_github(
+        &self,
+        body: &Value,
+        installation_id: Option<&str>,
+        connected_at: UnixMillis,
+    ) -> Result<Grant> {
+        let token = github::access_token(body).ok_or_else(error::exchange_unreadable)?;
+        let found = github::resolve(
+            &self.client,
+            self.exchange.pinned_endpoint(),
+            &token,
+            installation_id,
+        )
+        .await?;
+        let reason = found.reason();
+        match found {
+            Found::One(installation) => Ok(github::grant(&installation, connected_at.as_millis())),
+            Found::None | Found::Several => {
+                tracing::warn!(
+                    provider = Provider::GitHub.id(),
+                    reason,
+                    claimed = installation_id.is_some(),
+                    event = "connector_installation_unresolved",
+                );
+                Err(error::installation_unresolved(reason))
+            }
+        }
     }
 
     /// Jira's grant, with the site it is scoped to resolved first.
