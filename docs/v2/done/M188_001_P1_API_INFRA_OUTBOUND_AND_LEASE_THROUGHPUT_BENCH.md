@@ -403,6 +403,8 @@ the prefix, ids derived from the prefix, and a `bench-sweep` orphan target.
 
 > Kishore (2026-09-07): "Defer to the deployed-environment follow-up" — context: the blast-radius findings above, all of which are reachable only against a deployed target. None exists; every `make bench-*` target pins its URLs to the loopback compose stack (`make/test-infra.mk:112,128`), so the make surface is safe today and the binaries' guard stays a string comparison until that follow-up.
 
+> Kishore (2026-09-07): "I will either way shield the production db and production db cant be accessed via the urls only since they need the pw from 1Password vault, so i would ike to pass for now." — context: offered at babysit, a few-line hardening in `cli::datastores` that would refuse a non-loopback datastore address under the rig profile and require the acknowledgement for any non-loopback address whatever the label. Passed: the lanes speak no HTTP, so the API hosts are out of reach; the datastores are reachable only with credentials that live in the 1Password vaults, never in the tree; `make bench-*` pins loopback; and `prod` is capped at 200 fleets and 4 tasks behind its acknowledgement. The rig-label-with-remote-URLs hole stays with the deployed-environment follow-up.
+
 **Deferral — the dispatch-only workflow (Dimension 6.3).** Asked whether to
 add a lanes job to `bench.yml`, defer it, or open a separate workflow file.
 
