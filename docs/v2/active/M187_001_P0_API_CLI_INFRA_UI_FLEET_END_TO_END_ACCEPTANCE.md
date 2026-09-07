@@ -11,7 +11,7 @@
 **Categories:** API, CLI, INFRA, UI
 **Batch:** B10 — last in the v2 sequence; runs against the binary M181_006 leaves serving.
 **Branch:** `feat/m187-fleet-e2e-acceptance`
-**Test Baseline:** unit=5801 (cargo 2459 + app 2637 + cli 146 + design-system 559, `make test-unit-all`, Sep 07, 2026) integration=<M> (`make test-integration-rustd`, recorded in the first EXECUTE commit)
+**Test Baseline:** unit=5801 (cargo 2459 + app 2637 + cli 146 + design-system 559, `make test-unit-all`, Sep 07, 2026) integration=408 (`make test-integration-rustd`, 408 passed / 0 failed at `7e73e7f8d`)
 **Depends on:** M181_006 (the production swap — this spec grades the daemon that swap leaves serving, so it cannot start before it); M181_002 (the route surface every journey below walks); M135_002 (an online runner whose heartbeat advances, without which nothing executes); M186_001 (the live connector proof this spec ports and supersedes — see Decomposition)
 **Provenance:** human-directed — Indy, Sep 01, 2026: the end-to-end verification born as M136_001 and renumbered M186_001 must be PORTED to Rust rather than landed as Zig; the fleet sequence is proven first and its defects fixed after; a human eyeball pass rides beside the automated lane. The deletion this spec originally carried moved to M181_006 §4 on Sep 04, 2026 — see the scope change above.
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
@@ -50,6 +50,36 @@
 - **PR title (eventual):** test(acceptance): prove a fleet end to end on the Rust daemon
 - **Intent (one sentence):** an operator can watch one fleet go from a gallery card to a finished job on the Rust daemon, and the repository asserts that walk on every deploy instead of hoping.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+
+**Filled Sep 07, 2026, late — and the lateness is itself a finding.** EXECUTE ran
+across three sessions with this section carrying its template text, so the
+restatement below is written against work already committed rather than ahead of
+it. It is recorded honestly rather than backdated.
+
+**Restatement.** Prove the boring path first: one fleet, installed the way a
+customer installs it, doing real work and reporting a real answer, on the Rust
+daemon rather than the Zig one it replaced. Then keep proving it automatically,
+and have a person confirm once that the screens an operator actually looks at
+tell the truth. What §1 breaks, §2 fixes with the assertion that caught it —
+the point is not a green run, it is that a red run would have been red for a
+reason someone can read.
+
+`ASSUMPTIONS I'M MAKING:`
+
+1. "End to end" means through the dashboard an operator uses, not through the
+   API underneath it. A journey that posts JSON and asserts JSON proves the
+   daemon and not the product.
+2. The human pass (§4) grades what automation structurally cannot: whether the
+   screens are trustworthy. It is not a slower duplicate of §1.
+3. A defect §1 surfaces belongs to §2 whether or not it is convenient. Both
+   defects this milestone actually surfaced — the missing `approval-signing`
+   row and the `%2F` relay — came from §4.2's walk rather than §1's, and both
+   were cutover regressions in the connector flow, so they were folded in under
+   §2's rule rather than filed away.
+4. §4.2 cannot be graded before merge. `deploy-dev.yml` triggers on
+   `push: main`, so no feature-branch build ever reaches dev, and a verdict
+   "for the build the PR ships" cannot exist until that build IS main. The
+   dimension is amended below rather than pretended satisfied.
 
 ## Implementing agent — read these first
 
@@ -146,7 +176,7 @@ M186_001's dimensions, re-planned onto the Rust tree. The proof is unchanged; th
 A green Playwright run and a dashboard an operator would trust are different claims, and only the first is automated. This section is the second, made repeatable: a written walk, a recorded verdict, and evidence that lands in the lane's artifacts rather than in a chat message.
 
 - **Dimension 4.1** — the playbook states the walk as ordered steps with an explicit "you must see" per step, so two people running it reach the same verdict → Test `the acceptance playbook carries a see-this assertion per step`
-- **Dimension 4.2** — the human verdict is a committed file under `playbooks/operations/acceptance/verdicts/`, naming the reviewer, the build sha and any defect raised; CHORE(close) grades its presence for the build the PR ships → Test `the verdict file names the reviewer and the build` (a shell check in the playbook, run by hand)
+- **Dimension 4.2** — the human verdict is a committed file under `playbooks/operations/acceptance/verdicts/`, naming the reviewer, the build sha and any defect raised; CHORE(close) grades its presence for the build the PR ships → Test `the verdict file names the reviewer and the build` (a shell check in the playbook, run by hand). **Amended Sep 07, 2026:** "the build the PR ships" cannot exist before merge. `deploy-dev.yml` triggers on `push: branches: [main]`, so no feature-branch build ever reaches dev, and the two defects this milestone found — the missing `approval-signing` row and the `%2F` relay — both live on the path the walk has to cross. The verdict is therefore recorded against the MERGE COMMIT, as the first post-merge action, and CHORE(close) grades that the walk is scheduled rather than that it is done. The skeleton at `verdicts/7e73e7f8d.md` stays in the tree refusing until then.
 - **Dimension 4.3** — the walk is signed off against the Rust daemon by a person, with screenshots attached to the milestone's PR → graded by Indy's explicit go in Discovery, not by a command
 
 ## Interfaces
@@ -205,17 +235,17 @@ The acceptance lane is the operator-facing signal and it already reports through
 
 | # | Outcome | Verify command | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | A fleet executes end to end (§1) | `make acceptance-e2e` | exit 0, the execution journey among the passing specs | P0 | |
-| R2 | The journey is a required gate (§1.5) | `cd ui/packages/app && bun run test -- playwright.acceptance` (the config pin) and the `acceptance-e2e` run for HEAD | the pin passes; the run lists `fleet-execution.spec.ts` | P0 | |
-| R3 | The CLI leg holds (§1) | `make cli-acceptance` | exit 0 | P0 | |
-| R4 | Connector proof green on the Rust tree (§3) | `make test-integration-rustd` | exit 0 | P0 | |
-| R5 | Every §1 defect resolved or quoted (§2) | inspect Discovery's defect table | no row without a commit or a verbatim quote | P0 | |
-| R6 | Human verdict recorded (§4) | `ls playbooks/operations/acceptance/verdicts/` | a file for the graded build naming the reviewer | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Version sync | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | A fleet executes end to end (§1) | `make acceptance-e2e` | exit 0, the execution journey among the passing specs | P0 | BLOCKED — needs the dev deploy that only a merge to main triggers |
+| R2 | The journey is a required gate (§1.5) | `cd ui/packages/app && bun run test -- playwright.acceptance` (the config pin) and the `acceptance-e2e` run for HEAD | the pin passes; the run lists `fleet-execution.spec.ts` | P0 | BLOCKED — as R1; the config pin half is runnable, the lane half is not |
+| R3 | The CLI leg holds (§1) | `make cli-acceptance` | exit 0 | P0 | BLOCKED — as R1 |
+| R4 | Connector proof green on the Rust tree (§3) | `make test-integration-rustd` | exit 0 | P0 | ✅ `make test-integration-rustd` exit 0 — **409 passed / 0 failed** on this tree (408 at `7e73e7f8d`, +1 the relay test) |
+| R5 | Every §1 defect resolved or quoted (§2) | inspect Discovery's defect table | no row without a commit or a verbatim quote | P0 | ✅ both defect rows resolve to a commit in this branch; no row carries a deferral |
+| R6 | Human verdict recorded (§4) | `ls playbooks/operations/acceptance/verdicts/` | a file for the graded build naming the reviewer | P0 | ❌ the verdict file at `verdicts/7e73e7f8d.md` correctly REFUSES — it names no reviewer, and §4.2's walk is blocked until the relay fix reaches dev |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `make harness-verify` exit 0 (Sep 07, this tree) |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — 5829 = cargo 2476 + app 2647 + cli 146 + design-system 560 |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ exit 0 — red twice first: `rustfmt --check` on `integration_connector_github.rs:256` and an unfulfilled `#[expect(clippy::expect_used)]` at `replacement.rs:12`, both leftovers of the six-file split, both repaired |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ exit 0, all versions 0.29.0 |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `gitleaks detect` — no leaks found, 5252 commits scanned |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ plus one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
 
@@ -277,9 +307,18 @@ produces, and it may well land before §1 here even starts.
 | Sep 07, 2026 | Indy — drop the rate audit | "could you delete the audits/cross-tier-rates.sh as well?" Done in both repositories: `~/Projects/orly` branch `chore/drop-cross-tier-rates` (commit `eec8074`) removes the script and its `registry.json` entry, and this branch removes the materialised copy plus its `.oracle/orly.json` row. The script had NO caller — its header claimed `make harness-verify`, which lists eight gates and never it. What it guarded, `RUN_NANOS_PER_SEC`, is pinned instead by `rustd/crates/afd_billing/tests/cross_runtime_rates.rs` — a test beside the constant it defends, which reads both TypeScript mirrors and runs in `make test-unit-all` rather than in a gate nothing invoked. `dispatch/write_changelog.md` and `docs/CHANGELOG_VOICE.md` still mention it; both are orly-managed and the orly source already dropped the mention, so `orly update` clears them once the pack is published. Closed specs under `docs/v2/done/` keep their references as history. |
 | Sep 07, 2026 | Agent — runner-offline alert is broken | Investigating Indy's "56.7 years" Grafana panel found a live defect beyond the display. `agentsfleet_runner_last_seen_seconds` publishes a Unix epoch timestamp (`afd_observability/src/runner.rs:253`), while every consumer expects an AGE in seconds: `docs/architecture/runner_fleet.md:693` says "render-time delta", the panel is titled "Runner seconds since last seen", and the critical alert is `agentsfleet_runner_last_seen_seconds > 90` (`grafana/assets/alerts.json:42`). A timestamp is always greater than 90, so the "Runner heartbeat overdue" alert can never have worked. NOT this milestone's scope; recorded here so it is not lost, and raised to Indy for its own spec. |
 
+| Sep 07, 2026 | Agent — every dev connector answers 503, and it is not the app bags | The blocker that held §4.2/4.3 for two sessions. `state_secret` (`afd_api_tenant/src/handler/connector/mod.rs:100`) resolves the deployment's HMAC key BEFORE any provider bag is read, and refuses the whole connect when it is absent — for every provider, with no log line. The key is a vault row named `approval-signing` (`afd_http/src/services/ingress.rs:176`), and the dev admin workspace held `fireworks github-app jira-app linear-app qstash slack slack-app zoho-app` and not that. Zig read the same secret from the ENVIRONMENT (`config/env_resolve.zig:37` → `cmd/serve_secrets.zig:34`, zero hits for a vault row of that name in the whole Zig tree); the Rust cutover moved it into the vault and neither the deploy nor the sync script followed. `grep -rn APPROVAL_SIGNING_SECRET rustd/` returns nothing, so the Fly variable `deploy-dev-fly.yml:44,100` still sets is read by no one. Everything the previous session ruled out was correctly ruled out — the answer was a fifth `unconfigured()` producer nobody had counted. |
+| Sep 07, 2026 | Agent — why the catalogue was not the contradiction it looked like | `provisioned()` (`afd_connector/src/app.rs:134`) lists `<provider>-app` NAMES and never reads `approval-signing`, so `configured: true` and a 503 are consistent. Both `SELECT_SECRET_PROJECTIONS` (`sql.rs:108`) and `SELECT_SECRET_ENVELOPE` (`sql.rs:147`) filter the same table on the same predicate, which is what makes the catalogue decisive about presence — the read the previous session filed as "not evidence" was the one that settled it. |
+| Sep 07, 2026 | Agent — dev has had no debug logging since the cutover | The clue both prior sessions reasoned from ("the daemon never logs `secret_opened`") was a measurement artifact. `deploy-dev-fly.yml:94` sets `LOG_LEVEL="debug"`; the daemon reads `AGENTSFLEET_LOG_LEVEL` (`agentsfleetd/src/logs.rs:44`) and falls back to `LevelFilter::INFO` (`logs.rs:50`). `flyctl secrets list -a agentsfleetd-dev` shows `LOG_LEVEL` and no `AGENTSFLEET_LOG_LEVEL`. So `secret_opened` (`afd_vault/src/load.rs:79`) and `connector_connect_initiated` (`connect.rs:206`) — both `tracing::debug!` — are unreachable on dev whatever happens. `docs/architecture/observability.md:156` documents the correct name, so the workflow is the stale half. Same cutover pattern as the row above. **Fixed here on Indy's call** ("i think just send the PR with the log level debug"): `deploy-dev-fly.yml` now sets `AGENTSFLEET_LOG_LEVEL="debug"` and no longer sets the dead spelling, pinned by `test_dev_deploy_sets_the_daemons_own_log_level`, which fails on either half. Prod never set it, so prod stays at INFO by design and needs no change. The stale `LOG_LEVEL` secret still sits on the Fly app until someone unsets it; it is read by nothing and harmless. |
+| Sep 07, 2026 | Indy — seed the row, and make the pipeline do it | "Seed the vault row now", then "seed the vault and keep the playbooks and the pipeline updated" and "so the pipeline seeds the secrete". Done: the dev row was created live (HTTP 201) and connect went 503 → 200 for github, zoho and slack against `api-dev` with no restart, because `state_secret` reads per request. `platform_secret_sync.sh` gains an `approval-signing` case, both deploy families gain a post-deploy seeding step, and `credentials_test.sh` gains a gate that fails when either family loses it — proven red by removing the dev step. |
+| Sep 07, 2026 | Agent — the seed exposed a second defect in the same flow | With connect answering 200, Indy clicked Connect and GitHub refused: "The `redirect_uri` is not associated with this application." The minted URI was `…/api%252Fconnectors/github/callback`. `RELAY_PATH` was one string `"api/connectors"` handed to `Url::path_segments_mut().extend()`, which percent-encodes each item as a single segment, so the separator became data. Zig built the same route from a format string (`callback.zig:46`), which is why it never had it. The existing test could not catch it: it compares `relay_uri` against `relay_url` and both come out of `relay`, so it agreed with itself. Fixed in `callback.rs` with `the_relay_spells_the_route_the_dashboard_mounts`, proven red without the fix. |
+| Sep 07, 2026 | Agent — the cutover weakened a recorded security invariant | `M157_001` justified an invariant with "The secret is boot-resolved daemon config, NOT a workspace secret, so a fleet holding `secret_read` cannot reach it". It is now a workspace vault row, so that sentence is false as written. There is no value-read API (`handler/secret.rs` exposes POST, GET-list, PUT, DELETE only), so the exposure is the WRITE path: `PUT /v1/workspaces/{admin}/secrets/approval-signing` would let a holder of `secret:write` on the admin workspace replace the platform-wide HMAC key and forge approval-webhook signatures and install states. Surfaced to Indy, who chose to seed now and fix properly later; NOT this milestone's scope and it wants its own spec. |
+
 **Defect table (§2)** — populated during §1; every row resolves to a commit or a verbatim quote before CHORE(close).
 
 | Defect | Surfaced by | Resolution |
 |---|---|---|
 | The published platform entry never shows on the regular workspace's gallery first page (`deploy-dev` run 34084609124, `platform-library-onboarding.spec.ts:229`) | §1.1's gallery walk, and the CI run Indy pointed at | Not a product defect: the fixture workspace held 103 leftover tenant templates from per-run unique onboards and the platform entry sat last under the recorded M143 order. Fix: stable templates in every fixture (`installViaUI` callers, `runner-detail`, `template-onboarding`) plus `loadWholeGallery` in the platform journey; pinned by `test_every_dashboard_install_names_a_constant_template`. 28/28 on dev. |
 | The wall tile's overlay link carries no text, so a `toContainText` on the link reads empty (`fleet-execution.spec.ts` first run) | §1.4 | Test-side: the tile locator anchors on the `[data-kind]` card that holds the link. Not a product defect. |
+| Every connector on dev answers 503 `UZ-CONN-001` at connect, github and zoho and slack alike (`req_10adc2703aab`, `req_caddaca807fc`, `req_51c0f8091687`) | §4.2's walk, which could not start | Environment, then process. The admin workspace held no `approval-signing` row because the Rust daemon reads from the vault what the Zig daemon read from the environment. Row seeded live (201); connect verified 200 for all three with no restart. Both deploy families now seed it, `platform_secret_sync.sh` knows how, and `credentials_test.sh` fails when a family stops — proven red. |
+| The minted `redirect_uri` carries `%2F` where the path needs a separator, so every provider refuses the consent screen (`/api%2Fconnectors/github/callback`) | §4.2's walk, once the row above unblocked connect | Product defect, fixed here. `RELAY_PATH` is now two segments rather than one slash-bearing string (`afd_connector/src/callback.rs`), pinned by `the_relay_spells_the_route_the_dashboard_mounts`, which asserts the literal route and that no relay carries percent-encoding. Proven red without the fix. Reaches dev only on merge — `deploy-dev.yml` triggers on `push: main`. |
