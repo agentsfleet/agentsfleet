@@ -23,7 +23,7 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
     // could replay it, and each replay would redeem the code again.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
     let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture, PROVIDER).await;
@@ -65,9 +65,11 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // One fake answering two tokens in order. A second server would restart
     // the exchange count, and the count is what separates "two connects, one
     // code each" from "one connect that redeemed twice".
-    let provider =
-        FakeProvider::answering(&[&slack_answer(BOT_TOKEN), &slack_answer(REPLACEMENT_TOKEN)])
-            .await;
+    let provider = FakeProvider::answering(&[
+        &slack_answer(&fixture, BOT_TOKEN),
+        &slack_answer(&fixture, REPLACEMENT_TOKEN),
+    ])
+    .await;
     let router = fixture.router(&provider);
 
     let first = start_connect(&router, &fixture, PROVIDER).await;
