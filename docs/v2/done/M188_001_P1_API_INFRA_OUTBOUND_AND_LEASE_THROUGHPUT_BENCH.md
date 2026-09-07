@@ -81,7 +81,7 @@ what keeps the harness a library they share instead of a directory they copy.
 `bench/baselines/` stays where it is: it is committed JSON, not Rust.
 
 **Blast-radius amendment (VERIFY, R7).** The diff against `origin/main`
-carries 70 paths. The table above names the crate by the five files it was
+carries 72 paths. The table above names the crate by the five files it was
 planned as; the rows below name what it became, so R7 grades against the
 complete list rather than the planning sketch.
 
@@ -96,6 +96,7 @@ complete list rather than the planning sketch.
 | `rustd/Cargo.lock` | EDIT | `hdrhistogram` and the new workspace member |
 | `VERSION`, `build.zig.zon`, `cli/package.json` | EDIT | release sync to 0.29.0 (`make check-version`) |
 | `docs/architecture/roadmap.md` | EDIT | the M188_001 link follows the spec from `pending/` to `done/` |
+| `codecov.yml`, `make/test-integration-rustd.mk` | EDIT | the bench crate leaves the coverage denominator on Kishore's call (Discovery); its tests still run |
 | `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md` | EDIT | this spec: CHORE(open), amendments, grading |
 
 ## Applicable Rules
@@ -301,7 +302,7 @@ result file shape (every lane):
 | R4 | A deployed-profile run creates nothing it does not sweep (§1) | `make bench-lease PROFILE=dev BENCH_TARGET=rig && python3 -c "import json;f=json.load(open('bench/results/lease.dev.json'))['fixture'];print(f['created']==f['swept'])"` | `True` | P0 | ✅ `True` |
 | R5 | Production refuses without acknowledgement (§1) | `make bench-lease PROFILE=prod; echo $?` | non-zero | P0 | ✅ `2` — `bench-lease refused: profile prod refuses to run without BENCH_LOAD_PRODUCTION=i-accept-the-blast-radius` |
 | R6 | A regression never fails a lane (§6) | `make bench-compare LANE=lease PROFILE=rig; echo $?` | `0` | P0 | ✅ `0` after a 15-row delta table (`rate_per_second 79.751 -> 85.785 +7.6%`) |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 70 paths changed, every one in the table or its blast-radius amendment |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 72 paths changed, every one in the table or its blast-radius amendment |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN ── ready for VERIFY` |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `2458` cargo, app `Tests 2637 passed`, website `146 passed`, design-system `559 passed`; `All package coverage gates passed` |
 | S3 | Integration tier green | `make test-integration-rustd` | exit 0 | P0 | ✅ `✓ [rustd] integration suite — 398 passed` |
@@ -447,6 +448,13 @@ The outbound baseline was re-measured on a reset rig in the same commit:
 unchanged by design: it is enqueue-to-first-attempt, the queueing cost, as
 `poster.rs` documents. Greptile's six other findings are the blast-radius
 shape already deferred above, each answered on the PR with that quote.
+
+**Decision — the coverage denominator (babysit).** Codecov's `rust-afd`
+patch status graded the PR's diff at 90.8% against its 97% target; 111 of the
+167 unhit lines were the five lane binaries' `main`s and their shared
+preamble, which no test executes, the rest error branches across 13 files.
+
+> Kishore (2026-09-07): "I think the afd_bench/ crate must be ignored from codecov and the coverage we conduct, that is just an optional crate to measure bench and no where used in production" — context: the `codecov/patch/rust-afd` red on PR #667. Applied as `rustd/crates/afd_bench/**` in `codecov.yml`'s ignore list and `/crates/afd_bench/` in `RUSTD_COVERAGE_IGNORE` (`make/test-integration-rustd.mk`), each carrying the quote. The crate's unit and `#[ignore]` tests still run in both lanes; only its lines leave the graded surface.
 
 **Deferral — a real deployed run.** No `dev` target was named either, so the
 deployed-profile *runs* against a live environment are deferred; the deployed
