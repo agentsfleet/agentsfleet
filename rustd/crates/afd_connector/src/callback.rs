@@ -27,11 +27,19 @@ use url::Url;
 
 use crate::provider::Provider;
 
-/// Where the dashboard mounts its connector relay.
+/// Where the dashboard mounts its connector relay, ONE SEGMENT PER ENTRY.
 ///
 /// The one site that spells it (RULE UFS) — see the module note on why the
 /// redirect URI and the relay must be one string.
-const RELAY_PATH: &str = "api/connectors";
+///
+/// Segments rather than the single `"api/connectors"` this held until the
+/// relay was proven against a live deployment: `path_segments_mut` percent-
+/// encodes every item it is handed, so a slash INSIDE one is not a separator
+/// but data, and the minted redirect URI came out as
+/// `/api%2Fconnectors/github/callback` — a path the dashboard does not mount
+/// and a vendor refuses with `redirect_uri_mismatch`. `callback.zig` built the
+/// same route from a format string, which is why the Zig daemon never had it.
+const RELAY_PATH: [&str; 2] = ["api", "connectors"];
 
 /// The trailing segment of the relay path — see [`RELAY_PATH`].
 const RELAY_LEAF: &str = "callback";
@@ -134,7 +142,8 @@ fn relay(dashboard: &str, provider: Provider) -> Option<Url> {
     url.path_segments_mut()
         .ok()?
         .pop_if_empty()
-        .extend([RELAY_PATH, provider.id(), RELAY_LEAF]);
+        .extend(RELAY_PATH)
+        .extend([provider.id(), RELAY_LEAF]);
     Some(url)
 }
 
@@ -154,6 +163,29 @@ mod tests {
 
     /// A workspace identifier the destination is built for.
     const WORKSPACE: &str = "01920000-0000-7000-8000-000000000001";
+
+    /// The relay spells the route the dashboard actually mounts.
+    ///
+    /// Its sibling below compares the minted URI against the returned one, and
+    /// both come out of `relay`, so it agrees with itself however the path is
+    /// built — it passed green while `RELAY_PATH` was one `"api/connectors"`
+    /// string that `path_segments_mut` encoded to a single `api%2Fconnectors`
+    /// segment. A vendor matches the registered callback URL literally, so the
+    /// literal is what has to be pinned.
+    #[test]
+    fn the_relay_spells_the_route_the_dashboard_mounts() {
+        assert_eq!(
+            relay_uri(DASHBOARD, Provider::GitHub).expect("a URL base"),
+            format!("{DASHBOARD}/api/connectors/github/callback"),
+        );
+        for provider in Provider::ALL.iter().copied() {
+            let minted = relay_uri(DASHBOARD, provider).expect("a URL base");
+            assert!(
+                !minted.contains('%'),
+                "`{provider}` relay carries percent-encoding: {minted}",
+            );
+        }
+    }
 
     /// The relay a code is minted against is the relay it comes back to.
     ///
