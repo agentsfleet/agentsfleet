@@ -56,7 +56,7 @@ pub async fn datastores(env: &dyn Fn(&str) -> Option<String>) -> Result<Datastor
     .await
 }
 
-/// Reconcile a lane's measurement with its sweep, then write the result.
+/// Reconcile a lane's measurement with the caller's sweep, then write the result.
 ///
 /// # Errors
 ///
@@ -69,7 +69,10 @@ pub fn finish(
     swept: Result<u64>,
 ) -> Result<String> {
     let mut report = measured?;
-    report.fixture.swept = swept?;
+    // ADDED to what the lane already swept itself, never written over it: the
+    // outbound lane removes its own entries by id before it returns, and the
+    // caller's prefix sweep is the fallback that finds whatever that missed.
+    report.fixture.swept += swept?;
     let path = lane.result_path(profile);
     report.write(&path)?;
     Ok(path.display().to_string())

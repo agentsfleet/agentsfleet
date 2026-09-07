@@ -15,6 +15,9 @@ use crate::report::{Lane, P95_MS, RATE_PER_SECOND, Report};
 /// A round baseline rate, so a halved or half-again current reads at a glance.
 const BASELINE_RATE: f64 = 1_000.0;
 
+/// A population twenty-five times the baseline's, so the parameter line fires.
+const LARGER_POPULATION: u64 = 1_000;
+
 /// A report with one rate and one tail, for comparing against another.
 fn report_of(rate: f64, p95: f64) -> Report {
     let mut report = Report::new(Lane::Lease, Profile::Rig);
@@ -140,4 +143,46 @@ fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
         from_nothing.is_noteworthy(),
         "a measurement that moved off zero is exactly what a reader wants flagged"
     );
+}
+
+#[test]
+fn test_the_rendering_names_what_only_one_side_carries_and_a_zero_baseline() {
+    let mut current = report_of(500.0, 40.0);
+    current.measurement("roundtrips_per_lease", 3.0);
+    current.measurement("wasted_claim_rate", 0.25);
+    let mut baseline = report_of(500.0, 40.0);
+    baseline.measurement("idle_polls", 12.0);
+    baseline.measurement("wasted_claim_rate", 0.0);
+
+    let rendered = Comparison::of(&current, &baseline).render();
+
+    assert!(
+        rendered.contains("+ roundtrips_per_lease"),
+        "an added measurement is named:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("- idle_polls"),
+        "a missing measurement is named:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('—'),
+        "a move off a zero baseline prints no percentage:\n{rendered}"
+    );
+}
+
+#[test]
+fn test_different_parameters_are_the_first_thing_the_rendering_says() {
+    let mut current = report_of(500.0, 40.0);
+    current.parameter("BENCH_FLEETS", LARGER_POPULATION);
+    let mut baseline = report_of(500.0, 40.0);
+    baseline.parameter("BENCH_FLEETS", 40);
+
+    let rendered = Comparison::of(&current, &baseline).render();
+
+    let first = rendered.lines().next().expect("something rendered");
+    assert!(
+        first.starts_with("! BENCH_FLEETS"),
+        "the parameter line leads:\n{rendered}"
+    );
+    assert!(first.contains("not a regression"));
 }

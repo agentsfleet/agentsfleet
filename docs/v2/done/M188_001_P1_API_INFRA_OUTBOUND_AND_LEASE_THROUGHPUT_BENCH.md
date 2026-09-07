@@ -334,6 +334,18 @@ N/A — no files deleted.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
 
+**Skill-chain outcomes.** `/orly-write-unit-test` ran over the diff before
+VERIFY (ledger in PR Session Notes; four gaps closed, one won't-test, one
+needs-infra). gstack `/review` ran after VERIFY with testing, maintainability,
+security and performance specialists, a red-team pass and an independent
+adversarial pass — five reviewers. Two silent wrong numbers, both confirmed
+by four of the five: the lease window never ended at exhaustion (`stop_after`
+checked per runner; rate was leases ÷ window, 6.6/s in both profiles), and
+the idle window still met marks at 200 fleets. Plus ~40 informational items.
+Dispositions, on Indy's answers: every measurement defect FIXED and baselines
+regenerated; the maintainability and testing bundle FIXED; the blast-radius
+shape DEFERRED (quote above). `orly-babysit-prs` runs after the PR opens.
+
 **Consult — CHORE(open), deployed environments.** Asked what `rig`, `dev` and
 `prod` mean and whether a deployed target exists.
 

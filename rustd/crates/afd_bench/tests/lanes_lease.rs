@@ -23,7 +23,7 @@ use afd_bench::lane::{lease, sweep};
 use afd_bench::profile::Profile;
 use sqlx::Row as _;
 
-use self::support::{LANE, datastores, measurement};
+use self::support::{LANE, datastores, measurement, swept};
 
 /// A window long enough to lease a handful of fleets, short enough to run.
 const WINDOW: Duration = Duration::from_secs(4);
@@ -40,12 +40,12 @@ async fn test_lease_bench_reports_a_rate_and_a_p95() {
         window: WINDOW,
     };
 
-    let report = lease::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("the lease lane runs on the rig");
-    sweep::everything(&stores.database, &stores.queue, &prefix)
-        .await
-        .expect("sweeps");
+    let report = swept(
+        &stores,
+        &prefix,
+        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+    )
+    .await;
 
     assert!(
         measurement(&report, "rate_per_second") > 0.0,
@@ -70,12 +70,12 @@ async fn test_lease_bench_reports_roundtrips_per_lease() {
         window: WINDOW,
     };
 
-    let report = lease::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
-    sweep::everything(&stores.database, &stores.queue, &prefix)
-        .await
-        .expect("sweeps");
+    let report = swept(
+        &stores,
+        &prefix,
+        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+    )
+    .await;
 
     assert!(
         measurement(&report, "roundtrips_per_lease") >= 1.0,
@@ -100,12 +100,12 @@ async fn test_lease_bench_reports_wasted_claim_rate() {
         window: WINDOW,
     };
 
-    let report = lease::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
-    sweep::everything(&stores.database, &stores.queue, &prefix)
-        .await
-        .expect("sweeps");
+    let report = swept(
+        &stores,
+        &prefix,
+        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+    )
+    .await;
 
     assert!(measurement(&report, "wasted_claim_rate") > 0.0);
 }
@@ -122,12 +122,12 @@ async fn test_lease_bench_reports_idle_poll_cost() {
         window: WINDOW,
     };
 
-    let report = lease::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
-    sweep::everything(&stores.database, &stores.queue, &prefix)
-        .await
-        .expect("sweeps");
+    let report = swept(
+        &stores,
+        &prefix,
+        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+    )
+    .await;
 
     assert!(
         measurement(&report, "idle_redis_calls_per_poll") > 0.0,

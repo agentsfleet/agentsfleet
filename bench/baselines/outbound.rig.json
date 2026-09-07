@@ -3,29 +3,33 @@
   "profile": "rig",
   "created": true,
   "parameters": {
-    "BENCH_JOBS": 200
+    "BENCH_JOBS": 200,
+    "BENCH_RETRYABLE_FRACTION": 0,
+    "BENCH_SLOW_FRACTION": 1
   },
   "measurements": {
     "delivered": 200.0,
+    "foreign_entries": 0.0,
     "max_ms": 4001.791,
-    "others_p95_ms": 3717.119,
-    "p95_ms": 3717.119,
+    "others_p95_ms": 3719.167,
+    "p95_ms": 3719.167,
     "p99_ms": 3995.647,
-    "rate_per_second": 49.47121302579512,
+    "rate_per_second": 49.99337171629939,
     "retry_occupancy": 0.0,
     "slow_destinations": 1.0,
-    "slow_p95_ms": 3731.455
+    "slow_p95_ms": 3731.455,
+    "unsettled": 0.0
   },
   "datastores": {
     "redis": {
-      "operations": 605
+      "operations": 604
     },
     "postgres": {
-      "operations": 0
+      "operations": 1
     }
   },
   "fixture": {
-    "run_prefix": "bench-1788733082455-65536",
+    "run_prefix": "bench-1788744628073-90459",
     "created": 200,
     "swept": 200
   }
