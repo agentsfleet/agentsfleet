@@ -28,7 +28,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -49,6 +48,8 @@ const HEADER_CONTENT_TYPE: &str = "content-type";
 /// A vendor call that hangs is an environment fact, not a contract failure —
 /// the suite says which by timing out rather than blocking the lane.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+/// A throttle is the environment answering, not the contract (RULE ECL).
+const TOO_MANY_REQUESTS: reqwest::StatusCode = reqwest::StatusCode::TOO_MANY_REQUESTS;
 
 /// Where this provider's grant is redeemed, whichever archetype it runs.
 fn token_endpoint(provider: Provider) -> &'static str {
@@ -62,6 +63,18 @@ fn token_endpoint(provider: Provider) -> &'static str {
 ///
 /// Walks [`Provider::ALL`] rather than naming five endpoints, so a sixth
 /// provider cannot land without this proof covering it.
+///
+/// # A vendor being down is not a defect (RULE ECL)
+///
+/// This runs in a REQUIRED lane against five endpoints nobody here operates, so
+/// it must tell a broken contract from a bad afternoon. A transport failure, a
+/// throttle, or a vendor 5xx says nothing about the header the daemon sends:
+/// each is reported by name and SKIPPED. Only an endpoint that answered
+/// normally and answered in a format `complete` cannot read fails the lane.
+///
+/// The lane's own doctrine applies to the skip too — "0 tests ran" reads
+/// exactly like a pass — so a run where every provider was unreachable fails
+/// rather than reporting a green it did not earn.
 #[tokio::test]
 #[ignore = "reaches the providers' live token endpoints: make test-integration-rustd"]
 async fn every_provider_answers_the_exchange_in_the_format_the_daemon_parses() {
@@ -71,16 +84,31 @@ async fn every_provider_answers_the_exchange_in_the_format_the_daemon_parses() {
         .expect("a client");
     let exchange = Exchange::new(client);
     let form = oauth::exchange_form(NO_CLIENT, NO_SECRET, NO_CODE, NO_REDIRECT);
+    let mut graded = 0_usize;
 
     for &provider in Provider::ALL {
         let endpoint = token_endpoint(provider);
-        let answer = exchange
-            .probe_request(endpoint, &form)
-            .send()
-            .await
-            .unwrap_or_else(|source| {
-                panic!("{} at {endpoint} was unreachable: {source}", provider.id())
-            });
+        let answer = match exchange.probe_request(endpoint, &form).send().await {
+            Ok(answer) => answer,
+            Err(source) => {
+                eprintln!(
+                    "environment: {} at {endpoint} could not be reached ({source}); \
+                     the request contract is ungraded for it this run",
+                    provider.id(),
+                );
+                continue;
+            }
+        };
+
+        let status = answer.status();
+        if status == TOO_MANY_REQUESTS || status.is_server_error() {
+            eprintln!(
+                "environment: {} answered {status} at {endpoint}; a throttle or a \
+                 vendor fault says nothing about the header we send",
+                provider.id(),
+            );
+            continue;
+        }
 
         let media_type = answer
             .headers()
@@ -96,5 +124,13 @@ async fn every_provider_answers_the_exchange_in_the_format_the_daemon_parses() {
              cannot read. Check the `Accept` header the exchange sends.",
             provider.id(),
         );
+        graded += 1;
     }
+
+    assert!(
+        graded > 0,
+        "no provider could be reached, so this run graded nothing — a green here \
+         would be indistinguishable from a proof, which is the failure the lane's \
+         own zero-test guard exists for",
+    );
 }

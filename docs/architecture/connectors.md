@@ -52,8 +52,9 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
             ┌─────────────────────────────────────────────────────────────────────────────┐
             │ REGISTRY = ConnectorSpec[                                                   │
             │   { provider, display_name, archetype: enum {                               │
-            │       oauth2:      {flow, refresh, exchange_failed_code, post_auth},        │
-            │       app_install: {state, build_connect_url, build_install_url, complete}, │
+            │       oauth2:      Oauth2Flow{authorize_endpoint, token_endpoint, scopes, │
+            │                                scope_delimiter, extra_query, refresh},     │
+            │       app_install: AppInstall{authorize_endpoint, token_endpoint},          │
             │   }, respond_status }                                                       │
             │ ]  + compile-time validation (dup ids, scopes, id agreement…)               │
             └─────────────────────────────────────────────────────────────────────────────┘
@@ -71,7 +72,7 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET` or `DELETE /v1/workspaces/{ws}/connectors/{provider}`, and authenticated `POST /v1/connectors/{provider}/callback` use the same matchers for every provider. The dashboard owns `/api/connectors/{provider}/callback`. The old API `GET` callback only relays browsers to that dashboard route. `DELETE` requires `connector:write`, removes only `agentsfleet` state, and returns 204 when repeated. Provider authorization remains active outside `agentsfleet`.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all compile-time errors, not review vigilance.
-- **Binding writes are atomic.** Each provider callback and Disconnect commits the vault handle and every routing row in ONE transaction, so a callback cannot recreate a connector while Disconnect is removing it. No advisory lock: the transaction is the guard. The retired Zig daemon took one as a second mechanism for the same outcome, which is why the lock appears in this doc's history and in `afd_connector/src/grant.rs`'s note (M187_001 §3.3 — Indy, Sep 07, 2026: "Why do you need the advisory lock").
+- **A callback's write is atomic; Disconnect's is ordered, not atomic — and the difference is deliberate.** A completing callback commits its routing row and its sealed grant in ONE transaction, so a connect that cannot seal its grant leaves no routing row behind. Disconnect is NOT one transaction (`afd_connector/src/grant/holding.rs`: *"Not a transaction, and that is the honest shape rather than a compromise"*): it deletes the routing rows first and the vault handle second, chosen so the intermediate state is a handle nothing routes to rather than rows pointing at a credential that is gone. **The consequence, stated rather than implied:** nothing serialises a callback against an in-flight Disconnect, so a callback committing between those two deletes can leave a connection the Disconnect believed it had removed. No advisory lock exists in this tree; the retired Zig daemon took one, and even there it could not cover the vault write (M187_001 §3.3 — Indy, Sep 07, 2026: "Why do you need the advisory lock").
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live with the GitHub connector in `rustd/crates/afd_credential/`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
@@ -79,7 +80,7 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
 | Archetype | Flow | Callback carries | Writes | Shipped instances |
 |---|---|---|---|---|
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-DC — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
-| `app_install` | user authorization → discover or verify App installation → `complete` hook; zero installations continue to the vendor install page | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
+| `app_install` | user authorization → discover or verify App installation → `complete` hook; zero reachable installations REFUSE with `UZ-CONN-008` (no install-page continuation in this tree — see §GitHub App) | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
 **There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. `REGISTRY`'s length is pinned at 5 (the registry's own pin test) — five OAuth/app-install connectors, not eight.
 
@@ -117,14 +118,14 @@ github-app
 └── webhook_secret      verifies inbound App deliveries
 ```
 
-A workspace administrator selects **Connect**. GitHub authorizes the user first. If the App is already installed and exactly one installation is accessible, `agentsfleet` restores the missing internal binding. If none exists, the browser continues to App installation and repository selection.
+A workspace administrator selects **Connect**. GitHub authorizes the user first. If the App is already installed and exactly one installation is accessible, `agentsfleet` restores the missing internal binding. If none exists, the connect REFUSES with `UZ-CONN-008`: the App must be installed on GitHub first, and the daemon cannot send the browser there because it reads no `app_slug`.
 
 ```
 signed state ──────────────────────────────── proves intended workspace and starter identity
 one-time code → GitHub user token
               ├─ claimed id → GET /user/installations/{id}/repositories
               └─ no claim   → GET /user/installations?per_page=2
-                               0 → App install page
+                               0 → 403 UZ-CONN-008 (install on GitHub first)
                                1 → restore internal binding
                               >1 → 403, no arbitrary organisation choice
                                           │
@@ -287,7 +288,7 @@ Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502
 ## Adding a provider (the recipe)
 
 1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
-2. A `<provider>` spec data file (oauth2: endpoints/scopes; app_install: state binding) + the archetype's hook functions (oauth2: `post_auth` body parse + rows; app_install: `build_install_url` + `complete`).
+2. One `Archetype` arm in the registry — `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints) — plus the provider's arm in `complete::read`, which is where its answer is parsed into a grant. The hook-function shape (`post_auth`, `build_install_url`) was the Zig registry's; this tree dispatches on the archetype enum and matches per provider.
 3. One `ConnectorSpec` entry in the registry.
 4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/persist deltas.
