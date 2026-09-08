@@ -40,8 +40,8 @@ a gate skip.
   names, money amounts stay verbatim.
 - **Internal cleanup** gets aggressive trimming, not a paragraph.
 - **History is archived, not rewritten** — past entries are an immutable record.
-- **Rate constants** stay pinned across the server, app, and CLI files checked by
-  `audits/cross-tier-rates.sh`; a public changelog rate also updates the docs mirror.
+- **Rate constants** stay pinned across the three files (`tenant_billing.zig`,
+  `rates.ts`, `rates.mdx`) — a changelog money/rate claim must match all three.
 
 ## Required output (self-audit line before committing the changelog)
 

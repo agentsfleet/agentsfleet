@@ -84,6 +84,37 @@ their numbers:
    0.003-0.005ms        0.1ms        1.0ms      12-21ms
 ```
 
+## Visual evidence
+
+A change to a surface a person looks at, or a failure a picture explains faster
+than a paragraph, carries the picture. A reviewer who can see the wall, the
+dialog or the red run decides in seconds what a description makes them
+reconstruct.
+
+**Take it from what already ran, not from a staged pose.** A lane that failed
+has already produced the image: `gh run download <id> -n <artifact>` yields
+Playwright's `test-failed-*.png`, its `trace.zip` and its `error-context.md`.
+Those are measured evidence of the state under review. A browser driven by hand
+is the fallback, for a surface no lane photographs.
+
+**Screenshot the claim, not the neighbourhood.** One image per assertion, and
+the assertion named in the caption — "one tile, not two" beats "the fleets
+page". Never crop a failure out of a frame that contained it.
+
+**Attaching is the author's step, and say so rather than pretending.** No forge
+accepts an image upload to a pull-request body over its command-line interface;
+`gh` and `glab` both have no such call. So the agent hands the file to the
+person and the person drags it in. What the agent MUST do in the body is make
+the evidence retrievable without the image: name the run id, the artifact and
+the path inside it, and quote the decisive line. A body that says
+`error-context.md:27 records unexpected value "hidden"` survives a screenshot
+nobody attached; a body that says "see screenshot" does not.
+
+**A before/after belongs in a fence, not in two images**, when the difference is
+countable — the diagram rules above already cover it, and a diagram diffs
+better than a pair of pictures. Use images for what only rendering shows:
+alignment, spacing, contrast, what a person actually sees.
+
 ## Review
 
 Lead with the review result. Record every finding with P0, P1, or P2 severity,
@@ -141,6 +172,11 @@ a green pipeline.
 ```text
 <Useful measured diagram, at most 78 columns.>
 ```
+
+<Visual evidence, when a surface changed or a picture explains a failure:
+each image named with the assertion it carries and with the run, artifact and
+path it came from, plus the decisive line quoted so the claim survives an
+image nobody attached.>
 
 ## Review
 
