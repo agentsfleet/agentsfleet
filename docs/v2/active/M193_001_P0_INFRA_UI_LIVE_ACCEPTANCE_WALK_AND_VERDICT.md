@@ -43,7 +43,8 @@
 |------|--------|-----|
 | `playbooks/operations/acceptance/verdicts/{merge_sha}.md` | CREATE | The verdict itself — the deliverable. |
 | `docs/v2/pending/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` | EDIT | Discovery gains the walk's findings; the rubric's Graded column is filled. |
-| `playbooks/operations/acceptance/001_playbook.md` | EDIT | Only if a step's wording proved ambiguous in practice — a step two people read differently is a playbook defect. |
+| `playbooks/operations/acceptance/001_playbook.md` | EDIT | The classification table gained two rows the walk proved missing: a provider **sign-in** page, and a Connect that does nothing. |
+| `.oracle/orly.json`, `docs/TEMPLATE.md`, `docs/CHANGELOG_VOICE.md`, `docs/DOCUMENTATION_RULES.md`, `docs/EXECUTE_DOC_READS.md`, `docs/HARNESS_VERIFY_OUTPUT.md` | EDIT | `orly update` 0.10.1 → 0.10.5, folded into CHORE(open) on Indy's instruction. Materialised, never hand-written. |
 
 ## Applicable Rules
 
@@ -74,24 +75,24 @@ The step every previous attempt died on. GitHub first because its fix is what th
 
 **Implementation default:** stop at each non-GitHub provider's consent screen and read the wording; do NOT authorize. The question is whether the registration matches, and the first page the provider renders answers it.
 
-- **Dimension 1.1** — pressing Connect on GitHub returns to Integrations with the row reading CONNECTED, and the daemon logs `connector_connect_initiated`, `secret_opened`, then a resolved installation → Test `the github connect completes and the row flips`
-- **Dimension 1.2** — Zoho, Jira and Linear each reach either the provider's consent screen or an immediate return, and neither shows wording naming the redirect → Test `each remaining provider's registration is classified`
-- **Dimension 1.3** — any provider showing a stale-registration wording is recorded as a defect row naming the provider and the exact wording, because a registration that drifted once will drift again at the next environment → Test `a stale registration is recorded with its wording`
+- **Dimension 1.1** — DONE — pressing Connect on GitHub returned to Integrations at once with the row reading CONNECTED, and it survives a reload. First completion of this leg in the milestone's history. The daemon log line was not read: the walk had no log access, and the dashboard state is the operator-visible half of the claim → Test `the github connect completes and the row flips`
+- **Dimension 1.2** — IN_PROGRESS — Zoho reached `accounts.zoho.com/signin` and Jira reached `id.atlassian.com/login`, each carrying `redirect_uri=https://app-dev.agentsfleet.net/api/connectors/<provider>/callback` and neither naming the redirect. Both are SIGN-IN pages, not consent screens, which this playbook says cannot tell a good registration from a stale one — so both are recorded as unclassified, not as passes. Linear never reached its provider at all → Test `each remaining provider's registration is classified`
+- **Dimension 1.3** — DONE — no provider showed stale-registration wording. A different defect appeared in its place and is recorded with the same discipline: `Connect` is intermittently inert, firing `POST /w/<id>/integrations` → 200 while the browser never leaves the page → Test `a stale registration is recorded with its wording`
 
 ### §2 — The seven steps, walked and photographed
 
 The playbook's own sequence, run start to finish against the deployed merge commit, with screenshots for the three steps whose claim is a state change a still image can carry.
 
-- **Dimension 2.1** — steps 1 through 7 each produce their "you must see" observation, or the walk stops at the first that does not and the step number is recorded → Test `every playbook step reaches its stated observation`
-- **Dimension 2.2** — steps 4, 5 and 6 are captured as images, each named with the assertion it carries rather than the page it shows → Test `the three state-change steps are photographed`
+- **Dimension 2.1** — DONE — steps 1, 2 and 3 each produced their observation. Step 4 did not, so the walk stopped there and the step number is recorded in the verdict. Steps 5, 6 and 7 were not walked → Test `every playbook step reaches its stated observation`
+- **Dimension 2.2** — IN_PROGRESS — steps 4 and 5 are captured, each named for the assertion it carries: `step4-assistant-turn-never-arrived`, `step4-event-stuck-at-received`, `step5-tile-never-showed-activity`, plus `dim1.1-github-row-reads-connected`. Step 6 has no image because the walk never reached it → Test `the three state-change steps are photographed`
 - **Dimension 2.3** — the run id, artifact and decisive log line for each captured claim are written into the Pull Request body, so the evidence survives an image nobody attached → Test `every image claim is retrievable without the image`
 
 ### §3 — The verdict, recorded and graded
 
 The deliverable. A file, not a chat message, because M187_001's §4.2 amendment settled that the human verdict is a committed artifact no job reads.
 
-- **Dimension 3.1** — `playbooks/operations/acceptance/verdicts/{merge_sha}.md` exists, names the reviewer's address, the ISO 8601 date, the build sha, and a pass/fail verdict → Test `the verdict file names the reviewer and the build`
-- **Dimension 3.2** — `./playbooks/operations/acceptance/01_verdict_check.sh {merge_sha}` accepts it → Test `the verdict check accepts the recorded verdict`
+- **Dimension 3.1** — DONE — `playbooks/operations/acceptance/verdicts/ff2fd5ee573ab25b4bab20568909aed507c590fc.md` names the reviewer, `2026-09-08`, the build sha and a `fail` verdict, with one Defects line per finding → Test `the verdict file names the reviewer and the build`
+- **Dimension 3.2** — BLOCKED — the check refuses the file, correctly: `✗ verdict for ff2fd5ee…0fc is 'fail', not pass`. It cannot pass while step 4 fails, which is Invariant 2 working rather than a gap → Test `the verdict check accepts the recorded verdict`
 - **Dimension 3.3** — the sign-off is Indy's own words quoted verbatim in Discovery, never a summary of them → Test `the sign-off is recorded as a quote`
 
 ## Interfaces
@@ -150,12 +151,12 @@ Regression rows: N/A — this spec adds no code path, so there is no pre-existin
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A GitHub connect completes on the deployed build (§1) | walk `001_playbook.md` §"Connector registrations" for github | the Integrations row reads CONNECTED | P0 | |
-| R2 | Every remaining provider's registration is classified (§1) | walk the same section for zoho, jira, linear | three classifications recorded, none left unread | P0 | |
-| R3 | The seven steps reach their observations (§2) | walk `001_playbook.md` steps 1–7 | every "you must see" observed, or the failing step recorded | P0 | |
-| R4 | The verdict is recorded and accepted (§3) | `./playbooks/operations/acceptance/01_verdict_check.sh {merge_sha}` | exit 0, `✓ verdict for {merge_sha}: pass — <reviewer> on <date>` | P0 | |
-| R5 | The sign-off is Indy's own words (§3) | inspect Discovery | a verbatim quote, not a summary | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R1 | A GitHub connect completes on the deployed build (§1) | walk `001_playbook.md` §"Connector registrations" for github | the Integrations row reads CONNECTED | P0 | ✅ `GitHub · CONNECTED · Disconnect` on Integrations, surviving a reload |
+| R2 | Every remaining provider's registration is classified (§1) | walk the same section for zoho, jira, linear | three classifications recorded, none left unread | P0 | ❌ Linear's Connect never reached the provider; Zoho and Jira reached sign-in pages, which the playbook says prove nothing |
+| R3 | The seven steps reach their observations (§2) | walk `001_playbook.md` steps 1–7 | every "you must see" observed, or the failing step recorded | P0 | ❌ stopped at step 4 — `Still working.` for 4 minutes, TOKENS and DURATION `—`, one `RECEIVED` event never leased |
+| R4 | The verdict is recorded and accepted (§3) | `./playbooks/operations/acceptance/01_verdict_check.sh {merge_sha}` | exit 0, `✓ verdict for {merge_sha}: pass — <reviewer> on <date>` | P0 | ❌ `✗ verdict for ff2fd5ee…0fc is 'fail', not pass` (exit 1) — the check refusing a failed walk, as Invariant 2 requires |
+| R5 | The sign-off is Indy's own words (§3) | inspect Discovery | a verbatim quote, not a summary | P0 | ⏳ awaiting Indy — an agent cannot author a human's sign-off, and this row stays empty until they write one |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing — the six `orly update` paths were added to Files Changed when Indy folded the harness update into CHORE(open) |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Version sync | `make check-version` | exit 0 | P0 | |
@@ -208,6 +209,11 @@ N/A — no files deleted. This spec produces a verdict file and fills a rubric; 
 | Sep 08, 2026 | Indy — when the Test Baseline is measured | > Indy (2026-09-08): "the test unit, test integration base line establishment must be done prior to PR since it takes a lot of time" — context: CHORE(open) ran no suites; the header was declared and the counts are due before the Pull Request. Recorded in orly, not only here: `agentsfleet/orly#38` moves the measurement to the boundary, names the baseline as the BRANCH POINT's count so VERIFY's Test Delta cannot compare a number against itself, and tightens `spec.baseline` to fail a header still carrying no count. |
 | Sep 08, 2026 | Indy — a worktree inherits the base tree | > Indy (2026-09-08): "when CHORE(OPEN) is initiated all changes from my base worktree main must be carried over to the worktree branch" — context: recorded in orly as a CHORE(open) step (`git stash push -u` in the base, `git stash pop` in the worktree; move never copy). Here it was a no-op: `git status --porcelain -uall` in `~/Projects/agentsfleet` returned empty, so nothing was stranded and nothing came across. |
 | Sep 08, 2026 | Indy — the harness updates with the stream | > Indy (2026-09-08): "ensure that you install orly update, and carry over your fixes you do for orly (due to orly update) is moved as part of CHORE(OPEN)" — context: `orly update --no-hooks` took the worktree 0.10.1 → 0.10.5 (5 files). `--no-hooks` because `.githooks/pre-commit` and `pre-push` are agentsfleet's own; retargeting `core.hooksPath` would have pointed every worktree at this tree. `orly doctor` then read 🟢. |
+| Sep 08, 2026 | The walk itself — step 4 stops it | The operator's message is accepted and never runs. It appears at once as an operator turn, the fleet reads `Still working.` from 02:43:40 PM, and no assistant turn arrives; at 4 minutes against a 2-minute allowance TOKENS and DURATION are still `—`. Fleet events carry exactly one row: `RECEIVED`, `No result recorded`, `$0.00`, never leased. The playbook's runner-offline branch does NOT apply — `zombie-dev-worker-ant` reads `ACTIVE · ONLINE`, heartbeat 5 seconds, `Idle. No active leases.`, all eight sandbox checks passed, and its newest lease of any kind is 1 day old. Classified as a product defect, not an environment one, and fixed under its own spec per Out of Scope. |
+| Sep 08, 2026 | Why the automated claim did not catch it | `fleet-execution.spec.ts:166 › a fleet installed from the gallery executes to a result the operator can read` passed on this exact build at 08:58 UTC (`91 passed (7.3m)`, run 34206139443), roughly ten minutes before the manual walk stalled. It drives the same path — `installViaUI`, then fill the composer and click send, then poll for a lease. The one difference is the skill: the test seeds `executionSkillMd(...)`, while the walk installed the library's own `github-pr-reviewer` card. A green suite and a wedged fleet on the same build is the finding, and it belongs to whoever owns the fix. |
+| Sep 08, 2026 | A wedged fleet cannot be re-driven | A second message was typed and sent while the fleet read `Still working.`; the composer is disabled, so nothing was sent. Fleet events still showed one event afterwards. An operator whose first message wedges the fleet has no way to send another from the dashboard. |
+| Sep 08, 2026 | `Connect` is intermittently inert | The click fires its server action — `POST /w/<id>/integrations` → 200 — and the browser never navigates. No error, no toast, no state change, the row stays `NOT CONNECTED`. Reproduced on Linear every time, on Jira and Zoho after their first use, and on `Inspect runner →` on Admin → Runners, so it is not connector-specific. Recorded, not fixed. |
+| Sep 08, 2026 | The playbook could not classify what it saw | Zoho and Jira each rendered a provider SIGN-IN page. The classification table admits only a consent screen, an immediate return, redirect wording, or an app-unavailable page — and the prose two paragraphs below it says a login page cannot distinguish a good registration from a stale one. The table now carries a sign-in row and a nothing-happened row, so the next walker records what they saw instead of choosing the nearest wrong answer. |
 
 - **Metrics review** — no analytics or funnel playbook update required: this spec adds no code path and no event.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results, populated as the work proceeds.

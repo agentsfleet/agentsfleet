@@ -100,6 +100,8 @@ page the provider shows:
 | The provider's consent screen, or an immediate return to Integrations | The registration matches. Continue the walk. |
 | `redirect_uri is not associated with this application` (GitHub), `Invalid Redirect Uri` (Zoho), or any wording naming the redirect | **The registration is stale.** Fix it in the provider's App settings — NOT in the code. The daemon mints `https://<APP_HOST>/api/connectors/<provider>/callback`; the provider is holding something else, usually the retired `https://<API_HOST>/v1/connectors/<provider>/callback`. |
 | A page from the provider about the app being unavailable | The platform app bag is missing or wrong for this environment — see `credentials_test.sh`. |
+| The provider's **sign-in** page, because you have no session with that provider | **Nothing is proved yet.** A sign-in page looks the same for a good registration and a stale one, for the reason two paragraphs above. Sign in to the provider and read the next page, or record the provider as unclassified in the verdict. Never read a sign-in page as a pass. |
+| **Nothing happens** — no new page, no error, the row still reads NOT CONNECTED | The dashboard never sent you. Record it as a defect against the dashboard, not against the registration, and classify that provider as unclassified. |
 
 The URL the daemon minted is in the address bar of the page the provider showed
 you; its `redirect_uri` parameter is the value under test. Record any stale
