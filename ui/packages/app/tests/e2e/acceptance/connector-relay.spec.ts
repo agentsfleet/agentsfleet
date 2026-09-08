@@ -36,13 +36,15 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 
 /**
- * Every provider the daemon ships, by route segment.
+ * Every provider the daemon ships TODAY, by route segment.
  *
- * Spelled here rather than read from the catalogue for the same reason the
- * path below is: a list fetched from the daemon would agree with the daemon.
- * A provider added without a row here fails the count assertion.
+ * Not the list under test — the list under test is the daemon's own catalogue,
+ * read at runtime, so a sixth provider is covered the day it ships. This array
+ * is the floor: it asserts the catalogue has not silently LOST one, which a
+ * catalogue-derived loop alone cannot see (an empty catalogue would pass it).
+ * The two together mean neither a new provider nor a vanished one goes unasked.
  */
-const PROVIDERS = ["slack", "github", "zoho", "jira", "linear"] as const;
+const KNOWN_PROVIDERS = ["slack", "github", "zoho", "jira", "linear"] as const;
 
 /** The relay route the dashboard mounts: `app/api/connectors/[provider]/callback/route.ts`. */
 const RELAY_PREFIX = "/api/connectors/";
@@ -53,6 +55,12 @@ const ENCODED_SLASH = "%2f";
 
 interface ConnectStarted {
   install_url: string;
+}
+
+/** One row of `GET …/connectors` — the daemon's own list of what it ships. */
+interface CatalogueEntry {
+  id: string;
+  configured: boolean;
 }
 
 /** The dashboard origin this run drives, which is the origin a provider returns to. */
@@ -69,8 +77,25 @@ test.describe("connector relay", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tenant = clientFor(FIXTURE_KEY.regular);
 
+    const catalogue = await tenant.get<CatalogueEntry[]>(
+      `/v1/workspaces/${workspaceId}/connectors`,
+    );
+    const shipped = catalogue.map((entry) => entry.id);
+    // The floor, not the subject: a catalogue that lost a provider would leave
+    // a loop over itself perfectly green.
+    for (const known of KNOWN_PROVIDERS) {
+      expect(shipped, `the catalogue no longer lists ${known}`).toContain(known);
+    }
+
+    // A provider this DEPLOYMENT has no app bag for refuses connect with
+    // UZ-CONN-001, correctly — asking it would grade the environment, not the
+    // callback. The floor above already proved none of them vanished.
+    const connectable = catalogue.filter((entry) => entry.configured).map((entry) => entry.id);
+    expect(connectable.length, "no provider is configured here; the journey would prove nothing")
+      .toBeGreaterThan(0);
+
     const minted: string[] = [];
-    for (const provider of PROVIDERS) {
+    for (const provider of connectable) {
       const started = await tenant.post<ConnectStarted>(
         `/v1/workspaces/${workspaceId}/connectors/${provider}/connect`,
         {},
@@ -96,8 +121,9 @@ test.describe("connector relay", () => {
       minted.push(provider);
     }
 
-    // A sixth provider shipping without a row above would otherwise pass this
-    // journey by never being asked.
-    expect(minted, "every shipped provider was asked").toHaveLength(PROVIDERS.length);
+    // Against the CATALOGUE, never against the array this file spells: comparing
+    // a list built from `KNOWN_PROVIDERS` to its own length is a tautology, and
+    // a sixth provider would have passed it by never being asked.
+    expect(minted, "every configured provider the daemon lists was asked").toEqual(connectable);
   });
 });
