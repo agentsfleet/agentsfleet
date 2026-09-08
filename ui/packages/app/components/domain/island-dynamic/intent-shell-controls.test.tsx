@@ -64,7 +64,12 @@ vi.mock("@agentsfleet/design-system", async () => {
   function Spinner({ srLabel }: { srLabel?: string }) {
     return ReactModule.createElement("span", { role: "status" }, srLabel);
   }
-  return { Button, Spinner, WakePulse };
+  // The real `cn` is clsx + tailwind-merge; this test only renders and reads
+  // class strings, so joining the truthy values is the whole of what it needs.
+  function cn(...values: unknown[]) {
+    return values.filter(Boolean).join(" ");
+  }
+  return { Button, Spinner, WakePulse, cn };
 });
 
 vi.mock("next/navigation", () => ({
