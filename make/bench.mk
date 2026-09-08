@@ -1,45 +1,27 @@
 # =============================================================================
 # BENCH — API benchmarks.
 #
-# `make bench` runs two tiers:
-#   Tier-1  zbench micro-benchmarks   (tests/bench/micro.zig — ReleaseFast)
-#   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
+# `make bench` is the hey HTTP loadgen gate (requires `hey` in PATH — mise
+# installs it). It measures a URL, which is the only thing hey can measure.
+#
+# What the daemon's paths cost is the THROUGHPUT LANES further down —
+# bench-lease, bench-steer, bench-outbound, bench-cardinality. Those are Rust,
+# they drive the production types directly rather than a URL, and they are the
+# agentsfleetd benchmarks.
+#
+# The Tier-1/Tier-2 pair this header used to describe is gone. Tier-1 was a
+# zbench runner over `tests/bench/micro.zig`, which benchmarked daemon
+# internals — the router, the error registry, the credential broker — through a
+# `bench_app` module the Zig daemon graph provided. That tree went at the
+# cutover, so the file could not compile, no build step named it, and `make
+# bench` never ran it. It is deleted rather than described.
 # =============================================================================
 
-.PHONY: bench bench-incident _bench-loadgen
+.PHONY: bench _bench-loadgen
 
 bench:  ## Run the Tier-2 hey HTTP loadgen gate.
 	@$(MAKE) _bench-loadgen
 
-# ── Incident-response benchmark ──────────────────────────────────────────────
-# SEED_MANIFEST selects the manifest half (eval is the scored set; the spelled
-# out file name also works). BENCH_RUNS optionally points at a findings file —
-# without it the target proves harness health + prints the corpus hash line
-# that the reproducibility rubric compares across runs.
-BENCH_INCIDENT_DIR := bench/incident-response
-SEED_MANIFEST ?= eval
-ifeq ($(SEED_MANIFEST),eval)
-BENCH_INCIDENT_MANIFEST := $(BENCH_INCIDENT_DIR)/seeds/evaluation.json
-else
-BENCH_INCIDENT_MANIFEST := $(BENCH_INCIDENT_DIR)/seeds/$(SEED_MANIFEST).json
-endif
-
-bench-incident:  ## Incident-response benchmark: harness tests, corpus hash, scoring (SEED_MANIFEST=eval, BENCH_RUNS=<findings.json>)
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@echo "→ [bench-incident] harness unit tests..."
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build -Dwith-bench-tools=true bench-incident-test
-	@echo "→ [bench-incident] corpus + score ($(SEED_MANIFEST))..."
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build -Dwith-bench-tools=true bench-incident -- \
-	   --evaluation $(BENCH_INCIDENT_MANIFEST) \
-	   --calibration $(BENCH_INCIDENT_DIR)/seeds/calibration.json \
-	   --baseline $(BENCH_INCIDENT_DIR)/baseline.json \
-	   --freeze $(BENCH_INCIDENT_DIR)/freeze.json \
-	   $(if $(BENCH_RUNS),--runs $(BENCH_RUNS),)
-	@echo "✓ [bench-incident] passed"
 
 _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	@mkdir -p .tmp

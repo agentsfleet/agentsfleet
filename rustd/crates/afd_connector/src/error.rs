@@ -33,8 +33,8 @@ mod raise;
 pub use self::raise::one_of_each_kind;
 
 pub(crate) use self::raise::{
-    exchange_refused, exchange_unreadable, installation_held_elsewhere, installation_unresolved,
-    query,
+    exchange_refused, exchange_unreadable, installation_held_elsewhere,
+    installation_listing_refused, installation_unresolved, query,
 };
 
 /// The result every fallible function in this crate returns.
@@ -116,6 +116,19 @@ pub(crate) enum ErrorKind {
         status: u16,
     },
 
+    /// The vendor declined to say which installations the token reaches.
+    ///
+    /// Raised only AFTER the exchange succeeded, which is the whole reason it
+    /// is not [`ErrorKind::ExchangeRefused`]: the code has been redeemed and a
+    /// token is in hand, so the credential a reader would go check is the one
+    /// that just worked. `api.github.com` answering 403 to a request carrying
+    /// no `User-Agent` is what made that distinction worth having.
+    #[error("the connector's provider refused the installation listing with status {status}")]
+    InstallationListingRefused {
+        /// The HTTP status, as the vendor sent it.
+        status: u16,
+    },
+
     /// The vendor answered with a body this build cannot read as a grant.
     ///
     /// Separate from [`ErrorKind::ExchangeRefused`] because it is a separate
@@ -164,6 +177,10 @@ impl Error {
             ErrorKind::ExchangeRefused { .. } | ErrorKind::GrantUnreadable => (
                 error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
                 detail::EXCHANGE_FAILED,
+            ),
+            ErrorKind::InstallationListingRefused { .. } => (
+                error_code::CONNECTOR_INSTALLATION_LISTING_FAILED,
+                detail::INSTALLATION_LISTING_FAILED,
             ),
             ErrorKind::InstallationUnresolved { .. } | ErrorKind::InstallationHeldElsewhere => (
                 error_code::CONNECTOR_INSTALLATION_OWNERSHIP,

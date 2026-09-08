@@ -9,7 +9,7 @@ import {
   PanelLeftOpenIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { Button, Spinner, WakePulse } from "@agentsfleet/design-system";
+import { cn, Button, Spinner, WakePulse } from "@agentsfleet/design-system";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import {
@@ -24,6 +24,7 @@ import {
   useIntentModule,
 } from "@/components/domain/island-dynamic/intent-module-loader";
 import {
+  SIDEBAR_COLUMN,
   shellSidebarState,
   useShellSidebarCollapsed,
 } from "./shell-sidebar-state";
@@ -76,9 +77,9 @@ function useMobileNavigation(workspaces: TenantWorkspace[]) {
 export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: ShellControlsProps) {
   const navigation = useMobileNavigation(workspaces);
   const { mobileNavigation, mobileOpen, pathname, linkWorkspaceId, setMobileOpen, mobileTriggerRef } = navigation;
+  const collapsed = useShellSidebarCollapsed();
   return (
     <>
-      <MobileNavigationTrigger navigation={navigation} />
       {mobileNavigation.module ? (
         <mobileNavigation.module.default
           open={mobileOpen}
@@ -89,8 +90,29 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
           restoreFocus={() => mobileTriggerRef.current?.focus()}
         />
       ) : null}
-      <BrandLink workspaceId={linkWorkspaceId} />
-      <SidebarToggle sidebarNavId={sidebarNavId} />
+      {/*
+        From `md` up this cluster IS the sidebar column: same width, same `px-3`
+        gutter. That is what puts the brand on the nav items' leading edge and
+        the toggle on their trailing edge, instead of leaving the toggle
+        floating mid-header over the content region. Collapsed, the column is a
+        64px rail with room for one control, so the wordmark stands down and the
+        toggle centres on the icon the nav items collapse to. Below `md` there
+        is no column and the cluster is an ordinary padded row.
+      */}
+      <div
+        data-testid="shell-leading-cluster"
+        className={cn(
+          "flex min-w-0 items-center gap-4 px-4 md:shrink-0 md:px-3",
+          "transition-all duration-snap ease-snap",
+          collapsed
+            ? `${SIDEBAR_COLUMN.header.collapsed} md:justify-center`
+            : `${SIDEBAR_COLUMN.header.expanded} md:justify-between`,
+        )}
+      >
+        <MobileNavigationTrigger navigation={navigation} />
+        <BrandLink workspaceId={linkWorkspaceId} collapsed={collapsed} />
+        <SidebarToggle sidebarNavId={sidebarNavId} collapsed={collapsed} />
+      </div>
     </>
   );
 }
@@ -125,8 +147,10 @@ function MobileNavigationTrigger({ navigation }: { navigation: ReturnType<typeof
   );
 }
 
-function SidebarToggle({ sidebarNavId }: Pick<ShellControlsProps, "sidebarNavId">) {
-  const collapsed = useShellSidebarCollapsed();
+function SidebarToggle({
+  sidebarNavId,
+  collapsed,
+}: Pick<ShellControlsProps, "sidebarNavId"> & { collapsed: boolean }) {
   useEffect(() => () => shellSidebarState.reset(), []);
   return (
     <Button
@@ -136,7 +160,7 @@ function SidebarToggle({ sidebarNavId }: Pick<ShellControlsProps, "sidebarNavId"
       aria-controls={sidebarNavId}
       variant="ghost"
       size="icon"
-      className="hidden md:inline-flex"
+      className="hidden shrink-0 md:inline-flex"
       onClick={shellSidebarState.toggle}
     >
       {collapsed ? (
@@ -148,7 +172,10 @@ function SidebarToggle({ sidebarNavId }: Pick<ShellControlsProps, "sidebarNavId"
   );
 }
 
-function BrandLink({ workspaceId }: { workspaceId: string | null }) {
+function BrandLink({
+  workspaceId,
+  collapsed,
+}: { workspaceId: string | null; collapsed: boolean }) {
   return (
     <Link
       href={
@@ -156,7 +183,13 @@ function BrandLink({ workspaceId }: { workspaceId: string | null }) {
           ? workspacePath(workspaceId, DEFAULT_WORKSPACE_SUBPATH)
           : "/"
       }
-      className="inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline"
+      className={cn(
+        "inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline",
+        // The collapsed rail is 64px wide and the toggle claims it. The
+        // wordmark hides from `md` up only — the mobile header has no rail and
+        // keeps its brand whatever the desktop sidebar is doing.
+        collapsed && "md:hidden",
+      )}
       aria-label="agentsfleet home"
     >
       <WakePulse

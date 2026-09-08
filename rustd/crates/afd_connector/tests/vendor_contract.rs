@@ -51,6 +51,14 @@ const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 /// A throttle is the environment answering, not the contract (RULE ECL).
 const TOO_MANY_REQUESTS: reqwest::StatusCode = reqwest::StatusCode::TOO_MANY_REQUESTS;
 
+/// A token that authorizes nothing — see the listing test's note on why that
+/// is the right credential for a rule judged before the credential.
+const NO_TOKEN: &str = "vendor-contract-probe-not-a-token";
+
+/// GitHub's answer to a request it declines to process at all, as opposed to
+/// one it processed and would not authorize (401).
+const ADMINISTRATIVE_REFUSAL: u16 = 403;
+
 /// Where this provider's grant is redeemed, whichever archetype it runs.
 fn token_endpoint(provider: Provider) -> &'static str {
     match provider.archetype() {
@@ -132,5 +140,68 @@ async fn every_provider_answers_the_exchange_in_the_format_the_daemon_parses() {
         "no provider could be reached, so this run graded nothing — a green here \
          would be indistinguishable from a proof, which is the failure the lane's \
          own zero-test guard exists for",
+    );
+}
+
+/// GitHub accepts the daemon's installation-listing request at all.
+///
+/// # The second half of the same lesson
+///
+/// The suite above proves the token endpoint answers in a format the daemon
+/// parses. It cannot see the call AFTER the exchange, and that is where the
+/// next header went missing: `api.github.com` refuses a request carrying no
+/// `User-Agent` with **403 "Request forbidden by administrative rules"**,
+/// before it reads `Authorization` at all. `reqwest` sends no default one.
+///
+/// So every live GitHub connect got its grant, spent it on the installation
+/// listing, and was refused — while the fake provider, which enforces no such
+/// rule, held the suite green. Same shape as the `Accept` defect, one call
+/// later.
+///
+/// # What a bogus token proves
+///
+/// The administrative rule is judged BEFORE the credential: with a
+/// `User-Agent` the vendor answers 401 "Requires authentication", and without
+/// one it answers 403 regardless of the token. So a junk token separates the
+/// two answers exactly, redeems nothing, and needs no secret.
+///
+/// A 403 here is the defect. Anything else — including the 401 this expects —
+/// means the request cleared the rule.
+#[tokio::test]
+#[ignore = "reaches GitHub's live API: make test-integration-rustd"]
+async fn github_accepts_the_installation_listing_this_daemon_sends() {
+    let client = reqwest::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .expect("a client");
+
+    let answer = match afd_connector::github::probe_listing_request(&client, NO_TOKEN)
+        .send()
+        .await
+    {
+        Ok(answer) => answer,
+        Err(source) => {
+            // The lane's doctrine: a transport failure says nothing about the
+            // headers we send, so it is reported and skipped rather than
+            // failing a contract it did not test.
+            eprintln!(
+                "environment: api.github.com could not be reached ({source});                  the listing contract is ungraded this run",
+            );
+            return;
+        }
+    };
+
+    let status = answer.status();
+    if status == TOO_MANY_REQUESTS || status.is_server_error() {
+        eprintln!(
+            "environment: api.github.com answered {status}; a throttle or a vendor              fault says nothing about the header we send",
+        );
+        return;
+    }
+
+    assert_ne!(
+        status.as_u16(),
+        ADMINISTRATIVE_REFUSAL,
+        "api.github.com refused the daemon's own listing request with 403. That is          the administrative-rules refusal, not an authorization one: the request          is missing a header the vendor requires — `User-Agent` is the one that          has gone missing before. Every GitHub connect fails at the installation          listing while this holds.",
     );
 }

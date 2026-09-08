@@ -35,6 +35,8 @@ use crate::provider::Provider;
 
 mod probe;
 
+#[cfg(feature = "test-util")]
+pub use probe::probe_listing_request;
 pub use probe::resolve;
 
 /// Wire fields of the listing, one spelling each.
