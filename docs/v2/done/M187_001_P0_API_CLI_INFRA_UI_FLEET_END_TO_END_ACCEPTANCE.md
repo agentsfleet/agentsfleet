@@ -249,6 +249,14 @@ The acceptance lane is the operator-facing signal and it already reports through
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ plus one decisive line. **Ship gate:** every P0 ✅ → CHORE(close)-eligible; any ❌ → EXECUTE.
 
+**Amended Sep 08, 2026 — a P0 row whose SCOPE moves is not a P0 row shipped red.** The gate above knows two states for a criterion, met and unmet, and one escape, a P1 deferral quote. It has no third state for scope leaving the milestone, so R6 had nowhere legal to sit and three gradings were attempted in a day: `SCHEDULED`, `HANDED OFF`, and finally ❌ with the spec reopened. All three were wrong, and greptile flagged two of them correctly.
+
+What actually happened is not a deferral. A deferral leaves work unowned inside a closed spec, which is what the gate exists to prevent. A TRANSFER moves the criterion whole — its dimensions, its verification and its rubric row — into a named successor that carries it as its own P0. The work is not less owned afterwards; it is owned somewhere else, and both specs say so.
+
+The gate therefore reads: every P0 is ✅, or MOVED to a named spec that carries it as a rubric row of its own, with the owner's verbatim quote in Discovery. Anything else is ❌ → EXECUTE. R6 is MOVED under this clause, to M193_001 R4, on Indy's quote recorded below. The clause is deliberately narrow — a successor that does not carry the row is a deferral wearing a new word, and fails the gate as before.
+
+This amends the instance, per the operating model: "Spec is an instance, rules are the constant. Spec contradicts a rule → amend spec." Whether `docs/TEMPLATE.md` should carry the clause for every future milestone is a separate call, raised to Indy and not taken here.
+
 ## Dead Code Sweep
 
 N/A — no files deleted. This spec ADDS an acceptance journey, ports connector
