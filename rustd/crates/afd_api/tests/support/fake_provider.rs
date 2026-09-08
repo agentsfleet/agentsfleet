@@ -40,11 +40,25 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::Router;
-use axum::http::StatusCode;
+use axum::http::header::{ACCEPT, CONTENT_TYPE};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use tokio::task::JoinHandle;
 
 const TOKEN_PATH: &str = "/oauth/access";
+/// What a caller must ask for to be answered in JSON — GitHub's contract, and
+/// the reason this fixture reads the request's `Accept` at all. It answered
+/// JSON unconditionally until Sep 8, 2026, which made every test here pass
+/// while the live GitHub connect refused every code it redeemed: the daemon
+/// sent no `Accept`, GitHub answered form-encoded, and `complete` reported
+/// `UZ-CONN-006` over a grant that had been issued. A fixture more forgiving
+/// than the vendor is a fixture that certifies the bug.
+const ACCEPT_JSON: &str = "application/json";
+/// How the same answer comes back when nobody asked for JSON.
+const FORM_MEDIA_TYPE: &str = "application/x-www-form-urlencoded";
+const FIELD_SEPARATOR: &str = "&";
+const FIELD_ASSIGNMENT: char = '=';
 
 /// One GET the vendor answers beside the exchange: its path, status and body.
 ///
@@ -57,6 +71,25 @@ pub(crate) struct Read {
     pub(crate) path: String,
     pub(crate) status: u16,
     pub(crate) body: String,
+}
+
+/// The fixture's answer as a vendor renders it for a caller that asked for no
+/// JSON: the same fields, form-encoded. Values render as their scalar text — a
+/// token answer holds strings and numbers, never a nested object — so a daemon
+/// that reads this with `serde_json` fails exactly where the live one did.
+fn form_encoded(answer: &serde_json::Value) -> String {
+    answer.as_object().map_or_else(String::new, |fields| {
+        fields
+            .iter()
+            .map(|(name, value)| {
+                let rendered = value
+                    .as_str()
+                    .map_or_else(|| value.to_string(), str::to_owned);
+                format!("{name}{FIELD_ASSIGNMENT}{rendered}")
+            })
+            .collect::<Vec<_>>()
+            .join(FIELD_SEPARATOR)
+    })
 }
 
 pub(crate) struct FakeProvider {
@@ -93,14 +126,23 @@ impl FakeProvider {
         );
         let mut router = Router::new().route(
             TOKEN_PATH,
-            post(move || {
+            post(move |headers: HeaderMap| {
                 let asked = counted.fetch_add(1, Ordering::SeqCst);
                 let answer = answers
                     .get(asked)
                     .or_else(|| answers.last())
                     .cloned()
                     .expect("the fake provider was built with at least one answer");
-                async move { axum::Json(answer) }
+                let asked_for_json = headers
+                    .get(ACCEPT)
+                    .is_some_and(|value| value.as_bytes() == ACCEPT_JSON.as_bytes());
+                async move {
+                    if asked_for_json {
+                        axum::Json(answer).into_response()
+                    } else {
+                        ([(CONTENT_TYPE, FORM_MEDIA_TYPE)], form_encoded(&answer)).into_response()
+                    }
+                }
             }),
         );
         let served = Arc::new(AtomicUsize::new(0));
