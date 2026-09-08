@@ -10,10 +10,12 @@
 **Priority:** P0 — no fleet declaring a mintable credential can run in production. Every teammate in `library/*` declares one. The acceptance walk stopped here.
 **Categories:** API, INFRA, UI
 **Batch:** B1 — single workstream; the grant path is one change and its test is one lane.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** pending — measured before the Pull Request as `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`), or `n/a — no code on this branch`
+**Branch:** pending — set at CHORE(open)
+**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M193_001 (its walk found the defect and its verdict file names the build; this spec is what lets that walk finish)
-**Inherits from M193_001 under the scope-transfer clause (`docs/TEMPLATE.md:325`):** rubric row R3 (the seven playbook steps reach their observations) → R1 here · rubric row R4 (the verdict is recorded and accepted) → R2 here. M193_001's walk stopped at step 4 on this defect and cannot pass until it is fixed. Both specs record the mapping; M193_001 marks those rows `MOVED to M194_001`.
+**Inherits from M193_001 under the scope-transfer clause (`docs/TEMPLATE.md:325`):** rubric row R3 (the seven playbook steps reach their observations) → R1 here · rubric row R4 (the verdict is recorded and accepted) → R2 here · Dimension 2.2 (the three state-change steps photographed, IN_PROGRESS there because step 6 was never reached) → Dimension 4.3 here. M193_001's walk stopped at step 4 on this defect and cannot pass until it is fixed. Both specs record the mapping; M193_001 marks those rows `MOVED to M194_001`.
 **Provenance:** agent-generated from a verified investigation — daemon logs on `agentsfleetd-dev`, source reads cited inline, and two adversarial review rounds over `docs/designs/incident-responder-wedge.md`
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §3, §8
 
@@ -112,6 +114,7 @@ The rows inherited from M193_001. They are graded by re-running the acceptance w
 
 - **Dimension 4.1** — `playbooks/operations/acceptance/001_playbook.md` steps 1 through 7 each reach their stated observation against the deployed build → Test `every playbook step reaches its stated observation`
 - **Dimension 4.2** — a verdict file for that build records `pass` and `01_verdict_check.sh` accepts it → Test `the verdict check accepts the recorded verdict`
+- **Dimension 4.3** — steps 4, 5 and 6 are captured as images, each named for the assertion it carries rather than the page it shows. Inherited whole from M193_001 Dimension 2.2, which is IN_PROGRESS there: steps 4 and 5 were photographed, and step 6 has no image because the walk never reached it. The visual evidence moves with the rubric row that depends on it → Test `the three state-change steps are photographed`
 
 ## Interfaces
 
@@ -169,6 +172,7 @@ Analytics or funnel playbook update: none. This adds no product funnel step; it 
 | 3.3 | integration | `a denied grant ends its parked event` | Deny → the event holds a terminal row and the next poll does not re-park it |
 | 4.1 | e2e | `every playbook step reaches its stated observation` | Walk `001_playbook.md` steps 1–7 on the deployed build → each "you must see" observed |
 | 4.2 | integration | `the verdict check accepts the recorded verdict` | `01_verdict_check.sh {sha}` → exit 0 and the `✓ verdict for …: pass` line |
+| 4.3 | e2e | `the three state-change steps are photographed` | Steps 4, 5, 6 on the deployed build → three images, each captioned with its assertion |
 
 Regression rows: `a non-mintable declaration requests no grant` is the regression guard — it fails if the request path ever widens past `declared.mintable()`, which would raise cards nobody can act on for `grafana`, `datadog` and `fly`. Idempotency rows: `a repeated install does not duplicate a grant` and `a redelivering park raises one card` are the idempotency pair, one per write site.
 

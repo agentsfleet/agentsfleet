@@ -86,7 +86,7 @@ The step every previous attempt died on. GitHub first because its fix is what th
 The playbook's own sequence, run start to finish against the deployed merge commit, with screenshots for the three steps whose claim is a state change a still image can carry.
 
 - **Dimension 2.1** — DONE — steps 1, 2 and 3 each produced their observation. Step 4 did not, so the walk stopped there and the step number is recorded in the verdict. Steps 5, 6 and 7 were not walked → Test `every playbook step reaches its stated observation`
-- **Dimension 2.2** — IN_PROGRESS — steps 4 and 5 are captured, each named for the assertion it carries: `step4-assistant-turn-never-arrived`, `step4-event-stuck-at-received`, `step5-tile-never-showed-activity`, plus `dim1.1-github-row-reads-connected`. Step 6 has no image because the walk never reached it → Test `the three state-change steps are photographed`
+- **Dimension 2.2** — IN_PROGRESS, transferred to M194_001 Dimension 4.3 — steps 4 and 5 are captured, each named for the assertion it carries: `step4-assistant-turn-never-arrived`, `step4-event-stuck-at-received`, `step5-tile-never-showed-activity`, plus `dim1.1-github-row-reads-connected`. Step 6 has no image because the walk never reached it → Test `the three state-change steps are photographed`
 - **Dimension 2.3** — DONE — the Pull Request body carries, for each captured claim, the deploy run that shipped the build, the screenshot filename, and the decisive line — the daemon's own `reason=` counts and the `RECEIVED` event row — so every claim is retrievable without the image → Test `every image claim is retrievable without the image`
 
 ### §3 — The verdict, recorded and graded
