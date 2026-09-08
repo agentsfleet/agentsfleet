@@ -13,6 +13,7 @@
 **Branch:** {feat/mNN-name — added at CHORE(open)}
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
 **Depends on:** M187_001 (its `User-Agent` fix is what lets a GitHub connect complete at all; every step below crosses that path)
+**Inherits from M187_001 — the whole of what that milestone left undone:** Dimension 4.2 (the committed verdict file) → §3 Dimensions 3.1–3.2 · Dimension 4.3 (the person's sign-off) → §3 Dimension 3.3 · rubric row R6 (human verdict recorded) → R4. Nothing else of M187_001 is open: §1–§3 are DONE and every other rubric row is ✅, audited at its close. Moved on Indy's decision, quoted in that spec's Discovery.
 **Provenance:** human-directed — Indy, Sep 08, 2026: "You said you will create a new spec with the pending items in this spec, if so why are you complaining on R6?" M187_001 closed with R6 ungraded and no owner for the remaining walk; this spec is that owner.
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
 
@@ -202,6 +203,7 @@ N/A — no files deleted. This spec produces a verdict file and fills a rubric; 
 
 | Date | Consult | Outcome |
 |---|---|---|
+| Sep 08, 2026 | Indy — close M187, this spec owns the rest | > Indy (2026-09-08): "why is this still open? I thought we agred to close and use a new milestone M193_001?" — context: M187_001's Dimensions 4.2 and 4.3 and rubric row R6 move here whole. That quote is the deferral record the rules require; M187_001 closed on it. |
 | Sep 08, 2026 | Indy — why this spec exists | "You said you will create a new spec with the pending items in this spec, if so why are you complaining on R6? Or when you moved this spec to done, what are you thoughts?" M187_001 was closed with R6 marked SCHEDULED — a third category invented to make the close work, since the ship gate admits only ✅ or a return to EXECUTE. Either the walk has an owner or M187_001 is not done. This spec is the owner. |
 
 - **Metrics review** — no analytics or funnel playbook update required: this spec adds no code path and no event.
