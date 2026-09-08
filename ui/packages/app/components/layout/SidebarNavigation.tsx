@@ -32,7 +32,7 @@ import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
 import GettingStartedWidget from "./GettingStartedWidget";
-import { useShellSidebarCollapsed } from "./shell-sidebar-state";
+import { SIDEBAR_COLUMN, useShellSidebarCollapsed } from "./shell-sidebar-state";
 import type { OnboardingPollingMode } from "./use-onboarding-progress";
 
 type NavEntry = {
@@ -103,7 +103,7 @@ export function DesktopSidebarNavigation({
     <div
       className={cn(
         "h-full shrink-0 transition-all duration-snap ease-snap",
-        collapsed ? "w-16" : "w-60",
+        collapsed ? SIDEBAR_COLUMN.aside.collapsed : SIDEBAR_COLUMN.aside.expanded,
       )}
     >
       <SidebarNavigation

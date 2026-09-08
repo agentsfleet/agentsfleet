@@ -29,13 +29,18 @@ export function ShellFrame({
         className="app-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
         data-surface="dashboard"
       >
-        <DashboardShellHeader>
+        {/*
+          The header owns no horizontal padding of its own: its leading cluster
+          has to start where the sidebar column starts, and each cluster pads
+          itself instead.
+        */}
+        <DashboardShellHeader className="px-0 md:px-0">
           <ShellControls
             workspaces={workspaces}
             operatorScopes={operatorScopes}
             sidebarNavId={SIDEBAR_NAV_ID}
           />
-          <div className="ml-auto flex min-w-0 items-center gap-md md:gap-xl">
+          <div className="ml-auto flex min-w-0 items-center gap-md pr-4 md:gap-xl md:pr-6">
             <WorkspaceSwitcher workspaces={workspaces} />
             <ThemeToggle />
             <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
