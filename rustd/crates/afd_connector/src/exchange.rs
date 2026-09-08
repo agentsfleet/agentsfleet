@@ -16,10 +16,23 @@
 //! answered.
 
 use afd_crypto::secret::{SecretBytes, SecretString};
+use reqwest::header::ACCEPT;
 
 use crate::error::{self, Result};
 use crate::oauth;
 use crate::provider::Provider;
+
+/// What every provider is asked to answer the exchange in.
+///
+/// Not decoration, and not a default a client library supplies: GitHub's token
+/// endpoint answers `application/x-www-form-urlencoded` unless a caller asks
+/// for JSON, while [`crate::complete`] reads every provider's answer with
+/// `serde_json`. Without this header the code IS redeemed and the grant IS
+/// issued, and the daemon then cannot read what came back — `UZ-CONN-006` over
+/// a connection the provider considers made. The Zig implementation sent it
+/// (`connectors/oauth2.zig`); the port dropped it, and the first live GitHub
+/// connect after the cutover is what found that out.
+const ACCEPT_JSON: &str = "application/json";
 
 /// What a provider answered the exchange with.
 ///
@@ -137,6 +150,7 @@ impl Exchange {
         let answer = self
             .client
             .post(endpoint)
+            .header(ACCEPT, ACCEPT_JSON)
             .form(&form)
             .send()
             .await
