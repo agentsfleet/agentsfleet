@@ -102,7 +102,7 @@ The gate + billing path is identical to every other event — see [`../billing_a
 | Install bundle from GitHub → R2 + Postgres | ✅ |
 | Manual webhook signature verify · queue · lease · run | ✅ |
 | GitHub App callback stores installation handle + routing row | ✅ real-datastore callback and reconnect coverage passes |
-| App ingress filters installation + repository + event + grant | ✅ real Postgres and Redis coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention |
+| App ingress filters installation + repository + event + grant | ✅ real Postgres and Redis coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention — the grant is CHECKED here, and 🔨 checking is the only half that exists: nothing in production writes `core.integration_grants`, so a fleet declaring a mintable credential parks forever and the check can only ever answer no. M193_001's walk found it, and its Discovery carries the daemon log that proves it |
 | `SKILL.md` delivered as `instructions` per lease | ✅ |
 | Read the diff + post comments via `http_request` | ✅ |
 | Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Redis |

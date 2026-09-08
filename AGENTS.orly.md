@@ -143,7 +143,7 @@ Guards fire pre-hoc regardless of lifecycle stage. Override: `<GATE>: SKIPPED pe
 | Begin implementation OR branch carries spec changes in `pending/` | CHORE(open): `pending/`→`active/`, `Status: IN_PROGRESS` + `Branch:`, create worktree, commit on feature branch. **No code until 4 steps committed.** |
 | Every commit during implementation | Mark completed Dimensions/Sections `DONE` same commit as the code. |
 | All work complete, before PR | CHORE(close). |
-| Branch with spec in `active/` after any COMMIT | CHORE(close) is mandatory next action. |
+| Final implementation commit, or explicit request to park a spec | CHORE(close) is mandatory next action; Section commits continue the stream. |
 
 ---
 
@@ -157,13 +157,13 @@ Non-trivial (full lifecycle) if it: touches >1 file · new abstraction · data m
 
 **Anchor invariant — `orly gate` proves the boundary.** No PR opens unless every `orly gate pr` criterion is green or carries an `Orly-Override` trailer the user recorded with a reason.
 
-**One gate per cadence, each tier run once.** `work` = the declared `conform` command, no git state (a commit hook's tree is dirty by construction). `verify` = spec dimensions, docs language, the fast `verify.*` set. `pr` = branch shape, clean tree, pushed branch, every spec criterion, the slow suites. `orly gate pr` is the command CHORE(close) runs; `git.pushed` proves HEAD is exactly what the pre-push `orly gate verify` already graded. A bare `orly gate` chains all three, for a branch whose earlier gates never ran. Stage map: `dispatch/lifecycle.md`. Both stop at the first red group and only read; green unlocks CHORE(close) but never performs it. No spec → spec criteria skip, quality gates still run. Slow suites (`verify.integration`, `verify.memory`) run only when the branch carries code. A user-surface change without a docs change is red until docs land or an override says why not.
+**Gate ownership.** `work` runs the declared `conform` command at commit. `verify` runs documentation checks and non-test `verify.*` commands at push; it permits unfinished Sections. `pr` checks branch shape, exact upstream revision, spec completeness, and every declared `verify.*` command itself. `orly gate pr` is the command CHORE(close) runs; a push is never proof that tests ran. Unit and integration baselines are measured before the Pull Request against the recorded comparison revision. Full unit and integration suites run at the PR boundary, not at opening or every push. Integration and memory suites skip only on branches with no code. The authoritative sequence is `dispatch/lifecycle.md`; no spec means only spec criteria skip. A user-surface change without a docs change is red until docs land or an override says why not.
 
 **LAND (after merge, or when the user confirms it merged):** pull the default branch, prune the merged worktree + branch, `make down` where defined.
 
 ### CHORE (open)
 
-Spec `pending/`→`active/`; `Status: IN_PROGRESS`; `Branch:` set; **`Test Baseline:` recorded** (declared `verify.*` counts → `**Test Baseline:** unit=<N> integration=<M>`; VERIFY's Test Delta compares against it); committed. Worktree created, CWD inside (verify `pwd` + `git worktree list`). No code until the 4 steps are committed.
+Spec `pending/`→`active/`; `Status: IN_PROGRESS`; `Branch:` set; **`Test Baseline:` declared pending; `Baseline revision:` records the full comparison commit** (unit and integration counts plus evidence are due before the Pull Request); committed. Worktree created, CWD inside (verify `pwd` + `git worktree list`), carrying the base checkout's uncommitted work in with it. No code until the 4 steps are committed.
 
 ### PLAN
 
@@ -185,8 +185,8 @@ In `agentsfleet` this stage is `make harness-verify`; its output block and end-o
 
 ### VERIFY
 
-**Two cadences, one boundary.** Inside a Section, run CONFORM plus the declared lane covering the surface the Section touched — enough to prove a Section, reported as a Section claim. The repository's full declared `verify.*` set runs ONCE, at the milestone boundary, before the PR. A package-scoped command never replaces a listed one at either cadence, and a Section lane never satisfies a "tests pass" claim about the repository.
-The `agentsfleet` output block and both cadences live in `docs/VERIFY_TIERS.md`. **FIRST: `/orly-write-unit-test`** audits diff coverage. **LAST: the Test Delta row** compares against the CHORE(open) baseline; zero or negative unit growth on a code-adding diff needs justification or a return to EXECUTE. Paste memory-leak evidence into PR Session Notes or cite its Continuous Integration (CI) URL. After refactors, list newly dead code before removing it.
+**Section proof and final verification.** Follow `dispatch/lifecycle.md` for command timing. Section checks prove the changed Dimensions; the final gate runs the full declared verification set. A package-scoped command never replaces a declared boundary command, and a Section result never satisfies a repository-wide "tests pass" claim.
+The `agentsfleet` output block and both cadences live in `docs/VERIFY_TIERS.md`. **FIRST: `/orly-write-unit-test`** audits diff coverage. **LAST: the Test Delta row** compares against the recorded comparison revision, measured before the Pull Request; zero or negative unit growth on a code-adding diff needs justification or a return to EXECUTE. Paste memory-leak evidence into PR Session Notes or cite its Continuous Integration (CI) URL. After refactors, list newly dead code before removing it.
 
 ### REVIEW
 

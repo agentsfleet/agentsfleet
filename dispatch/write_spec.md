@@ -1,91 +1,65 @@
-# write_spec.md — spec-authoring dispatch (LATENT façade)
+# Spec authoring
 
-This is the prose the AGENT reads **before writing or editing a spec** under
-`docs/v*/{pending,active,done}/`. It pairs with the deterministic half
-`audits/spec-template.sh`, which runs in `make lint`. (This is the former Spec Template gate absorbed into
-the dispatch model — `docs/TEMPLATE.md` remains the canonical section source.)
+Read this before editing a spec under `docs/v*/{pending,active,done}/`, or
+`docs/TEMPLATE.md`. The template defines the document shape. The authoring skill
+fills it; the audit checks structural consistency. None proves design quality.
 
-**Signal legend:**
+## What must be ready, and when
 
-- 🟢 / 🔴 — `audits/spec-template.sh` mechanically passes/fails the prohibited-pattern and
-  required-section checks.
-- 🤔 DECIDE — whether a required section is *meaningfully filled* (not just
-  present) is the agent's judgment at author time.
+| Stage | Required content |
+|---|---|
+| Authoring | Goal, scope, existing references, decisions and prerequisites, Dimensions with test mappings, failures, interfaces, and acceptance checks |
+| CHORE(open) | Active status, branch, full comparison revision, baseline measurement pending |
+| PLAN | Implementer's comprehension handshake; resolved scope and decisions needed by the next Section |
+| Before Pull Request | Declared unit/integration baseline counts, comparison revision, and evidence reference |
+| Completion | Passing behavior proofs, final repository checks, and any required human evidence |
 
-## Trigger — every Edit/Write to
+The sequence and hydration timing live in `dispatch/lifecycle.md`. A preparation
+Section may establish inputs for later Sections when the spec states its output
+and who may decide it. A required human sign-off remains a human dependency.
 
-- Any spec under `docs/v*/{pending,active,done}/**/*.md`.
-- `docs/TEMPLATE.md` itself.
-- Any `*.md` whose body carries the spec frontmatter pattern (`^**Milestone:** M\d+`).
+## Mechanical checks
+
+`audits/spec-template.sh` is the entry point; its Bun helper
+`audits/spec-template.ts` reads headings, lists, and tables from the runtime's
+parsed Markdown tree. Code examples and quoted headings cannot supply sections.
+
+- Prohibited authoring estimates, ownership labels, and completion percentages.
+- Required sections with content, known placeholder residue, and the spec length cap.
+- Existing repository files or URLs in the read-first list. Planned CREATE files
+  belong in Files Changed, not in the existing-reference list.
+- Each Dimension names a proof and has a matching tiered Test Specification row
+  with an assertion. Duplicate identifiers and orphan test rows fail.
+- The rubric's Verify cells contain the exact declared `conform` and `verify.*`
+  commands, with Expected values. Include conditional suites; the final gate
+  decides their applicability from the actual branch diff. Additional
+  spec-specific commands and explicitly named manual checks remain valid.
+
+`--staged` reads spec contents, configuration, and local references from the Git
+index. `--file <path>` checks the working copy. Missing runtime or configuration
+fails these readiness checks. Bulk `--all` and `--include-done` scans retain
+prohibited-pattern checks only; they do not retrofit historical documents.
+
+## Author review
+
+Check that required content is meaningful, prerequisites are attainable, failures
+are tested, and the acceptance checks prove the goal. A structural pass does not
+mean the feature is implemented. Use `manual` for a human proof; record its
+procedure, required person, and durable evidence without inventing sign-off.
+
+Use `{{fill:description}}` for authoring slots. Delete them and all `tpl:`
+guidance before staging. Runtime parameters such as `/items/{id}` are allowed
+when the spec defines them. Lifecycle-owned values use explicit pending text,
+not unfilled authoring slots. Existing specs follow current rules; examples do
+not override them.
 
 **Override:** `SPEC TEMPLATE GATE: SKIPPED per user override (reason: ...)`.
-**User-invokable only.** Auto-mode does NOT cover it; reasons must cite a concrete
-external constraint (vendor doc requirement, regulatory format), never internal
-preference.
+User-invokable only; an external constraint must explain the exception.
 
-## What this covers
+## Required output
 
-**Family 1 — prohibited patterns (negative space).** `docs/TEMPLATE.md`
-"Prohibited" forbids: time/effort estimates, effort columns, complexity ratings,
-percentage-complete fields, assigned owners, implementation dates. Specs created
-from the template don't carry the Prohibited section forward — only the body
-below the divider gets copied — so without enforcement these drift back in.
-
-**Family 2 — required-present + no-placeholder (positive space).** The
-agent-facing template mandates the determinism sections the executing agent reads
-to emit invariant output: PR Intent & comprehension handshake, Applicable Rules,
-Applicable Gates, Overview, Prior-Art / Reference Implementations, Files Changed,
-Decomposition & alternatives, Sections, Metrics & Observability, Interfaces,
-Failure Modes, Invariants, Test Specification, Acceptance Rubric (legacy heading `Acceptance Criteria` accepted), Product Clarity (authoring record), Discovery. A spec missing one — or
-leaving template residue (`path/to/file.ext`, `test_<short_name>`,
-`{one-line reason}`, any surviving `tpl:` guidance comment — the template's fill
-grammar deletes them all at authoring) — forces the agent to guess intent.
-
-**Family 2b — declared-command parity.** A staged `pending/` or `active/`
-spec's Acceptance Rubric must quote the repository's declared `conform` and
-`verify.unit` commands (`.oracle/orly.json`) **verbatim** — the same set
-`orly gate` runs, so the rubric and the mechanical PR gate grade one boundary.
-Missing → BLOCK. No config, no bun, or no declared commands → NOTE + skip.
-Done specs are historical records and are never retrofitted.
-
-**Scope (no legacy carve-out).** Family 2 fires in `--staged` only — the spec
-being authored now (the agent's own output): BLOCK. Bulk scans (`--all` /
-`--include-done`, which `make harness-verify` runs) execute Family 1 only, so they
-behave identically over the corpus and never break an existing spec.
-
-## Pre-edit check
-
-| Pattern | Rule |
-|---|---|
-| `## Estimated effort` (any heading variant) | Forbidden. Delete the section. |
-| `## Effort` / `## Complexity` / `## Sizing` | Forbidden. Use Priority. |
-| `\b\d+\s*[-–]\s*\d+\s*h\b` (hour ranges like "10-14h") | Forbidden. |
-| `\b\d+\s*hours?\b` / `\b\d+\s*days?\b` / `\b\d+\s*min(utes?)?\b` | Forbidden. |
-| `\b(low|medium|high|small|large)\s*[:|-]\s*(effort|complexity)\b` | Forbidden. |
-| `\d+%\s*complete` / `\b\d+/\d+\b\s*tasks` | Forbidden — binary PENDING/IN_PROGRESS/DONE. |
-| `**Owner:**` / `**Assigned to:**` | Forbidden — use git history. |
-| `**Due:**` / `**Deadline:**` (with date) | Forbidden — use Priority. |
-| Missing a required determinism section in a **staged** spec | BLOCK — add it. |
-| Rubric missing a declared `conform`/`verify.unit` command (**staged** pending/active) | BLOCK — copy it verbatim from `.oracle/orly.json`. |
-| Unfilled template residue in a **staged** spec | BLOCK — fill the section. |
-| Surviving `tpl:` guidance comment in a **staged** spec | BLOCK — delete it; the executor reads instance content only. |
-| Spec without the SPEC AUTHORING RULES banner | Informational — reminds future edits. |
-
-## Required output (default — one line)
-
-```
-SPEC TEMPLATE GATE: <file> | prohibited:<0|list> required-sections:<all-present|missing-list — staged only> placeholders:<0|list> banner:<yes|no>
-```
-
-Full multi-line block fires on violation (prohibited sections / time estimates /
-effort fields / %-complete / owner-date fields, each with line numbers, plus the
-`audits/spec-template.sh` staged-diff finding count).
-
-## Scope
-
-`audits/spec-template.sh` walks the **full pending+active spec set** via `git ls-files`;
-the index includes staged-but-uncommitted content, so a fix staged in pre-commit
-satisfies the check on the same hook run. `--staged` is the opt-in narrowing mode.
+Report structural findings with file paths. Report an implementation verdict
+only after the spec's behavior and repository checks have run.
 
 ## Authoring discipline (judgment layer)
 

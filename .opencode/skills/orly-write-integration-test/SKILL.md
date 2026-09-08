@@ -69,7 +69,7 @@ Spec asserts "503 on Redis down", code returns 200 → test the spec, flag the c
 1. **Read the spec** — Failure Modes, Error Contracts, Concurrency Contracts, Resource Limits, Streaming Contracts tables are authoritative.
 2. **Read `docs/greptile-learnings/RULES.md`** — every rule maps to a regression test.
 3. **Bring up real deps** — `make up` (or stack equivalent). Verify health before writing tests.
-4. **Run the existing integration suite** — establish green baseline; rule out flakes before adding tests.
+4. **Follow lifecycle timing** — record the comparison revision at opening; measure full unit and integration baselines before the Pull Request. Run focused reproduction and Section proofs while implementing; first application hydration occurs at Section verification. `dispatch/lifecycle.md` owns the sequence.
 5. **Map the ordered request path** — list every dependency interaction in execution order, including repeated acquisitions of the same resource, plus every `catch`/`orelse`/`except`/`Err` in the chain. That list seeds T4 and its partial-completion matrix.
 
 ## Three execution modes

@@ -14,35 +14,29 @@ page carries only what is specific to this repository.
 | version | `make check-version` | Boundary. `VERSION` against `build.zig.zon`, `cli/package.json` and both `rustd/Cargo.toml` sites. |
 | integration | `make test-integration-rustd` | Boundary. Live Postgres and Redis via docker compose, schemas reset per run. `orly gate pr` skips it on a branch carrying no code. |
 
-These five are exactly what `.oracle/orly.json` declares and exactly what
-`orly gate pr` runs, so the rubric and the mechanical gate grade one boundary.
+These are the commands `.oracle/orly.json` declares. The commit hook runs
+conformance; `orly gate pr` runs every verification row.
 
-**Two cadences.** A Section closing is not a milestone closing. Inside a
-Section, run `make harness-verify` plus the lane covering the surface the
-Section touched (`make test-unit-rustd`, `make test-unit-app`, …) — enough to
-prove the Section, never a repository claim. The full table above runs ONCE, at
-CHORE(close).
-
-**Which gate runs which row.** `orly gate work` runs the `conform` row alone and
-is what the pre-commit hook fires, so it costs seconds. `orly gate verify` runs
-the lint, unit, and version rows and is what pre-push fires. `orly gate pr` runs
-the integration row plus the whole-branch and spec criteria, and is what
-CHORE(close) fires — it skips the fast rows because `git.pushed` proves HEAD is
-the commit pre-push already graded.
-
-One lane needs live datastores, and only one. `make/test-infra.mk` brings up
-docker compose Postgres and Redis for `test-integration-rustd`; `make
-test-unit-all` stays datastore-free, because every Rust test needing one is
-`#[ignore]`d and runs only in that lane. `KEEP_TEST_STATE=1` skips the reset for
-the inner loop; Continuous Integration (CI) never sets it.
+The authoritative timing and gate ownership live in
+`dispatch/lifecycle.md` §What runs at each stage. At Section completion, run
+`cargo fmt` from `rustd/`, `make lint-rustd`, conformance over staged changes,
+and the relevant behavior tests. The existing `make test-unit-rustd` runs the
+whole Rust workspace; it is not a single-package check.
 
 ## Test Baseline
 
-`make test-unit-all` reports its own counts per target. Record the cargo
-workspace total in the spec header at CHORE(open) as
-`**Test Baseline:** unit=<N>`, and compare against it in VERIFY's Test Delta row.
-Zero or negative growth on a code-adding diff needs justification or a return to
-EXECUTE.
+Before the Pull Request, obtain `make test-unit-all` and
+`make test-integration-rustd` results for the spec's full `Baseline revision`.
+Record per-package unit counts and the integration lane's own summary in the
+baseline report; put comparable totals in `Test Baseline` and its path or run
+URL in `Baseline evidence`. The report includes passed, failed, and skipped
+counts, commands, and environment. Never substitute the default checkout's
+current revision for the recorded one. Keep integration datastores isolated.
+
+The final PR gate runs all declared commands against the implementation.
+Capture its output in Pull Request Session Notes, including the Test Delta.
+Unit growth alone does not prove coverage; explain removals and changes in test
+selection. Zero or negative growth on code-adding work requires justification.
 
 ## Wire fixtures
 

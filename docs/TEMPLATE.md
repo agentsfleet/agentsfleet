@@ -3,7 +3,7 @@
 > **CANONICAL TEMPLATE — two agents consume this file, in different ways.**
 > The **authoring agent** (via the `orly-spec-new` skill) copies the body below the divider into `docs/v{N}/pending/M{N}_{NNN}_….md` and fills it — authoring order lives in the skill, not in this file. The **executing agent** reads the filled spec **top-to-bottom**: the body is physically ordered by execution need (understand → prepare → build → prove → record).
 > Enforced by `audits/spec-template.sh` (SPEC TEMPLATE GATE, façade `dispatch/write_spec.md`): required sections present, zero template residue, prohibited patterns absent. Lifecycle: `AGENTS.md → Specification Standards`.
-> A shipped instance outranks guidance: when `docs/v{N}/done/` holds specs, read the newest first and pattern-match.
+> Read a recent completed instance for examples; current rules and this template govern any conflict.
 
 ---
 
@@ -13,7 +13,7 @@ Three markup classes appear below the divider. The gate tells them apart mechani
 
 | Marker | Meaning | Fate in the filled spec |
 |---|---|---|
-| `{…}` | Fill slot — replace with instance content | Gone. Surviving slots are residue; the gate BLOCKs the known sentinels. |
+| `{{fill:description}}` | Authoring slot — replace with instance content | Gone before staging. Runtime parameters such as `/items/{id}` remain when defined. |
 | `tpl:` guidance comment | How to fill the section — written for the authoring agent only | **Deleted after filling.** The gate BLOCKs any survivor. |
 | SPEC AUTHORING RULES banner comment | Standing constraints on the instance | The one comment that survives, verbatim. |
 
@@ -89,22 +89,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M{Milestone}_{Workstream}: {Title — testable, not vague}
+# M{{fill:Milestone}}_{{fill:Workstream}}: {{fill:Title — testable, not vague}}
 
-**Prototype:** v{major}.{minor}.{patch}
-**Milestone:** M{Number}
-**Workstream:** {001-009}
-**Date:** {MMM DD, YYYY}
+**Prototype:** v{{fill:major}}.{{fill:minor}}.{{fill:patch}}
+**Milestone:** M{{fill:Number}}
+**Workstream:** {{fill:001-009}}
+**Date:** {{fill:MMM DD, YYYY}}
 **Status:** PENDING | IN_PROGRESS | DONE
-**Priority:** P0 | P1 | P2 | P3 — {one-line reason}
-**Categories:** {API | CLI | UI | SKILL | DOCS | OBS | INFRA — alphabetised, one or more}
-**Batch:** B{1-4} — {parallel execution context}
-**Branch:** {feat/mNN-name — added at CHORE(open)}
+**Priority:** P0 | P1 | P2 | P3 — {{fill:one-line reason}}
+**Categories:** {{fill:API | CLI | UI | SKILL | DOCS | OBS | INFRA — alphabetised, one or more}}
+**Batch:** B{{fill:1-4}} — {{fill:parallel execution context}}
+**Branch:** pending — set at CHORE(open)
 <!-- A deliberately folded workstream adds Folded-into metadata per dispatch/lifecycle.md. -->
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
-**Depends on:** {M{N}_{NNN} (one-line reason), …}
-**Provenance:** human-written | LLM-drafted ({model}, {date}) | agent-generated (pre-spec, {source doc})
-**Canonical architecture:** `docs/architecture/{relevant-doc}.md` §{N}
+**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Depends on:** {{fill:spec identifiers with one-line reasons, or none}}
+**Provenance:** human-written | LLM-drafted ({{fill:model}}, {{fill:date}}) | agent-generated (pre-spec, {{fill:source doc}})
+**Canonical architecture:** `docs/architecture/{{fill:relevant-doc}}.md` §{{fill:N}}
 
 <!-- tpl: Provenance is load-bearing — the implementing agent calibrates trust by
 who wrote the spec: LLM-drafted gets extra cross-checking against the codebase;
@@ -116,9 +118,9 @@ Update Gate); greenfield → point at the doc that defines the shape. -->
 
 ## Overview
 
-**Goal (testable):** {one sentence that could be a test name}
-**Problem:** {observable symptoms, in user-facing terms}
-**Solution summary:** {one paragraph — what changes, at what layer, what the user-visible outcome is}
+**Goal (testable):** {{fill:one sentence that could be a test name}}
+**Problem:** {{fill:observable symptoms, in user-facing terms}}
+**Solution summary:** {{fill:one paragraph — what changes, at what layer, what the user-visible outcome is}}
 
 <!-- tpl: Goal — bad: "Implement streaming." Good: "Server-Sent Events (SSE)
 handler streams Redis pubsub messages as text/event-stream with stable ordering
@@ -128,18 +130,18 @@ don't have a foo handler"). Implementation steps belong in Sections, not here. -
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** {imperative, ≤72 chars — what the merged Pull Request (PR) is called}
-- **Intent (one sentence):** {why this PR exists, in user-facing-outcome terms}
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **PR title (eventual):** {{fill:imperative, ≤72 chars — what the merged Pull Request (PR) is called}}
+- **Intent (one sentence):** {{fill:why this PR exists, in user-facing-outcome terms}}
+- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
 
-1. `{path/to/file.ext}` — {why this is the right pattern to mirror}
-2. `{path/to/spec_or_doc.md}` — {what canonical knowledge lives there}
-3. {external doc URL, if relevant} — {what convention to follow}
+1. `{{fill:path/to/file.ext}}` — {{fill:why this is the right pattern to mirror}}
+2. `{{fill:path/to/spec_or_doc.md}}` — {{fill:what canonical knowledge lives there}}
+3. {{fill:external doc URL, if relevant}} — {{fill:what convention to follow}}
 
-<!-- tpl: 3–5 pointers. Fewer than 3 = authoring homework not done (the executing
-agent repeats it); more than 5 = a tutorial (trim). This is where judgment is
+<!-- tpl: Prefer 3–5 useful pointers; include enough to resolve the existing
+implementation and governing requirements. This is where judgment is
 preserved without pseudocode: point at code/docs to read BEFORE touching any
 file. Greenfield (no existing pattern)? Say so explicitly and point at the
 docs/architecture/ doc that defines the shape. Every pointer must resolve
@@ -150,7 +152,7 @@ never selected materialised nothing here. -->
 
 | File | Action | Why |
 |------|--------|-----|
-| `path/to/file.ext` | CREATE / EDIT / DELETE | {one line — what changes about this file's role} |
+| `path/to/file.ext` | CREATE / EDIT / DELETE | {{fill:one line — what changes about this file's role}} |
 
 <!-- tpl: Every file created, modified, or deleted. Scopes the length gates,
 orphan sweeps, and review effort; per AGENTS.md the executing agent may only
@@ -161,8 +163,8 @@ no path filter (dispatch/write_spec.md, Authoring discipline). -->
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — {specific rule IDs this diff trips: e.g. UFS, NDC, NLR, ORP, FLL}
-- {per-surface rule file} — {why it applies to this diff}
+- **`docs/greptile-learnings/RULES.md`** — {{fill:specific rule IDs this diff trips: e.g. UFS, NDC, NLR, ORP, FLL}}
+- {{fill:per-surface rule file}} — {{fill:why it applies to this diff}}
 
 <!-- tpl: The rule files the executing agent re-reads BEFORE EXECUTE and
 re-checks during VERIFY. Name the exact rule IDs the diff will trip — generic
@@ -177,8 +179,8 @@ set only — docs/greptile-learnings/RULES.md; no other rule files apply." -->
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| {gate from this repository's AGENTS.md dispatch index} | {yes/no — why} | {how the diff stays clean} |
-| File & Function Length (≤350/≤50/≤70) | {yes/no} | {split plan if a file approaches the cap} |
+| {{fill:gate from this repository's AGENTS.md dispatch index}} | {{fill:yes/no — why}} | {{fill:how the diff stays clean}} |
+| File & Function Length (≤350/≤50/≤70) | {{fill:yes/no}} | {{fill:split plan if a file approaches the cap}} |
 
 <!-- tpl: Which Action-Triggered Guards this Pull Request (PR) WILL trip, and
 how each stays clean — pre-declared so the agent plans for them instead of
@@ -190,7 +192,7 @@ replace the table with "N/A — docs/markdown only." -->
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** {path / codebase} — {one line on alignment, or the justified divergence}
+- **Reference:** {{fill:path / codebase}} — {{fill:one line on alignment, or the justified divergence}}
 
 <!-- tpl: SOUL.md rule — before proposing architecture, find the reference
 codebase; there almost always is one. Name it so the agent mirrors a known-good
@@ -205,22 +207,25 @@ divergence. API → docs/REST_API_DESIGN_GUIDELINES.md + the closest existing
 handler. Schema → the nearest migration + docs/SCHEMA_CONVENTIONS.md. UI →
 design-system primitives + theme.css tokens. Cite each doc only where this
 repository materialises it. Greenfield → "no prior art; shape
-defined in docs/architecture/{doc}.md." -->
+defined in docs/architecture/{{fill:doc}}.md." -->
 
 ## Sections (implementation slices)
 
-### §1 — {Slice title}
+### §1 — {{fill:Slice title}}
 
-{What this slice delivers in goal terms; why it must exist; what it unblocks. Non-obvious choice → **Implementation default:** `{choice}` because `{reason}`.}
+{{fill:what this slice delivers, why it exists, and what it unblocks}}. Non-obvious choice → **Implementation default:** `{{fill:choice}}` because `{{fill:reason}}`.
 
-- **Dimension 1.1** — {smallest verifiable behaviour} → Test `test_…`
-- **Dimension 1.2** — {…} → Test `test_…`
+- **Dimension 1.1** — {{fill:smallest verifiable behaviour}} → Test `test_…`
+- **Dimension 1.2** — {{fill:…}} → Test `test_…`
 
-### §2 — {Slice title}
+### §2 — {{fill:Slice title}}
 
-{Same shape.}
+{{fill:Same shape.}}
 
-<!-- tpl: Each Section: WHAT one slice delivers and WHY (not how); numbered
+<!-- tpl: State prerequisites and who resolves each decision: agent choice,
+measured preparation output, or required human decision. A preparation Section
+may establish budgets or fixtures needed by later Sections; name its completion
+condition. Each Section: WHAT one slice delivers and WHY (not how); numbered
 Dimensions map 1:1 to Tests and get marked DONE in the same commit as their
 code. The agent picks each Implementation default unless it has evidence to
 deviate. Good: "§3 — Replay idempotency. Receiver dedupes on the delivery id.
@@ -234,7 +239,7 @@ the existing dedupe pattern and writes the call. -->
 ## Interfaces
 
 ```
-{HTTP endpoints, request/response shapes, internal signatures other code depends on}
+{{fill:HTTP endpoints, request/response shapes, internal signatures other code depends on}}
 ```
 
 <!-- tpl: Lock the interface — the surface the agent must NOT change without
@@ -246,7 +251,7 @@ implementation. -->
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| {short name} | {trigger} | {response + observable} |
+| {{fill:short name}} | {{fill:trigger}} | {{fill:response + observable}} |
 
 <!-- tpl: Every failure path the agent must handle; each row → a negative/
 integration test in the Test Specification. Cover at minimum: timeout,
@@ -255,7 +260,7 @@ dependency unavailable. -->
 
 ## Invariants
 
-1. {Invariant} — {how it's enforced}
+1. {{fill:Invariant}} — {{fill:how it's enforced}}
 
 <!-- tpl: Each MUST be enforceable by code (compiler, lint, comptime assertion,
 runtime check) — NOT by review discipline. If a human can violate it silently,
@@ -265,7 +270,7 @@ it's not an invariant. None → "N/A — no invariants." -->
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `{event_name}` | {product / ops / not applicable} | {exact user or system action} | {coarse product context, resource id, duration, outcome} | {no raw email/password/token/One-Time Password (OTP)/Secure Shell (SSH) key material} | `{test_name}` |
+| `{{fill:event_name}}` | {{fill:product / ops / not applicable}} | {{fill:exact user or system action}} | {{fill:coarse product context, resource id, duration, outcome}} | {{fill:no raw email/password/token/One-Time Password (OTP)/Secure Shell (SSH) key material}} | `{{fill:test_name}}` |
 
 <!-- tpl: Every realized spec declares what product or operational signal it
 adds, or explicitly why none: internal-only cleanup → the single row "not
@@ -284,7 +289,7 @@ are implementation gaps, not notes for later. -->
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | {unit / integration / e2e} | `test_<short_name>` | {one-line behavioural claim} |
+| 1.1 | {{fill:unit / integration / e2e / manual}} | `test_<short_name>` | {{fill:one-line behavioural claim}} |
 
 <!-- tpl: Prose-and-assertions only — no test code. One row per Dimension;
 bound to the /orly-write-unit-test skill; ≥50% negative paths; every Failure Mode
@@ -296,8 +301,10 @@ user-centric scenario via test-e2e* walking the real path (subprocess CLI /
 real HTTP request / rendered UI); a unit test is not a substitute. Also
 include regression rows (pre-existing behaviour that must not change — "N/A —
 greenfield" if none) and idempotency/replay rows (any retry semantics).
+Human acceptance uses tier manual, with its procedure, required person, and
+durable evidence. An agent cannot manufacture human sign-off.
 Non-self-evident input shape → point at a fixture
-(samples/fixtures/m{N}-fixtures/{name}.json); don't inline JSON. Hard-to-
+(samples/fixtures/m{{fill:N}}-fixtures/{{fill:name}}.json); don't inline JSON. Hard-to-
 describe behaviour in prose ⇒ the Goal is fuzzy — fix the Goal, not this
 table. -->
 
@@ -305,24 +312,24 @@ table. -->
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | {outcome the user can observe} (§1) | `{command}` | {exit 0 / substring / 0 matches} | P0 | |
+| R1 | {{fill:outcome the user can observe}} (§1) | `{{fill:command}}` | {{fill:exit 0 / substring / 0 matches}} | P0 | |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `{conform command from .oracle/orly.json, verbatim}` | exit 0 | P0 | |
-| S2 | Unit tests pass | `{verify.unit command from .oracle/orly.json, verbatim}` | exit 0 | P0 | |
-| S3 | Slow tier green (code-carrying branch) | `{one row per declared slow verify.* the diff's surface needs — integration / e2e / memory / cross-compile — verbatim}` | exit 0 | P0 | |
+| S1 | Conform gates green | `{{fill:conform command from .oracle/orly.json, verbatim}}` | exit 0 | P0 | |
+| S2 | Unit tests pass | `{{fill:verify.unit command from .oracle/orly.json, verbatim}}` | exit 0 | P0 | |
+| S3 | Slow tier green (code-carrying branch) | `{{fill:one row per remaining declared verify.* command, verbatim}}` | exit 0 | P0 | |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 | S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
 
-**Command source rule:** every S-row Verify command is copied **verbatim from `.oracle/orly.json`** (`conform`, `verify.*`) — the same set `orly gate` runs, so the rubric and the mechanical PR gate grade one boundary. The gate BLOCKs a staged pending/active spec whose rubric omits the declared `conform` or `verify.unit` command; a rubric naming a runner the repository does not declare is wrong by construction. `.oracle/orly.json` still a seed → complete it first (`dispatch/lifecycle.md` §Bootstrap); authoring against an unseeded config is the nondeterminism this rule exists to kill.
+**Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. Missing configuration must be completed before authoring. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
-**Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery. A P0 may also be **MOVED** — see below.
+**Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ + one decisive output line. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes, so recording those results does not require another code commit and suite run. **Ship gate:** every required check must pass before the Pull Request is ready; missing evidence or any ❌ returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 may also be **MOVED** — see below.
 
 **A P0 whose SCOPE moves is not a P0 shipped red.** Met and unmet are not the only two states a criterion has, and a gate that pretends otherwise forces an agent to invent a third. One did, twice in a day, before this clause existed.
 
 A deferral and a transfer are different claims. A **deferral** leaves work unowned inside a closed spec, which is what the P0 gate exists to prevent — the P1 quote is as far as that goes. A **transfer** moves the criterion whole: its Dimensions, its verification and its rubric row land in a named successor spec that carries them as its own P0. Nothing is less owned afterwards; it is owned somewhere else.
 
-Mark such a row `MOVED to M{N}_{NNN} R{n}` and it is not ❌, on three conditions, all of which must hold:
+Mark such a row `MOVED to M{{fill:N}}_{{fill:NNN}} R{{fill:n}}` and it is not ❌, on three conditions, all of which must hold:
 
 1. The successor spec **exists** and carries the criterion as a rubric row of its own. A successor that does not carry the row is a deferral wearing a new word, and fails the gate as before.
 2. Both specs record the mapping — the closing spec names where each Dimension went, the successor names what it inherited. One-sided assertion is not a transfer.
@@ -332,20 +339,18 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 
 <!-- tpl: The single scoring surface — no other scoreboard. 5–12 rows after
 pruning: one per Section outcome, failure class, or hygiene gate — never one
-per Dimension (that ledger is the Test Specification). S-row commands come verbatim from
-`.oracle/orly.json`; expand S3 to one row per declared slow `verify.*` the
-diff's surface needs; delete rows whose command this repository does not
-declare. Expected litmus: every Expected is
+per Dimension (that ledger is the Test Specification). Repository suite commands come verbatim from `.oracle/orly.json`; expand S3
+for every remaining declared lane. Additional spec-specific checks stay explicit. Expected litmus: every Expected is
 mechanically checkable — an exit code, a literal substring, or a match count;
 can't write it that way → the criterion is fuzzy — fix the criterion, not the
 grading. Authoring fills every column except Graded; VERIFY fills Graded. -->
 
 ### Behaviour evals
 
-- **Grounding rule:** {one sentence the output must never violate}
-- **Golden set:** `samples/fixtures/{path}` — {N} cases across {3–5 coverage axes, incl. the nightmare case}. A failure found in the wild becomes a new case; the set only grows.
-- **Ship threshold:** grounding 100% · task pass ≥{N}% · 0 critical failures on {nightmare case}. Each threshold is one rubric row with the command that computes it.
-- **Fallback:** below threshold or low confidence → {named recoverable behaviour}; fabricated output is a P0 ❌.
+- **Grounding rule:** {{fill:one sentence the output must never violate}}
+- **Golden set:** `samples/fixtures/{{fill:path}}` — {{fill:N}} cases across {{fill:3–5 coverage axes, incl. the nightmare case}}. A failure found in the wild becomes a new case; the set only grows.
+- **Ship threshold:** grounding 100% · task pass ≥{{fill:N}}% · 0 critical failures on {{fill:nightmare case}}. Each threshold is one rubric row with the command that computes it.
+- **Fallback:** below threshold or low confidence → {{fill:named recoverable behaviour}}; fabricated output is a P0 ❌.
 
 <!-- tpl: Delete this whole sub-section unless the diff changes prompt/model/
 agent behaviour. Grounding-rule example: "responses cite only retrieved rows,
@@ -357,13 +362,13 @@ never invented identifiers." -->
 
 | File to delete | Verify |
 |----------------|--------|
-| `{path/to/old_file.ext}` | `test ! -f {path/to/old_file.ext}` |
+| `{{fill:path/to/old_file.ext}}` | `test ! -f {{fill:path/to/old_file.ext}}` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `{old_symbol}` | `grep -rn "{old_symbol}" src/ \| head` | 0 matches |
+| `{{fill:old_symbol}}` | `grep -rn "{{fill:old_symbol}}" src/ \| head` | 0 matches |
 
 <!-- tpl: Mandatory when the spec deletes or replaces files: for every deleted
 file and removed/renamed public symbol, grep the repo; non-zero = stale. Use
@@ -372,7 +377,7 @@ both tables with "N/A — no files deleted." -->
 
 ## Out of Scope
 
-- {Item explicitly not in this spec — points at a follow-up spec or "future work"}
+- {{fill:Item explicitly not in this spec — points at a follow-up spec or "future work"}}
 
 ---
 
@@ -383,16 +388,16 @@ working sections stay front-loaded. -->
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — {the single observable moment that proves this worked — a scene, not a metric}
-2. **Preserved user behaviour** — {what users do today that keeps working unchanged; breaking any of it is a redesign}
-3. **Optimal-way check** — {is this the most direct way to deliver moment #1? name the gap to the unconstrained-optimal shape and why it's acceptable now}
-4. **Rebuild-vs-iterate** — {would a larger refactor serve better? verdict here; rationale in Decomposition below. A refactor that trades run-to-run determinism away is wrong by default}
-5. **What we build** — {the shortest artifact list that delivers moment #1}
-6. **What we do NOT build** — {adjacent scope rejected, one-line reason each — seeds Out of Scope}
-7. **Fit with existing features** — {what this compounds with; the one feature it must not destabilize}
-8. **Surface order** — {CLI-first (repo default), UI-first, or both; justify divergence}
-9. **Dashboard restraint** — {what the UI must hide until the signal behind it is real: no controls before evidence, no quality claims before counters}
-10. **Confused-user next step** — {the self-serve move (a command, an error message, a doc); "file a ticket" means a surface is missing from item 5}
+1. **Successful user moment** — {{fill:the single observable moment that proves this worked — a scene, not a metric}}
+2. **Preserved user behaviour** — {{fill:what users do today that keeps working unchanged; breaking any of it is a redesign}}
+3. **Optimal-way check** — {{fill:is this the most direct way to deliver moment #1? name the gap to the unconstrained-optimal shape and why it's acceptable now}}
+4. **Rebuild-vs-iterate** — {{fill:would a larger refactor serve better? verdict here; rationale in Decomposition below. A refactor that trades run-to-run determinism away is wrong by default}}
+5. **What we build** — {{fill:the shortest artifact list that delivers moment #1}}
+6. **What we do NOT build** — {{fill:adjacent scope rejected, one-line reason each — seeds Out of Scope}}
+7. **Fit with existing features** — {{fill:what this compounds with; the one feature it must not destabilize}}
+8. **Surface order** — {{fill:CLI-first (repo default), UI-first, or both; justify divergence}}
+9. **Dashboard restraint** — {{fill:what the UI must hide until the signal behind it is real: no controls before evidence, no quality claims before counters}}
+10. **Confused-user next step** — {{fill:the self-serve move (a command, an error message, a doc); "file a ticket" means a surface is missing from item 5}}
 
 <!-- tpl: Indy's product questions, answered in order at authoring BEFORE the
 implementation sections are written — so the authoring agent holds the product
@@ -403,9 +408,9 @@ no user surface" with the reason. -->
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** {why this Section/Workstream split — the decomposition rationale}
-- **Alternatives considered:** {≥1 — the larger refactor or the smaller patch — and why rejected for now}
-- **Patch-vs-refactor verdict:** this is a **{patch | refactor}** because {reason}. {If a larger refactor is the right long game but out of scope, name the follow-up spec rather than silently mud-patching.}
+- **Chosen shape:** {{fill:why this Section/Workstream split — the decomposition rationale}}
+- **Alternatives considered:** {{fill:≥1 — the larger refactor or the smaller patch — and why rejected for now}}
+- **Patch-vs-refactor verdict:** this is a **{{fill:patch | refactor}}** because {{fill:reason}}. {{fill:If a larger refactor is the right long game but out of scope, name the follow-up spec rather than silently mud-patching.}}
 
 <!-- tpl: Indy's rule — don't ship a mud-patch when the problem wants a
 refactor, and don't refactor when a patch is right. Match solution-size to

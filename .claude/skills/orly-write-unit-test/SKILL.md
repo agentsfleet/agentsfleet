@@ -51,7 +51,7 @@ Spec contradicts runtime → surface the conflict before testing. Code contradic
 1. **Read the spec, then the code** — spec defines what to test; code is what gets tested. Don't let code shape expectations.
 2. **Read `docs/greptile-learnings/RULES.md`** — every rule is a regression test.
 3. **Detect the stack** from project files (`pyproject.toml`, `Cargo.toml`, `build.zig`, `package.json` + `react`/`bin`, `*.sh`, `openapi.yaml`).
-4. **Run the existing suite first** — establish the green baseline before adding tests.
+4. **Follow lifecycle timing** — record the comparison revision at opening; measure full unit and integration baselines before the Pull Request. Run focused reproduction and Section proofs while implementing; first application hydration occurs at Section verification. `dispatch/lifecycle.md` owns the sequence.
 5. **Follow existing naming and fixture conventions.**
 
 ## Step 0 — the diff is the spec: build the required-test ledger first
