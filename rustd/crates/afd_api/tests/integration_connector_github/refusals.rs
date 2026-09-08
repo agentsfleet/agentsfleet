@@ -142,3 +142,78 @@ async fn an_installation_another_workspace_routes_is_refused_and_stays_where_it_
     provider.close();
     fixture.cleanup().await;
 }
+
+/// The refusal a vendor that will not ANSWER produces, and the state it leaves.
+///
+/// Deliberately not [`assert_ownership_refused`]: the two are different
+/// sentences to a person and different codes on the wire (RULE ECL). Ownership
+/// is the vendor answering and the answer being none, several, or an
+/// installation this token cannot open — the person installs the App or signs
+/// in as the owner. This is the vendor declining the question, which no action
+/// of theirs changes.
+async fn assert_listing_declined(fixture: &Fixture, response: axum::response::Response) {
+    let status = response.status();
+    let document = json_body(response).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::CONNECTOR_INSTALLATION_LISTING_FAILED.as_str()),
+        "a vendor that declined the listing is not an ownership refusal: {document}"
+    );
+    assert!(
+        fixture.grant(PROVIDER).await.is_none(),
+        "a declined listing seals no handle"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_listing_the_vendor_declines_is_not_an_ownership_refusal() {
+    // The shape the live defect had: the exchange SUCCEEDED, the token is in
+    // hand, and `api.github.com` refused the next call — 403 "Request
+    // forbidden by administrative rules", because the request carried no
+    // `User-Agent`. Reported under the exchange's code, it sent a live
+    // diagnosis to a client secret that was working.
+    let fixture = github_fixture().await;
+    let provider =
+        FakeProvider::answering_with_reads(&[EXCHANGE], vec![listing_declined(403)]).await;
+    let router = fixture.router(&provider);
+
+    let state = start_connect(&router, &fixture, PROVIDER).await;
+    let refused = complete(&router, &fixture, PROVIDER, &state).await;
+    assert_listing_declined(&fixture, refused).await;
+
+    provider.close();
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_claimed_installation_the_vendor_cannot_answer_for_is_not_ownership() {
+    // 401, 403 and 404 on this probe mean "this token does not open that
+    // installation" — an ownership answer. Every OTHER status is the vendor
+    // having a bad minute, and collapsing the two is what let a malformed
+    // request read as a person lacking access.
+    let fixture = github_fixture().await;
+    let installation = fresh_installation();
+    let provider = FakeProvider::answering_with_reads(
+        &[EXCHANGE],
+        vec![probe(&installation, 500, VENDOR_DECLINED)],
+    )
+    .await;
+    let router = fixture.router(&provider);
+
+    let state = start_connect(&router, &fixture, PROVIDER).await;
+    let refused = complete_with(
+        &router,
+        &fixture,
+        PROVIDER,
+        &state,
+        &format!("&installation_id={installation}"),
+    )
+    .await;
+    assert_listing_declined(&fixture, refused).await;
+
+    provider.close();
+    fixture.cleanup().await;
+}
