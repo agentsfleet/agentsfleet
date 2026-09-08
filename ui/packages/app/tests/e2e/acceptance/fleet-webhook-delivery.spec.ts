@@ -171,16 +171,26 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
 /**
  * Waits for a runner to take the event, or reports why nobody did.
  *
- * The row appears synchronously — the ingress appends it before answering 202
- * — so its EXISTENCE proves only that the POST returned. What proves a runner
- * took it is the status leaving `received`.
+ * NO row exists until a runner leases the event. The ingress writes nothing to
+ * Postgres — it claims the delivery in Redis and answers 202, and the row is
+ * written by the lease (`afd_ingress::deliver`, module note: "the row appears
+ * when the runner leases the event, and a daemon that inserted one at ingress
+ * would be racing its own runner to describe the same event").
+ *
+ * This function read the opposite until Sep 8, 2026, and the cost was the
+ * whole assertion: an absent row answered `null`, `null` is not `received`, so
+ * the wait passed at once on a delivery nobody had taken and the journey went
+ * on to fail on a bare length mismatch that named neither side. An empty
+ * listing is the WAITING state, which is why it reads as `received` here — and
+ * a wait that runs out reaches the classifier below, which is the sentence
+ * this journey exists to print (RULE ECL).
  */
 async function awaitLease(workspaceId: string, fleetId: string): Promise<void> {
   const leased = await expect
     .poll(
       async () => {
         const [current] = await webhookEvents(workspaceId, fleetId);
-        return current?.status ?? null;
+        return current?.status ?? EVENT_STATUS.received;
       },
       { timeout: EVENT_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
     )
