@@ -151,7 +151,6 @@ impl Exchange {
     /// request it does not send, and the seam exists so a live test can send
     /// the daemon's OWN request instead of a lookalike.
     #[cfg(feature = "test-util")]
-    #[must_use]
     pub fn probe_request(
         &self,
         endpoint: &str,
