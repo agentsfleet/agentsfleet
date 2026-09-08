@@ -40,8 +40,10 @@ a gate skip.
   names, money amounts stay verbatim.
 - **Internal cleanup** gets aggressive trimming, not a paragraph.
 - **History is archived, not rewritten** — past entries are an immutable record.
-- **Rate constants** stay pinned across the server, app, and CLI files checked by
-  `audits/cross-tier-rates.sh`; a public changelog rate also updates the docs mirror.
+- **Rate constants** are pinned by `cross_runtime_rates.rs`, which reads the
+  app and Command-Line Interface (CLI) mirrors against the Rust constant. A
+  changelog money or rate claim must match those, and `rates.mdx` in the docs
+  repository, which no test can reach.
 
 ## Required output (self-audit line before committing the changelog)
 

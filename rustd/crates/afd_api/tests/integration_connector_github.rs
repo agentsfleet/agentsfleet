@@ -75,6 +75,9 @@ const PROBE_OPENS: &str = r#"{"total_count":1,"repositories":[{"full_name":"acme
 
 /// GitHub's answer for an installation the token does not open.
 const PROBE_REFUSED: &str = r#"{"message":"Not Found"}"#;
+/// What a vendor says when it will not process the request at all, as opposed
+/// to processing it and refusing the caller.
+const VENDOR_DECLINED: &str = r#"{"message":"Request forbidden by administrative rules."}"#;
 
 /// The vendor's `github-app` bag this deployment connects with.
 const APP_BAG: &str =
@@ -119,6 +122,19 @@ fn listing_two(first: &str, second: &str) -> Read {
         body: format!(
             r#"{{"total_count":2,"installations":[{{"id":{first},"account":{{"login":"{ACCOUNT}"}}}},{{"id":{second},"account":{{"login":"other"}}}}]}}"#
         ),
+    }
+}
+
+/// The listing when the vendor declines to answer it at all.
+///
+/// Distinct from every listing above, which are answers: this is GitHub
+/// refusing the question. A missing `User-Agent` produced exactly this shape
+/// live, and the daemon reported it as a failed token exchange.
+fn listing_declined(status: u16) -> Read {
+    Read {
+        path: LISTING_PATH.to_owned(),
+        status,
+        body: VENDOR_DECLINED.to_owned(),
     }
 }
 

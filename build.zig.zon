@@ -1,8 +1,16 @@
 .{
-    .name = .agentsfleetd,
+    // `agentsfleetd` until the cutover, which is the binary this graph no longer
+    // builds. What it builds is the shared `src/lib` tests the runner links by
+    // source, and the incident-response harness.
+    .name = .agentsfleet,
     .version = "0.29.0",
     .minimum_zig_version = "0.16.0",
-    .fingerprint = 0x263fc42fde813fea,
+    // Moved with the rename below: Zig derives the fingerprint from the package
+    // name, and refuses the build when the two disagree. This value is the one
+    // the toolchain named for `.agentsfleet`. Safe to move here and nowhere
+    // else — the fingerprint exists so a DEPENDENT can tell two packages with
+    // one name apart, and nothing consumes this package; it is the root.
+    .fingerprint = 0xe99ef3722015013c,
     .dependencies = .{
         // Fork pin agentsfleet/nullclaw — current upstream main plus the
         // maintained fork patches, carried on the fork's own main:
@@ -37,95 +45,11 @@
             .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=main#2a56e893d4896d8856545d434fc61a0d8d88b629",
             .hash = "nullclaw-2026.5.29-wlZZyTCySAGiRfDKW5sUzsFUsYDs6sDW0YMSRCYFgYPC",
         },
-        // Fork pin agentsfleet/pg.zig over upstream karlseguin/pg.zig commit 52b9f8a,
-        // patched for a Zig 0.16 pool-acquire regression: upstream
-        // `Pool.acquire()` waits via `Io.Select.concurrent` — an async combinator that
-        // returns `error.ConcurrencyUnavailable` on this project's threaded `Io`, so any
-        // pool exhaustion 500s instead of waiting. Patched to bounded-poll the exhaustion
-        // branch (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin and
-        // return to upstream once it offers a threaded-Io timed wait.
-        //
-        // Pinned by tag AND commit, like nullclaw above. The `#<commit>` is not
-        // decoration: `zig fetch` given `?ref=<tag>` alone resolved to the upstream
-        // base 52b9f8a instead of the tagged commit, silently yielding plain
-        // upstream — no pool-acquire patch, and translate_c back on codeberg. The
-        // hash is the backstop that turns such a mis-pin into a build failure
-        // rather than a quiet regression. Tags are `v0.0.0-af.N`, one per fork
-        // commit this repository consumes.
-        .pg = .{
-            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.3#1dea0f9f91bfec3fa49a163c1e6615d4ab7a9b55",
-            .hash = "pg-0.0.0-Wp_7gRO-BgAwfz7gC8A6NYUp-bQRInfmUGxAgu5dVKyf",
-        },
-        .posthog = .{
-            .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
-            .hash = "posthog-0.2.0-QwvZlsuGAgBOvEKmQ-yKf77yaLyP7SeCCPanYW1pRl7X",
-        },
-        // zbench pinned to the zig-0.16.0 branch HEAD — the maintained branch for
-        // our Zig 0.16.0 toolchain.
-        // See https://github.com/hendriknielaender/zBench#compatibility-notes.
-        .zbench = .{
-            .url = "git+https://github.com/hendriknielaender/zBench?ref=zig-0.16.0#c24d128bfa80ec6a1b495b84ec827c6a0bec7865",
-            .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
-        },
-        // Fork release agentsfleet/http.zig v0.0.0-af.2 from fork master, containing
-        // upstream karlseguin/http.zig through 52eb187 plus the shared-injector ThreadPool
-        // and matched httpz/websocket worker-mode wiring (see the fork's CHANGES.md).
-        // Drop this pin once both patches land upstream.
-        .httpz = .{
-            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=v0.0.0-af.2#82b888f431e8571f6869927af3f2bace0017e216",
-            .hash = "httpz-0.0.0-PNVzrEAUCQC4g6ChaPWV5_fZMNDcDwXJqEJmCUAcGFLN",
-        },
-        // Fork pin agentsfleet/zig-yaml (tag v0.3.0-dev-af.1) over upstream kubkon/zig-yaml
-        // commit 84d747b (0.3.0-dev): the build.zig drops the upstream YAML Test Suite
-        // conformance step, whose harness (test/spec.zig) uses std APIs removed in 0.16 and
-        // broke every consumer's build. We consume only the `yaml` module (see the fork's
-        // CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin once upstream fixes
-        // test/spec.zig for 0.16.
-        .zig_yaml = .{
-            .url = "git+https://github.com/agentsfleet/zig-yaml.git?ref=v0.3.0-dev-af.1#11e8c661ca0730194e224b17d7418dfca0bd4841",
-            .hash = "zig_yaml-0.3.0-C1161n-rAgDc4O9pSMh-qdZcbCYCyoenayg3WpzM1Z8R",
-        },
-        // Mirror agentsfleet/z3 of upstream codeberg.org/fellowtraveler/z3 — an
-        // UNMODIFIED copy, unlike every fork pin above it: no patches ride this
-        // one and upstream stays authoritative, so don't go hunting for a
-        // CHANGES.md that doesn't exist. It was the only dependency resolving
-        // from a non-GitHub host, which made one host a shared single point of
-        // failure: a connection reset there reds the unit, integration,
-        // cross-compile, memory-leak, and deploy-compile lanes at once.
-        //
-        // Zig hashes the extracted tree filtered by the dependency's own .paths,
-        // which is identical whether fetched as an archive or over git — so the
-        // mirror was verifiable against the digest upstream already produced,
-        // and the host swap itself landed without the hash moving at all. The
-        // digest below is later — it moved only when the pin advanced to the
-        // upstream head, not when the host changed. It stays the standing
-        // backstop either way: any future drift in the mirror fails the build
-        // instead of quietly substituting content.
-        //
-        // Pinned by bare commit (no ?ref=) like the cache entry below, because
-        // upstream publishes no tags or releases — a commit is the only unit
-        // there is to pin. Refreshing is a deliberate human act, never
-        // automatic; the pin is what makes builds reproducible: git clone
-        // --mirror from upstream, then push refs/heads + refs/tags only (GitHub
-        // reserves refs/pull/*). Before re-pinning, run `zig fetch` against
-        // BOTH upstream and the mirror at the new commit and confirm the two
-        // digests match — the hash below only gates the commit it names, so an
-        // unverified refresh is the one path that could bless mirror-only
-        // content. Drop the mirror if upstream ever publishes to GitHub itself.
-        .z3 = .{
-            .url = "git+https://github.com/agentsfleet/z3.git#7f64763e186ebe348989ae229b7551cb6ec79ee0",
-            .hash = "z3-0.5.0-N25-cGBCAgDa4owqttqJfaSQDMp5j2HIqduoW4z93w5g",
-        },
-        .cache = .{
-            .url = "git+https://github.com/karlseguin/cache.zig#51b9d77bec8d9f3717349e9a007ff689959f3479",
-            .hash = "cache-0.0.0-winRwJu4AAD4Kf1LLubro_8Pf66vN8U4ARd0U4imAOI5",
-        },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        "config",
         "schema",
     },
 }

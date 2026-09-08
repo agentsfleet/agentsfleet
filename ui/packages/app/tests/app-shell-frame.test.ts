@@ -2,7 +2,7 @@ import React from "react";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   trackNavigationClicked: vi.fn(), useUser: vi.fn(), usePathname: vi.fn(),
@@ -155,6 +155,50 @@ describe("app shell frame", () => {
     const main = container.querySelector("main") as HTMLElement;
     expect(main.className).toMatch(/overflow-y-auto/);
     expect(main.className).toMatch(/min-h-0/);
+  });
+
+  it("test_the_header_cluster_is_the_sidebar_column", async () => {
+    const { SIDEBAR_COLUMN, shellSidebarState } = await import(
+      "../components/layout/shell-sidebar-state"
+    );
+
+    // The toggle lines up with the column it collapses only while the header
+    // cluster and the `<aside>` are the same width. One constant, two literal
+    // spellings (Tailwind scans source text, so `md:${...}` would never reach
+    // the stylesheet) — this is what stops the pair drifting apart.
+    expect(SIDEBAR_COLUMN.header.expanded).toBe(`md:${SIDEBAR_COLUMN.aside.expanded}`);
+    expect(SIDEBAR_COLUMN.header.collapsed).toBe(`md:${SIDEBAR_COLUMN.aside.collapsed}`);
+
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
+    const { container } = render(React.createElement(Shell, null, React.createElement("div")));
+
+    // The header pads nothing itself: the leading cluster has to start where
+    // the sidebar column starts, so each cluster pads its own side instead.
+    const header = container.querySelector("header") as HTMLElement;
+    expect(header.className).toContain("px-0");
+    expect(header.className).toContain("md:px-0");
+
+    const cluster = container.querySelector(
+      '[data-testid="shell-leading-cluster"]',
+    ) as HTMLElement;
+    const brand = container.querySelector('[aria-label="agentsfleet home"]') as HTMLElement;
+
+    // Expanded: the cluster IS the column, brand on the nav items' leading
+    // edge and toggle on their trailing edge.
+    expect(cluster.className).toContain(SIDEBAR_COLUMN.header.expanded);
+    expect(cluster.className).toContain("md:justify-between");
+    expect(cluster.className).toContain("md:px-3");
+    expect(brand.className).not.toContain("md:hidden");
+
+    // Collapsed: a 64px rail holds one control. The wordmark stands down from
+    // `md` up only — the mobile header has no rail and keeps its brand.
+    act(() => shellSidebarState.setCollapsed(true));
+    expect(cluster.className).toContain(SIDEBAR_COLUMN.header.collapsed);
+    expect(cluster.className).toContain("md:justify-center");
+    expect(brand.className).toContain("md:hidden");
+
+    act(() => shellSidebarState.reset());
   });
 
   it("lets an ordinary page grow while letting one page claim the region", async () => {

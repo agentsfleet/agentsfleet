@@ -1184,6 +1184,14 @@ const ZIG_ENTRIES: &[ZigEntry] = &[
         ),
     },
     ZigEntry {
+        code: "UZ-CONN-009",
+        status: ".bad_gateway",
+        title: "Connector installation listing failed",
+        user_message: Some(
+            "GitHub wouldn't tell us which installations you can reach. Try connecting again from the dashboard.",
+        ),
+    },
+    ZigEntry {
         code: "UZ-CONN-008",
         status: ".forbidden",
         title: "Connector installation ownership not verified",

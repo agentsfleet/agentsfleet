@@ -206,6 +206,22 @@ pub const CONNECTOR_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-CONN-004");
 /// is sealed or routed on this answer.
 pub const CONNECTOR_INSTALLATION_OWNERSHIP: ErrorCode = ErrorCode::declare("UZ-CONN-008");
 
+/// A GitHub installation listing was refused by the vendor.
+///
+/// Split from [`CONNECTOR_OAUTH_EXCHANGE_FAILED`] because they name different
+/// LEGS of one connect, and the leg is what a reader acts on (RULE ECL). The
+/// exchange code sends someone to the client secret and the redirect URI; this
+/// one sends them to the App's own permissions and to the request the daemon
+/// makes of `api.github.com`. Collapsing them cost a live diagnosis once
+/// already: a connect whose exchange had SUCCEEDED reported that the provider
+/// "refused the token exchange", because the second call — the installation
+/// listing — raised the first call's code.
+///
+/// Distinct from [`CONNECTOR_INSTALLATION_OWNERSHIP`] too: that one is the
+/// vendor answering, and the answer being none or several. This is the vendor
+/// declining to answer at all.
+pub const CONNECTOR_INSTALLATION_LISTING_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-009");
+
 /// No human approved a repository-write gate for this event.
 ///
 /// `ERR_REPAIR_WRITE_UNAPPROVED` (`error_registry.zig:199`). The run is not

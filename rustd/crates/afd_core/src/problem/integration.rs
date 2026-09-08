@@ -245,6 +245,15 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::CONNECTOR_INSTALLATION_LISTING_FAILED,
+        status: 502,
+        title: "Connector installation listing failed",
+        hint: "The authorization code was redeemed and the token is in hand — it is the call AFTER the exchange that GitHub refused, so the client secret and the redirect URI are not what to check. Look at what `api.github.com` answered: a request the daemon malformed, an App whose permissions do not allow listing installations, or a vendor incident.",
+        user_message: Some(
+            "GitHub wouldn't tell us which installations you can reach. Try connecting again from the dashboard.",
+        ),
+    },
+    Problem {
         code: error_code::REPAIR_WRITE_UNAPPROVED,
         status: 403,
         title: "Write mint requires an approved gate",
