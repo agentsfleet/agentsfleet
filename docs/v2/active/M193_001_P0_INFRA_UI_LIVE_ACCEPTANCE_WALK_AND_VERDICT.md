@@ -160,7 +160,7 @@ Regression rows: N/A — this spec adds no code path, so there is no pre-existin
 | R5 | The sign-off is Indy's own words (§3) | inspect Discovery | a verbatim quote, not a summary | P0 | ⏳ awaiting Indy — an agent cannot author a human's sign-off, and this row stays empty until they write one |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing — the six `orly update` paths were added to Files Changed when Indy folded the harness update into CHORE(open) |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0 — `● ALL GATES GREEN ── ready for VERIFY` |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — `✓ All unit lanes passed`, all package coverage gates green |
 | S3 | Version sync | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.29.0` |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` — 189.26 MB scanned |
 
