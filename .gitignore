@@ -63,3 +63,7 @@ rustd/lcov.info
 # Bench lane output. A result is what one run measured on one machine; the
 # committed reference point beside it is `bench/baselines/`, which IS tracked.
 bench/results/
+
+# Cargo writes here when it is invoked from the repository root rather than
+# from rustd/ — build output either way, and never committed.
+/target/
