@@ -126,6 +126,40 @@ impl Exchange {
         }
     }
 
+    /// The request every redemption goes out as, headers and all.
+    ///
+    /// Extracted and named because the HEADERS are a contract with the vendor,
+    /// and a contract nothing exercises is a comment. `redeem` cannot be
+    /// reached from a live test without a valid authorization code, and a test
+    /// that rebuilt this request would assert its own spelling rather than the
+    /// daemon's — which is how the missing `Accept` survived 409 green tests.
+    /// `tests/vendor_contract.rs` sends THIS builder at the real endpoints.
+    pub(crate) fn request(
+        &self,
+        endpoint: &str,
+        form: &[(&'static str, &str)],
+    ) -> reqwest::RequestBuilder {
+        self.client
+            .post(endpoint)
+            .header(ACCEPT, ACCEPT_JSON)
+            .form(form)
+    }
+
+    /// The exchange request, for the suite that proves the vendor contract.
+    ///
+    /// Feature-gated rather than plain `pub`: production has no use for a
+    /// request it does not send, and the seam exists so a live test can send
+    /// the daemon's OWN request instead of a lookalike.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn probe_request(
+        &self,
+        endpoint: &str,
+        form: &[(&'static str, &str)],
+    ) -> reqwest::RequestBuilder {
+        self.request(endpoint, form)
+    }
+
     /// Redeems `code` at `endpoint` for whatever grant the provider issues.
     ///
     /// # Errors
@@ -148,10 +182,7 @@ impl Exchange {
         let endpoint = self.endpoint_override.as_deref().unwrap_or(endpoint);
 
         let answer = self
-            .client
-            .post(endpoint)
-            .header(ACCEPT, ACCEPT_JSON)
-            .form(&form)
+            .request(endpoint, &form)
             .send()
             .await
             .inspect_err(|_source| {
