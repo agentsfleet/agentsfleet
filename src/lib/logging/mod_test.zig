@@ -255,7 +255,15 @@ test "fatalStderr formats and writes without the logger" {
     // observable claim is "does not crash, truncates instead of overflowing" —
     // stderr itself is not captured here, and does not need to be: a bufPrint
     // failure returns silently, and that is the branch the oversized call pins.
-    logging.fatalStderr("startup probe: {s}\n", .{"ok"});
+    //
+    // The formatted call writes NOTHING on purpose. `zig build` reads a test
+    // binary's stderr as the channel it reports failures on, so a test that
+    // writes real bytes there makes the build runner print `failed command:`
+    // beside a lane that passed — this one printed `startup probe: ok` and
+    // read as a red `test-lib` for anyone who looked at the tail of the output
+    // rather than the exit code. An empty format still exercises format-then-
+    // write; it just does not lie about the lane.
+    logging.fatalStderr("{s}", .{""});
     const oversized = "y" ** 4096;
     logging.fatalStderr("{s}", .{oversized}); // > 2 KiB cap — returns, no write
     logging.writeStderrLine("");

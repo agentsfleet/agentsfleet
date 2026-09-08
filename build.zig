@@ -18,8 +18,9 @@ comptime {
 ///
 /// What remains is what was never the daemon's: the shared `src/lib` tests,
 /// which `agentsfleet-runner` links by source and which therefore outlive the
-/// binary they were extracted from, plus the `test-s3` build-wiring gate and
-/// the incident-bench steps. The runner keeps its own graph in
+/// binary they were extracted from. The incident-response bench went too — it
+/// measured detection quality over a synthetic corpus, no workflow ran it, and
+/// its own rubric row was never graded. The runner keeps its own graph in
 /// `build_runner.zig` and is untouched by any of this.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -38,6 +39,4 @@ pub fn build(b: *std.Build) void {
     // One step covering the src/lib barrel plus the named-module-consuming lib
     // modules (logging, call_deadline), each compiled in its production shape.
     buildpkg.lib_tests.addTestStep(b, target, optimize, test_filters, deps, list_step);
-
-    buildpkg.bench_incident.addSteps(b, target, optimize, test_filters);
 }
