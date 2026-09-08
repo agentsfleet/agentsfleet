@@ -81,3 +81,27 @@ deploy, and it is the gate. This pass adds the human judgement the journey
 cannot make: whether the pages read as trustworthy to a person. A verdict file
 is not a substitute for a green run, and a green run is not a substitute for a
 verdict file.
+
+## Connector registrations — the one check automation cannot make
+
+A provider validates the `redirect_uri` it was sent against the list registered
+in ITS settings, and it does that check where no test can see it. Two probes
+were tried on Sep 8, 2026 and both failed to distinguish a good registration
+from a stale one: an unauthenticated authorize call returns the same 302 to a
+login page for a correct URL, a stale URL and `evil.example.com`, and the
+provider APIs do not publish their own callback lists. So this stays a human
+step, once per provider per environment.
+
+For each connector on **Integrations**, press **Connect** and read the first
+page the provider shows:
+
+| What you see | What it means |
+|---|---|
+| The provider's consent screen, or an immediate return to Integrations | The registration matches. Continue the walk. |
+| `redirect_uri is not associated with this application` (GitHub), `Invalid Redirect Uri` (Zoho), or any wording naming the redirect | **The registration is stale.** Fix it in the provider's App settings — NOT in the code. The daemon mints `https://<APP_HOST>/api/connectors/<provider>/callback`; the provider is holding something else, usually the retired `https://<API_HOST>/v1/connectors/<provider>/callback`. |
+| A page from the provider about the app being unavailable | The platform app bag is missing or wrong for this environment — see `credentials_test.sh`. |
+
+The URL the daemon minted is in the address bar of the page the provider showed
+you; its `redirect_uri` parameter is the value under test. Record any stale
+registration as a defect row in the verdict file, because a registration that
+drifted once will drift again at the next environment.
