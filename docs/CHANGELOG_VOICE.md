@@ -1,6 +1,6 @@
 # Changelog voice (Mintlify-style)
 
-> Parent: [`../AGENTS.md`](../AGENTS.orly.md) §Owner & Style.
+> Parent: [`../AGENTS.orly.md`](../AGENTS.orly.md) §Owner & Style.
 > Prerequisite: read [`DOCUMENTATION_RULES.md`](./DOCUMENTATION_RULES.md) first.
 > Changelog history keeps its archive exception; this file adds the narrower voice.
 

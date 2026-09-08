@@ -6,12 +6,12 @@
 **Milestone:** M193
 **Workstream:** 001
 **Date:** Sep 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — M187_001 built the walk and could never finish one. Until a person completes it, no deployment of the Rust daemon has been signed off by anybody.
 **Categories:** INFRA, UI
 **Batch:** B1 — single workstream; strictly post-merge, nothing here runs before M187_001 is on `main` and deployed.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m193-acceptance-walk-verdict`
+**Test Baseline:** `n/a — no code on this branch` — this spec's Files Changed is markdown only, so the Test Delta has nothing to measure. Measured before the Pull Request rather than at CHORE(open), on Indy's call: > Indy (2026-09-08): "Well skip the test and integraiton base line" / "do it before your PR" / "the test unit, test integration base line establishment must be done prior to PR since it takes a lot of time" — context: the rule now lives in orly (agentsfleet/orly#38) rather than only here.
 **Depends on:** M187_001 (its `User-Agent` fix is what lets a GitHub connect complete at all; every step below crosses that path)
 **Inherits from M187_001 — the whole of what that milestone left undone:** Dimension 4.2 (the committed verdict file) → §3 Dimensions 3.1–3.2 · Dimension 4.3 (the person's sign-off) → §3 Dimension 3.3 · rubric row R6 (human verdict recorded) → R4. Nothing else of M187_001 is open: §1–§3 are DONE and every other rubric row is ✅, audited at its close. Moved on Indy's decision, quoted in that spec's Discovery.
 **Provenance:** human-directed — Indy, Sep 08, 2026: "You said you will create a new spec with the pending items in this spec, if so why are you complaining on R6?" M187_001 closed with R6 ungraded and no owner for the remaining walk; this spec is that owner.
@@ -205,6 +205,9 @@ N/A — no files deleted. This spec produces a verdict file and fills a rubric; 
 |---|---|---|
 | Sep 08, 2026 | Indy — close M187, this spec owns the rest | > Indy (2026-09-08): "why is this still open? I thought we agred to close and use a new milestone M193_001?" — context: M187_001's Dimensions 4.2 and 4.3 and rubric row R6 move here whole. That quote is the deferral record the rules require; M187_001 closed on it. |
 | Sep 08, 2026 | Indy — why this spec exists | "You said you will create a new spec with the pending items in this spec, if so why are you complaining on R6? Or when you moved this spec to done, what are you thoughts?" M187_001 was closed with R6 marked SCHEDULED — a third category invented to make the close work, since the ship gate admits only ✅ or a return to EXECUTE. Either the walk has an owner or M187_001 is not done. This spec is the owner. |
+| Sep 08, 2026 | Indy — when the Test Baseline is measured | > Indy (2026-09-08): "the test unit, test integration base line establishment must be done prior to PR since it takes a lot of time" — context: CHORE(open) ran no suites; the header was declared and the counts are due before the Pull Request. Recorded in orly, not only here: `agentsfleet/orly#38` moves the measurement to the boundary, names the baseline as the BRANCH POINT's count so VERIFY's Test Delta cannot compare a number against itself, and tightens `spec.baseline` to fail a header still carrying no count. |
+| Sep 08, 2026 | Indy — a worktree inherits the base tree | > Indy (2026-09-08): "when CHORE(OPEN) is initiated all changes from my base worktree main must be carried over to the worktree branch" — context: recorded in orly as a CHORE(open) step (`git stash push -u` in the base, `git stash pop` in the worktree; move never copy). Here it was a no-op: `git status --porcelain -uall` in `~/Projects/agentsfleet` returned empty, so nothing was stranded and nothing came across. |
+| Sep 08, 2026 | Indy — the harness updates with the stream | > Indy (2026-09-08): "ensure that you install orly update, and carry over your fixes you do for orly (due to orly update) is moved as part of CHORE(OPEN)" — context: `orly update --no-hooks` took the worktree 0.10.1 → 0.10.5 (5 files). `--no-hooks` because `.githooks/pre-commit` and `pre-push` are agentsfleet's own; retargeting `core.hooksPath` would have pointed every worktree at this tree. `orly doctor` then read 🟢. |
 
 - **Metrics review** — no analytics or funnel playbook update required: this spec adds no code path and no event.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results, populated as the work proceeds.
