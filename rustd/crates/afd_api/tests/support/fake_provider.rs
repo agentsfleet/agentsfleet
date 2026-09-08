@@ -40,7 +40,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::Router;
-use axum::http::header::{ACCEPT, CONTENT_TYPE};
+use axum::http::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -55,6 +55,18 @@ const TOKEN_PATH: &str = "/oauth/access";
 /// `UZ-CONN-006` over a grant that had been issued. A fixture more forgiving
 /// than the vendor is a fixture that certifies the bug.
 const ACCEPT_JSON: &str = "application/json";
+
+/// What `api.github.com` answers a request that names no client, and why this
+/// fixture answers it too.
+///
+/// GitHub refuses an unnamed request with 403 "Request forbidden by
+/// administrative rules" BEFORE it reads `Authorization`. A fixture that
+/// serves anyone is more forgiving than the vendor, and a fixture more
+/// forgiving than the vendor certifies the bug: the daemon's installation
+/// probe sent no `User-Agent`, every live GitHub connect was refused at that
+/// call, and the whole integration lane stayed green over it. Enforcing the
+/// rule here is what turns that defect into a red test.
+const ADMINISTRATIVE_REFUSAL: StatusCode = StatusCode::FORBIDDEN;
 /// How the same answer comes back when nobody asked for JSON.
 const FORM_MEDIA_TYPE: &str = "application/x-www-form-urlencoded";
 const FIELD_SEPARATOR: &str = "&";
@@ -153,10 +165,19 @@ impl FakeProvider {
             let counted = Arc::clone(&served);
             router = router.route(
                 &read.path,
-                get(move || {
+                get(move |headers: HeaderMap| {
                     counted.fetch_add(1, Ordering::SeqCst);
                     let body = body.clone();
-                    async move { (status, axum::Json(body)) }
+                    // See ADMINISTRATIVE_REFUSAL: the vendor judges this before
+                    // the credential, so the fixture does too.
+                    let named_itself = headers.contains_key(USER_AGENT);
+                    async move {
+                        if named_itself {
+                            (status, axum::Json(body)).into_response()
+                        } else {
+                            (ADMINISTRATIVE_REFUSAL, "Request forbidden by administrative rules. Please make sure your request has a User-Agent header").into_response()
+                        }
+                    }
                 }),
             );
         }

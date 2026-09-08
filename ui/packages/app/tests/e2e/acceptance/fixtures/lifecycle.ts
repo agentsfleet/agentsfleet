@@ -62,7 +62,19 @@ export async function expectRowState(
   // The wall tile anchor (FleetTile) is workspace-scoped
   // (`/w/<workspaceId>/fleets/<id>`); match on the stable suffix so this shared
   // helper needn't thread the workspace id through every caller.
-  const row = page.locator(`a[href$="/fleets/${fleetId}"]`);
+  //
+  // `visible: true` is load-bearing, not defensive. During a router transition
+  // React keeps the OUTGOING tree mounted and hidden while the incoming one
+  // renders, so for a moment the document holds two walls and two anchors for
+  // the same fleet. Playwright throws a strict-mode violation the instant a
+  // locator resolves to more than one element — it does not retry past it — so
+  // an assertion landing inside that window failed on a bare count mismatch
+  // that named nothing, and passed on every run that landed outside it. That
+  // is the whole of `login-install-lifecycle.spec.ts:45`'s intermittence: the
+  // page was correct each time, and the locator was reading the tree React was
+  // in the middle of retiring. Filtering to the visible one reads the wall the
+  // person is actually looking at.
+  const row = page.locator(`a[href$="/fleets/${fleetId}"]`).filter({ visible: true });
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("data-state", state, {
     timeout: ROW_STATE_TIMEOUT_MS,

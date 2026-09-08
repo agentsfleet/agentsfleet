@@ -16,6 +16,19 @@ use super::{Found, Installation, parse_listing};
 use crate::endpoint;
 use crate::error::{self, Result};
 
+/// The listing request, for the suite that proves the vendor contract.
+///
+/// Feature-gated rather than plain `pub` for [`crate::exchange::Exchange::probe_request`]'s
+/// reason: production has no use for a request it does not send, and the seam
+/// exists so a live test can send the daemon's OWN request instead of a
+/// lookalike. A lookalike is precisely what would have missed the missing
+/// `User-Agent` — a hand-rolled `reqwest` call in a test is as likely to omit
+/// it as the daemon was.
+#[cfg(feature = "test-util")]
+pub fn probe_listing_request(client: &reqwest::Client, token: &str) -> reqwest::RequestBuilder {
+    request(client, String::from(USER_INSTALLATIONS), token)
+}
+
 /// The installations the authorized person can reach, at most two asked for.
 ///
 /// Two is the bound because the answer is a count of three states — none, one,
@@ -40,6 +53,25 @@ const BEARER_PREFIX: &str = "Bearer ";
 const HEADER_ACCEPT: &str = "accept";
 /// See [`HEADER_API_VERSION`].
 const CONTENT_TYPE_JSON: &str = "application/vnd.github+json";
+/// See [`HEADER_API_VERSION`].
+const HEADER_USER_AGENT: &str = "user-agent";
+
+/// What this daemon calls itself at GitHub's REST API, because GitHub refuses
+/// a request that calls itself nothing.
+///
+/// Not politeness and not telemetry: `api.github.com` answers **403** —
+/// "Request forbidden by administrative rules. Please make sure your request
+/// has a User-Agent header" — before it reads the `Authorization` header at
+/// all. `reqwest` sends no default one, so every call in this module was
+/// refused by that rule, and the refusal arrived exactly where a token that
+/// cannot see an installation would arrive. That is the trap: [`opens`] reads
+/// 403 as "this token does not open that installation", so a missing header
+/// did not look like a broken request — it looked like a person with no
+/// access, for every person and every installation.
+///
+/// The name matches `afd_library`'s GitHub client, which has always sent one.
+/// Same vendor, same rule, and this module is the half that did not follow.
+const USER_AGENT: &str = "agentsfleetd";
 
 /// The vendor answers that mean "this token does not open that installation",
 /// as opposed to "the vendor could not say".
@@ -82,7 +114,11 @@ pub async fn resolve(
     let listed = fetch(client, pinned, token, USER_INSTALLATIONS).await?;
     let status = listed.status();
     if !status.is_success() {
-        return Err(error::exchange_refused(status.as_u16()));
+        // The LISTING refused, not the exchange: the code was redeemed and the
+        // token in `token` is the proof. Naming the exchange here is what sent
+        // a live diagnosis to the client secret for a vendor that was
+        // objecting to the request this module makes.
+        return Err(error::installation_listing_refused(status.as_u16()));
     }
     let body: Value = serde_json::from_str(&listed.text().await?)
         .map_err(|_unreadable| error::exchange_unreadable())?;
@@ -117,7 +153,7 @@ async fn opens(
     }
     match status.as_u16() {
         STATUS_UNAUTHORIZED | STATUS_FORBIDDEN | STATUS_NOT_FOUND => Ok(false),
-        unanswered => Err(error::exchange_refused(unanswered)),
+        unanswered => Err(error::installation_listing_refused(unanswered)),
     }
 }
 
@@ -129,11 +165,72 @@ async fn fetch(
     vendor: &str,
 ) -> Result<reqwest::Response> {
     let endpoint = endpoint::redirected(vendor, pinned).ok_or_else(error::exchange_unreadable)?;
-    Ok(client
+    Ok(request(client, endpoint, token).send().await?)
+}
+
+/// The request both vendor calls go out as, headers and all.
+///
+/// Extracted and named for the reason [`crate::exchange::Exchange::request`]
+/// is: the HEADERS are a contract with the vendor, and a contract nothing
+/// exercises is a comment. `tests/vendor_contract.rs` sends THIS builder at
+/// the live endpoint, so a header dropped here fails a lane rather than a
+/// person's connect.
+pub(crate) fn request(
+    client: &reqwest::Client,
+    endpoint: String,
+    token: &str,
+) -> reqwest::RequestBuilder {
+    client
         .get(endpoint)
         .header(HEADER_AUTHORIZATION, format!("{BEARER_PREFIX}{token}"))
         .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
         .header(HEADER_API_VERSION, API_VERSION)
-        .send()
-        .await?)
+        .header(HEADER_USER_AGENT, USER_AGENT)
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
+
+    use super::{CONTENT_TYPE_JSON, USER_AGENT, USER_INSTALLATIONS, request};
+
+    /// Every header GitHub's REST API requires rides both vendor calls.
+    ///
+    /// The `User-Agent` is the one this asserts for: `api.github.com` answers
+    /// 403 without it, BEFORE reading `Authorization`, and [`super::opens`]
+    /// reads 403 as "this token does not open that installation". So dropping
+    /// the header does not surface as a broken request — it surfaces as every
+    /// person lacking access to every installation, which is a defect that
+    /// reads like a permissions problem at the vendor. Asserted on the
+    /// daemon's own builder, because a lookalike request written here is as
+    /// likely to omit the header as the daemon was.
+    #[test]
+    fn the_installation_probe_names_itself_to_the_vendor() {
+        let built = request(
+            &reqwest::Client::new(),
+            String::from(USER_INSTALLATIONS),
+            "user-to-server-token",
+        )
+        .build()
+        .expect("a request the client can send");
+
+        let headers = built.headers();
+        assert_eq!(
+            headers
+                .get("user-agent")
+                .map(|value| value.to_str().unwrap_or_default()),
+            Some(USER_AGENT),
+        );
+        assert_eq!(
+            headers
+                .get("accept")
+                .map(|value| value.to_str().unwrap_or_default()),
+            Some(CONTENT_TYPE_JSON),
+        );
+        assert!(headers.contains_key("authorization"));
+        assert!(headers.contains_key("x-github-api-version"));
+    }
 }

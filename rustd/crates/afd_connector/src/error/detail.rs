@@ -40,3 +40,11 @@ pub const EXCHANGE_FAILED: &str = "Token exchange failed";
 /// that owns it, and connecting again — and which one it was is in the
 /// operator's log rather than the answer.
 pub const INSTALLATION_OWNERSHIP: &str = "GitHub installation ownership could not be verified";
+
+/// What a caller is told when the vendor declined to list installations.
+///
+/// Names the LISTING, not the exchange: by the time this is raised the code
+/// has been redeemed and a token is in hand, so telling a person their token
+/// exchange failed sends them to a credential that is working.
+pub const INSTALLATION_LISTING_FAILED: &str =
+    "GitHub would not list the installations for this authorization";
