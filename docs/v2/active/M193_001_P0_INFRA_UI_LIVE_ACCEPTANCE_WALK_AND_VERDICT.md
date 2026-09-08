@@ -44,6 +44,7 @@
 | `playbooks/operations/acceptance/verdicts/{merge_sha}.md` | CREATE | The verdict itself — the deliverable. |
 | `docs/v2/pending/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` | EDIT | Discovery gains the walk's findings; the rubric's Graded column is filled. |
 | `playbooks/operations/acceptance/001_playbook.md` | EDIT | The classification table gained two rows the walk proved missing: a provider **sign-in** page, and a Connect that does nothing. |
+| `docs/designs/incident-responder-wedge.md` | CREATE | The office-hours design Indy asked for this session — the walk's step-4 defect turned out to block every teammate in `library/*`, so the design covers the wedge rather than the walk. It is M194_001's input. |
 | `.oracle/orly.json`, `docs/TEMPLATE.md`, `docs/CHANGELOG_VOICE.md`, `docs/DOCUMENTATION_RULES.md`, `docs/EXECUTE_DOC_READS.md`, `docs/HARNESS_VERIFY_OUTPUT.md` | EDIT | `orly update` 0.10.1 → 0.10.5, folded into CHORE(open) on Indy's instruction. Materialised, never hand-written. |
 
 ## Applicable Rules
