@@ -25,6 +25,13 @@
 //! test that rebuilt the request would assert its own spelling of the headers,
 //! which is the failure mode this suite exists to close.
 
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
 use afd_connector::exchange::Exchange;
 use afd_connector::oauth;
 use afd_connector::provider::Provider;
