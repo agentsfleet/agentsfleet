@@ -194,6 +194,13 @@ const ZIG_DECLARED: &[&str] = &[
     // here deliberately, which is what this list asks of a public-contract
     // addition.
     "UZ-PROVIDER-011",
+    // The second code the Zig registry never declared. Added to split the
+    // installation LISTING from the token exchange, which shared UZ-CONN-006:
+    // a live GitHub connect whose exchange had succeeded reported that the
+    // provider "refused the token exchange", sending the diagnosis to a
+    // credential that was working. Declared here deliberately, which is what
+    // this list asks of a public-contract addition.
+    "UZ-CONN-009",
 ];
 
 /// Catches a code declared twice under two names, or a typo'd spelling that

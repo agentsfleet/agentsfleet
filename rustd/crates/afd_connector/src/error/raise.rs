@@ -44,6 +44,15 @@ pub(crate) fn exchange_unreadable() -> Error {
     ErrorKind::GrantUnreadable.into()
 }
 
+/// Reports a vendor that refused to list the installations a token reaches.
+///
+/// Separate from [`exchange_refused`] because the exchange had already
+/// SUCCEEDED — see [`ErrorKind::InstallationListingRefused`] on why naming the
+/// wrong leg sends a reader to a credential that is working.
+pub(crate) fn installation_listing_refused(status: u16) -> Error {
+    ErrorKind::InstallationListingRefused { status }.into()
+}
+
 /// Reports a GitHub authorization that reaches no single installation.
 ///
 /// `reason` is the [`crate::github::Found`] word, kept for the operator's log:
@@ -122,6 +131,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         ("exchange refused", exchange_refused(400)),
+        (
+            "installation listing refused",
+            installation_listing_refused(403),
+        ),
         ("exchange unreadable", exchange_unreadable()),
         ("grant unreadable", ErrorKind::GrantUnreadable.into()),
         (
