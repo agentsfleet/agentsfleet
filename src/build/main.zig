@@ -6,7 +6,6 @@
 // Helpers (relocated from the repo root).
 pub const lib_tests = @import("lib_tests.zig");
 pub const fixtures = @import("fixtures.zig");
-pub const bench_incident = @import("bench_incident.zig");
 pub const test_list = @import("test_list.zig");
 
 // Shared dependency set built once for both graphs.
