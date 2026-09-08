@@ -26,9 +26,9 @@
 //! which is the failure mode this suite exists to close.
 
 use afd_connector::exchange::Exchange;
+use afd_connector::oauth;
 use afd_connector::provider::Provider;
 use afd_connector::registry::Archetype;
-use afd_connector::oauth;
 
 /// Values that cannot redeem anything, and do not need to.
 const NO_CLIENT: &str = "vendor-contract-probe-not-a-client";
