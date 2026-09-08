@@ -1,6 +1,6 @@
 # EXECUTE — Doc reads by trigger
 
-> Parent: [`../AGENTS.md`](../AGENTS.orly.md) §EXECUTE. Each dispatch entry's trigger header reads its façade — sectioned: scan headers, read the sections the diff shape touches; this table is the canonical trigger→doc map, enforced by the `📖 DOC READ: <path>` proof-line.
+> Parent: [`../AGENTS.orly.md`](../AGENTS.orly.md) §EXECUTE. Each dispatch entry's trigger header reads its façade — sectioned: scan headers, read the sections the diff shape touches; this table is the canonical trigger→doc map, enforced by the `📖 DOC READ: <path>` proof-line.
 
 Every triggered document requires one `📖 DOC READ: <path>` proof-line **per turn** — before the turn's first triggering edit — citing §N applied, or the cited-skip variant when nothing in the doc applies. Auto-mode and prior-turn reads never excuse the line (already-loaded sections are cited, not re-read); a triggering turn without the line is a violation regardless of whether the edits happen to be clean.
 
