@@ -30,6 +30,10 @@ mod roundtrip;
 #[cfg(feature = "openapi")]
 #[path = "schema.rs"]
 mod schema;
+// Ungated: it reads `schema/*.sql` off disk and compares against this crate's
+// own constants, neither of which the feature changes.
+#[path = "schema_literals.rs"]
+mod schema_literals;
 #[path = "strictness.rs"]
 mod strictness;
 #[path = "tenant_provider_shapes.rs"]

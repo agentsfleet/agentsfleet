@@ -1,7 +1,6 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { APPROVAL_STATUS_ORDER, type ApprovalStatusTag } from "@/lib/api/approvals-types";
 import {
   approveApproval as apiApproveApproval,
   denyApproval as apiDenyApproval,
@@ -12,35 +11,28 @@ import {
 } from "@/lib/api/approvals";
 
 /**
- * Every status the table shows, in one call.
+ * The inbox, re-read on demand: one token, one request, one query.
  *
- * The API narrows to ONE status per read, so the inbox needs five. Asking for
- * them as five server actions looked parallel — `Promise.all` at the call site —
- * and was not: Next runs Server Actions one at a time per client, queued to keep
- * their ordering meaningful, so the five became five sequential round trips,
- * each with its own token mint. Measured in the browser at 4.6s from load to
- * full table, every request starting within 5ms of the previous one finishing.
+ * It took five of each until M194. The API narrowed to ONE status per read and
+ * an absent `?status=` meant `pending` rather than "no filter", so a table
+ * showing every state had to ask once per state. Asking as five Server Actions
+ * looked parallel — `Promise.all` at the call site — and was not: Next runs
+ * Server Actions one at a time per client, queued to keep their ordering
+ * meaningful. Measured in the browser at 4.6s from load to full table, every
+ * request starting within 5ms of the previous one finishing.
  *
- * Fanning out HERE is the same `Promise.all` against the same API, except the
- * concurrency is real and one token covers all five.
+ * Fanning out on the server fixed the round trips and left five SQL queries
+ * behind one call. The fix is upstream of both: `?status=` is a filter now, so
+ * omitting it returns every state from a single statement.
  *
- * All or nothing, like the reads it replaces: a single failed page would
- * silently shorten the table, so the first refusal is the whole result.
+ * The load does not come through here at all — the page server-renders it. This
+ * is the Refresh button's path, and the re-read after a resolve.
  */
-export async function listAllApprovalsAction(
+export async function listApprovalsAction(
   workspaceId: string,
-  opts: Omit<ListApprovalsOpts, "status"> = {},
-  statuses: readonly ApprovalStatusTag[] = APPROVAL_STATUS_ORDER,
+  opts: ListApprovalsOpts = {},
 ): Promise<ActionResult<ApprovalsListResponse>> {
-  return withToken(async (token) => {
-    const pages = await Promise.all(
-      statuses.map((status) => apiListApprovals(workspaceId, token, { ...opts, status })),
-    );
-    return {
-      items: pages.flatMap((page) => page.items),
-      next_cursor: null,
-    };
-  });
+  return withToken((token) => apiListApprovals(workspaceId, token, opts));
 }
 
 export async function approveApprovalAction(
