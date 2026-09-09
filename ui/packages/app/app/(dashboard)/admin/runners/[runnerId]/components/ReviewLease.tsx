@@ -35,6 +35,7 @@ import {
   REVIEW_TOKENS_LABEL,
   UNKNOWN_OUTCOME_SENTENCE,
 } from "./runner-copy";
+import { agentDisplayName } from "@/components/domain/AgentLabel";
 
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 const METER_SEPARATOR = " · ";
@@ -58,7 +59,7 @@ export function ReviewLease({
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
               <DialogDescription className="font-sans">
-                {lease.fleet_name ?? lease.fleet_id} · {lease.event_type}
+                {lease.fleet_name ?? agentDisplayName(lease.fleet_id)} · {lease.event_type}
               </DialogDescription>
             </DialogHeader>
             <DescriptionList className="font-sans text-body-sm tabular-nums">

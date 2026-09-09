@@ -177,7 +177,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       }),
     );
 
-    for (const name of ["Date", "Fleet and model", "Activity", "Amount"]) {
+    for (const name of ["Fleet", "Model", "Activity", "Created", "Amount"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(
         screen.getByRole("columnheader", { name }).getAttribute("aria-sort"),

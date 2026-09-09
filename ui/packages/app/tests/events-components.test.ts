@@ -38,6 +38,7 @@ afterEach(() => cleanup());
 import { EventsList } from "../components/domain/EventsList";
 import { type EventDetail, type EventRow, type EventsPage } from "@/lib/api/events";
 import { GUIDANCE } from "@/lib/events/event-summary";
+import { agentDisplayName } from "@/components/domain/AgentLabel";
 
 // Opening a row fetches its bodies through the Server Action — the list row
 // carries none. Fixtures here are detail-shaped, so the action serves back the
@@ -445,21 +446,14 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByText("budget_breach")).toBeNull();
   });
 
-  it("renders the short fleet id in the Fleet column", () => {
-    renderList({
-      items: [row({ fleet_id: "zomb_abcdefghijkl" })],
-      next_cursor: null,
-    });
-    // shortId: first 4 + … + last 4
-    expect(screen.getByText(/zomb…ijkl/)).toBeTruthy();
-  });
-
-  it("shortId returns the id verbatim when length <= 12", () => {
-    renderList({
-      items: [row({ fleet_id: "abc12345" })],
-      next_cursor: null,
-    });
-    expect(screen.getByText("abc12345")).toBeTruthy();
+  // The column used to print `01a0…7b2a` — the durable id, correct and
+  // unreadable. It now carries the same callsign the fleet has on every other
+  // surface, through the one component that decides how a fleet is spelled.
+  it("names the fleet in the Fleet column rather than printing its id", () => {
+    const fleetId = "zomb_abcdefghijkl";
+    renderList({ items: [row({ fleet_id: fleetId })], next_cursor: null });
+    expect(screen.getByText(agentDisplayName(fleetId))).toBeTruthy();
+    expect(screen.queryByText(/zomb…ijkl/)).toBeNull();
   });
 
   it("fleet scope removes the Fleet column and keeps Result, Cost, Tokens, and Duration", () => {

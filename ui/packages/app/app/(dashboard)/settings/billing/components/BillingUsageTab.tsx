@@ -34,8 +34,32 @@ export type BillingUsageTabProps = {
 
 const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
-    key: "date",
-    header: "Date",
+    // Which fleet spent it leads the ledger. Fleet and model shared one column
+    // and one header; they are two different questions and now two columns.
+    key: "fleet",
+    header: "Fleet",
+    sortValue: (c) => chargeAgentLabel(c),
+    cell: (c) => <AgentLabel fleetId={c.fleet_id} className="text-foreground" />,
+  },
+  {
+    key: "model",
+    header: "Model",
+    sortValue: (c) => displayModelName(c.model),
+    cell: (c) => (
+      <span className="text-muted-foreground">{displayModelName(c.model)}</span>
+    ),
+  },
+  {
+    key: "activity",
+    header: "Activity",
+    sortValue: (c) => describeCharge(c),
+    cell: (c) => (
+      <span className="text-muted-foreground">{describeCharge(c)}</span>
+    ),
+  },
+  {
+    key: "created",
+    header: "Created",
     sortValue: (c) => c.recorded_at,
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
@@ -46,27 +70,6 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
         label={formatChargeTimestamp(c.recorded_at)}
         className="font-mono text-xs"
       />
-    ),
-  },
-  {
-    key: "fleet",
-    header: "Fleet and model",
-    sortValue: (c) => chargeAgentLabel(c),
-    cell: (c) => (
-      <div className="flex min-w-48 flex-col">
-        <AgentLabel fleetId={c.fleet_id} className="text-foreground" />
-        <span className="text-muted-foreground">
-          {displayModelName(c.model)}
-        </span>
-      </div>
-    ),
-  },
-  {
-    key: "activity",
-    header: "Activity",
-    sortValue: (c) => describeCharge(c),
-    cell: (c) => (
-      <span className="text-muted-foreground">{describeCharge(c)}</span>
     ),
   },
   {

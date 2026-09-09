@@ -103,7 +103,9 @@ export function ModelCell({
   if (row.kind === "default") {
     return (
       <span className="inline-flex min-w-0 items-center gap-2">
-        <span>Default</span>
+        {/* The lock is the whole statement: this row is the platform default
+            and a tenant admin cannot edit it. The word "Default" beside it said
+            the same thing twice and pushed the model id out of view. */}
         <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
         {platformDefault ? (
           <span className="truncate font-mono text-sm text-muted-foreground">{platformDefault.model}</span>
@@ -133,7 +135,6 @@ export function ProviderCell({
     return (
       <div className="min-w-0">
         {platformDefault ? <div className="text-sm">{providerLabel(platformDefault.provider)}</div> : null}
-        <div className="text-xs text-muted-foreground">Platform-managed</div>
       </div>
     );
   }
