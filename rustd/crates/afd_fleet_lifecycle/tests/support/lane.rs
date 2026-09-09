@@ -161,6 +161,16 @@ impl Lane {
         lane
     }
 
+    /// The real stores with caller-controlled identifier generation.
+    pub(crate) fn with_entropy(&self, entropy: Entropy) -> Fleets {
+        Fleets::new(
+            self.pool.clone(),
+            self.queue.clone(),
+            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+            entropy,
+        )
+    }
+
     /// The same store, pointed at a Redis nobody answers on.
     ///
     /// The transport-failure seam for the install guarantee: `Redis::unreachable`

@@ -104,7 +104,8 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 pub(crate) const RESOLVE_GATE: &str = "\
 WITH resolved AS (
   UPDATE core.fleet_approval_gates
-  SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
+  SET status = $1, detail = $2, resolved_by = $3, updated_at = $4,
+      active_grant_id = NULL
   WHERE action_id = $5 AND status = $6
     AND ($7::text = '' OR fleet_id::text = $7)
   RETURNING id, action_id, workspace_id, fleet_id, status,
@@ -160,7 +161,8 @@ ORDER BY created_at DESC LIMIT 1";
 pub(crate) const EXPIRE_GATES: &str = "\
 WITH swept AS (
   UPDATE core.fleet_approval_gates
-  SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
+  SET status = $1, resolved_by = $3, detail = $4, updated_at = $5,
+      active_grant_id = NULL
   WHERE status = $2 AND timeout_at <= $5
   RETURNING id, fleet_id, event_id
 )
@@ -234,86 +236,42 @@ WHERE g.id = $3::uuid
   AND g.status != $1
 RETURNING g.id";
 
-/// Raises one pending grant and the card a person answers it on, together.
+/// Ensures the grant exists before the card statement takes its snapshot.
+/// Both statements run in one transaction: failure to raise rolls back the grant.
+pub(crate) const ENSURE_GRANT: &str = "\
+INSERT INTO core.integration_grants
+  (id, fleet_id, service, status, requested_reason, created_at)
+VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+ON CONFLICT (fleet_id, service) DO NOTHING";
+
+/// Raises a card using the existing grant's identity, including when a concurrent
+/// insert won. Locking the grant serializes requests with its approval/revocation;
+/// the unique active reference arbitrates cards without a status-dependent index.
+/// A NULL `event_id` prevents approval from enqueueing duplicate delivery work.
 ///
-/// The third verb of `core.integration_grants`. [`SELECT_FLEET_GRANTS`] reads
-/// them and [`REVOKE_GRANT`] takes one back; until this statement existed
-/// nothing wrote one outside a test, so [`RESOLVE_GATE`]'s `granted` arm — the
-/// approve half, complete and covered — had no row it could ever move.
-///
-/// **One statement because the two writes are one fact.** A grant with no card
-/// is a question nobody can see; a card with no grant resolves cleanly and
-/// moves nothing. A data-modifying CTE puts both on one snapshot, so the pair
-/// lands or neither does — the same argument [`RESOLVE_GATE`] makes for keeping
-/// the resolve and the grant move together.
-///
-/// **`ON CONFLICT DO NOTHING` is the idempotence, and it is the table's.**
-/// `uq_integration_grants_fleet_id_service` already says a fleet holds one
-/// grant per service, so a second install of the same bundle collides rather
-/// than being talked out of the write by a read this statement would have to
-/// trust.
-///
-/// **The card's guard is `NOT EXISTS`, and it asks two things.** No second card
-/// while one is still pending — a delivery re-parking every second must raise
-/// one question, not sixty a minute — and no card at all once the grant has
-/// been answered: an `approved` grant needs no question, and a `revoked` one is
-/// a person's no that re-asking would talk over. Both read the snapshot this
-/// statement opened on, which is what the redelivery cadence actually needs.
-///
-/// **Concurrency is the index's job, not the guard's, and each row has its own.**
-/// Under READ COMMITTED — the default this daemon never raises — two requests in
-/// the same instant each see no open card, so `NOT EXISTS` stops being a
-/// guarantee and becomes an optimisation. The grant row is held by
-/// `uq_integration_grants_fleet_id_service` and the CARD by
-/// `uq_fleet_approval_gates_fleet_id_grant_service_pending` (slot 836), whose
-/// predicate the `ON CONFLICT` clause below repeats verbatim — the two must stay
-/// identical. The loser of either race writes nothing and reports what it found,
-/// which is a question already standing.
-///
-/// The gate is raised with a NULL `event_id`, which `schema/811`'s own comment
-/// names as this row's case: an approval carrying one lands a continuation
-/// event BESIDE the still-leasable delivery, and the fleet runs the work twice.
-///
-/// The trailing select reads the PRIOR state — a data-modifying CTE and the
-/// select after it share one snapshot (PostgreSQL, "Data-Modifying Statements
-/// in WITH"), so the status column here is what this statement FOUND, never
-/// what it just wrote. That is the answer the park path turns on: a grant found
-/// `revoked` ends its event instead of parking again.
-///
-/// `$1` grant row, `$2` fleet, `$3` service, `$4` pending grant status,
-/// `$5` reason, `$6` now, `$7` gate row, `$8` workspace, `$9` action,
-/// `$10` tool, `$11` action name, `$12` gate kind, `$13` proposed action,
-/// `$14` evidence, `$15` blast radius, `$16` deadline, `$17` pending gate
-/// status.
+/// $1 fleet, $2 service, $3 grant status, $4 now, $5 card, $6 workspace,
+/// $7 action, $8 tool, $9 action name, $10 kind, $11 proposal, $12 evidence,
+/// $13 radius, $14 deadline, $15 card status.
 pub(crate) const REQUEST_GRANT: &str = "\
 WITH requested AS (
-  INSERT INTO core.integration_grants
-    (id, fleet_id, service, status, requested_reason, created_at)
-  VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
-  ON CONFLICT (fleet_id, service) DO NOTHING
-  RETURNING id
+  SELECT id, status FROM core.integration_grants
+  WHERE fleet_id = $1::uuid AND service = $2
+  FOR UPDATE
 ), raised AS (
   INSERT INTO core.fleet_approval_gates
     (id, fleet_id, workspace_id, action_id, tool_name, action_name,
      gate_kind, proposed_action, evidence, blast_radius, timeout_at,
      resolved_by, status, detail, created_at, event_id, stated_binding,
-     spend_count, spend_ceiling)
-  SELECT $7::uuid, $2::uuid, $8::uuid, $9, $10, $11,
-         $12, $13, $14::jsonb, $15, $16,
-         '', $17, '', $6, NULL, NULL, NULL, NULL
-  WHERE NOT EXISTS (
+     spend_count, spend_ceiling, active_grant_id)
+  SELECT $5::uuid, $1::uuid, $6::uuid, $7, $8, $9,
+         $10, $11, $12::jsonb, $13, $14,
+         '', $15, '', $4, NULL, NULL, NULL, NULL, requested.id
+  FROM requested
+  WHERE requested.status = $3 AND NOT EXISTS (
     SELECT 1 FROM core.fleet_approval_gates g
-     WHERE g.fleet_id = $2::uuid AND g.gate_kind = $12
-       AND g.status = $17 AND g.evidence->>'service' = $3
-  ) AND NOT EXISTS (
-    SELECT 1 FROM core.integration_grants g
-     WHERE g.fleet_id = $2::uuid AND g.service = $3 AND g.status != $4
+    WHERE g.active_grant_id = requested.id
   )
-  ON CONFLICT (fleet_id, (evidence->>'service'))
-    WHERE gate_kind = 'integration_grant' AND status = 'pending'
-  DO NOTHING
+  ON CONFLICT (active_grant_id) DO NOTHING
   RETURNING id
 )
-SELECT (SELECT COUNT(*) FROM raised),
-       (SELECT status FROM core.integration_grants
-         WHERE fleet_id = $2::uuid AND service = $3)";
+SELECT (SELECT COUNT(*) FROM raised), requested.status FROM requested";

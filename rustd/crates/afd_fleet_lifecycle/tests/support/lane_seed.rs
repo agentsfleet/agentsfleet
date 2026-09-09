@@ -89,10 +89,6 @@ impl Lane {
     ///
     /// Kept for the one claim it still serves: a row exists, so the pre-flight's
     /// set difference is satisfied, and nothing can read what it holds.
-    #[expect(
-        dead_code,
-        reason = "held for the classifier's unreadable-handle proof"
-    )]
     pub(crate) async fn seed_unopenable_secret(&self, key_name: &str) {
         sqlx::query(
             "INSERT INTO vault.secrets \

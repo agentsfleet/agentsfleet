@@ -2,12 +2,9 @@
 //!
 //! # Why these need a real datastore
 //!
-//! Every claim is a claim about ONE statement. The two writes are atomic
-//! because they are one data-modifying CTE; the second card is refused by a
-//! `NOT EXISTS` reading the statement's own snapshot; the duplicate grant is
-//! refused by `uq_integration_grants_fleet_id_service`. None of that is code a
-//! stub could stand in for — a fake would assert that the request calls a
-//! statement, which was never in doubt.
+//! Grant and card writes share a transaction. The unique active grant
+//! reference arbitrates duplicate cards, while the grant row remains unique
+//! per fleet and service. These guarantees require the real schema.
 //!
 //! # And why the approve arm is asserted HERE
 //!

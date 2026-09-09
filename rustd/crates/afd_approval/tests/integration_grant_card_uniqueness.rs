@@ -1,163 +1,158 @@
-//! Slot 836: one OPEN grant card per (fleet, service), held by the database.
-//!
-//! # Why this needs its own file and a real datastore
-//!
-//! `REQUEST_GRANT`'s `NOT EXISTS` guard means no SERIAL caller ever reaches the
-//! `ON CONFLICT` clause — the guard answers first, every time. So the seven
-//! tests beside this one exercise the statement and never once exercise the
-//! constraint that makes it safe under concurrency. What they do prove, for
-//! free, is that the arbiter is INFERABLE: PostgreSQL refuses an `ON CONFLICT`
-//! whose specification matches no index at plan time, so a missing or misspelled
-//! slot 836 fails all of them rather than passing quietly.
-//!
-//! This file proves the other half — that the index actually REFUSES the row —
-//! by writing the card directly, which is the only way past a guard reading its
-//! own snapshot. Two concurrent transactions would prove the same thing and
-//! prove it flakily; a direct insert is the same collision with a deterministic
-//! schedule.
-//!
-//! # And why the shape is asserted, not just the collision
-//!
-//! A partial expression index has three ways to be wrong and only one to be
-//! right: too wide (per-fleet, so a second service cannot be asked about), too
-//! narrow (missing the predicate, so answered history collides with a new
-//! question), or absent. The collision alone distinguishes none of them, so each
-//! is a case below.
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
+//! Grant-card ownership, contention, and release against the real schema.
+#![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use afd_approval::{IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, Wanted};
+use crate::lane::{Lane, mint, sweeper_exclusive};
+use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
 use afd_crypto::entropy::Entropy;
-use afd_wire::approval::status as gate_status;
 
-use crate::lane::{Lane, NOW_MS, mint};
-
-/// The service the lane's first, statement-written card names.
 const SERVICE: &str = "github";
+const INDEX: &str = "uq_fleet_approval_gates_active_grant_id";
 
-/// The index slot 836 installs, as PostgreSQL reports it on a collision.
-const INDEX: &str = "uq_fleet_approval_gates_fleet_id_grant_service_pending";
-
-/// Raises the one real card, through the statement under test.
-async fn raise_first_card(lane: &Lane) {
+async fn request(lane: &Lane, service: &str) -> Requested {
     IntegrationGrants::new(lane.pool.clone(), Entropy::new())
         .request(
             &lane.workspace,
             &lane.fleet,
             Wanted {
-                service: SERVICE,
-                credential: "gh",
-                origin: Origin::Install,
+                service,
+                credential: service,
+                origin: Origin::Park,
             },
             Lane::now(),
         )
         .await
-        .expect("the first request must land");
+        .expect("request runs")
 }
 
-/// Writes a card straight into the table, bypassing the statement's guard.
-///
-/// The column list is `REQUEST_GRANT`'s own, so a row that collides here is the
-/// row the statement would have written and not a thinner fixture the index
-/// might treat differently.
-async fn insert_card(lane: &Lane, service: &str, status: &str) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO core.fleet_approval_gates
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-            resolved_by, status, detail, created_at, event_id, stated_binding,
-            spend_count, spend_ceiling)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
-                 $7, $8, $9::jsonb, $10, $11,
-                 '', $12, '', $13, NULL, NULL, NULL, NULL)",
-    )
-    .bind(mint().as_str())
-    .bind(lane.fleet.as_str())
-    .bind(lane.workspace.as_str())
-    .bind(mint().as_str())
-    .bind(service)
-    .bind("grant")
-    .bind(KIND_INTEGRATION_GRANT)
-    .bind(format!("mint short-lived credentials for {service}"))
-    .bind(format!("{{\"service\":\"{service}\"}}"))
-    .bind("every credential this fleet mints")
-    .bind(NOW_MS)
-    .bind(status)
-    .bind(NOW_MS)
-    .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-    .await
-    .map(|_| ())
+async fn counts(lane: &Lane) -> (i64, i64) {
+    sqlx::query_as("SELECT COUNT(*), COUNT(active_grant_id) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid")
+        .bind(lane.fleet.as_str())
+        .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
+        .await.expect("card counts")
 }
 
-/// The name of the constraint a failed insert collided with.
-fn collided_with(outcome: Result<(), sqlx::Error>) -> Option<String> {
-    outcome.err().and_then(|failure| {
-        failure
-            .as_database_error()
-            .and_then(sqlx::error::DatabaseError::constraint)
-            .map(str::to_owned)
-    })
-}
-
-/// A second OPEN card for the same service is refused by the database.
-///
-/// The headline, and the guarantee `REQUEST_GRANT`'s doc comment now claims. Two
-/// deliveries asking in the same instant both pass a snapshot-scoped
-/// `NOT EXISTS`; this is what stops both from landing.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_second_open_card_for_one_service_cannot_be_written() {
+async fn concurrent_requests_share_one_active_grant_card() {
     let lane = Lane::isolated().await;
-    raise_first_card(&lane).await;
+    let (first, second) = tokio::join!(request(&lane, SERVICE), request(&lane, SERVICE));
+    assert!(matches!(
+        (first, second),
+        (Requested::Raised, Requested::Pending) | (Requested::Pending, Requested::Raised)
+    ));
+    assert_eq!(counts(&lane).await, (1, 1));
+    assert_eq!(request(&lane, "zoho").await, Requested::Raised);
+    assert_eq!(counts(&lane).await, (2, 2));
+}
 
-    let duplicate = insert_card(&lane, SERVICE, gate_status::PENDING).await;
-
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_second_active_reference_is_refused_by_the_database() {
+    let lane = Lane::isolated().await;
+    request(&lane, SERVICE).await;
+    let failure = sqlx::query(
+        "INSERT INTO core.fleet_approval_gates
+        (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
+         proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
+         detail, created_at, active_grant_id)
+        SELECT $2::uuid, fleet_id, workspace_id, $3, tool_name, action_name, gate_kind,
+         proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
+         detail, created_at, active_grant_id
+        FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+    )
+    .bind(lane.fleet.as_str())
+    .bind(mint().as_str())
+    .bind(mint().as_str())
+    .execute(&mut *lane.pool.acquire().await.expect("connection"))
+    .await
+    .expect_err("duplicate active reference must collide");
     assert_eq!(
-        collided_with(duplicate).as_deref(),
-        Some(INDEX),
-        "a second pending card for one service must collide with slot 836"
+        failure
+            .as_database_error()
+            .and_then(sqlx::error::DatabaseError::constraint),
+        Some(INDEX)
     );
 }
 
-/// The index is scoped per SERVICE, not per fleet.
-///
-/// The too-wide failure. A fleet declaring two mintable credentials must be able
-/// to carry an open question about each; an index on `fleet_id` alone would let
-/// the first card silence the second for ever.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_card_for_a_different_service_is_still_allowed() {
-    let lane = Lane::isolated().await;
-    raise_first_card(&lane).await;
-
-    insert_card(&lane, "zoho", gate_status::PENDING)
+async fn resolutions_release_the_active_reference_and_keep_history() {
+    for decision in [Decision::Approved, Decision::Denied] {
+        let lane = Lane::isolated().await;
+        request(&lane, SERVICE).await;
+        let action: String = sqlx::query_scalar(
+            "SELECT action_id FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+        )
+        .bind(lane.fleet.as_str())
+        .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
         .await
-        .expect("a different service is a different question");
+        .expect("card action");
+        lane.inbox
+            .resolve(
+                &action,
+                decision,
+                "fixture",
+                "",
+                Some(lane.fleet.as_str()),
+                Lane::now(),
+            )
+            .await
+            .expect("resolution");
+        assert_eq!(counts(&lane).await, (1, 0));
+        assert!(matches!(
+            request(&lane, SERVICE).await,
+            Requested::Approved | Requested::Denied
+        ));
+        assert_eq!(counts(&lane).await, (1, 0));
+    }
 }
 
-/// The index covers only PENDING rows.
-///
-/// The too-narrow failure. Answered cards are the history the inbox exists to
-/// show, and a resolve or a sweep moves a row out of the predicate — which is
-/// precisely what lets the next request raise a fresh card for a grant that is
-/// still pending.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_answered_card_does_not_block_the_next_question() {
+async fn expiry_releases_the_reference_for_one_replacement_card() {
+    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
-    raise_first_card(&lane).await;
+    request(&lane, SERVICE).await;
+    sqlx::query("UPDATE core.fleet_approval_gates SET timeout_at = $2 WHERE fleet_id = $1::uuid")
+        .bind(lane.fleet.as_str())
+        .bind(Lane::now().as_millis())
+        .execute(&mut *lane.pool.acquire().await.expect("connection"))
+        .await
+        .expect("deadline fixture");
+    lane.inbox.expire(Lane::now()).await.expect("expiry");
+    assert_eq!(counts(&lane).await, (1, 0));
+    assert_eq!(request(&lane, SERVICE).await, Requested::Raised);
+    assert_eq!(request(&lane, SERVICE).await, Requested::Pending);
+    assert_eq!(counts(&lane).await, (2, 1));
+}
 
-    for answered in [
-        gate_status::APPROVED,
-        gate_status::DENIED,
-        gate_status::TIMED_OUT,
-    ] {
-        let collision = collided_with(insert_card(&lane, SERVICE, answered).await);
-        assert!(
-            collision.is_none(),
-            "an answered card must not collide, hit {collision:?} for {answered}"
-        );
-    }
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_card_insert_failure_rolls_back_the_new_grant() {
+    let lane = Lane::isolated().await;
+    let result = IntegrationGrants::new(lane.pool.clone(), Entropy::new())
+        .request(
+            &mint(),
+            &lane.fleet,
+            Wanted {
+                service: SERVICE,
+                credential: SERVICE,
+                origin: Origin::Park,
+            },
+            Lane::now(),
+        )
+        .await;
+    assert!(
+        result.is_err(),
+        "nonexistent workspace must refuse the card"
+    );
+    assert_eq!(counts(&lane).await, (0, 0));
+    let grants: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM core.integration_grants WHERE fleet_id = $1::uuid",
+    )
+    .bind(lane.fleet.as_str())
+    .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
+    .await
+    .expect("grant count");
+    assert_eq!(grants, 0, "card failure must not leave an orphan grant");
 }

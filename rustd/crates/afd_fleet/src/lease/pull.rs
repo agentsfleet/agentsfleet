@@ -328,6 +328,9 @@ impl Plane {
         if let crate::lease::event::Ended::Now(closed) = ended {
             self.leases.publish_completion(&closed).await;
         }
+        self.leases
+            .acknowledge(&acquired.fleet_id, &acquired.event_id)
+            .await?;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
