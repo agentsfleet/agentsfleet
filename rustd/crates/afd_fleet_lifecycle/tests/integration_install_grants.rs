@@ -205,3 +205,60 @@ async fn a_second_install_asks_for_its_own_fleets_grant() {
 
     lane.cleanup().await;
 }
+
+/// A fleet whose install raised a card can still be deleted.
+///
+/// The regression this milestone would otherwise have shipped. `core.fleet_approval_gates`
+/// is append-only by trigger (schema/810) and refuses every DELETE unless the
+/// purge says it means it, and the cascade from the fleet row fires the same
+/// trigger. Before install requested grants, a fleet that never parked a
+/// delivery held no gate rows and purged clean, so the missing opt-in was
+/// unreachable — this test is the one that reaches it, and it covers the whole
+/// class of fleets that declare a mintable credential.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_fleet_carrying_a_grant_card_still_purges() {
+    let lane = Lane::create().await;
+    lane.seed_library_entry(
+        LIBRARY_ID_MINTING,
+        SKILL_MD_MINTING,
+        Some(TRIGGER_MD_MINTING),
+    )
+    .await;
+    lane.seal_secret(DECLARED_CREDENTIAL, GITHUB_HANDLE).await;
+
+    let installed = lane
+        .fleets
+        .install(&lane.workspace, &request(LIBRARY_ID_MINTING), Lane::now())
+        .await
+        .expect("the install must land");
+    let fleet = installed.id.as_str().to_owned();
+    assert_eq!(
+        carded_services(&lane, &fleet).await,
+        vec![Some(SERVICE.to_owned())],
+        "the install must have raised the card this test exists to purge past"
+    );
+
+    lane.fleets
+        .patch(
+            &lane.workspace,
+            &installed.id,
+            &afd_fleet_lifecycle::Patch {
+                status: Some(afd_fleet_lifecycle::Requested::Killed),
+                ..afd_fleet_lifecycle::Patch::default()
+            },
+            Lane::now(),
+        )
+        .await
+        .expect("active to killed is legal");
+
+    lane.fleets
+        .purge(&lane.workspace, &installed.id)
+        .await
+        .expect("a fleet holding a grant card must still purge");
+
+    assert_eq!(lane.fleet_count(&lane.workspace).await, 0);
+    assert_eq!(grant_rows(&lane, &fleet).await, Vec::new());
+    assert_eq!(carded_services(&lane, &fleet).await, Vec::new());
+    lane.cleanup().await;
+}

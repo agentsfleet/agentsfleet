@@ -68,6 +68,27 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
+/// **`r.event_id IS NULL` is an authorisation predicate, not a filter.** Without
+/// it this arm trusts two columns a fleet controls. `gate_kind` is copied
+/// verbatim from the matched rule (`afd_gate::gate::detail::Stated::under` —
+/// `self.kind = &rule.gate_kind`) and the raw config validates it for length
+/// alone (`afd_fleet_runtime::config::raw::gates`), while `evidence` is read out
+/// of the event body. A fleet could therefore declare `gate_kind:
+/// "integration_grant"` on any benign tool, emit an event carrying
+/// `{"evidence":{"service":"github"}}`, and have the ordinary-looking card that
+/// raises flip its own standing permission to mint that service's credentials —
+/// granted by an operator who was answering a different question. `repository_write`
+/// is defended twice over (`Stated::write_kind` overwrites an authored kind, and
+/// [`SELECT_APPROVED_WRITE_GATE`] demands a `stated_binding` and this build's
+/// ceiling); this kind had nothing.
+///
+/// The event column is the discriminator because it is the one thing on this row
+/// a fleet cannot reach. [`REQUEST_GRANT`] writes NULL there by construction
+/// (Invariant 5 — a continuation event beside a leasable delivery runs the work
+/// twice), and every rules-path gate carries a real one: `afd_gate`'s insert
+/// binds `event_id: &str`, not an `Option`, so a card raised from an event can
+/// never be NULL. A forged kind now moves no grant.
+///
 /// The trailing count is how many of the fleet's gates still wait once this
 /// action is answered, read in the same statement so the frame announcing the
 /// answer costs no second round trip. A data-modifying CTE and the select
@@ -97,6 +118,7 @@ WITH resolved AS (
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
     AND r.gate_kind = $11
+    AND r.event_id IS NULL
     AND g.status != $10
   RETURNING g.id
 )
@@ -155,10 +177,21 @@ FROM swept s";
 /// and compares it in the handler, which is one round trip's worth of row to
 /// answer a yes-or-no the predicate can answer itself.
 ///
-/// Both grant verbs run it FIRST, because both must tell "no such fleet here"
-/// from their own absent row, and the two carry different codes. A fleet in
-/// another workspace answers no rows — never a 403 — so the endpoint cannot be
-/// an oracle for which fleet identifiers are real.
+/// The two TENANT-FACING verbs run it FIRST, because both must tell "no such
+/// fleet here" from their own absent row, and the two carry different codes. A
+/// fleet in another workspace answers no rows — never a 403 — so the endpoint
+/// cannot be an oracle for which fleet identifiers are real.
+///
+/// [`REQUEST_GRANT`] deliberately does NOT run it, and the reason is the caller
+/// rather than the statement: both of its callers derive the workspace and the
+/// fleet from ONE trusted row — the install from the fleet it just wrote into
+/// the authenticated workspace, the park from the `Acquired` lease it is
+/// serving — so there is no untrusted pair to reject, and the park path would
+/// pay the round trip once per second to re-answer a question its own lease
+/// row already settled. No endpoint takes a caller-supplied `(workspace,
+/// fleet)` pair into that statement; the precondition on
+/// `IntegrationGrants::request` is what keeps that true, and a third caller
+/// that cannot honour it must run this check itself before asking.
 pub(crate) const SELECT_FLEET_IN_WORKSPACE: &str = "\
 SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
 
@@ -281,6 +314,6 @@ WITH requested AS (
   DO NOTHING
   RETURNING id
 )
-SELECT (SELECT COUNT(*) FROM requested), (SELECT COUNT(*) FROM raised),
+SELECT (SELECT COUNT(*) FROM raised),
        (SELECT status FROM core.integration_grants
          WHERE fleet_id = $2::uuid AND service = $3)";

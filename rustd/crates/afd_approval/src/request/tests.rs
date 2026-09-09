@@ -16,7 +16,7 @@
 use afd_core::id::Uuid7;
 use afd_wire::grant::status;
 
-use super::{Origin, Requested, Wanted, settle};
+use super::{KIND_INTEGRATION_GRANT, Origin, Requested, Wanted, settle};
 
 /// A canonical v7 identifier, since `settle` only ever reads it for a log field.
 fn fleet() -> Uuid7 {
@@ -130,4 +130,16 @@ fn the_two_origins_stay_distinguishable_on_the_row_and_in_the_metric() {
     // from the install while the metric counted it as a park.
     assert_ne!(Origin::Install.reason(), Origin::Park.reason());
     assert_ne!(Origin::Install.as_str(), Origin::Park.as_str());
+}
+
+#[test]
+fn the_gate_kind_matches_the_spelling_the_config_validator_reserves() {
+    // The other half of a pin that cannot be an import.
+    // `afd_fleet_runtime::config::raw::predicate::DAEMON_OWNED_GATE_KINDS` refuses
+    // a fleet that authors this kind, and that crate sits UNDER this one, so it
+    // holds the literal rather than this constant. Renaming either side without
+    // the other would retire the guard silently: the validator would keep
+    // refusing a word nothing raises, and the kind this crate actually writes
+    // would become authorable again.
+    assert_eq!(KIND_INTEGRATION_GRANT, "integration_grant");
 }
