@@ -8,6 +8,7 @@ import {
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
+import { AgentLabel } from "@/components/domain/AgentLabel";
 import {
   chargeAgentLabel,
   displayModelName,
@@ -53,9 +54,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     sortValue: (c) => chargeAgentLabel(c),
     cell: (c) => (
       <div className="flex min-w-48 flex-col">
-        <span className="font-medium text-foreground">
-          {chargeAgentLabel(c)}
-        </span>
+        <AgentLabel fleetId={c.fleet_id} className="text-foreground" />
         <span className="text-muted-foreground">
           {displayModelName(c.model)}
         </span>

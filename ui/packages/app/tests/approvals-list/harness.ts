@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, vi } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 export const WORKSPACE_ID = "ws_approvals_001";
 export const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
@@ -62,13 +63,50 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     proposed_action: over.proposed_action ?? "Open PR titled X",
     evidence: over.evidence ?? {},
     blast_radius: over.blast_radius ?? "single repo branch",
-    status: "pending",
-    detail: "",
+    // Settled rows share this table now, so the fixture has to be able to
+    // express one: a hardcoded `pending` made every row look unanswered.
+    status: over.status ?? "pending",
+    detail: over.detail ?? "",
     created_at: over.created_at ?? Date.now() - 60_000,
     timeout_at: over.timeout_at ?? Date.now() + 3_600_000,
-    updated_at: null,
-    resolved_by: "",
+    updated_at: over.updated_at ?? null,
+    resolved_by: over.resolved_by ?? "",
   };
 }
 
 export { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };
+
+// The dashboard layout mounts exactly one TooltipProvider (`layout.test.tsx`
+// pins that, and pins that a bare relative <Time> throws without it). The inbox
+// renders relative timestamps, so the suite mounts the provider the same way
+// the real page gets one, rather than every call site repeating a wrapper.
+export function render(ui: React.ReactElement) {
+  return rtlRender(ui, { wrapper: TooltipProvider });
+}
+
+// The row's actions are icons whose accessible names carry the request they act
+// on ("Approve: mint short-lived credentials for github"), so one row's button
+// is distinguishable from another's. Denying is irreversible, so it goes through
+// the confirm dialog — these helpers keep every call site reading as the intent
+// rather than as two clicks and a regex.
+export function approveRow() {
+  fireEvent.click(screen.getByRole("button", { name: /^approve:/i }));
+}
+
+export function denyRow() {
+  fireEvent.click(screen.getByRole("button", { name: /^deny:/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+}
+
+/**
+ * How many times the POLLED feed was read.
+ *
+ * Mount also reads the four settled statuses once, and those calls are not
+ * ticks — counting every call would make a poll assertion drift every time the
+ * status vocabulary grows.
+ */
+export function pendingReads(): number {
+  return listApprovalsActionMock.mock.calls.filter(
+    (call) => (call[1] as { status?: string } | undefined)?.status === "pending",
+  ).length;
+}

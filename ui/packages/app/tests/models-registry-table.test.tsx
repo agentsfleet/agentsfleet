@@ -9,7 +9,8 @@ import type { ModelLibrary } from "@/lib/api/model-library-types";
 const MODEL_REGISTRY_HEADER_ORDER = [
   "Provider",
   "Model",
-  "Context · $/1M (in / cached / out)",
+  "Context",
+  "Price / 1M",
   "Status",
   "Actions",
 ] as const;
@@ -365,8 +366,8 @@ describe("ModelsRegistryTable", () => {
     expect(defaultRow.getByText("Default")).toBeTruthy();
     expect(defaultRow.getByText("claude-sonnet-5")).toBeTruthy();
     expect(defaultRow.getByText("Anthropic")).toBeTruthy();
-    expect(defaultRow.getByText("200k")).toBeTruthy();
-    await waitFor(() => expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
+    expect(defaultRow.getByText("200k tokens")).toBeTruthy();
+    await waitFor(() => expect(defaultRow.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy());
   });
 
   it("default row renders server-provided rates when the public catalogue is unavailable", async () => {
@@ -383,8 +384,8 @@ describe("ModelsRegistryTable", () => {
 
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
-    expect(defaultRow.getByText("200k")).toBeTruthy();
-    expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
+    expect(defaultRow.getByText("200k tokens")).toBeTruthy();
+    expect(defaultRow.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy();
   });
 
   it("default row degrades to '—' when no platform default identity rides the list", async () => {
@@ -393,7 +394,9 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([], false));
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
-    expect(defaultRow.getByText("—")).toBeTruthy();
+    // Context and price are separate columns now, so an absent identity
+    // degrades in both rather than in one shared cell.
+    expect(defaultRow.getAllByText("—")).toHaveLength(2);
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
@@ -405,11 +408,11 @@ describe("ModelsRegistryTable", () => {
       ]),
     );
 
-    await waitFor(() => expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy());
     const rows = screen.getAllByRole("row");
     // Row order: header, Default, sonnet (priced), local (unpriced).
     const localRow = within(rows[3]!);
-    expect(localRow.getByText("32k")).toBeTruthy();
+    expect(localRow.getByText("32k tokens")).toBeTruthy();
     // A tenant entry is self-managed by definition, so an unpriced row is "not
     // applicable", not a lookup miss — and a price here would imply agentsfleet
     // is charging it when the tenant's own provider bills them directly.
@@ -432,8 +435,8 @@ describe("ModelsRegistryTable", () => {
       ]),
     );
 
-    expect(screen.getByText("200k")).toBeTruthy();
-    expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
+    expect(screen.getByText("200k tokens")).toBeTruthy();
+    expect(screen.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy();
   });
 
   it("shows the 'no key · local' badge on an entry with no key, and the endpoint host in the Provider cell", async () => {
@@ -655,13 +658,13 @@ describe("ModelsRegistryTable", () => {
         entry({ id: "e2", model_id: "m2", context_cap_tokens: 500 }),
       ]),
     );
-    expect(screen.getByText("200k")).toBeTruthy();
-    expect(screen.getByText("500")).toBeTruthy();
+    expect(screen.getByText("200k tokens")).toBeTruthy();
+    expect(screen.getByText("500 tokens")).toBeTruthy();
   });
 
   it("renders an explicit 0-token cap as '0', not '—' (nullish guard, not falsy)", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: 0 })]));
-    expect(screen.getByText("0")).toBeTruthy();
+    expect(screen.getByText("0 tokens")).toBeTruthy();
   });
 
   it("formatRates still names unavailable rates for its remaining direct callers", async () => {

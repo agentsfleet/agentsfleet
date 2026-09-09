@@ -1,7 +1,7 @@
-import { AGENT_A_DISPLAY_NAME, ERR_ALREADY_RESOLVED, WORKSPACE_ID, approveApprovalActionMock, denyApprovalActionMock, gate } from "./harness";
+import { AGENT_A_DISPLAY_NAME, ERR_ALREADY_RESOLVED, WORKSPACE_ID, approveApprovalActionMock, approveRow, denyApprovalActionMock, denyRow, gate, render } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
 describe("ApprovalsList — resolve actions", () => {
@@ -19,7 +19,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     // Gone at the click, while the action is still in flight.
     await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
     expect(approveApprovalActionMock).toHaveBeenCalledWith(
@@ -43,7 +43,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
 
     // The transport, not the gate, refused: the row is back beside the message.
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
@@ -59,7 +59,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
 
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
     expect(screen.getByRole("alert").textContent).toMatch(/transport gave up/);
@@ -79,13 +79,15 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
 
-    // Gone from view, but "No pending approvals" is the server's claim to make:
+    // Gone from view, but "No approvals yet" is the server's claim to make:
     // the filter input stays and the status region is not announced yet.
-    expect(screen.queryByText("No pending approvals")).toBeNull();
-    expect(screen.getByRole("searchbox", { name: /filter approvals/i })).toBeTruthy();
+    expect(screen.queryByText("No approvals yet")).toBeNull();
+    // Nothing about the inbox is claimed while the resolve is in flight — not
+    // the page's own empty state, and not the table's default one.
+    expect(screen.queryByText(/nothing to show yet/i)).toBeNull();
 
     settle({
       ok: true,
@@ -100,7 +102,7 @@ describe("ApprovalsList — resolve actions", () => {
         },
       },
     });
-    await waitFor(() => expect(screen.getByText("No pending approvals")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No approvals yet")).toBeTruthy());
   });
 
   it("a resolved row stays gone once the server confirms", async () => {
@@ -124,7 +126,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     await waitFor(() => expect(approveApprovalActionMock).toHaveBeenCalled());
     // The base list dropped it too, so the settled transition shows no row.
     await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
@@ -152,7 +154,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+    denyRow();
     await waitFor(() => {
       expect(denyApprovalActionMock).toHaveBeenCalled();
       expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull();
@@ -182,7 +184,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     await waitFor(() => {
       const alert = screen.getByRole("alert");
       expect(alert.textContent).toMatch(/already approved/i);
@@ -205,7 +207,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
     });
@@ -223,7 +225,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/ECONNRESET/);
     });
@@ -238,7 +240,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    approveRow();
     // WS-G — empty server error falls through presentError's default path.
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this request/i);
@@ -256,7 +258,7 @@ describe("ApprovalsList — resolve actions", () => {
         initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+    denyRow();
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't deny this request/i);
     });

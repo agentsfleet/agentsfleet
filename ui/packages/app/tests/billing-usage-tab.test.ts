@@ -111,7 +111,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(screen.getByText("kimi k2.6")).toBeTruthy();
     // activity makes the token counts legible
     expect(
-      screen.getByText("Run · 820 input tokens · 1,040 output tokens"),
+      screen.getByText("Run · 1,860 tokens · 820 in · 1,040 out"),
     ).toBeTruthy();
     // date column renders the formatted timestamp
     expect(screen.getByText(/\d{4} · \d{2}:\d{2}/)).toBeTruthy();
