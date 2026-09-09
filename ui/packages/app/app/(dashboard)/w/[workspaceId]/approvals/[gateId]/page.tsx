@@ -1,3 +1,4 @@
+import { PersonLabel } from "@/components/domain/PersonLabel";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -86,7 +87,8 @@ export default async function ApprovalDetailPage({
             <SectionLabel>Resolution</SectionLabel>
             <Card>
               <CardContent className="pt-6 text-sm">
-                Resolved as <strong>{gate.status}</strong> by {gate.resolved_by || "(unknown)"}
+                Resolved as <strong>{gate.status}</strong> by{" "}
+                {gate.resolved_by ? <PersonLabel actor={gate.resolved_by} /> : "(unknown)"}
                 {gate.updated_at ? (
                   <>
                     {" at "}

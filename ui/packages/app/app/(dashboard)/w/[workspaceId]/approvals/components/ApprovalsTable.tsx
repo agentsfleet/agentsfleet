@@ -14,6 +14,7 @@ import { CheckIcon, XIcon } from "lucide-react";
 import type { ApprovalGate } from "@/lib/api/approvals";
 import { APPROVAL_STATUS, type ApprovalStatusTag } from "@/lib/api/approvals-types";
 import { AgentLabel, agentDisplayName } from "@/components/domain/AgentLabel";
+import { PersonLabel } from "@/components/domain/PersonLabel";
 import { workspacePath } from "@/lib/workspace-routes";
 import {
   ACTIONS_COLUMN_HEADER,
@@ -124,7 +125,7 @@ function DecidedCell({ gate }: { gate: ApprovalGate }) {
         <Time value={new Date(gate.updated_at)} format="relative" className={TIME_CELL_CLASS} />
       )}
       {gate.resolved_by ? (
-        <span className="text-xs text-muted-foreground">{gate.resolved_by}</span>
+        <PersonLabel actor={gate.resolved_by} className="text-xs text-muted-foreground" />
       ) : null}
     </div>
   );
