@@ -1,13 +1,31 @@
 #!/usr/bin/env bash
 # doc-read.sh — turn the 📖 DOC READ proof-line into a set comparison.
 #
-#   audits/doc-read.sh log <path>   record that a file was read (hook target)
-#   audits/doc-read.sh check        staged source vs recorded reads
+#   audits/doc-read.sh log <path> [section]   record that a file was read
+#   audits/doc-read.sh check                  staged source vs recorded reads
 #
 # The DOC READ GATE asks an agent to read the façade its edit triggers, and
 # then asks the same agent whether it did. That is a claim about itself
 # compared against nothing. `log` records the read and `check` compares the
 # record against the façades the staged files trigger.
+#
+# `log` is still an assertion, and a loop can make nine of them in one second.
+# That happened: an agent ran `log` over its whole trigger list before opening
+# most of the pages, `check` reported green, and two rule violations reached the
+# diff from a section it had skipped. Two things answer it, and neither can
+# block, because neither is provable:
+#
+#   - The optional `section` argument records WHAT the read applied — "§Error
+#     discipline: composed with #[from]". A loop cannot produce that line; only
+#     reading can. `check` reports how many triggered façades carry one.
+#   - Rows for different façades sharing one timestamp are reported as a bulk
+#     assertion. A read hook fires per read and spreads across seconds; a
+#     scripted loop lands them together. An agent that genuinely read three
+#     short pages inside one second is possible too, which is exactly why this
+#     is a number in the output and never a red.
+#
+# Partial mechanisation stated honestly beats a red that means nothing — the
+# same argument the missing-record branch below already makes.
 #
 # NOTHING HERE MAY DEPEND ON AN AGENT RUNTIME. `log` is a shell command any
 # agent can run; a runtime that also has a read hook (Claude Code today) can
@@ -37,7 +55,12 @@ source "$HERE/rule-ledger-lib.sh"
 MODE_LOG="log"
 MODE_CHECK="check"
 LOG_RELATIVE_PATH="orly/doc-reads.jsonl"
-USAGE="usage: $0 log <path> | $0 check"
+USAGE="usage: $0 log <path> [section] | $0 check"
+
+# How many façades recorded in one second read as a loop rather than as reading.
+# Two is a plausible pair of short pages; three in the same second is a list
+# being walked.
+BULK_ASSERTION_THRESHOLD=3
 
 if [[ -t 1 ]]; then G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; X=$'\033[0m'
 else G=''; R=''; Y=''; X=''; fi
@@ -65,7 +88,7 @@ repo_relative() {
 # invocation is why two agents in two sessions cannot corrupt each other: the
 # order rows land in does not change which paths the set contains.
 run_log() {
-  local path="$1" relative log blob
+  local path="$1" section="${2:-}" relative log blob
   relative="$(repo_relative "$path")" || return 0
   [ -n "$relative" ] || return 0
   log="$(read_log_path)" || return 0
@@ -75,7 +98,11 @@ run_log() {
   # Recording it would let two failures compare equal and validate a read of a
   # file that is no longer there.
   [ -n "$blob" ] || return 0
-  printf '{"ts":%s,"path":"%s","blob":"%s"}\n' "$(date +%s)" "$(json_escape "$relative")" "$blob" >> "$log"
+  # The section rides the SAME row rather than a second file: a citation that
+  # could be written without a read beside it would be a third assertion to
+  # reconcile, and the pair is what carries meaning.
+  printf '{"ts":%s,"path":"%s","blob":"%s","section":"%s"}\n' \
+    "$(date +%s)" "$(json_escape "$relative")" "$blob" "$(json_escape "$section")" >> "$log"
   return 0
 }
 
@@ -115,20 +142,41 @@ json_unescape() {
   printf '%s' "$1" | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g'
 }
 
-# Paths whose recorded read saw the content that is on disk now. A row written
-# against an older version of the document proves the agent read something
-# else, so it does not count — and rows from before this milestone, which carry
-# no blob, cannot prove anything and are ignored.
+# Paths whose recorded read saw the content that is on disk now, one
+# `path<TAB>ts<TAB>section` row each. A row written against an older version of
+# the document proves the agent read something else, so it does not count — and
+# rows from before this milestone, which carry no blob, cannot prove anything
+# and are ignored.
+#
+# The path is cut at the first `","blob":"` rather than by stripping a fixed
+# tail: the row gained a trailing `section` field, and a suffix strip that
+# spelled the old shape would have silently yielded a path that matches nothing
+# — reading as "never read" for every document.
 current_reads() {
-  local log="$1" line path blob
+  local log="$1" line path blob ts section
   while IFS= read -r line; do
     case "$line" in *'"blob":"'*) ;; *) continue ;; esac
-    blob="${line##*\"blob\":\"}"; blob="${blob%%\"*}"
+    blob="${line#*\"blob\":\"}"; blob="${blob%%\"*}"
     [ -n "$blob" ] || continue
-    path="${line#*\"path\":\"}"; path="${path%\",\"blob\":\"$blob\"\}}"
+    path="${line#*\"path\":\"}"; path="${path%%\",\"blob\":\"*}"
     path="$(json_unescape "$path")"
-    [ "$blob" = "$(content_hash "$path")" ] && printf '%s\n' "$path"
+    ts="${line#*\"ts\":}"; ts="${ts%%,*}"
+    section=""
+    case "$line" in
+      *'"section":"'*) section="${line#*\"section\":\"}"; section="${section%%\"*}" ;;
+    esac
+    [ "$blob" = "$(content_hash "$path")" ] &&
+      printf '%s\t%s\t%s\n' "$path" "$ts" "$(json_unescape "$section")"
   done < "$log"
+}
+
+# Timestamps carrying BULK_ASSERTION_THRESHOLD or more distinct façades, one
+# `ts<TAB>count` row each. See the header: reported, never blocking.
+bulk_seconds() {
+  cut -f1,2 "$1" | sort -u | cut -f2 | sort | uniq -c |
+    while read -r count ts; do
+      [ "$count" -ge "$BULK_ASSERTION_THRESHOLD" ] && printf '%s\t%s\n' "$ts" "$count"
+    done
 }
 
 # File-scope so the EXIT trap can still see them: a trap fires after a
@@ -164,18 +212,51 @@ run_check() {
   current_reads "$log" | sort -u > "$recorded"
 
   while IFS= read -r page; do
-    grep -qxF "$page" "$recorded" && continue
+    grep -qF "$(printf '%s\t' "$page")" "$recorded" && continue
     printf '  %s🔴%s DOC READ: %s triggered by the staged diff, not read at its current content\n' "$R" "$X" "$page"
     unread=1
   done < "$expected"
   [ "$unread" -eq 0 ] && printf '  %s🟢%s DOC READ: every triggered façade was read at its current content\n' "$G" "$X"
+  report_citations "$expected" "$recorded"
+  report_bulk "$recorded"
   return "$unread"
+}
+
+# How many of the triggered façades carry a cited section. A record with one
+# says what the read APPLIED; a record without says only that a read happened,
+# which is the claim a loop can also make.
+report_citations() {
+  local expected="$1" recorded="$2" page total=0 cited=0 section
+  while IFS= read -r page; do
+    total=$((total + 1))
+    section="$(grep -F "$(printf '%s\t' "$page")" "$recorded" | cut -f3 | grep -c '[^[:space:]]')"
+    [ "$section" -gt 0 ] && cited=$((cited + 1))
+  done < "$expected"
+  [ "$total" -eq 0 ] && return 0
+  if [ "$cited" -eq "$total" ]; then
+    printf '  %s🟢%s DOC READ: all %s triggered façade(s) cite the section applied\n' "$G" "$X" "$total"
+    return 0
+  fi
+  printf '  %s🟠%s DOC READ: %s of %s triggered façade(s) cite a section; the rest record\n' \
+    "$Y" "$X" "$cited" "$total"
+  printf '     only that a read happened — pass it: doc-read.sh log <path> "<section applied>"\n'
+}
+
+# Says when rows look like a list being walked rather than pages being read.
+report_bulk() {
+  local recorded="$1" ts count
+  while IFS="$(printf '\t')" read -r ts count; do
+    [ -n "$ts" ] || continue
+    printf '  %s🟠%s DOC READ: %s façades recorded in one second (ts %s) — that is a bulk\n' \
+      "$Y" "$X" "$count" "$ts"
+    printf '     assertion, not %s reads; log each at the moment it is read\n' "$count"
+  done < <(bulk_seconds "$recorded")
 }
 
 case "${1:-}" in
   "$MODE_LOG")
-    [ "$#" -eq 2 ] || { printf '%s\n' "$USAGE" >&2; exit 2; }
-    run_log "$2"
+    { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } || { printf '%s\n' "$USAGE" >&2; exit 2; }
+    run_log "$2" "${3:-}"
     ;;
   "$MODE_CHECK")
     [ "$#" -eq 1 ] || { printf '%s\n' "$USAGE" >&2; exit 2; }
