@@ -8,7 +8,13 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
-import { Alert, ConfirmDialog, EmptyState, Skeleton } from "@agentsfleet/design-system";
+import {
+  Alert,
+  ConfirmDialog,
+  EmptyState,
+  SectionHeader,
+  Skeleton,
+} from "@agentsfleet/design-system";
 import { CheckCircle2Icon } from "lucide-react";
 
 import { RefreshButton } from "@/components/domain/RefreshButton";
@@ -16,7 +22,7 @@ import { RefreshButton } from "@/components/domain/RefreshButton";
 import {
   approveApprovalAction,
   denyApprovalAction,
-  listApprovalsAction,
+  listAllApprovalsAction,
 } from "../actions";
 import { type ApprovalGate, type ResolveOutcome } from "@/lib/api/approvals";
 import {
@@ -31,6 +37,7 @@ import { fallbackPersonLabel } from "@/lib/identity/person";
 import { presentErrorString } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/with-token";
 import {
+  APPROVALS_SECTION_LABEL,
   DENY_CONFIRM_BODY,
   DENY_CONFIRM_TITLE,
   DENY_LABEL,
@@ -100,29 +107,31 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
   const readStatuses = useCallback(async (
     statuses: readonly ApprovalStatusTag[],
   ): Promise<ApprovalGate[] | null> => {
-    const pages = await Promise.all(
-      statuses.map((status) =>
-        listApprovalsAction(workspaceId, { limit: APPROVALS_PAGE_LIMIT, fleetId, status }),
-      ),
+    // ONE server action, which fans the statuses out on the server. Asking for
+    // them from here looked parallel — `Promise.all` over five calls — and was
+    // not: Next runs Server Actions one at a time per client, so five became
+    // five sequential round trips, measured at 4.6s from load to full table.
+    //
+    // A single failed page would silently shorten the table, so the read stays
+    // all or nothing: the rows already shown stand until a whole one succeeds.
+    const page = await listAllApprovalsAction(
+      workspaceId,
+      { limit: APPROVALS_PAGE_LIMIT, fleetId },
+      statuses,
     );
-    // A single failed page would silently shorten the table, so a read is all
-    // or nothing: the rows already shown stay until a whole one succeeds.
-    // `find` narrows to the union member, so the failed page is read back out
-    // of the array rather than re-tested.
-    const refused = pages.filter((page) => !page.ok)[0];
-    if (refused) {
+    if (!page.ok) {
       setError(
-        refused.status === 401
+        page.status === 401
           ? SESSION_EXPIRED
           : presentErrorString({
-              errorCode: refused.errorCode,
-              message: refused.error,
+              errorCode: page.errorCode,
+              message: page.error,
               action: "read the approvals",
             }),
       );
       return null;
     }
-    return pages.flatMap((page) => (page.ok ? page.data.items : []));
+    return page.data.items;
   }, [workspaceId, fleetId]);
 
   const read = useCallback(
@@ -224,9 +233,14 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
 
   return (
     <>
-      <div className="mb-md flex justify-end">
-        <RefreshButton onRefresh={refresh} />
-      </div>
+      {/* The re-read sits on the section's own line, the way "Install fleet"
+          sits on Manage fleets — a control for the whole section belongs beside
+          its name, not floating in the gap above the table. Rendered here
+          rather than on the page because `refresh` is this component's state,
+          and the page is a Server Component that cannot hold it. */}
+      <SectionHeader className="mb-md" actions={<RefreshButton onRefresh={refresh} />}>
+        {APPROVALS_SECTION_LABEL}
+      </SectionHeader>
 
       <ApprovalsTable
         workspaceId={workspaceId}

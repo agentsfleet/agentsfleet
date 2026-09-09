@@ -24,8 +24,9 @@ vi.mock("@/lib/api/approvals", () => ({
   denyApproval: denyApprovalMock,
 }));
 
+import { APPROVAL_STATUS_ORDER } from "@/lib/api/approvals-types";
 import {
-  listApprovalsAction,
+  listAllApprovalsAction,
   approveApprovalAction,
   denyApprovalAction,
 } from "@/app/(dashboard)/w/[workspaceId]/approvals/actions";
@@ -41,20 +42,40 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe("approval server actions — thin forwarders", () => {
-  it("listApprovalsAction forwards workspaceId + token + default opts to the client", async () => {
-    listApprovalsMock.mockResolvedValueOnce({ items: [], next_cursor: null });
-    const r = await listApprovalsAction("ws-1");
-    expect(r).toEqual({ ok: true, data: { items: [], next_cursor: null } });
-    // opts defaults to {} in the source signature, threaded as the third arg.
-    expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", {});
+  // The whole point of this action: the statuses fan out on the SERVER, under
+  // one token. Five calls from the client were five sequential round trips,
+  // because Next runs Server Actions one at a time per client.
+  it("listAllApprovalsAction reads every status in the order under one token", async () => {
+    listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
+    await listAllApprovalsAction("ws-1");
+    expect(listApprovalsMock).toHaveBeenCalledTimes(APPROVAL_STATUS_ORDER.length);
+    for (const status of APPROVAL_STATUS_ORDER) {
+      expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", { status });
+    }
   });
 
-  it("listApprovalsAction threads explicit opts through to the client", async () => {
-    listApprovalsMock.mockResolvedValueOnce({ items: [], next_cursor: "cur-9" });
-    const opts = { status: "pending", fleetId: "z-1", limit: 25 };
-    const r = await listApprovalsAction("ws-1", opts);
-    expect(r).toEqual({ ok: true, data: { items: [], next_cursor: "cur-9" } });
-    expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", opts);
+  it("listAllApprovalsAction narrows to the statuses it is given and threads opts", async () => {
+    listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
+    await listAllApprovalsAction("ws-1", { fleetId: "z-1", limit: 25 }, ["denied"]);
+    expect(listApprovalsMock).toHaveBeenCalledTimes(1);
+    expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", {
+      fleetId: "z-1",
+      limit: 25,
+      status: "denied",
+    });
+  });
+
+  it("listAllApprovalsAction merges the pages into one list", async () => {
+    listApprovalsMock
+      .mockResolvedValueOnce({ items: [{ gate_id: "a" }], next_cursor: null })
+      .mockResolvedValueOnce({ items: [{ gate_id: "b" }], next_cursor: "cur-9" });
+    const r = await listAllApprovalsAction("ws-1", {}, ["pending", "denied"]);
+    // The merged list has no single cursor to page from; the caller reads whole
+    // pages per status, so claiming one would be claiming a position nothing holds.
+    expect(r).toEqual({
+      ok: true,
+      data: { items: [{ gate_id: "a" }, { gate_id: "b" }], next_cursor: null },
+    });
   });
 
   it("approveApprovalAction forwards workspaceId + gateId + token with an explicit reason", async () => {
