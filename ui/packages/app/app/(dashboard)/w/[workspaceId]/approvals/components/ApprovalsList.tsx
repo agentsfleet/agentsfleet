@@ -125,22 +125,28 @@ export default function ApprovalsList({
   // uncaught it escapes the transition and takes the whole inbox to the error
   // boundary, which is the one outcome worse than a stale table.
   const read = useCallback(
-    async (resume?: string): Promise<ApprovalsListResponse | null> => {
+    async (mine: number, resume?: string): Promise<ApprovalsListResponse | null> => {
       const page = await listApprovalsAction(workspaceId, {
         limit: APPROVALS_PAGE_LIMIT,
         fleetId,
         cursor: resume,
       }).catch(rejectedRead);
       if (!page.ok) {
-        setError(
-          page.status === 401
-            ? SESSION_EXPIRED
-            : presentErrorString({
-                errorCode: page.errorCode,
-                message: page.error,
-                action: "read the approvals",
-              }),
-        );
+        // The sequence gates the ERROR as well as the rows. A superseded read
+        // failing after a newer one succeeded would otherwise paint a failure
+        // over a table that was just refreshed correctly — an alert about a
+        // request whose answer the operator was never going to see.
+        if (mine === reading.current) {
+          setError(
+            page.status === 401
+              ? SESSION_EXPIRED
+              : presentErrorString({
+                  errorCode: page.errorCode,
+                  message: page.error,
+                  action: "read the approvals",
+                }),
+          );
+        }
         return null;
       }
       return page.data;
@@ -153,7 +159,7 @@ export default function ApprovalsList({
     // Back to the first page: a refresh is "show me the inbox now", and
     // resuming mid-walk would hide rows raised since the first page was read.
     const mine = ++reading.current;
-    const fresh = await read();
+    const fresh = await read(mine);
     if (fresh === null || mine !== reading.current) return;
     setItems(fresh.items);
     setCursor(fresh.next_cursor);
@@ -165,7 +171,7 @@ export default function ApprovalsList({
     setError(null);
     const mine = ++reading.current;
     startLoadMore(async () => {
-      const older = await read(resume);
+      const older = await read(mine, resume);
       if (older === null || mine !== reading.current) return;
       // Appended, not replaced. The keyset resumes strictly past the last row,
       // so a page cannot repeat one — but a gate resolved between the two reads
@@ -209,7 +215,7 @@ export default function ApprovalsList({
       // The read-back claims a number too: a "Load older" started while the
       // decision was in flight must not append onto the list this replaces.
       const mine = ++reading.current;
-      const fresh = await read();
+      const fresh = await read(mine);
       if (fresh !== null && mine === reading.current) {
         setItems(fresh.items);
         setCursor(fresh.next_cursor);
