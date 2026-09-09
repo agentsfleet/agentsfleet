@@ -24,26 +24,8 @@ fn fleet() -> Uuid7 {
 }
 
 /// `settle` over one status, at the card count the statement reported.
-fn found(status: Option<&str>, raised: bool) -> Requested {
+fn found(status: &str, raised: bool) -> Requested {
     settle(status, raised, &fleet(), "github")
-}
-
-#[test]
-fn an_absent_grant_row_is_a_fresh_raise() {
-    // The select shares the writes' snapshot, so the row this statement just
-    // inserted reads as absent. That is what makes a first request `Raised`.
-    assert_eq!(found(None, true), Requested::Raised);
-}
-
-#[test]
-fn the_loser_of_a_concurrent_request_reports_the_question_that_stands() {
-    // Slot 836's unique index sends the loser of a same-instant race through
-    // `ON CONFLICT DO NOTHING`: it wrote no card, and the winner's row is not in
-    // its snapshot, so it sees an absent grant and a zero count. `Raised` is
-    // still the truthful answer — a person owes an answer — and the alternative
-    // readings are both wrong: `Pending` would claim this call found a card it
-    // cannot see, and anything terminal would end a delivery over a lost race.
-    assert_eq!(found(None, false), Requested::Raised);
 }
 
 #[test]
@@ -51,19 +33,19 @@ fn a_pending_grant_whose_card_was_re_raised_is_raised_not_suppressed() {
     // The sweeper expires a card at 30 days and leaves the grant pending. The
     // next request writes a fresh card, and reporting `Pending` there would
     // claim a question is open when the only open one is the grant.
-    assert_eq!(found(Some(status::PENDING), true), Requested::Raised);
+    assert_eq!(found(status::PENDING, true), Requested::Raised);
 }
 
 #[test]
 fn a_pending_grant_with_its_card_still_open_suppresses() {
     // The redelivery cadence is one second. This is the arm that makes it one
     // question rather than sixty a minute.
-    assert_eq!(found(Some(status::PENDING), false), Requested::Pending);
+    assert_eq!(found(status::PENDING, false), Requested::Pending);
 }
 
 #[test]
 fn a_standing_yes_is_nothing_to_ask_about() {
-    assert_eq!(found(Some(status::APPROVED), false), Requested::Approved);
+    assert_eq!(found(status::APPROVED, false), Requested::Approved);
 }
 
 #[test]
@@ -72,21 +54,20 @@ fn only_a_revoked_grant_is_read_as_a_persons_no() {
     // event, so it must be reachable from exactly one status. Any other
     // spelling that produced it would end deliveries nobody refused.
     let vocabulary = [
-        None,
-        Some(status::PENDING),
-        Some(status::APPROVED),
-        Some(status::REVOKED),
-        Some("quarantined"),
-        Some("PENDING"),
-        Some(""),
+        status::PENDING,
+        status::APPROVED,
+        status::REVOKED,
+        "quarantined",
+        "PENDING",
+        "",
     ];
     for spelling in vocabulary {
         let ends = found(spelling, false) == Requested::Denied;
         assert_eq!(
             ends,
-            spelling == Some(status::REVOKED),
+            spelling == status::REVOKED,
             "{spelling:?} must{} end the event",
-            if spelling == Some(status::REVOKED) {
+            if spelling == status::REVOKED {
                 ""
             } else {
                 " not"
@@ -100,8 +81,8 @@ fn a_status_this_build_cannot_place_waits() {
     // The fail-safe direction. An unknown spelling is a build that is behind
     // its own datastore, and waiting leaves the question answerable; ending
     // would throw the delivery away on a word we simply do not know yet.
-    assert_eq!(found(Some("quarantined"), false), Requested::Pending);
-    assert_eq!(found(Some("PENDING"), false), Requested::Pending);
+    assert_eq!(found("quarantined", false), Requested::Pending);
+    assert_eq!(found("PENDING", false), Requested::Pending);
 }
 
 #[test]

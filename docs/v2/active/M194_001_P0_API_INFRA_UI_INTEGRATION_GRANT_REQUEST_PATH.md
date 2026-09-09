@@ -46,11 +46,11 @@
 
 | File | Action | Why |
 |------|--------------|-----|
-| `schema/836_fleet_approval_gates_grant_card.sql` | CREATE | One OPEN card per `(fleet, service)`, as a partial unique index. Added at REVIEW: `REQUEST_GRANT`'s `NOT EXISTS` reads its own snapshot, so under READ COMMITTED two same-instant requests each raise a card. Same shape and RULE STS carve-out as `uq_runner_events_runner_id_dedup_key_offline` (slot 640). |
+| `schema/836_fleet_approval_gates_grant_card.sql` | CREATE | One actionable card per nullable `active_grant_id`, using a unique index without status literals. The column is declared in slot 810 and released on resolution or expiry. |
 | `schema/embed.zig` | EDIT | Registers slot 836. Version IS the slot number (RULE MIG). |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | The Rust daemon's own canonical list — the third registration site, and `afd_db::migrations::test_migration_list_matches_schema_directory_and_zig` is what catches a miss. |
 | `rustd/crates/afd_approval/src/request.rs` | CREATE | The request verb itself, beside `grant.rs`'s read and revoke rather than inside it: the pair came to 353 lines and the LENGTH cap is 350. Owns `Wanted`, `Origin`, `Requested`, and the gate-kind and evidence-key constants. |
-| `rustd/crates/afd_approval/src/sql.rs` | EDIT | `REQUEST_GRANT` — the `INSERT … ON CONFLICT DO NOTHING` over `core.integration_grants` and the gate raise carrying `evidence->>'service'`, in one data-modifying CTE so the pair lands or neither does. |
+| `rustd/crates/afd_approval/src/sql.rs` | EDIT | `ENSURE_GRANT` plus `REQUEST_GRANT` in one transaction; read and lock the existing grant after any competing insert, then raise using its active reference. Resolution and expiry clear the reference. |
 | `rustd/crates/afd_approval/src/grant.rs` | EDIT | `IntegrationGrants` gains the entropy source the request mints through, and the two accessors the sibling module reads it by. |
 | `rustd/crates/afd_approval/src/inbox.rs` | EDIT | `KIND_INTEGRATION_GRANT` moves to `request.rs` and is imported here — one spelling for the raise and the resolve (RULE UFS). |
 | `rustd/crates/afd_approval/src/error.rs` | EDIT | Two `#[from]` variants the mint needs: entropy that would not answer, and an identifier that would not encode. |
@@ -66,9 +66,10 @@
 
 | `rustd/crates/afd_fleet/Cargo.toml` | EDIT | `afd_approval`, so the lease path writes through the table's owner. |
 | `rustd/crates/afd_core/src/event.rs` | EDIT | `label::GRANT_DENIED` — a standing refusal is not one action refused, and the remedies differ. |
+| `rustd/crates/agentsfleetd/tests/integration_grant_denial.rs` | CREATE | Public lease-path denial and terminal-redelivery acknowledgment regressions, registered in `tests/daemon_suite.rs`. |
 | `rustd/crates/agentsfleetd/src/plane.rs` | EDIT | The composition root: the KEK into `Fleets`, the grant surface onto the lease plane. |
 | `rustd/crates/afd_approval/src/request/tests.rs` | CREATE | `settle`'s five arms as unit tests, added at REVIEW: the fail-safe arm — an unrecognised status must never read as a person's no — is unreachable from an integration test, and `Denied` is the one answer that ends a delivery. Sibling module because inline would put `request.rs` past the 350 cap. |
-| `rustd/crates/afd_approval/tests/integration_grant_card_uniqueness.rs` | CREATE | Slot 836 against a live table, added at REVIEW. Proves the index refuses a second open card and pins its shape both ways — per-service, not per-fleet; pending-only, so answered history still writes. No serial caller reaches the `ON CONFLICT`, so the suite beside it cannot prove this. |
+| `rustd/crates/afd_approval/tests/integration_grant_card_uniqueness.rs` | CREATE | Live constraint, concurrent request, resolution/expiry release, and failed-card rollback regressions. |
 | `rustd/crates/afd_approval/tests/integration_grant_request.rs` | CREATE | The request against a live table, and the approve arm it finally reaches. |
 | `rustd/crates/afd_approval/tests/integration_grants.rs` | EDIT | Imports the production reason string rather than restating it. |
 | `rustd/crates/afd_approval/tests/approval_suite.rs` | EDIT | Registers the new suite. |
@@ -280,3 +281,10 @@ Regression rows: `a_non_mintable_declaration_requests_no_grant` is the regressio
 - **Metrics review** — `grant_requested` and `grant_request_suppressed` are new operator signals, declared above with their properties and privacy guard. No analytics or funnel playbook update: no product funnel step is added.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results, populated as the work proceeds.
 - **Deferrals** — every "deferred to follow-up" needs an Indy-acked verbatim quote here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+- **Follow-up decision:** User: "fix using the approach you said using active-grant-id." This supersedes the partial-index decision above: `active_grant_id` is nullable and unique, set only on an actionable grant card and cleared atomically on approve, deny, or expiry. The earlier claimed STS partial-index exception was incorrect. Grant creation and card creation now share an explicit transaction; no-op conflict updates are avoided.
+- **Greptile P1:** Terminal refusal must acknowledge Redis after the durable write, including `Ended::Already` retries. Public daemon regressions exercise an already-connected workspace, repeated parks, denial, subsequent event progress, and a terminal write whose acknowledgment was lost. No private `Plane`/`Fence` test seam is added. Acceptance §4 remains unfinished and IN_PROGRESS under the existing override.
+
+- **Verification correction:** No-work retains its affinity claim until `LEASE_TTL_MS`; an immediate HTTP re-poll does not reach `ungranted`. The daemon regressions expire the fixture claim between polls while leaving Redis unchanged. With acknowledgment omitted, both fail specifically on the pending entry; with it restored, both pass. This corrects the earlier assertion that every one-second poll writes a grant request: every poll still does selection work, but the grant request requires a claim win.
+
+- **Follow-up verification (Sep 09):** `make test-coverage-rustd` passed: 2,931 tests, 37,865/38,845 lines (97.4772%). Intersecting its LCOV report with added Rust lines against the PR merge base measures 262/269 (97.3978%) patch coverage. Both public denial regressions pass; omitted-acknowledgment mutation makes both fail on the pending Redis entry. `make test-unit-all`, `make lint-all`, `make check-version`, and staged `make harness-verify` also passed. Final coverage log: `/private/tmp/m194-active-grant-coverage-final.log`; prior failed attempts are not counted as evidence. Remote CI must independently confirm the pushed revision.

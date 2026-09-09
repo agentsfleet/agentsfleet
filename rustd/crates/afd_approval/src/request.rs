@@ -31,7 +31,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::grant::status;
-use sqlx::Row as _;
+use sqlx::{Acquire as _, Row as _};
 
 use crate::grant::IntegrationGrants;
 use crate::{Result, error, sql};
@@ -49,21 +49,8 @@ pub const KIND_INTEGRATION_GRANT: &str = "integration_grant";
 
 /// The `evidence` key naming the third party a card is about.
 ///
-/// The Rust half of a key that is also spelled inside two statements —
-/// `RESOLVE_GATE`'s join and `REQUEST_GRANT`'s guard both reach it as
-/// `evidence->>'service'`. Those two are SQL text, which this crate keeps
-/// verbatim rather than assembled, so the const cannot be bound into them
-/// without making the text something a reader has to reconstruct.
-///
-/// What holds the three in agreement is a test rather than the type system:
-/// `tests::evidence_carries_the_key_the_approve_statement_joins_on` reads it out
-/// of the rendered object, `a_request_writes_the_grant_and_the_card_together`
-/// reads it back out of the column, and `approving_the_card_grants_the_integration`
-/// proves the join actually matches the row this writes. A drift in any one of
-/// the three fails all three.
-///
-/// Private: the spellings it must agree with are this crate's own SQL, so
-/// nothing outside has a use for the name — only for the behaviour it buys.
+/// The rendered key is also read by `RESOLVE_GATE`'s evidence join. The live
+/// request-then-approve regression verifies that those spellings agree.
 const EVIDENCE_SERVICE: &str = "service";
 
 /// A grant request was written, and a person now owes an answer.
@@ -164,7 +151,7 @@ pub struct Wanted<'a> {
 impl Wanted<'_> {
     /// The `evidence` body, carrying the one key the approve statement joins on.
     ///
-    /// Rendered rather than bound as a value: the statement casts `$14::jsonb`,
+    /// Rendered rather than bound as a value: the statement casts `$12::jsonb`,
     /// which is how every other gate insert in this workspace writes the column
     /// — the driver's JSON binding is not compiled in, and turning it on for
     /// one object would be a feature the rest of the daemon does not use.
@@ -193,13 +180,9 @@ pub enum Requested {
 impl IntegrationGrants {
     /// Ask for one grant, and raise the card a person answers it on.
     ///
-    /// Idempotent at both write sites and by two different mechanisms, which is
-    /// the point: the grant row is held to one per `(fleet, service)` by the
-    /// table's own unique constraint, and the card by the statement's
-    /// `NOT EXISTS`. A delivery re-parking at the one-second redelivery cadence
-    /// therefore raises one question, not one per second — and neither guard is
-    /// a rate limit, so a card a person answers is replaced by the next real
-    /// request rather than swallowed by a window.
+    /// The grant and card land in one transaction. The unique active grant
+    /// reference allows one actionable card and any number of answered cards.
+    /// Repeated requests do not update either row.
     ///
     /// # Preconditions
     /// `fleet` MUST belong to `workspace`. Unlike this crate's two
@@ -227,12 +210,24 @@ impl IntegrationGrants {
         let gate_id = self.mint(now)?;
         let action_id = self.mint(now)?;
         let mut connection = self.database().acquire().await?;
-        let row = sqlx::query(sql::REQUEST_GRANT)
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(error::query(CONTEXT_REQUEST))?;
+        sqlx::query(sql::ENSURE_GRANT)
             .bind(grant_id.as_str())
             .bind(fleet.as_str())
             .bind(wanted.service)
             .bind(status::PENDING)
             .bind(wanted.origin.reason())
+            .bind(now.as_millis())
+            .execute(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_REQUEST))?;
+        let row = sqlx::query(sql::REQUEST_GRANT)
+            .bind(fleet.as_str())
+            .bind(wanted.service)
+            .bind(status::PENDING)
             .bind(now.as_millis())
             .bind(gate_id.as_str())
             .bind(workspace.as_str())
@@ -248,14 +243,18 @@ impl IntegrationGrants {
                     .as_millis(),
             )
             .bind(afd_wire::approval::status::PENDING)
-            .fetch_one(&mut *connection)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
 
         let unreadable = error::query(CONTEXT_REQUEST);
         let raised: i64 = row.try_get(0).map_err(&unreadable)?;
-        let found: Option<String> = row.try_get(1).map_err(&unreadable)?;
-        let outcome = settle(found.as_deref(), raised > 0, fleet, wanted.service);
+        let found: String = row.try_get(1).map_err(&unreadable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(error::query(CONTEXT_REQUEST))?;
+        let outcome = settle(&found, raised > 0, fleet, wanted.service);
         report(outcome, fleet, &wanted);
         Ok(outcome)
     }
@@ -273,28 +272,18 @@ impl IntegrationGrants {
 
 /// What the statement found, as the answer a caller acts on.
 ///
-/// `found` is the status the row held BEFORE this statement ran — the select
-/// and the writes share one snapshot — so a freshly written grant reads as
-/// absent here, and that is what makes an absent row and a re-raised card the
-/// same [`Requested::Raised`].
-///
-/// `raised` therefore separates only the two cases an absent status cannot: a
-/// still-pending grant whose card the sweeper expired (re-raised, so `Raised`)
-/// from one whose card is still open (`Pending`). It is deliberately NOT
-/// consulted when the row is absent — the loser of a concurrent request writes
-/// no card and sees no grant, and the question it did not raise is standing all
-/// the same.
-fn settle(found: Option<&str>, raised: bool, fleet: &Uuid7, service: &str) -> Requested {
+/// `found` is read after ensuring the grant exists. A pending grant can have
+/// either an active card or an expired card that needs replacing.
+fn settle(found: &str, raised: bool, fleet: &Uuid7, service: &str) -> Requested {
     match found {
-        None => Requested::Raised,
-        Some(status::PENDING) if raised => Requested::Raised,
-        Some(status::PENDING) => Requested::Pending,
-        Some(status::APPROVED) => Requested::Approved,
-        Some(status::REVOKED) => Requested::Denied,
+        status::PENDING if raised => Requested::Raised,
+        status::PENDING => Requested::Pending,
+        status::APPROVED => Requested::Approved,
+        status::REVOKED => Requested::Denied,
         // A spelling this build has no arm for. Waiting is the fail-safe
         // direction — an unknown status must never be read as a person's no,
         // which would end an event nobody answered.
-        Some(unknown) => {
+        unknown => {
             let fleet_id = fleet.as_str();
             let status = unknown.to_owned();
             tracing::warn!(

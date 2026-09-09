@@ -114,20 +114,10 @@ async fn insert_forged_card(lane: &Lane, action: &str) {
         .expect("the forged card is an ordinary gate row");
 }
 
-/// Sweeps the honest card the way the 30-day expiry does, leaving the grant
-/// pending.
-///
-/// Necessary setup, and the reason it is necessary is itself the point. While the
-/// honest card is open, slot 836's partial unique index refuses a second
-/// `integration_grant` row for the same service outright — `a_forgery_cannot_even
-/// _be_written_while_an_honest_card_is_open` pins that. It is a real first layer
-/// and not the durable one: the sweeper moves an unanswered card out of the
-/// index's predicate at the deadline while the GRANT stays pending, which frees
-/// the slot and leaves the forgery writable. That is the state these tests run
-/// in, because it is the state the escalation would actually be attempted from.
+/// Simulates an expired honest card, leaving its grant awaiting approval.
 async fn sweep_honest_card(lane: &Lane) {
     sqlx::query(
-        "UPDATE core.fleet_approval_gates SET status = $2
+        "UPDATE core.fleet_approval_gates SET status = $2, active_grant_id = NULL
           WHERE fleet_id = $1::uuid AND gate_kind = $3",
     )
     .bind(lane.fleet.as_str())
@@ -214,46 +204,25 @@ async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
     );
 }
 
-/// The index is a first layer, and this is the shape of it.
-///
-/// Not the guarantee — `sweep_honest_card` explains why — but worth pinning,
-/// because it is load-bearing for the common case and its absence would be
-/// invisible. While a person still owes an answer on the honest card, the
-/// forgery cannot be written at all: slot 836 holds one OPEN
-/// `integration_grant` per `(fleet, service)` and does not care who asked.
+/// A rules-path forgery holds no active grant reference and cannot move the
+/// standing grant even while its real card remains actionable.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_forgery_cannot_even_be_written_while_an_honest_card_is_open() {
+async fn a_forged_approval_cannot_move_a_grant_with_an_open_honest_card() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
-
-    let refused = sqlx::query(FORGED_CARD)
-        .bind(mint().as_str())
-        .bind(lane.fleet.as_str())
-        .bind(lane.workspace.as_str())
-        .bind(mint().as_str())
-        .bind("shell")
-        .bind("run")
-        .bind(KIND_INTEGRATION_GRANT)
-        .bind("run a routine build step")
-        .bind(format!("{{\"service\":\"{SERVICE}\"}}"))
-        .bind("this repository")
-        .bind(NOW_MS + 3_600_000)
-        .bind(gate_status::PENDING)
-        .bind(NOW_MS)
-        .bind(FORGED_EVENT)
-        .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-        .await;
-
-    let collision = refused.err().and_then(|failure| {
-        failure
-            .as_database_error()
-            .and_then(sqlx::error::DatabaseError::constraint)
-            .map(str::to_owned)
-    });
-    assert_eq!(
-        collision.as_deref(),
-        Some("uq_fleet_approval_gates_fleet_id_grant_service_pending"),
-        "an open honest card must leave no room for a second one of this kind"
-    );
+    let forged = mint().as_str().to_owned();
+    insert_forged_card(&lane, &forged).await;
+    lane.inbox
+        .resolve(
+            &forged,
+            Decision::Approved,
+            REVIEWER,
+            "",
+            Some(lane.fleet.as_str()),
+            Lane::now(),
+        )
+        .await
+        .expect("resolve runs");
+    assert_eq!(grant_status(&lane).await.as_deref(), Some(status::PENDING));
 }
