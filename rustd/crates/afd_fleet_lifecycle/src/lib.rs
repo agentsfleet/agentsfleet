@@ -33,7 +33,7 @@
 // `unused_crate_dependencies` counts a dev-dependency against the LIB target
 // unless the crate root says it knows about them.
 #[cfg(test)]
-use {redis as _, tokio as _};
+use {redis as _, serde_json as _, tokio as _};
 
 pub mod error;
 
@@ -44,7 +44,13 @@ mod purge;
 mod read;
 mod sql;
 
+use std::sync::Arc;
+
+use afd_approval::IntegrationGrants;
+use afd_credential::secrets::Registry;
+use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_redis::{FleetStreams, ReadyIndex, Redis};
 use afd_vault::Directory;
@@ -79,24 +85,49 @@ pub struct Fleets {
     /// answer changed — the same argument [`Self::new`] makes about the two
     /// Redis views.
     secrets: Directory,
+    /// The same directory's stored HANDLES, for the install's grant requests.
+    ///
+    /// A second surface over one table, beside [`Fleets::secrets`], and the two
+    /// ask genuinely different questions. The pre-flight asks what the
+    /// workspace HOLDS — a set difference over names, which needs no key. This
+    /// one asks what a held credential IS, and only the handle's own
+    /// `integration` field answers it, so it opens the envelope. The narrower
+    /// read stays narrow rather than being widened to serve both.
+    vault: Vault,
+    /// The connector set a declared credential is classified against.
+    ///
+    /// A field rather than an argument, for the reason the lease plane's is
+    /// one: which third parties this daemon ships with is a composition-root
+    /// fact, and an install handler is the last place that should get a vote.
+    connectors: Registry,
+    /// The grant surface an install asks through.
+    ///
+    /// `afd_approval` is the only writer of `core.integration_grants` — its own
+    /// resolve moves rows in the statement that answers a gate — so the install
+    /// asks through it rather than inserting a row the resolve would have to
+    /// trust.
+    grants: IntegrationGrants,
 }
 
 impl Fleets {
     /// Binds the store to already-connected handles.
     ///
-    /// Takes the Redis CONNECTION and builds both views over it, rather than
-    /// taking the views: which of them this crate needs is its own business,
-    /// and a composition root assembling the pair would have to be edited every
-    /// time that answer changed.
+    /// Takes the Redis CONNECTION and the Key Encryption Key and builds every
+    /// view over them, rather than taking the views: which of them this crate
+    /// needs is its own business, and a composition root assembling them would
+    /// have to be edited every time that answer changed.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Redis, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
             database: database.clone(),
             streams: FleetStreams::new(queue.clone()),
             ready: ReadyIndex::new(queue),
-            entropy,
+            entropy: entropy.clone(),
             live_sets: live_set::live_sets(),
-            secrets: Directory::new(database),
+            secrets: Directory::new(database.clone()),
+            vault: Vault::new(database.clone(), kek),
+            connectors: Registry::SHIPPED,
+            grants: IntegrationGrants::new(database, entropy),
         }
     }
 }

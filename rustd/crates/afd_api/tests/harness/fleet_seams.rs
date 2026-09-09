@@ -97,7 +97,11 @@ impl Fleet {
 
     /// Runs fleet installation and purge over a live queue and database.
     pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Redis) -> Self {
-        self.fleets = Fleets::new(database, queue, Entropy::new());
+        // The same fixture key every other store in this harness seals under:
+        // the install opens a declared credential's handle to classify it, so a
+        // seam holding a different key would classify nothing.
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        self.fleets = Fleets::new(database, queue, kek, Entropy::new());
         self
     }
 

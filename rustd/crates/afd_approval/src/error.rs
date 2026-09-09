@@ -40,6 +40,27 @@ pub enum Error {
         source: afd_db::Error,
     },
 
+    /// The entropy source would not answer.
+    ///
+    /// Its own variant rather than folded into [`Error::Datastore`]: a machine
+    /// that cannot draw random bytes is not a machine whose Postgres is down,
+    /// and an operator reading the two the same way would restart the wrong
+    /// thing.
+    #[error("an identifier could not be drawn")]
+    Entropy {
+        /// The entropy failure underneath.
+        #[from]
+        source: afd_crypto::error::Error,
+    },
+
+    /// An identifier could not be minted from the instant it was drawn at.
+    #[error("an identifier could not be minted")]
+    Identifier {
+        /// The identifier failure underneath.
+        #[from]
+        source: afd_core::error::Error,
+    },
+
     /// The queue would not take the continuation.
     ///
     /// Distinct from [`Error::Datastore`] because the remedies differ: a gate
@@ -62,7 +83,10 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match self {
-            Self::Query { .. } | Self::RowMalformed { .. } => DETAIL_OPERATION_FAILED,
+            Self::Query { .. }
+            | Self::RowMalformed { .. }
+            | Self::Entropy { .. }
+            | Self::Identifier { .. } => DETAIL_OPERATION_FAILED,
             Self::Datastore { .. } | Self::Queue { .. } => DETAIL_UNAVAILABLE,
         }
     }
@@ -80,7 +104,10 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self {
-            Self::Query { .. } | Self::RowMalformed { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            Self::Query { .. }
+            | Self::RowMalformed { .. }
+            | Self::Entropy { .. }
+            | Self::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
             Self::Datastore { .. } | Self::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
         }
     }

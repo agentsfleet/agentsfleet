@@ -27,6 +27,12 @@
 )]
 mod lane;
 
+#[path = "integration_grant_card_uniqueness.rs"]
+mod integration_grant_card_uniqueness;
+#[path = "integration_grant_forgery.rs"]
+mod integration_grant_forgery;
+#[path = "integration_grant_request.rs"]
+mod integration_grant_request;
 #[path = "integration_grants.rs"]
 mod integration_grants;
 #[path = "integration_inbox.rs"]

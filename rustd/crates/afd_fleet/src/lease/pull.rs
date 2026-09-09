@@ -88,6 +88,15 @@ pub struct Plane {
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
     pub broker: std::sync::Arc<afd_credential::credential::Broker>,
+    /// The standing grants a fleet holds, and the only writer of them.
+    ///
+    /// The lease path READS grants through [`Plane::gates`] on every delivery
+    /// and writes one here only when it finds none — which is a different
+    /// question and, deliberately, a different crate. `afd_approval` owns the
+    /// table because its resolve moves a row in the same statement that answers
+    /// a gate; a second writer on this path is a row that statement would have
+    /// to trust.
+    pub grants: afd_approval::IntegrationGrants,
     /// The connector set a mintable credential is classified against.
     ///
     /// A field rather than an argument: which connectors this daemon ships
@@ -319,6 +328,9 @@ impl Plane {
         if let crate::lease::event::Ended::Now(closed) = ended {
             self.leases.publish_completion(&closed).await;
         }
+        self.leases
+            .acknowledge(&acquired.fleet_id, &acquired.event_id)
+            .await?;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
