@@ -287,38 +287,4 @@ fn names(installed: &Installed) -> Vec<&str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Ungranted, answers};
-    use afd_approval::Requested;
-
-    #[test]
-    fn a_denied_grant_is_the_only_outcome_that_ends_the_event() {
-        // The failure this milestone exists to end is an event that redelivers
-        // every second against a decision nobody can make. A denial IS that
-        // decision, so the loop stops here and the operator reads why.
-        assert_eq!(answers(Some(Requested::Denied)), Ungranted::Ends);
-    }
-
-    #[test]
-    fn every_answerable_outcome_leaves_the_delivery_leasable() {
-        // A raised card, a card already open, and a grant approved between the
-        // assembly's read and this request are three different states and one
-        // instruction: wait. The work is not lost, and the next poll runs it.
-        for still_open in [Requested::Raised, Requested::Pending, Requested::Approved] {
-            assert_eq!(
-                answers(Some(still_open)),
-                Ungranted::Waits,
-                "{still_open:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_request_that_could_not_be_written_waits_rather_than_ending() {
-        // The fail-closed direction, and the one worth a test of its own: a
-        // Postgres that would not answer must never be read as a person's no.
-        // Ending here would destroy a delivery on an outage, and the outage is
-        // the one condition guaranteed to pass.
-        assert_eq!(answers(None), Ungranted::Waits);
-    }
-}
+mod tests;
