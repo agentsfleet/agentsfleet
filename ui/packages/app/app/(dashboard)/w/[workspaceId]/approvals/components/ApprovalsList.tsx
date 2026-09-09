@@ -3,6 +3,7 @@
 import {
   useCallback,
   useOptimistic,
+  useRef,
   useState,
   useTransition,
   type ReactNode,
@@ -90,6 +91,15 @@ export default function ApprovalsList({
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, startLoadMore] = useTransition();
   const [, startResolve] = useTransition();
+  // Which read the table is allowed to believe.
+  //
+  // Refresh and "Load older" are independent transitions, so both can be in
+  // flight at once — and their results are not interchangeable. A refresh
+  // landing first, then an older page from the walk it replaced, would leave
+  // rows from two different walks under a cursor matching neither. Each read
+  // claims a number before it starts and applies its result only if it is
+  // still the newest: last-started wins, superseded answers are dropped.
+  const reading = useRef(0);
   // The gate a denial is being confirmed for. Held here rather than in the row
   // so the dialog survives the row leaving the table optimistically.
   const [denyTarget, setDenyTarget] = useState<ApprovalGate | null>(null);
@@ -142,8 +152,9 @@ export default function ApprovalsList({
     setError(null);
     // Back to the first page: a refresh is "show me the inbox now", and
     // resuming mid-walk would hide rows raised since the first page was read.
+    const mine = ++reading.current;
     const fresh = await read();
-    if (fresh === null) return;
+    if (fresh === null || mine !== reading.current) return;
     setItems(fresh.items);
     setCursor(fresh.next_cursor);
   }, [read]);
@@ -152,9 +163,10 @@ export default function ApprovalsList({
   // one is held, so the click carries the position that was actually on screen.
   function loadMore(resume: string) {
     setError(null);
+    const mine = ++reading.current;
     startLoadMore(async () => {
       const older = await read(resume);
-      if (older === null) return;
+      if (older === null || mine !== reading.current) return;
       // Appended, not replaced. The keyset resumes strictly past the last row,
       // so a page cannot repeat one — but a gate resolved between the two reads
       // can arrive under its new status, and the id filter keeps it single.
@@ -194,8 +206,11 @@ export default function ApprovalsList({
       // The row does not leave the table, it changes state — so the answer is
       // read back and the row reappears under its new status, carrying who
       // decided it and when.
+      // The read-back claims a number too: a "Load older" started while the
+      // decision was in flight must not append onto the list this replaces.
+      const mine = ++reading.current;
       const fresh = await read();
-      if (fresh !== null) {
+      if (fresh !== null && mine === reading.current) {
         setItems(fresh.items);
         setCursor(fresh.next_cursor);
       }
