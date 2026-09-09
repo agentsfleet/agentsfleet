@@ -286,3 +286,87 @@ describe("ApprovalsList — reaching older approvals", () => {
     expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 });
+
+describe("ApprovalsList — two reads in flight at once", () => {
+  /** A promise this test resolves by hand, so the two reads can be interleaved. */
+  function deferred<T>() {
+    let settle: (value: T) => void = () => {};
+    const promise = new Promise<T>((resolve) => {
+      settle = resolve;
+    });
+    return { promise, settle };
+  }
+
+  it("drops the older page when a refresh started after it", async () => {
+    // The race Greptile named: both controls are independent transitions, so
+    // an operator can start "Load older" and then Refresh. If the older page
+    // were applied after the refresh, the table would hold rows from two
+    // different walks under a cursor matching neither.
+    const older = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    listApprovalsActionMock
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(fresh.promise);
+
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "newer-1" })],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    clickRefresh();
+    await waitFor(() => expect(listApprovalsActionMock).toHaveBeenCalledTimes(2));
+
+    // The refresh was started LAST, so its answer is the one that counts —
+    // even though the older page lands first.
+    fresh.settle({
+      ok: true,
+      data: { items: [gate({ gate_id: "refreshed", action_id: "a-r" })], next_cursor: null },
+    });
+    older.settle({
+      ok: true,
+      data: {
+        items: [gate({ gate_id: "stale", action_id: "a-s", fleet_id: AGENTSFLEET_B })],
+        next_cursor: "cur-stale",
+      },
+    });
+
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
+    // The superseded walk contributed nothing: no row of its own, and no
+    // control offering to continue it.
+    expect(screen.queryByText(AGENT_B_DISPLAY_NAME)).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /load older/i })).toBeNull(),
+    );
+  });
+
+  it("applies the older page when nothing superseded it", async () => {
+    // The same interleaving machinery, with only one read in flight — the
+    // guard must not drop a result that is still the newest.
+    const older = deferred<unknown>();
+    listApprovalsActionMock.mockReturnValueOnce(older.promise);
+
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "newer-1" })],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    older.settle({
+      ok: true,
+      data: {
+        items: [gate({ gate_id: "older-1", action_id: "a-o", fleet_id: AGENTSFLEET_B })],
+        next_cursor: null,
+      },
+    });
+
+    await waitFor(() => expect(screen.getByText(AGENT_B_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+  });
+});
