@@ -99,7 +99,7 @@ impl Resume {
 /// One resolved listing request: what to narrow by, where to resume, how many.
 #[derive(Debug)]
 pub(super) struct Listing {
-    /// The status the page is narrowed to; pending when absent.
+    /// The status the page is narrowed to; every state when absent.
     pub(super) status: Option<GateStatus>,
     /// The fleet the page is narrowed to.
     pub(super) fleet_id: Option<String>,
@@ -207,8 +207,11 @@ fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
+    // Every named state narrows, `pending` included. It used to collapse to
+    // `None` because absent MEANT pending and the two were the same request.
+    // Absent now means every state, so collapsing would make `?status=pending`
+    // — the one query an existing client is told to send — return all five.
     match GateStatus::parse(raw) {
-        Some(GateStatus::Pending) => Ok(None),
         Some(state) => Ok(Some(state)),
         None => Err(Refusal::malformed(DETAIL_STATUS)),
     }
