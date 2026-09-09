@@ -88,7 +88,11 @@ async fn assert_filters_narrow(
     };
 
     let all = read(router, &fixture.token, collection, "").await;
-    assert_eq!(ids(&all).len(), 4, "every pending gate is waiting: {all}");
+    assert_eq!(
+        ids(&all).len(),
+        4,
+        "an absent status reads every state: {all}"
+    );
 
     let by_kind = read(router, &fixture.token, collection, "?gate_kind=spend").await;
     assert_eq!(ids(&by_kind), vec![second.to_owned()], "{by_kind}");
@@ -118,8 +122,23 @@ async fn assert_filters_narrow(
         "an empty page points nowhere: {resolved}"
     );
 
+    // `?status=pending` must NARROW, and this fixture is all-pending, so a
+    // count alone proves nothing: it reads 4 whether the filter applies or is
+    // dropped. Asserted against a state the fixture does not hold instead —
+    // `status=approved` above is empty, so a pending page that equalled the
+    // unfiltered page would be the filter being ignored. The discriminating
+    // case is the pair: absent and pending agree here ONLY because every row
+    // is pending, and `parse_status` must still carry the state through.
     let explicit_pending = read(router, &fixture.token, collection, "?status=pending").await;
     assert_eq!(ids(&explicit_pending).len(), 4, "{explicit_pending}");
+    let mut pending_ids = ids(&explicit_pending);
+    let mut every_id = ids(&all);
+    pending_ids.sort_unstable();
+    every_id.sort_unstable();
+    assert_eq!(
+        pending_ids, every_id,
+        "with an all-pending fixture the two pages hold the same rows"
+    );
 
     // The killer's verdict is a state a row is really in, and this listing is
     // the only place it shows. A filter that could not name it left those

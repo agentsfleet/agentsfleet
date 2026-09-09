@@ -39,10 +39,10 @@ fn parsed(query: &str) -> Listing {
 }
 
 #[test]
-fn an_empty_query_is_the_pending_page_at_the_default_size() {
+fn an_empty_query_is_every_state_at_the_default_size() {
     let listing = parsed("");
     assert_eq!(listing.limit, DEFAULT_LIMIT);
-    assert!(listing.status.is_none(), "absent means pending");
+    assert!(listing.status.is_none(), "absent narrows nothing");
     assert!(listing.fleet_id.is_none());
     assert!(listing.gate_kind.is_none());
     assert!(listing.cursor.is_none());
@@ -75,7 +75,7 @@ fn every_state_a_row_can_be_in_maps_to_the_status_it_names() {
         parsed("status=auto_killed").status,
         Some(GateStatus::AutoKilled)
     );
-    assert_eq!(parsed("status=pending").status, None);
+    assert_eq!(parsed("status=pending").status, Some(GateStatus::Pending));
 }
 
 #[test]
@@ -110,9 +110,17 @@ fn a_broken_escape_refuses_the_request() {
 }
 
 #[test]
-fn pending_and_an_absent_status_are_the_same_request() {
-    assert_eq!(parsed("status=pending").status, None);
-    assert_eq!(parsed("").status, None);
+fn pending_and_an_absent_status_are_different_requests() {
+    // They were the same while absent MEANT pending. Absent now narrows
+    // nothing, so collapsing `?status=pending` into it would hand every state
+    // to the one caller who asked for exactly one — and that caller is an
+    // existing client following the migration note.
+    assert_eq!(
+        parsed("status=pending").status,
+        Some(GateStatus::Pending),
+        "an explicit pending still narrows to pending"
+    );
+    assert_eq!(parsed("").status, None, "absent narrows nothing");
 }
 
 #[test]
