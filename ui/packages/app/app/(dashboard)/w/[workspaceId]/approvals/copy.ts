@@ -68,3 +68,9 @@ export const DENY_CONFIRM_BODY =
 export const NO_APPROVALS_TITLE = "No approvals yet";
 export const NO_APPROVALS_DESCRIPTION =
   "Requests your fleets raise for human review appear here, and stay as the record of what was decided.";
+
+/** The control that fetches the page after the one on screen. */
+export const LOAD_MORE_LABEL = "Load older";
+
+/** Shown while that page is in flight. */
+export const LOADING_MORE_LABEL = "Loading…";
