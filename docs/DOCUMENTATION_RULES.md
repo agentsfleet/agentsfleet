@@ -1,6 +1,6 @@
 # Documentation rules
 
-> Parent: [`../AGENTS.md`](../AGENTS.orly.md) §Documentation voice. Read this before
+> Parent: [`../AGENTS.orly.md`](../AGENTS.orly.md) §Documentation voice. Read this before
 > any narrower guide such as `CHANGELOG_VOICE.md` or before editing documentation
 > about the dispatch model.
 

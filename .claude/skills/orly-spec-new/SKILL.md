@@ -74,6 +74,8 @@ This is the step that prevents greptile findings — the spec becomes a pre-comm
 - **Every Failure Mode → a negative test.** **Every Invariant → enforced by code** (compiler, lint, comptime assertion, runtime check) — never by review discipline.
 - **Every Metrics row → event/test proof.** User-facing or operator-facing specs declare product/operator signals, privacy guards, and analytics/funnel playbook updates; internal-only cleanup explicitly says no signal changed.
 - **Rubric = 5–12 outcome rows** — one per Section outcome, failure class, or hygiene gate (never per Dimension); each with a copy-paste Verify command and a mechanically checkable Expected (exit code / literal substring / match count). Standard rows come pre-filled in the template — prune to the touched surface.
+- **Stage-owned values** — keep branch and baseline measurement pending at authoring. Opening records the full comparison commit; unit and integration measurement is due before the Pull Request. The lifecycle dispatch owns command timing and hydration.
+- **Decision ownership** — identify agent choices, preparation outputs, and required human decisions. Human acceptance uses tier `manual` with a procedure and durable evidence; never invent the person's sign-off.
 - **Reporting spine** — **Discovery (consult log)** carries consults, skill-chain outcomes, and Indy-acked deferral quotes; the **Acceptance Rubric's Graded column** carries the VERIFY verdicts (✅/❌ + one decisive output line each). Both empty at creation, populated as work proceeds.
 
 → Fills **Sections (+ Dimensions)**, **Metrics & Observability**, **Failure Modes**, **Invariants**, **Test Specification (tiered)**, **Acceptance Rubric**, **Discovery**.
@@ -90,7 +92,7 @@ cp docs/TEMPLATE.md docs/v{N}/pending/M{N}_{WS}_P{P}_{CATEGORIES}_{NAME}.md
 ```
 
 
-**Fill grammar** — the template body is ordered for the *executing* agent (execution read order), not for authoring; fill sections in the order of Steps 1–3 above, not top-to-bottom. Replace every `{…}` slot with instance content, then **delete every `<!-- tpl: … -->` guidance comment** — the SPEC TEMPLATE GATE BLOCKs any survivor, unfilled slot sentinels, and missing required sections. The SPEC AUTHORING RULES banner is the one comment that stays.
+**Fill grammar** — the template body is ordered for the *executing* agent (execution read order), not for authoring; fill sections in the order of Steps 1–3 above, not top-to-bottom. Replace every `{{fill:description}}` authoring slot with instance content, then **delete every `<!-- tpl: … -->` guidance comment** — the SPEC TEMPLATE GATE BLOCKs any survivor, unfilled slot sentinels, and missing required sections. The SPEC AUTHORING RULES banner is the one comment that stays.
 
 **Inputs** — Milestone `M{N}` (next free, sortable) · Workstream `{WS}` zero-padded (`001`…) · Priority (**P0** blocking · **P1** customer/operator-facing · **P2** tooling · **P3** deferrable) · Category set alphabetised (`API` Zig/Go · `CLI` agentsfleet/Node · `UI` Next.js · `OBS` Grafana · `SKILL` SKILL.md · `INFRA` Terraform) · Name UPPER_SNAKE_CASE ≤6 words describing the outcome (`BUN_VENDOR_UTILITIES`, not `BUMP_BUN_DEPS`) · Prototype tag (`v1.0.0`, `v2.0.0` — drives `docs/v1/` vs `docs/v2/`).
 
