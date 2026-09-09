@@ -12,6 +12,8 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
 
+use afd_approval::{Origin, Requested, Wanted};
+
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
@@ -63,10 +65,9 @@ impl Plane {
                 credential,
                 integration,
             }) => {
-                // Parked, not refused: a human can grant this, and the delivery
-                // stays leasable so the next poll picks it up once they have.
-                let reason = format!("{credential} needs a grant for {integration}");
-                return no_work(runner_id, &reason);
+                return self
+                    .ungranted(runner_id, &admitted.acquired, credential, integration, now)
+                    .await;
             }
             // A fleet author's mistake, not an operational fault: nothing about
             // the next poll will be different, so the event ends.
@@ -84,6 +85,50 @@ impl Plane {
             }
         };
         self.issue_ready(runner_id, &admitted, *policy, now).await
+    }
+
+    /// Ask for the grant this delivery needs, and say what the poll answers.
+    ///
+    /// The backstop, not the design: a fleet installed after M194 leaves
+    /// install with this card already raised, and reaching here means the fleet
+    /// predates that or the install-time request could not be written. Asking
+    /// again is what makes the invariant unconditional — a park is a question,
+    /// never a silent loop — and the request is idempotent, so the one-second
+    /// redelivery cadence raises one card rather than sixty a minute.
+    ///
+    /// A DENIED grant ends the event. The gate that denied it carries no
+    /// `event_id` and so could not end anything itself; this is where a
+    /// person's no stops the redelivery, and it is the only outcome here that
+    /// is not a park.
+    async fn ungranted(
+        &self,
+        runner_id: &Uuid7,
+        acquired: &Acquired,
+        credential: &str,
+        integration: &str,
+        now: UnixMillis,
+    ) -> Result<String> {
+        let asked = self
+            .grants
+            .request(
+                &acquired.workspace_id,
+                &acquired.fleet_id,
+                Wanted {
+                    service: integration,
+                    credential,
+                    origin: Origin::Park,
+                },
+                now,
+            )
+            .await;
+        let reason = format!("{credential} needs a grant for {integration}");
+        match answers(written(asked, &acquired.fleet_id, integration)) {
+            Ungranted::Ends => {
+                self.refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
+                    .await
+            }
+            Ungranted::Waits => no_work(runner_id, &reason),
+        }
     }
 
     async fn issue_ready(
@@ -161,6 +206,76 @@ impl Plane {
     }
 }
 
+/// A park could not raise its card, and the write failed rather than the human.
+const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
+
+/// The request's answer, with a failure to write one REPORTED before it is dropped.
+///
+/// The error dies here either way — [`answers`] treats an unwritten request the
+/// same as an open question, because a datastore that would not answer is this
+/// instance's problem and reading its silence as a refusal would end deliveries
+/// on an outage. What it must not do is die QUIETLY. A park that could not raise
+/// its card answers the same `no_work` with the same reason as a park waiting on
+/// a person, so without this line the two are indistinguishable in the log while
+/// the delivery redelivers every second — which is precisely the failure with no
+/// error that this milestone exists to end, reproduced on the path that ends it.
+///
+/// [`crate::lease::pull::Plane::refused`] already reports the denial and
+/// `IntegrationGrants::request` reports what it wrote; the error was the one
+/// outcome nothing spoke for. The install path says the same thing at its own
+/// call site (`afd_fleet_lifecycle::install::grants`).
+fn written(
+    asked: Result<Requested, afd_approval::Error>,
+    fleet: &Uuid7,
+    service: &str,
+) -> Option<Requested> {
+    match asked {
+        Ok(answer) => Some(answer),
+        Err(unwritten) => {
+            let fleet_id = fleet.as_str();
+            let reason = unwritten.to_string();
+            tracing::warn!(
+                error_code = unwritten.code().as_str(),
+                event = EVENT_REQUEST_FAILED,
+                fleet_id,
+                service,
+                reason,
+                "the delivery parked without raising its grant card; the next poll asks again"
+            );
+            None
+        }
+    }
+}
+
+/// What an ungranted delivery does once the grant has been asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ungranted {
+    /// The delivery stays leasable and the next poll tries again.
+    Waits,
+    /// The event ends: nothing about the next poll would be different.
+    Ends,
+}
+
+/// Whether a park waits for an answer, or ends on one already given.
+///
+/// The one decision this arm adds, and it has exactly one terminal case. A
+/// person's NO is the only outcome that makes the next poll pointless — every
+/// other reading leaves a question a human can still answer, and ending an
+/// event on any of them would throw away work nobody refused.
+///
+/// `None` is a request that could not be WRITTEN, and it waits. Fail-closed
+/// here means keeping the event alive: a datastore that would not answer is
+/// this instance's problem, and reading its silence as a refusal would end
+/// deliveries on an outage.
+const fn answers(asked: Option<Requested>) -> Ungranted {
+    match asked {
+        Some(Requested::Denied) => Ungranted::Ends,
+        Some(Requested::Raised | Requested::Pending | Requested::Approved) | None => {
+            Ungranted::Waits
+        }
+    }
+}
+
 /// The credential names a fleet declared, as the vault read wants them.
 fn names(installed: &Installed) -> Vec<&str> {
     installed
@@ -170,3 +285,6 @@ fn names(installed: &Installed) -> Vec<&str> {
         .map(afd_fleet_runtime::CredentialName::as_str)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

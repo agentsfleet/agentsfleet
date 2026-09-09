@@ -204,6 +204,7 @@ impl Fixtures {
     pub(crate) fn plane(&self) -> Plane {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         Plane {
+            grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
             gates: self.gates(),
             accounts: Accounts::new(self.database.clone(), Entropy::new()),

@@ -15,6 +15,8 @@ mod support;
 mod integration_detail_count;
 #[path = "integration_install_credentials.rs"]
 mod integration_install_credentials;
+#[path = "integration_install_grants.rs"]
+mod integration_install_grants;
 #[path = "integration_install_rollback.rs"]
 mod integration_install_rollback;
 #[path = "integration_patch_visibility.rs"]

@@ -151,3 +151,49 @@ fn the_name_mismatch_pair_parses_and_disagrees() {
         "the fixture exists to disagree"
     );
 }
+
+/// A fleet may not author the daemon's own gate kind.
+///
+/// The wiring proof, and it is a separate claim from the validator's own unit
+/// test: `not_daemon_owned` refusing a string proves the function, not that
+/// `parse` ever reaches it. `gate_kind` sits inside `Option<Vec<GateRule>>` and
+/// is only reached because `Gates::rules` carries `#[garde(dive)]`, so a lost
+/// `dive` would leave the guard present and inert — the shape this repository has
+/// been bitten by before (a producer graded as declared, never as called).
+///
+/// The escalation being refused: the kind travels verbatim onto the approval
+/// card, and `afd_approval`'s resolve moves a credential grant for cards of this
+/// kind. A fleet that could spell it would get an operator to hand it standing
+/// permission to mint a third party's credentials while answering about a tool.
+#[test]
+fn a_fleet_may_not_author_a_daemon_owned_gate_kind() {
+    for reserved in ["integration_grant", "repository_write"] {
+        let document = trigger_declaring_gate_kind(reserved);
+        let refused = parse_trigger(&document);
+        assert!(
+            refused.is_err(),
+            "{reserved} must be refused through parse, not merely by the validator"
+        );
+    }
+}
+
+/// The same document with an ordinary kind still parses.
+///
+/// Without this the test above would also pass if the document were malformed
+/// for some unrelated reason, which would make the guard look wired when it was
+/// not.
+#[test]
+fn an_ordinary_gate_kind_still_parses_in_the_same_document() {
+    let document = trigger_declaring_gate_kind("destructive_action");
+    let parsed = parse_trigger(&document).expect("an ordinary kind is a fleet's own business");
+    assert_eq!(parsed.config().name().as_str(), "gate-kind-probe");
+}
+
+/// One trigger document whose single gate rule declares `kind`.
+fn trigger_declaring_gate_kind(kind: &str) -> String {
+    format!(
+        "---\nname: gate-kind-probe\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
+         budget:\n    daily_dollars: 1.0\n  gates:\n    rules:\n      - tool: shell\n        \
+         action: run\n        gate_kind: {kind}\n---\n"
+    )
+}

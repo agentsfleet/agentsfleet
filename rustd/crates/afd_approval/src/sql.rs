@@ -68,6 +68,27 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
+/// **`r.event_id IS NULL` is an authorisation predicate, not a filter.** Without
+/// it this arm trusts two columns a fleet controls. `gate_kind` is copied
+/// verbatim from the matched rule (`afd_gate::gate::detail::Stated::under` —
+/// `self.kind = &rule.gate_kind`) and the raw config validates it for length
+/// alone (`afd_fleet_runtime::config::raw::gates`), while `evidence` is read out
+/// of the event body. A fleet could therefore declare `gate_kind:
+/// "integration_grant"` on any benign tool, emit an event carrying
+/// `{"evidence":{"service":"github"}}`, and have the ordinary-looking card that
+/// raises flip its own standing permission to mint that service's credentials —
+/// granted by an operator who was answering a different question. `repository_write`
+/// is defended twice over (`Stated::write_kind` overwrites an authored kind, and
+/// [`SELECT_APPROVED_WRITE_GATE`] demands a `stated_binding` and this build's
+/// ceiling); this kind had nothing.
+///
+/// The event column is the discriminator because it is the one thing on this row
+/// a fleet cannot reach. [`REQUEST_GRANT`] writes NULL there by construction
+/// (Invariant 5 — a continuation event beside a leasable delivery runs the work
+/// twice), and every rules-path gate carries a real one: `afd_gate`'s insert
+/// binds `event_id: &str`, not an `Option`, so a card raised from an event can
+/// never be NULL. A forged kind now moves no grant.
+///
 /// The trailing count is how many of the fleet's gates still wait once this
 /// action is answered, read in the same statement so the frame announcing the
 /// answer costs no second round trip. A data-modifying CTE and the select
@@ -83,7 +104,8 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 pub(crate) const RESOLVE_GATE: &str = "\
 WITH resolved AS (
   UPDATE core.fleet_approval_gates
-  SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
+  SET status = $1, detail = $2, resolved_by = $3, updated_at = $4,
+      active_grant_id = NULL
   WHERE action_id = $5 AND status = $6
     AND ($7::text = '' OR fleet_id::text = $7)
   RETURNING id, action_id, workspace_id, fleet_id, status,
@@ -97,6 +119,7 @@ WITH resolved AS (
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
     AND r.gate_kind = $11
+    AND r.event_id IS NULL
     AND g.status != $10
   RETURNING g.id
 )
@@ -138,7 +161,8 @@ ORDER BY created_at DESC LIMIT 1";
 pub(crate) const EXPIRE_GATES: &str = "\
 WITH swept AS (
   UPDATE core.fleet_approval_gates
-  SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
+  SET status = $1, resolved_by = $3, detail = $4, updated_at = $5,
+      active_grant_id = NULL
   WHERE status = $2 AND timeout_at <= $5
   RETURNING id, fleet_id, event_id
 )
@@ -155,10 +179,21 @@ FROM swept s";
 /// and compares it in the handler, which is one round trip's worth of row to
 /// answer a yes-or-no the predicate can answer itself.
 ///
-/// Both grant verbs run it FIRST, because both must tell "no such fleet here"
-/// from their own absent row, and the two carry different codes. A fleet in
-/// another workspace answers no rows — never a 403 — so the endpoint cannot be
-/// an oracle for which fleet identifiers are real.
+/// The two TENANT-FACING verbs run it FIRST, because both must tell "no such
+/// fleet here" from their own absent row, and the two carry different codes. A
+/// fleet in another workspace answers no rows — never a 403 — so the endpoint
+/// cannot be an oracle for which fleet identifiers are real.
+///
+/// [`REQUEST_GRANT`] deliberately does NOT run it, and the reason is the caller
+/// rather than the statement: both of its callers derive the workspace and the
+/// fleet from ONE trusted row — the install from the fleet it just wrote into
+/// the authenticated workspace, the park from the `Acquired` lease it is
+/// serving — so there is no untrusted pair to reject, and the park path would
+/// pay the round trip once per second to re-answer a question its own lease
+/// row already settled. No endpoint takes a caller-supplied `(workspace,
+/// fleet)` pair into that statement; the precondition on
+/// `IntegrationGrants::request` is what keeps that true, and a third caller
+/// that cannot honour it must run this check itself before asking.
 pub(crate) const SELECT_FLEET_IN_WORKSPACE: &str = "\
 SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
 
@@ -200,3 +235,43 @@ WHERE g.id = $3::uuid
   AND z.workspace_id = $5::uuid
   AND g.status != $1
 RETURNING g.id";
+
+/// Ensures the grant exists before the card statement takes its snapshot.
+/// Both statements run in one transaction: failure to raise rolls back the grant.
+pub(crate) const ENSURE_GRANT: &str = "\
+INSERT INTO core.integration_grants
+  (id, fleet_id, service, status, requested_reason, created_at)
+VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+ON CONFLICT (fleet_id, service) DO NOTHING";
+
+/// Raises a card using the existing grant's identity, including when a concurrent
+/// insert won. Locking the grant serializes requests with its approval/revocation;
+/// the unique active reference arbitrates cards without a status-dependent index.
+/// A NULL `event_id` prevents approval from enqueueing duplicate delivery work.
+///
+/// $1 fleet, $2 service, $3 grant status, $4 now, $5 card, $6 workspace,
+/// $7 action, $8 tool, $9 action name, $10 kind, $11 proposal, $12 evidence,
+/// $13 radius, $14 deadline, $15 card status.
+pub(crate) const REQUEST_GRANT: &str = "\
+WITH requested AS (
+  SELECT id, status FROM core.integration_grants
+  WHERE fleet_id = $1::uuid AND service = $2
+  FOR UPDATE
+), raised AS (
+  INSERT INTO core.fleet_approval_gates
+    (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+     gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+     resolved_by, status, detail, created_at, event_id, stated_binding,
+     spend_count, spend_ceiling, active_grant_id)
+  SELECT $5::uuid, $1::uuid, $6::uuid, $7, $8, $9,
+         $10, $11, $12::jsonb, $13, $14,
+         '', $15, '', $4, NULL, NULL, NULL, NULL, requested.id
+  FROM requested
+  WHERE requested.status = $3 AND NOT EXISTS (
+    SELECT 1 FROM core.fleet_approval_gates g
+    WHERE g.active_grant_id = requested.id
+  )
+  ON CONFLICT (active_grant_id) DO NOTHING
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM raised), requested.status FROM requested";

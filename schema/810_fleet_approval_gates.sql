@@ -21,15 +21,15 @@
 --                    would sweep every pending row on the next cycle,
 --                    auto-denying gates outside the writer's intent.
 --   resolved_by      attribution across channels
---   status           vocabulary in fleet/approval_gate.zig GateStatus. No
---                    DEFAULT — every INSERT supplies it explicitly, so renaming
---                    a variant cannot drift past the type system (RULE STS).
+--   status           application-supplied vocabulary; no default (RULE STS).
 
 CREATE TABLE IF NOT EXISTS core.fleet_approval_gates (
     id              UUID   PRIMARY KEY,
     CONSTRAINT ck_fleet_approval_gates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id        UUID   NOT NULL REFERENCES core.fleets(id) ON DELETE CASCADE,
     workspace_id    UUID   NOT NULL REFERENCES core.workspaces(id) ON DELETE CASCADE,
+    -- Only an actionable grant card holds this reference; resolution clears it.
+    active_grant_id UUID REFERENCES core.integration_grants(id),
     action_id       TEXT   NOT NULL,
     tool_name       TEXT   NOT NULL,
     action_name     TEXT   NOT NULL,
@@ -62,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_approval_gates_workspace_id_status_created_
 
 -- Reader: the timeout sweeper, which scans pending rows past their deadline
 -- every cycle. The literal in the predicate names its application constant: it
--- is fleet/approval_gate.zig GateStatus.pending, and a partial index requires a
+-- is afd_wire::approval::status::PENDING, and a partial index requires a
 -- SQL predicate to express it. The same value appears in the
 -- trigger below, and the two must agree.
 CREATE INDEX IF NOT EXISTS idx_fleet_approval_gates_timeout_at_pending
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_approval_gates_timeout_at_pending
 -- trigger, so those transactions opt in with a transaction-scoped setting that
 -- dies with the transaction; every other DELETE still raises.
 --
--- The `pending` literal mirrors GateStatus.pending, as in the sweeper index above.
+-- The `pending` literal mirrors afd_wire::approval::status::PENDING, as in the sweeper index above.
 CREATE OR REPLACE FUNCTION core.fleet_approval_gates_append_only() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN

@@ -84,3 +84,6 @@ mod serve;
 mod signal;
 #[path = "supervisor.rs"]
 mod supervisor;
+
+#[path = "integration_grant_denial.rs"]
+mod integration_grant_denial;

@@ -83,6 +83,15 @@ pub mod label {
     /// A human was asked and the deadline passed.
     pub const APPROVAL_EXPIRED: &str = "approval_expired";
 
+    /// A human refused the fleet's standing permission to mint an integration.
+    ///
+    /// Distinct from [`APPROVAL_DENIED`], which is one action refused: this is
+    /// the fleet's whole relationship with a third party answered no, so the
+    /// remedy is a new grant rather than a re-run. Spelling them the same would
+    /// send an operator looking at the event when the answer is on the
+    /// integration.
+    pub const GRANT_DENIED: &str = "grant_denied";
+
     /// The event names a type this daemon has no execution path for.
     ///
     /// New in the Rust port, and it has no Zig counterpart because the Zig
