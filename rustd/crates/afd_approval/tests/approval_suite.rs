@@ -27,6 +27,8 @@
 )]
 mod lane;
 
+#[path = "integration_grant_request.rs"]
+mod integration_grant_request;
 #[path = "integration_grants.rs"]
 mod integration_grants;
 #[path = "integration_inbox.rs"]

@@ -194,7 +194,12 @@ impl ServingPlane {
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
             workspaces: Workspaces::new(database.clone(), Entropy::new()),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            fleets: Fleets::new(
+                database.clone(),
+                queue.clone(),
+                Arc::clone(&kek),
+                Entropy::new(),
+            ),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
@@ -203,7 +208,7 @@ impl ServingPlane {
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
+            grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             steering: afd_events::Steer::new(queue.clone()),
             // The SAME key every other sealing store takes, so the signing
@@ -259,6 +264,10 @@ impl ServingPlane {
             leases: Plane {
                 leases: Leases::new(database.clone(), queue.clone(), Entropy::new()),
                 gates: Gates::new(database.clone(), queue, Entropy::new()),
+                // The same surface the tenant plane's `grants` field holds,
+                // over the same table: a delivery that finds no grant asks
+                // through the crate that owns the row rather than writing one.
+                grants: IntegrationGrants::new(database.clone(), Entropy::new()),
                 accounts: Accounts::new(database.clone(), Entropy::new()),
                 memories: Memories::new(database.clone(), Entropy::new()),
                 providers,

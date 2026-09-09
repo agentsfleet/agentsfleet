@@ -33,6 +33,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_wire::grant::status;
 use sqlx::Row as _;
@@ -95,13 +96,30 @@ pub enum Revocation {
 #[derive(Debug, Clone)]
 pub struct IntegrationGrants {
     database: Db,
+    entropy: Entropy,
 }
 
 impl IntegrationGrants {
-    /// A grant surface over `database`.
+    /// A grant surface over `database`, minting through `entropy`.
+    ///
+    /// The entropy source arrives for the same reason
+    /// [`afd_gate`](https://docs.rs/afd_gate)'s gate store takes one: the
+    /// request beside these two verbs mints the identifiers of the rows it
+    /// writes, and it draws them through the workspace's one entropy surface
+    /// rather than a second source with its own failure mode.
     #[must_use]
-    pub const fn new(database: Db) -> Self {
-        Self { database }
+    pub const fn new(database: Db, entropy: Entropy) -> Self {
+        Self { database, entropy }
+    }
+
+    /// The pool this surface reads and writes through.
+    pub(crate) const fn database(&self) -> &Db {
+        &self.database
+    }
+
+    /// The entropy source a requested row draws its identifiers from.
+    pub(crate) const fn entropy(&self) -> &Entropy {
+        &self.entropy
     }
 
     /// Every grant `fleet` holds, newest first.

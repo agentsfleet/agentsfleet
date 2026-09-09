@@ -19,6 +19,9 @@ workspace = true
 [dependencies]
 # Identifiers, the clock a decision is stamped with, and the registry codes.
 afd_core.workspace = true
+# Entropy for the identifiers a grant request mints — the grant row, its gate,
+# and the action a person answers about.
+afd_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # `core.fleet_events`. The continuation insert this crate used to carry a

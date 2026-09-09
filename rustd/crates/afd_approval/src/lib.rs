@@ -38,6 +38,7 @@ mod error;
 mod gate_status;
 mod grant;
 mod inbox;
+mod request;
 mod sql;
 
 pub use self::decision::Decision;
@@ -45,3 +46,7 @@ pub use self::error::{Error, Result};
 pub use self::gate_status::GateStatus;
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
+pub use self::request::{
+    EVIDENCE_SERVICE, KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL,
+    REASON_WANTED_BY_A_DELIVERY, Requested, Wanted,
+};

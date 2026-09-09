@@ -200,3 +200,75 @@ WHERE g.id = $3::uuid
   AND z.workspace_id = $5::uuid
   AND g.status != $1
 RETURNING g.id";
+
+/// Raises one pending grant and the card a person answers it on, together.
+///
+/// The third verb of `core.integration_grants`. [`SELECT_FLEET_GRANTS`] reads
+/// them and [`REVOKE_GRANT`] takes one back; until this statement existed
+/// nothing wrote one outside a test, so [`RESOLVE_GATE`]'s `granted` arm — the
+/// approve half, complete and covered — had no row it could ever move.
+///
+/// **One statement because the two writes are one fact.** A grant with no card
+/// is a question nobody can see; a card with no grant resolves cleanly and
+/// moves nothing. A data-modifying CTE puts both on one snapshot, so the pair
+/// lands or neither does — the same argument [`RESOLVE_GATE`] makes for keeping
+/// the resolve and the grant move together.
+///
+/// **`ON CONFLICT DO NOTHING` is the idempotence, and it is the table's.**
+/// `uq_integration_grants_fleet_id_service` already says a fleet holds one
+/// grant per service, so a second install of the same bundle collides rather
+/// than being talked out of the write by a read this statement would have to
+/// trust.
+///
+/// **The card's guard is `NOT EXISTS`, and it asks two things.** No second card
+/// while one is still pending — a delivery re-parking every second must raise
+/// one question, not sixty a minute — and no card at all once the grant has
+/// been answered: an `approved` grant needs no question, and a `revoked` one is
+/// a person's no that re-asking would talk over. Both read the snapshot this
+/// statement opened on, which is what the redelivery cadence actually needs;
+/// the unique constraint above is what holds under genuine concurrency.
+///
+/// The gate is raised with a NULL `event_id`, which `schema/811`'s own comment
+/// names as this row's case: an approval carrying one lands a continuation
+/// event BESIDE the still-leasable delivery, and the fleet runs the work twice.
+///
+/// The trailing select reads the PRIOR state — a data-modifying CTE and the
+/// select after it share one snapshot (PostgreSQL, "Data-Modifying Statements
+/// in WITH"), so the status column here is what this statement FOUND, never
+/// what it just wrote. That is the answer the park path turns on: a grant found
+/// `revoked` ends its event instead of parking again.
+///
+/// `$1` grant row, `$2` fleet, `$3` service, `$4` pending grant status,
+/// `$5` reason, `$6` now, `$7` gate row, `$8` workspace, `$9` action,
+/// `$10` tool, `$11` action name, `$12` gate kind, `$13` proposed action,
+/// `$14` evidence, `$15` blast radius, `$16` deadline, `$17` pending gate
+/// status.
+pub(crate) const REQUEST_GRANT: &str = "\
+WITH requested AS (
+  INSERT INTO core.integration_grants
+    (id, fleet_id, service, status, requested_reason, created_at)
+  VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+  ON CONFLICT (fleet_id, service) DO NOTHING
+  RETURNING id
+), raised AS (
+  INSERT INTO core.fleet_approval_gates
+    (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+     gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+     resolved_by, status, detail, created_at, event_id, stated_binding,
+     spend_count, spend_ceiling)
+  SELECT $7::uuid, $2::uuid, $8::uuid, $9, $10, $11,
+         $12, $13, $14::jsonb, $15, $16,
+         '', $17, '', $6, NULL, NULL, NULL, NULL
+  WHERE NOT EXISTS (
+    SELECT 1 FROM core.fleet_approval_gates g
+     WHERE g.fleet_id = $2::uuid AND g.gate_kind = $12
+       AND g.status = $17 AND g.evidence->>'service' = $3
+  ) AND NOT EXISTS (
+    SELECT 1 FROM core.integration_grants g
+     WHERE g.fleet_id = $2::uuid AND g.service = $3 AND g.status != $4
+  )
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM requested), (SELECT COUNT(*) FROM raised),
+       (SELECT status FROM core.integration_grants
+         WHERE fleet_id = $2::uuid AND service = $3)";

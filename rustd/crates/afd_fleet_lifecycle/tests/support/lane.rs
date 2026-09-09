@@ -21,11 +21,13 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -45,6 +47,21 @@ const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 /// Port 1 is reserved and unbound on every platform this builds for, so a
 /// connection fails on refusal rather than waiting out a timeout.
 const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// The key this lane seals and opens every stored handle under.
+///
+/// Fixed bytes, and the SAME value the store gets: the install classifies a
+/// declared credential by opening its handle, so a lane sealing under one key
+/// and building [`Fleets`] with another would prove nothing but that a wrong
+/// key fails.
+const FIXTURE_KEK: [u8; 32] = [0x4d; 32];
+
+/// A stored handle with no `integration` field — a static credential.
+pub(crate) const STATIC_HANDLE: &str = r#"{"token":"ghp-fixture"}"#;
+
+/// A stored handle naming the GitHub connector, which mints on demand.
+pub(crate) const GITHUB_HANDLE: &str =
+    r#"{"integration":"github","app_id":"7","installation_id":"42"}"#;
 
 /// The instant every fixture row is stamped with.
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
@@ -91,6 +108,14 @@ pub(crate) const TRIGGER_MD_EDITED: &str = "---\nname: daily-digest\nx-agentsfle
 /// being wrong about the write: an idempotent write is not a version moving.
 pub(crate) const TRIGGER_MD_RIVAL: &str = "---\nname: daily-digest\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: 9.0\n---\n";
 
+/// The fixture WRITES, in a file of their own.
+///
+/// A child module rather than a sibling so it reaches this one's constants —
+/// the key it seals under and the instant it stamps are the lane's, and a copy
+/// of either would be a fixture that sealed under a key the store cannot open.
+#[path = "lane_seed.rs"]
+mod seed;
+
 /// A migrated database, a queue, and the store over both.
 pub(crate) struct Lane {
     database: TestDatabase,
@@ -115,7 +140,12 @@ impl Lane {
         let queue = afd_redis::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
-        let fleets = Fleets::new(pool.clone(), queue.clone(), Entropy::new());
+        let fleets = Fleets::new(
+            pool.clone(),
+            queue.clone(),
+            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+            Entropy::new(),
+        );
 
         let lane = Self {
             tenant: mint(),
@@ -141,7 +171,12 @@ impl Lane {
         let config = RedisConfig::from_url(RedisRole::Default, NOWHERE.to_owned())
             .with_request_timeout(Duration::from_millis(250));
         let dead = Redis::unreachable(&config).expect("a lazy manager opens no socket");
-        Fleets::new(self.pool.clone(), dead, Entropy::new())
+        Fleets::new(
+            self.pool.clone(),
+            dead,
+            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+            Entropy::new(),
+        )
     }
 
     /// A second workspace under the same tenant, for the cross-workspace proofs.
@@ -221,65 +256,6 @@ impl Lane {
             .expect("occupying the stream key");
     }
 
-    /// Seeds one platform library entry, idempotently.
-    ///
-    /// `ON CONFLICT (id) DO NOTHING`, because every lane seeds this row into one
-    /// shared database. Whichever lane runs FIRST therefore decides the stored
-    /// content — correct for [`LIBRARY_ID`], which is identical every time, and
-    /// wrong for a caller wanting different markdown under a reused id.
-    pub(crate) async fn seed_library_entry(
-        &self,
-        id: &str,
-        skill_markdown: &str,
-        trigger_markdown: Option<&str>,
-    ) {
-        sqlx::query(
-            "INSERT INTO core.fleet_library \
-               (id, name, description, source_repo, source_path, source_ref, \
-                required_credentials, required_credentials_reasons, required_tools, \
-                network_hosts, visibility, content_hash, skill_markdown, trigger_markdown, \
-                created_at, updated_at) \
-             VALUES ($1, $1, 'fixture', 'repo', 'path', 'main', \
-                     '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, \
-                     $2, $3, $4, $5, $6, $6) \
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(id)
-        .bind(VISIBILITY_PUBLIC)
-        .bind(format!("sha256:{id}"))
-        .bind(skill_markdown)
-        .bind(trigger_markdown)
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a library entry");
-    }
-
-    /// Stores one credential NAME in this lane's workspace.
-    ///
-    /// The envelope columns take placeholder bytes: the pre-flight this seeds
-    /// for reads names and never opens a secret, so a real sealed value would
-    /// be ceremony proving nothing. A test that decrypted would belong to the
-    /// vault's own suite.
-    pub(crate) async fn seed_secret(&self, key_name: &str) {
-        sqlx::query(
-            "INSERT INTO vault.secrets \
-               (id, workspace_id, key_name, kek_version, \
-                encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, \
-                created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, 1, \
-                     '\\x00', '\\x00', '\\x00', '\\x00', '\\x00', '\\x00', \
-                     $4, $4)",
-        )
-        .bind(afd_db::test_util::mint_id())
-        .bind(self.workspace.as_str())
-        .bind(key_name)
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a workspace secret");
-    }
-
     /// The instant this suite stamps writes with.
     pub(crate) const fn now() -> UnixMillis {
         UnixMillis::from_millis(NOW_MS)
@@ -291,7 +267,7 @@ impl Lane {
     }
 
     /// One pooled connection, for the fixture's own reads and writes.
-    async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
+    pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool
             .acquire()
             .await
