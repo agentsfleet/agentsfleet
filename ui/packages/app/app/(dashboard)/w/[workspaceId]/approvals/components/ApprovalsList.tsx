@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   Alert,
+  Button,
   ConfirmDialog,
   EmptyState,
   SectionHeader,
@@ -22,7 +23,11 @@ import {
   denyApprovalAction,
   listApprovalsAction,
 } from "../actions";
-import { type ApprovalGate, type ResolveOutcome } from "@/lib/api/approvals";
+import {
+  type ApprovalGate,
+  type ApprovalsListResponse,
+  type ResolveOutcome,
+} from "@/lib/api/approvals";
 import {
   APPROVAL_DECISION,
   APPROVALS_PAGE_LIMIT,
@@ -36,6 +41,8 @@ import {
   DENY_CONFIRM_BODY,
   DENY_CONFIRM_TITLE,
   DENY_LABEL,
+  LOADING_MORE_LABEL,
+  LOAD_MORE_LABEL,
   NO_APPROVALS_DESCRIPTION,
   NO_APPROVALS_TITLE,
 } from "../copy";
@@ -52,6 +59,11 @@ function rejectedCall(cause: unknown): ActionResult<ResolveOutcome> {
   return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
 }
 
+/** The same, for a read. A rejected read is a failed read, not a crash. */
+function rejectedRead(cause: unknown): ActionResult<ApprovalsListResponse> {
+  return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+}
+
 type Props = {
   workspaceId: string;
   initialItems: ApprovalGate[];
@@ -60,12 +72,23 @@ type Props = {
   fleetId?: string;
 };
 
-export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Props) {
+export default function ApprovalsList({
+  workspaceId,
+  initialItems,
+  initialCursor,
+  fleetId,
+}: Props) {
   // The server rendered every row, in the order the table wants them. There is
   // no mount read to merge in and nothing to sort here: `SELECT_GATE_PAGE`
   // orders newest-first, which is what this table shows top-down.
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
+  // Where the NEXT page resumes, or null on the last one. Held because the
+  // page is capped at `APPROVALS_PAGE_LIMIT`: without it a workspace past that
+  // many gates simply cannot reach its older ones, and the table's own pager
+  // only re-divides the rows already fetched.
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, startLoadMore] = useTransition();
   const [, startResolve] = useTransition();
   // The gate a denial is being confirmed for. Held here rather than in the row
   // so the dialog survives the row leaving the table optimistically.
@@ -84,32 +107,64 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
   //
   // One call, because the API answers every state from one query now. It was
   // five reads merged here, and before that five Server Actions from this
-  // component, which Next ran one at a time.
-  const read = useCallback(async (): Promise<ApprovalGate[] | null> => {
-    const page = await listApprovalsAction(workspaceId, {
-      limit: APPROVALS_PAGE_LIMIT,
-      fleetId,
-    });
-    if (!page.ok) {
-      setError(
-        page.status === 401
-          ? SESSION_EXPIRED
-          : presentErrorString({
-              errorCode: page.errorCode,
-              message: page.error,
-              action: "read the approvals",
-            }),
-      );
-      return null;
-    }
-    return page.data.items;
-  }, [workspaceId, fleetId]);
+  // component, which Next ran one at a time. `resume` is the cursor to continue
+  // from, or undefined for the first page.
+  //
+  // The Server Action call itself rejecting — the viewer going offline during a
+  // Refresh, RSC transport down — is a failed read like any other. Left
+  // uncaught it escapes the transition and takes the whole inbox to the error
+  // boundary, which is the one outcome worse than a stale table.
+  const read = useCallback(
+    async (resume?: string): Promise<ApprovalsListResponse | null> => {
+      const page = await listApprovalsAction(workspaceId, {
+        limit: APPROVALS_PAGE_LIMIT,
+        fleetId,
+        cursor: resume,
+      }).catch(rejectedRead);
+      if (!page.ok) {
+        setError(
+          page.status === 401
+            ? SESSION_EXPIRED
+            : presentErrorString({
+                errorCode: page.errorCode,
+                message: page.error,
+                action: "read the approvals",
+              }),
+        );
+        return null;
+      }
+      return page.data;
+    },
+    [workspaceId, fleetId],
+  );
 
   const refresh = useCallback(async () => {
     setError(null);
+    // Back to the first page: a refresh is "show me the inbox now", and
+    // resuming mid-walk would hide rows raised since the first page was read.
     const fresh = await read();
-    if (fresh !== null) setItems(fresh);
+    if (fresh === null) return;
+    setItems(fresh.items);
+    setCursor(fresh.next_cursor);
   }, [read]);
+
+  // Takes the cursor rather than reading state: the control only exists while
+  // one is held, so the click carries the position that was actually on screen.
+  function loadMore(resume: string) {
+    setError(null);
+    startLoadMore(async () => {
+      const older = await read(resume);
+      if (older === null) return;
+      // Appended, not replaced. The keyset resumes strictly past the last row,
+      // so a page cannot repeat one — but a gate resolved between the two reads
+      // can arrive under its new status, and the id filter keeps it single.
+      setItems((shown) => {
+        const seen = new Set(shown.map((gate) => gate.gate_id));
+        return [...shown, ...older.items.filter((gate) => !seen.has(gate.gate_id))];
+      });
+      setCursor(older.next_cursor);
+    });
+  }
 
   function resolve(gateId: string, decision: ApprovalDecision) {
     setError(null);
@@ -140,7 +195,10 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
       // read back and the row reappears under its new status, carrying who
       // decided it and when.
       const fresh = await read();
-      if (fresh !== null) setItems(fresh);
+      if (fresh !== null) {
+        setItems(fresh.items);
+        setCursor(fresh.next_cursor);
+      }
     });
   }
 
@@ -202,6 +260,19 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
         intent="destructive"
         onConfirm={denyTarget ? () => confirmDeny(denyTarget) : undefined}
       />
+
+      {cursor !== null ? (
+        <div className="mt-md flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadMore(cursor)}
+            disabled={loadingMore}
+          >
+            {loadingMore ? LOADING_MORE_LABEL : LOAD_MORE_LABEL}
+          </Button>
+        </div>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive" className="mt-3">{error}</Alert>

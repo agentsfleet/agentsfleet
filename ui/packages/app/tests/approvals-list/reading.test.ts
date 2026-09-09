@@ -156,3 +156,133 @@ describe("ApprovalsList — one read, and only when asked", () => {
     expect(requestedOpts()[0]?.fleetId).toBe("fleet-scope");
   });
 });
+
+describe("ApprovalsList — reaching older approvals", () => {
+  it("offers no control when the server said this is the last page", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    expect(screen.queryByRole("button", { name: /load older/i })).toBeNull();
+  });
+
+  it("walks the cursor and appends the older page", async () => {
+    // The page is capped at APPROVALS_PAGE_LIMIT. Without this the inbox simply
+    // could not reach a workspace's older gates: the table's own pager just
+    // re-divides the rows already fetched.
+    listApprovalsActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        items: [gate({ gate_id: "older-1", action_id: "a-old", fleet_id: AGENTSFLEET_B })],
+        next_cursor: null,
+      },
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "newer-1" })],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    await waitFor(() => expect(screen.getByText(AGENT_B_DISPLAY_NAME)).toBeTruthy());
+    // Appended, not replaced: the first page is still on screen.
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+    expect(requestedOpts()[0]?.cursor).toBe("cur-1");
+    // The server said that was the last page, so the control goes.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /load older/i })).toBeNull(),
+    );
+  });
+
+  it("does not show a gate twice when it arrives on both pages", async () => {
+    // The keyset resumes strictly past the last row, so a page cannot repeat
+    // one — but a gate resolved between the two reads can arrive under its new
+    // status, and a duplicate row would be the operator seeing double.
+    listApprovalsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [gate({ gate_id: "newer-1" })], next_cursor: null },
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "newer-1" })],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    await waitFor(() => expect(listApprovalsActionMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getAllByText(AGENT_A_DISPLAY_NAME)).toHaveLength(1));
+  });
+
+  it("keeps the rows and the cursor when the older page is refused", async () => {
+    listApprovalsActionMock.mockResolvedValue({
+      ok: false,
+      error: "upstream is down",
+      status: 503,
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/upstream is down/i));
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+    // Still offered: a failed page is not the end of the walk. Waited for, not
+    // sampled — the control reads "Loading…" until the transition ends.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /load older/i })).toBeTruthy(),
+    );
+  });
+
+  it("treats a rejected read as a failed read, not a crash", async () => {
+    // The viewer goes offline mid-Refresh and the Server Action REJECTS rather
+    // than resolving `ok: false`. Uncaught, that escapes the transition and
+    // takes the whole inbox to the error boundary — worse than a stale table.
+    listApprovalsActionMock.mockRejectedValue(new Error("Failed to fetch"));
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    // Surfaced through the same curated copy a refused read gets, and the
+    // table is still standing — which is the property. Uncaught, this would
+    // have reached the error boundary instead.
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/couldn't read the approvals/i),
+    );
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+  });
+
+  it("carries a non-Error rejection through as its own text", async () => {
+    listApprovalsActionMock.mockRejectedValue("socket closed");
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    // A thrown string has no `.message`; `rejectedRead` stringifies it rather
+    // than reading `undefined`, so the read still resolves to a failure.
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/couldn't read the approvals/i),
+    );
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+  });
+});
