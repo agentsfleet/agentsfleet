@@ -6,16 +6,16 @@
 **Milestone:** M194
 **Workstream:** 001
 **Date:** Sep 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — no fleet declaring a mintable credential can run in production. Every teammate in `library/*` declares one. The acceptance walk stopped here.
 **Categories:** API, INFRA, UI
 **Batch:** B1 — single workstream; the grant path is one change and its test is one lane.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m194-grant-request-path`
+**Baseline revision:** `509803cf1a3e2765919c99887bcd03ff86d29ab0`
+**Test Baseline:** pending — measured before the Pull Request (declared lanes: `make test-unit-all`, `make test-integration-rustd`)
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M193_001 (its walk found the defect and its verdict file names the build; this spec is what lets that walk finish)
-**Inherits from M193_001 under the scope-transfer clause (`docs/TEMPLATE.md:325`):** rubric row R3 (the seven playbook steps reach their observations) → R1 here · rubric row R4 (the verdict is recorded and accepted) → R2 here · Dimension 2.2 (the three state-change steps photographed, IN_PROGRESS there because step 6 was never reached) → Dimension 4.3 here. M193_001's walk stopped at step 4 on this defect and cannot pass until it is fixed. Both specs record the mapping; M193_001 marks those rows `MOVED to M194_001`.
+**Inherits from M193_001 under the scope-transfer clause (`docs/TEMPLATE.md:325`):** rubric row R3 (the seven playbook steps reach their observations) → R1 here · rubric row R4 (the verdict is recorded and accepted) → R2 here · Dimension 2.2 (the three state-change steps photographed, `MOVED` there because step 6 was never reached) → Dimension 4.3 here. M193_001's walk stopped at step 4 on this defect and cannot pass until it is fixed. Both specs record the mapping; M193_001 marks those rows `MOVED to M194_001`.
 **Provenance:** agent-generated from a verified investigation — daemon logs on `agentsfleetd-dev`, source reads cited inline, and two adversarial review rounds over `docs/designs/incident-responder-wedge.md`
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §3, §8
 
@@ -40,7 +40,7 @@
 1. `docs/designs/incident-responder-wedge.md` §Appendix — the four Problem 2 findings, each verified at source: the `evidence->>'service'` contract, the untested resolve arm, the duplicate-run hazard, and the fact that denial terminates nothing.
 2. `docs/AUTH.md` — this is a standing-authorisation write on a security boundary; the auth chain applies.
 3. `rustd/crates/afd_approval/src/grant.rs` — its module note states this crate was already the grant table's writer. The insert belongs here, not on the lease path.
-4. `docs/v2/active/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` §Discovery — the walk that found this, with the daemon log lines quoted.
+4. `docs/v2/done/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` §Discovery — the walk that found this, with the daemon log lines quoted.
 
 ## Files Changed (blast radius)
 
@@ -53,7 +53,7 @@
 | `rustd/crates/afd_approval/tests/support/gate_lane.rs` | EDIT | Its comment excludes `integration_grant` deliberately; that exclusion ends here. |
 | `rustd/crates/afd_approval/tests/integration_grants.rs` | EDIT | Covers the request and the approve arm, not only list and revoke. |
 | `rustd/crates/afd_fleet/tests/integration_gate_grants.rs` | EDIT | The park raises one card, and a redelivering park raises no second one. |
-| `docs/v2/active/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` | EDIT | R3 and R4 marked `MOVED to M194_001` once this spec carries them. |
+| `docs/v2/done/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md` | EDIT+MOVE | R3 and R4 already read `MOVED to M194_001`; this stream closes the park — `Status: DONE`, Dimensions 2.2 and 3.2 `MOVED`, spec into `done/` — because `orly gate work` permits one spec in `active/` (`gates.ts:111`) and a parked spec there blocks every successor. Indy's call at CHORE(open), recorded in both Discovery logs. |
 | `~/Projects/docs/changelog.mdx` | EDIT | A user-visible change: a fleet that needs a grant now asks for one. Own branch, per Operational defaults. |
 
 ## Applicable Rules
@@ -114,7 +114,7 @@ The rows inherited from M193_001. They are graded by re-running the acceptance w
 
 - **Dimension 4.1** — `playbooks/operations/acceptance/001_playbook.md` steps 1 through 7 each reach their stated observation against the deployed build → Test `every playbook step reaches its stated observation`
 - **Dimension 4.2** — a verdict file for that build records `pass` and `01_verdict_check.sh` accepts it → Test `the verdict check accepts the recorded verdict`
-- **Dimension 4.3** — steps 4, 5 and 6 are captured as images, each named for the assertion it carries rather than the page it shows. Inherited whole from M193_001 Dimension 2.2, which is IN_PROGRESS there: steps 4 and 5 were photographed, and step 6 has no image because the walk never reached it. The visual evidence moves with the rubric row that depends on it → Test `the three state-change steps are photographed`
+- **Dimension 4.3** — steps 4, 5 and 6 are captured as images, each named for the assertion it carries rather than the page it shows. Inherited whole from M193_001 Dimension 2.2, which reads `MOVED` there: steps 4 and 5 were photographed, and step 6 has no image because the walk never reached it. The visual evidence moves with the rubric row that depends on it → Test `the three state-change steps are photographed`
 
 ## Interfaces
 
