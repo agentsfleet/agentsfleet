@@ -221,6 +221,7 @@ name = "afd_approval"
 version = "0.29.0"
 dependencies = [
  "afd_core",
+ "afd_crypto",
  "afd_db",
  "afd_events",
  "afd_redis",
@@ -428,6 +429,7 @@ dependencies = [
 name = "afd_fleet"
 version = "0.29.0"
 dependencies = [
+ "afd_approval",
  "afd_auth",
  "afd_billing",
  "afd_core",
@@ -460,7 +462,9 @@ dependencies = [
 name = "afd_fleet_lifecycle"
 version = "0.29.0"
 dependencies = [
+ "afd_approval",
  "afd_core",
+ "afd_credential",
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
@@ -471,6 +475,7 @@ dependencies = [
  "backon",
  "moka",
  "redis",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tokio",

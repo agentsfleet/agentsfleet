@@ -6,6 +6,20 @@ use afd_ingress::Ingress;
 
 use super::*;
 
+/// The fleet store, over this harness's stores and its fixture key.
+///
+/// A helper rather than four lines inside each constructor: the install opens a
+/// declared credential's handle to classify it, so the store took a key — and
+/// spelled inline it pushed both constructors past clippy's line cap.
+fn fleet_store(database: &Db, queue: &Redis, kek: &Arc<Kek>) -> Fleets {
+    Fleets::new(
+        database.clone(),
+        queue.clone(),
+        Arc::clone(kek),
+        Entropy::new(),
+    )
+}
+
 impl Fleet {
     /// Keeps real pub/sub while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(
@@ -74,7 +88,7 @@ impl Fleet {
                 Entropy::new(),
                 FIXTURE_APP_URL,
             ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
             // vendor nothing resolves. Same rule as every other seam: the
@@ -134,7 +148,7 @@ impl Fleet {
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
+            grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             // Detached, not connected: a hub opens a pub/sub SOCKET, which is
             // the one seam in this file that has no `unreachable` form. The
@@ -203,7 +217,7 @@ impl Fleet {
                 Entropy::new(),
                 FIXTURE_APP_URL,
             ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
             // vendor nothing resolves. Same rule as every other seam: the
@@ -263,7 +277,7 @@ impl Fleet {
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
+            grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
             analytics: Analytics::silent(),

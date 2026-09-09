@@ -49,6 +49,7 @@ use self::row::{read_gate, read_resolved};
 use crate::gate_status::GateStatus;
 
 use crate::decision::Decision;
+use crate::request::KIND_INTEGRATION_GRANT;
 use crate::sql;
 use crate::{Result, error};
 
@@ -59,9 +60,6 @@ use crate::{Result, error};
 /// word is a row one writer produces that a reader stops matching.
 const GRANT_APPROVED: &str = grant_status::APPROVED;
 const GRANT_REVOKED: &str = grant_status::REVOKED;
-
-/// The gate kind whose approval also moves an integration grant.
-const KIND_INTEGRATION_GRANT: &str = "integration_grant";
 
 /// The filter that means "every fleet" / "every kind".
 ///

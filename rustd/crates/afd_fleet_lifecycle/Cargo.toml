@@ -21,6 +21,14 @@ workspace = true
 # other: telemetry knows nothing about fleets, and a readiness mark this crate
 # could not write is a fact only this crate holds.
 afd_observability.workspace = true
+# The only writer of `core.integration_grants`: an install asks through it for
+# every mintable credential the bundle declares, rather than inserting a row the
+# approval resolve would have to trust.
+afd_approval.workspace = true
+# Which declared credentials must be MINTED rather than shipped stored — the
+# classifier the lease path already runs, so an install and a delivery agree
+# about what needs a grant.
+afd_credential.workspace = true
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
 # The retry LOOP around the install's stream setup — the counter and the
@@ -69,6 +77,10 @@ test-util = [
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # The fixture reaches Redis directly to seed and inspect keys the store owns.
 redis = { workspace = true }
+# The fixture seals a real credential handle, which is JSON: the install
+# classifies a declared credential by opening one, so a lane that could not
+# write one could not prove the grant request at all.
+serde_json.workspace = true
 
 [[test]]
 name = "lifecycle_suite"

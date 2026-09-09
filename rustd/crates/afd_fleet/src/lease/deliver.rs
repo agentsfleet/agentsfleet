@@ -12,6 +12,8 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
 
+use afd_approval::{Origin, Requested, Wanted};
+
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
@@ -63,10 +65,9 @@ impl Plane {
                 credential,
                 integration,
             }) => {
-                // Parked, not refused: a human can grant this, and the delivery
-                // stays leasable so the next poll picks it up once they have.
-                let reason = format!("{credential} needs a grant for {integration}");
-                return no_work(runner_id, &reason);
+                return self
+                    .ungranted(runner_id, &admitted.acquired, credential, integration, now)
+                    .await;
             }
             // A fleet author's mistake, not an operational fault: nothing about
             // the next poll will be different, so the event ends.
@@ -84,6 +85,50 @@ impl Plane {
             }
         };
         self.issue_ready(runner_id, &admitted, *policy, now).await
+    }
+
+    /// Ask for the grant this delivery needs, and say what the poll answers.
+    ///
+    /// The backstop, not the design: a fleet installed after M194 leaves
+    /// install with this card already raised, and reaching here means the fleet
+    /// predates that or the install-time request could not be written. Asking
+    /// again is what makes the invariant unconditional — a park is a question,
+    /// never a silent loop — and the request is idempotent, so the one-second
+    /// redelivery cadence raises one card rather than sixty a minute.
+    ///
+    /// A DENIED grant ends the event. The gate that denied it carries no
+    /// `event_id` and so could not end anything itself; this is where a
+    /// person's no stops the redelivery, and it is the only outcome here that
+    /// is not a park.
+    async fn ungranted(
+        &self,
+        runner_id: &Uuid7,
+        acquired: &Acquired,
+        credential: &str,
+        integration: &str,
+        now: UnixMillis,
+    ) -> Result<String> {
+        let asked = self
+            .grants
+            .request(
+                &acquired.workspace_id,
+                &acquired.fleet_id,
+                Wanted {
+                    service: integration,
+                    credential,
+                    origin: Origin::Park,
+                },
+                now,
+            )
+            .await;
+        let reason = format!("{credential} needs a grant for {integration}");
+        match answers(asked.ok()) {
+            Ungranted::Ends => {
+                self.refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
+                    .await
+            }
+            Ungranted::Waits => no_work(runner_id, &reason),
+        }
     }
 
     async fn issue_ready(
@@ -161,6 +206,35 @@ impl Plane {
     }
 }
 
+/// What an ungranted delivery does once the grant has been asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ungranted {
+    /// The delivery stays leasable and the next poll tries again.
+    Waits,
+    /// The event ends: nothing about the next poll would be different.
+    Ends,
+}
+
+/// Whether a park waits for an answer, or ends on one already given.
+///
+/// The one decision this arm adds, and it has exactly one terminal case. A
+/// person's NO is the only outcome that makes the next poll pointless — every
+/// other reading leaves a question a human can still answer, and ending an
+/// event on any of them would throw away work nobody refused.
+///
+/// `None` is a request that could not be WRITTEN, and it waits. Fail-closed
+/// here means keeping the event alive: a datastore that would not answer is
+/// this instance's problem, and reading its silence as a refusal would end
+/// deliveries on an outage.
+const fn answers(asked: Option<Requested>) -> Ungranted {
+    match asked {
+        Some(Requested::Denied) => Ungranted::Ends,
+        Some(Requested::Raised | Requested::Pending | Requested::Approved) | None => {
+            Ungranted::Waits
+        }
+    }
+}
+
 /// The credential names a fleet declared, as the vault read wants them.
 fn names(installed: &Installed) -> Vec<&str> {
     installed
@@ -169,4 +243,41 @@ fn names(installed: &Installed) -> Vec<&str> {
         .iter()
         .map(afd_fleet_runtime::CredentialName::as_str)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Ungranted, answers};
+    use afd_approval::Requested;
+
+    #[test]
+    fn a_denied_grant_is_the_only_outcome_that_ends_the_event() {
+        // The failure this milestone exists to end is an event that redelivers
+        // every second against a decision nobody can make. A denial IS that
+        // decision, so the loop stops here and the operator reads why.
+        assert_eq!(answers(Some(Requested::Denied)), Ungranted::Ends);
+    }
+
+    #[test]
+    fn every_answerable_outcome_leaves_the_delivery_leasable() {
+        // A raised card, a card already open, and a grant approved between the
+        // assembly's read and this request are three different states and one
+        // instruction: wait. The work is not lost, and the next poll runs it.
+        for still_open in [Requested::Raised, Requested::Pending, Requested::Approved] {
+            assert_eq!(
+                answers(Some(still_open)),
+                Ungranted::Waits,
+                "{still_open:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_request_that_could_not_be_written_waits_rather_than_ending() {
+        // The fail-closed direction, and the one worth a test of its own: a
+        // Postgres that would not answer must never be read as a person's no.
+        // Ending here would destroy a delivery on an outage, and the outage is
+        // the one condition guaranteed to pass.
+        assert_eq!(answers(None), Ungranted::Waits);
+    }
 }

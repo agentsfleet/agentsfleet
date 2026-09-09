@@ -35,6 +35,11 @@ test-util = [
 afd_observability.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
 afd_billing.workspace = true
+# The only writer of `core.integration_grants`. A delivery that finds no grant
+# asks for one through this crate rather than inserting a row the approval
+# resolve would have to trust — the direction the `afd_events` split below made
+# possible, taken the other way.
+afd_approval.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
 afd_core.workspace = true

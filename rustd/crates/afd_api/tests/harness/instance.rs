@@ -138,7 +138,12 @@ impl Fleet {
                 Entropy::new(),
                 FIXTURE_APP_URL,
             ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            fleets: Fleets::new(
+                database.clone(),
+                queue.clone(),
+                Arc::clone(&kek),
+                Entropy::new(),
+            ),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
             // vendor nothing resolves. Same rule as every other seam: the
@@ -192,7 +197,7 @@ impl Fleet {
             platform_admin: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
+            grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             // Detached, not connected: a hub opens a pub/sub SOCKET, which is
             // the one seam in this file that has no `unreachable` form. The
@@ -247,7 +252,12 @@ impl Fleet {
                 Entropy::new(),
                 FIXTURE_APP_URL,
             ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            fleets: Fleets::new(
+                database.clone(),
+                queue.clone(),
+                Arc::clone(&kek),
+                Entropy::new(),
+            ),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
             // vendor nothing resolves. Same rule as every other seam: the
@@ -301,7 +311,7 @@ impl Fleet {
             platform_admin: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
+            grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
             analytics: Analytics::silent(),

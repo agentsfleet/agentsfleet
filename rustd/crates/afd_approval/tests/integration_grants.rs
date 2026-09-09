@@ -22,8 +22,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_approval::{IntegrationGrants, Revocation};
+use afd_approval::{IntegrationGrants, REASON_DECLARED_AT_INSTALL, Revocation};
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 
@@ -38,7 +39,11 @@ const SERVICE_GITHUB: &str = "github";
 const SERVICE_ZOHO: &str = "zoho";
 
 /// The reason the install records on every seeded row.
-const REASON: &str = "Declared by the fleet bundle at install";
+///
+/// Imported rather than restated: the production request writes this sentence,
+/// and a second copy here is a fixture that would keep passing after the real
+/// one changed (RULE UFS).
+const REASON: &str = REASON_DECLARED_AT_INSTALL;
 
 /// A workspace that exists in no fixture, for the scope refusals.
 const FOREIGN_WORKSPACE: &str = "01900000-0000-7000-8000-0000000000ff";
@@ -88,7 +93,7 @@ async fn column_of(lane: &Lane, grant: &Uuid7, column: &str) -> Option<String> {
 
 /// The store under test, over the lane's pool.
 fn grants(lane: &Lane) -> IntegrationGrants {
-    IntegrationGrants::new(lane.pool.clone())
+    IntegrationGrants::new(lane.pool.clone(), Entropy::new())
 }
 
 /// A fleet with no grants and a fleet that is not there are different answers.
