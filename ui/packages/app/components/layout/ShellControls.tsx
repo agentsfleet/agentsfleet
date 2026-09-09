@@ -160,12 +160,12 @@ function SidebarToggle({
       aria-controls={sidebarNavId}
       variant="ghost"
       size="icon"
-      // `-mr-2` cancels the icon button's own right padding, the way the mobile
-      // trigger's `-ml-2` cancels its left. Without it `justify-between` aligns
-      // the button BOX to the column gutter and the glyph inside it lands ~8px
-      // shy of where the nav items end, so the toggle read as floating rather
-      // than as the trailing edge of the same column.
-      className="hidden shrink-0 md:inline-flex -mr-2"
+      // No margin correction here on purpose. The icon button carries 10px of
+      // its own padding, so at the cluster's `md:px-3` its GLYPH already lands
+      // at x=218 — 22px in from the column's trailing edge, mirroring the 22px
+      // the nav icons sit in from the leading one. Every negative margin tried
+      // here pushed it past that.
+      className="hidden shrink-0 md:inline-flex"
       onClick={shellSidebarState.toggle}
     >
       {collapsed ? (
@@ -190,6 +190,12 @@ function BrandLink({
       }
       className={cn(
         "inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline",
+        // `md:ml-2.5` puts the pulse dot on the nav icons' own left edge. The
+        // nav insets its content TWICE — the group's `px-3` plus each item's
+        // `px-2` — so a header matching only the group left the wordmark 10px
+        // adrift of every icon below it, which is what read as the toggle being
+        // misaligned. Measured: nav icons start at x=22, the dot at x=12.
+        "md:ml-2.5",
         // The collapsed rail is 64px wide and the toggle claims it. The
         // wordmark hides from `md` up only — the mobile header has no rail and
         // keeps its brand whatever the desktop sidebar is doing.

@@ -14,15 +14,15 @@ export const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 // must be declared inside the hoisted block so the factory closures can
 // reference them without a TDZ error.
 
-const { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock } =
+const { listAllApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock } =
   vi.hoisted(() => ({
-    listApprovalsActionMock: vi.fn(),
+    listAllApprovalsActionMock: vi.fn(),
     approveApprovalActionMock: vi.fn(),
     denyApprovalActionMock: vi.fn(),
   }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/actions", () => ({
-  listApprovalsAction: listApprovalsActionMock,
+  listAllApprovalsAction: listAllApprovalsActionMock,
   approveApprovalAction: approveApprovalActionMock,
   denyApprovalAction: denyApprovalActionMock,
 }));
@@ -35,9 +35,9 @@ import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/component
 import type { ApprovalGate } from "@/lib/api/approvals";
 
 beforeEach(() => {
-  // Default the polling mock so the 5s setInterval fallback path never sees
-  // an undefined resolved value. Per-test cases override with mockResolvedValueOnce.
-  listApprovalsActionMock.mockResolvedValue({
+  // A default so a test that never arranges the read still resolves; per-test
+  // cases override it.
+  listAllApprovalsActionMock.mockResolvedValue({
     ok: true,
     data: { items: [], next_cursor: null },
   });
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  listApprovalsActionMock.mockReset();
+  listAllApprovalsActionMock.mockReset();
   approveApprovalActionMock.mockReset();
   denyApprovalActionMock.mockReset();
 });
@@ -74,7 +74,7 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
   };
 }
 
-export { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };
+export { listAllApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };
 
 // The dashboard layout mounts exactly one TooltipProvider (`layout.test.tsx`
 // pins that, and pins that a bare relative <Time> throws without it). The inbox
@@ -98,15 +98,9 @@ export function denyRow() {
   fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
 }
 
-/**
- * How many times the POLLED feed was read.
- *
- * Mount also reads the four settled statuses once, and those calls are not
- * ticks — counting every call would make a poll assertion drift every time the
- * status vocabulary grows.
- */
-export function pendingReads(): number {
-  return listApprovalsActionMock.mock.calls.filter(
-    (call) => (call[1] as { status?: string } | undefined)?.status === "pending",
-  ).length;
+/** The statuses each read asked for, in call order. */
+export function requestedStatuses(): string[][] {
+  return listAllApprovalsActionMock.mock.calls.map(
+    (call) => [...((call[2] as readonly string[] | undefined) ?? [])],
+  );
 }

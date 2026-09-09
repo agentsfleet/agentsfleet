@@ -3,7 +3,8 @@
 // actually implements.
 
 export const APPROVALS_PAGE_DESCRIPTION = "Fleet actions that pause for human review.";
-export const APPROVALS_SECTION_LABEL = "Review approvals";
+// "Manage <thing>", the way Events and Fleets name their own sections.
+export const APPROVALS_SECTION_LABEL = "Manage approvals";
 export const APPROVALS_TABLE_CAPTION = "Approvals and their outcomes";
 
 

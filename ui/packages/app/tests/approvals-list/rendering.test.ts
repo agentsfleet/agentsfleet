@@ -4,7 +4,7 @@ import {
   AGENT_B_DISPLAY_NAME,
   WORKSPACE_ID,
   gate,
-  listApprovalsActionMock,
+  listAllApprovalsActionMock,
   render,
 } from "./harness";
 import React from "react";
@@ -46,7 +46,7 @@ describe("ApprovalsList — EmptyState", () => {
   // A refused read is a read that finished. Leaving the placeholder up would
   // spin forever over an error the operator can already see in the alert.
   it("stops the placeholder when the settled read is refused", async () => {
-    listApprovalsActionMock.mockResolvedValue({ ok: false, error: "upstream is down" });
+    listAllApprovalsActionMock.mockResolvedValue({ ok: false, error: "upstream is down" });
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,

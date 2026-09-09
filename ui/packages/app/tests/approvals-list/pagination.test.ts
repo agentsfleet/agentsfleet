@@ -4,8 +4,9 @@ import {
   AGENT_B_DISPLAY_NAME,
   WORKSPACE_ID,
   gate,
-  listApprovalsActionMock,
+  listAllApprovalsActionMock,
   render,
+  requestedStatuses,
 } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
@@ -13,13 +14,23 @@ import { screen, waitFor } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 import { APPROVAL_STATUS, APPROVAL_STATUS_ORDER } from "@/lib/api/approvals-types";
 
-/** One page per status, in the order the component asks for them. */
+/**
+ * The rows each status holds, merged the way the server action merges them.
+ *
+ * One call now, not one per status: the fan-out moved to the server, because
+ * Next runs Server Actions one at a time per client and five calls were five
+ * sequential round trips.
+ */
 function pages(byStatus: Partial<Record<string, ReturnType<typeof gate>[]>>) {
-  listApprovalsActionMock.mockImplementation((_ws: string, opts: { status?: string }) =>
-    Promise.resolve({
-      ok: true,
-      data: { items: byStatus[opts.status ?? APPROVAL_STATUS.PENDING] ?? [], next_cursor: null },
-    }),
+  listAllApprovalsActionMock.mockImplementation(
+    (_ws: string, _opts: unknown, statuses: readonly string[]) =>
+      Promise.resolve({
+        ok: true,
+        data: {
+          items: statuses.flatMap((status) => byStatus[status] ?? []),
+          next_cursor: null,
+        },
+      }),
   );
 }
 
@@ -58,30 +69,26 @@ describe("ApprovalsList — one table over every status", () => {
       }),
     );
 
-    await waitFor(() =>
-      expect(listApprovalsActionMock.mock.calls.length).toBeGreaterThanOrEqual(
-        APPROVAL_STATUS_ORDER.length - 1,
-      ),
-    );
-    const asked = new Set<string | undefined>(
-      listApprovalsActionMock.mock.calls.map((call) => (call[1] as { status?: string }).status),
-    );
-    // Every settled status is read on mount; `pending` arrives server-rendered
-    // and is re-read by the tick rather than at mount.
+    await waitFor(() => expect(listAllApprovalsActionMock).toHaveBeenCalled());
+    // ONE call carrying every settled status, not one call per status.
+    expect(listAllApprovalsActionMock).toHaveBeenCalledTimes(1);
+    const asked = new Set(requestedStatuses()[0]);
+    // `pending` arrives server-rendered; re-reading it here would throw away
+    // rows the page was rendered with before the first paint settles.
     for (const status of APPROVAL_STATUS_ORDER) {
-      if (status !== APPROVAL_STATUS.PENDING) expect(asked.has(status)).toBe(true);
+      expect(asked.has(status)).toBe(status !== APPROVAL_STATUS.PENDING);
     }
   });
 
-  it("keeps the rows it has when one status page fails", async () => {
+  it("keeps the rows it has when the read fails", async () => {
     const shown = gate({ gate_id: "g1" });
-    listApprovalsActionMock.mockImplementation((_ws: string, opts: { status?: string }) =>
-      Promise.resolve(
-        opts.status === APPROVAL_STATUS.DENIED
-          ? { ok: false, error: "upstream exploded", status: 502 }
-          : { ok: true, data: { items: [shown], next_cursor: null } },
-      ),
-    );
+    // The server action is all-or-nothing: one failed page inside it refuses
+    // the whole read rather than silently shortening the table.
+    listAllApprovalsActionMock.mockResolvedValue({
+      ok: false,
+      error: "upstream exploded",
+      status: 502,
+    });
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -96,7 +103,7 @@ describe("ApprovalsList — one table over every status", () => {
   });
 
   it("names an expired session rather than emptying the table under the operator", async () => {
-    listApprovalsActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
+    listAllApprovalsActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -122,9 +129,12 @@ describe("ApprovalsList — one table over every status", () => {
       }),
     );
 
-    await waitFor(() => expect(listApprovalsActionMock).toHaveBeenCalled());
-    for (const call of listApprovalsActionMock.mock.calls) {
+    await waitFor(() => expect(listAllApprovalsActionMock).toHaveBeenCalled());
+    for (const call of listAllApprovalsActionMock.mock.calls) {
       expect((call[1] as { fleetId?: string }).fleetId).toBe("fleet-scope");
     }
+    // The scope rides the one call, so it cannot go missing from a status the
+    // caller forgot to thread it through.
+    expect(listAllApprovalsActionMock).toHaveBeenCalledTimes(1);
   });
 });
