@@ -1,11 +1,24 @@
-import { AGENTSFLEET_B, AGENT_A_DISPLAY_NAME, AGENT_B_DISPLAY_NAME, WORKSPACE_ID, gate, render } from "./harness";
+import {
+  AGENTSFLEET_B,
+  AGENT_A_DISPLAY_NAME,
+  AGENT_B_DISPLAY_NAME,
+  WORKSPACE_ID,
+  gate,
+  listApprovalsActionMock,
+  render,
+} from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
 describe("ApprovalsList — EmptyState", () => {
-  it("renders the EmptyState when there are no items and no filter", () => {
+  // The server renders the PENDING page only. A workspace whose approvals are
+  // all settled therefore mounts with an empty table, and claiming "No approvals
+  // yet" at that moment is a verdict on four states nobody has read — it showed,
+  // then the rows arrived and replaced it. The placeholder holds the space until
+  // the read comes back.
+  it("holds the verdict until the settled read lands", async () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -13,7 +26,38 @@ describe("ApprovalsList — EmptyState", () => {
         initialCursor: null,
       }),
     );
-    expect(screen.getByText(/no approvals yet/i)).toBeTruthy();
+    expect(screen.queryByText(/no approvals yet/i)).toBeNull();
+    expect(screen.getByTestId("approvals-loading")).toBeTruthy();
+    await screen.findByText(/no approvals yet/i);
+  });
+
+  it("renders the EmptyState once the settled read comes back empty", async () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [],
+        initialCursor: null,
+      }),
+    );
+    expect(await screen.findByText(/no approvals yet/i)).toBeTruthy();
+    expect(screen.queryByTestId("approvals-loading")).toBeNull();
+  });
+
+  // A refused read is a read that finished. Leaving the placeholder up would
+  // spin forever over an error the operator can already see in the alert.
+  it("stops the placeholder when the settled read is refused", async () => {
+    listApprovalsActionMock.mockResolvedValue({ ok: false, error: "upstream is down" });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [],
+        initialCursor: null,
+      }),
+    );
+    await screen.findByText(/upstream is down/i);
+    expect(screen.queryByTestId("approvals-loading")).toBeNull();
+    // An inbox that could not be read is not an empty inbox.
+    expect(screen.queryByText(/no approvals yet/i)).toBeNull();
   });
 });
 

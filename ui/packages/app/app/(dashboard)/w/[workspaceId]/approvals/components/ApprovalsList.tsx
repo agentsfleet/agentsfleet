@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useOptimistic, useState, useTransition } from "react";
-import { Alert, ConfirmDialog, EmptyState } from "@agentsfleet/design-system";
+import {
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
+import { Alert, ConfirmDialog, EmptyState, Skeleton } from "@agentsfleet/design-system";
 import { CheckCircle2Icon } from "lucide-react";
 
 import { RefreshButton } from "@/components/domain/RefreshButton";
@@ -20,6 +27,7 @@ import {
   type ApprovalDecision,
   type ApprovalStatusTag,
 } from "@/lib/api/approvals-types";
+import { fallbackPersonLabel } from "@/lib/identity/person";
 import { presentErrorString } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/with-token";
 import {
@@ -65,6 +73,9 @@ type Props = {
 export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Props) {
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
   const [error, setError] = useState<string | null>(null);
+  // Whether the load's settled read has come back. Until it has, the table is
+  // showing the server's pending page and nothing else.
+  const [settledRead, setSettledRead] = useState(false);
   const [, startRead] = useTransition();
   const [, startResolve] = useTransition();
   // The gate a denial is being confirmed for. Held here rather than in the row
@@ -134,6 +145,10 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
   useEffect(() => {
     startRead(async () => {
       const settled = await readStatuses(SETTLED_STATUSES);
+      // Set before the refusal check: a read that failed is still a read that
+      // finished, and the alert below says why. Leaving the skeleton up would
+      // spin forever on an error the operator can already see.
+      setSettledRead(true);
       if (settled === null) return;
       setItems((prev) => [...prev.filter(isPending), ...settled].sort(byNewest));
     });
@@ -158,7 +173,11 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
       }
       const outcome: ResolveOutcome = result.data;
       if (outcome.kind === "already_resolved") {
-        setError(`Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`);
+        // A message, not a cell, so it carries the shortened subject rather
+        // than waiting on a directory lookup nobody can hover anyway.
+        setError(
+          `Already ${outcome.data.outcome} by ${fallbackPersonLabel(outcome.data.resolved_by)}`,
+        );
       }
       // The row does not leave the table, it changes state — so the answer is
       // read back and the row reappears under its new status, carrying who
@@ -166,6 +185,31 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
       const fresh = await read();
       if (fresh !== null) setItems(fresh);
     });
+  }
+
+  // What stands in for the table when it has no rows.
+  //
+  // The server renders the PENDING page only, so an empty table before the
+  // settled read lands is not an empty inbox — it is an unfinished one. Claiming
+  // "No approvals yet" there is a statement nobody has checked yet, and on a
+  // workspace whose approvals are all settled it flashes for as long as four
+  // requests take before the rows arrive and replace it.
+  //
+  // Once the read is back the claim is the SERVER's, so it reads `items` rather
+  // than the optimistic list: a row that has only just left keeps the table
+  // silent rather than announcing a state the server has not confirmed.
+  function emptyRegion(): ReactNode {
+    if (!settledRead) {
+      return <Skeleton className="h-24 w-full rounded-md" data-testid="approvals-loading" />;
+    }
+    if (items.length > 0 || error !== null) return <></>;
+    return (
+      <EmptyState
+        icon={<CheckCircle2Icon size={EMPTY_ICON_SIZE} />}
+        title={NO_APPROVALS_TITLE}
+        description={NO_APPROVALS_DESCRIPTION}
+      />
+    );
   }
 
   function approve(gateId: string) {
@@ -184,24 +228,11 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
         <RefreshButton onRefresh={refresh} />
       </div>
 
-      {/* The empty state is the SERVER's claim, so it reads `items`, not the
-          optimistic list: a row that has only just left keeps the table silent
-          rather than announcing a state the server has not confirmed. */}
       <ApprovalsTable
         workspaceId={workspaceId}
         gates={visibleItems}
         actions={{ onApprove: approve, onDeny: setDenyTarget }}
-        empty={
-          items.length === 0 && !error ? (
-            <EmptyState
-              icon={<CheckCircle2Icon size={EMPTY_ICON_SIZE} />}
-              title={NO_APPROVALS_TITLE}
-              description={NO_APPROVALS_DESCRIPTION}
-            />
-          ) : (
-            <></>
-          )
-        }
+        empty={emptyRegion()}
       />
 
       <ConfirmDialog
