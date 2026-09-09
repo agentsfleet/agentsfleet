@@ -21,6 +21,12 @@ const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 const TOKENS_PER_K = 1000;
 const EMPTY_VALUE = "—";
 const RATES_UNAVAILABLE = "Rates unavailable";
+const CONTEXT_UNIT = "tokens";
+const RATE_IN = "in";
+const RATE_CACHED = "cached";
+const RATE_OUT = "out";
+const RATE_SEPARATOR = " · ";
+const NUMERIC_CELL_CLASS = "font-mono text-xs tabular-nums text-muted-foreground";
 // Self-managed rows are billed by the tenant's own provider account — token
 // rates apply only under platform-managed posture (schema/003_model_library.sql).
 // "Rates unavailable" reads as "we tried and failed"; the truth is "this does not
@@ -37,7 +43,12 @@ export function rowKey(row: RegistryRow): string {
 // impossible) explicit 0 still renders as "0" rather than "—".
 export function formatContext(tokens: number | undefined): string {
   if (tokens == null) return EMPTY_VALUE;
-  return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
+  // Plain digits, no locale formatter: the timestamp standard greps every line
+  // for one, and the "k" abbreviation already carries the magnitude.
+  const size = tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
+  // The bare number carried no unit while the header's unit described the
+  // PRICE line below it, so the two lines borrowed one label between them.
+  return `${size} ${CONTEXT_UNIT}`;
 }
 
 type RateFields = Pick<LibraryModel, "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok">;
@@ -72,8 +83,14 @@ function rowRateFor(row: TenantModelEntry | TenantPlatformDefault): RateFields |
  * column header carries the "$/1M" unit so the cell stays compact. */
 export function formatRates(rate: RateFields | null): string {
   if (!rate) return RATES_UNAVAILABLE;
-  const usd = (nanos: number) => nanosToUsdPerMtok(nanos).toFixed(2);
-  return `${usd(rate.input_nanos_per_mtok)} / ${usd(rate.cached_input_nanos_per_mtok)} / ${usd(rate.output_nanos_per_mtok)}`;
+  const usd = (nanos: number) => `$${nanosToUsdPerMtok(nanos).toFixed(2)}`;
+  // Each number says which it is. "3.00 / 0.30 / 15.00" needed the header to
+  // decode it, and the header was already carrying the context unit too.
+  return [
+    `${usd(rate.input_nanos_per_mtok)} ${RATE_IN}`,
+    `${usd(rate.cached_input_nanos_per_mtok)} ${RATE_CACHED}`,
+    `${usd(rate.output_nanos_per_mtok)} ${RATE_OUT}`,
+  ].join(RATE_SEPARATOR);
 }
 
 export function ModelCell({
@@ -136,7 +153,59 @@ export function ProviderCell({
 
 /** Context cap over the library's per-token rates — the Default row reads
  * both from the ridden-along platform default identity. */
+type ModelIdentity = {
+  provider: string | undefined;
+  model: string;
+  context: number | undefined;
+  rate: RateFields | null;
+};
+
+/**
+ * The row's model, whichever kind of row it is.
+ *
+ * Both the context and the price cell need exactly this, and resolving it twice
+ * is how the two columns would drift apart when the Default row's shape changes.
+ */
+function identityFor(
+  row: RegistryRow,
+  platformDefault: TenantPlatformDefault | null,
+): ModelIdentity | null {
+  if (row.kind === "default") {
+    return platformDefault
+      ? {
+          provider: platformDefault.provider,
+          model: platformDefault.model,
+          context: platformDefault.context_cap_tokens,
+          rate: rowRateFor(platformDefault),
+        }
+      : null;
+  }
+  return {
+    provider: row.entry.provider,
+    model: row.entry.model_id,
+    context: row.entry.context_cap_tokens,
+    rate: rowRateFor(row.entry),
+  };
+}
+
+/** The context window, on its own so its number carries its own unit. */
 export function ContextCell({
+  row,
+  platformDefault,
+}: {
+  row: RegistryRow;
+  platformDefault: TenantPlatformDefault | null;
+}) {
+  const identity = identityFor(row, platformDefault);
+  return (
+    <span className={NUMERIC_CELL_CLASS}>
+      {identity ? formatContext(identity.context) : EMPTY_VALUE}
+    </span>
+  );
+}
+
+/** Per-million pricing, split out of the context column it used to share. */
+export function RatesCell({
   row,
   platformDefault,
   libraryModels,
@@ -145,23 +214,8 @@ export function ContextCell({
   platformDefault: TenantPlatformDefault | null;
   libraryModels: LibraryModel[];
 }) {
-  const identity =
-    row.kind === "default"
-      ? platformDefault && {
-          provider: platformDefault.provider,
-          model: platformDefault.model,
-          context: platformDefault.context_cap_tokens,
-          rate: rowRateFor(platformDefault),
-        }
-      : {
-          provider: row.entry.provider,
-          model: row.entry.model_id,
-          context: row.entry.context_cap_tokens,
-          rate: rowRateFor(row.entry),
-        };
-  if (!identity) {
-    return <span className="font-mono text-xs tabular-nums text-muted-foreground">{EMPTY_VALUE}</span>;
-  }
+  const identity = identityFor(row, platformDefault);
+  if (!identity) return <span className={NUMERIC_CELL_CLASS}>{EMPTY_VALUE}</span>;
   const rate = identity.rate ?? libraryRateFor(libraryModels, identity.provider, identity.model);
   // A tenant entry is self-managed by definition — the platform row is the only
   // platform-managed one — so an unpriced entry is "not applicable", not a miss.
@@ -170,12 +224,7 @@ export function ContextCell({
     : row.kind === "entry"
       ? RATES_NOT_APPLICABLE
       : RATES_UNAVAILABLE;
-  return (
-    <div className="font-mono text-xs tabular-nums text-muted-foreground">
-      <div>{formatContext(identity.context)}</div>
-      <div>{rateLine}</div>
-    </div>
-  );
+  return <span className={NUMERIC_CELL_CLASS}>{rateLine}</span>;
 }
 
 export function StatusCell({ row, isDefaultLive }: { row: RegistryRow; isDefaultLive: boolean }) {

@@ -1,47 +1,102 @@
-import { AGENTSFLEET_A, AGENT_A_DISPLAY_NAME, ERR_ALREADY_RESOLVED, WORKSPACE_ID, approveApprovalActionMock, denyApprovalActionMock, gate, listApprovalsActionMock } from "./harness";
+import {
+  AGENTSFLEET_B,
+  AGENT_A_DISPLAY_NAME,
+  AGENT_B_DISPLAY_NAME,
+  WORKSPACE_ID,
+  gate,
+  listApprovalsActionMock,
+  render,
+} from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
+import { APPROVAL_STATUS, APPROVAL_STATUS_ORDER } from "@/lib/api/approvals-types";
 
-describe("ApprovalsList — loadMore", () => {
-  it("surfaces an error and stops when loadMore fails", async () => {
-    listApprovalsActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "load failed",
-      errorCode: "UZ-APPROVAL-500",
+/** One page per status, in the order the component asks for them. */
+function pages(byStatus: Partial<Record<string, ReturnType<typeof gate>[]>>) {
+  listApprovalsActionMock.mockImplementation((_ws: string, opts: { status?: string }) =>
+    Promise.resolve({
+      ok: true,
+      data: { items: byStatus[opts.status ?? APPROVAL_STATUS.PENDING] ?? [], next_cursor: null },
+    }),
+  );
+}
+
+describe("ApprovalsList — one table over every status", () => {
+  it("reads one page per status and shows them together", async () => {
+    pages({
+      [APPROVAL_STATUS.PENDING]: [gate({ gate_id: "g1", created_at: 200 })],
+      [APPROVAL_STATUS.APPROVED]: [
+        gate({ gate_id: "g2", created_at: 100, fleet_id: AGENTSFLEET_B, status: "approved" }),
+      ],
     });
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: "cursor_1",
+        initialItems: [gate({ gate_id: "g1", created_at: 200 })],
+        initialCursor: null,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+
+    // A settled row is the whole point: an approval that vanished when it was
+    // given left no record of what had ever been allowed.
+    await waitFor(() => expect(screen.getByText(AGENT_B_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+    // Each row carries its own status, which is what replaced the tabs.
+    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
+  });
+
+  it("asks for every status the API can answer", async () => {
+    pages({});
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [],
+        initialCursor: null,
+      }),
+    );
+
     await waitFor(() =>
-      expect(listApprovalsActionMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ cursor: "cursor_1" }),
+      expect(listApprovalsActionMock.mock.calls.length).toBeGreaterThanOrEqual(
+        APPROVAL_STATUS_ORDER.length - 1,
       ),
     );
-    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    const asked = new Set<string | undefined>(
+      listApprovalsActionMock.mock.calls.map((call) => (call[1] as { status?: string }).status),
+    );
+    // Every settled status is read on mount; `pending` arrives server-rendered
+    // and is re-read by the tick rather than at mount.
+    for (const status of APPROVAL_STATUS_ORDER) {
+      if (status !== APPROVAL_STATUS.PENDING) expect(asked.has(status)).toBe(true);
+    }
   });
-});
 
-describe("ApprovalsList — pagination", () => {
-  it("shows Load more when initialCursor is set", () => {
+  it("keeps the rows it has when one status page fails", async () => {
+    const shown = gate({ gate_id: "g1" });
+    listApprovalsActionMock.mockImplementation((_ws: string, opts: { status?: string }) =>
+      Promise.resolve(
+        opts.status === APPROVAL_STATUS.DENIED
+          ? { ok: false, error: "upstream exploded", status: 502 }
+          : { ok: true, data: { items: [shown], next_cursor: null } },
+      ),
+    );
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: "cur_abc",
+        initialItems: [shown],
+        initialCursor: null,
       }),
     );
-    expect(screen.getByRole("button", { name: /load more/i })).toBeTruthy();
+
+    // A half-read table is worse than a stale one: it silently claims rows are
+    // gone. The server-rendered row stays put.
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
   });
 
-  it("hides Load more when initialCursor is null", () => {
+  it("names an expired session rather than emptying the table under the operator", async () => {
+    listApprovalsActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -49,143 +104,27 @@ describe("ApprovalsList — pagination", () => {
         initialCursor: null,
       }),
     );
-    expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
-  });
 
-  it("appends items + advances cursor when Load more succeeds", async () => {
-    listApprovalsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        items: [
-          gate({
-            gate_id: "01999999-0000-7000-8000-000000000099",
-            action_id: "act_099",
-            fleet_name: "approvals-c",
-          }),
-        ],
-        next_cursor: null,
-      },
-    });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: "cur_abc",
-      }),
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/session expired/i),
     );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => {
-      expect(listApprovalsActionMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ cursor: "cur_abc", limit: 50 }),
-      );
-      expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
-    });
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
-});
 
-describe("ApprovalsList — fleetId scoping", () => {
-  it("passes fleetId to listApprovalsAction on Load more", async () => {
-    listApprovalsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { items: [], next_cursor: null },
-    });
+  it("passes the fleet scope to every status read", async () => {
+    pages({});
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        fleetId: AGENTSFLEET_A,
-        initialItems: [gate()],
-        initialCursor: "cur_abc",
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => {
-      expect(listApprovalsActionMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ fleetId: AGENTSFLEET_A }),
-      );
-    });
-  });
-});
-
-describe("ApprovalsList — branch coverage", () => {
-  it("Load more shows Not authenticated when the action reports unauth", async () => {
-    listApprovalsActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: "cur_abc",
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
-    });
-  });
-
-  it("Load more surfaces error when listApprovalsAction returns an upstream error", async () => {
-    listApprovalsActionMock.mockResolvedValueOnce({ ok: false, error: "upstream 503" });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: "cur_abc",
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(/upstream 503/i);
-    });
-  });
-
-  it("denyApproval already_resolved variant surfaces alert", async () => {
-    denyApprovalActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        kind: "already_resolved",
-        data: {
-          gate_id: "01999999-0000-7000-8000-000000000001",
-          action_id: "act_001",
-          outcome: "denied",
-          resolved_at: Date.now(),
-          resolved_by: "slack:interaction",
-          error_code: ERR_ALREADY_RESOLVED,
-          detail: "raced",
-        },
-      },
-    });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
+        initialItems: [],
         initialCursor: null,
+        fleetId: "fleet-scope",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(/already denied/i);
-    });
-  });
 
-  it("filter empty + error still hides EmptyState (the fix to RULE WAUTH-style swallowing)", async () => {
-    approveApprovalActionMock.mockResolvedValueOnce({ ok: false, error: "ECONNRESET" });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [gate()],
-        initialCursor: null,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeTruthy();
-      expect(screen.queryByText(/no pending approvals/i)).toBeNull();
-    });
+    await waitFor(() => expect(listApprovalsActionMock).toHaveBeenCalled());
+    for (const call of listApprovalsActionMock.mock.calls) {
+      expect((call[1] as { fleetId?: string }).fleetId).toBe("fleet-scope");
+    }
   });
 });

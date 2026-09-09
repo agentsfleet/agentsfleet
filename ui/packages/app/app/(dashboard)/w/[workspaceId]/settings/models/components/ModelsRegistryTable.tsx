@@ -27,6 +27,7 @@ import { useModelCatalogue } from "./ModelCatalogueProvider";
 import {
   ActionsCell,
   ContextCell,
+  RatesCell,
   ModelCell,
   ProviderCell,
   type RegistryRow,
@@ -233,10 +234,17 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     {
       key: "context",
-      header: "Context · $/1M (in / cached / out)",
+      header: "Context",
       numeric: true,
       hideOnMobile: true,
-      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
+      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} />,
+    },
+    {
+      key: "rates",
+      header: "Price / 1M",
+      numeric: true,
+      hideOnMobile: true,
+      cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
     },
     { key: "status", header: "Status", cell: (row) => <StatusCell row={row} isDefaultLive={isDefaultLive} /> },
     {

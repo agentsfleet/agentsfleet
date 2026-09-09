@@ -10,6 +10,11 @@ export const RUNNER_BREADCRUMB_LABEL = "Breadcrumb";
 export const RUNNER_ACTIONS_LABEL = "Runner admin actions";
 export const COPY_RUNNER_ID_LABEL = "Copy runner ID";
 export const OPEN_GRAFANA_LABEL = "Grafana";
+// A re-read is usually faster than the eye. Without an acknowledgement the
+// press is indistinguishable from a dead control, which is how this button read
+// before: no spinner, no message, nothing moved.
+export const REFRESHING_RUNNER_LABEL = "Refreshing…";
+export const REFRESHED_RUNNER_LABEL = "Refreshed";
 export const REFRESH_RUNNER_LABEL = "Refresh";
 
 // The states chip's learn-more target: the published section defining the

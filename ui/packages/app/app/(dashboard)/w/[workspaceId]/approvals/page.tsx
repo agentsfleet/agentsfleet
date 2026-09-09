@@ -13,10 +13,12 @@ import { auth } from "@clerk/nextjs/server";
 import { listApprovals } from "@/lib/api/approvals";
 import { APPROVALS_PAGE_LIMIT } from "@/lib/api/approvals-types";
 import ApprovalsList from "./components/ApprovalsList";
+import {
+  APPROVALS_PAGE_DESCRIPTION,
+  APPROVALS_SECTION_LABEL,
+} from "./copy";
 
 export const dynamic = "force-dynamic";
-
-const APPROVALS_DESCRIPTION = "Fleet actions that pause for human review.";
 
 export default async function ApprovalsPage({
   params,
@@ -34,7 +36,7 @@ export default async function ApprovalsPage({
   // Header streams first; the inbox loads inside ApprovalsData under Suspense.
   return (
     <PageLayout>
-      <PageHeader description={APPROVALS_DESCRIPTION}>
+      <PageHeader description={APPROVALS_PAGE_DESCRIPTION}>
         <PageTitle>Approvals</PageTitle>
       </PageHeader>
 
@@ -58,7 +60,7 @@ export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: str
   return (
     <Section asChild>
       <section aria-label="Pending approval gates">
-        <SectionHeader>Review approvals</SectionHeader>
+        <SectionHeader>{APPROVALS_SECTION_LABEL}</SectionHeader>
         <ApprovalsList
           workspaceId={workspaceId}
           initialItems={initial.items}

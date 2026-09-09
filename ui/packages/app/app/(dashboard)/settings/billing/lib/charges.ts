@@ -16,6 +16,10 @@ const DELETED_AGENT_LABEL = "Deleted agent";
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
+const TOKENS_LABEL = "tokens";
+const TOKENS_IN = "in";
+const TOKENS_OUT = "out";
+const TOKEN_SPLIT_SEPARATOR = " · ";
 const MIN_VISIBLE_DEBIT_NANOS = 50_000;
 const SUBVISIBLE_DEBIT_LABEL = "<$0.0001";
 
@@ -79,7 +83,12 @@ export function describeCharge(row: ChargeRow): string {
   if (row.token_count_input === 0 && row.token_count_output === 0) {
     return `${RUN_LABEL} · ${NO_TOKEN_USAGE_LABEL}`;
   }
-  return `${RUN_LABEL} · ${row.token_count_input.toLocaleString()} input tokens · ${row.token_count_output.toLocaleString()} output tokens`;
+  // "2,075 input tokens · 1,112 output tokens" said "tokens" twice and led with
+  // the least useful number. The total is what an operator scans for; the split
+  // is what they check afterwards.
+  const total = row.token_count_input + row.token_count_output;
+  const split = `${row.token_count_input.toLocaleString()} ${TOKENS_IN}${TOKEN_SPLIT_SEPARATOR}${row.token_count_output.toLocaleString()} ${TOKENS_OUT}`;
+  return `${RUN_LABEL} · ${total.toLocaleString()} ${TOKENS_LABEL} · ${split}`;
 }
 
 export type ChargeSummary = {
