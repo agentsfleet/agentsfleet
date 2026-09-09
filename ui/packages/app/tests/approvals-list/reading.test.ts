@@ -343,6 +343,39 @@ describe("ApprovalsList — two reads in flight at once", () => {
     );
   });
 
+  it("does not show an error from a read that a later one superseded", async () => {
+    // The guard covers the ERROR as well as the rows. "Load older" starts, a
+    // Refresh succeeds, then the older request fails — painting that failure
+    // over the freshly refreshed table would be an alert about an answer the
+    // operator was never going to see.
+    const older = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    listApprovalsActionMock
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(fresh.promise);
+
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "newer-1" })],
+        initialCursor: "cur-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load older/i }));
+    clickRefresh();
+    await waitFor(() => expect(listApprovalsActionMock).toHaveBeenCalledTimes(2));
+
+    fresh.settle({
+      ok: true,
+      data: { items: [gate({ gate_id: "refreshed", action_id: "a-r" })], next_cursor: null },
+    });
+    older.settle({ ok: false, error: "upstream is down", status: 503 });
+
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("applies the older page when nothing superseded it", async () => {
     // The same interleaving machinery, with only one read in flight — the
     // guard must not drop a result that is still the newest.
