@@ -185,6 +185,10 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
+// The platform-default row is marked by its lock, not by a word: the cell
+// dropped "Default" because the lock beside it already said the same thing.
+const PLATFORM_LOCK = "Managed by a platform admin";
+
 describe("ModelsRegistryTable", () => {
   it("renders Provider before Model in the registry table", async () => {
     await renderTable(registry([entry({})]));
@@ -201,12 +205,12 @@ describe("ModelsRegistryTable", () => {
     const rows = screen.getAllByRole("row");
     // 1 header row + 1 Default row + 9 entry rows.
     expect(rows).toHaveLength(11);
-    expect(within(rows[1]!).getByText("Default")).toBeTruthy();
+    expect(within(rows[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /^model$/i }));
     const afterSort = screen.getAllByRole("row");
-    expect(within(afterSort[1]!).getByText("Default")).toBeTruthy();
+    expect(within(afterSort[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
   });
 
   it("Switch on an inactive row activates it with (secret_ref, model_id); no key input renders", async () => {
@@ -228,14 +232,14 @@ describe("ModelsRegistryTable", () => {
     // resolution and no default exists to switch to. Showing a locked row there
     // read as a broken setting.
     await renderTable(registry([entry({ active: true })], false));
-    expect(screen.queryByText("Default")).toBeNull();
+    expect(screen.queryByLabelText(PLATFORM_LOCK)).toBeNull();
     expect(screen.queryByText("No default is configured.")).toBeNull();
     expect(screen.queryByRole("button", { name: /use default/i })).toBeNull();
   });
 
   it("keeps the platform row, disabled with explanatory copy, when a default exists but is not in effect", async () => {
     await renderTable(registry([entry({ active: true })], true));
-    expect(screen.getByText("Default")).toBeTruthy();
+    expect(screen.getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     expect(screen.getByRole("button", { name: /use default/i })).toBeTruthy();
   });
 
@@ -272,7 +276,7 @@ describe("ModelsRegistryTable", () => {
 
     await user.click(screen.getByRole("button", { name: /^provider$/i }));
     let rows = screen.getAllByRole("row");
-    expect(within(rows[1]!).getByText("Default")).toBeTruthy();
+    expect(within(rows[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     // Ascending: "" (no provider) sorts before named providers.
     expect(within(rows[2]!).getByText("Unknown")).toBeTruthy();
 
@@ -363,7 +367,7 @@ describe("ModelsRegistryTable", () => {
 
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
-    expect(defaultRow.getByText("Default")).toBeTruthy();
+    expect(defaultRow.getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     expect(defaultRow.getByText("claude-sonnet-5")).toBeTruthy();
     expect(defaultRow.getByText("Anthropic")).toBeTruthy();
     expect(defaultRow.getByText("200k tokens")).toBeTruthy();

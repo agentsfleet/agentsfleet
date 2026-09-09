@@ -28,12 +28,15 @@ afterEach(() => {
 });
 
 describe("PersonLabel", () => {
-  it("shows the shortened subject first, then the name the directory returns", async () => {
+  // Showing the subject first and swapping it for a name a beat later makes
+  // every row in a table visibly change under the reader. The cell holds its
+  // shape instead and says nothing until it knows.
+  it("holds a placeholder until the directory answers, never a subject that changes", async () => {
     render(<PersonLabel actor={ALICE} />);
-    // The cell is never blank: a row recording who decided still says so while
-    // the lookup is in flight.
-    expect(screen.getByText("user_3HizL…kKCu")).toBeTruthy();
+    expect(screen.getByTestId("person-loading")).toBeTruthy();
+    expect(screen.queryByText("user_3HizL…kKCu")).toBeNull();
     expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.queryByTestId("person-loading")).toBeNull();
   });
 
   // The name is for the human; the subject is what matches a log line or an
@@ -77,8 +80,9 @@ describe("PersonLabel", () => {
   it("leaves the fallback standing when the directory refuses", async () => {
     resolvePeopleActionMock.mockRejectedValue(new Error("clerk is down"));
     render(<PersonLabel actor={ALICE} />);
-    await vi.waitFor(() => expect(resolvePeopleActionMock).toHaveBeenCalled());
-    expect(screen.getByText("user_3HizL…kKCu")).toBeTruthy();
+    // A refused lookup is still an answer: the row stops waiting and shows the
+    // only thing it holds, rather than a placeholder that never resolves.
+    expect(await screen.findByText("user_3HizL…kKCu")).toBeTruthy();
   });
 
   it("renders nothing for an unattributed row", () => {

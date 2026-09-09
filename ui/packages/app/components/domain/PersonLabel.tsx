@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { fallbackPersonLabel, systemLabel } from "@/lib/identity/person";
+import { Skeleton } from "@agentsfleet/design-system";
+import { fallbackPersonLabel, isPersonId, systemLabel } from "@/lib/identity/person";
 import { nameFor, requestName, subscribe } from "@/lib/identity/person-directory";
 
 /**
@@ -22,11 +23,22 @@ export function PersonLabel({
   actor: string;
   className?: string;
 }) {
-  const resolved = usePersonName(actor);
+  const answer = usePersonName(actor);
   if (actor.length === 0) return null;
+  const system = systemLabel(actor);
+  if (system !== null) {
+    return <span className={className} title={actor}>{system}</span>;
+  }
+  // Nothing to say yet. The shortened subject is what a directory that answered
+  // "nobody by that id" leaves behind — not a placeholder to flash while it is
+  // still being asked. Showing it first made every name in the table visibly
+  // change a beat after it appeared.
+  if (answer === undefined && isPersonId(actor)) {
+    return <Skeleton className="inline-block h-4 w-24 align-middle" data-testid="person-loading" />;
+  }
   return (
     <span className={className} title={actor}>
-      {systemLabel(actor) ?? resolved ?? fallbackPersonLabel(actor)}
+      {answer || fallbackPersonLabel(actor)}
     </span>
   );
 }
@@ -39,7 +51,7 @@ export function PersonLabel({
  * anything that is not a Clerk subject, so the daemon's own sentinels are never
  * sent to a directory that has not heard of them.
  */
-function usePersonName(actor: string): string | null {
+function usePersonName(actor: string): string | undefined {
   useEffect(() => {
     requestName(actor);
   }, [actor]);
@@ -48,7 +60,8 @@ function usePersonName(actor: string): string | null {
     () => nameFor(actor),
     () => undefined,
   );
-  // An empty string is the directory answering "nobody by that subject"; the
-  // caller falls back rather than rendering a blank cell.
-  return cached ? cached : null;
+  // `undefined` is "nobody has asked yet"; an empty string is the directory
+  // answering "no such subject". The caller tells the two apart — one waits,
+  // the other falls back.
+  return cached;
 }

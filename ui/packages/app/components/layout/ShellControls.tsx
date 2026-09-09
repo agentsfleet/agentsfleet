@@ -160,7 +160,12 @@ function SidebarToggle({
       aria-controls={sidebarNavId}
       variant="ghost"
       size="icon"
-      className="hidden shrink-0 md:inline-flex"
+      // `-mr-2` cancels the icon button's own right padding, the way the mobile
+      // trigger's `-ml-2` cancels its left. Without it `justify-between` aligns
+      // the button BOX to the column gutter and the glyph inside it lands ~8px
+      // shy of where the nav items end, so the toggle read as floating rather
+      // than as the trailing edge of the same column.
+      className="hidden shrink-0 md:inline-flex -mr-2"
       onClick={shellSidebarState.toggle}
     >
       {collapsed ? (
