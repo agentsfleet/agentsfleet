@@ -56,11 +56,15 @@ pub const KIND_INTEGRATION_GRANT: &str = "integration_grant";
 /// without making the text something a reader has to reconstruct.
 ///
 /// What holds the three in agreement is a test rather than the type system:
-/// `a_request_writes_the_grant_and_the_card_together` reads the key back out of
-/// the column, and `approving_the_card_grants_the_integration` proves the join
-/// actually matches the row this writes. A drift in any one of the three fails
-/// both.
-pub const EVIDENCE_SERVICE: &str = "service";
+/// `tests::evidence_carries_the_key_the_approve_statement_joins_on` reads it out
+/// of the rendered object, `a_request_writes_the_grant_and_the_card_together`
+/// reads it back out of the column, and `approving_the_card_grants_the_integration`
+/// proves the join actually matches the row this writes. A drift in any one of
+/// the three fails all three.
+///
+/// Private: the spellings it must agree with are this crate's own SQL, so
+/// nothing outside has a use for the name — only for the behaviour it buys.
+const EVIDENCE_SERVICE: &str = "service";
 
 /// A grant request was written, and a person now owes an answer.
 const EVENT_REQUESTED: &str = "grant_requested";
@@ -132,7 +136,11 @@ impl Origin {
 pub const REASON_DECLARED_AT_INSTALL: &str = "Declared by the fleet bundle at install";
 
 /// The provenance the park-time backstop records.
-pub const REASON_WANTED_BY_A_DELIVERY: &str = "Wanted by a delivery that could not run";
+///
+/// Private, unlike [`REASON_DECLARED_AT_INSTALL`]: the install sentence predates
+/// this module and three test crates already assert against it by name, while
+/// this one is reachable where it matters through [`Origin::reason`].
+const REASON_WANTED_BY_A_DELIVERY: &str = "Wanted by a delivery that could not run";
 
 /// One integration a fleet needs standing permission to mint against.
 #[derive(Debug, Clone, Copy)]
@@ -260,6 +268,13 @@ impl IntegrationGrants {
 /// and the writes share one snapshot — so a freshly written grant reads as
 /// absent here, and that is what makes an absent row and a re-raised card the
 /// same [`Requested::Raised`].
+///
+/// `raised` therefore separates only the two cases an absent status cannot: a
+/// still-pending grant whose card the sweeper expired (re-raised, so `Raised`)
+/// from one whose card is still open (`Pending`). It is deliberately NOT
+/// consulted when the row is absent — the loser of a concurrent request writes
+/// no card and sees no grant, and the question it did not raise is standing all
+/// the same.
 fn settle(found: Option<&str>, raised: bool, fleet: &Uuid7, service: &str) -> Requested {
     match found {
         None => Requested::Raised,
@@ -308,3 +323,6 @@ fn report(outcome: Requested, fleet: &Uuid7, wanted: &Wanted<'_>) {
         Requested::Approved | Requested::Denied => (),
     }
 }
+
+#[cfg(test)]
+mod tests;

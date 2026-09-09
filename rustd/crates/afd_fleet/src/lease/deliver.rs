@@ -122,7 +122,7 @@ impl Plane {
             )
             .await;
         let reason = format!("{credential} needs a grant for {integration}");
-        match answers(asked.ok()) {
+        match answers(written(asked, &acquired.fleet_id, integration)) {
             Ungranted::Ends => {
                 self.refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
                     .await
@@ -203,6 +203,47 @@ impl Plane {
             .await?
             .as_ref()
             .map(repair::branch_for))
+    }
+}
+
+/// A park could not raise its card, and the write failed rather than the human.
+const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
+
+/// The request's answer, with a failure to write one REPORTED before it is dropped.
+///
+/// The error dies here either way — [`answers`] treats an unwritten request the
+/// same as an open question, because a datastore that would not answer is this
+/// instance's problem and reading its silence as a refusal would end deliveries
+/// on an outage. What it must not do is die QUIETLY. A park that could not raise
+/// its card answers the same `no_work` with the same reason as a park waiting on
+/// a person, so without this line the two are indistinguishable in the log while
+/// the delivery redelivers every second — which is precisely the failure with no
+/// error that this milestone exists to end, reproduced on the path that ends it.
+///
+/// [`crate::lease::pull::Plane::refused`] already reports the denial and
+/// `IntegrationGrants::request` reports what it wrote; the error was the one
+/// outcome nothing spoke for. The install path says the same thing at its own
+/// call site (`afd_fleet_lifecycle::install::grants`).
+fn written(
+    asked: Result<Requested, afd_approval::Error>,
+    fleet: &Uuid7,
+    service: &str,
+) -> Option<Requested> {
+    match asked {
+        Ok(answer) => Some(answer),
+        Err(unwritten) => {
+            let fleet_id = fleet.as_str();
+            let reason = unwritten.to_string();
+            tracing::warn!(
+                error_code = unwritten.code().as_str(),
+                event = EVENT_REQUEST_FAILED,
+                fleet_id,
+                service,
+                reason,
+                "the delivery parked without raising its grant card; the next poll asks again"
+            );
+            None
+        }
     }
 }
 

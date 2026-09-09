@@ -225,8 +225,17 @@ RETURNING g.id";
 /// one question, not sixty a minute — and no card at all once the grant has
 /// been answered: an `approved` grant needs no question, and a `revoked` one is
 /// a person's no that re-asking would talk over. Both read the snapshot this
-/// statement opened on, which is what the redelivery cadence actually needs;
-/// the unique constraint above is what holds under genuine concurrency.
+/// statement opened on, which is what the redelivery cadence actually needs.
+///
+/// **Concurrency is the index's job, not the guard's, and each row has its own.**
+/// Under READ COMMITTED — the default this daemon never raises — two requests in
+/// the same instant each see no open card, so `NOT EXISTS` stops being a
+/// guarantee and becomes an optimisation. The grant row is held by
+/// `uq_integration_grants_fleet_id_service` and the CARD by
+/// `uq_fleet_approval_gates_fleet_id_grant_service_pending` (slot 836), whose
+/// predicate the `ON CONFLICT` clause below repeats verbatim — the two must stay
+/// identical. The loser of either race writes nothing and reports what it found,
+/// which is a question already standing.
 ///
 /// The gate is raised with a NULL `event_id`, which `schema/811`'s own comment
 /// names as this row's case: an approval carrying one lands a continuation
@@ -267,6 +276,9 @@ WITH requested AS (
     SELECT 1 FROM core.integration_grants g
      WHERE g.fleet_id = $2::uuid AND g.service = $3 AND g.status != $4
   )
+  ON CONFLICT (fleet_id, (evidence->>'service'))
+    WHERE gate_kind = 'integration_grant' AND status = 'pending'
+  DO NOTHING
   RETURNING id
 )
 SELECT (SELECT COUNT(*) FROM requested), (SELECT COUNT(*) FROM raised),

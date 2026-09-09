@@ -1,0 +1,42 @@
+-- Additive migration: one OPEN grant card per (fleet, service), enforced by the
+-- database rather than by statement discipline.
+--
+-- Why: `REQUEST_GRANT` guards its card insert with `NOT EXISTS`, which reads the
+-- snapshot the statement opened on. That is the right guard for the cadence it
+-- was written for — a parked delivery re-asks every second and must raise one
+-- question, not sixty a minute — but two deliveries for one fleet that ask in
+-- the same instant each see no open card and each write one. The daemon runs at
+-- the PostgreSQL default READ COMMITTED; nothing in the repository raises it.
+--
+-- The grant row itself was already safe: `uq_integration_grants_fleet_id_service`
+-- (slot 540) collides the loser's INSERT. The card had no such constraint, so
+-- the race produced one grant and two pending cards — the same question asked
+-- twice, the second unanswerable once the first is resolved and left standing
+-- until the sweeper expires it.
+--
+-- The literals in the predicate name their application constants: they are
+-- `afd_approval::KIND_INTEGRATION_GRANT` and `afd_wire::approval::status::PENDING`,
+-- and a partial index requires a SQL predicate to express them (RULE STS
+-- carve-out, same shape and same reason as
+-- `uq_runner_events_runner_id_dedup_key_offline` in slot 640). `REQUEST_GRANT`'s
+-- `ON CONFLICT` clause repeats this predicate verbatim, so the two must stay
+-- identical.
+--
+-- Partial on `status = 'pending'` rather than unique outright: a fleet's history
+-- of answered cards for one service is exactly what the inbox is for, and only
+-- the OPEN question must be singular. A resolve or a sweep moves the row out of
+-- the predicate, which is what lets the next request raise a fresh card.
+--
+-- `evidence->>'service'` rather than a column: the service a card names lives in
+-- its evidence body, which is the key `RESOLVE_GATE` already joins the grant row
+-- on. Indexing the same expression the join reads keeps one spelling of "which
+-- third party is this card about".
+--
+-- Idempotent (IF NOT EXISTS) so it applies cleanly to both a fresh bootstrap and
+-- an already-provisioned database. No backfill conflict is possible: every
+-- INSERT into `core.integration_grants` before M194 lived in a test file, so no
+-- deployed database holds a gate row of this kind.
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fleet_approval_gates_fleet_id_grant_service_pending
+    ON core.fleet_approval_gates (fleet_id, (evidence->>'service'))
+    WHERE gate_kind = 'integration_grant' AND status = 'pending';
