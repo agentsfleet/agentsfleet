@@ -26,6 +26,33 @@ describe("FleetMarkdown", () => {
     expect(screen.getByText("Steps")).toBeTruthy();
   });
 
+  // Every heading level maps to the same design-system Heading, so a model
+  // writing `#` and one writing `######` land in the surface's type scale
+  // rather than at the browser's default sizes.
+  it("renders every heading level through the design-system Heading", () => {
+    const levels = ["# one", "## two", "### three", "#### four", "##### five", "###### six"];
+    const { container } = render(<FleetMarkdown>{levels.join("\n\n")}</FleetMarkdown>);
+    for (const word of ["one", "two", "three", "four", "five", "six"]) {
+      expect(screen.getByText(word)).toBeTruthy();
+    }
+    // One mapped element per heading, none left as a raw h1..h6.
+    expect(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).toHaveLength(0);
+  });
+
+  it("renders a blockquote and a horizontal rule", () => {
+    const { container } = render(
+      <FleetMarkdown>{"> quoted from the run\n\n---\n\nafter"}</FleetMarkdown>,
+    );
+    const quote = container.querySelector("blockquote");
+    expect(quote?.textContent).toContain("quoted from the run");
+    expect(container.querySelector("hr")).toBeTruthy();
+  });
+
+  it("renders emphasis as em, not as literal underscores", () => {
+    render(<FleetMarkdown>{"this is _emphasised_ text"}</FleetMarkdown>);
+    expect(screen.getByText("emphasised").tagName).toBe("EM");
+  });
+
   it("renders a fenced block without also chipping the code inside it", () => {
     const { container } = render(
       <FleetMarkdown>{"```sh\nmake test-unit-all\n```"}</FleetMarkdown>,

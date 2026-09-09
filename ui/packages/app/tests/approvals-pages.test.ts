@@ -96,10 +96,13 @@ describe("ApprovalsPage (workspace inbox)", () => {
     expect(markup).toContain("Approvals");
   });
 
-  it("ApprovalsData returns null when the token is missing", async () => {
-    getTokenMock.mockResolvedValueOnce(null);
-    const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
-    expect(await ApprovalsData({ workspaceId: WORKSPACE_ID })).toBeNull();
+  it("mints one token for the whole page, not one per region", async () => {
+    // The page minted a token, checked it, threw it away, and then ApprovalsData
+    // minted a second one to make the same request. Two Clerk round trips to
+    // render one table. The page's token is threaded down instead.
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) }));
+    expect(getTokenMock).toHaveBeenCalledTimes(1);
   });
 
   it("renders the inbox section and forwards items to the list stub", async () => {
@@ -129,9 +132,9 @@ describe("ApprovalsPage (workspace inbox)", () => {
     });
     const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
     const markup = renderToStaticMarkup(
-      React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID })),
+      React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID, token: TOKEN })),
     );
-    expect(markup).toContain("Pending"); // section aria-label
+    expect(markup).toContain("Pending approval gates"); // section aria-label
     expect(markup).toContain("approvals-list-stub");
     expect(markup).toContain('data-initial-items="1"');
   });
@@ -139,7 +142,7 @@ describe("ApprovalsPage (workspace inbox)", () => {
   it("propagates a failed inbox read to the retry boundary instead of reporting no approvals", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
     const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
-    await expect(ApprovalsData({ workspaceId: WORKSPACE_ID })).rejects.toThrow("upstream 503");
+    await expect(ApprovalsData({ workspaceId: WORKSPACE_ID, token: TOKEN })).rejects.toThrow("upstream 503");
   });
 
   it("filters the inbox and list pagination to one fleet", async () => {
@@ -148,7 +151,7 @@ describe("ApprovalsPage (workspace inbox)", () => {
       React.createElement(
         React.Fragment,
         null,
-        await ApprovalsData({ workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }),
+        await ApprovalsData({ workspaceId: WORKSPACE_ID, fleetId: FLEET_ID, token: TOKEN }),
       ),
     );
     expect(listApprovalsMock).toHaveBeenCalledWith(WORKSPACE_ID, TOKEN, {

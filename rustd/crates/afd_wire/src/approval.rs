@@ -96,7 +96,7 @@ pub struct ApprovalSummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ApprovalsResponse<'a> {
-    /// The gates on this page, oldest first.
+    /// The gates on this page, newest first.
     pub items: Vec<ApprovalSummary<'a>>,
     /// Where the next page resumes, or `null` on the last one.
     pub next_cursor: Option<Cow<'a, str>>,

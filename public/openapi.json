@@ -6970,8 +6970,8 @@
         "tags": [
           "Approvals"
         ],
-        "summary": "List pending approval gates for a workspace",
-        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row surfaces the fleet's proposed action, gathered evidence, blast-radius assessment, and timeout countdown. Filter by fleet, gate kind, or status. Cursor pagination over (created_at, id) so concurrent inserts don't cause silent skips. ",
+        "summary": "List approval gates for a workspace",
+        "description": "Returns approval gates newest-first, in every state unless `status` narrows them. Each row surfaces the fleet's proposed action, gathered evidence, blast-radius assessment, and timeout countdown. Filter by fleet, gate kind, or status. Cursor pagination over (created_at, id) so concurrent inserts don't cause silent skips. ",
         "operationId": "list_workspace_approvals",
         "parameters": [
           {
@@ -6986,7 +6986,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Defaults to \"pending\". Supply \"approved\", \"denied\", \"timed_out\" to query terminal states.",
+            "description": "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state.",
             "required": false,
             "schema": {
               "type": "string"
@@ -12424,7 +12424,7 @@
             "items": {
               "$ref": "#/components/schemas/ApprovalSummary"
             },
-            "description": "The gates on this page, oldest first."
+            "description": "The gates on this page, newest first."
           },
           "next_cursor": {
             "type": [

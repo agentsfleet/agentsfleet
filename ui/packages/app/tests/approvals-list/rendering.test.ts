@@ -4,7 +4,7 @@ import {
   AGENT_B_DISPLAY_NAME,
   WORKSPACE_ID,
   gate,
-  listAllApprovalsActionMock,
+  listApprovalsActionMock,
   render,
 } from "./harness";
 import React from "react";
@@ -13,12 +13,15 @@ import { screen } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
 describe("ApprovalsList — EmptyState", () => {
-  // The server renders the PENDING page only. A workspace whose approvals are
-  // all settled therefore mounts with an empty table, and claiming "No approvals
-  // yet" at that moment is a verdict on four states nobody has read — it showed,
-  // then the rows arrived and replaced it. The placeholder holds the space until
-  // the read comes back.
-  it("holds the verdict until the settled read lands", async () => {
+  // The server renders EVERY state now, so an empty table is an empty inbox
+  // from the first paint. There is no read in flight to hold the verdict for.
+  //
+  // It used to render the PENDING page only, which made an empty mount a
+  // question rather than an answer: a workspace whose approvals were all
+  // settled showed "No approvals yet", then replaced it when four more reads
+  // landed. A placeholder covered that window; deleting the window deleted the
+  // need for it.
+  it("says the inbox is empty immediately, with no read and no placeholder", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -26,38 +29,23 @@ describe("ApprovalsList — EmptyState", () => {
         initialCursor: null,
       }),
     );
-    expect(screen.queryByText(/no approvals yet/i)).toBeNull();
-    expect(screen.getByTestId("approvals-loading")).toBeTruthy();
-    await screen.findByText(/no approvals yet/i);
+    expect(screen.getByText(/no approvals yet/i)).toBeTruthy();
+    expect(screen.queryByTestId("approvals-loading")).toBeNull();
+    expect(listApprovalsActionMock).not.toHaveBeenCalled();
   });
 
-  it("renders the EmptyState once the settled read comes back empty", async () => {
+  it("reads nothing on mount when the server already handed it rows", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        initialItems: [],
+        initialItems: [gate()],
         initialCursor: null,
       }),
     );
-    expect(await screen.findByText(/no approvals yet/i)).toBeTruthy();
-    expect(screen.queryByTestId("approvals-loading")).toBeNull();
-  });
-
-  // A refused read is a read that finished. Leaving the placeholder up would
-  // spin forever over an error the operator can already see in the alert.
-  it("stops the placeholder when the settled read is refused", async () => {
-    listAllApprovalsActionMock.mockResolvedValue({ ok: false, error: "upstream is down" });
-    render(
-      React.createElement(ApprovalsList, {
-        workspaceId: WORKSPACE_ID,
-        initialItems: [],
-        initialCursor: null,
-      }),
-    );
-    await screen.findByText(/upstream is down/i);
-    expect(screen.queryByTestId("approvals-loading")).toBeNull();
-    // An inbox that could not be read is not an empty inbox.
-    expect(screen.queryByText(/no approvals yet/i)).toBeNull();
+    // The whole cost the redesign removed: a client read on every mount, which
+    // Next queued behind its own token mint before the table could complete.
+    expect(listApprovalsActionMock).not.toHaveBeenCalled();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 });
 
@@ -116,5 +104,41 @@ describe("ApprovalsList — gate card fallbacks", () => {
     // gate_kind "" → no kind badge; blast_radius "" → no blast-radius content.
     expect(screen.queryByText("destructive_action")).toBeNull();
     expect(screen.queryByText("single repo branch")).toBeNull();
+  });
+});
+
+describe("ApprovalsTable — states this build has no arm for", () => {
+  // A status the dashboard does not know is shown verbatim rather than guessed
+  // at or hidden: an unrecognised row is one somebody still has to understand,
+  // and silently calling it pending would be the worse of the two mistakes.
+  it("shows an unknown status as itself, with the neutral badge", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ status: "quarantined" })],
+        initialCursor: null,
+      }),
+    );
+    expect(screen.getByText("quarantined")).toBeTruthy();
+    // Not mapped onto one of the five, so no "Pending"/"Approved" label appears.
+    expect(screen.queryByText("Pending")).toBeNull();
+  });
+
+  it("renders a settled row that carries neither a decision instant nor a decider", () => {
+    // `timed_out` and `auto_killed` are nobody's verdict — the sweeper and the
+    // daemon close these — so the Decided cell has to survive both fields being
+    // absent rather than rendering an empty Time or a blank person.
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [
+          gate({ status: "timed_out", updated_at: null, resolved_by: "" }),
+        ],
+        initialCursor: null,
+      }),
+    );
+    expect(screen.getByText("Timed out")).toBeTruthy();
+    // A settled row is not awaiting anything, so the pending arm must not show.
+    expect(screen.queryByText(/awaiting review/i)).toBeNull();
   });
 });

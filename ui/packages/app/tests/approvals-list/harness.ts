@@ -14,15 +14,15 @@ export const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 // must be declared inside the hoisted block so the factory closures can
 // reference them without a TDZ error.
 
-const { listAllApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock } =
+const { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock } =
   vi.hoisted(() => ({
-    listAllApprovalsActionMock: vi.fn(),
+    listApprovalsActionMock: vi.fn(),
     approveApprovalActionMock: vi.fn(),
     denyApprovalActionMock: vi.fn(),
   }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/actions", () => ({
-  listAllApprovalsAction: listAllApprovalsActionMock,
+  listApprovalsAction: listApprovalsActionMock,
   approveApprovalAction: approveApprovalActionMock,
   denyApprovalAction: denyApprovalActionMock,
 }));
@@ -37,7 +37,7 @@ import type { ApprovalGate } from "@/lib/api/approvals";
 beforeEach(() => {
   // A default so a test that never arranges the read still resolves; per-test
   // cases override it.
-  listAllApprovalsActionMock.mockResolvedValue({
+  listApprovalsActionMock.mockResolvedValue({
     ok: true,
     data: { items: [], next_cursor: null },
   });
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  listAllApprovalsActionMock.mockReset();
+  listApprovalsActionMock.mockReset();
   approveApprovalActionMock.mockReset();
   denyApprovalActionMock.mockReset();
 });
@@ -74,7 +74,7 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
   };
 }
 
-export { listAllApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };
+export { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMock };
 
 // The dashboard layout mounts exactly one TooltipProvider (`layout.test.tsx`
 // pins that, and pins that a bare relative <Time> throws without it). The inbox
@@ -98,9 +98,9 @@ export function denyRow() {
   fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
 }
 
-/** The statuses each read asked for, in call order. */
-export function requestedStatuses(): string[][] {
-  return listAllApprovalsActionMock.mock.calls.map(
-    (call) => [...((call[2] as readonly string[] | undefined) ?? [])],
+/** The opts each read asked with, in call order. */
+export function requestedOpts(): Record<string, unknown>[] {
+  return listApprovalsActionMock.mock.calls.map(
+    (call) => (call[1] as Record<string, unknown> | undefined) ?? {},
   );
 }

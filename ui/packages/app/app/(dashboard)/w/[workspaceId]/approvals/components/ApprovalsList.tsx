@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useOptimistic,
   useState,
   useTransition,
@@ -13,7 +12,6 @@ import {
   ConfirmDialog,
   EmptyState,
   SectionHeader,
-  Skeleton,
 } from "@agentsfleet/design-system";
 import { CheckCircle2Icon } from "lucide-react";
 
@@ -22,16 +20,13 @@ import { RefreshButton } from "@/components/domain/RefreshButton";
 import {
   approveApprovalAction,
   denyApprovalAction,
-  listAllApprovalsAction,
+  listApprovalsAction,
 } from "../actions";
 import { type ApprovalGate, type ResolveOutcome } from "@/lib/api/approvals";
 import {
   APPROVAL_DECISION,
-  APPROVAL_STATUS,
-  APPROVAL_STATUS_ORDER,
   APPROVALS_PAGE_LIMIT,
   type ApprovalDecision,
-  type ApprovalStatusTag,
 } from "@/lib/api/approvals-types";
 import { fallbackPersonLabel } from "@/lib/identity/person";
 import { presentErrorString } from "@/lib/errors";
@@ -57,18 +52,6 @@ function rejectedCall(cause: unknown): ActionResult<ResolveOutcome> {
   return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
 }
 
-/** The four states a row can no longer leave; the server renders the fifth. */
-const SETTLED_STATUSES = APPROVAL_STATUS_ORDER.filter((s) => s !== APPROVAL_STATUS.PENDING);
-
-function isPending(gate: ApprovalGate): boolean {
-  return gate.status === APPROVAL_STATUS.PENDING;
-}
-
-/** Newest first, so the row a person just acted on is where they are looking. */
-function byNewest(a: ApprovalGate, b: ApprovalGate): number {
-  return b.created_at - a.created_at;
-}
-
 type Props = {
   workspaceId: string;
   initialItems: ApprovalGate[];
@@ -78,12 +61,11 @@ type Props = {
 };
 
 export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Props) {
+  // The server rendered every row, in the order the table wants them. There is
+  // no mount read to merge in and nothing to sort here: `SELECT_GATE_PAGE`
+  // orders newest-first, which is what this table shows top-down.
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
   const [error, setError] = useState<string | null>(null);
-  // Whether the load's settled read has come back. Until it has, the table is
-  // showing the server's pending page and nothing else.
-  const [settledRead, setSettledRead] = useState(false);
-  const [, startRead] = useTransition();
   const [, startResolve] = useTransition();
   // The gate a denial is being confirmed for. Held here rather than in the row
   // so the dialog survives the row leaving the table optimistically.
@@ -96,29 +78,18 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
     (current: ApprovalGate[], gateId: string) => current.filter((g) => g.gate_id !== gateId),
   );
 
-  // The API narrows to ONE status per read and defaults to pending, so a table
-  // holding every state means one read per state, merged here. They are asked
-  // for together rather than behind tabs: what a fleet was allowed and what it
-  // was refused are the same question as what it is asking now.
+  // Read when a person asks, and after a resolve. Never on a timer: a settled
+  // row cannot change again, so a poll would spend a request every few seconds
+  // to learn nothing — and the operator, not the page, decides when it is stale.
   //
-  // Read on load and when a person asks, never on a timer. A settled row cannot
-  // change again, so a poll would spend four requests every few seconds to
-  // learn nothing — and the operator, not the page, decides when it is stale.
-  const readStatuses = useCallback(async (
-    statuses: readonly ApprovalStatusTag[],
-  ): Promise<ApprovalGate[] | null> => {
-    // ONE server action, which fans the statuses out on the server. Asking for
-    // them from here looked parallel — `Promise.all` over five calls — and was
-    // not: Next runs Server Actions one at a time per client, so five became
-    // five sequential round trips, measured at 4.6s from load to full table.
-    //
-    // A single failed page would silently shorten the table, so the read stays
-    // all or nothing: the rows already shown stand until a whole one succeeds.
-    const page = await listAllApprovalsAction(
-      workspaceId,
-      { limit: APPROVALS_PAGE_LIMIT, fleetId },
-      statuses,
-    );
+  // One call, because the API answers every state from one query now. It was
+  // five reads merged here, and before that five Server Actions from this
+  // component, which Next ran one at a time.
+  const read = useCallback(async (): Promise<ApprovalGate[] | null> => {
+    const page = await listApprovalsAction(workspaceId, {
+      limit: APPROVALS_PAGE_LIMIT,
+      fleetId,
+    });
     if (!page.ok) {
       setError(
         page.status === 401
@@ -134,34 +105,11 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
     return page.data.items;
   }, [workspaceId, fleetId]);
 
-  const read = useCallback(
-    async () => {
-      const all = await readStatuses(APPROVAL_STATUS_ORDER);
-      return all === null ? null : [...all].sort(byNewest);
-    },
-    [readStatuses],
-  );
-
   const refresh = useCallback(async () => {
     setError(null);
     const fresh = await read();
     if (fresh !== null) setItems(fresh);
   }, [read]);
-
-  // The server already rendered the pending page, so the load only fetches the
-  // four states it could not: re-reading pending here would throw away rows the
-  // page was rendered with before the first paint settles.
-  useEffect(() => {
-    startRead(async () => {
-      const settled = await readStatuses(SETTLED_STATUSES);
-      // Set before the refusal check: a read that failed is still a read that
-      // finished, and the alert below says why. Leaving the skeleton up would
-      // spin forever on an error the operator can already see.
-      setSettledRead(true);
-      if (settled === null) return;
-      setItems((prev) => [...prev.filter(isPending), ...settled].sort(byNewest));
-    });
-  }, [readStatuses]);
 
   function resolve(gateId: string, decision: ApprovalDecision) {
     setError(null);
@@ -198,19 +146,15 @@ export default function ApprovalsList({ workspaceId, initialItems, fleetId }: Pr
 
   // What stands in for the table when it has no rows.
   //
-  // The server renders the PENDING page only, so an empty table before the
-  // settled read lands is not an empty inbox — it is an unfinished one. Claiming
-  // "No approvals yet" there is a statement nobody has checked yet, and on a
-  // workspace whose approvals are all settled it flashes for as long as four
-  // requests take before the rows arrive and replace it.
+  // No skeleton arm any more. The server rendered every state before this
+  // component mounted, so an empty table IS an empty inbox — the claim is the
+  // server's from the first paint, and there is no window in which "No
+  // approvals yet" is a statement nobody has checked.
   //
-  // Once the read is back the claim is the SERVER's, so it reads `items` rather
-  // than the optimistic list: a row that has only just left keeps the table
-  // silent rather than announcing a state the server has not confirmed.
+  // It reads `items` rather than the optimistic list so a row that has only
+  // just left keeps the table silent rather than announcing a state the server
+  // has not confirmed.
   function emptyRegion(): ReactNode {
-    if (!settledRead) {
-      return <Skeleton className="h-24 w-full rounded-md" data-testid="approvals-loading" />;
-    }
     if (items.length > 0 || error !== null) return <></>;
     return (
       <EmptyState

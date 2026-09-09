@@ -70,7 +70,13 @@ pub struct Cursor<'a> {
 /// What a queue read is narrowed by.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Filter<'a> {
-    /// Only gates at this status; pending when absent.
+    /// Only gates at this status; every status when absent.
+    ///
+    /// Absent used to mean `pending`, which made the status the one filter here
+    /// that could not be turned off: an inbox wanting all five states had to ask
+    /// five times. `?status=` is a filter, and omitting a filter returns
+    /// everything — the same shape `fleet_id` and `gate_kind` already have in
+    /// this struct and in the predicate they share.
     ///
     /// [`GateStatus`] and not [`Decision`]: a filter names states a row can BE
     /// in, and the writer's vocabulary has three arms because two of the five

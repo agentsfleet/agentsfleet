@@ -24,9 +24,8 @@ vi.mock("@/lib/api/approvals", () => ({
   denyApproval: denyApprovalMock,
 }));
 
-import { APPROVAL_STATUS_ORDER } from "@/lib/api/approvals-types";
 import {
-  listAllApprovalsAction,
+  listApprovalsAction,
   approveApprovalAction,
   denyApprovalAction,
 } from "@/app/(dashboard)/w/[workspaceId]/approvals/actions";
@@ -42,40 +41,47 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe("approval server actions — thin forwarders", () => {
-  // The whole point of this action: the statuses fan out on the SERVER, under
-  // one token. Five calls from the client were five sequential round trips,
-  // because Next runs Server Actions one at a time per client.
-  it("listAllApprovalsAction reads every status in the order under one token", async () => {
+  // The whole point of this action: ONE read, with no status, which the API
+  // answers from a single query. It fanned out over five statuses until M194 —
+  // first from the client (five sequential round trips, because Next runs
+  // Server Actions one at a time), then on the server (one call, five queries).
+  it("listApprovalsAction reads once, naming no status", async () => {
     listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
-    await listAllApprovalsAction("ws-1");
-    expect(listApprovalsMock).toHaveBeenCalledTimes(APPROVAL_STATUS_ORDER.length);
-    for (const status of APPROVAL_STATUS_ORDER) {
-      expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", { status });
-    }
+    await listApprovalsAction("ws-1");
+    expect(listApprovalsMock).toHaveBeenCalledTimes(1);
+    expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", {});
+    // An omitted status is the filter being off. Sending one would narrow the
+    // page back to a single state and put the other four back behind more reads.
+    const [, , opts] = listApprovalsMock.mock.calls[0] as [string, string, Record<string, unknown>];
+    expect(opts).not.toHaveProperty("status");
   });
 
-  it("listAllApprovalsAction narrows to the statuses it is given and threads opts", async () => {
+  it("listApprovalsAction threads the opts it is given", async () => {
     listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
-    await listAllApprovalsAction("ws-1", { fleetId: "z-1", limit: 25 }, ["denied"]);
+    await listApprovalsAction("ws-1", { fleetId: "z-1", limit: 25 });
     expect(listApprovalsMock).toHaveBeenCalledTimes(1);
     expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", {
       fleetId: "z-1",
       limit: 25,
-      status: "denied",
     });
   });
 
-  it("listAllApprovalsAction merges the pages into one list", async () => {
-    listApprovalsMock
-      .mockResolvedValueOnce({ items: [{ gate_id: "a" }], next_cursor: null })
-      .mockResolvedValueOnce({ items: [{ gate_id: "b" }], next_cursor: "cur-9" });
-    const r = await listAllApprovalsAction("ws-1", {}, ["pending", "denied"]);
-    // The merged list has no single cursor to page from; the caller reads whole
-    // pages per status, so claiming one would be claiming a position nothing holds.
+  it("listApprovalsAction returns the page as the API gave it, cursor included", async () => {
+    // The cursor survives now. The fan-out had to discard it — five pages have
+    // no single position to resume from — so paging was dead behind this action.
+    listApprovalsMock.mockResolvedValueOnce({ items: [{ gate_id: "a" }], next_cursor: "cur-9" });
+    const r = await listApprovalsAction("ws-1");
     expect(r).toEqual({
       ok: true,
-      data: { items: [{ gate_id: "a" }, { gate_id: "b" }], next_cursor: null },
+      data: { items: [{ gate_id: "a" }], next_cursor: "cur-9" },
     });
+  });
+
+  it("listApprovalsAction surfaces a refusal instead of an empty page", async () => {
+    // withToken owns the envelope; a failed read must not read as "no approvals".
+    withTokenMock.mockResolvedValueOnce({ ok: false, error: "upstream is down", status: 503 });
+    const r = await listApprovalsAction("ws-1");
+    expect(r).toEqual({ ok: false, error: "upstream is down", status: 503 });
   });
 
   it("approveApprovalAction forwards workspaceId + gateId + token with an explicit reason", async () => {

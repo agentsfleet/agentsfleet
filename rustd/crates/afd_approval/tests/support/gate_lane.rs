@@ -61,7 +61,9 @@ use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
-use sqlx::Row as _;
+
+#[path = "gate_lane_read.rs"]
+mod read;
 
 /// The environment knob naming the lane's Redis.
 const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
@@ -183,6 +185,38 @@ impl Lane {
             .await;
     }
 
+    /// Seeds one pending gate stamped at `created_at`, returning its action id.
+    ///
+    /// Every other seeder stamps [`NOW_MS`], which is what the ordering and
+    /// keyset tests need control of: one proves the page walks newest-first and
+    /// therefore needs distinct instants, the other proves the cursor's TUPLE
+    /// comparison and therefore needs several rows sharing one.
+    pub(crate) async fn seed_gate_at(&self, created_at: i64, timeout_at: i64) -> String {
+        let action = afd_db::test_util::mint_id();
+        sqlx::query(
+            "INSERT INTO core.fleet_approval_gates
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+                resolved_by, status, detail, created_at, updated_at, event_id,
+                spend_count, spend_ceiling)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+                     $5, 'open a pull request', '{}'::jsonb, 'one repository',
+                     $6, '', 'pending', '', $7, NULL, $8, 0, 32)",
+        )
+        .bind(mint().as_str())
+        .bind(self.fleet.as_str())
+        .bind(self.workspace.as_str())
+        .bind(&action)
+        .bind(KIND)
+        .bind(timeout_at)
+        .bind(created_at)
+        .bind(afd_db::test_util::mint_id())
+        .execute(&mut *self.connection().await)
+        .await
+        .expect("the gate row must insert");
+        action
+    }
+
     async fn seed_row(&self, action: &str, timeout_at: i64, event_id: Option<String>) {
         sqlx::query(
             "INSERT INTO core.fleet_approval_gates
@@ -205,58 +239,6 @@ impl Lane {
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");
-    }
-
-    /// The status column of one gate, by action.
-    pub(crate) async fn status_of(&self, action: &str) -> String {
-        sqlx::query("SELECT status FROM core.fleet_approval_gates WHERE action_id = $1")
-            .bind(action)
-            .fetch_one(&mut *self.connection().await)
-            .await
-            .expect("the gate row is readable")
-            .try_get(0)
-            .expect("a status is text")
-    }
-
-    /// One column of one gate's row, as text.
-    pub(crate) async fn gate_column(&self, action: &str, column: &str) -> String {
-        // The column name is a literal from this suite, never input.
-        let statement = sqlx::AssertSqlSafe(format!(
-            "SELECT {column}::text FROM core.fleet_approval_gates WHERE action_id = $1"
-        ));
-        sqlx::query(statement)
-            .bind(action)
-            .fetch_one(&mut *self.connection().await)
-            .await
-            .expect("the gate row is readable")
-            .try_get(0)
-            .expect("the column must be readable as text")
-    }
-
-    /// How many events this lane's fleet holds.
-    pub(crate) async fn event_count(&self) -> i64 {
-        sqlx::query("SELECT count(*) FROM core.fleet_events WHERE fleet_id = $1::uuid")
-            .bind(self.fleet.as_str())
-            .fetch_one(&mut *self.connection().await)
-            .await
-            .expect("the count must run")
-            .try_get(0)
-            .expect("a count is a bigint")
-    }
-
-    /// One column of one event row, as text.
-    pub(crate) async fn event_column(&self, event: &str, column: &str) -> Option<String> {
-        let statement = sqlx::AssertSqlSafe(format!(
-            "SELECT {column}::text FROM core.fleet_events \
-             WHERE fleet_id = $1::uuid AND event_id = $2"
-        ));
-        sqlx::query(statement)
-            .bind(self.fleet.as_str())
-            .bind(event)
-            .fetch_optional(&mut *self.connection().await)
-            .await
-            .expect("the event read must run")
-            .and_then(|row| row.try_get::<Option<String>, _>(0).ok().flatten())
     }
 
     /// One pooled connection, for the fixture's own reads and writes.

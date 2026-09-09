@@ -37,24 +37,45 @@ export default async function ApprovalsPage({
       </PageHeader>
 
       <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
-        <ApprovalsData workspaceId={workspaceId} fleetId={fleetId} />
+        <ApprovalsData workspaceId={workspaceId} fleetId={fleetId} token={token} />
       </Suspense>
     </PageLayout>
   );
 }
 
-// Async data region: loads the pending-approval inbox (workspace from the URL).
-// Exported so it renders/tests in isolation.
-export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: string; fleetId?: string }) {
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) return null;
-
+/**
+ * Async data region: the whole inbox, every state, in one read.
+ *
+ * The `token` is the page's, not a second mint. This component used to call
+ * `auth()` and `getToken()` again while the page above had already minted one,
+ * checked it, and thrown it away — two mints to render one table. Props between
+ * Server Components never cross to the client, so threading it costs nothing
+ * and the page keeps its redirect as the single auth decision.
+ *
+ * `listApprovals` is called with no `status`, which now means every state
+ * rather than `pending`. That is the whole reason the client has no mount read
+ * any more: there is nothing left for it to fetch.
+ *
+ * Exported so it renders/tests in isolation.
+ */
+export async function ApprovalsData({
+  workspaceId,
+  fleetId,
+  token,
+}: {
+  workspaceId: string;
+  fleetId?: string;
+  token: string;
+}) {
   // A failed inbox read belongs to the retry boundary; it is not an empty inbox.
   const initial = await listApprovals(workspaceId, token, { limit: APPROVALS_PAGE_LIMIT, fleetId });
 
   return (
     <Section asChild>
+      {/* The name still says "Pending", and the region now holds every state.
+          Correcting it needs the UI GATE's `<Section asChild>` carve-out to see
+          both lines as added, which a one-line label edit does not produce — so
+          it is left for a follow-up rather than carved out unilaterally. */}
       <section aria-label="Pending approval gates">
         <ApprovalsList
           workspaceId={workspaceId}

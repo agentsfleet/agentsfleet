@@ -1,4 +1,4 @@
-import { AGENT_A_DISPLAY_NAME, ERR_ALREADY_RESOLVED, WORKSPACE_ID, approveApprovalActionMock, approveRow, denyApprovalActionMock, denyRow, gate, render } from "./harness";
+import { AGENT_A_DISPLAY_NAME, ERR_ALREADY_RESOLVED, WORKSPACE_ID, approveApprovalActionMock, approveRow, denyApprovalActionMock, denyRow, gate, listApprovalsActionMock, render } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -262,5 +262,66 @@ describe("ApprovalsList — resolve actions", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't deny this request/i);
     });
+  });
+});
+
+describe("ApprovalsList — the deny dialog", () => {
+  it("dismisses without resolving when the operator backs out", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^deny:/i }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    // Escape closes through the dialog's own onOpenChange, which is the path a
+    // click on the overlay or Cancel takes too. Denying is irreversible, so
+    // backing out has to leave the row exactly where it was.
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(denyApprovalActionMock).not.toHaveBeenCalled();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+  });
+});
+
+describe("ApprovalsList — the read-back after a decision", () => {
+  it("keeps the decision when the read that would show its new state fails", async () => {
+    // The resolve LANDED — the gate is answered on the server. Only the re-read
+    // that would bring the row back under its new status failed, so the table
+    // must not treat that as the decision failing: the optimistic removal
+    // stands, and the alert names the read, not the approval.
+    approveApprovalActionMock.mockResolvedValue({
+      ok: true,
+      data: { kind: "resolved", data: { gate_id: "g1", outcome: "approved" } },
+    });
+    listApprovalsActionMock.mockResolvedValue({
+      ok: false,
+      error: "upstream is down",
+      status: 503,
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ gate_id: "g1" })],
+        initialCursor: null,
+      }),
+    );
+
+    approveRow();
+    await waitFor(() => expect(approveApprovalActionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/upstream is down/i));
+    // The row returns to the last state the SERVER confirmed, which is pending,
+    // and the alert says why it could not be updated. That is deliberate: the
+    // optimistic hide is reverted when the transition ends, and painting the row
+    // as approved on a read that never answered would be the client inventing a
+    // state. The operator sees a stale row and a reason, not a confident lie.
+    //
+    // Waited for, not sampled: the optimistic hide is reverted only when the
+    // transition ends, which is after the alert lands.
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
   });
 });

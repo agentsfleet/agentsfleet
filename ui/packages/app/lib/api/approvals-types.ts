@@ -32,17 +32,3 @@ export const APPROVAL_STATUS = {
 } as const;
 
 export type ApprovalStatusTag = typeof APPROVAL_STATUS[keyof typeof APPROVAL_STATUS];
-
-/** Tab order: the queue first, then the answers, then the two nobody gave. */
-export const APPROVAL_STATUS_ORDER = [
-  APPROVAL_STATUS.PENDING,
-  APPROVAL_STATUS.APPROVED,
-  APPROVAL_STATUS.DENIED,
-  APPROVAL_STATUS.TIMED_OUT,
-  APPROVAL_STATUS.AUTO_KILLED,
-] as const;
-
-/** A row at this status is finished: no approve or deny applies to it. */
-export function isResolved(status: ApprovalStatusTag): boolean {
-  return status !== APPROVAL_STATUS.PENDING;
-}

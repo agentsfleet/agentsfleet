@@ -39,5 +39,7 @@ mod integration_grants;
 mod integration_inbox;
 #[path = "integration_inbox_continuation.rs"]
 mod integration_inbox_continuation;
+#[path = "integration_inbox_paging.rs"]
+mod integration_inbox_paging;
 #[path = "integration_inbox_tail.rs"]
 mod integration_inbox_tail;

@@ -1,0 +1,22 @@
+-- The operator inbox reads every state in one page, and needs its own index.
+--
+-- `idx_fleet_approval_gates_workspace_id_status_created_at` cannot serve that
+-- read. Its second column is `status`, so a query that does not name one gets
+-- `workspace_id` and nothing more -- no path to an ordered `created_at`, and the
+-- planner falls back to scanning the table. Measured on 50,062 gates in one
+-- workspace: parallel sequential scan, hash join and a top-N sort, 1,101 shared
+-- buffers, 18.8ms; against an index scan, 8 buffers and 0.09ms on this one.
+--
+-- The column order mirrors the read exactly. Equality on `workspace_id`, then
+-- the `(created_at, id)` tuple that the keyset cursor compares row-wise and the
+-- `ORDER BY` walks backwards for newest-first. `id` earns its place: gates
+-- raised in the same millisecond are ordinary -- one run parks several tools at
+-- once -- so the instant alone is not a stable page boundary.
+--
+-- A new slot rather than an edit to 810, because the version IS the slot number
+-- (`afd_db::migration`) and a recorded version never re-applies. Added to 810
+-- this index would reach freshly built databases only, and every deployment
+-- already carrying gates -- the ones with enough history to need it -- would
+-- keep the sequential scan.
+CREATE INDEX IF NOT EXISTS idx_fleet_approval_gates_workspace_id_created_at_id
+    ON core.fleet_approval_gates (workspace_id, created_at, id);
