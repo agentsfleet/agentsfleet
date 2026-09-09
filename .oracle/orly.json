@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.10.6",
+  "orly_version": "0.10.7",
   "packs": [
     "language.rust",
     "product.agentsfleet"
@@ -126,10 +126,10 @@
     ".opencode/skills/orly-spec-new/SKILL.md": "sha256:46ad13c03a8d06c679b7a991d36e88513a5dca97cd3ad58a7e7639781b804944",
     ".opencode/skills/orly-write-integration-test/SKILL.md": "sha256:c1a043392eed089ba5f1ef9b2a966115add265887260794bdd0d1323db1154ba",
     ".opencode/skills/orly-write-unit-test/SKILL.md": "sha256:2bea9f79b381cd4256950bc2d43577e27bea18ea6f1ffbf323fc9493401c8db8",
-    "AGENTS.orly.md": "sha256:cb6062350d8ab130480262aed404be74c41a9c4b37e37d338fb262433fea9696",
+    "AGENTS.orly.md": "sha256:b5697c36a5908c0467368cef7e19f6506694af37510f5e66bf0347c641350dc8",
     "audits/deinit-pairs.sh": "sha256:83274ebdbc714d5668343ac34e6380e70fc9b4d666960d771291146e50650c6c",
     "audits/design-tokens.sh": "sha256:725808d70448eb4fef5f4587ff52540e7638829552e6b7603eb25df20b554b20",
-    "audits/doc-read.sh": "sha256:845627e843121f2307f8c5b4057b218d53f78e039e21d69504ad8c8fbb6f271e",
+    "audits/doc-read.sh": "sha256:8177610ec3f513c17d09e30b1977a06c1662984ba03af75da93b7ed1098ce8c0",
     "audits/error-codes.sh": "sha256:253beb9df5cc7c9b192bf56f6cf777263090dce4ca7c283781560f2258eacd1c",
     "audits/logging.sh": "sha256:42ba99ad475b48ab063af2c206f0063c9ec6093270dd00eeec298d9a7d2c5bbc",
     "audits/msid-ui.sh": "sha256:31610c18b7cf17537b13b22e728a05e1dc97287b737a03344d82b603d28479e4",
