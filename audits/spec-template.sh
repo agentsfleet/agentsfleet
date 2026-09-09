@@ -8,12 +8,12 @@
 #   2. REQUIRED-PRESENT + NO-PLACEHOLDER (positive space) — the determinism
 #      sections the agent-facing template mandates (PR Intent, Applicable Gates,
 #      Prior-Art, Metrics, Decomposition, tiered Test Spec, Product Clarity,
-#      Discovery, …) must EXIST and be FILLED: no unfilled {slot} sentinels and
+#      Discovery, …) must EXIST and carry content: no known unfilled slots and
 #      no surviving "tpl:" guidance comments (template fill grammar). A spec
 #      that omits them forces the executing agent to guess intent. This is the
 #      half that makes a spec "built for the agent".
 #   2b. DECLARED-COMMAND PARITY — a pending/active spec's Acceptance Rubric
-#      must quote the repository's declared conform + verify.unit commands
+#      must quote the repository's declared conform + applicable verify.* commands
 #      (.oracle/orly.json) verbatim: the rubric and `orly gate` grade one
 #      boundary. Staged/file scope only; done/ specs stay historical.
 #
@@ -25,7 +25,7 @@
 #   --all            (default) pending+active specs only — current/in-flight work
 #   --include-done   adds done/ specs to the scan (one-time sweep tool)
 #
-# Family 2 runs ONLY in --staged scope — the spec being authored/edited right
+# Family 2 runs in --staged and --file scope — the spec being authored/edited right
 # now, which is exactly the agent's own output. The bulk scans (--all /
 # --include-done) run Family 1 only, so they behave identically over the whole
 # corpus and never break an existing spec. No legacy carve-out, no heuristics:
@@ -37,6 +37,7 @@
 set -euo pipefail
 
 MODE="${1:-${SCOPE:-all}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
@@ -116,93 +117,8 @@ PATTERNS=(
 # Carve-outs — lines that look prohibited but are legitimate. Skip any match.
 SAFE_LINES_RE='^\*\*Date:\*\*|^\s*```|<!--|^\s*//|"[0-9]+\s*(h|hour|day|min)"'
 
-# ---------------------------------------------------------------------------
-# Family 2 — Required determinism sections (agent-facing docs/TEMPLATE.md).
-# Each entry: <heading ERE>:<human description>
-# ---------------------------------------------------------------------------
-REQUIRED_SECTIONS=(
-  '^#+ .*PR Intent:PR Intent & comprehension handshake'
-  '^#+ .*Applicable Rules:Applicable Rules'
-  '^#+ .*Applicable Gates:Applicable Gates'
-  '^#+ .*Overview:Overview'
-  '^#+ .*(Prior-Art|Reference Implementation):Prior-Art / Reference Implementations'
-  '^#+ .*Files Changed:Files Changed (blast radius)'
-  '^#+ .*(Decomposition|Alternatives):Decomposition & alternatives (patch vs refactor)'
-  '^#+ .*Sections:Sections (implementation slices)'
-  '^#+ .*Metrics.*Observability:Metrics & Observability'
-  '^#+ .*Interfaces:Interfaces'
-  '^#+ .*Failure Modes:Failure Modes'
-  '^#+ .*Invariants:Invariants'
-  '^#+ .*Test Specification:Test Specification'
-  '^#+ .*Acceptance (Criteria|Rubric):Acceptance Rubric (legacy heading Acceptance Criteria accepted)'
-  '^#+ .*Product Clarity:Product Clarity (authoring record)'
-  '^#+ .*Discovery:Discovery (consult log)'
-)
-
-# Template residue — strings that exist ONLY in the unfilled template. Their
-# survival in a pending/active spec means the section was never filled. The
-# "<!-- tpl:" marker is the template's fill grammar: every guidance comment is
-# deleted at authoring, so any survivor is residue by construction.
-PLACEHOLDER_SENTINELS=(
-  '<!-- tpl:'
-  'Title — testable, not vague'
-  'one-line reason}'
-  'Slice title}'
-  'path/to/file.ext'
-  'test_<short_name>'
-  'why this is the right pattern to mirror'
-  '{outcome the user can observe}'
-  '{exit 0 / substring / 0 matches}'
-  'path/to/spec_or_doc.md'
-  '{path/to/old_file.ext}'
-  '{old_symbol}'
-  '{one sentence that could be a test name}'
-  '{smallest verifiable behaviour}'
-  '{one-line behavioural claim}'
-  '{conform command from .oracle/orly.json'
-  '{verify.unit command from .oracle/orly.json'
-  "{gate from this repository's AGENTS.md dispatch index}"
-)
-
-# ---------------------------------------------------------------------------
-# Family 2b — declared-command parity (TEMPLATE.md "Command source rule").
-# A pending/active spec's Acceptance Rubric must quote the repository's
-# declared conform + verify.unit commands VERBATIM — the same set `orly gate`
-# runs — so the spec's ship gate and the mechanical PR gate grade one
-# boundary. Reads .oracle/orly.json with bun (orly's own runtime). Done specs
-# are historical records and are never retrofitted. No config, no bun, or no
-# declared commands → NOTE and skip; this check never guesses.
-# ---------------------------------------------------------------------------
-scan_commands() {
-  local spec="$1" cfg=".oracle/orly.json" cmds
-  case "$spec" in
-    */pending/*|*/active/*) ;;
-    *) return 0 ;;
-  esac
-  [[ -f "$cfg" ]] || { note "$spec — no $cfg; declared-command parity skipped"; return 0; }
-  command -v bun >/dev/null 2>&1 || { note "$spec — bun unavailable; declared-command parity skipped"; return 0; }
-  cmds="$(bun -e '
-    const cfg = await Bun.file(".oracle/orly.json").json().catch(() => null);
-    const commands = cfg && typeof cfg.commands === "object" && cfg.commands !== null ? cfg.commands : {};
-    for (const key of ["conform", "verify.unit"]) {
-      for (const argv of Array.isArray(commands[key]) ? commands[key] : []) {
-        if (Array.isArray(argv) && argv.length > 0) console.log(argv.join(" "));
-      }
-    }' 2>/dev/null || true)"
-  [[ -n "$cmds" ]] || { note "$spec — no declared conform/verify.unit commands; parity skipped"; return 0; }
-  local miss=0 cmd
-  while IFS= read -r cmd; do
-    [[ -z "$cmd" ]] && continue
-    grep -qF "$cmd" "$spec" && continue
-    fail "$spec — rubric misses declared command verbatim: \"$cmd\" (.oracle/orly.json — the set orly gate runs)"
-    miss=$((miss + 1))
-  done <<<"$cmds"
-  if [[ $miss -eq 0 ]]; then ok "$spec — rubric quotes the declared conform/verify.unit commands"; fi
-  return 0
-}
-
 scan_spec() {
-  local spec="$1"
+  local spec="$1" content_file="$2"
   local hits=0
   local pattern desc severity line content
   while IFS=: read -r severity desc pattern; do
@@ -221,36 +137,37 @@ scan_spec() {
         note "$spec:$line — $desc"
       fi
       hits=$((hits + 1))
-    done < <(grep -nE "$pattern" "$spec" 2>/dev/null || true)
+    done < <(grep -nE "$pattern" "$content_file" 2>/dev/null || true)
   done < <(printf '%s\n' "${PATTERNS[@]}")
   if [[ $hits -eq 0 ]]; then ok "$spec — no prohibited patterns"; fi
   return 0
 }
 
-# Family 2 — required determinism sections present + no template residue.
-# BLOCK only; called solely in --staged scope (a spec being authored now).
-scan_required() {
-  local spec="$1"
-  local miss=0 entry sec desc sentinel
-  for entry in "${REQUIRED_SECTIONS[@]}"; do
-    sec="${entry%%:*}"; desc="${entry#*:}"
-    grep -qE "$sec" "$spec" && continue
-    fail "$spec — missing required section: $desc"
-    miss=$((miss + 1))
-  done
-  for sentinel in "${PLACEHOLDER_SENTINELS[@]}"; do
-    grep -qF "$sentinel" "$spec" || continue
-    fail "$spec — unfilled template placeholder: \"$sentinel\""
-    miss=$((miss + 1))
-  done
-  if [[ $miss -eq 0 ]]; then ok "$spec — required sections present, no placeholders"; fi
-  return 0
-}
-
+# Staged checks grade the index, including files removed only from the worktree.
+CONTENT_DIR="$(mktemp -d)"
+trap 'rm -rf "$CONTENT_DIR"' EXIT
 for spec in "${SPECS[@]}"; do
-  [[ -f "$spec" ]] || continue
-  scan_spec "$spec"
-  case "$MODE" in --staged|staged|--file|file) scan_required "$spec"; scan_commands "$spec" ;; esac
+  content_file="$spec"
+  case "$MODE" in
+    --staged|staged)
+      content_file="$CONTENT_DIR/spec.md"
+      if ! git show ":$spec" > "$content_file"; then
+        fail "$spec — cannot read staged content"
+        continue
+      fi
+      ;;
+  esac
+  [[ -f "$content_file" ]] || { fail "$spec — cannot read spec"; continue; }
+  scan_spec "$spec" "$content_file"
+  case "$MODE" in
+    --staged|staged|--file|file)
+      if ! command -v bun >/dev/null 2>&1; then
+        fail "$spec — Bun is required for spec readiness checks"
+      elif ! bun "$SCRIPT_DIR/spec-template.ts" "$spec" "$content_file" "$MODE"; then
+        FAIL=1
+      fi
+      ;;
+  esac
 done
 
 if [[ $FAIL -ne 0 ]]; then

@@ -1,6 +1,6 @@
 # CONFORM — Required output block
 
-> Parent: [`../AGENTS.md`](../AGENTS.orly.md) §CONFORM. This file retains its name
+> Parent: [`../AGENTS.orly.md`](../AGENTS.orly.md) §CONFORM. This file retains its name
 > because `agentsfleet` retains the repository command `make harness-verify`.
 
 Runs after EXECUTE, before VERIFY. Aggregates every gate verdict; lifecycle cannot advance without enumerating the audit. Any "fail" / remaining violations → return to EXECUTE.

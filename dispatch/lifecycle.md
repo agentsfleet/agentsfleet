@@ -12,54 +12,107 @@ are entering, not the whole file.
 
 ## What runs at each stage
 
-The mechanical half of the lifecycle, in one table. Everything in the "runs"
-column is a command, not a claim — `orly gate` reads the repository's declared
-`.oracle/orly.json` commands and never invents one.
+This is the authoritative sequence. Commands come from the repository's
+`.oracle/orly.json`; the engine contains no product-specific build recipes.
 
-| Stage | Runs | Fired by |
+| Stage | Runs | Owner |
 |---|---|---|
-| CHORE(open) | the declared `verify.unit` once, to record `Test Baseline:` | the agent |
-| PLAN | nothing — no file mutations | — |
-| EXECUTE | the dispatch façade for each edited file type; DOC READ recorded via `audits/doc-read.sh log` | the agent, and the runtime's read hook where it has one |
-| CONFORM | the declared `conform` command | `orly gate work` — the generated pre-commit hook |
-| VERIFY (Section) | `conform` plus the declared lane covering the surface touched | the agent |
-| VERIFY (milestone) | the fast `verify.*` set: lint, unit, version | `orly gate verify` — the generated pre-push hook |
-| REVIEW | gstack `/review` over the diff | the agent |
-| DOCUMENT | nothing mechanical | — |
-| COMMIT | `conform` again, on the staged tree | the pre-commit hook |
-| CHORE(close) | every spec criterion, branch shape, clean tree, pushed branch, docs surface, and the slow `verify.*` suites | `orly gate pr`, by hand, before `gh pr create` |
-| LAND | nothing gated | — |
+| CHORE(open) | Record the comparison commit and pending baseline; create the tree, carry owned changes, commit metadata | Agent; commit hook still runs |
+| PLAN | Resolve references, scope, decisions, and proof mapping; no application build | Agent |
+| EXECUTE | Read triggered rules; implement one Section and its tests | Agent |
+| First Section verification | Hydrate only the touched surfaces; format, lint, and execute Section proofs | Agent |
+| Later Section verification | Reuse the tree; repeat affected formatting, lint, and proof commands | Agent |
+| COMMIT | Declared `conform` over staged changes | `orly gate work` in pre-commit |
+| Push | Documentation check and declared non-test verification commands | `orly gate verify` in generated pre-push |
+| Before PR | Measure the comparison revision's unit and integration lanes; review results and fix final-branch failures | Agent |
+| CHORE(close) | Branch and spec criteria, exact upstream revision, every declared `verify.*` command | `orly gate pr` |
+| LAND | Pull and clean up the merged stream | Agent after merge |
 
-Three properties hold this together. A gate only asks what it can answer
-honestly at that moment: `work` judges no git state, because a commit hook's
-tree is dirty by construction and a new spec is committed on the default branch.
-Each tier runs once per cadence — `conform` at commit, the fast set at push, the
-slow set at the close. And `orly gate pr` can skip the fast set because
-`git.pushed` proves HEAD is the commit pre-push already graded.
+`verify.unit`, `verify.integration`, and `verify.memory` belong to the PR
+boundary. Other `verify.*` commands also run at push and are checked again at
+that independent boundary. Full suites run once per PR-gate invocation;
+failures or later changes require a new invocation. No verification cache is
+kept, and a custom hook cannot silently remove final verification.
+`conform` remains the commit hook's responsibility because it may read the
+index. A bare `orly gate` runs all groups and stops at the first red group.
+
+Formatting and lint do not prove behavior. A Section is complete only when its
+Dimensions have passing proofs. Use existing repository test lanes; if a lane
+runs a whole workspace, describe it honestly and add a supported filter to that
+recipe when narrower Section checks are needed. Boundary commands remain
+unfiltered. Rust projects run `cargo fmt` in their Rust workspace, followed by
+the declared lint wrapper covering Clippy and the shipping build configuration.
+Other languages use their own declared formatter and lint commands.
 
 ## CHORE (open) — runbook
 
 1. Spec `docs/v*/pending/` → `active/`; `Status: IN_PROGRESS`; `Branch:` set.
-2. **Test Baseline** — run the repository's declared `verify.unit` (and
-   `verify.integration` where declared) from `.oracle/orly.json`; copy the
-   reported counts into the spec header as `**Test Baseline:** unit=<N>
-   integration=<M>` (VERIFY's Test Delta row compares against it; a product
-   pack may name a dedicated counter — see the product block below).
-3. Create the worktree; verify CWD is inside it (`pwd` + `git worktree list`).
+2. **Test Baseline** — record `**Baseline revision:** <full commit>` and
+   `**Test Baseline:** pending — measured before the Pull Request`. Run no
+   application suite at opening. Before the PR, obtain both declared baseline
+   lanes (`verify.unit` and `verify.integration`) for that exact revision from
+   matching successful run evidence or an isolated checkout of that revision.
+   Never assume the default checkout stayed at the comparison commit. Keep
+   baseline and final integration environments separate; neither may reset a
+   shared deployment. Record passed, failed, and skipped counts per lane in a
+   report, with commands, revision, and environment; put totals in the header
+   and the report path or run URL in `**Baseline evidence:**`.
+   A missing or failed baseline run is recorded honestly; fix failures in the
+   implementation branch and keep the historical result unchanged. Baseline
+   failures never permit final failures. Compare like-for-like lanes and report
+   added, removed, or changed test selections rather than inventing a delta.
+   `n/a — <reason>` is valid only when there is no code or no baseline lane.
+   The gate validates counts, revision ancestry, and the evidence reference;
+   the agent reviews the report's contents. Performance baselines required by
+   a spec remain due before the changes they measure.
+3. Create the worktree and carry the base checkout's uncommitted work into it;
+   verify CWD is inside it (`pwd` + `git worktree list`).
 4. Commit the four steps on the feature branch. No code until the commit lands.
+
+**The base checkout's uncommitted work moves with the stream.** A worktree cut
+from a dirty base strands that work on the default branch, where it is neither
+committed, nor reviewed, nor in the tree the stream is about to gate — and the
+next `git status` there reads as drift nobody owns. So step 3 moves it, before
+any spec edit:
+
+```bash
+git -C <base> status --porcelain -uall            # nothing? the step is a no-op
+git -C <base> stash push --include-untracked -m "chore(open): <branch>"
+git -C <worktree> stash pop
+```
+
+`git stash` is per-repository, not per-worktree, so the entry the base pushes is
+the entry the worktree pops. **Move, never copy** — work left in both places is
+committed twice and conflicts on the merge. Name what came across in the
+CHORE(open) report; a carry-over nobody announced is indistinguishable from
+scope that wandered in. A pop that conflicts KEEPS the stash: stop there and
+resolve before step 4, because a half-applied carry-over is worse than a dirty
+base. Work that does not belong to this stream is the one exception — leave it,
+and say so.
 
 ## Worktree recipe (agentsfleet)
 
-`git checkout main && git branch feat/mNN-name && git worktree add ../agentsfleet-mNN-name feat/mNN-name && cd ../agentsfleet-mNN-name && bun install && (cd cli && bun install && bun run build)`.
-The root `bun install` hydrates the workspace (`ui/packages/*`); `cli/` is its
-own Bun project needing install + build. `git worktree add` fires
-`.githooks/post-checkout` → symlinks `~/.config/agentsfleet/{ui,runner}.env.local`
-into the tree; on 🟠 run `provision-env-1password`, re-link. Post-merge:
-`git worktree remove ../agentsfleet-mNN-name`.
+```bash
+cd ~/Projects/agentsfleet && git checkout main
+git status --porcelain -uall     # dirty? carry it over — the two stash lines below
+git stash push --include-untracked -m "chore(open): feat/mNN-name"
+git branch feat/mNN-name
+git worktree add ../agentsfleet-mNN-name feat/mNN-name
+cd ../agentsfleet-mNN-name && git stash pop
+```
 
-**Test Baseline counter.** A repository whose declared `verify.unit` does not
-print a total names its own counter here. Without one, record the count the
-declared command reports.
+Omit stash operations when the base is clean. Identify the saved stash entry
+explicitly when other streams exist, restore its staged state, and remove only
+that entry after successful restoration. Leave changes owned by another stream
+in place and report them. No application installation or build runs here.
+`git worktree add` may run the repository's cheap environment-link hook.
+
+At first Section verification, install dependencies for the surfaces being
+verified: root `bun install` for the JavaScript workspace; `cli/` has its own
+install and build. Rust checks run from `rustd/` using `make lint-rustd` after
+`cargo fmt`. The first compilation resolves Rust dependencies; later Sections
+reuse the build artifacts. Missing environment links follow the repository's
+provisioning instructions before a check that needs them.
 
 **agentsfleet CHORE(close) paths:** the `<Update>` lands in
 `~/Projects/docs/changelog.mdx` (template + version-bump matrix:
@@ -97,8 +150,9 @@ into a separate tree.
   guesses `surfaces`.
   First session in a repository whose config is still that seed:
   1. Read the build files properly. Fill every `verify.*` the repository really
-     has — the tiering is fixed (`conform` + `verify.unit` are the fast tier,
-     every other `verify.*` is slow and skips on prose-only branches).
+     has — the gate ownership is fixed: `conform` at commit, non-test checks at
+     push, all `verify.*` at the PR boundary; only integration and memory
+     skip on branches with no code.
   2. Set `surfaces.user` and `surfaces.docs` to real path prefixes, or the docs
      gate can never fire and a user-visible change ships undocumented.
   3. Add any opt-in pack the repository's own sources cannot imply
@@ -106,8 +160,10 @@ into a separate tree.
      `orly update` so they materialise.
   4. Commit it. Every teammate and every later session reads this file, and
      `orly` never rewrites it — so an edit here is permanent.
-  A seeded-but-uncompleted config is why `orly gate` reports a repository with
-  no declared commands: the fix is this list, not another `orly init`.
+  Setup requires `conform` and at least one named `verify.*` command.
+  A documentation repository can declare `verify.docs` for its site and link
+  checks without application unit or integration suites. `init` reports
+  missing commands; `doctor` and the gates reject incomplete setup.
 - **Priming:** (1) Human runs `playbooks/founding/01_bootstrap/001_playbook.md`.
   (2) Agent runs `./playbooks/founding/02_preflight/00_gate.sh` (green before
   next). (3) Agent runs `playbooks/founding/03_priming_infra/001_playbook.md`.

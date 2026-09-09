@@ -25,58 +25,40 @@ Only when a target is genuinely unrunnable (e.g. Docker missing for integration
 tests). Surface the limitation in the done message — never dress a skip as "tests
 pass".
 
-## Why `make` is canonical
+## Repository commands are canonical
 
-Package-scoped runners (`bun run test`, `vitest <file>`, `cargo test -p <crate>`)
-are **not** verification — they skip every other package's lint and tests and the
-cross-language gates. The declared `make` targets are the canonical gates.
+The commands in `.oracle/orly.json` define full verification. Use repository
+Make targets where declared; a repository may also declare its native tools
+directly. A narrower package run never substitutes for a declared full check.
+Documentation repositories may use `verify.docs` for site and link checks;
+application test suites are required only when the repository declares them.
 
 ## Two cadences, one boundary
 
-"Always" is not a cadence. A Section closing and a milestone closing are
-different claims, and running the whole declared set at both spends the
-wall-clock of the comprehensive tier to answer a question the scoped lane
-already answered.
+The command ownership and chronological sequence live in
+`dispatch/lifecycle.md` §What runs at each stage. Read that table before
+verification; this page defines what counts as evidence.
 
-The gates match those cadences: `orly gate work` runs the declared `conform`
-alone (every commit, seconds), `orly gate verify` runs the fast `verify.*` set
-(every push), and `orly gate pr` runs the whole-branch criteria and the slow
-suites (the close). Each tier runs once per cadence.
+- **Section proof:** format, lint, and run the tests covering the changed
+  Dimensions. Hydrate the required application dependencies at the first
+  Section verification, then reuse that worktree. Passing lint alone never
+  marks a behavior DONE.
+- **Baseline:** before the Pull Request, measure the recorded comparison
+  revision's declared unit and integration lanes. Keep commands, counts, and
+  output in an evidence report. Compare equivalent selections; explain removed
+  tests. A historical failure never exempts the final branch.
+- **Final verification:** `orly gate pr` runs every declared `verify.*` command
+  itself. It does not infer success from a pushed branch or an installed hook.
+  Capture full command output and the decisive counts, not only exit codes.
+  Custom hooks may run additional checks but cannot replace the final gate.
+- **Repeat only for cause:** a failure or a subsequent change invalidating the
+  result requires a rerun. Run the final gate once per candidate; do not also
+  launch its full suites manually as an unrecorded duplicate.
 
-**Section lane (per Section, and per done-claim inside one).** `make
-harness-verify` — the declared `conform`, seconds — plus the lane that covers
-the surface the Section touched (`make test-unit-rustd`, `make test-unit-app`,
-…). This proves a Section. It is not a repository claim and never satisfies a
-VERIFY row on its own.
-
-**Milestone boundary (once, at CHORE(close), before the PR).** Every command
-`.oracle/orly.json` declares, in one pass: `conform`, `verify.lint`,
-`verify.unit`, `verify.version`, and the slow tier (`verify.integration`,
-`verify.memory`). This is the repository claim, and it is what the done-message
-below reports.
-
-Run `orly gate pr` at the close. It does not re-run the fast tier, and it does
-not need to: its own `git.pushed` criterion proves HEAD is exactly the commit
-the pre-push `orly gate verify` already graded. A bare `orly gate` chains all
-three gates — use it on a branch whose earlier gates never ran.
-
-| Target | When |
-|---|---|
-| `make harness-verify` | Section lane and boundary. The declared `conform` — the deterministic gate audit. |
-| `make lint-all` | Boundary. The declared `verify.lint`. |
-| `make test-unit-all` | Boundary. The declared `verify.unit` — the cargo workspace plus every package coverage gate. |
-| `make check-version` | Boundary. The declared `verify.version`. |
-| `make test-integration-rustd` | Boundary. The declared `verify.integration` — live Postgres and Redis; `orly gate pr` skips it on a branch carrying no code. |
-| `make wire-fixtures` | The `/v1/runners` wire types changed. Regenerate, then review the diff — a changed fixture IS the wire change. |
-| `make bench` (local) | Diff touches request-path code, allocator wiring, or startup/shutdown sequencing. |
-| `API_BENCH_URL=https://api-dev.agentsfleet.net/healthz make bench` | After branch deploys to dev. |
-| `/orly-write-integration-test` (skill) | With `/orly-write-unit-test` at VERIFY when the diff crosses module boundaries with real I/O; otherwise record `N/A — <reason>`. |
-| Acceptance e2e (live tier) | Diff touches a surface the live/acceptance tier covers — relevant suites green, or their opt-in skip matrix recorded. |
-
-The declared set in `.oracle/orly.json` is the source of truth for what exists,
-and a lane listed there is a lane that runs at the boundary — including the slow
-tier. A package-scoped runner (`cargo test -p afd_wire`, `bun run test` inside a
-package) proves that package and never the repository, at either cadence.
+Use repository-owned Make targets where declared. A narrower package run is
+Section evidence only, never a substitute for the full declared boundary.
+When a diff crosses a module boundary with real input/output, apply
+`orly-write-integration-test`; otherwise record why it does not apply.
 
 ## Wire-fixture evidence rule
 
