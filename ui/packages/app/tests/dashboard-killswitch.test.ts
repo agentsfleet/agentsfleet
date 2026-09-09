@@ -80,6 +80,25 @@ describe("KillSwitch component", () => {
     expect(kill.className).toMatch(/min-h-11/);
   });
 
+  // Stop and Kill are the two most consequential controls in the product and
+  // read as plain words in a row of plain words. The glyph is what makes them
+  // findable before they are read, the way every runner action carries one.
+  it("gives each lifecycle action its own glyph, hidden from the accessible name", async () => {
+    await renderSwitch("active");
+    const stop = screen.getByRole("button", { name: /^stop$/i });
+    const kill = screen.getByRole("button", { name: /^kill$/i });
+    expect(stop.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("CircleStopIcon");
+    expect(kill.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("PowerOffIcon");
+    // The label already names the action; the glyph must not be read out twice.
+    expect(stop.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("gives Resume its own glyph rather than reusing Stop's", async () => {
+    await renderSwitch("stopped");
+    const resume = screen.getByRole("button", { name: /^resume$/i });
+    expect(resume.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("PlayIcon");
+  });
+
   // After opening the action dialog, both the trigger button and the
   // ConfirmDialog confirm button carry the same accessible name. Scope the
   // confirm-click to the alertdialog subtree to disambiguate.

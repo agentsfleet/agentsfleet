@@ -82,6 +82,8 @@ const LUCIDE_ICONS = [
   "BrainIcon", "LayoutDashboardIcon",
   "MessageSquareIcon", "Code2Icon", "FolderIcon",
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ChevronsUpDown",
+  // The fleet lifecycle controls, which carry a glyph the way runner actions do.
+  "CircleStopIcon", "PlayIcon", "PowerOffIcon",
 ] as const;
 
 export function lucideMock() {
