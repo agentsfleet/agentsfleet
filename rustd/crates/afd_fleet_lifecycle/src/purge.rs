@@ -36,6 +36,8 @@ use crate::{FleetStatus, Fleets, sql};
 const CONTEXT_PROBE: &str = "read fleet status before purge";
 const CONTEXT_BEGIN: &str = "open fleet purge transaction";
 const CONTEXT_CHILDREN: &str = "purge fleet child rows";
+/// The context the append-only opt-in reports a failed statement under.
+const CONTEXT_ALLOW_PURGE: &str = "permit gate rows to be purged";
 const CONTEXT_PARENT: &str = "purge fleet row";
 const CONTEXT_COMMIT: &str = "commit fleet purge";
 
@@ -53,6 +55,22 @@ impl Fleets {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_BEGIN))?;
+
+        // The append-only trigger on `core.fleet_approval_gates` refuses every
+        // DELETE unless this setting says the purge means it (schema/810's
+        // `fleet_approval_gates_append_only`), and the cascade from the fleet
+        // row fires the same trigger. `SET LOCAL` scopes the opt-in to this
+        // transaction, so it lasts exactly as long as the purge that needs it.
+        //
+        // Load-bearing since M194: before install requested grants, a fleet that
+        // never parked a delivery held no gate rows at all and purged clean, so
+        // the missing opt-in was unreachable. Install now raises a card for every
+        // fleet declaring a mintable credential, which is the whole class of
+        // fleets this would otherwise refuse to delete.
+        sqlx::query(sql::ALLOW_GATE_PURGE)
+            .execute(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_ALLOW_PURGE))?;
 
         // Classified before any DELETE, so a refusal never leaves half a purge
         // behind. The guarded delete below closes the window this opens.

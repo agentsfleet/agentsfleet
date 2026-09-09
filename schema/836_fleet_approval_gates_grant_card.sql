@@ -33,9 +33,24 @@
 -- third party is this card about".
 --
 -- Idempotent (IF NOT EXISTS) so it applies cleanly to both a fresh bootstrap and
--- an already-provisioned database. No backfill conflict is possible: every
--- INSERT into `core.integration_grants` before M194 lived in a test file, so no
--- deployed database holds a gate row of this kind.
+-- an already-provisioned database.
+--
+-- On backfill, honestly: `IF NOT EXISTS` guards re-running this migration, not
+-- pre-existing duplicate DATA, and the premise has to be about THIS table rather
+-- than `core.integration_grants`. The Zig daemon did write rows here of exactly
+-- this kind — `approval_gate_constants.zig` declared
+-- `GATE_KIND_INTEGRATION_GRANT = "integration_grant"` and the install seeded
+-- cards through `create_grants.zig` with no dedup — from 0.26.2 until the tree
+-- was removed in `2f0021d1b`. So a database that served that build CAN hold two
+-- pending cards for one (fleet, service), and on 23505 this migration rolls back
+-- and the slots after it never apply.
+--
+-- Accepted deliberately rather than handled: production is undeployed and the
+-- development database is rebuilt from empty (docs/SCHEMA_CONVENTIONS.md
+-- §Migration Model), so there is no populated database to collide with. Indy's
+-- call, recorded in the spec's Discovery log. A resolution step ahead of the
+-- index — UPDATE the losers to a terminal status, which the append-only trigger
+-- permits on a pending row — is what this needs if that ever stops being true.
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_fleet_approval_gates_fleet_id_grant_service_pending
     ON core.fleet_approval_gates (fleet_id, (evidence->>'service'))

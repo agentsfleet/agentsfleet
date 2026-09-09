@@ -201,6 +201,15 @@ impl IntegrationGrants {
     /// a rate limit, so a card a person answers is replaced by the next real
     /// request rather than swallowed by a window.
     ///
+    /// # Preconditions
+    /// `fleet` MUST belong to `workspace`. Unlike this crate's two
+    /// tenant-facing grant verbs, the statement does not re-derive that —
+    /// `sql::SELECT_FLEET_IN_WORKSPACE` says why — so a caller holding an
+    /// untrusted pair must check it before asking. Today's two callers each
+    /// take both identifiers from a single trusted row, so no endpoint can
+    /// route a caller-supplied pair here; the card would otherwise land in a
+    /// workspace's inbox that does not own the fleet it names.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and an identifier that could
     /// not be minted.
@@ -244,8 +253,8 @@ impl IntegrationGrants {
             .map_err(error::query(CONTEXT_REQUEST))?;
 
         let unreadable = error::query(CONTEXT_REQUEST);
-        let raised: i64 = row.try_get(1).map_err(&unreadable)?;
-        let found: Option<String> = row.try_get(2).map_err(&unreadable)?;
+        let raised: i64 = row.try_get(0).map_err(&unreadable)?;
+        let found: Option<String> = row.try_get(1).map_err(&unreadable)?;
         let outcome = settle(found.as_deref(), raised > 0, fleet, wanted.service);
         report(outcome, fleet, &wanted);
         Ok(outcome)

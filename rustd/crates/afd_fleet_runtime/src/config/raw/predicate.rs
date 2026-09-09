@@ -84,3 +84,75 @@ pub(super) fn is_branch_name(base: &String, (): &()) -> garde::Result {
     }
     Err(garde::Error::new(REASON_NOT_BRANCH))
 }
+
+/// The gate kinds only the daemon may raise.
+///
+/// Spelled here rather than imported because this crate sits UNDER the two that
+/// own them — `afd_gate` holds `KIND_REPOSITORY_WRITE` and `afd_approval` holds
+/// `KIND_INTEGRATION_GRANT`, and both depend on this one. Each owner pins its
+/// constant against this list in its own test, which is the same shape the
+/// repository already uses where a literal cannot be imported.
+pub(super) const DAEMON_OWNED_GATE_KINDS: [&str; 2] = ["integration_grant", "repository_write"];
+
+/// Refuses a gate kind the daemon reserves for its own cards.
+pub(super) fn not_daemon_owned(kind: &String, (): &()) -> garde::Result {
+    if DAEMON_OWNED_GATE_KINDS.contains(&kind.as_str()) {
+        return Err(garde::Error::new(format!(
+            "gate_kind {kind:?} is reserved for the daemon's own approval cards"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod reserved_kind_tests {
+    use super::{DAEMON_OWNED_GATE_KINDS, not_daemon_owned};
+
+    /// The escalation this validator exists to refuse.
+    ///
+    /// A fleet spelling the daemon's own kind raises a card that looks like a
+    /// tool prompt and answers a credential question. Approving it would hand
+    /// the fleet standing permission to mint a third party's credentials.
+    #[test]
+    fn a_fleet_may_not_author_a_daemon_owned_gate_kind() {
+        for reserved in DAEMON_OWNED_GATE_KINDS {
+            assert!(
+                not_daemon_owned(&reserved.to_owned(), &()).is_err(),
+                "{reserved} must be refused"
+            );
+        }
+    }
+
+    /// An ordinary kind still passes, so the guard refuses a set and not a shape.
+    #[test]
+    fn an_authored_kind_of_its_own_is_accepted() {
+        for ordinary in [
+            "deploy",
+            "spend",
+            "",
+            "integration_grants",
+            "repository_read",
+        ] {
+            assert!(
+                not_daemon_owned(&ordinary.to_owned(), &()).is_ok(),
+                "{ordinary} must be accepted"
+            );
+        }
+    }
+
+    /// Pins the spelling, because the owners cannot import it.
+    ///
+    /// `afd_gate::gate::detail::KIND_REPOSITORY_WRITE` and
+    /// `afd_approval::KIND_INTEGRATION_GRANT` are the constants these strings
+    /// stand in for, and both crates sit ABOVE this one so neither can be
+    /// imported here. Each owner pins the same literal from its own side; a
+    /// rename on either side fails a test rather than silently retiring the
+    /// guard.
+    #[test]
+    fn the_reserved_set_is_exactly_the_two_kinds_the_daemon_raises() {
+        assert_eq!(
+            DAEMON_OWNED_GATE_KINDS,
+            ["integration_grant", "repository_write"]
+        );
+    }
+}

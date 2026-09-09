@@ -4,6 +4,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use super::predicate::not_daemon_owned;
 use super::{MAX_REFERENCE_LEN, MAX_TOOL_LEN};
 
 /// The `gates` block.
@@ -40,8 +41,21 @@ pub(crate) struct GateRule {
     #[garde(skip)]
     pub(crate) behavior: Behavior,
     /// What kind of decision the human is being asked for.
+    ///
+    /// Refused, not merely bounded, when it names a kind the DAEMON owns. The
+    /// kind travels verbatim from here onto the approval card
+    /// (`afd_gate::gate::detail::Stated::under`), and two kinds are the daemon's
+    /// own vocabulary for privileged decisions — answering one of those cards
+    /// moves authorisation, not just a run. A fleet that could spell
+    /// `integration_grant` here would raise an ordinary-looking card whose
+    /// approval flips that fleet's standing permission to mint a third party's
+    /// credentials, decided by an operator who was answering about a tool.
+    ///
+    /// Refusing at parse is the loud half; `afd_approval`'s resolve refuses to
+    /// move a grant for any card carrying an event id, which is the half that
+    /// holds for configs stored before this validator existed.
     #[serde(default)]
-    #[garde(length(chars, max = MAX_REFERENCE_LEN))]
+    #[garde(length(chars, max = MAX_REFERENCE_LEN), custom(not_daemon_owned))]
     pub(crate) gate_kind: String,
     /// How far a yes reaches.
     #[serde(default)]
