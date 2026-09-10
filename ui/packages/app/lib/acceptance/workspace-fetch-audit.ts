@@ -76,7 +76,10 @@ type GlobalWithAudit = typeof globalThis & {
 // A long lane would otherwise grow these arrays without bound. The cap is far
 // above any declared sample count, so a measurement never silently loses one.
 const MAX_TIMING_SAMPLES_PER_PATH = 200;
-const INERT_OUTCOME: AuditedOutcome = {
+/** The handle a caller uses when nothing should be recorded — a non-GET, or a
+ * runtime with the audit gate off. Exported so callers say what they mean
+ * rather than passing a path they know will not match. */
+export const INERT_AUDITED_OUTCOME: AuditedOutcome = {
   trackAttempts:
     <T extends { attempt: number }>(next?: (info: T) => void) =>
     (info: T) => next?.(info),
@@ -149,9 +152,9 @@ export function readWorkspaceFetchAuditPayload(): WorkspaceFetchAuditPayload {
  * exhausts the ladder is the case a latency investigation most needs.
  */
 export function beginWorkspaceFetchOutcome(path: string): AuditedOutcome {
-  if (!isWorkspaceFetchAuditEnabled()) return INERT_OUTCOME;
+  if (!isWorkspaceFetchAuditEnabled()) return INERT_AUDITED_OUTCOME;
   const key = auditedKeyFor(path);
-  if (key === null) return INERT_OUTCOME;
+  if (key === null) return INERT_AUDITED_OUTCOME;
 
   const startedAt = Date.now();
   let attempts = 0;

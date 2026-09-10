@@ -1,5 +1,10 @@
 import { ApiError, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
-import { beginWorkspaceFetchOutcome, recordWorkspaceFetchForAcceptance, type AuditedOutcome } from "../acceptance/workspace-fetch-audit";
+import {
+  beginWorkspaceFetchOutcome,
+  INERT_AUDITED_OUTCOME,
+  recordWorkspaceFetchForAcceptance,
+  type AuditedOutcome,
+} from "../acceptance/workspace-fetch-audit";
 import { HTTP_METHOD, runWithRetry, type RetryOptions } from "./retry";
 import { classifyFailure } from "./retry-classify";
 
@@ -269,7 +274,7 @@ function methodOf(init: RequestInit): string {
 // and attempts taken — which is what lets a measurement attribute a slow render
 // to a stage. Inert unless the env gate is on, so production pays a branch.
 function recordAudit(path: string, method: string): AuditedOutcome {
-  if (method !== HTTP_METHOD.GET) return beginWorkspaceFetchOutcome("");
+  if (method !== HTTP_METHOD.GET) return INERT_AUDITED_OUTCOME;
   recordWorkspaceFetchForAcceptance(path);
   return beginWorkspaceFetchOutcome(path);
 }
