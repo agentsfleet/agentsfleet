@@ -63,13 +63,20 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
         .await
         .expect("the invalidated set refreshes before the clock is paused");
     assert!(refreshed.contains(&second));
+    // Skip the tick's ten seconds on the paused clock, then let real time
+    // run again before reading: the changed `hello` reads the fleets'
+    // counters from Postgres, and a paused runtime that goes idle on a socket
+    // auto-advances its clock — which would fire the read's own deadline
+    // before the datastore answers.
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
+    tokio::time::resume();
     let changed = next_chunk(&mut body).await;
     assert!(changed.contains("event: hello"));
     assert!(changed.contains(&second));
 
     ownership.revoke();
+    tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
     assert!(
         stream_ends(&mut body).await,
