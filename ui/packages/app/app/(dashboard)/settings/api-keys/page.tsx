@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { ApiError } from "@/lib/api/errors";
 import { listApiKeys } from "@/lib/api/api_keys";
 import ApiKeysView from "./components/ApiKeysView";
@@ -7,9 +7,7 @@ import ApiKeysView from "./components/ApiKeysView";
 export const dynamic = "force-dynamic";
 
 export default async function ApiKeysPage() {
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // RBAC guard via defense-in-depth: the dashboard session token carries no
   // role claim (AUTH.md — role lives only in the api-template token the backend

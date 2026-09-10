@@ -1,93 +1,65 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-const { resolvePeopleActionMock } = vi.hoisted(() => ({
-  resolvePeopleActionMock: vi.fn(),
-}));
-
-vi.mock("@/app/actions/identity", () => ({
-  resolvePeopleAction: resolvePeopleActionMock,
-}));
-
 import { PersonLabel } from "@/components/domain/PersonLabel";
-import { resetPersonDirectory } from "@/lib/identity/person-directory";
 
-const ALICE = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
-const BOB = "user_2AbcD5hdEfQ9Gy4e6Qsuq9nkZZZ";
+const SUBJECT = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
+const SHORTENED = "user_3HizL…kKCu";
 const SWEEPER = "system:approval_gate_sweeper";
 
-beforeEach(() => {
-  resetPersonDirectory();
-  resolvePeopleActionMock.mockResolvedValue({ [ALICE]: "Ada Lovelace", [BOB]: "Bob Vance" });
-});
+afterEach(cleanup);
 
-afterEach(() => {
-  cleanup();
-  resolvePeopleActionMock.mockReset();
-});
-
-describe("PersonLabel", () => {
-  // Showing the subject first and swapping it for a name a beat later makes
-  // every row in a table visibly change under the reader. The cell holds its
-  // shape instead and says nothing until it knows.
-  it("holds a placeholder until the directory answers, never a subject that changes", async () => {
-    render(<PersonLabel actor={ALICE} />);
-    expect(screen.getByTestId("person-loading")).toBeTruthy();
-    expect(screen.queryByText("user_3HizL…kKCu")).toBeNull();
-    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
-    expect(screen.queryByTestId("person-loading")).toBeNull();
-  });
-
-  // The name is for the human; the subject is what matches a log line or an
-  // API response, so it stays reachable rather than being replaced.
-  it("keeps the full subject on hover", async () => {
-    render(<PersonLabel actor={ALICE} />);
-    const label = await screen.findByText("Ada Lovelace");
-    expect(label.getAttribute("title")).toBe(ALICE);
-  });
-
-  it("asks once for a table that renders the same subject many times", async () => {
-    render(
-      <>
-        <PersonLabel actor={ALICE} />
-        <PersonLabel actor={ALICE} />
-        <PersonLabel actor={BOB} />
-      </>,
-    );
-    await screen.findAllByText("Ada Lovelace");
-    expect(resolvePeopleActionMock).toHaveBeenCalledTimes(1);
-    expect(resolvePeopleActionMock.mock.calls[0]![0]).toEqual([ALICE, BOB]);
-  });
-
-  it("does not ask again for a subject already answered", async () => {
-    render(<PersonLabel actor={ALICE} />);
-    await screen.findByText("Ada Lovelace");
-    cleanup();
-    render(<PersonLabel actor={ALICE} />);
+describe("PersonLabel — the name arrives with the row", () => {
+  it("prints the name the row carried", () => {
+    render(<PersonLabel actor={SUBJECT} name="Ada Lovelace" />);
     expect(screen.getByText("Ada Lovelace")).toBeTruthy();
-    expect(resolvePeopleActionMock).toHaveBeenCalledTimes(1);
   });
 
-  // Clerk has never heard of the daemon's sentinels; sending one buys a
-  // round-trip for a 404.
-  it("names a daemon sentinel itself and never asks the directory", () => {
-    render(<PersonLabel actor={SWEEPER} />);
+  // The subject is the identifier of record. A name replaces it on screen and
+  // never off it: an operator matching a row against a log line needs the
+  // string the log line holds.
+  it("keeps the subject reachable as the title", () => {
+    render(<PersonLabel actor={SUBJECT} name="Ada Lovelace" />);
+    expect(screen.getByText("Ada Lovelace").getAttribute("title")).toBe(SUBJECT);
+  });
+
+  // Empty is the ordinary answer for a subject this deployment never saw sign
+  // up. Dropping the row's only record of who decided is worse than printing
+  // the id, so it renders shortened rather than blank.
+  it("falls back to the shortened subject when the join came back empty", () => {
+    render(<PersonLabel actor={SUBJECT} name="" />);
+    expect(screen.getByText(SHORTENED)).toBeTruthy();
+  });
+
+  // The sweeper is not a person and has no user row to join to. Its label is
+  // decided here, not by the absence of a name.
+  it("names the daemon's own sentinel rather than shortening it", () => {
+    render(<PersonLabel actor={SWEEPER} name="" />);
     expect(screen.getByText("Auto-swept")).toBeTruthy();
-    expect(resolvePeopleActionMock).not.toHaveBeenCalled();
   });
 
-  it("leaves the fallback standing when the directory refuses", async () => {
-    resolvePeopleActionMock.mockRejectedValue(new Error("clerk is down"));
-    render(<PersonLabel actor={ALICE} />);
-    // A refused lookup is still an answer: the row stops waiting and shows the
-    // only thing it holds, rather than a placeholder that never resolves.
-    expect(await screen.findByText("user_3HizL…kKCu")).toBeTruthy();
+  it("names an unrecognised sentinel generically", () => {
+    render(<PersonLabel actor="system:something_else" name="" />);
+    expect(screen.getByText("System")).toBeTruthy();
   });
 
-  it("renders nothing for an unattributed row", () => {
-    const { container } = render(<PersonLabel actor="" />);
+  // A sentinel is what the daemon calls itself. A name joined against one
+  // would be a bug in the join, and the sentinel still wins.
+  it("prefers the sentinel over any name a join produced for it", () => {
+    render(<PersonLabel actor={SWEEPER} name="Ada Lovelace" />);
+    expect(screen.getByText("Auto-swept")).toBeTruthy();
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+  });
+
+  // A pending gate has no decider at all. The column is empty, not "unknown".
+  it("renders nothing for an empty actor", () => {
+    const { container } = render(<PersonLabel actor="" name="" />);
     expect(container.textContent).toBe("");
-    expect(resolvePeopleActionMock).not.toHaveBeenCalled();
+  });
+
+  it("passes its className through", () => {
+    render(<PersonLabel actor={SUBJECT} name="Ada Lovelace" className="text-xs" />);
+    expect(screen.getByText("Ada Lovelace").className).toBe("text-xs");
   });
 });

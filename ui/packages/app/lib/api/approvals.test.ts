@@ -52,6 +52,7 @@ function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
     timeout_at: 1_700_086_400_000,
     updated_at: null,
     resolved_by: "",
+    resolved_by_name: "",
     ...over,
   };
 }

@@ -1,6 +1,5 @@
 import { Suspense } from "react";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { credential, requireCredential } from "@/lib/auth/credential";
 import { PageHeader, PageLayout, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
@@ -26,9 +25,7 @@ export default async function FleetsPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
 
   return (
     <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
@@ -41,8 +38,7 @@ export default async function FleetsPage({
 // workspace. When empty, additionally gathers the onboarding signals so the
 // checklist renders from live state. Exported so it renders/tests in isolation.
 export async function FleetsData({ workspaceId }: { workspaceId: string }) {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) return null;
 
   const [page, billing] = await Promise.all([

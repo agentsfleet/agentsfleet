@@ -1,6 +1,5 @@
 import { Suspense } from "react";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { claims, credential, requireCredential } from "@/lib/auth/credential";
 import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
 import {
   listWorkspaceFleetLibraryCached,
@@ -44,9 +43,7 @@ export default async function InstallFleetPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
 
   const query = await searchParams;
 
@@ -141,8 +138,7 @@ export async function InstallFleetData({
   workspaceId: string;
   query: SearchParams;
 }) {
-  const { getToken, sessionClaims } = await auth();
-  const token = await getToken();
+  const [token, sessionClaims] = await Promise.all([credential(), claims()]);
   if (!token) return null;
 
   const after = one(query[LIBRARY_AFTER_PARAM]) ?? null;

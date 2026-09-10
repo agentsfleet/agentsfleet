@@ -234,6 +234,7 @@ fn summary(gate: &GateRow) -> ApprovalSummary<'_> {
         timeout_at: gate.timeout_at,
         updated_at: gate.updated_at,
         resolved_by: Cow::Borrowed(&gate.resolved_by),
+        resolved_by_name: Cow::Borrowed(&gate.resolved_by_name),
         // `None` on a row that will not parse — see the field's own note on
         // why a corrupt gate is still shown rather than failing the queue.
         evidence: serde_json::from_str::<&RawValue>(&gate.evidence_json).ok(),

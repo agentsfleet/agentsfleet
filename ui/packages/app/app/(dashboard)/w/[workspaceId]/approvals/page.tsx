@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import {
   PageHeader,
   PageLayout,
@@ -8,7 +7,7 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { listApprovals } from "@/lib/api/approvals";
 import { APPROVALS_PAGE_LIMIT } from "@/lib/api/approvals-types";
 import ApprovalsList from "./components/ApprovalsList";
@@ -25,9 +24,7 @@ export default async function ApprovalsPage({
 }) {
   const { workspaceId } = await params;
   const { fleetId } = searchParams ? await searchParams : { fleetId: undefined };
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // Header streams first; the inbox loads inside ApprovalsData under Suspense.
   return (

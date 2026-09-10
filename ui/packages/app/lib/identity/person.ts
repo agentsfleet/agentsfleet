@@ -7,13 +7,13 @@
  * thing to show. The daemon writes its own sentinels too, for the closures
  * nobody chose: the gate sweeper answers questions the deadline outlived.
  *
- * This module is the vocabulary the whole dashboard shares, so an operator
- * reads the same name on the approvals table, the gate page and anywhere that
- * later prints who acted.
+ * The name itself is not this module's job and never travels here. It arrives
+ * on the row, joined from the deployment's own user table by the read that
+ * fetched the subject. What is left is the vocabulary for the strings no user
+ * table will ever hold — the sentinels — and what to print when the join came
+ * back empty.
  */
 
-/** Clerk subjects, and only Clerk subjects, can be looked up by name. */
-const USER_ID_PREFIX = "user_";
 /** Everything agentsfleetd attributes to itself rather than to a person. */
 const SYSTEM_PREFIX = "system:";
 
@@ -27,11 +27,6 @@ const SYSTEM_LABEL = "System";
 const ID_HEAD = 10;
 const ID_TAIL = 4;
 const ELLIPSIS = "…";
-
-/** A Clerk subject — the only shape the directory can resolve. */
-export function isPersonId(actor: string): boolean {
-  return actor.startsWith(USER_ID_PREFIX) && actor.length > USER_ID_PREFIX.length;
-}
 
 /**
  * What the daemon calls itself, in words, or null when the actor is not one of

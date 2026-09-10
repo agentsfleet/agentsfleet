@@ -71,6 +71,7 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     timeout_at: over.timeout_at ?? Date.now() + 3_600_000,
     updated_at: over.updated_at ?? null,
     resolved_by: over.resolved_by ?? "",
+    resolved_by_name: over.resolved_by_name ?? "",
   };
 }
 
