@@ -104,7 +104,7 @@ Guards fire pre-hoc regardless of lifecycle stage. Override: `<GATE>: SKIPPED pe
 
 **Dispatch index — full rule prose in each `dispatch/<entry>.md` façade. Read the façade when its trigger fires — sectioned: scan headers, read the sections the diff touches.** Trigger-surface extensions: `*.zig`, `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.py`, `*.rs`, `*.go`, `*.sh`, `*.sql`, `*.mdx`, and public OpenAPI prose. Latent `.md` per entry, deterministic `.sh` where mechanisable. Signals: 🟢 pass · 🟠 warn · 🔴 fail · 🛑 blocked · 🔥 critical · 🤔 judgment-only · 🟣 delegated. Output glyphs: 🧲 eval · 🛍️ evidence · 👮 security · ⛈️ rule · 💡 info · 📌 note. The router below **is** the gate set.
 
-**Legacy-workaround family** — four rules together: **RULE NDC** (no dead code at write time, `docs/greptile-learnings/RULES.md`), **RULE NLR** (touch-it-fix-it cleanup), **RULE NLG** (no new legacy framing pre-`2.0.0`), **Legacy-Design Consult Guard** (user A/B/C consult before patching/keeping/testing legacy). **No compatibility aliases** — old verbs, flag aliases, route wrappers, env aliases, fallback spellings — unless the user explicitly asks in-session.
+**Legacy-workaround family** — four rules together: **RULE NDC** (no dead code at write time, `docs/greptile-learnings/RULES.md`), **RULE NLR** (touch-it-fix-it cleanup), **RULE NLG** (no new legacy framing pre-`0.30.0`), **Legacy-Design Consult Guard** (user A/B/C consult before patching/keeping/testing legacy). **No compatibility aliases** — old verbs, flag aliases, route wrappers, env aliases, fallback spellings — unless the user explicitly asks in-session.
 
 | Trigger — when you… | Dispatch | Latent façade carries · override |
 |---|---|---|

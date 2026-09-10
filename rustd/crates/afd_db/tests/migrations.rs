@@ -1,11 +1,12 @@
-//! Dimension 2.1 (list half) — the Rust migration list IS the Zig one.
+//! The migration list is the `schema/` directory, spelled out by hand.
 //!
 //! The integration half proves a fresh database ends up with the right rows.
-//! This half proves the list those rows come from cannot drift: it is compared
-//! against the `schema/` directory AND against `schema/embed.zig`, which is
-//! the Zig daemon's own source of truth. A migration added to either side and
-//! not the other fails here, in the fast lane, rather than in production as a
-//! table that never got created.
+//! This half proves the list those rows come from cannot drift from the files
+//! it names. `afd_db::migration` writes every filename out rather than globbing
+//! the directory — deliberately, so the set does not depend on the state of a
+//! working tree — and a hand-written list is exactly what falls behind. A
+//! `.sql` dropped into `schema/` without its `migration!()` entry fails here,
+//! in the fast lane, rather than in production as a table nothing created.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -42,49 +43,31 @@ fn schema_directory() -> BTreeSet<String> {
         .collect()
 }
 
-/// The files `schema/embed.zig` lists, by name.
-fn zig_embedded_files() -> BTreeSet<String> {
-    let source = std::fs::read_to_string(repo_root().join("schema/embed.zig"))
-        .expect("schema/embed.zig must exist");
-    source
-        .split("@embedFile(\"")
-        .skip(1)
-        .filter_map(|tail| tail.split('"').next().map(str::to_owned))
-        .collect()
-}
-
-/// Three lists, one set: the directory, the Zig daemon's list, and this crate's.
+/// Two lists, one set: the files on disk and the ones this crate ships.
 #[test]
-fn test_migration_list_matches_schema_directory_and_zig() {
+fn test_migration_list_matches_schema_directory() {
     let ours: BTreeSet<String> = MIGRATIONS
         .iter()
         .map(|migration| migration.name().to_owned())
         .collect();
     let directory = schema_directory();
-    let zig = zig_embedded_files();
 
     assert_eq!(
         ours, directory,
-        "the Rust list and schema/ disagree — a file was added or removed without updating src/migration.rs"
-    );
-    assert_eq!(
-        ours, zig,
-        "the Rust list and schema/embed.zig disagree — the two binaries would migrate to different schemas"
+        "the migration list and schema/ disagree — a file was added or removed without updating src/migration.rs"
     );
     assert_eq!(MIGRATIONS.len(), ours.len(), "a filename is listed twice");
 }
 
 /// The version is the slot number, derived rather than restated.
 ///
-/// This is the property `schema/embed.zig` documents as RULE MIG and then
-/// maintains by hand. Here it is derived at compile time, so the test is
-/// checking the derivation against the filenames rather than watching for a
-/// typo — but the Zig side is still hand-written, so its numbers are compared
-/// too.
+/// `afd_db::migration` derives it from the filename during constant
+/// evaluation, so a version that disagrees with the file it names is not a
+/// mistake anyone can write. This walks the derivation over every committed
+/// filename, which puts that compile-time guarantee in the test output where a
+/// reader can see it hold.
 #[test]
 fn test_every_version_is_its_filename_prefix() {
-    let source = std::fs::read_to_string(repo_root().join("schema/embed.zig")).unwrap();
-
     for migration in MIGRATIONS {
         let prefix: String = migration
             .name()
@@ -96,18 +79,6 @@ fn test_every_version_is_its_filename_prefix() {
             migration.version(),
             "{} does not apply as its slot number",
             migration.name()
-        );
-
-        let zig_row = format!(
-            ".version = {}, .sql = @embedFile(\"{}\")",
-            migration.version(),
-            migration.name()
-        );
-        assert!(
-            source.contains(&zig_row),
-            "schema/embed.zig binds {} to a different version than {}",
-            migration.name(),
-            migration.version()
         );
     }
 }

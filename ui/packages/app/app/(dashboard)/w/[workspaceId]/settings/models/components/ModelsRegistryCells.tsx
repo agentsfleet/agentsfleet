@@ -37,7 +37,7 @@ export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
 }
 
-// `context_cap_tokens` is a Zig `?u32` on the wire (schema/embed.zig) — the
+// `context_cap_tokens` is an optional `u32` on the wire — the
 // only real-world absent case is "not in the catalogue" (undefined). Guard
 // on nullishness, not falsiness, so a (semantically invalid but not
 // impossible) explicit 0 still renders as "0" rather than "—".

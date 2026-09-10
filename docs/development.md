@@ -23,6 +23,21 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   row — UFS, RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
   and the fast per-surface gates. This is the split `docs/VERIFY_TIERS.md`
   already describes; the hooks had drifted from it.
+- **Pre-commit asserts the orly engine pin before it gates.**
+  `.oracle/orly.json` records `orly_version`; CI installs exactly that version
+  before gating, and `scripts/check_orly_pin.sh` now proves the local binary
+  matches it. It exists because a stale global orly reads the pin, proceeds
+  anyway, and grades a narrower criteria set than the repository declares —
+  one of the five declared commands, while printing a complete-looking list —
+  and `orly doctor` on a stale engine printed thirty red "managed file was
+  edited" lines and still exited 0. The check asserts rather than installs
+  (the commit tier costs seconds, and reinstalling global tooling per commit
+  is a surprise), prints both versions on failure, and names the install
+  command for the manager the binary actually resolves under: bun-installed
+  and npm-installed orlys do not replace each other. It also rides
+  `lint-scripts`, so `make lint-all` — the declared `verify.lint`, and what
+  `orly gate pr` runs — catches the same drift on a clone whose hooks were
+  never armed.
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
   range include all of main's recent source files — pre-push then runs the full
   unit lanes for what was a docs-only intent, and `test-unit-agentsfleetd` **hangs if

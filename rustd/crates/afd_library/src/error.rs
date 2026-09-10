@@ -1,9 +1,9 @@
 //! The failure vocabulary for bundle ingestion and external sources.
 
 use afd_core::error_code::{
-    CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
-    FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
-    INTERNAL_OPERATION_FAILED, PAYLOAD_TOO_LARGE,
+    CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_CREDENTIAL_NAME_INVALID,
+    FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+    INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE, INTERNAL_OPERATION_FAILED, PAYLOAD_TOO_LARGE,
 };
 
 use crate::source::SourceFailure;
@@ -171,6 +171,11 @@ impl Error {
             )
             | Self::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
                 PAYLOAD_TOO_LARGE
+            }
+            // Ahead of the catch-all below: a name the vault will not store is
+            // fixed by renaming it, not by re-packaging the bundle.
+            Self::TriggerConfig(afd_fleet_runtime::Error::InvalidCredentialRef { .. }) => {
+                FLEET_BUNDLE_CREDENTIAL_NAME_INVALID
             }
             Self::Invalid(_)
             | Self::FrontmatterUtf8 { .. }

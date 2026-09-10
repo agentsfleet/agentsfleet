@@ -250,6 +250,24 @@ export async function readFleetName(
   return fleet.name;
 }
 
+/** The fleet's own lifetime counters, in the units the daemon stores them in.
+ * The wall tile renders these two, spend rounded to cents — so a walk grading
+ * the tile reads them here, in nanos, and lets the tile do its own rounding. */
+export interface FleetCounters {
+  budget_used_nanos: number;
+  events_processed: number;
+}
+
+export async function readFleetCounters(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<FleetCounters> {
+  return clientFor(handle).get<FleetCounters>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+  );
+}
+
 export async function listFleets(handle: ClientHandle, workspaceId: string): Promise<Fleet[]> {
   const c = clientFor(handle);
   const res = await c.get<ListResp<Fleet>>(`/v1/workspaces/${workspaceId}/fleets`);

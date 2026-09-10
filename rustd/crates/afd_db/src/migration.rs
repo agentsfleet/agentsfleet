@@ -2,12 +2,12 @@
 //!
 //! # The version IS the slot number
 //!
-//! `550_connector_installs.sql` applies as version 550. `schema/embed.zig`
-//! states that rule and then restates each number by hand beside each file;
-//! here [`version_of`] derives it from the filename during constant
-//! evaluation, so a version that disagrees with the file it names is not a
-//! mistake anyone can make. A filename that is not `<digits>_<name>.sql` fails
-//! the build.
+//! `550_connector_installs.sql` applies as version 550. The retired
+//! `schema/embed.zig` stated that rule and then restated each number by hand
+//! beside each file; here [`version_of`] derives it from the filename during
+//! constant evaluation, so a version that disagrees with the file it names is
+//! not a mistake anyone can make. A filename that is not `<digits>_<name>.sql`
+//! fails the build.
 //!
 //! # Why this list is written out rather than globbed
 //!
@@ -15,9 +15,9 @@
 //! that scans `schema/`. A scan cannot tell a file that belongs in the ledger
 //! from one that was dropped in the directory, and it would make the migration
 //! set depend on the state of a working tree. The list is explicit, and
-//! `test_migration_list_matches_schema_directory` compares it against both the
-//! directory and `schema/embed.zig` — so an addition to either side that is
-//! missing here fails a test rather than a production migrate.
+//! `test_migration_list_matches_schema_directory` compares it against the
+//! directory — so a file added to `schema/` and missing here fails a test
+//! rather than a production migrate.
 
 /// One versioned schema migration: the file, its slot number, and its SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

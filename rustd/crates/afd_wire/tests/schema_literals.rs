@@ -22,8 +22,7 @@
 //! The constants do (`afd_wire::schema`), and this crate depends on no other
 //! `afd_*` crate, so the pin cannot introduce a cycle. It reads `schema/` from
 //! disk; `afd_db`'s `migrations.rs` separately pins that directory against the
-//! embedded migration list and against `schema/embed.zig`, so what ships is
-//! what is checked here.
+//! embedded migration list, so what ships is what is checked here.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

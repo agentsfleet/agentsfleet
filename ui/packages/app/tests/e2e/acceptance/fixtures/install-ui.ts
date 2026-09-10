@@ -43,6 +43,12 @@ export interface InstallAuth {
   // below: enough for a lifecycle walk that never delivers. A journey that
   // needs the fleet to actually answer passes a body with instructions in it.
   skillMarkdown?: string;
+  // The TRIGGER.md the onboarded template carries. Absent, the cron-only
+  // fixture below, which declares no credentials and so clears the connect
+  // gate immediately. A journey about credentials passes frontmatter with a
+  // `credentials:` block — the workspace must already hold every name it
+  // declares, or the install holds at the gate instead of creating.
+  triggerMarkdown?: string;
 }
 
 function fixtureTriggerMd(name: string): string {
@@ -93,7 +99,7 @@ async function onboardTemplate(auth: InstallAuth, templateName: string): Promise
     {
       source_kind: SOURCE_KIND_UPLOAD,
       skill_markdown: auth.skillMarkdown ?? fixtureSkillMd(templateName),
-      trigger_markdown: fixtureTriggerMd(templateName),
+      trigger_markdown: auth.triggerMarkdown ?? fixtureTriggerMd(templateName),
     },
   );
   if (!resp.id) {

@@ -74,6 +74,43 @@ export async function buildSteerProbeContent(
   return buildFixtureContent(STEER_PROBE_SAMPLE_DIR, STEER_PROBE_FIXTURE_NAME, name, model);
 }
 
+// What the steer probe's own frontmatter says where it declares nothing.
+const EMPTY_CREDENTIALS_BLOCK = "  credentials: []";
+
+/**
+ * The steer probe, plus one declared credential.
+ *
+ * The same bundle as `buildSteerProbeContent` — same model pin, same network
+ * allowance, same one-line reply instruction — with its empty `credentials:`
+ * list replaced by a name. That single edit is what makes the install raise an
+ * integration-grant card: the daemon classifies each declared name against the
+ * workspace's stored handle, and a handle carrying `integration: <connector>`
+ * is one the runner must MINT rather than receive.
+ *
+ * Composed rather than given its own sample directory so the two bundles cannot
+ * drift on the model or the host allowance, which is what every live dial here
+ * actually depends on.
+ */
+export async function buildConnectorProbeContent(
+  name: string,
+  credentialName: string,
+): Promise<SampleContent> {
+  const probe = await buildSteerProbeContent(name);
+  if (!probe.triggerMarkdown.includes(EMPTY_CREDENTIALS_BLOCK)) {
+    throw new Error(
+      `the steer-probe TRIGGER.md no longer carries "${EMPTY_CREDENTIALS_BLOCK}"; ` +
+        "the connector variant cannot declare its credential",
+    );
+  }
+  return {
+    skillMarkdown: probe.skillMarkdown,
+    triggerMarkdown: probe.triggerMarkdown.replace(
+      EMPTY_CREDENTIALS_BLOCK,
+      `  credentials:\n    - ${credentialName}`,
+    ),
+  };
+}
+
 async function buildFixtureContent(
   sampleDir: string,
   fixtureName: string,
