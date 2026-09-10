@@ -15,13 +15,27 @@
 //! boundary; the two are independent on purpose, and a fault in either alone
 //! still leaves the other standing.
 //!
-//! # The counters are joined, never re-aggregated
+//! # The counters are read per row, never re-aggregated
 //!
 //! `events_processed` and `budget_used_nanos` come from the one-to-one
-//! `core.fleet_activity_counters` row migration-030's triggers maintain. A list
-//! page therefore costs one index scan and one join, not a per-row subselect
-//! over `core.fleet_events` — which is what a page of fifty fleets would
-//! otherwise charge every dashboard load.
+//! `core.fleet_activity_counters` row migration-030's triggers maintain, never
+//! from a subselect over `core.fleet_events`.
+//!
+//! A page reaches that row by PRIMARY-KEY lookup per fleet rather than by
+//! joining, and the difference is measured: `LEFT JOIN` plans as a hash join
+//! whose build side SEQUENTIALLY SCANS every counter row — the whole table
+//! read to answer for one page of fifty. At 50k fleets and 14k counters that
+//! is 1.69 ms against 0.21 ms, and the gap grows with the counters table
+//! because the scan is O(counters) where the lookups are O(page). `LEFT JOIN
+//! LATERAL` does not help; the planner flattens it back into the same join.
+//! [`SELECT_FLEET_DETAIL`] keeps its join deliberately — one driving row plans
+//! as a nested loop over both primary keys (5 buffers) and reads plainer.
+//!
+//! An INNER JOIN is wrong in either shape: a fleet that has never run has no
+//! counter row, and dropping those empties the list. On the development
+//! database 126 of 174 fleets have no counter.
+
+pub(crate) mod install;
 
 /// The columns a list page reads, in the order [`crate::read`] indexes them.
 ///
@@ -34,9 +48,11 @@ macro_rules! page_columns {
     () => {
         "SELECT f.id::text, f.name, f.status, f.created_at, f.updated_at, \
                 (f.config_json->'x-agentsfleet'->'triggers')::text, \
-                COALESCE(c.events_processed, 0), COALESCE(c.budget_used_nanos, 0) \
-         FROM core.fleets f \
-         LEFT JOIN core.fleet_activity_counters c ON c.fleet_id = f.id "
+                COALESCE((SELECT c.events_processed FROM core.fleet_activity_counters c \
+                           WHERE c.fleet_id = f.id), 0), \
+                COALESCE((SELECT c.budget_used_nanos FROM core.fleet_activity_counters c \
+                           WHERE c.fleet_id = f.id), 0) \
+         FROM core.fleets f "
     };
 }
 
@@ -267,30 +283,6 @@ WHERE id = $4::uuid \
   )) \
 RETURNING updated_at";
 
-/// A platform library entry, resolved for install by its slug.
-///
-/// `$1` the entry's id · `$2` the visibility a published row carries.
-///
-/// Only a PUBLISHED row holding a bundle is installable. A draft resolves
-/// nothing, so an unpublished fleet cannot be installed by anybody who merely
-/// knows its identifier — the predicate is the check, rather than a handler
-/// remembering to make one.
-pub(crate) const SELECT_PLATFORM_INSTALL: &str = "\
-SELECT skill_markdown, trigger_markdown, content_hash \
-FROM core.fleet_library \
-WHERE id = $1 AND visibility = $2 \
-  AND content_hash IS NOT NULL AND skill_markdown IS NOT NULL";
-
-/// A tenant library entry, resolved for install and scoped to its workspace.
-///
-/// `$1` the entry's id · `$2` workspace. An entry another workspace owns is
-/// invisible here rather than forbidden, for the reason every statement in this
-/// file scopes: a refusal that told the two apart would disclose the entry.
-pub(crate) const SELECT_TENANT_INSTALL: &str = "\
-SELECT skill_markdown, trigger_markdown, content_hash \
-FROM core.tenant_fleet_library \
-WHERE id = $1::uuid AND workspace_id = $2::uuid";
-
 #[cfg(test)]
 mod tests {
     use super::{SELECT_FLEET_PAGE_AFTER, SELECT_FLEET_PAGE_FIRST};
@@ -301,9 +293,13 @@ mod tests {
         // result positionally, so a column that reached one statement and not
         // the other would not fail to compile — it would shift every field
         // after it and quietly mis-read the row.
+        // Split on the FROM clause, not on "WHERE": the counter lookups are
+        // correlated subqueries that carry a WHERE of their own inside the
+        // select list, and splitting on the first one truncates the very
+        // columns this test exists to compare.
         let columns = |statement: &str| {
             statement
-                .split_once("WHERE")
+                .split_once("FROM core.fleets f")
                 .map(|(head, _)| head.to_owned())
                 .unwrap_or_default()
         };
