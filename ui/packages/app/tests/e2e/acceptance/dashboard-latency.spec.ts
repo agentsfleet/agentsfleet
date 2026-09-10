@@ -7,6 +7,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref } from "./fixtures/nav";
 import {
   LATENCY_SAMPLE_COUNT,
+  attachNote,
   attachStageTable,
   readAudit,
   resetAuditOrFail,
@@ -45,6 +46,14 @@ const RUNNERS_STAGE = "runners navigation (click → wall visible)";
 const RUNNERS_READ_STAGE = "runners list read (upstream)";
 
 type StreamAudit = { maximum: number };
+
+/** The two reads the Secrets PAGE issues, excluding the layout's own reads. */
+function pairTotal(payload: { byPath: Record<string, number> }): number {
+  return (
+    (payload.byPath[AUDITED_PATH.workspaceSecrets] ?? 0) +
+    (payload.byPath[AUDITED_PATH.tenantProvider] ?? 0)
+  );
+}
 
 test.describe("dashboard load latency", () => {
   test.afterEach(async () => {
@@ -127,22 +136,29 @@ test.describe("dashboard load latency", () => {
 
     await resetAuditOrFail(page);
     await page.goto(workspaceHref(workspaceId, "secrets"));
-    await expect(page.getByRole("region", { name: SECRETS_LABEL })).toBeVisible();
+    await expect(page.getByRole("region", { name: SECRETS_LABEL, exact: true })).toBeVisible();
 
     const first = await readAudit(page);
     expect(first.byPath[AUDITED_PATH.workspaceSecrets] ?? 0, "secrets list reads").toBe(1);
     expect(first.byPath[AUDITED_PATH.tenantProvider] ?? 0, "provider reads").toBe(1);
-    expect(first.total, "upstream reads for one Secrets visit").toBe(SECRETS_READS_PER_VISIT);
+    // Measured, and it is NOT the page's pair: the dashboard layout reads the
+    // workspace switcher's list on every navigation, and that read is audited
+    // too. Asserting `total` here counted the layout's cost as the page's.
+    expect(pairTotal(first), "upstream reads the Secrets PAGE issues").toBe(
+      SECRETS_READS_PER_VISIT,
+    );
 
     // Deliberately NOT reset: a second visit must add its own pair. The
     // per-render `cache()` around each read dedupes inside one render and has
     // never spanned navigations — this is what proves that, in a number.
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await page.goto(workspaceHref(workspaceId, "secrets"));
-    await expect(page.getByRole("region", { name: SECRETS_LABEL })).toBeVisible();
+    await expect(page.getByRole("region", { name: SECRETS_LABEL, exact: true })).toBeVisible();
 
     const second = await readAudit(page);
-    expect(second.total, "a second visit pays the pair again").toBe(
+    expect(second.byPath[AUDITED_PATH.workspaceSecrets] ?? 0, "secrets list reads").toBe(2);
+    expect(second.byPath[AUDITED_PATH.tenantProvider] ?? 0, "provider reads").toBe(2);
+    expect(pairTotal(second), "a second visit pays the pair again").toBe(
       SECRETS_READS_PER_VISIT * 2,
     );
   });
@@ -163,12 +179,12 @@ test.describe("dashboard load latency", () => {
       await page.goto(workspaceHref(workspaceId, "fleets"));
       const { durationMs } = await timed(async () => {
         await page.goto(workspaceHref(workspaceId, "secrets"));
-        await expect(page.getByRole("region", { name: SECRETS_LABEL })).toBeVisible();
+        await expect(page.getByRole("region", { name: SECRETS_LABEL, exact: true })).toBeVisible();
       });
       navigationMs.push(durationMs);
 
       const payload = await readAudit(page);
-      expect(payload.total, "each sampled visit pays exactly its own pair").toBe(
+      expect(pairTotal(payload), "each sampled visit pays exactly its own pair").toBe(
         SECRETS_READS_PER_VISIT,
       );
       const secretsMs = soleDurationMs(payload, AUDITED_PATH.workspaceSecrets);
@@ -190,11 +206,12 @@ test.describe("dashboard load latency", () => {
     // attached beside the table so the page never has to re-derive it.
     const [, listRow, providerRow] = rows;
     const slower = (listRow?.p50Ms ?? 0) >= (providerRow?.p50Ms ?? 0) ? listRow : providerRow;
-    await testInfo.attach("Secrets — slower read", {
-      body: `The slower upstream read at p50 is **${slower?.stage}** ` +
+    await attachNote(
+      testInfo,
+      "Secrets — slower read",
+      `The slower upstream read at p50 is **${slower?.stage}** ` +
         `(${slower?.p50Ms}ms p50, ${slower?.p95Ms}ms p95).\n`,
-      contentType: "text/markdown",
-    });
+    );
   });
 
   test("test_runners_navigation_returns_and_its_wait_is_attributed", async ({ page }, testInfo) => {
@@ -212,7 +229,7 @@ test.describe("dashboard load latency", () => {
         await page.goto(RUNNERS_PATH);
         // Returning at all is half the finding: it was reported as a page that
         // never comes back.
-        await expect(page.getByRole("region", { name: RUNNERS_LABEL })).toBeVisible();
+        await expect(page.getByRole("region", { name: RUNNERS_LABEL, exact: true })).toBeVisible();
       });
       navigationMs.push(durationMs);
 
@@ -227,12 +244,13 @@ test.describe("dashboard load latency", () => {
       summarizeStage(RUNNERS_STAGE, navigationMs),
       summarizeStage(RUNNERS_READ_STAGE, listReadMs),
     ]);
-    await testInfo.attach("Runners — attempts per navigation", {
-      body: `Observed attempt counts: ${attemptCounts.join(", ")}.\n\n` +
+    await attachNote(
+      testInfo,
+      "Runners — attempts per navigation",
+      `Observed attempt counts: ${attemptCounts.join(", ")}.\n\n` +
         "One attempt per navigation means the retry ladder never climbed, so " +
         "the wait is the upstream read itself rather than a retry sleep.\n",
-      contentType: "text/markdown",
-    });
+    );
     // The scope check costs no upstream call — `hasScope` resolves from session
     // claims — so it is named here as eliminated rather than left open.
     expect(attemptCounts.length, "an attempt count per sampled navigation").toBe(

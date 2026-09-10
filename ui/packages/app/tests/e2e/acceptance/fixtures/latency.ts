@@ -116,8 +116,12 @@ export async function timed<T>(step: () => Promise<T>): Promise<{ value: T; dura
 }
 
 /**
- * Attaches a stage table to the run. The architecture page quotes these rows,
- * so the run that produced a number is always recoverable from the report.
+ * Attaches a stage table to the run, the way every other evidence-bearing spec
+ * in this directory does. The suite's reporters persist attachments when `CI`
+ * is set (`playwright.acceptance.config.ts` wires `html` + `json`), so a table
+ * is recoverable from `results.json` and the page can name the run behind each
+ * number. Run the lane with `CI=1` when the numbers are the point — the bare
+ * local default is the `line` reporter, which keeps no attachment bodies.
  */
 export async function attachStageTable(
   testInfo: TestInfo,
@@ -132,4 +136,13 @@ export async function attachStageTable(
     body: `### ${title}\n\n${header}\n${body}\n`,
     contentType: "text/markdown",
   });
+}
+
+/** The prose an attachment carries beside a table. Same route, same reporters. */
+export async function attachNote(
+  testInfo: TestInfo,
+  title: string,
+  markdown: string,
+): Promise<void> {
+  await testInfo.attach(title, { body: markdown, contentType: "text/markdown" });
 }
