@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import {
   PageHeader,
   PageLayout,
@@ -8,7 +7,7 @@ import {
   SectionHeader,
   Skeleton,
 } from "@agentsfleet/design-system";
-import { auth } from "@clerk/nextjs/server";
+import { credential, requireCredential } from "@/lib/auth/credential";
 import { listWorkspaceEvents } from "@/lib/api/events";
 // The section aria-label below must equal WORKSPACE_EVENTS_LABEL (the events
 // table caption) — the parity is pinned by the events page test.
@@ -44,9 +43,7 @@ export default async function EventsPage({
       query[CURSOR_PAGE_SIZE_PARAM],
     ),
   );
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
 
   // Header streams first; the stream loads inside EventsData under Suspense.
   return (
@@ -80,8 +77,7 @@ export async function EventsData({
   cursor?: string | null;
   pageSize?: number;
 }) {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) return null;
 
   // The cursor comes from the URL, so this page is fetched on the server for

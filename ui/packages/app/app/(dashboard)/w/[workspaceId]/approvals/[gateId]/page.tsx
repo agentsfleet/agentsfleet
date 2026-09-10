@@ -1,5 +1,6 @@
+import { PersonLabel } from "@/components/domain/PersonLabel";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import {
   Badge,
   Card,
@@ -16,7 +17,7 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { getApproval, type ApprovalGate } from "@/lib/api/approvals";
 import { ApiError } from "@/lib/api/errors";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -30,9 +31,7 @@ export default async function ApprovalDetailPage({
   params: Promise<{ workspaceId: string; gateId: string }>;
 }) {
   const { workspaceId, gateId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   const gate = await getApproval(workspaceId, gateId, token).catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 404) return null;
@@ -86,7 +85,12 @@ export default async function ApprovalDetailPage({
             <SectionLabel>Resolution</SectionLabel>
             <Card>
               <CardContent className="pt-6 text-sm">
-                Resolved as <strong>{gate.status}</strong> by {gate.resolved_by || "(unknown)"}
+                Resolved as <strong>{gate.status}</strong> by{" "}
+                {gate.resolved_by ? (
+                  <PersonLabel actor={gate.resolved_by} name={gate.resolved_by_name} />
+                ) : (
+                  "(unknown)"
+                )}
                 {gate.updated_at ? (
                   <>
                     {" at "}

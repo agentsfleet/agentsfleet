@@ -1,7 +1,6 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
-import { auth } from "@clerk/nextjs/server";
+import { credential, requireCredential } from "@/lib/auth/credential";
 import { listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
 import ModelsRegistryTable from "./components/ModelsRegistryTable";
@@ -39,9 +38,7 @@ export default async function ModelsKeysPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
 
   // Header paints immediately; the registry streams in beneath it, matching
   // the Approvals/Events/Fleets routes. This used to await the registry read
@@ -69,8 +66,7 @@ export default async function ModelsKeysPage({
  * the failed-versus-empty distinction for an undifferentiated fallback.
  */
 export async function ModelsRegistryData({ workspaceId }: { workspaceId: string }) {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) return null;
 
   // A failed read is NOT an empty registry. The previous `.catch(() => EMPTY)`

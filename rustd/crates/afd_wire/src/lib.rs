@@ -70,6 +70,7 @@ mod redact;
 pub mod report;
 pub mod runner;
 pub mod schedule;
+pub mod schema;
 pub mod secret;
 pub mod tail;
 pub mod tenant;

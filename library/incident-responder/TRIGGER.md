@@ -9,9 +9,10 @@ x-agentsfleet:
       message: "Sweep the telemetry for new incidents"
 
   tools:
-    # Declared explicitly. An omitted or non-array `tools` key does NOT mean
-    # "http_request only" — `runner_helpers` falls back to the full default set,
-    # so the surface a fleet has would depend on a field nobody wrote.
+    # Declared explicitly, because declaring nothing gets nothing. An omitted
+    # or non-array `tools` key yields ZERO tools — `runner_helpers.zig` returns
+    # an empty set rather than a default one, so a fleet that never wrote this
+    # key cannot call a single tool. There is no fallback to inherit.
     #
     # The memory pair is load-bearing, not a convenience: an incident stays
     # broken until a human acts on the diagnosis, so every sweep re-finds it.

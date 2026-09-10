@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
@@ -16,9 +16,7 @@ export default async function AdminModelsPage() {
   // this is the UI guard.
   if (!(await hasScope(SCOPE.MODEL_READ))) redirect(NOT_ADMIN);
 
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // Both reads depend only on the token, so they run together. The catalogue
   // decides the page; the active platform default only badges a catalogue row —

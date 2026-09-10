@@ -1,6 +1,6 @@
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
-import { auth } from "@clerk/nextjs/server";
+import { credential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readSessionScopes } from "@/lib/auth/platform";
 
@@ -9,8 +9,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   const [listResult, scopes] = token
     ? await Promise.all([
         // The switcher needs the complete workspace list; this

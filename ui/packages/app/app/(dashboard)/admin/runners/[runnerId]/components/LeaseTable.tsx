@@ -5,7 +5,6 @@ import Link from "next/link";
 import { LayoutListIcon } from "lucide-react";
 import {
   Badge,
-  cn,
   type BadgeVariant,
   DataTable,
   type DataTableColumn,
@@ -34,6 +33,7 @@ import {
   UNKNOWN_OUTCOME_SENTENCE,
   WORKSPACE_LABEL,
 } from "./runner-copy";
+import { agentDisplayName } from "@/components/domain/AgentLabel";
 
 const VALUE_UNKNOWN = "—";
 const SETTLED_OUTCOME_VARIANT: Partial<Record<RunnerLease["outcome"], BadgeVariant>> = {
@@ -66,8 +66,14 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       {
         key: "fleet",
         header: "Fleet",
+        // A lease whose fleet was deleted out from under it still names it: the
+        // callsign is derived from the id, so it is the same name the fleet
+        // carried while it existed, not one invented here. The id stays on the
+        // title, the way a person's subject does behind their name.
         cell: (lease) => (
-          <span className={cn("truncate text-sm", !lease.fleet_name && "font-mono")}>{lease.fleet_name ?? lease.fleet_id}</span>
+          <span className="truncate text-sm" title={lease.fleet_id}>
+            {lease.fleet_name ?? agentDisplayName(lease.fleet_id)}
+          </span>
         ),
       },
       {

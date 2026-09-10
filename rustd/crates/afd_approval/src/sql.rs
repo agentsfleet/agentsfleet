@@ -4,7 +4,7 @@
 //! statements, and to `integration_grants/workspace.zig` for the grant half.
 //! Row-equivalence is the cutover invariant, so a statement is copied rather
 //! than re-derived; where a `$n` order looks odd, it is odd in the original too.
-/// One page of a workspace's gates, oldest first.
+/// One page of a workspace's gates, NEWEST first.
 ///
 /// Copied from `fleet_runtime/sql.zig`'s `SELECT_GATE_PAGE`. The fleet name is
 /// joined rather than stored on the gate: an inbox row names the fleet a person
@@ -14,40 +14,85 @@
 /// `COALESCE(z.name, '')` because the column is nullable and an inbox row with
 /// a null name would be a card with a blank heading rather than an unnamed one.
 ///
-/// The keyset predicate is `($5 = false OR (created_at, id) > ($6, $7))`, which
-/// is a TUPLE comparison and not two `AND`ed inequalities: gates raised in the
-/// same millisecond are common — one run parks several tools at once — and a
-/// naive `created_at > $6` would skip every sibling of the cursor row.
+/// # Newest first, because the page is now every state at once
 ///
-/// `$1` workspace, `$2` status, `$3` fleet filter, `$4` kind filter,
+/// This read was oldest-first while `status` was mandatory: the pending queue's
+/// oldest row is its most urgent, being nearest its timeout. Now that an absent
+/// `status` returns all five states, `LIMIT` picks from the whole history, and
+/// oldest-first would make page one the fifty most ANCIENT gates in the
+/// workspace — settled rows from months ago, with today's queue off the page.
+/// The row still carries `timeout_at`, so urgency is readable without imposing
+/// its order on everyone.
+///
+/// # The keyset predicate compares uuid to uuid
+///
+/// `($5 = false OR (created_at, id) < ($6, $7::uuid))` is a TUPLE comparison and
+/// not two `AND`ed inequalities: gates raised in the same millisecond are common
+/// — one run parks several tools at once — and a naive `created_at < $6` would
+/// skip every sibling of the cursor row.
+///
+/// It compares `g.id`, not `g.id::text` as it once did. A cast is not an
+/// indexable expression, so the text form stranded the cursor seek on
+/// `idx_fleet_approval_gates_workspace_id_created_at_id` no matter how the index
+/// was shaped. `$7` binds as NULL when there is no cursor, which `::uuid` accepts
+/// and `''` would not.
+///
+/// # The name falls back to the address, because the deleted code did
+///
+/// `core.users.display_name` is written once, at `user.created`, from the
+/// provider's first and last name alone (`identity_route.rs:138`) — there is no
+/// `user.updated` path. Someone who signed up without a name has NULL there
+/// forever. The browser lookup this replaced fell back full name → username →
+/// email → shortened subject, so capturing `display_name` alone would show a
+/// shortened subject where an address used to read. [`RESOLVE_GATE`] therefore
+/// captures `COALESCE(NULLIF(display_name, ''), email)`: same information, same
+/// tenant, and now behind both authorization axes instead of an admin API call
+/// from a browser.
+///
+/// # `resolved_by_name` is read, never resolved
+///
+/// The decider's name is a COLUMN, written by [`RESOLVE_GATE`] at the moment
+/// the decision was made (slot 838). This read does not join `core.users` and
+/// must not start: joining it was measured at 157 shared buffers and 0.410ms
+/// against 7 and 0.169ms for the column, because `uq_users_oidc_subject` is
+/// searched once per row and, unlike the fleet-name join beside it, does not
+/// memoize — a page is usually one fleet but rarely one decider.
+///
+/// The dashboard once resolved this in the browser instead, against the
+/// identity provider's admin API: an instance-wide read that reached every
+/// tenant, outside both `requireScope` and `authorizeWorkspace`, for a string
+/// this database already held.
+///
+/// `$1` workspace, `$2` status filter, `$3` fleet filter, `$4` kind filter,
 /// `$5` has-cursor, `$6` cursor instant, `$7` cursor id, `$8` limit.
 pub(crate) const SELECT_GATE_PAGE: &str = "\
 SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
        g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
        g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
        g.status, g.detail, g.created_at, g.timeout_at,
-       g.updated_at, g.resolved_by
+       g.updated_at, g.resolved_by, g.resolved_by_name
 FROM core.fleet_approval_gates g
 JOIN core.fleets z ON z.id = g.fleet_id
 WHERE g.workspace_id = $1::uuid
-  AND g.status = $2
+  AND ($2 = '' OR g.status = $2)
   AND ($3 = '' OR g.fleet_id = $3::uuid)
   AND ($4 = '' OR g.gate_kind = $4)
-  AND ($5 = false OR (g.created_at, g.id::text) > ($6, $7))
-ORDER BY g.created_at ASC, g.id ASC
+  AND ($5 = false OR (g.created_at, g.id) < ($6, $7::uuid))
+ORDER BY g.created_at DESC, g.id DESC
 LIMIT $8";
 
 /// One gate by row id, workspace-scoped.
 ///
 /// The scope is an AUTHORIZATION and not a filter: a valid gate id belonging to
 /// another workspace resolves to no row, so a cross-tenant lookup leaks nothing
-/// beyond "not found". `$1` gate, `$2` workspace.
+/// beyond "not found". The decider's name joins the same way the page read
+/// explains above. `$1` gate, `$2` workspace.
 pub(crate) const SELECT_GATE_BY_ID: &str = "\
 SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
        g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
        g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
        g.status, g.detail, g.created_at, g.timeout_at,
-       g.updated_at, g.resolved_by
+       g.updated_at, g.resolved_by, g.resolved_by_name
 FROM core.fleet_approval_gates g
 JOIN core.fleets z ON z.id = g.fleet_id
 WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
@@ -105,7 +150,11 @@ pub(crate) const RESOLVE_GATE: &str = "\
 WITH resolved AS (
   UPDATE core.fleet_approval_gates
   SET status = $1, detail = $2, resolved_by = $3, updated_at = $4,
-      active_grant_id = NULL
+      active_grant_id = NULL,
+      resolved_by_name = COALESCE(
+        (SELECT COALESCE(NULLIF(u.display_name, ''), u.email) FROM core.users u
+          JOIN core.fleets z ON z.id = core.fleet_approval_gates.fleet_id
+          WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id), '')
   WHERE action_id = $5 AND status = $6
     AND ($7::text = '' OR fleet_id::text = $7)
   RETURNING id, action_id, workspace_id, fleet_id, status,

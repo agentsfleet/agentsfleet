@@ -1,43 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import {
+  useCallback,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import {
   Alert,
-  Badge,
   Button,
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+  ConfirmDialog,
   EmptyState,
-  Input,
-  List,
-  ListItem,
+  SectionHeader,
 } from "@agentsfleet/design-system";
 import { CheckCircle2Icon } from "lucide-react";
+
+import { RefreshButton } from "@/components/domain/RefreshButton";
 
 import {
   approveApprovalAction,
   denyApprovalAction,
   listApprovalsAction,
 } from "../actions";
-import { type ApprovalGate, type ResolveOutcome } from "@/lib/api/approvals";
-import { APPROVAL_DECISION, APPROVALS_PAGE_LIMIT, type ApprovalDecision } from "@/lib/api/approvals-types";
-import { workspacePath } from "@/lib/workspace-routes";
+import {
+  type ApprovalGate,
+  type ApprovalsListResponse,
+  type ResolveOutcome,
+} from "@/lib/api/approvals";
+import {
+  APPROVAL_DECISION,
+  APPROVALS_PAGE_LIMIT,
+  type ApprovalDecision,
+} from "@/lib/api/approvals-types";
+import { fallbackPersonLabel } from "@/lib/identity/person";
 import { presentErrorString } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/with-token";
-import { deriveFleetIdentity } from "../../fleets/components/fleetIdentity";
+import {
+  APPROVALS_SECTION_LABEL,
+  DENY_CONFIRM_BODY,
+  DENY_CONFIRM_TITLE,
+  DENY_LABEL,
+  LOADING_MORE_LABEL,
+  LOAD_MORE_LABEL,
+  NO_APPROVALS_DESCRIPTION,
+  NO_APPROVALS_TITLE,
+} from "../copy";
+import { ApprovalsTable } from "./ApprovalsTable";
 
-const POLL_MS = 5000;
-const AGENT_PREFIX = "Agent";
+const EMPTY_ICON_SIZE = 28;
+const SESSION_EXPIRED = "Session expired — refresh the page to sign back in.";
 
 // The Server Action call itself rejecting (RSC transport down, the viewer
 // offline) is a failure like any other to the row: the message comes back with
 // `ok: false`. Left uncaught, a rejection inside an async transition reaches
 // the error boundary and the whole inbox becomes an error page.
 function rejectedCall(cause: unknown): ActionResult<ResolveOutcome> {
+  return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+}
+
+/** The same, for a read. A rejected read is a failed read, not a crash. */
+function rejectedRead(cause: unknown): ActionResult<ApprovalsListResponse> {
   return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
 }
 
@@ -49,15 +73,36 @@ type Props = {
   fleetId?: string;
 };
 
-export default function ApprovalsList({ workspaceId, initialItems, initialCursor, fleetId }: Props) {
+export default function ApprovalsList({
+  workspaceId,
+  initialItems,
+  initialCursor,
+  fleetId,
+}: Props) {
+  // The server rendered every row, in the order the table wants them. There is
+  // no mount read to merge in and nothing to sort here: `SELECT_GATE_PAGE`
+  // orders newest-first, which is what this table shows top-down.
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
+  // Where the NEXT page resumes, or null on the last one. Held because the
+  // page is capped at `APPROVALS_PAGE_LIMIT`: without it a workspace past that
+  // many gates simply cannot reach its older ones, and the table's own pager
+  // only re-divides the rows already fetched.
   const [cursor, setCursor] = useState<string | null>(initialCursor);
-  const [filter, setFilter] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  // Separate from the load-more transition: `pending` disables pagination, and
-  // a resolve in flight must not grey out the Load more button.
+  const [loadingMore, startLoadMore] = useTransition();
   const [, startResolve] = useTransition();
+  // Which read the table is allowed to believe.
+  //
+  // Refresh and "Load older" are independent transitions, so both can be in
+  // flight at once — and their results are not interchangeable. A refresh
+  // landing first, then an older page from the walk it replaced, would leave
+  // rows from two different walks under a cursor matching neither. Each read
+  // claims a number before it starts and applies its result only if it is
+  // still the newest: last-started wins, superseded answers are dropped.
+  const reading = useRef(0);
+  // The gate a denial is being confirmed for. Held here rather than in the row
+  // so the dialog survives the row leaving the table optimistically.
+  const [denyTarget, setDenyTarget] = useState<ApprovalGate | null>(null);
   // A resolved row leaves the inbox at the click, not at the answer. The base
   // list is updated on success; a failed resolve ends the transition and the
   // row comes back from that base on its own.
@@ -66,101 +111,76 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     (current: ApprovalGate[], gateId: string) => current.filter((g) => g.gate_id !== gateId),
   );
 
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return visibleItems;
-    return visibleItems.filter(
-      (g) =>
-        g.fleet_name.toLowerCase().includes(q) ||
-        `${AGENT_PREFIX} ${deriveFleetIdentity(g.fleet_id).callsign}`.toLowerCase().includes(q) ||
-        g.tool_name.toLowerCase().includes(q) ||
-        g.action_name.toLowerCase().includes(q) ||
-        g.gate_kind.toLowerCase().includes(q) ||
-        g.proposed_action.toLowerCase().includes(q),
-    );
-  }, [visibleItems, filter]);
-
-  // Background poll. SWR not yet on this page, so a manual interval keeps
-  // the list within ~5 s of reality. Worker wake on resolution is a separate
-  // ≤2 s concern handled server-side.
+  // Read when a person asks, and after a resolve. Never on a timer: a settled
+  // row cannot change again, so a poll would spend a request every few seconds
+  // to learn nothing — and the operator, not the page, decides when it is stale.
   //
-  // Skip the poll-driven reset once the human has clicked Load more.
-  // Polling fetches page 1 only (`APPROVALS_PAGE_LIMIT`, no cursor); replacing items
-  // wholesale would silently drop the loaded-more pages. A ref is fine —
-  // the latest value is read inside the interval callback, no re-render
-  // needed.
-  const hasLoadedMore = useRef(false);
-  useEffect(() => {
-    let alive = true;
-    // One read on the wire at a time. A slow backend answers a tick after the
-    // next has fired; without this latch the ticks stack, each retrying on its
-    // own, and one open inbox multiplies the load on a backend already behind.
-    // A tick that skips is not lost — the next one reads the same page.
-    let inFlight = false;
-    // Read through an accessor so the post-await re-check isn't narrowed away:
-    // `loadMore` can flip the ref to true during the in-flight fetch.
-    const alreadyPaged = () => hasLoadedMore.current;
-    // A tab nobody is looking at asks for nothing: the read it would make is
-    // thrown away unseen, and a backend already behind is the one that pays.
-    // The moment the tab is looked at again, one read catches the list up.
-    const hidden = () => document.visibilityState === "hidden";
-    const tick = async () => {
-      if (alreadyPaged() || inFlight || hidden()) return;
-      inFlight = true;
-      try {
-        const result = await listApprovalsAction(workspaceId, { limit: APPROVALS_PAGE_LIMIT, fleetId });
-        if (!alive || alreadyPaged()) return;
-        if (!result.ok) {
-          // 401 is terminal — silently retrying for 5s forever leaves the
-          // human staring at a stale list with no signal that their
-          // session expired. Surface it; refresh fixes it.
-          if (result.status === 401) {
-            setError("Session expired — refresh the page to sign back in.");
-            return;
-          }
-          // Transient (5xx, network blips, etc.) — leave the existing list
-          // rendered until the next tick.
-          return;
+  // One call, because the API answers every state from one query now. It was
+  // five reads merged here, and before that five Server Actions from this
+  // component, which Next ran one at a time. `resume` is the cursor to continue
+  // from, or undefined for the first page.
+  //
+  // The Server Action call itself rejecting — the viewer going offline during a
+  // Refresh, RSC transport down — is a failed read like any other. Left
+  // uncaught it escapes the transition and takes the whole inbox to the error
+  // boundary, which is the one outcome worse than a stale table.
+  const read = useCallback(
+    async (mine: number, resume?: string): Promise<ApprovalsListResponse | null> => {
+      const page = await listApprovalsAction(workspaceId, {
+        limit: APPROVALS_PAGE_LIMIT,
+        fleetId,
+        cursor: resume,
+      }).catch(rejectedRead);
+      if (!page.ok) {
+        // The sequence gates the ERROR as well as the rows. A superseded read
+        // failing after a newer one succeeded would otherwise paint a failure
+        // over a table that was just refreshed correctly — an alert about a
+        // request whose answer the operator was never going to see.
+        if (mine === reading.current) {
+          setError(
+            page.status === 401
+              ? SESSION_EXPIRED
+              : presentErrorString({
+                  errorCode: page.errorCode,
+                  message: page.error,
+                  action: "read the approvals",
+                }),
+          );
         }
-        setItems(result.data.items);
-        setCursor(result.data.next_cursor);
-      } finally {
-        inFlight = false;
+        return null;
       }
-    };
-    const id = setInterval(() => { void tick(); }, POLL_MS);
-    const onVisible = () => {
-      if (!hidden()) void tick();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      alive = false;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [workspaceId, fleetId]);
+      return page.data;
+    },
+    [workspaceId, fleetId],
+  );
 
-  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
-  // render guard on the trigger), so no in-function null check is needed.
-  function loadMore(cursor: string) {
+  const refresh = useCallback(async () => {
     setError(null);
-    startTransition(async () => {
-      const result = await listApprovalsAction(workspaceId, { cursor, fleetId, limit: APPROVALS_PAGE_LIMIT });
-      if (!result.ok) {
-        setError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: "load more approvals",
-          }),
-        );
-        return;
-      }
-      setItems((prev) => [...prev, ...result.data.items]);
-      setCursor(result.data.next_cursor);
-      // Latch the polling guard so the next 5s tick doesn't reset the
-      // human back to page 1 by replacing items with the first page.
-      hasLoadedMore.current = true;
+    // Back to the first page: a refresh is "show me the inbox now", and
+    // resuming mid-walk would hide rows raised since the first page was read.
+    const mine = ++reading.current;
+    const fresh = await read(mine);
+    if (fresh === null || mine !== reading.current) return;
+    setItems(fresh.items);
+    setCursor(fresh.next_cursor);
+  }, [read]);
+
+  // Takes the cursor rather than reading state: the control only exists while
+  // one is held, so the click carries the position that was actually on screen.
+  function loadMore(resume: string) {
+    setError(null);
+    const mine = ++reading.current;
+    startLoadMore(async () => {
+      const older = await read(mine, resume);
+      if (older === null || mine !== reading.current) return;
+      // Appended, not replaced. The keyset resumes strictly past the last row,
+      // so a page cannot repeat one — but a gate resolved between the two reads
+      // can arrive under its new status, and the id filter keeps it single.
+      setItems((shown) => {
+        const seen = new Set(shown.map((gate) => gate.gate_id));
+        return [...shown, ...older.items.filter((gate) => !seen.has(gate.gate_id))];
+      });
+      setCursor(older.next_cursor);
     });
   }
 
@@ -182,121 +202,102 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
         return;
       }
       const outcome: ResolveOutcome = result.data;
-      // Gone for good either way: resolved here, or already resolved elsewhere —
-      // the pending inbox has no row for it in both cases.
-      setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
       if (outcome.kind === "already_resolved") {
-        setError(`Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`);
+        // A message, not a cell, so it carries the shortened subject rather
+        // than waiting on a directory lookup nobody can hover anyway.
+        setError(
+          `Already ${outcome.data.outcome} by ${fallbackPersonLabel(outcome.data.resolved_by)}`,
+        );
+      }
+      // The row does not leave the table, it changes state — so the answer is
+      // read back and the row reappears under its new status, carrying who
+      // decided it and when.
+      // The read-back claims a number too: a "Load older" started while the
+      // decision was in flight must not append onto the list this replaces.
+      const mine = ++reading.current;
+      const fresh = await read(mine);
+      if (fresh !== null && mine === reading.current) {
+        setItems(fresh.items);
+        setCursor(fresh.next_cursor);
       }
     });
   }
 
-  // The empty state is a claim about the server's inbox, so it reads the
-  // confirmed list: a row that has only optimistically left keeps the list
-  // shell (input, container) in place until the resolve is answered, and an
-  // aria-live "nothing waiting" is never announced ahead of the server.
-  if (items.length === 0 && filter.trim() === "" && !error) {
+  // What stands in for the table when it has no rows.
+  //
+  // No skeleton arm any more. The server rendered every state before this
+  // component mounted, so an empty table IS an empty inbox — the claim is the
+  // server's from the first paint, and there is no window in which "No
+  // approvals yet" is a statement nobody has checked.
+  //
+  // It reads `items` rather than the optimistic list so a row that has only
+  // just left keeps the table silent rather than announcing a state the server
+  // has not confirmed.
+  function emptyRegion(): ReactNode {
+    if (items.length > 0 || error !== null) return <></>;
     return (
       <EmptyState
-        icon={<CheckCircle2Icon size={28} />}
-        title="No pending approvals"
-        description="Nothing waiting on human review."
+        icon={<CheckCircle2Icon size={EMPTY_ICON_SIZE} />}
+        title={NO_APPROVALS_TITLE}
+        description={NO_APPROVALS_DESCRIPTION}
       />
     );
   }
 
+  function approve(gateId: string) {
+    resolve(gateId, APPROVAL_DECISION.APPROVE);
+  }
+
+  function confirmDeny(gate: ApprovalGate): Promise<void> {
+    setDenyTarget(null);
+    resolve(gate.gate_id, APPROVAL_DECISION.DENY);
+    return Promise.resolve();
+  }
+
   return (
     <>
-      <div className="mb-4">
-        <Input
-          type="search"
-          placeholder="Filter by fleet, tool, or action…"
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-          aria-label="Filter approvals"
-        />
-      </div>
+      {/* The re-read sits on the section's own line, the way "Install fleet"
+          sits on Manage fleets — a control for the whole section belongs beside
+          its name, not floating in the gap above the table. Rendered here
+          rather than on the page because `refresh` is this component's state,
+          and the page is a Server Component that cannot hold it. */}
+      <SectionHeader className="mb-md" actions={<RefreshButton onRefresh={refresh} />}>
+        {APPROVALS_SECTION_LABEL}
+      </SectionHeader>
 
-      <List variant="plain" className="space-y-3">
-        {filtered.map((g) => (
-          <ListItem key={g.gate_id}>
-            <ApprovalCard gate={g} workspaceId={workspaceId} onResolve={resolve} />
-          </ListItem>
-        ))}
-      </List>
+      <ApprovalsTable
+        workspaceId={workspaceId}
+        gates={visibleItems}
+        actions={{ onApprove: approve, onDeny: setDenyTarget }}
+        empty={emptyRegion()}
+      />
+
+      <ConfirmDialog
+        open={denyTarget !== null}
+        onOpenChange={() => setDenyTarget(null)}
+        title={DENY_CONFIRM_TITLE}
+        description={DENY_CONFIRM_BODY}
+        confirmLabel={DENY_LABEL}
+        intent="destructive"
+        onConfirm={denyTarget ? () => confirmDeny(denyTarget) : undefined}
+      />
+
+      {cursor !== null ? (
+        <div className="mt-md flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadMore(cursor)}
+            disabled={loadingMore}
+          >
+            {loadingMore ? LOADING_MORE_LABEL : LOAD_MORE_LABEL}
+          </Button>
+        </div>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive" className="mt-3">{error}</Alert>
       ) : null}
-
-      {cursor ? (
-        <div className="mt-4 flex justify-center">
-          <Button variant="ghost" size="sm" onClick={() => loadMore(cursor)} disabled={pending} aria-busy={pending}>
-            {pending ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      ) : null}
     </>
-  );
-}
-
-function ApprovalCard({
-  gate,
-  workspaceId,
-  onResolve,
-}: {
-  gate: ApprovalGate;
-  workspaceId: string;
-  onResolve: (gateId: string, decision: ApprovalDecision) => void;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-  const ageMin = Math.max(0, Math.floor((now - gate.created_at) / 60_000));
-  const timeoutMin = Math.max(0, Math.ceil((gate.timeout_at - now) / 60_000));
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <CardTitle className="text-base">
-              <Link href={workspacePath(workspaceId, `approvals/${gate.gate_id}`)} className="hover:underline">
-                {gate.proposed_action || `${gate.tool_name}:${gate.action_name}`}
-              </Link>
-            </CardTitle>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Link href={workspacePath(workspaceId, `fleets/${gate.fleet_id}`)} className="font-medium hover:underline">
-                {`${AGENT_PREFIX} ${deriveFleetIdentity(gate.fleet_id).callsign}`}
-              </Link>
-              {gate.gate_kind ? <Badge variant="default">{gate.gate_kind}</Badge> : null}
-              <span>requested {ageMin}m ago</span>
-              <span>auto-deny in {timeoutMin}m</span>
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-      {gate.blast_radius ? (
-        <CardContent>
-          <p className="text-sm">{gate.blast_radius}</p>
-        </CardContent>
-      ) : null}
-      <CardFooter className="gap-2">
-        <Button size="sm" onClick={() => onResolve(gate.gate_id, APPROVAL_DECISION.APPROVE)}>
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => onResolve(gate.gate_id, APPROVAL_DECISION.DENY)}
-        >
-          Deny
-        </Button>
-        <Button asChild size="sm" variant="ghost">
-          <Link href={workspacePath(workspaceId, `approvals/${gate.gate_id}`)}>Details</Link>
-        </Button>
-      </CardFooter>
-    </Card>
   );
 }

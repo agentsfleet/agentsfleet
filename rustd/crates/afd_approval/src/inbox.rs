@@ -108,7 +108,10 @@ impl Inbox {
         Self { database, queue }
     }
 
-    /// One page of `workspace`'s gates, oldest first.
+    /// One page of `workspace`'s gates, newest first.
+    ///
+    /// An absent `filter.status` reads every state rather than defaulting to
+    /// pending, which is why the order flipped: see [`sql::SELECT_GATE_PAGE`].
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -122,12 +125,15 @@ impl Inbox {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::SELECT_GATE_PAGE)
             .bind(workspace.as_str())
-            .bind(filter.status.map_or(status::PENDING, GateStatus::as_str))
+            .bind(filter.status.map_or(NO_FILTER, GateStatus::as_str))
             .bind(filter.fleet_id.unwrap_or(NO_FILTER))
             .bind(filter.gate_kind.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())
             .bind(cursor.map_or(0, |at| at.created_at))
-            .bind(cursor.map_or(NO_FILTER, |at| at.gate_id))
+            // NULL, not `''`, when there is no cursor: the statement casts this
+            // to uuid so the keyset seek can ride the index, and `''::uuid` is
+            // not a uuid. The `$5 = false` arm is what actually excludes it.
+            .bind(cursor.map(|at| at.gate_id))
             .bind(limit)
             .fetch_all(&mut *connection)
             .await

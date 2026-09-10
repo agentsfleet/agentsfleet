@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { credential } from "@/lib/auth/credential";
 import { ApiError } from "@/lib/api/errors";
 import { ERROR_CODE } from "@/lib/errors";
 
@@ -22,8 +22,7 @@ export type ActionResult<T> =
 export async function withToken<T>(
   fn: (token: string) => Promise<T>,
 ): Promise<ActionResult<T>> {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) return { ok: false, error: "Not authenticated", status: 401, errorCode: ERROR_CODE.AUTH_401 };
   try {
     return { ok: true, data: await fn(token) };

@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { redirect } from "next/navigation";
 import { firstTenantWorkspace } from "@/lib/api/workspaces";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
@@ -16,9 +16,7 @@ export const dynamic = "force-dynamic";
 // renders, so nothing here can share the layout's cached full walk — a full
 // list on this request is pure double-payment on every cold entry.
 export default async function DashboardIndexPage() {
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // No `.catch` here: a transient list failure must NOT fall through to the
   // create-first empty state — an operator who already owns workspaces would be

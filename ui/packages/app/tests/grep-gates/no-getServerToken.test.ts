@@ -3,10 +3,13 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 
 // I9.2 — `getServerToken` / `getServerAuth` / `getServerSessionMetadata`
-// were deleted alongside `lib/auth/server.ts`. Every
-// caller now hits `auth()` from `@clerk/nextjs/server` directly. If this
-// grep test ever fails, a regression slipped a stale import or a copy-
-// paste from before the migration into the tree.
+// were deleted alongside `lib/auth/server.ts`. If this grep test ever fails, a
+// regression slipped a stale import or a copy-paste from before the migration
+// into the tree.
+//
+// Callers no longer reach the identity provider directly either: `auth()` moved
+// behind `lib/auth/credential.ts`, and the second test below pins that boundary
+// so the next page cannot quietly reopen it.
 
 const APP_ROOT = resolve(__dirname, "..", "..");
 
@@ -75,5 +78,40 @@ describe("I9.2 — getServerToken family fully retired", () => {
       if ((err as { status?: number }).status === 1) return; // no matches
       throw err;
     }
+  });
+});
+
+describe("the identity provider stays behind one module", () => {
+  // 27 files imported `auth` from the provider's server SDK. Every one wanted a
+  // bearer; none read a user id or an organisation. `credential.ts` is the
+  // boundary that replaced them, and a boundary nothing pins is a convention.
+  //
+  // `proxy.ts` is the documented second importer and is irreducible: the
+  // middleware IS the provider's session verification, and it takes
+  // `clerkMiddleware`, never `auth`.
+  const ALLOWED = ["lib/auth/credential.ts", "proxy.ts"];
+
+  it("is imported by exactly the two files that must import it", () => {
+    const out = execSync(
+      `grep -rl --include='*.ts' --include='*.tsx' ` +
+        `--exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist ` +
+        `--exclude-dir=tests --exclude='*.test.ts' --exclude='*.test.tsx' ` +
+        `'from "@clerk/nextjs/server"' app lib components proxy.ts || true`,
+      { cwd: APP_ROOT, encoding: "utf8" },
+    );
+    const importers = out.split("\n").filter(Boolean).sort();
+    expect(importers).toEqual([...ALLOWED].sort());
+  });
+
+  // The narrower claim, and the one that actually decays: `auth()` itself.
+  it("hands out auth() from credential.ts alone", () => {
+    const out = execSync(
+      `grep -rl --include='*.ts' --include='*.tsx' ` +
+        `--exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist ` +
+        `--exclude-dir=tests --exclude='*.test.ts' --exclude='*.test.tsx' ` +
+        `'import { auth }' app lib components || true`,
+      { cwd: APP_ROOT, encoding: "utf8" },
+    );
+    expect(out.split("\n").filter(Boolean)).toEqual(["lib/auth/credential.ts"]);
   });
 });

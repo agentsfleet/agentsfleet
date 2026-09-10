@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { credential } from "@/lib/auth/credential";
 import { requireApiOrigin } from "@/lib/api/client";
 
 type Params = {
@@ -29,8 +29,7 @@ export async function GET(req: Request, { params }: Params): Promise<Response> {
     return Response.json({ error: "Invalid connector provider" }, { status: INVALID_PROVIDER_STATUS });
   }
 
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) {
     return Response.json({ error: "Not authenticated" }, { status: UNAUTHORIZED_STATUS });
   }

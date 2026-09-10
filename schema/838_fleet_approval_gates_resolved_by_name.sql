@@ -1,0 +1,47 @@
+-- Who decided, in words, captured when the decision was made.
+--
+-- `resolved_by` is an OIDC subject. It is the right thing to store and the
+-- wrong thing to show, and the read has to bridge that somehow. Joining
+-- `core.users` at read time works and was measured: on 50,075 gates the page
+-- read went from 7 shared buffers and 0.169ms to 157 buffers and 0.410ms,
+-- because `uq_users_oidc_subject` is searched once per row -- fifty index
+-- searches per page, on every page load, forever. The fleet-name join beside it
+-- memoizes (49 hits of 50) because a page is usually one fleet; deciders vary,
+-- so that one does not.
+--
+-- A column pays once, at the decision, which is the rarer event by orders of
+-- magnitude. The read returns to 7 buffers because the answer is already in the
+-- row.
+--
+-- It is also the more correct record. A joined name shows who the account is
+-- NOW: rename someone and every historical row silently reads differently,
+-- delete them and every row they ever decided goes blank. An audit trail says
+-- who acted, at the time they acted. That is what a capture stores and what a
+-- join cannot.
+--
+-- Empty is the ordinary absence and the reason there is no NOT NULL constraint
+-- to argue about: `resolved_by` is `''` while a gate is pending, the daemon's
+-- own sentinels are not people, and a subject that never signed up on this
+-- deployment has no row to name. The DEFAULT is the empty string as a
+-- STRUCTURAL absence, not a vocabulary value -- there is no application
+-- constant it could drift from (RULE STS carve-out).
+ALTER TABLE core.fleet_approval_gates
+    ADD COLUMN IF NOT EXISTS resolved_by_name TEXT NOT NULL DEFAULT '';
+
+-- No backfill, and that is not an oversight.
+--
+-- `trg_fleet_approval_gates_append_only` (slot 810, function last replaced in
+-- 833) is BEFORE DELETE OR UPDATE FOR EACH ROW and raises
+-- "terminal row is immutable" on any update to a non-pending row. A backfill can
+-- only ever match non-pending rows -- `resolved_by` is '' until a decision
+-- lands -- so it is refused by construction. Verified against a live database:
+-- updating one approved row raises at fleet_approval_gates_append_only() line 42.
+--
+-- A migration that raises rolls back its whole transaction, so the ALTER above
+-- would not land either; `ledger::record_failure(838)` then makes every
+-- subsequent daemon start fail identically. The append-only trigger IS this
+-- table's audit boundary, so widening it to admit a convenience backfill is a
+-- decision about the boundary, not about this column.
+--
+-- Gates decided before this slot keep `''` and render as the shortened subject,
+-- which is exactly what they rendered before the column existed.
