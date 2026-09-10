@@ -57,11 +57,16 @@ function applyFile(envPath: string): void {
  * of `.env.local`, and the playwright config + globalSetup need both
  * NEXT_PUBLIC_API_URL and the Clerk creds before the suite starts.
  *
- * Aliases CLERK_PUBLISHABLE_KEY → NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY so the
- * Next dev server (which only exposes NEXT_PUBLIC_-prefixed values to the
- * browser) gets the same Clerk DEV instance the harness mints against. The
- * worktree-root .env carries the un-prefixed name; aliasing keeps the
- * single-source-of-truth in .env without duplicating the secret.
+ * Aliases the Clerk publishable key in BOTH directions, because the two
+ * layouts in use each supply only one spelling: a worktree-root .env carries
+ * the un-prefixed CLERK_PUBLISHABLE_KEY (which the Next dev server cannot
+ * expose to the browser), while a linked ui/.env.local carries only the
+ * NEXT_PUBLIC_-prefixed one (which `clerkSetup()` does not read). A Clerk
+ * instance has exactly one publishable key, and it ships to the browser by
+ * design, so filling in whichever name is absent duplicates no secret and
+ * cannot cross instances. Without the second direction a worktree whose only
+ * env is the linked .env.local fails globalSetup's fail-loud check on
+ * CLERK_PUBLISHABLE_KEY while holding that very value under the other name.
  */
 export function loadWorktreeEnv(): void {
   applyFile(path.resolve(process.cwd(), ".env.local"));
@@ -71,5 +76,11 @@ export function loadWorktreeEnv(): void {
     process.env.CLERK_PUBLISHABLE_KEY !== undefined
   ) {
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY;
+  }
+  if (
+    process.env.CLERK_PUBLISHABLE_KEY === undefined &&
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY !== undefined
+  ) {
+    process.env.CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   }
 }
