@@ -58,6 +58,11 @@
 | `docs/v2/pending/M195_001_P1_DOCS_OBS_UI_DASHBOARD_LOAD_LATENCY_INVESTIGATION.md` | EDIT | Declared out-of-band, on the user's call: `d05c0ff81` committed the same two conflict markers into that spec, and its sequencing claim about this workstream is one of the two sides. Resolved to the side its own Files Changed table supports; no other line of that spec is touched. |
 | `ui/packages/design-system/src/design-system/{NavItem,Button,DataTableView,Pagination,SectionHeader}.tsx` + their `*.test.tsx` | EDIT | Folded in on the user's call after a measured design review of every left-nav page and every rendered table (§4). The defects live in the primitives, so the fix is spelled once and holds on all eleven pages by construction. |
 | `ui/packages/app/components/layout/SidebarNavigation.tsx` · `ui/packages/app/tests/app-shell-navigation.test.ts` | EDIT | The Platform group was the one group that broke the nav's rhythm — a 32px form control where the other three render a 16px eyebrow, plus a 2px item gap the others lack (§4.2). |
+| `ui/packages/app/lib/fleets/{identity,agent-label}.ts` (+ tests) | CREATE | §5: the derivation's home, byte-identical, and the one place the agent label is composed. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity.ts` | DELETE | §5: moved to `lib/fleets/identity.ts`; RULE NDC, gone with its last importer rewritten. |
+| `settings/billing/lib/charges.ts` · `components/domain/AgentLabel.tsx` · `fleets/[id]/page.tsx` · `fleets/[id]/components/{ChatView,FleetThread*}.tsx` · `tests/e2e/acceptance/{multi-fleet-grant-journey,wall-live-counters}.spec.ts` · `admin/runners/[runnerId]/components/LeaseTable.tsx` (+ test) | EDIT | §5: the six import rewrites, the prop renamed for what it carries, the lease row naming its agent. All under `ui/packages/app/`. |
+| `fleets/[id]/components/RunMetricsStrip.tsx` (+ test) · `lib/events/event-summary.ts` (+ test) | EDIT | §6: the outcome vocabulary gains the sentence a processed-without-body run earns; the strip stops inferring absence from an unread field. |
+| the `app/(dashboard)` sites the §7 classification table marks for change, plus `ui/packages/app/tests/button-variant-rule.test.ts` | EDIT/CREATE | §7: the sweep, after the table is confirmed; the test that keeps it swept. |
 
 ## Applicable Rules
 
@@ -114,6 +119,85 @@ Measured in the operator's own browser session against `app-dev` before any edit
 - **Dimension 4.4** — the footer's trailing page controls sit on the body's right column. Prev and Next are ghost buttons whose 12px padding paints nothing, so the "›" glyph ended 26px from the edge against 13 for everything else → Test `pulls the trailing page controls back onto the body's right column`
 - **Dimension 4.5** — cell padding and the section-label row sit on the 4px scale: `py-2` in place of `py-1.5`, and `SectionHeader` centres its label against its action so the gap to the section body is 28 rather than 29 → Test `centers the label on its action's middle rather than its baseline`
 
+### §5 — The agent's identity has one home (finding #15, folded in on the user's call)
+
+The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `FleetTile.test.tsx:210-211` pins its outputs — so the hash and the 32-name table do not change. What changes is where it lives and who composes the label from it. Impact report: Discovery, below.
+
+- **Dimension 5.1** — `deriveFleetIdentity` lives in `lib/fleets/identity.ts`, byte-identical, and all six importers point there; the pinned sigil and callsign for the fixture id are unchanged → Test `the moved derivation still yields the pinned sigil and callsign`
+- **Dimension 5.2** — the `Agent <callsign>` string is composed in exactly one function, which `AgentLabel.tsx` renders and `chargeAgentLabel` sorts by; billing no longer imports from a fleets component directory → Test `billing and the domain label compose one string`
+- **Dimension 5.3** — the fleet page's thread receives the callsign under a prop named for what it carries, and `fleetName` means the name on every prop that has it → Test `the thread takes its sender label under its own name`
+- **Dimension 5.4** — the admin lease table names the agent by callsign, as every other agent column does, and keeps the UUID in `title` → Test `a lease row names its agent and keeps the uuid in title`
+
+### §6 — The strip states only what the read can vouch for (finding #11, folded in on the user's call)
+
+`RunMetricsStrip.test.tsx:68` pins `processed + response_text: null → "Completed with no reply recorded."` as correct. The list read carries no bodies (`RunMetricsStrip.tsx:127`), so that null means UNKNOWN, but `EventRow` documents it as no reply (`events.ts:76-78`) and the strip trusts the document. Every successful run's strip therefore contradicts the thread below it, which shows the reply.
+
+- **Dimension 6.1** — a processed run whose row carries no body says the run completed, and does not claim a reply was never recorded; the test that pinned the contradiction is rewritten to pin this → Test `says a run completed rather than claiming no reply when the read carries no body`
+- **Dimension 6.2** — "no reply recorded" is stated only for a row that affirmatively carries an empty reply, which only the detail read can deliver → Test `states no reply only when the row affirmatively carries none`
+
+### §7 — Action buttons follow one rule (finding #10, folded in on the user's call)
+
+**The premise was counted wrong twice — by the walk, and by the brief's grep.** `variant="…"` matches every component with a variant prop: all 8 `warning` are `<Alert>`, all 4 `cyan` are `<Badge>`, the 6 `default` are `<Badge>`/`<Link>`, and most of the 31 `destructive` are Alerts. A tag-aware count finds **76 `<Button>`s in 42 files**: destructive 5 · ghost 23 · outline 16 · secondary 5 · link 3 · **and 24 with no variant prop, which render `default` — the primary mint** — a group no grep counted. Those 24 are the real subject: nearly every dialog's submit, every stub page's one action, "Approve", "Open fleet →".
+
+**The rule, with the clause the primary needed:** `default` for the ONE primary action on a surface · `ghost` for every other non-destructive action · `destructive` for a destructive one · `link` only for an inline action inside prose or a table cell. The design system already reserves `default` for the primary CTA (`docs/DESIGN_SYSTEM.md`, 2026-06-23), so this names what the mint button was always for.
+
+**The classification, brought back before a single site changes.** 48 sites are not `ghost`/`destructive` today; the first-pass verdict is mine, the last column is the user's.
+
+| Site | Today | Verdict | Why | Confirm |
+|---|---|---|---|---|
+| `admin/fleet-libraries/components/AddFleetDialog.tsx:203` | default | keep | dialog submit — the primary | |
+| `admin/fleet-libraries/components/EditFleetDialog.tsx:241` | default | keep | dialog submit | |
+| `admin/fleet-libraries/components/PlatformCatalogTable.tsx:75` | link | keep | repository link in a table cell | |
+| `admin/fleet-libraries/page.tsx:36` | default | keep | the page's one recovery action | |
+| `admin/models/components/EditModelDialog.tsx:145` | default | keep | dialog submit | |
+| `admin/models/components/MakeDefaultDialog.tsx:117` | default | keep | dialog submit | |
+| `admin/runners/[runnerId]/components/LeaseFilterBar.tsx:119` | default | keep | the filter form's primary | |
+| `admin/runners/[runnerId]/components/RunnerHeader.tsx:185` | outline | **ghost** | run selftest — a secondary action | |
+| `admin/runners/[runnerId]/components/RunnerHeader.tsx:231` | default | **judgment** | the admin action (cordon/drain/revoke) — revoke is destructive; see Discovery | |
+| `admin/runners/[runnerId]/components/RunnerHeader.tsx:259` | outline | **ghost** | opens Grafana — navigational | |
+| `admin/runners/components/AddRunnerDialog.tsx:178` | default | **judgment** | closes the dialog — a Cancel rendered as the primary; see Discovery | |
+| `admin/runners/components/EditPolicyDialog.tsx:93` | outline | **ghost** | opens the editor | |
+| `admin/runners/components/EditPolicyDialog.tsx:120` | default | keep | dialog submit | |
+| `admin/runners/components/PolicyBindsField.tsx:196` | outline | **ghost** | removes a row from an unsaved form, not persisted data | |
+| `admin/runners/components/PolicyBindsField.tsx:209` | outline | **ghost** | adds a row | |
+| `error.tsx:80` | default | keep | the error boundary's one action | |
+| `settings/api-keys/components/CreateApiKeyDialog.tsx:204` | default | keep | "Done" — the dialog's primary | |
+| `settings/billing/components/BillingBalanceCard.tsx:93` | outline | **default** | "Buy credits" is the balance card's primary | |
+| `settings/page.tsx:29` | default | keep | a stub page's one action | |
+| `w/…/approvals/[gateId]/ResolveButtons.tsx:76` | default | keep | Approve — the primary | |
+| `w/…/approvals/components/ApprovalsList.tsx:287` | outline | **ghost** | load more | |
+| `w/…/fleets/[id]/components/FleetConfig.tsx:47` | default | **judgment** | opens the delete-fleet flow; see Discovery | |
+| `w/…/fleets/[id]/components/KillSwitch.tsx:152` | outline | **ghost** | "Killed" — a disabled state marker | |
+| `w/…/fleets/[id]/components/KillSwitch.tsx:160` | default | **judgment** | the kill/pause trigger; see Discovery | |
+| `w/…/fleets/[id]/components/RunMetricsStrip.tsx:68` | outline | **ghost** | link to the approvals inbox | |
+| `w/…/fleets/[id]/components/SkillEditor.tsx:253` | secondary | **default** | Save — the editor's primary | |
+| `w/…/fleets/[id]/components/SkillEditor.tsx:271` | outline | **ghost** | Edit — opens the editor | |
+| `w/…/fleets/new/InstallSourceSelector.tsx:190` | default | **judgment** | one primary per card in a grid — many primaries on one surface; see Discovery | |
+| `w/…/fleets/new/InstallSourceSelector.tsx:208` | secondary | **ghost** | load more | |
+| `w/…/fleets/new/InstallSourceSelector.tsx:241` | secondary | **ghost** | retry | |
+| `w/…/fleets/new/InstallStates.tsx:198` | default | keep | Connect — the step's primary | |
+| `w/…/fleets/new/InstallStreamSteps.tsx:94` | default | keep | "Open fleet →" — the primary | |
+| `w/…/fleets/new/install-state-list.tsx:22` | link | keep | "← Back to library" — inline navigation | |
+| `w/…/fleets/new/library-docs.tsx:35` | outline | **ghost** | "Learn more" — external | |
+| `w/…/integrations/components/connector-rows.tsx:186` | outline | **judgment** | Disconnect — removes access, reversible; see Discovery | |
+| `w/…/integrations/components/connector-rows.tsx:198` | outline | **ghost** | Connect | |
+| `w/…/secrets/components/AddSecretForm.tsx:211` | link | keep | "+ Add field" — inline in a form | |
+| `w/…/secrets/components/EditSecretDialog.tsx:123` | default | keep | dialog submit | |
+| `w/…/secrets/components/RenameSecretDialog.tsx:199` | default | keep | dialog submit | |
+| `w/…/settings/defaults/page.tsx:28` | default | keep | a stub page's one action | |
+| `w/…/settings/models/components/AddModelEntryDialog.tsx:327` | outline | **ghost** | retry | |
+| `w/…/settings/models/components/AddModelEntryDialog.tsx:339` | outline | **ghost** | the second submit ("save", not "save and add another") — one primary per dialog | |
+| `w/…/settings/models/components/AddModelEntryDialog.tsx:343` | default | keep | the primary submit | |
+| `w/…/settings/models/components/EditModelEntryDialog.tsx:214` | outline | **ghost** | Cancel | |
+| `w/…/settings/models/components/EditModelEntryDialog.tsx:217` | default | keep | Save | |
+| `w/…/settings/models/components/ModelsRegistryTable.tsx:319` | secondary | **ghost** | load more | |
+| `w/…/settings/models/components/ModelsRegistryTable.tsx:337` | secondary | **ghost** | retry | |
+| `w/…/settings/security/page.tsx:29` | default | keep | a stub page's one action | |
+
+First pass: 21 keep · 20 → `ghost` · 2 → `default` · 5 judgment. The sweep is the mechanical half; the five judgment rows and the rule's third clause are the user's.
+
+- **Dimension 7.1** — every action button under the dashboard renders `default`, `ghost`, `destructive`, or `link` as the confirmed table says for that site; a repository test enumerates the sites tag-aware and fails on any other → Test `no dashboard action button uses a variant outside the rule`
+
 ## Interfaces
 
 ```
@@ -162,6 +246,13 @@ No new product or operator signal. The change corrects a number already rendered
 | 4.3 | unit | `is unbounded by default, so a paginated table lets the page scroll` | Render a default `DataTable` → the viewport carries no `max-h-*` class; `viewportClassName="max-h-72"` still bounds it |
 | 4.4 | unit | `pulls the trailing page controls back onto the body's right column` | Render a paged table → the cluster holding Next carries `-mr-3` |
 | 4.5 | unit | `centers the label on its action's middle rather than its baseline` | Render a `SectionHeader` with an action → `items-center`, never `items-baseline` |
+| 5.1 | unit | `the moved derivation still yields the pinned sigil and callsign` | The fixture id `FleetTile.test.tsx:210` uses → `hashHex` ends `4bce8453`, `callsign` is `Lumen-8453`, from `lib/fleets/identity.ts` |
+| 5.2 | unit | `billing and the domain label compose one string` | `chargeAgentLabel(row)` equals the text `AgentLabel` renders for the same `fleet_id`, and neither imports from `fleets/components` |
+| 5.3 | unit | `the thread takes its sender label under its own name` | Render `ChatView` → the thread's sender label is the callsign; the prop is not named `fleetName` |
+| 5.4 | unit | `a lease row names its agent and keeps the uuid in title` | Render `LeaseTable` with one lease → the cell text is `Agent <callsign>`, `title` is the UUID |
+| 6.1 | unit | `says a run completed rather than claiming no reply when the read carries no body` | `status: processed, failure_label: null, response_text: null` → the strip's outcome is the completed sentence, not `OUTCOME.NO_REPLY` |
+| 6.2 | unit | `states no reply only when the row affirmatively carries none` | `status: processed, response_text: ""` (a detail-read row) → `OUTCOME.NO_REPLY` |
+| 7.1 | unit | `no dashboard action button uses a variant outside the rule` | Enumerate `variant="…"` on `<Button>` under `app/(dashboard)` → every value is `ghost`, `destructive`, or the table's allowlisted `(file, variant)` pair; the test lists the offenders |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -173,6 +264,9 @@ No new product or operator signal. The change corrects a number already rendered
 | R4 | The delta machinery is gone (§3) | `git grep -n "tile-counters\|countersStale\|absorb(" -- ui/packages/app` | 0 matches | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R6 | The nav and every table measure symmetric (§4) | `cd ui/packages/design-system && bun run test -- NavItem DataTable SectionHeader Pagination Button` | the §4 pins pass; a re-measure on `app-dev` after deploy reads 12/12 on the nav and 13/13 on each table | P1 | |
+| R7 | The identity derivation moved without changing (§5) | `git grep -n "fleets/components/fleetIdentity" -- ui/packages/app` · `cd ui/packages/app && bun run test -- identity FleetTile` | 0 matches; `FleetTile.test.tsx:210-211` still pins `4bce8453` / `Lumen-8453` | P0 | |
+| R8 | The strip no longer contradicts the thread (§6) | `cd ui/packages/app && bun run test -- RunMetricsStrip` | 6.1 and 6.2 pass; the old line-68 pin is gone | P0 | |
+| R9 | The button rule holds and stays held (§7) | `cd ui/packages/app && bun run test -- button-variant-rule` | passes with an empty offender list | P1 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S3 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -216,3 +310,7 @@ The patch alternative is a client-side delta that accumulates counter changes pe
 - **Correction to an earlier session note, recorded because a fix aimed where it pointed would have missed.** The note said a gate park publishes no completion "while its charge has already landed". The park leaves NO charge: `admit/mod.rs:56` documents `Admission::Await` as "durably identical to `Admission::Retry` — no row, delivery left leasable", so `budget_used_nanos` is untouched and the delivery is re-leased when the human answers. What drifts is `events_processed`, which `schema/890` bumps `AFTER INSERT ON core.fleet_events` — at receive. The client hears counters only on `event_complete`, and the park returns `Step::Stop` at `lease/pull.rs:209` without reaching `publish_completion` at `:329`.
 - **Measured during the split, so it is not re-derived.** The wall's page read: `LEFT JOIN core.fleet_activity_counters` plans as a hash join whose build side sequentially scans every counter row, to answer for the fifty fleets on one page. At 50k fleets and 14k counter rows that is 1.69 ms against 0.21 ms for a per-row primary-key lookup, and the gap widens with the counters table because the scan is O(counters) where the lookups are O(page). `LEFT JOIN LATERAL` does not help — the planner flattens it back into the same join. `SELECT_FLEET_DETAIL` needs no change: one driving row already plans as a nested loop over both primary keys, 5 buffers. An INNER JOIN is wrong everywhere — 126 of 174 fleets on the development database have no counter row at all, so it renders an empty wall. The carried patch already contains this change.
 - **Sequencing against M195_001 — checked, not assumed.** The two specs' Files Changed tables share NO path: M195_001 measures through `ui/packages/app/lib/acceptance/workspace-fetch-audit.ts` rather than by editing the wall. They run in parallel. The single coupling is M195_001 §2's request inventory, which this spec changes by removing the wall's separate counter fetch — so that inventory is taken after this lands, or re-taken.
+- **Findings #15, #11, #10 folded in (Sep 10, 2026), on the user's call, with the investigation done before any patch.** Three of the brief's premises did not survive the read and are recorded here so nobody re-derives them. (#15) There are SIX importers of `fleetIdentity.ts`, not five — `tests/e2e/acceptance/wall-live-counters.spec.ts:45` is the sixth, and it arrived with this spec's own carry-over, so it is not on `main`. There is NO slug: the fleet wire type has none, and the only `slug` under `lib/api/` is a model-provider id (`model-library-types.ts:46,53`); the axis is name / id / callsign. (#11) The string is not missing — it is composed (`console-copy.ts:80` labels, `RunMetricsStrip.tsx:58,124-129` derives via `outcomeFor`, `event-summary.ts:189-204`). (#10) 42 files render a `<Button>` under `app/(dashboard)`, not 48 and not 8.
+- **#15, the evidence behind §5.** Load-bearing beyond display: not on the wire or in Postgres (zero mentions of `callsign` under `rustd/` and `schema/`; no fetch body, query parameter or storage carries it), but `FleetTile.test.tsx:210-211` pins literal outputs and the file declares its 32 buckets identity data (`:19-20`) — operators memorise `Agent Lumen-8453`, so a hash change renames every agent in their heads. Where each surface shows which: the tile heading shows the name (`FleetTile.tsx:210`) and its subline the callsign (`:215`); the fleet page header, breadcrumb, delete confirm and install gate show the name (`FleetHeader.tsx:61,77`, `FleetConfig.tsx:60`, `FleetInstallGate.tsx:44`); the fleet page THREAD receives the callsign through a prop named `fleetName` (`page.tsx:215` → `ChatView.tsx:51`), 74 lines after the same file passes `fleet.name` to a prop of the same name; events and billing show the callsign (`EventsList.tsx:77`, `BillingUsageTab.tsx:41-42`); the admin lease table alone shows a raw UUID (`LeaseTable.tsx:74`). No surface shows a wrong VALUE; one prop is named for the wrong concept and one column uses a different convention from every other. `charges.ts:41` and `AgentLabel.tsx:23` compose the identical `Agent ${callsign}` string — the billing module reaches into `fleets/components/` for a domain fact three areas consume, which is the whole argument for `lib/`. Sequencing: on one branch the six rewrites land in one commit; the conflict the brief priced assumed a second agent.
+- **#11, the case where figures and thread disagree.** A processed run with `failure_label: null` and `response_text: null` — which is EVERY processed row the list read returns, since it carries no bodies — falls through `outcomeFor` to `OUTCOME.NO_REPLY` ("Completed with no reply recorded."), while the thread below renders the reply the detail read holds. `RunMetricsStrip.test.tsx:68` pins that fallthrough as correct; it is the test §6.1 rewrites. `EventRow.response_text` is documented as null "while a run is in flight, and on a run that failed before producing one" (`events.ts:76-78`) — the list read's third meaning, unread, is what the strip mistook for the second.
+- **#10, the count was wrong twice and the classification precedes the sweep.** The walk said 8 pages; the brief's grep said 48 files with `variant` in eight values; both counted Alerts and Badges as buttons. Tag-aware: 76 `<Button>`s in 42 files, and 24 of them carry no `variant` and so render the primary `default` — the group that actually needed a rule. The §7 table is filled from each site's intent read in place, not its label, and is confirmed with the user before a single variant changes.
