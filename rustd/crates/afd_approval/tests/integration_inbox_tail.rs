@@ -84,9 +84,11 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         "the sibling gate still waits, and the frame says so"
     );
 
-    // The sweeper announces what it takes, the same way: seeded lapsed, so
-    // this sweep takes it and the sibling above stays.
+    // The sweeper announces what it takes, the same way: two seeded lapsed,
+    // so this sweep takes both — reading the fleet's counters once for the
+    // pair — and the sibling above stays.
     let lapsed = lane.seed_gate(NOW_MS - 1).await;
+    let lapsed_too = lane.seed_gate(NOW_MS - 1).await;
     lane.inbox
         .expire(now)
         .await
@@ -94,6 +96,15 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let swept = next_frame(&mut tail)
         .await
         .expect("the sweep reaches the fleet's tail");
+    let swept_too = next_frame(&mut tail)
+        .await
+        .expect("the second swept gate reaches the tail too");
+    assert_eq!(swept_too.get("kind"), Some(&json!("gate_resolved")));
+    assert_eq!(
+        swept_too.get("events_processed"),
+        swept.get("events_processed"),
+        "one fleet, one read: both frames carry the same snapshot"
+    );
     assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(swept.get("status"), Some(&json!("timed_out")));
     assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
@@ -105,9 +116,19 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         Some(&json!(counters.events_processed)),
         "the sweeper's frame carries where the fleet stands"
     );
+    let mut swept_events = [
+        swept.get("event_id").cloned(),
+        swept_too.get("event_id").cloned(),
+    ];
+    swept_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
+    let mut seeded_events = [
+        Some(json!(lane.gate_column(&lapsed, "event_id").await)),
+        Some(json!(lane.gate_column(&lapsed_too, "event_id").await)),
+    ];
+    seeded_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
     assert_eq!(
-        swept.get("event_id"),
-        Some(&json!(lane.gate_column(&lapsed, "event_id").await))
+        swept_events, seeded_events,
+        "both lapsed gates are announced"
     );
     assert_eq!(swept.get("pending_approvals"), Some(&json!(1)));
 }

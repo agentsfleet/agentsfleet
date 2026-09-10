@@ -6,13 +6,14 @@
 **Milestone:** M195
 **Workstream:** 002
 **Date:** Sep 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the wall reports fewer events than a fleet has processed until someone reloads. Nothing is lost or double-charged; what is wrong is the number an operator reads while deciding whether a fleet is stuck.
 **Categories:** API, UI
 **Batch:** B1 — one workstream; the frame that carries the snapshot and the client that renders it are one change.
 **Branch:** `feat/m195-wall-tile-counters`
 **Baseline revision:** `a4e0ef2bda8a62742a400be18f58588056786f8c`
-**Test Baseline:** pending — measured before the Pull Request (declared `verify.unit` and `verify.integration` lanes)
+**Test Baseline:** `unit=5920 integration=445` — `make test-unit-all` (Rust 2501 + app 2713 + 146 + 560) and `make test-integration-rustd` (445 passed), both exit 0 at `a4e0ef2bd`, measured in the base checkout sitting at that exact revision. Final: `unit=5966 integration=452` (Rust 2510 + app 2746 + 146 + 564; 452 passed), both exit 0.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M195_002-a4e0ef2bd.md`
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M194_001 — its §4 acceptance walk recorded this defect at step 6, and its Pull Request carries the partial work this spec restores. Runs in PARALLEL with M195_001 — the two declare no file in common — except that its §2 request inventory is taken after this spec lands, since carrying the counters on the frame removes the wall's separate counter fetch.
 **Provenance:** agent-generated from M194_001's acceptance walk (step 6, recorded defect) and a code read of the counter triggers, the lease park and the frame publishers. One premise carried from an earlier session note did not survive the read — see Discovery.
