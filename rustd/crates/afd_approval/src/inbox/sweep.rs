@@ -2,8 +2,10 @@
 //!
 //! Split from [`super`] because the sweep is the one verb that moves MANY rows
 //! in one statement and then owes the tail one frame per row. The statement
-//! hands back each row's fleet, event and the fleet's count after the sweep,
-//! so the loop below reads nothing — it decodes and announces.
+//! hands back each row's fleet, event and the fleet's count after the sweep;
+//! the loop below reads the fleet's counters once per distinct fleet, then
+//! decodes and announces. A backlog of N expired gates across F fleets costs
+//! F key lookups, not N.
 //!
 //! # Nothing past the statement can fail the sweep
 //!
@@ -12,8 +14,11 @@
 //! sweep into a reported failure a caller would retry against rows already
 //! moved.
 
+use std::collections::BTreeMap;
+
 use afd_core::clock::UnixMillis;
 use afd_wire::approval::status;
+use afd_wire::tail::FleetCounters;
 use sqlx::Row as _;
 
 use super::Inbox;
@@ -72,12 +77,19 @@ impl Inbox {
         // The rows are swept whatever happens past this line, so a row that
         // will not decode costs the tail its frame and is logged — it never
         // turns a committed sweep into a reported failure.
+        let mut read: BTreeMap<String, Option<FleetCounters>> = BTreeMap::new();
         for row in &rows {
             let Some(swept) = Self::swept(row) else {
                 continue;
             };
-            let counters =
-                afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
+            let counters = if let Some(counters) = read.get(&swept.fleet) {
+                *counters
+            } else {
+                let counters =
+                    afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
+                read.insert(swept.fleet.clone(), counters);
+                counters
+            };
             self.announce(Answer {
                 fleet_id: &swept.fleet,
                 gate_id: &swept.gate,

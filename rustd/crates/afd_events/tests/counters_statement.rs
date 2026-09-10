@@ -4,6 +4,10 @@
 //! a build that drops the counters from one closing statement compiles just
 //! as well as one that keeps them — the decoder would fail at runtime on the
 //! first ended event, which is the wrong place to learn it.
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
 
 use afd_events::sql::{
     SELECT_FLEET_COUNTERS, UPDATE_FLEET_EVENT_FAILURE, UPDATE_FLEET_EVENT_RESULT,
@@ -23,15 +27,15 @@ fn both_closings_carry_the_counters_after_the_pending_count() {
         ("UPDATE_FLEET_EVENT_FAILURE", UPDATE_FLEET_EVENT_FAILURE),
         ("UPDATE_FLEET_EVENT_RESULT", UPDATE_FLEET_EVENT_RESULT),
     ] {
-        let pending = statement
-            .find(PENDING_APPROVALS)
-            .unwrap_or_else(|| panic!("{name} lost its pending count"));
-        let events = statement
-            .find(EVENTS_PROCESSED)
-            .unwrap_or_else(|| panic!("{name} lost {EVENTS_PROCESSED}"));
-        let budget = statement
-            .find(BUDGET_USED_NANOS)
-            .unwrap_or_else(|| panic!("{name} lost {BUDGET_USED_NANOS}"));
+        for column in [PENDING_APPROVALS, EVENTS_PROCESSED, BUDGET_USED_NANOS] {
+            assert!(statement.contains(column), "{name} lost {column}");
+        }
+        let at = |column: &str| statement.find(column).expect("asserted present above");
+        let (pending, events, budget) = (
+            at(PENDING_APPROVALS),
+            at(EVENTS_PROCESSED),
+            at(BUDGET_USED_NANOS),
+        );
         assert!(
             pending < events && events < budget,
             "{name}: the columns must sit in decoder order"

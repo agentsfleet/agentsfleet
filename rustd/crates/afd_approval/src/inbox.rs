@@ -208,7 +208,9 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         if let Some(row) = won {
-            return Ok(Resolution::Resolved(self.won(&row, outcome, now).await?));
+            return Ok(Resolution::Resolved(
+                self.won(&mut connection, &row, outcome, now).await?,
+            ));
         }
 
         // Nothing updated: either somebody answered first, or there was never
@@ -237,6 +239,7 @@ impl Inbox {
     /// reported after the tail has heard.
     async fn won(
         &self,
+        connection: &mut sqlx::PgConnection,
         row: &sqlx::postgres::PgRow,
         outcome: Decision,
         now: UnixMillis,
@@ -264,9 +267,10 @@ impl Inbox {
             (false, _) => Ok(None),
         };
         // After the continuation, so an approval's frame carries the count the
-        // continued run's own row moved.
+        // continued run's own row moved — on the connection the resolve still
+        // holds, so the announcement costs no acquire of its own.
         let counters =
-            afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
+            afd_events::fleet_counters_best_effort_on(connection, &resolved.fleet_id).await;
         self.announce(Answer {
             fleet_id: &resolved.fleet_id,
             gate_id: &resolved.gate_id,
@@ -321,9 +325,9 @@ impl Inbox {
             )
             .await?;
 
-        let landed = {
+        let (landed, counters) = {
             let mut connection = self.database.acquire().await?;
-            sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+            let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
                 .bind(&resolved.fleet_id)
                 .bind(appended.id.as_str())
                 .bind(&resolved.workspace_id)
@@ -335,15 +339,21 @@ impl Inbox {
                 .bind(afd_core::event::status::RECEIVED)
                 .execute(&mut *connection)
                 .await
-                .map_err(error::query(CONTEXT_CONTINUE))?
+                .map_err(error::query(CONTEXT_CONTINUE))?;
+            // The counters are read after the row landed, because the insert
+            // is what moves them — on the same connection, where the trigger's
+            // write is already visible and no second acquire is paid.
+            let counters = if landed.rows_affected() > 0 {
+                afd_events::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id).await
+            } else {
+                None
+            };
+            (landed, counters)
         };
         // Once, on the write that landed the row: a retried resolve finds the
         // row already there and announces nothing, the same rule the lease
-        // verb keeps for a redelivery. The counters are read after the row
-        // landed, because the insert is what moves them.
+        // verb keeps for a redelivery.
         if landed.rows_affected() > 0 {
-            let counters =
-                afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
             let frame = TailFrame::EventReceived {
                 event_id: Cow::Borrowed(appended.id.as_str()),
                 actor: Cow::Borrowed(&actor),

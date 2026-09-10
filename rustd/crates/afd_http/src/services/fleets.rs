@@ -82,18 +82,20 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
     ) -> impl Future<Output = FleetResult<Arc<BTreeSet<String>>>> + Send;
 
-    /// Where every fleet in `fleets` stands: the counter snapshot a `hello`
-    /// carries so a subscriber is right before its first frame.
+    /// Where every fleet of `workspace` in `fleets` stands: the counter
+    /// snapshot a `hello` carries so a subscriber is right before its first
+    /// frame.
     ///
     /// Never cached, and asked only when a `hello` is about to go out: the
     /// set may be a tick old, but a counter that old is the staleness the
-    /// frame exists to remove. Every identifier answers, zeros for a fleet
-    /// that has never run.
+    /// frame exists to remove. Every identifier the workspace holds answers,
+    /// zeros for a fleet that has never run; one it does not hold is absent.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
     fn counters(
         &self,
+        workspace: &Uuid7,
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send;
 
@@ -176,9 +178,10 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
 
     fn counters(
         &self,
+        workspace: &Uuid7,
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send {
-        Self::counters(self, fleets)
+        Self::counters(self, workspace, fleets)
     }
 
     fn install(

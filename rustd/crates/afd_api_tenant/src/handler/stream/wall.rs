@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use afd_auth::principal::Principal;
 use afd_core::id::Uuid7;
-use afd_sse::{FanIn, Frame};
+use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use tokio::time::Instant;
@@ -114,6 +114,13 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
             () = tokio::time::sleep_until(deadline) => None,
         };
         if let Some(frame) = arrived {
+            // A gap the server could not carry is exactly the frames that
+            // moved the counters, so the next step re-announces the set with
+            // where every fleet stands now — the backfill recovers the rows,
+            // the fresh `hello` recovers the figures.
+            if frame.kind == KIND_CATCHING_UP {
+                wall.announced = false;
+            }
             return Some((frame, wall));
         }
     }
@@ -131,11 +138,18 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
 /// a borrow of the whole held across this read would make the stream's future
 /// unsendable.
 async fn hello<D: Services>(services: &D, workspace: &Uuid7, carried: Vec<String>) -> Frame {
-    let counters = match services.fleets().counters(&carried).await {
+    let counters = match services.fleets().counters(workspace, &carried).await {
         Ok(counters) => counters,
-        Err(_deferred) => {
+        Err(error) => {
             let workspace_id = workspace.as_str();
-            tracing::warn!(workspace_id, event = EVENT_HELLO_COUNTERS_UNREAD);
+            let error_code = error.code().as_str();
+            let reason = error.to_string();
+            tracing::warn!(
+                workspace_id,
+                error_code,
+                reason,
+                event = EVENT_HELLO_COUNTERS_UNREAD
+            );
             BTreeMap::new()
         }
     };

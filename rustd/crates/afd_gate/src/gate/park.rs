@@ -39,7 +39,7 @@ use std::borrow::Cow;
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_redis::streams::FleetStreams;
-use afd_wire::tail::TailFrame;
+use afd_wire::tail::{FleetCounters, TailFrame};
 use sqlx::Row as _;
 
 use super::sql;
@@ -102,6 +102,16 @@ pub struct Park<'a> {
     pub claim: &'a Claim,
 }
 
+/// What the row insert answered, for the frame the park then publishes.
+struct Recorded {
+    /// The identifier the row was recorded under.
+    gate_id: Uuid7,
+    /// How many of the fleet's gates wait, this one counted.
+    pending_approvals: i64,
+    /// Where the fleet's counters stand, or none when the read did not answer.
+    counters: Option<FleetCounters>,
+}
+
 impl Gates {
     /// Park `request`'s event behind a human's answer.
     ///
@@ -118,7 +128,7 @@ impl Gates {
             return Self::unavailable(&request, WRITE_ROW, None);
         };
 
-        let (gate_id, pending_approvals) = match self.record_row(&request, &reference, now).await {
+        let recorded = match self.record_row(&request, &reference, now).await {
             Ok(recorded) => recorded,
             Err(fault) => return Self::unavailable(&request, WRITE_ROW, Some(&fault)),
         };
@@ -133,7 +143,7 @@ impl Gates {
         {
             return Self::unavailable(&request, WRITE_REFERENCE, Some(&fault));
         }
-        self.announce(&request, &gate_id, pending_approvals).await;
+        self.announce(&request, &recorded).await;
 
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
@@ -150,34 +160,33 @@ impl Gates {
     /// Tell the fleet's live tail a human has been asked, best-effort.
     ///
     /// After both writes, so a watcher reacting to the frame finds the row it
-    /// names. The count rode the insert; the fleet's counters are one read,
-    /// best-effort like the publish, and a read that does not answer sends
-    /// the frame without them. A publish that fails costs the tail one frame
-    /// and the park nothing — the row is down, the reference is down, and the
-    /// card is what the answer lands on.
-    async fn announce(&self, request: &Park<'_>, gate_id: &Uuid7, pending_approvals: i64) {
-        let fleet_id = request.fleet_id.as_str();
-        let counters = afd_events::fleet_counters_best_effort(self.database(), fleet_id).await;
+    /// names. The count rode the insert and the fleet's counters rode the
+    /// same connection, so the frame costs the park one publish; a read that
+    /// did not answer sends the frame without its figures. A publish that
+    /// fails costs the tail one frame and the park nothing — the row is down,
+    /// the reference is down, and the card is what the answer lands on.
+    async fn announce(&self, request: &Park<'_>, recorded: &Recorded) {
         let frame = TailFrame::GateOpened {
-            gate_id: Cow::Borrowed(gate_id.as_str()),
+            gate_id: Cow::Borrowed(recorded.gate_id.as_str()),
             event_id: Cow::Borrowed(request.event_id),
-            pending_approvals,
-            counters,
+            pending_approvals: recorded.pending_approvals,
+            counters: recorded.counters,
         };
         FleetStreams::new(self.queue().clone())
-            .publish_frame(fleet_id, &frame)
+            .publish_frame(request.fleet_id.as_str(), &frame)
             .await;
     }
 
     /// Insert the row a resolve updates and the mint spends against, and
-    /// answer the identifier it was recorded under beside how many of the
-    /// fleet's gates now wait, this one counted.
+    /// answer what the frame needs: the identifier it was recorded under, how
+    /// many of the fleet's gates now wait (this one counted), and where the
+    /// fleet's counters stand — read on the same connection, best-effort.
     async fn record_row(
         &self,
         request: &Park<'_>,
         reference: &GateRef,
         now: UnixMillis,
-    ) -> Result<(Uuid7, i64)> {
+    ) -> Result<Recorded> {
         let gate_id = self.mint(now)?;
         // Recorded so the write mint can compare the approved reach against the
         // fleet's current config without trusting anything PATCHable.
@@ -211,7 +220,14 @@ impl Gates {
         .await
         .map_err(query(CONTEXT_PARK))?;
         let pending_approvals = row.try_get(0).map_err(query(CONTEXT_PARK))?;
-        Ok((gate_id, pending_approvals))
+        let counters =
+            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id.as_str())
+                .await;
+        Ok(Recorded {
+            gate_id,
+            pending_approvals,
+            counters,
+        })
     }
 
     /// Draw one identifier for a gate.

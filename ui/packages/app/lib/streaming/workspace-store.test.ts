@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { WorkspaceControlFrame, WorkspaceLiveFrame } from "@/lib/api/events";
+import type {
+  FleetCountersSnapshot,
+  WorkspaceControlFrame,
+  WorkspaceLiveFrame,
+} from "@/lib/api/events";
 import type { BackfillOutcome, WorkspaceBackfillRequest } from "@/lib/streaming/fleet-stream-backfill";
 
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -17,9 +21,11 @@ const fleetListeners = new Map<string, FrameListener>();
 let controlListener: ControlListener | null = null;
 let backfill: BackfillFn | null = null;
 
+const noteServerFrameTime = vi.fn();
+const warnBackfillFailure = vi.fn();
 vi.mock("@/lib/streaming/workspace-stream", () => ({
   WORKSPACE_CONNECTION_STATUS: { CONNECTING: "connecting", LIVE: "live", RECONNECTING: "reconnecting" },
-  noteServerFrameTime: vi.fn(),
+  noteServerFrameTime: (...a: unknown[]) => noteServerFrameTime(...a),
   subscribeStatus: (_workspaceId: string, _listener: unknown, onReconnect: BackfillFn) => {
     backfill = onReconnect;
     return () => {};
@@ -37,7 +43,7 @@ vi.mock("@/lib/streaming/workspace-stream", () => ({
 const runWorkspaceBackfill = vi.fn<(req: WorkspaceBackfillRequest) => Promise<BackfillOutcome>>();
 vi.mock("@/lib/streaming/fleet-stream-backfill", () => ({
   runWorkspaceBackfill: (req: WorkspaceBackfillRequest) => runWorkspaceBackfill(req),
-  warnBackfillFailure: vi.fn(),
+  warnBackfillFailure: (...a: unknown[]) => warnBackfillFailure(...a),
 }));
 
 import { WorkspaceStore } from "./workspace-store";
@@ -116,6 +122,8 @@ afterEach(() => {
   disconnect();
   vi.unstubAllGlobals();
   runWorkspaceBackfill.mockReset();
+  noteServerFrameTime.mockReset();
+  warnBackfillFailure.mockReset();
 });
 
 describe("the tile counters are a snapshot the store assigns", () => {
@@ -132,6 +140,28 @@ describe("the tile counters are a snapshot the store assigns", () => {
       eventsProcessed: SEVEN_EVENTS,
       spentNanos: SPENT_NANOS,
     });
+  });
+
+  it("a frame that crossed the greeting in flight cannot walk the tile backwards", () => {
+    // The hello read the counters after a frame was already queued behind
+    // the subscription; the frame lands second carrying the OLDER figures.
+    // Both counters only grow on the server, so the greater one stands.
+    greet({
+      kind: FRAME_KIND.HELLO,
+      fleet_ids: [FLEET_A],
+      counters: { [FLEET_A]: { events_processed: SEVEN_EVENTS, budget_used_nanos: SPENT_NANOS } },
+    });
+    push(FLEET_A, completed(FLEET_A, "e6", STANDING));
+    expect(store.snapshot(FLEET_A).counters).toEqual({
+      eventsProcessed: SEVEN_EVENTS,
+      spentNanos: SPENT_NANOS,
+    });
+    // And a frame that is genuinely newer still moves it forward.
+    push(FLEET_A, completed(FLEET_A, "e8", {
+      events_processed: SEVEN_EVENTS + 1,
+      budget_used_nanos: SPENT_NANOS,
+    }));
+    expect(store.snapshot(FLEET_A).counters?.eventsProcessed).toBe(SEVEN_EVENTS + 1);
   });
 
   it("the hello assigns each announced fleet, and leaves an unannounced one standing", () => {
@@ -152,6 +182,33 @@ describe("the tile counters are a snapshot the store assigns", () => {
       eventsProcessed: STANDING.events_processed,
       spentNanos: STANDING.budget_used_nanos,
     });
+  });
+
+  it("a malformed hello map neither throws nor assigns, and a stray key is dropped", () => {
+    // The wire is untrusted. A null entry, a primitive, a negative or
+    // fractional figure, and a fleet the wall never subscribed all fall away
+    // without breaking the greeting for the fleets that are well formed.
+    greet({
+      kind: FRAME_KIND.HELLO,
+      fleet_ids: [FLEET_A, FLEET_B],
+      counters: {
+        [FLEET_A]: null,
+        [FLEET_B]: { events_processed: SEVEN_EVENTS, budget_used_nanos: SPENT_NANOS },
+        fleet_stranger: { events_processed: 1, budget_used_nanos: 1 },
+      } as unknown as Record<string, FleetCountersSnapshot>,
+    });
+    expect(store.snapshot(FLEET_A).helloReceived).toBe(true);
+    expect(store.snapshot(FLEET_A).counters).toBeUndefined();
+    expect(store.snapshot(FLEET_B).counters).toEqual({
+      eventsProcessed: SEVEN_EVENTS,
+      spentNanos: SPENT_NANOS,
+    });
+    expect(store.snapshot("fleet_stranger").counters).toBeUndefined();
+
+    greet({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A], counters: "nonsense" as never });
+    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: -1, budget_used_nanos: 1 }));
+    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: 1.5, budget_used_nanos: 1 }));
+    expect(store.snapshot(FLEET_A).counters).toBeUndefined();
   });
 
   it("a hello without a counters map announces the set and assigns nothing", () => {
@@ -246,6 +303,64 @@ describe("the event map stays bounded", () => {
     // And a key only for a fleet the wall subscribed: the map cannot grow
     // with the workspace, only with the tiles on screen.
     expect(store.snapshot(FLEET_B).events).toHaveLength(0);
+  });
+
+  it("a backfill that rejects is logged and leaves the fleet as it was", async () => {
+    runWorkspaceBackfill.mockRejectedValue(new Error("network failed"));
+    push(FLEET_A, received(FLEET_A, "e1", STANDING));
+    if (!backfill) throw new Error("no status subscription");
+    backfill(WORKSPACE_ID, null);
+    await vi.waitFor(() => expect(warnBackfillFailure).toHaveBeenCalledTimes(1));
+    expect(store.snapshot(FLEET_A).events).toHaveLength(1);
+    expect(store.snapshot(FLEET_A).counters?.eventsProcessed).toBe(STANDING.events_processed);
+  });
+
+  it("a backfill that lands after the store reconnected is dropped, catching up left standing", async () => {
+    let release: (outcome: BackfillOutcome) => void = () => {};
+    runWorkspaceBackfill.mockImplementation(
+      () => new Promise<BackfillOutcome>((resolve) => { release = resolve; }),
+    );
+    greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
+    if (!backfill) throw new Error("no status subscription");
+    backfill(WORKSPACE_ID, null);
+    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(1));
+    // A new generation: the answer belongs to a connection this store no
+    // longer represents.
+    disconnect();
+    disconnect = store.connect([FLEET_A]);
+    release({ ok: true, watermark: 5 });
+    await Promise.resolve();
+    expect(store.snapshot(FLEET_A).catchingUp).toBe(true);
+    expect(noteServerFrameTime).not.toHaveBeenCalled();
+  });
+
+  it("a backfill row for a fleet the wall never subscribed is dropped", async () => {
+    runWorkspaceBackfill.mockImplementation(async (req) => {
+      req.onPage([
+        {
+          event_id: "b1",
+          fleet_id: "fleet_stranger",
+          workspace_id: WORKSPACE_ID,
+          actor: "fleet",
+          event_type: "chat",
+          status: "processed",
+          tokens: null,
+          wall_ms: null,
+          failure_label: null,
+          failure_detail: null,
+          checkpoint_id: null,
+          resumes_event_id: null,
+          cost_nanos: null,
+          created_at: CREATED_AT_MS,
+          updated_at: CREATED_AT_MS,
+        },
+      ]);
+      return { ok: true, watermark: CREATED_AT_MS };
+    });
+    if (!backfill) throw new Error("no status subscription");
+    backfill(WORKSPACE_ID, null);
+    await vi.waitFor(() => expect(noteServerFrameTime).toHaveBeenCalledWith(WORKSPACE_ID, CREATED_AT_MS));
+    expect(store.snapshot("fleet_stranger").events).toHaveLength(0);
   });
 
   it("a reconnect backfill is capped on the same write", async () => {

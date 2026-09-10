@@ -97,6 +97,14 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(swept.get("status"), Some(&json!("timed_out")));
     assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
+    let counters = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+        .await
+        .expect("the counters read back");
+    assert_eq!(
+        swept.get("events_processed"),
+        Some(&json!(counters.events_processed)),
+        "the sweeper's frame carries where the fleet stands"
+    );
     assert_eq!(
         swept.get("event_id"),
         Some(&json!(lane.gate_column(&lapsed, "event_id").await))
@@ -127,6 +135,9 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
     let approved = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let _still_waiting = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+        .await
+        .expect("the counters read before the resolve");
     let outcome = lane
         .inbox
         .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None, now)
@@ -151,6 +162,13 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
             lane.gate_column(&approved, "event_id").await
         )))
     );
+    // The continuation's own insert moved the count, and its frame carries
+    // the moved figure — read after the row landed, on the same connection.
+    assert_eq!(
+        opened.get("events_processed"),
+        Some(&json!(before.events_processed + 1)),
+        "the continued run's frame counts the row it wrote"
+    );
 
     let answered = next_frame(&mut tail)
         .await
@@ -161,6 +179,17 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
         answered.get("pending_approvals"),
         Some(&json!(1)),
         "the sibling gate still waits, and the frame says so"
+    );
+    // Read AFTER the continuation, so the answer carries the continued run's
+    // row too — a read before it would be one short.
+    assert_eq!(
+        answered.get("events_processed"),
+        Some(&json!(before.events_processed + 1)),
+        "the answer's snapshot includes the continuation it started"
+    );
+    assert_eq!(
+        answered.get("budget_used_nanos"),
+        Some(&json!(before.budget_used_nanos))
     );
 }
 

@@ -99,10 +99,10 @@ macro_rules! counter_column {
 /// counters as they stand at the ending, then the join.
 ///
 /// The counters ride the closing so the completion frame carries the whole
-/// truth without a second read. `events_processed` moved at receive, so it is
-/// settled here; `budget_used_nanos` follows the ledger write, which may land
-/// after this statement — a completion that reads one run short is corrected
-/// by the next frame, because every frame carries the total.
+/// truth without a second read, and both are final at the closing:
+/// `events_processed` moved at receive, and `budget_used_nanos` moved when
+/// the report's ledger settle committed, which `afd_fleet`'s report path does
+/// before it marks the row terminal; a gate refusal writes no ledger row.
 macro_rules! closed_from {
     () => {
         concat!(

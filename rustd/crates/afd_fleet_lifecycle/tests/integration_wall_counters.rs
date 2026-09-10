@@ -11,11 +11,14 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::tail::FleetCounters;
 
+use afd_fleet_lifecycle::{Install, LibrarySource};
+
 use crate::integration_patch_visibility::installed;
-use crate::support::{Lane, mint};
+use crate::support::{LIBRARY_ID, Lane, mint};
 
 /// The page size the reads below ask for; larger than any lane seeds.
 const PAGE: u32 = 50;
@@ -94,7 +97,11 @@ async fn the_wall_counters_answer_every_fleet_in_the_set() {
         idle.id.as_str().to_owned(),
         stranger.as_str().to_owned(),
     ];
-    let counters = lane.fleets.counters(&set).await.expect("the set reads");
+    let counters = lane
+        .fleets
+        .counters(&lane.workspace, &set)
+        .await
+        .expect("the set reads");
 
     assert_eq!(counters.get(ran.id.as_str()), Some(&RAN));
     assert_eq!(
@@ -112,10 +119,67 @@ async fn the_wall_counters_answer_every_fleet_in_the_set() {
     );
     assert_eq!(counters.len(), 2);
 
-    let empty = lane.fleets.counters(&[]).await.expect("an empty set reads");
+    let empty = lane
+        .fleets
+        .counters(&lane.workspace, &[])
+        .await
+        .expect("an empty set reads");
     assert!(
         empty.is_empty(),
         "an empty wall asks for nothing and gets nothing"
+    );
+
+    lane.cleanup().await;
+}
+
+/// A read the datastore refuses is reported as the datastore's, so the wall's
+/// `hello` can tell an outage from an empty set and send the set without its
+/// figures rather than with zeros. No lane: the pool opens no socket.
+#[tokio::test]
+async fn a_refused_counters_read_is_reported_as_the_datastores() {
+    let error = Lane::with_dead_database()
+        .counters(&mint(), &[mint().as_str().to_owned()])
+        .await
+        .expect_err("nothing listens on the fixture port");
+    assert_eq!(error.code(), error_code::INTERNAL_DB_UNAVAILABLE);
+}
+
+/// The statement is workspace-scoped like every sibling: a fleet another
+/// workspace holds answers no row, so a caller that hands over a stray id
+/// learns nothing about somebody else's spend.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the lane's Postgres and Redis"]
+async fn a_neighbours_fleet_is_not_answered_for() {
+    let lane = Lane::create().await;
+    let own = installed(&lane).await;
+    let neighbour = lane.another_workspace().await;
+    let theirs = lane
+        .fleets
+        .install(
+            &neighbour,
+            &Install {
+                source: LibrarySource::Platform(LIBRARY_ID),
+                name: None,
+            },
+            Lane::now(),
+        )
+        .await
+        .expect("the neighbour's fleet installs");
+    seed_counters(&lane, &theirs.id, RAN).await;
+
+    let counters = lane
+        .fleets
+        .counters(
+            &lane.workspace,
+            &[own.id.as_str().to_owned(), theirs.id.as_str().to_owned()],
+        )
+        .await
+        .expect("the set reads");
+    assert!(counters.contains_key(own.id.as_str()));
+    assert_eq!(
+        counters.get(theirs.id.as_str()),
+        None,
+        "another workspace's fleet is absent, not zeroed and not disclosed"
     );
 
     lane.cleanup().await;
