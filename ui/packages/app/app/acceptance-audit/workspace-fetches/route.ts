@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   isWorkspaceFetchAuditEnabled,
-  readWorkspaceFetchAudit,
+  readWorkspaceFetchAuditPayload,
   resetWorkspaceFetchAudit,
 } from "@/lib/acceptance/workspace-fetch-audit";
 
@@ -34,7 +34,9 @@ function guardAuditRequest(request: Request): Response | null {
 export function GET(request: Request) {
   const guarded = guardAuditRequest(request);
   if (guarded) return guarded;
-  return NextResponse.json(readWorkspaceFetchAudit());
+  // Counts and timings together: a measurement needs what a page asked for
+  // AND what the ask cost, and one round trip keeps the two consistent.
+  return NextResponse.json(readWorkspaceFetchAuditPayload());
 }
 
 export function POST(request: Request) {

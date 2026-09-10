@@ -1,5 +1,5 @@
 import { ApiError, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
-import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
+import { beginWorkspaceFetchOutcome, recordWorkspaceFetchForAcceptance, type AuditedOutcome } from "../acceptance/workspace-fetch-audit";
 import { HTTP_METHOD, runWithRetry, type RetryOptions } from "./retry";
 import { classifyFailure } from "./retry-classify";
 
@@ -212,13 +212,14 @@ export async function requestWithEtag<T>(
   token: string,
 ): Promise<{ data: T; etag: string | null }> {
   const method = methodOf(init);
-  recordAudit(path, method);
+  const audit = recordAudit(path, method);
   const { data, etag } = await runWithRetry(classifiedAttempt<T>(path, init, token), method, {
     ...(DEFAULT_RETRY_METHODS.has(method) ? {} : { maxAttempts: 1 }),
     signal: init.signal ?? undefined,
     cancelled: cancelledFor(path),
     statusOf: statusOfAttempt,
-  });
+    onAttempt: audit.trackAttempts(),
+  }).finally(audit.settle);
   return { data, etag };
 }
 
@@ -242,7 +243,7 @@ export async function requestWithRetry<T>(
   options: RetryOptions = {},
 ): Promise<T> {
   const method = methodOf(init);
-  recordAudit(path, method);
+  const audit = recordAudit(path, method);
   // One signal for the fetch and the schedule: a caller that cancels through
   // the policy's options cuts the request in flight, not only the next one.
   const signal = init.signal ?? options.signal;
@@ -251,7 +252,10 @@ export async function requestWithRetry<T>(
     statusOf: statusOfAttempt,
     ...options,
     signal,
-  });
+    // After the spread on purpose: a caller's own onAttempt is wrapped, never
+    // replaced, so instrumenting the transport cannot silence it.
+    onAttempt: audit.trackAttempts(options.onAttempt),
+  }).finally(audit.settle);
   return data;
 }
 
@@ -261,8 +265,13 @@ function methodOf(init: RequestInit): string {
 
 // Audited once per logical request, never per attempt: the acceptance budget
 // counts what a render asked for, and a transient retry is not a second ask.
-function recordAudit(path: string, method: string): void {
-  if (method === HTTP_METHOD.GET) recordWorkspaceFetchForAcceptance(path);
+// The handle returned records what that ask COST once it settles — wall time
+// and attempts taken — which is what lets a measurement attribute a slow render
+// to a stage. Inert unless the env gate is on, so production pays a branch.
+function recordAudit(path: string, method: string): AuditedOutcome {
+  if (method !== HTTP_METHOD.GET) return beginWorkspaceFetchOutcome("");
+  recordWorkspaceFetchForAcceptance(path);
+  return beginWorkspaceFetchOutcome(path);
 }
 
 type Attempt<T> = { data: T; etag: string | null; status: number };

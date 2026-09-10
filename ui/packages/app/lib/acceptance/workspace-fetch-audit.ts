@@ -3,7 +3,35 @@ export type WorkspaceFetchAuditSnapshot = {
   byPath: Record<string, number>;
 };
 
-type WorkspaceFetchAuditState = WorkspaceFetchAuditSnapshot;
+/** What one settled request cost, per id-free route template. */
+export type WorkspaceFetchTiming = {
+  durationsMs: number[];
+  attempts: number[];
+};
+export type WorkspaceFetchTimings = Record<string, WorkspaceFetchTiming>;
+
+/** The route's body: counts (what was asked) beside timings (what it cost). */
+export type WorkspaceFetchAuditPayload = WorkspaceFetchAuditSnapshot & {
+  timingsByPath: WorkspaceFetchTimings;
+};
+
+/** Recorded per settled request, so a measurement can attribute a wait. */
+export type AuditedOutcome = {
+  /**
+   * Wraps a caller's own attempt callback; never replaces it. Generic over the
+   * callback's info type so this module stays free of the api layer's
+   * `AttemptInfo` — the transport imports the audit, so the dependency must not
+   * point back.
+   */
+  trackAttempts: <T extends { attempt: number } = { attempt: number }>(
+    next?: (info: T) => void,
+  ) => (info: T) => void;
+  settle: () => void;
+};
+
+type WorkspaceFetchAuditState = WorkspaceFetchAuditSnapshot & {
+  timingsByPath: WorkspaceFetchTimings;
+};
 
 const AUDIT_ENV_NAME = "AGENTSFLEET_E2E_AUDIT";
 const AUDIT_ENABLED_VALUE = "1";
@@ -45,8 +73,18 @@ type GlobalWithAudit = typeof globalThis & {
   [STATE_KEY]?: WorkspaceFetchAuditState;
 };
 
+// A long lane would otherwise grow these arrays without bound. The cap is far
+// above any declared sample count, so a measurement never silently loses one.
+const MAX_TIMING_SAMPLES_PER_PATH = 200;
+const INERT_OUTCOME: AuditedOutcome = {
+  trackAttempts:
+    <T extends { attempt: number }>(next?: (info: T) => void) =>
+    (info: T) => next?.(info),
+  settle: () => {},
+};
+
 function emptyState(): WorkspaceFetchAuditState {
-  return { total: 0, byPath: {} };
+  return { total: 0, byPath: {}, timingsByPath: {} };
 }
 
 function auditState(): WorkspaceFetchAuditState {
@@ -86,6 +124,53 @@ export function recordWorkspaceFetchForAcceptance(path: string): void {
 export function readWorkspaceFetchAudit(): WorkspaceFetchAuditSnapshot {
   const state = auditState();
   return { total: state.total, byPath: { ...state.byPath } };
+}
+
+export function readWorkspaceFetchTimings(): WorkspaceFetchTimings {
+  const state = auditState();
+  return Object.fromEntries(
+    Object.entries(state.timingsByPath).map(([key, timing]) => [
+      key,
+      { durationsMs: [...timing.durationsMs], attempts: [...timing.attempts] },
+    ]),
+  );
+}
+
+/** Counts and timings together — what the acceptance route serves. */
+export function readWorkspaceFetchAuditPayload(): WorkspaceFetchAuditPayload {
+  return { ...readWorkspaceFetchAudit(), timingsByPath: readWorkspaceFetchTimings() };
+}
+
+/**
+ * Opens a timing record for one logical GET. `recordWorkspaceFetchForAcceptance`
+ * counts the ASK; this records what the ask COST — wall time and the attempts
+ * the retry ladder actually took — which is what attributes a slow render to a
+ * stage rather than to a guess. Settle on the failure path too: a read that
+ * exhausts the ladder is the case a latency investigation most needs.
+ */
+export function beginWorkspaceFetchOutcome(path: string): AuditedOutcome {
+  if (!isWorkspaceFetchAuditEnabled()) return INERT_OUTCOME;
+  const key = auditedKeyFor(path);
+  if (key === null) return INERT_OUTCOME;
+
+  const startedAt = Date.now();
+  let attempts = 0;
+  return {
+    trackAttempts:
+      <T extends { attempt: number }>(next?: (info: T) => void) =>
+      (info: T) => {
+        attempts = Math.max(attempts, info.attempt);
+        next?.(info);
+      },
+    settle: () => {
+      const state = auditState();
+      state.timingsByPath[key] ??= { durationsMs: [], attempts: [] };
+      const timing = state.timingsByPath[key];
+      if (timing.durationsMs.length >= MAX_TIMING_SAMPLES_PER_PATH) return;
+      timing.durationsMs.push(Date.now() - startedAt);
+      timing.attempts.push(attempts);
+    },
+  };
 }
 
 export function resetWorkspaceFetchAudit(): WorkspaceFetchAuditSnapshot {

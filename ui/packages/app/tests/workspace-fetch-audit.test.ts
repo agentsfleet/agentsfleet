@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AUDITED_PATH,
+  beginWorkspaceFetchOutcome,
+  readWorkspaceFetchTimings,
   FLEET_RUNNERS_PATH,
   TENANT_PROVIDER_PATH,
   WORKSPACE_LIST_PATH,
@@ -100,6 +102,49 @@ describe("workspace fetch acceptance audit", () => {
     });
   });
 
+  it("records what a settled request cost, per template", () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+
+    const outcome = beginWorkspaceFetchOutcome(`${FLEET_RUNNERS_PATH}?limit=50`);
+    // Three attempts, as a retry ladder that had to climb would report.
+    const track = outcome.trackAttempts();
+    for (const attempt of [1, 2, 3]) track({ attempt });
+    outcome.settle();
+
+    const timings = readWorkspaceFetchTimings();
+    const runners = timings[AUDITED_PATH.fleetRunners];
+    expect(runners?.attempts, "the attempts the ladder took").toEqual([3]);
+    expect(runners?.durationsMs.length, "one duration per settled request").toBe(1);
+    expect(runners?.durationsMs[0]).toBeGreaterThanOrEqual(0);
+  });
+
+  it("wraps a caller's attempt callback instead of replacing it", () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+
+    // Instrumenting the transport must not silence a caller that is already
+    // watching its own attempts — client.retry.test.ts asserts exactly that.
+    const seen: number[] = [];
+    const outcome = beginWorkspaceFetchOutcome(FLEET_RUNNERS_PATH);
+    const track = outcome.trackAttempts((info: { attempt: number }) => seen.push(info.attempt));
+    track({ attempt: 1 });
+    track({ attempt: 2 });
+    outcome.settle();
+
+    expect(seen, "the caller's callback still fires for every attempt").toEqual([1, 2]);
+    expect(readWorkspaceFetchTimings()[AUDITED_PATH.fleetRunners]?.attempts).toEqual([2]);
+  });
+
+  it("records nothing for an unaudited path or while disabled", () => {
+    const disabled = beginWorkspaceFetchOutcome(FLEET_RUNNERS_PATH);
+    disabled.settle();
+    expect(readWorkspaceFetchTimings(), "the env gate is off").toEqual({});
+
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+    const unaudited = beginWorkspaceFetchOutcome("/v1/something/not/audited");
+    unaudited.settle();
+    expect(readWorkspaceFetchTimings(), "an unaudited template stays absent").toEqual({});
+  });
+
   it("guards the route while disabled", async () => {
     const getResponse = getWorkspaceFetchAudit(UNAUTHORIZED_REQUEST);
     expect(getResponse.status).toBe(404);
@@ -141,6 +186,9 @@ describe("workspace fetch acceptance audit", () => {
     await expect(getResponse.json()).resolves.toEqual({
       total: 1,
       byPath: { [WORKSPACE_LIST_PATH]: 1 },
+      // Counts come from the ask, timings from the settle; a request that was
+      // recorded but never settled has a count and no timing.
+      timingsByPath: {},
     });
 
     const postResponse = resetWorkspaceFetchAuditRoute(AUTHORIZED_REQUEST);

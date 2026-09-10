@@ -1,5 +1,8 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
-import type { WorkspaceFetchAuditSnapshot } from "@/lib/acceptance/workspace-fetch-audit";
+import type {
+  WorkspaceFetchAuditPayload,
+  WorkspaceFetchAuditSnapshot,
+} from "@/lib/acceptance/workspace-fetch-audit";
 
 /**
  * Measurement support for the dashboard latency lane.
@@ -41,10 +44,25 @@ export type StageSummary = {
   p95Ms: number;
 };
 
-export async function readAudit(page: Page): Promise<WorkspaceFetchAuditSnapshot> {
+export async function readAudit(page: Page): Promise<WorkspaceFetchAuditPayload> {
   const response = await page.request.get(AUDIT_URL, { headers: AUDIT_HEADERS });
   expect(response.ok(), "the acceptance audit must answer").toBe(true);
-  return (await response.json()) as WorkspaceFetchAuditSnapshot;
+  return (await response.json()) as WorkspaceFetchAuditPayload;
+}
+
+/**
+ * The single duration a freshly-reset window recorded for one route template.
+ * Returns null when the template was not read in that window, so a caller can
+ * tell "not read" from "read instantly" rather than publishing a zero.
+ */
+export function soleDurationMs(
+  payload: WorkspaceFetchAuditPayload,
+  template: string,
+): number | null {
+  const durations = payload.timingsByPath[template]?.durationsMs ?? [];
+  if (durations.length === 0) return null;
+  expect(durations.length, `${template}: one read per sampled window`).toBe(1);
+  return durations[0] ?? null;
 }
 
 /**
