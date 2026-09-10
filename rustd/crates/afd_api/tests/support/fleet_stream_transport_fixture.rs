@@ -226,6 +226,7 @@ pub(super) fn completion(event_id: &str) -> Value {
         }),
         fleet_status: afd_fleet_lifecycle::FleetStatus::Active.as_str().into(),
         pending_approvals: 0,
+        counters: None,
     })
     .expect("the canonical completion frame serializes")
 }

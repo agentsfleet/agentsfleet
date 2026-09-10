@@ -45,6 +45,7 @@ impl Leases {
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
             created_at: now.as_millis(),
+            counters: None,
         };
         self.streams()
             .publish_frame(acquired.fleet_id.as_str(), &frame)
@@ -57,6 +58,7 @@ impl Leases {
             event: Box::new(TailRow::from(closed.row.summary())),
             fleet_status: Cow::Borrowed(&closed.fleet_status),
             pending_approvals: closed.pending_approvals,
+            counters: None,
         };
         self.streams()
             .publish_frame(&closed.row.fleet_id, &frame)

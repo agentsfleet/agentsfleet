@@ -341,6 +341,7 @@ impl Inbox {
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
                 created_at: now.as_millis(),
+                counters: None,
             };
             FleetStreams::new(self.queue.clone())
                 .publish_frame(&resolved.fleet_id, &frame)
