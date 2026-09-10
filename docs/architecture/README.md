@@ -73,6 +73,11 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §Client event rules |
 | Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
 | Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
+| Why does a chat take a while to load, and what runs concurrently? | [`dashboard_load.md`](./dashboard_load.md) §Chat load, drawn end to end |
+| Does the Fleets wall load once, or keep requesting? | [`dashboard_load.md`](./dashboard_load.md) §Every request the wall makes |
+| Is ACTIVE the same colour on every dashboard surface? | [`dashboard_load.md`](./dashboard_load.md) §One status, three answers |
+| Why does the Secrets page spin for about two seconds? | [`dashboard_load.md`](./dashboard_load.md) §The Secrets wait |
+| Why does the Runners page read as if it never returns? | [`dashboard_load.md`](./dashboard_load.md) §The Runners wait |
 
 Read in this order if you've never seen the project:
 
@@ -99,6 +104,7 @@ After that, dip into whichever of these matches the change you're making:
 | 📈 [`observability.md`](./observability.md) | Where a signal goes and who owns it: `agentsfleetd` is the observability plane (Prometheus pull `/metrics`, live OTLP logs+traces direct to Grafana Cloud with no collector, PostHog, Postgres execution telemetry); the runner is deliberately bare (logfmt + liveness/result reports only). The M61 `OTEL_EXPORT_REMOVAL` naming trap and the shared `src/lib/logging/` module. |
 | 🧵 [`concurrency.md`](./concurrency.md) | The thread/lock/channel/shutdown model of both planes: every spawned thread and its stop path (thread map), the SPSC channel inventory with payload ownership, the lock-invariant registry, and the stop→join→deinit shutdown choreography. Grounds the `C1–C5` concurrency rules; the doc `name_architecture` consults before naming a thread, channel, or lock. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's five statements (server fetches / client-leaf boundary / shell-first / optimistic mutations / no useEffect loading), the server-client bar, and the grep-measured migration scoreboard. Consulted when a milestone touches `ui/packages/app`. |
+| ⏱️ [`dashboard_load.md`](./dashboard_load.md) | Where the dashboard's seconds go: the chat-load sequence and its concurrency, the status-rendering matrix across three surfaces, measured stage tables for Secrets and Runners with the run behind each number, and the candidate causes the measurement excludes versus leaves unresolved. Latency figures are shape, not measurement — read the variance warning first. |
 | 🧪 [`testing.md`](./testing.md) | Component test ownership, the public lanes, the wire-fixture parity proof, and the 100% coverage bar. |
 | 🔌 [`connectors.md`](./connectors.md) | The registry-driven connector platform: connect/callback/status, provider ownership proof, App-level inbound routing, platform App secrets, workspace installation handles, repository-bound fleet subscriptions, and the provider impact across GitHub, Slack, Zoho, Jira, and Linear. This is the full platform-admin → workspace → fleet → event → short-lived-token walkthrough. |
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, the free-trial window through 2026-08-01 00:00 UTC, the self-managed secret shape, the api_key visibility boundary, NullClaw's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |

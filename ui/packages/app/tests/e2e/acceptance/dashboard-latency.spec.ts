@@ -37,6 +37,7 @@ const EXPECTED_THREAD_READS_PER_LOAD = 1;
 const EXPECTED_DETAIL_READS_PER_LOAD = 0;
 const SECRETS_READS_PER_VISIT = 2;
 const MAX_CONCURRENT_STREAMS = 1;
+const PRIMARY_NAV_LABEL = "Primary";
 const SECRETS_LABEL = "Secrets";
 const RUNNERS_LABEL = "Runners";
 const RUNNERS_PATH = "/admin/runners";
@@ -46,6 +47,19 @@ const RUNNERS_STAGE = "runners navigation (click → wall visible)";
 const RUNNERS_READ_STAGE = "runners list read (upstream)";
 
 type StreamAudit = { maximum: number };
+
+/**
+ * Fails unless every audited read in the window is one this measurement names:
+ * the Secrets pair, or the dashboard layout's workspace-switcher read. Keeps
+ * the per-template assertions from being weaker than the total they replaced.
+ */
+function expectFullyAccounted(payload: {
+  total: number;
+  byPath: Record<string, number>;
+}): void {
+  const named = pairTotal(payload) + (payload.byPath[AUDITED_PATH.workspaceList] ?? 0);
+  expect(named, `unnamed audited reads: ${JSON.stringify(payload.byPath)}`).toBe(payload.total);
+}
 
 /** The two reads the Secrets PAGE issues, excluding the layout's own reads. */
 function pairTotal(payload: { byPath: Record<string, number> }): number {
@@ -147,6 +161,11 @@ test.describe("dashboard load latency", () => {
     expect(pairTotal(first), "upstream reads the Secrets PAGE issues").toBe(
       SECRETS_READS_PER_VISIT,
     );
+    // Every audited read accounted for by name — the page's pair plus the
+    // layout's switcher read. Asserting only the pair would let a third
+    // template join the load path unnoticed, which is exactly the rot this
+    // inventory exists to catch.
+    expectFullyAccounted(first);
 
     // Deliberately NOT reset: a second visit must add its own pair. The
     // per-render `cache()` around each read dedupes inside one render and has
@@ -187,6 +206,7 @@ test.describe("dashboard load latency", () => {
       expect(pairTotal(payload), "each sampled visit pays exactly its own pair").toBe(
         SECRETS_READS_PER_VISIT,
       );
+      expectFullyAccounted(payload);
       const secretsMs = soleDurationMs(payload, AUDITED_PATH.workspaceSecrets);
       const providerMs = soleDurationMs(payload, AUDITED_PATH.tenantProvider);
       expect(secretsMs, "the secrets list read was timed").not.toBeNull();
@@ -211,6 +231,45 @@ test.describe("dashboard load latency", () => {
       "Secrets — slower read",
       `The slower upstream read at p50 is **${slower?.stage}** ` +
         `(${slower?.p50Ms}ms p50, ${slower?.p95Ms}ms p95).\n`,
+    );
+  });
+
+  test("test_the_layout_read_is_paid_on_every_navigation", async ({ page }, testInfo) => {
+    // Interleaved on purpose. Run-to-run variance on this lane exceeds the
+    // difference between surfaces, so comparing numbers taken in DIFFERENT runs
+    // is not evidence. Walking every surface inside one window holds the API
+    // and the machine equal, which makes the comparison the finding rests on.
+    await signInAs(page, FIXTURE_KEY.regular);
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+
+    // Anchored on the LAYOUT's own navigation rather than a page section: the
+    // read under measurement belongs to the layout, and a page-specific anchor
+    // makes the test hostage to that page's state — the wall renders an
+    // onboarding empty state when the workspace has no fleets, which is
+    // exactly what happens once the chat-load test tears its seed down.
+    const surfaces = [
+      { name: "fleets wall", href: workspaceHref(workspaceId, "fleets") },
+      { name: "secrets", href: workspaceHref(workspaceId, "secrets") },
+      { name: "runners", href: RUNNERS_PATH },
+    ] as const;
+
+    const rows: string[] = [];
+    for (const surface of surfaces) {
+      await resetAuditOrFail(page);
+      await page.goto(surface.href);
+      await expect(page.getByRole("navigation", { name: PRIMARY_NAV_LABEL })).toBeVisible();
+
+      const payload = await readAudit(page);
+      const layoutReads = payload.byPath[AUDITED_PATH.workspaceList] ?? 0;
+      rows.push(`| ${surface.name} | ${layoutReads} | ${payload.total} |`);
+    }
+
+    await attachNote(
+      testInfo,
+      "Layout read per navigation",
+      "One navigation per surface, taken in a single window.\n\n" +
+        "| Surface | workspace-list reads | audited reads total |\n|---|---|---|\n" +
+        rows.join("\n") + "\n",
     );
   });
 
