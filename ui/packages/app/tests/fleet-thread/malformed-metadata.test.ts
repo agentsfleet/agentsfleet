@@ -16,7 +16,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       actor: "" as unknown as string,
       text: "config has non-string actor in custom",
       reply: "",
-      outcome: OUTCOME.NO_REPLY,
+      outcome: OUTCOME.COMPLETED,
       failureLabel: null,
       failureDetail: null,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),

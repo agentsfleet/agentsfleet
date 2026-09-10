@@ -230,7 +230,7 @@ describe("useFleetEventStream", () => {
     });
     await waitFor(() => expect(result.current.events[0]!.status).toBe("processed"));
     // The outcome follows the status — a finished event stops saying it works.
-    expect(result.current.events[0]!.outcome).toBe(OUTCOME.NO_REPLY);
+    expect(result.current.events[0]!.outcome).toBe(OUTCOME.COMPLETED);
   });
 
   it("a stranded event cannot report the whole fleet as working", () => {
@@ -311,7 +311,7 @@ describe("useFleetEventStream", () => {
       actor: "github-app",
       text: "opened · owner/repo#7",
       reply: "",
-      outcome: OUTCOME.NO_REPLY,
+      outcome: OUTCOME.COMPLETED,
       failureLabel: null,
       failureDetail: null,
       createdAt: new Date(0),
@@ -321,7 +321,7 @@ describe("useFleetEventStream", () => {
     // so a reply-less turn still says what happened without clobbering the trigger.
     expect(msg.content).toEqual([{ type: "text", text: "opened · owner/repo#7" }]);
     expect(msg.metadata?.custom?.["reply"]).toBe("");
-    expect(msg.metadata?.custom?.["outcome"]).toBe(OUTCOME.NO_REPLY);
+    expect(msg.metadata?.custom?.["outcome"]).toBe(OUTCOME.COMPLETED);
   });
 
   it("convertEvent produces an assistant-ui ThreadMessageLike with custom metadata", () => {
@@ -334,7 +334,7 @@ describe("useFleetEventStream", () => {
       reply: "",
       failureLabel: null,
       failureDetail: null,
-      outcome: OUTCOME.NO_REPLY,
+      outcome: OUTCOME.COMPLETED,
       createdAt: new Date(0),
       status: "processed",
       custom: { requestJson: '{"action":"workflow_run"}' },

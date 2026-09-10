@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { EventDetailsDialog } from "@/components/domain/EventDetailsDialog";
 import type { EventDetail, EventRow } from "@/lib/api/events";
-import { GUIDANCE } from "@/lib/events/event-summary";
+import { GUIDANCE, OUTCOME } from "@/lib/events/event-summary";
 
 const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
 
@@ -85,6 +85,19 @@ async function renderDialogWithBody(row: EventDetail) {
 }
 
 describe("EventDetailsDialog", () => {
+  it("states no reply only when the row affirmatively carries none", async () => {
+    // The dialog is the one surface that holds the body, so it is the one
+    // surface allowed to say a reply is absent — and it says so from the body,
+    // in its own words, never from a status. A processed row with no body
+    // shows the absence marker; the completion sentence the list surfaces use
+    // is not a claim about the reply and does not appear here.
+    await renderDialogWithBody(event({ status: "processed", response_text: null, failure_label: null }));
+    // pin test: the literal is the contract the dialog renders
+    expect(screen.getByText("No result recorded")).toBeTruthy();
+    expect(screen.queryByText(OUTCOME.COMPLETED)).toBeNull();
+    expect(screen.queryByText(/no reply/i)).toBeNull();
+  });
+
   it("shows the runner's exact response as the failure reason", async () => {
     await renderDialogWithBody(event({
       response_text: "Installed fleet instructions are empty.",
