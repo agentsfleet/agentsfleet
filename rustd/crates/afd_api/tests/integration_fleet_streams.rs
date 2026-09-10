@@ -36,6 +36,18 @@ const GAP_FRAMES: usize = 400;
 /// a few, in case the first published frames land before the overflow.
 const GAP_READS: usize = 8;
 
+/// The pool knobs a deployment sets, spelled here so the refused-read test
+/// configures the pool the way an operator can.
+const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE_API";
+const MIN_POOL_SIZE_KNOB: &str = "DATABASE_MIN_POOL_SIZE_API";
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+const ONE_CONNECTION: &str = "1";
+
+/// Under the read's two-second deadline, so the paused clock reaches the
+/// acquire budget first; long enough that the fixture's own real connects —
+/// the seed and the opening, over the lane's TLS — are not refused by it.
+const SHORT_ACQUIRE_MS: &str = "1500";
+
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
@@ -85,6 +97,79 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     drop(body);
     hub.shutdown();
     tokio::time::resume();
+    fixture.cleanup().await;
+}
+
+/// A `hello` whose counters read is refused still announces the set — with
+/// no figures, never with zeros.
+///
+/// The pool holds one connection and the test keeps it, so the tick's read
+/// waits on the pool; on the paused clock the runtime auto-advances to the
+/// acquire budget, which is the refusal the wall handles. The set still goes
+/// out (`fleet_ids` carries the fleet added since the opening) and the map is
+/// empty, so a client leaves what it has standing.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
+    let fixture = Fixture::with_pool(&[
+        (POOL_SIZE_KNOB, ONE_CONNECTION),
+        (MIN_POOL_SIZE_KNOB, ONE_CONNECTION),
+        (ACQUIRE_TIMEOUT_KNOB, SHORT_ACQUIRE_MS),
+    ])
+    .await;
+    fixture.seed().await;
+    let hub = SubscriptionHub::start(harness::redis_config())
+        .await
+        .expect("the lane's subscription connection starts");
+    let fleet = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_live_hub(hub.clone());
+    let fleet_store = fleet.fleet_store();
+    let router = fleet.router();
+    let mut body = open_stream(&router, &fixture).await;
+
+    let second = fixture.seed_second_fleet().await;
+    fleet_store.invalidate_live_set(&fixture.workspace).await;
+    let refreshed = fleet_store
+        .live_set(&fixture.workspace)
+        .await
+        .expect("the invalidated set refreshes before the connection is held");
+    assert!(refreshed.contains(&second));
+
+    // The one connection, held for the tick: the counters read can only wait.
+    let held = fixture
+        .database
+        .acquire()
+        .await
+        .expect("the pool's one connection is free to hold");
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let changed = next_chunk(&mut body).await;
+    tokio::time::resume();
+    drop(held);
+
+    assert!(changed.contains("event: hello"));
+    assert!(
+        changed.contains(&second),
+        "the set is announced whether or not it was priced"
+    );
+    let data = changed
+        .lines()
+        .find_map(|line| line.strip_prefix("data:"))
+        .expect("the hello carries a data line");
+    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
+    assert_eq!(
+        hello.pointer("/counters"),
+        Some(&serde_json::json!({})),
+        "a refused read sends the set without figures, never with zeros: {hello}"
+    );
+
+    drop(body);
+    hub.shutdown();
     fixture.cleanup().await;
 }
 
