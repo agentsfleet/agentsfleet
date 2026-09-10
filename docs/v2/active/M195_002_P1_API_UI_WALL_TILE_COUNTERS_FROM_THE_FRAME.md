@@ -137,11 +137,11 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 
 ### §7 — Action buttons follow one rule (finding #10, folded in on the user's call)
 
-**The premise was counted wrong twice — by the walk, and by the brief's grep.** `variant="…"` matches every component with a variant prop: all 8 `warning` are `<Alert>`, all 4 `cyan` are `<Badge>`, the 6 `default` are `<Badge>`/`<Link>`, and most of the 31 `destructive` are Alerts. A tag-aware count finds **76 `<Button>`s in 42 files**: destructive 5 · ghost 23 · outline 16 · secondary 5 · link 3 · **and 24 with no variant prop, which render `default` — the primary mint** — a group no grep counted. Those 24 are the real subject: nearly every dialog's submit, every stub page's one action, "Approve", "Open fleet →".
+**The premise was counted wrong twice — by the walk, and by the brief's grep.** `variant="…"` matches every component with a variant prop: all 8 `warning` are `<Alert>`, all 4 `cyan` are `<Badge>`, the 6 `default` are `<Badge>`/`<Link>`, and most of the 31 `destructive` are Alerts. A tag-aware count finds **76 `<Button>`s in 42 files**: destructive 6 · ghost 23 · outline 16 · secondary 5 · link 3 · 2 whose variant comes from a per-action config · **and 21 with no variant prop, which render `default` — the primary mint** — a group no grep counted. Those 21 are the real subject: nearly every dialog's submit, every stub page's one action, "Approve", "Open fleet →".
 
 **The rule, with the clause the primary needed:** `default` for the ONE primary action on a surface · `ghost` for every other non-destructive action · `destructive` for a destructive one · `link` only for an inline action inside prose or a table cell. The design system already reserves `default` for the primary CTA (`docs/DESIGN_SYSTEM.md`, 2026-06-23), so this names what the mint button was always for.
 
-**The classification, brought back before a single site changes.** 48 sites are not `ghost`/`destructive` today; the first-pass verdict is mine, the last column is the user's.
+**The classification, brought back before a single site changes.** 47 sites are not `ghost`/`destructive` today; the first-pass verdict is mine, the last column is the user's.
 
 | Site | Today | Verdict | Why | Confirm |
 |---|---|---|---|---|
@@ -153,9 +153,9 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 | `admin/models/components/MakeDefaultDialog.tsx:117` | default | keep | dialog submit | |
 | `admin/runners/[runnerId]/components/LeaseFilterBar.tsx:119` | default | keep | the filter form's primary | |
 | `admin/runners/[runnerId]/components/RunnerHeader.tsx:185` | outline | **ghost** | run selftest — a secondary action | |
-| `admin/runners/[runnerId]/components/RunnerHeader.tsx:231` | default | **judgment** | the admin action (cordon/drain/revoke) — revoke is destructive; see Discovery | |
+| `admin/runners/[runnerId]/components/RunnerHeader.tsx:231` | dynamic | keep — audit the config | `variant={variant}` comes from the per-action config (cordon/drain/revoke); the table to check is that config, not this site | |
 | `admin/runners/[runnerId]/components/RunnerHeader.tsx:259` | outline | **ghost** | opens Grafana — navigational | |
-| `admin/runners/components/AddRunnerDialog.tsx:178` | default | **judgment** | closes the dialog — a Cancel rendered as the primary; see Discovery | |
+| `admin/runners/components/AddRunnerDialog.tsx:178` | default | keep | "I've stored it — close" is the token dialog's one action and its primary: the operator confirms they stored the token | |
 | `admin/runners/components/EditPolicyDialog.tsx:93` | outline | **ghost** | opens the editor | |
 | `admin/runners/components/EditPolicyDialog.tsx:120` | default | keep | dialog submit | |
 | `admin/runners/components/PolicyBindsField.tsx:196` | outline | **ghost** | removes a row from an unsaved form, not persisted data | |
@@ -166,27 +166,26 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 | `settings/page.tsx:29` | default | keep | a stub page's one action | |
 | `w/…/approvals/[gateId]/ResolveButtons.tsx:76` | default | keep | Approve — the primary | |
 | `w/…/approvals/components/ApprovalsList.tsx:287` | outline | **ghost** | load more | |
-| `w/…/fleets/[id]/components/FleetConfig.tsx:47` | default | **judgment** | opens the delete-fleet flow; see Discovery | |
 | `w/…/fleets/[id]/components/KillSwitch.tsx:152` | outline | **ghost** | "Killed" — a disabled state marker | |
-| `w/…/fleets/[id]/components/KillSwitch.tsx:160` | default | **judgment** | the kill/pause trigger; see Discovery | |
+| `w/…/fleets/[id]/components/KillSwitch.tsx:160` | dynamic | keep — audit the config | `variant={action.variant}` comes from the per-action config (kill/pause/resume); audit that config | |
 | `w/…/fleets/[id]/components/RunMetricsStrip.tsx:68` | outline | **ghost** | link to the approvals inbox | |
 | `w/…/fleets/[id]/components/SkillEditor.tsx:253` | secondary | **default** | Save — the editor's primary | |
 | `w/…/fleets/[id]/components/SkillEditor.tsx:271` | outline | **ghost** | Edit — opens the editor | |
-| `w/…/fleets/new/InstallSourceSelector.tsx:190` | default | **judgment** | one primary per card in a grid — many primaries on one surface; see Discovery | |
+| `w/…/fleets/new/InstallSourceSelector.tsx:190` | default | **judgment** | "Install" on every library card — one primary per card in a grid, the app-store shape; keep, or ghost so the page has one primary? | |
 | `w/…/fleets/new/InstallSourceSelector.tsx:208` | secondary | **ghost** | load more | |
 | `w/…/fleets/new/InstallSourceSelector.tsx:241` | secondary | **ghost** | retry | |
 | `w/…/fleets/new/InstallStates.tsx:198` | default | keep | Connect — the step's primary | |
 | `w/…/fleets/new/InstallStreamSteps.tsx:94` | default | keep | "Open fleet →" — the primary | |
 | `w/…/fleets/new/install-state-list.tsx:22` | link | keep | "← Back to library" — inline navigation | |
 | `w/…/fleets/new/library-docs.tsx:35` | outline | **ghost** | "Learn more" — external | |
-| `w/…/integrations/components/connector-rows.tsx:186` | outline | **judgment** | Disconnect — removes access, reversible; see Discovery | |
+| `w/…/integrations/components/connector-rows.tsx:186` | outline | **judgment** | Disconnect — revokes access but reconnecting restores it; destructive, or ghost with the label doing the work? | |
 | `w/…/integrations/components/connector-rows.tsx:198` | outline | **ghost** | Connect | |
 | `w/…/secrets/components/AddSecretForm.tsx:211` | link | keep | "+ Add field" — inline in a form | |
 | `w/…/secrets/components/EditSecretDialog.tsx:123` | default | keep | dialog submit | |
 | `w/…/secrets/components/RenameSecretDialog.tsx:199` | default | keep | dialog submit | |
 | `w/…/settings/defaults/page.tsx:28` | default | keep | a stub page's one action | |
 | `w/…/settings/models/components/AddModelEntryDialog.tsx:327` | outline | **ghost** | retry | |
-| `w/…/settings/models/components/AddModelEntryDialog.tsx:339` | outline | **ghost** | the second submit ("save", not "save and add another") — one primary per dialog | |
+| `w/…/settings/models/components/AddModelEntryDialog.tsx:339` | outline | **ghost** | the second submit — one primary per dialog | |
 | `w/…/settings/models/components/AddModelEntryDialog.tsx:343` | default | keep | the primary submit | |
 | `w/…/settings/models/components/EditModelEntryDialog.tsx:214` | outline | **ghost** | Cancel | |
 | `w/…/settings/models/components/EditModelEntryDialog.tsx:217` | default | keep | Save | |
@@ -194,7 +193,7 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 | `w/…/settings/models/components/ModelsRegistryTable.tsx:337` | secondary | **ghost** | retry | |
 | `w/…/settings/security/page.tsx:29` | default | keep | a stub page's one action | |
 
-First pass: 21 keep · 20 → `ghost` · 2 → `default` · 5 judgment. The sweep is the mechanical half; the five judgment rows and the rule's third clause are the user's.
+First pass over 47 sites: 25 keep · 18 ghost · 2 default · 2 judgment. The sweep is the mechanical half; the judgment rows and the rule's third clause are the user's.
 
 - **Dimension 7.1** — every action button under the dashboard renders `default`, `ghost`, `destructive`, or `link` as the confirmed table says for that site; a repository test enumerates the sites tag-aware and fails on any other → Test `no dashboard action button uses a variant outside the rule`
 
@@ -313,4 +312,4 @@ The patch alternative is a client-side delta that accumulates counter changes pe
 - **Findings #15, #11, #10 folded in (Sep 10, 2026), on the user's call, with the investigation done before any patch.** Three of the brief's premises did not survive the read and are recorded here so nobody re-derives them. (#15) There are SIX importers of `fleetIdentity.ts`, not five — `tests/e2e/acceptance/wall-live-counters.spec.ts:45` is the sixth, and it arrived with this spec's own carry-over, so it is not on `main`. There is NO slug: the fleet wire type has none, and the only `slug` under `lib/api/` is a model-provider id (`model-library-types.ts:46,53`); the axis is name / id / callsign. (#11) The string is not missing — it is composed (`console-copy.ts:80` labels, `RunMetricsStrip.tsx:58,124-129` derives via `outcomeFor`, `event-summary.ts:189-204`). (#10) 42 files render a `<Button>` under `app/(dashboard)`, not 48 and not 8.
 - **#15, the evidence behind §5.** Load-bearing beyond display: not on the wire or in Postgres (zero mentions of `callsign` under `rustd/` and `schema/`; no fetch body, query parameter or storage carries it), but `FleetTile.test.tsx:210-211` pins literal outputs and the file declares its 32 buckets identity data (`:19-20`) — operators memorise `Agent Lumen-8453`, so a hash change renames every agent in their heads. Where each surface shows which: the tile heading shows the name (`FleetTile.tsx:210`) and its subline the callsign (`:215`); the fleet page header, breadcrumb, delete confirm and install gate show the name (`FleetHeader.tsx:61,77`, `FleetConfig.tsx:60`, `FleetInstallGate.tsx:44`); the fleet page THREAD receives the callsign through a prop named `fleetName` (`page.tsx:215` → `ChatView.tsx:51`), 74 lines after the same file passes `fleet.name` to a prop of the same name; events and billing show the callsign (`EventsList.tsx:77`, `BillingUsageTab.tsx:41-42`); the admin lease table alone shows a raw UUID (`LeaseTable.tsx:74`). No surface shows a wrong VALUE; one prop is named for the wrong concept and one column uses a different convention from every other. `charges.ts:41` and `AgentLabel.tsx:23` compose the identical `Agent ${callsign}` string — the billing module reaches into `fleets/components/` for a domain fact three areas consume, which is the whole argument for `lib/`. Sequencing: on one branch the six rewrites land in one commit; the conflict the brief priced assumed a second agent.
 - **#11, the case where figures and thread disagree.** A processed run with `failure_label: null` and `response_text: null` — which is EVERY processed row the list read returns, since it carries no bodies — falls through `outcomeFor` to `OUTCOME.NO_REPLY` ("Completed with no reply recorded."), while the thread below renders the reply the detail read holds. `RunMetricsStrip.test.tsx:68` pins that fallthrough as correct; it is the test §6.1 rewrites. `EventRow.response_text` is documented as null "while a run is in flight, and on a run that failed before producing one" (`events.ts:76-78`) — the list read's third meaning, unread, is what the strip mistook for the second.
-- **#10, the count was wrong twice and the classification precedes the sweep.** The walk said 8 pages; the brief's grep said 48 files with `variant` in eight values; both counted Alerts and Badges as buttons. Tag-aware: 76 `<Button>`s in 42 files, and 24 of them carry no `variant` and so render the primary `default` — the group that actually needed a rule. The §7 table is filled from each site's intent read in place, not its label, and is confirmed with the user before a single variant changes.
+- **#10, the count was wrong twice and the classification precedes the sweep.** The walk said 8 pages; the brief's grep said 48 files with `variant` in eight values; both counted Alerts and Badges as buttons. Tag-aware: 76 `<Button>`s in 42 files, and 21 of them carry no `variant` and so render the primary `default` — the group that actually needed a rule. The §7 table is filled from each site's intent read in place, not its label, and is confirmed with the user before a single variant changes.
