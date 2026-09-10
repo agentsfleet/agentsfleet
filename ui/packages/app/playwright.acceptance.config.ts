@@ -67,6 +67,7 @@ const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
 const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
+const DASHBOARD_LATENCY_SPEC = "**/dashboard-latency.spec.ts";
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
@@ -75,6 +76,7 @@ const PROJECT_OPERATOR_JOURNEY = "operator-journey";
 const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
+const PROJECT_DASHBOARD_LATENCY = "dashboard-latency";
 
 const CHROMIUM = { ...devices["Desktop Chrome"] };
 
@@ -126,6 +128,7 @@ export default defineConfig({
         LIVE_COUNTER_SPEC,
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
+        DASHBOARD_LATENCY_SPEC,
       ],
       dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
@@ -160,6 +163,15 @@ export default defineConfig({
       // Strictly last: the audit reset touches an app-global counter, so it
       // must outlast BOTH the wall chain and the operator chain.
       dependencies: [PROJECT_PULSE_WALL, PROJECT_OPERATOR_JOURNEY],
+      use: CHROMIUM,
+    },
+    {
+      // Resets the same app-global counter as the fetch-audit lane, so it
+      // queues behind it rather than beside it: two lanes zeroing one counter
+      // concurrently would each measure the other's navigations.
+      name: PROJECT_DASHBOARD_LATENCY,
+      testMatch: DASHBOARD_LATENCY_SPEC,
+      dependencies: [PROJECT_FETCH_AUDIT],
       use: CHROMIUM,
     },
   ],

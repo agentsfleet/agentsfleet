@@ -10,6 +10,12 @@ const AUDIT_ENABLED_VALUE = "1";
 const STATE_KEY = "__agentsfleetWorkspaceFetchAudit";
 
 export const WORKSPACE_LIST_PATH = "/v1/tenants/me/workspaces";
+// Spelled here rather than imported from `lib/api/*`: the transport imports
+// THIS module to record, so importing an api module back would close a cycle.
+// The api modules are still the source of truth for the live paths —
+// `lib/api/tenant_provider.ts` and `lib/api/runners.ts` respectively.
+export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
+export const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 
 // Audited GETs, keyed by their id-free route template so assertions never
 // depend on seeded identifiers. `fleetMessages` vs `fleetEventDetail` is the
@@ -18,12 +24,21 @@ export const AUDITED_PATH = {
   workspaceList: WORKSPACE_LIST_PATH,
   fleetMessages: "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
   fleetEventDetail: "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+  // The Secrets page's pair, awaited together in one `Promise.all`, and the
+  // Runners list. Counted so a page's upstream reads are a number rather than
+  // a reading of its source.
+  workspaceSecrets: "/v1/workspaces/{workspace_id}/secrets",
+  tenantProvider: TENANT_PROVIDER_PATH,
+  fleetRunners: FLEET_RUNNERS_PATH,
 } as const;
 
 const FLEET_MESSAGES_PATTERN = /^\/v1\/workspaces\/[^/]+\/fleets\/[^/]+\/messages$/;
 // The trailing segment excludes `stream` so the live tail (which never rides
 // this client anyway) can't be mistaken for a per-turn detail read.
 const FLEET_EVENT_DETAIL_PATTERN = /^\/v1\/workspaces\/[^/]+\/fleets\/[^/]+\/events\/(?!stream$)[^/]+$/;
+// Anchored so the per-secret routes (`…/secrets/{name}`) never count as the
+// list read the Secrets page issues.
+const WORKSPACE_SECRETS_PATTERN = /^\/v1\/workspaces\/[^/]+\/secrets$/;
 const QUERY_SEPARATOR = "?";
 
 type GlobalWithAudit = typeof globalThis & {
@@ -52,6 +67,9 @@ function auditedKeyFor(path: string): string | null {
   if (bare === WORKSPACE_LIST_PATH) return AUDITED_PATH.workspaceList;
   if (FLEET_MESSAGES_PATTERN.test(bare)) return AUDITED_PATH.fleetMessages;
   if (FLEET_EVENT_DETAIL_PATTERN.test(bare)) return AUDITED_PATH.fleetEventDetail;
+  if (WORKSPACE_SECRETS_PATTERN.test(bare)) return AUDITED_PATH.workspaceSecrets;
+  if (bare === TENANT_PROVIDER_PATH) return AUDITED_PATH.tenantProvider;
+  if (bare === FLEET_RUNNERS_PATH) return AUDITED_PATH.fleetRunners;
   return null;
 }
 

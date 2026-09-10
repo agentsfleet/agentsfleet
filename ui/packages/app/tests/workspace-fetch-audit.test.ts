@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AUDITED_PATH,
+  FLEET_RUNNERS_PATH,
+  TENANT_PROVIDER_PATH,
   WORKSPACE_LIST_PATH,
   isWorkspaceFetchAuditEnabled,
   readWorkspaceFetchAudit,
@@ -70,6 +72,30 @@ describe("workspace fetch acceptance audit", () => {
         [AUDITED_PATH.workspaceList]: 1,
         [AUDITED_PATH.fleetMessages]: 1,
         [AUDITED_PATH.fleetEventDetail]: 1,
+      },
+    });
+  });
+
+  it("counts the Secrets pair and the Runners list under template keys", () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+
+    // The two reads the Secrets page awaits together.
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/secrets");
+    recordWorkspaceFetchForAcceptance(TENANT_PROVIDER_PATH);
+    // The Runners list, with the keyset query a real call carries.
+    recordWorkspaceFetchForAcceptance(`${FLEET_RUNNERS_PATH}?limit=50`);
+    // Neighbours that must NOT be mistaken for the reads above: a single
+    // secret by name, and one runner by id. Both are writes-adjacent detail
+    // routes, and counting them would inflate a page's read inventory.
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/secrets/OPENAI_API_KEY");
+    recordWorkspaceFetchForAcceptance(`${FLEET_RUNNERS_PATH}/rnr_1`);
+
+    expect(readWorkspaceFetchAudit()).toEqual({
+      total: 3,
+      byPath: {
+        [AUDITED_PATH.workspaceSecrets]: 1,
+        [AUDITED_PATH.tenantProvider]: 1,
+        [AUDITED_PATH.fleetRunners]: 1,
       },
     });
   });
