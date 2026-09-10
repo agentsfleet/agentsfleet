@@ -56,8 +56,8 @@ describe("groupThreadEvents", () => {
 
   it("never groups the operator's own messages or the fleet's replies", () => {
     const events = [
-      evt({ role: "user", actor: "steer:user_abc", text: "why is this failing?", outcome: OUTCOME.NO_REPLY }),
-      evt({ role: "user", actor: "steer:user_abc", text: "why is this failing?", outcome: OUTCOME.NO_REPLY }),
+      evt({ role: "user", actor: "steer:user_abc", text: "why is this failing?", outcome: OUTCOME.COMPLETED }),
+      evt({ role: "user", actor: "steer:user_abc", text: "why is this failing?", outcome: OUTCOME.COMPLETED }),
       evt({ role: "assistant", actor: "fleet", text: "", reply: "Because instructions are missing." }),
       evt({ role: "assistant", actor: "fleet", text: "", reply: "Because instructions are missing." }),
     ];
@@ -79,7 +79,7 @@ describe("groupThreadEvents", () => {
   it("breaks a run on a success between failures, and never reorders", () => {
     const events = [
       ...run(3),
-      evt({ status: "processed", outcome: OUTCOME.NO_REPLY, failureLabel: null }),
+      evt({ status: "processed", outcome: OUTCOME.COMPLETED, failureLabel: null }),
       ...run(2),
     ];
     const entries = groupThreadEvents(events);

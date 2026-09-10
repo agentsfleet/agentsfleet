@@ -78,7 +78,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
         text: "edited #541",
         reply,
         status: "processed",
-        outcome: OUTCOME.NO_REPLY,
+        outcome: OUTCOME.COMPLETED,
         ...(requestJson ? { custom: { requestJson } } : {}),
       });
     mockStream([
@@ -108,7 +108,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
         text: "ci finished",
         reply: "",
         status: "processed",
-        outcome: OUTCOME.NO_REPLY,
+        outcome: OUTCOME.COMPLETED,
         custom: {
           requestJson:
             '{"workflow_name":"ci","conclusion":"success","repo":"o/r","run_url":"https://ci.example.test/1"}',
@@ -201,7 +201,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
         text: "opened · agentsfleet/agentsfleet#541 — Fix routing",
         reply: "",
         status: "processed",
-        outcome: OUTCOME.NO_REPLY,
+        outcome: OUTCOME.COMPLETED,
         custom: {
           requestJson:
             '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}',
@@ -216,7 +216,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     expect(container.querySelectorAll('[data-role="system"]')).toHaveLength(1);
     expect(tick?.textContent).toContain("agentsfleet/agentsfleet#541");
     // The outcome is readable beneath the source context, not another row.
-    expect(screen.getByText(OUTCOME.NO_REPLY).className).toMatch(
+    expect(screen.getByText(OUTCOME.COMPLETED).className).toMatch(
       /text-muted-foreground/,
     );
     // Disclosure remains reachable beside the source evidence.

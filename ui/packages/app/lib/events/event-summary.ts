@@ -175,14 +175,21 @@ export const OUTCOME = {
   WORKING: "Still working.",
   WAITING_APPROVAL: "Waiting for approval.",
   FAILED: "The run failed.",
-  NO_REPLY: "Completed with no reply recorded.",
+  // "Completed." and nothing more. This is reached for a processed row, and
+  // the rows that reach it never carry the body: the page read is proven not
+  // to select `response_text` (afd_events history/statement.rs asserts it), and
+  // a completion frame carries the terminal row without it. A `null` here means
+  // UNREAD, never "no reply", so no sentence may claim one was never recorded.
+  // The one surface that holds the body — the event detail dialog — says
+  // absence from the body itself, with its own words.
+  COMPLETED: "Completed.",
 } as const;
 
 const CAUSE_SEPARATOR = " — ";
 
 /**
- * What to say about an event that recorded no reply. Never empty — this is the
- * floor that guarantees no rendered row is blank. A failure with a recorded
+ * What to say about an event from the fields every read carries. Never empty —
+ * this is the floor that guarantees no rendered row is blank. A failure with a recorded
  * cause line renders it after the plain-language sentence, so the operator
  * reads WHICH check failed, not only that one did.
  */
@@ -200,7 +207,7 @@ export function outcomeFor(
   }
   if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
   if (row.status === EVENT_STATUS.FLEET_ERROR) return OUTCOME.FAILED;
-  return OUTCOME.NO_REPLY;
+  return OUTCOME.COMPLETED;
 }
 
 /** The same floor for a live frame, which carries a status but no durable row. */

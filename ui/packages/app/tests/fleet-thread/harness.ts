@@ -97,7 +97,7 @@ export function ev(
     actor: over.actor,
     text: over.text ?? "",
     reply: over.reply ?? "",
-    outcome: over.outcome ?? OUTCOME.NO_REPLY,
+    outcome: over.outcome ?? OUTCOME.COMPLETED,
     failureLabel: over.failureLabel ?? null,
     failureDetail: over.failureDetail ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
