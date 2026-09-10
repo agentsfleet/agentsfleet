@@ -19,16 +19,22 @@
 //! # The completion is the row, not a pointer to it
 //!
 //! `event_complete` carries the terminal row as the events list would serve
-//! it, plus the fleet's status and pending gate count, all read by the closing
-//! statement in the same round trip that ended the run. A watcher folds the
-//! frame in and issues no read — which is why the dashboard's summary strip
-//! moves on a completion without fetching anything.
+//! it, plus the fleet's status, pending gate count, and activity counters, all
+//! read by the closing statement in the same round trip that ended the run. A
+//! watcher folds the frame in and issues no read — which is why the dashboard's
+//! summary strip and the wall's tiles move on a completion without fetching
+//! anything.
+//!
+//! The opening bracket cannot read its counters that way: its own insert is
+//! what fires the counter trigger, and a `RETURNING` on that insert does not
+//! see the trigger's write. The caller reads them after the row landed and
+//! hands them in — `None` when the read did not answer, never zeros.
 
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_events::Closed;
-use afd_wire::tail::{TailFrame, TailRow};
+use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
@@ -39,13 +45,18 @@ impl Leases {
     /// Published once, on the delivery that wrote the row: a redelivery finds
     /// the row already there and a second announcement would put a duplicate
     /// marker on a tail whose row the client already holds.
-    pub async fn publish_received(&self, acquired: &Acquired, now: UnixMillis) {
+    pub async fn publish_received(
+        &self,
+        acquired: &Acquired,
+        now: UnixMillis,
+        counters: Option<FleetCounters>,
+    ) {
         let frame = TailFrame::EventReceived {
             event_id: Cow::Borrowed(&acquired.event_id),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
             created_at: now.as_millis(),
-            counters: None,
+            counters,
         };
         self.streams()
             .publish_frame(acquired.fleet_id.as_str(), &frame)
@@ -58,7 +69,7 @@ impl Leases {
             event: Box::new(TailRow::from(closed.row.summary())),
             fleet_status: Cow::Borrowed(&closed.fleet_status),
             pending_approvals: closed.pending_approvals,
-            counters: None,
+            counters: Some(closed.counters),
         };
         self.streams()
             .publish_frame(&closed.row.fleet_id, &frame)

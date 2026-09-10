@@ -31,7 +31,7 @@ import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
-import { deriveFleetIdentity } from "../components/fleetIdentity";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import {
   FleetSubnavigation,
   FLEET_VIEW,
@@ -212,7 +212,7 @@ async function loadChatView(
     <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
-      fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
+      senderLabel={agentDisplayName(fleet.id)}
       initial={turns}
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}

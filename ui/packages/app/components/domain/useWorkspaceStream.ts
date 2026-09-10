@@ -15,13 +15,14 @@ import {
   EMPTY_WORKSPACE,
   WorkspaceStore,
   type Listener,
+  type TileCounters,
   type WorkspaceStreamSnapshot,
   type WorkspaceTileSnapshot,
 } from "@/lib/streaming/workspace-store";
 
 // Re-exported so every existing caller keeps importing its snapshot type from
 // the hook it uses, rather than reaching past it into the store.
-export type { WorkspaceStreamSnapshot, WorkspaceTileSnapshot };
+export type { TileCounters, WorkspaceStreamSnapshot, WorkspaceTileSnapshot };
 
 const WorkspaceStreamContext = createContext<WorkspaceStore | null>(null);
 
@@ -55,9 +56,10 @@ export function useWorkspaceFleetStream(fleetId: string): WorkspaceTileSnapshot 
 }
 
 /**
- * The wall's own view of the one workspace stream: whether it is connected,
- * and whether any tile has had to ask for the server's counters.
- * One subscription for the whole wall, independent of tile count.
+ * The wall's own view of the one workspace stream: whether it is connected
+ * and greeted. One subscription for the whole wall, independent of tile
+ * count. The tile footers need nothing from here: every frame carries the
+ * fleet's counters, so no tile ever has to ask the server for them.
  */
 export function useWorkspaceStream(): WorkspaceStreamSnapshot {
   const store = useContext(WorkspaceStreamContext);
@@ -70,25 +72,4 @@ export function useWorkspaceStream(): WorkspaceStreamSnapshot {
     [store],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-/**
- * Ask the wall to re-read the server's counters once.
- *
- * The frames answer the common case on their own, so this fires only when a
- * tile meets a settled row it cannot price. Stable across renders, so a tile
- * can name it as an effect dependency without re-running the effect.
- */
-export function useRequestWorkspaceCounters(): () => void {
-  const store = useContext(WorkspaceStreamContext);
-  return useCallback(() => store?.requestCounters(), [store]);
-}
-
-/**
- * Tell the stream that a fresh server read already accounts for the rows
- * streamed so far, so the tile footers restart their delta from the new base.
- */
-export function useAbsorbWorkspaceCounters(): (fleetIds: readonly string[]) => void {
-  const store = useContext(WorkspaceStreamContext);
-  return useCallback((fleetIds: readonly string[]) => store?.absorb(fleetIds), [store]);
 }

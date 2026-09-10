@@ -31,6 +31,9 @@ afd_crypto.workspace = true
 afd_runner.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# The fleet's activity counters, read once right before a gate's frame goes
+# out so the wall's tiles move on it. Acyclic: the event store knows no gate.
+afd_events.workspace = true
 # A fleet's declared policy, as its config spells it.
 afd_fleet_runtime.workspace = true
 # A parked run's continuation is a stream append.

@@ -36,6 +36,7 @@
 //! database 126 of 174 fleets have no counter.
 
 pub(crate) mod install;
+pub(crate) mod live_set;
 
 /// The columns a list page reads, in the order [`crate::read`] indexes them.
 ///
@@ -144,14 +145,6 @@ WHERE id = $3::uuid AND workspace_id = $4::uuid AND status = $5";
 /// a rollback cannot reach across tenants even when handed a wrong identifier.
 pub(crate) const DELETE_FLEET: &str = "\
 DELETE FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
-
-/// Every fleet identifier in one workspace.
-///
-/// `$1` workspace. No ORDER BY: the caller collects into a `BTreeSet`, which
-/// is what makes the order stable, and asking Postgres to sort a set the caller
-/// re-sorts anyway would be paying twice.
-pub(crate) const SELECT_FLEET_IDS: &str = "\
-SELECT id::text FROM core.fleets WHERE workspace_id = $1::uuid";
 
 /// The status alone, for the purge's pre-flight and the steer's ingress check.
 ///
@@ -309,6 +302,9 @@ mod tests {
             columns(SELECT_FLEET_PAGE_AFTER)
         );
         assert!(columns(SELECT_FLEET_PAGE_FIRST).contains("events_processed"));
+        // Dimension 2.1: by key, never joined — an inner join drops a fleet
+        // that has never run, and an outer one plans as a scan (module note).
+        assert!(!columns(SELECT_FLEET_PAGE_FIRST).contains("JOIN"));
     }
 
     /// The purge statement writes the setting the schema triggers read.

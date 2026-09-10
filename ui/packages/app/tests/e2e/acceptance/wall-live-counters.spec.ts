@@ -11,9 +11,10 @@
  *
  * The tile's feed line and its footer figures come from different places. The
  * feed line reads the last streamed row, so it clears the moment any frame
- * arrives; the footer reads counters DERIVED from those frames on top of the
- * server-rendered base (`lib/wall/tile-counters.ts`), and a tile that renders
- * the raw `fleet.*` snapshot instead looks identical until you read the digits.
+ * arrives; the footer reads the counter snapshot those frames CARRY, assigned
+ * by the stream store (`lib/streaming/workspace-store.ts`), and a tile that
+ * renders the raw `fleet.*` server render instead looks identical until you
+ * read the digits.
  * That is the defect this walk exists to catch, so "the copy changed" is not
  * accepted as evidence and the event count is compared as a number.
  *
@@ -42,7 +43,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { signedInContext } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity";
+import { deriveFleetIdentity } from "@/lib/fleets/identity";
 import {
   assertPassed,
   classifyTerminalEvent,

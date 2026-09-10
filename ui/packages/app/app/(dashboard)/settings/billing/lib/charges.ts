@@ -1,5 +1,5 @@
 import { CHARGE_TYPE, NANOS_PER_USD, type TenantBillingChargesResponse } from "@/lib/types";
-import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
@@ -11,8 +11,6 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 4,
 });
-const AGENT_PREFIX = "Agent";
-const DELETED_AGENT_LABEL = "Deleted agent";
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
@@ -35,10 +33,13 @@ export function formatChargeAmount(nanos: number): string {
   return `−${formatDollars(nanos)}`;
 }
 
-/** Keep historical charges legible after their fleet has been deleted. */
+/**
+ * Keep historical charges legible after their fleet has been deleted. The
+ * same composition every other agent column renders, so a charge sorts and
+ * reads under the name the operator knows the agent by.
+ */
 export function chargeAgentLabel(row: ChargeRow): string {
-  if (row.fleet_id === null) return DELETED_AGENT_LABEL;
-  return `${AGENT_PREFIX} ${deriveFleetIdentity(row.fleet_id).callsign}`;
+  return agentDisplayName(row.fleet_id);
 }
 
 /** Strip the provider namespace and separators without changing model casing. */

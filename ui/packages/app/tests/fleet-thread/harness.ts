@@ -171,7 +171,7 @@ export function threadElement(initial: EventRow[] = []) {
   return React.createElement(FleetThread, {
     workspaceId: WS,
     fleetId: ZID,
-    fleetName: FLEET_NAME,
+    senderLabel: FLEET_NAME,
     initial,
   });
 }

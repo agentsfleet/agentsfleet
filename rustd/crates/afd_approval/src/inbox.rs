@@ -263,6 +263,10 @@ impl Inbox {
             }
             (false, _) => Ok(None),
         };
+        // After the continuation, so an approval's frame carries the count the
+        // continued run's own row moved.
+        let counters =
+            afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
         self.announce(Answer {
             fleet_id: &resolved.fleet_id,
             gate_id: &resolved.gate_id,
@@ -270,6 +274,7 @@ impl Inbox {
             status: &resolved.status,
             resolved_by: &resolved.resolved_by,
             pending_approvals,
+            counters,
         })
         .await;
         resolved.continuation_event_id = continuation?;
@@ -334,14 +339,17 @@ impl Inbox {
         };
         // Once, on the write that landed the row: a retried resolve finds the
         // row already there and announces nothing, the same rule the lease
-        // verb keeps for a redelivery.
+        // verb keeps for a redelivery. The counters are read after the row
+        // landed, because the insert is what moves them.
         if landed.rows_affected() > 0 {
+            let counters =
+                afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
             let frame = TailFrame::EventReceived {
                 event_id: Cow::Borrowed(appended.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
                 created_at: now.as_millis(),
-                counters: None,
+                counters,
             };
             FleetStreams::new(self.queue.clone())
                 .publish_frame(&resolved.fleet_id, &frame)

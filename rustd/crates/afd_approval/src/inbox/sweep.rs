@@ -76,6 +76,8 @@ impl Inbox {
             let Some(swept) = Self::swept(row) else {
                 continue;
             };
+            let counters =
+                afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             self.announce(Answer {
                 fleet_id: &swept.fleet,
                 gate_id: &swept.gate,
@@ -83,6 +85,7 @@ impl Inbox {
                 status: status::TIMED_OUT,
                 resolved_by: SWEEPER,
                 pending_approvals: swept.pending,
+                counters,
             })
             .await;
         }

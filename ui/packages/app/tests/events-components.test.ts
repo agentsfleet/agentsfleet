@@ -38,7 +38,7 @@ afterEach(() => cleanup());
 import { EventsList } from "../components/domain/EventsList";
 import { type EventDetail, type EventRow, type EventsPage } from "@/lib/api/events";
 import { GUIDANCE } from "@/lib/events/event-summary";
-import { agentDisplayName } from "@/components/domain/AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 // Opening a row fetches its bodies through the Server Action — the list row
 // carries none. Fixtures here are detail-shaped, so the action serves back the
