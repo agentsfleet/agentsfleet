@@ -12,6 +12,15 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
+/** A settled row needs a decision instant for the Decided cell to render. */
+const SETTLED_AT_MS = 1_760_000_060_000;
+/** The subject the daemon stored, and what the cell must keep as its title. */
+const DECIDER_SUBJECT = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
+/** The name captured beside it at decision time. */
+const DECIDER_NAME = "Ada Lovelace";
+/** What `fallbackPersonLabel` prints when no name was captured. */
+const DECIDER_SHORTENED = "user_3HizL\u2026kKCu";
+
 describe("ApprovalsList — EmptyState", () => {
   // The server renders EVERY state now, so an empty table is an empty inbox
   // from the first paint. There is no read in flight to hold the verdict for.
@@ -140,5 +149,52 @@ describe("ApprovalsTable — states this build has no arm for", () => {
     expect(screen.getByText("Timed out")).toBeTruthy();
     // A settled row is not awaiting anything, so the pending arm must not show.
     expect(screen.queryByText(/awaiting review/i)).toBeNull();
+  });
+
+  // The wiring, not the component. `<PersonLabel>`'s own suite proves it renders
+  // a name it is handed; nothing proved the TABLE hands it the right field.
+  // Point ApprovalsTable at `gate.detail` instead and every other test here
+  // still passes, which is what makes this worth its own case.
+  it("renders the captured name without any lookup", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [
+          gate({
+            status: "approved",
+            updated_at: SETTLED_AT_MS,
+            resolved_by: DECIDER_SUBJECT,
+            resolved_by_name: DECIDER_NAME,
+          }),
+        ],
+        initialCursor: null,
+      }),
+    );
+    const label = screen.getByText(DECIDER_NAME);
+    // The subject is the identifier of record and never leaves the row: an
+    // operator matching this against a log line needs the string the log holds.
+    expect(label.getAttribute("title")).toBe(DECIDER_SUBJECT);
+  });
+
+  // The other half of the same wiring: a decider this deployment has no user row
+  // for arrives with an empty name, and the row must still say who decided.
+  it("falls back to the shortened subject when the row carries no name", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [
+          gate({
+            status: "approved",
+            updated_at: SETTLED_AT_MS,
+            resolved_by: DECIDER_SUBJECT,
+            resolved_by_name: "",
+          }),
+        ],
+        initialCursor: null,
+      }),
+    );
+    expect(screen.getByText(DECIDER_SHORTENED).getAttribute("title")).toBe(
+      DECIDER_SUBJECT,
+    );
   });
 });

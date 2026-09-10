@@ -134,7 +134,7 @@ describe("ApprovalsPage (workspace inbox)", () => {
     const markup = renderToStaticMarkup(
       React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID, token: TOKEN })),
     );
-    expect(markup).toContain("Pending approval gates"); // section aria-label
+    expect(markup).toContain("Approval gates"); // section aria-label
     expect(markup).toContain("approvals-list-stub");
     expect(markup).toContain('data-initial-items="1"');
   });

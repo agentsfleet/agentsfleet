@@ -3,7 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 /**
- * The one place the dashboard learns what a credential is.
+ * The one place the dashboard resolves a credential.
+ *
+ * Not the only importer of the provider's SDK — `proxy.ts` takes
+ * `clerkMiddleware` and is irreducible, because the middleware IS the session
+ * verification. It is the only place `auth()` is called, which is the claim
+ * that matters: every consumer of a bearer goes through here.
  *
  * Twenty-seven files used to call the identity provider's `auth()` directly,
  * and twenty-six of them wanted the same thing: a bearer to put on a call to
