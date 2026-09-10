@@ -3,11 +3,9 @@
 //! Until the Zig daemon retired, its `errors/error_registry.zig` was the
 //! registry of record and this module was a checked subset of it — the codes
 //! the port had reached. That tree is gone, and this is now the registry of
-//! record for the whole product. The set the Zig registry declared at sunset
-//! is frozen in the tests as `ZIG_DECLARED`, and
-//! `should_declare_only_codes_the_zig_registry_also_declares` pins every code
-//! here against it — so a new code is a deliberate public-contract addition,
-//! declared there on purpose, never a drift.
+//! record for the whole product. Adding a code here is a public-contract
+//! decision: `REGISTRY` is what a client matches on, and
+//! `test_error_registry_unique` is what holds the list to one spelling each.
 //!
 //! Codes are added here as the milestone that emits them lands, never
 //! speculatively: an unreferenced code is dead code that looks like coverage.
@@ -195,6 +193,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     FLEET_BUNDLE_SECRETS_MISSING,
     FLEET_BUNDLE_FETCH_FAILED,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+    FLEET_BUNDLE_CREDENTIAL_NAME_INVALID,
     PROVIDER_SECRET_REF_REQUIRED,
     PROVIDER_SECRET_NOT_FOUND,
     PROVIDER_SECRET_DATA_MALFORMED,

@@ -57,6 +57,10 @@
 #   --diff              diff against origin/main (vs BASE...HEAD)
 #             — used by `make harness-verify-all` periodic deep audit
 #
+# Each mode also names its POST-IMAGE — the tree the diff's `+` lines belong to
+# (the index for --staged, HEAD for --diff). Carve-out recognition reads the
+# neighbouring line from there rather than from the diff; see the awk block.
+#
 # Dispatch façades:
 #   dispatch/write_any.md (Milestone-ID Gate)
 #   dispatch/write_ts_adhere_bun.md (UI Component Substitution)
@@ -71,12 +75,14 @@ cd "$ROOT"
 case "$MODE" in
   --staged|staged)
     DIFF_CMD="git diff --cached -U0"
+    POST_REF=":"
     LABEL="staged"
     ;;
   --diff|diff)
     BASE="${BASE:-origin/main}"
     if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then BASE="HEAD"; fi
     DIFF_CMD="git diff -U0 ${BASE}...HEAD"
+    POST_REF="HEAD:"
     LABEL="vs $BASE"
     ;;
   --all|all)
@@ -90,17 +96,54 @@ case "$MODE" in
 esac
 
 # Single awk pass; reads stdin (the unified diff).
-# Override-recognition: an immediately-preceding `+` line in the diff
-# containing the relevant override marker suppresses the next hit for
-# that rule on the current `+` line.
-hits=$($DIFF_CMD | awk '
-  /^\+\+\+ b\// { f=$2; sub("^b/","",f); prev_added=""; next }
-  /^[^+]/ { prev_added=""; next }
+#
+# Carve-out recognition reads the preceding line from the SOURCE, not from the
+# diff. Every carve-out here — the two override markers and the design-system
+# `<Section asChild>` wrapper — is a statement about what sits immediately above
+# a line in the file, and the diff cannot answer it: `-U0` emits no context
+# lines, so the line above an added line appears only when it was itself added.
+# Read from the diff, the wrapper carve-out was unfirable for every edit to an
+# already-wrapped `<section>` (an aria-label change to one shipped under a
+# user-invoked UI GATE override for exactly that reason), and a committed
+# override comment stopped covering the line it sits above the moment that line
+# was next touched.
+#
+# The hunk header carries the post-image line number, so `line_above` can fetch
+# the neighbouring line out of the post-image the mode named. Same shape as
+# audits/design-tokens.sh, which has always read its override out of the file.
+hits=$($DIFF_CMD | awk -v post_ref="$POST_REF" '
+  # BWK awk (macOS) has no gensub and no --posix quoting help; APOSTROPHE is
+  # built rather than written, because this program is inside single quotes.
+  BEGIN { APOSTROPHE = sprintf("%c", 39) }
+
+  # The source line above line `n` of `path`, from the post-image, or "" when
+  # there is none. Cached: a hunk may ask about the same neighbour repeatedly,
+  # and each miss costs a fork.
+  function line_above(path, n,    key, cmd, out) {
+    if (n <= 1) return ""
+    key = path SUBSEP n
+    if (key in above) return above[key]
+    above[key] = ""
+    # A path holding an apostrophe cannot go through the quoting below. No
+    # carve-out beats a mis-quoted shell command built from a filename.
+    if (index(path, APOSTROPHE) > 0) return ""
+    cmd = "git show " APOSTROPHE post_ref path APOSTROPHE " 2>/dev/null | sed -n " (n - 1) "p"
+    if ((cmd | getline out) > 0) above[key] = out
+    close(cmd)
+    return above[key]
+  }
+
+  /^\+\+\+ b\// { f=$2; sub("^b/","",f); next }
+  # `@@ -a,b +c,d @@` — $3 is the post-image start line for this hunk.
+  /^@@/ { start=$3; sub(/^\+/,"",start); split(start,parts,","); nl=parts[1]+0; next }
+  /^[^+]/ { next }
   /^\+/ {
     line=$0
     sub(/^\+/,"",line)
-    ms_id_override = (prev_added ~ /MILESTONE ID ALLOWED per user override/)
-    ui_override = (prev_added ~ /UI GATE: SKIPPED per user override/)
+    prev = line_above(f, nl)
+    nl++
+    ms_id_override = (prev ~ /MILESTONE ID ALLOWED per user override/)
+    ui_override = (prev ~ /UI GATE: SKIPPED per user override/)
     if (!ms_id_override &&
         f ~ /\.(zig|sql|ts|tsx|js|jsx|py|rs|go|sh|toml|yaml|json)$/ &&
         f !~ /^(docs|node_modules|vendor|third_party)\//) {
@@ -118,16 +161,17 @@ hits=$($DIFF_CMD | awk '
     # <section> landmark caveat: a semantic <section aria-label> region has no DS
     # primitive (Section renders a <div>; role="region" trips oxlint
     # jsx-a11y/prefer-tag-over-role, which mandates the raw tag). The DS pattern
-    # is <Section asChild><section …>, so exempt a <section> whose immediately
-    # preceding added line opens <Section asChild>. A bare/unwrapped <section>
-    # still trips.
-    ds_section = (line ~ /<section[ \t]/ && prev_added ~ /<Section asChild>/)
+    # wraps the raw tag in the asChild form of the DS Section, so exempt a
+    # <section> whose preceding SOURCE line opens that wrapper — an edit to an
+    # already-wrapped section changes only the <section> line, and the wrapper
+    # is above it in the file whether or not this diff touched it. A
+    # bare/unwrapped <section> still trips.
+    ds_section = (line ~ /<section[ \t]/ && prev ~ /<Section asChild>/)
     if (!ui_override && !rhf_form && !ds_section &&
         f ~ /^ui\/packages\/app\/.*\.(tsx|jsx)$/ &&
         line ~ /<(section|button|input|dialog|article|nav|header|form)[ \t>\/]/) {
       print "UI     " f ": " line
     }
-    prev_added = line
   }
 ')
 

@@ -27,6 +27,6 @@ test.describe("approvals page", () => {
     await expect(page).toHaveURL(workspaceUrlPattern("approvals"));
 
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
-    await expect(page.getByLabel("Pending approval gates")).toBeVisible();
+    await expect(page.getByLabel("Approval gates")).toBeVisible();
   });
 });

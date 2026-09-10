@@ -210,7 +210,7 @@ test.describe("operator journey", () => {
 
     await clickSidebarLink(page, workspaceHref(wsId, "approvals"), workspaceUrlPattern("approvals"));
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
-    await expect(page.getByLabel("Pending approval gates")).toBeVisible();
+    await expect(page.getByLabel("Approval gates")).toBeVisible();
 
     // The standalone workspace-settings page was folded into API Keys post-M118
     // (no `/settings` sidebar link, no workspace-settings index route), so the

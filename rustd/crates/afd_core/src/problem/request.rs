@@ -90,13 +90,12 @@ pub(super) const REQUEST: &[Problem] = &[
     // about who reads it rather than an omission: every one of these is
     // rendered in a PROVIDER's delivery log — GitHub's, Slack's, Svix's — to an
     // operator debugging an integration, and never in this product's console.
-    // `error_entries.zig` marks every one of them `reachable: no` for the same
-    // reason, and `test_entries_match_the_zig_registry` pins the absence both
-    // ways. The last three are narrower still: they are never rendered as a
+    // The retired Zig entries marked every one of them `reachable: no` for the
+    // same reason. The last three are narrower still: they are never rendered as a
     // problem at all, because the App ingress names them as the REASON in a
-    // 200 rather than raising them. They are declared here so that the two
-    // registries stay each other's mirror — a code with no entry resolves to
-    // UNKNOWN and would answer 500 if one ever were raised.
+    // 200 rather than raising them. They are declared here so the table stays
+    // total over the registry — a code with no entry resolves to UNKNOWN and
+    // would answer 500 if one ever were raised.
     Problem {
         code: error_code::WEBHOOK_FLEET_NOT_FOUND,
         status: 404,

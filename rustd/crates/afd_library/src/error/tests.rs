@@ -3,9 +3,10 @@
 use std::error::Error as _;
 
 use afd_core::error_code::{
-    CATALOG_ID_COLLISION, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
-    FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, PAYLOAD_TOO_LARGE,
+    CATALOG_ID_COLLISION, FLEET_BUNDLE_CREDENTIAL_NAME_INVALID, FLEET_BUNDLE_FETCH_FAILED,
+    FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, PAYLOAD_TOO_LARGE,
 };
+use afd_fleet_runtime::{CredentialName, Version};
 
 use super::{Error, InvalidBundle};
 use crate::SourceFailure;
@@ -161,6 +162,52 @@ fn data_only_storage_and_collision_failures_expose_remediation() {
         Some("github:owner/incumbent")
     );
     assert_eq!(unavailable.collision_incumbent(), None);
+}
+
+/// A misnamed credential is classified apart from a malformed bundle.
+///
+/// The arm answering this sits AHEAD of the `TriggerConfig(_)` catch-all, and
+/// that ordering IS the behaviour: reversed, an author who wrote
+/// `my-credential` is handed `UZ-BUNDLE-001`, whose message sends them to look
+/// for a `SKILL.md` that is not missing — the defect the split code exists to
+/// end. Both arms are asserted here, so a reordering cannot pass by satisfying
+/// one of them.
+#[test]
+fn a_misnamed_credential_answers_the_code_whose_remedy_is_renaming_it() -> Result<(), &'static str>
+{
+    let refusal = CredentialName::parse("my-credential")
+        .err()
+        .ok_or("a hyphen is not a storable vault key byte")?;
+    let misnamed = Error::TriggerConfig(refusal);
+
+    assert_eq!(misnamed.code(), FLEET_BUNDLE_CREDENTIAL_NAME_INVALID);
+
+    // The reference and the rule it broke survive the lift into this crate's
+    // error, which is what lets the message name them (RULE ERR-RS §4).
+    let cause = misnamed
+        .source()
+        .ok_or("the runtime refusal is what caused this")?;
+    let named = cause.to_string();
+    assert!(named.contains("my-credential"), "{named}");
+
+    // The ordering pin: a sibling trigger-config failure still answers the
+    // family code, because re-packaging IS its remedy.
+    let malformed = Error::TriggerConfig(
+        Version::parse("not-a-version")
+            .err()
+            .ok_or("a semver parse must reject this")?,
+    );
+    assert_eq!(malformed.code(), FLEET_BUNDLE_INVALID);
+
+    // Both are the same KIND of failure to a client — a refusal the author
+    // fixes and a retry cannot — so only the code and its remedy differ.
+    for error in [&misnamed, &malformed] {
+        assert_eq!(error.detail(), "Fleet Bundle is invalid");
+        assert!(!error.retryable());
+        assert!(!error.is_datastore_unavailable());
+    }
+
+    Ok(())
 }
 
 fn assert_classification(
