@@ -85,10 +85,10 @@ impl Fleets {
         source: &LibrarySource<'_>,
     ) -> Result<Entry> {
         let query = match source {
-            LibrarySource::Platform(slug) => sqlx::query(sql::SELECT_PLATFORM_INSTALL)
+            LibrarySource::Platform(slug) => sqlx::query(sql::install::SELECT_PLATFORM_INSTALL)
                 .bind(*slug)
                 .bind(VISIBILITY_PUBLIC),
-            LibrarySource::Tenant(id) => sqlx::query(sql::SELECT_TENANT_INSTALL)
+            LibrarySource::Tenant(id) => sqlx::query(sql::install::SELECT_TENANT_INSTALL)
                 .bind(id.as_str())
                 .bind(workspace.as_str()),
         };

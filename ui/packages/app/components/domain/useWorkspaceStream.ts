@@ -1,10 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { EventRow, WorkspaceControlFrame, WorkspaceLiveFrame } from "@/lib/api/events";
-import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import type { WorkspaceConnectionStatus } from "@/lib/streaming/workspace-stream";
 
 import React, {
   createContext,
@@ -14,38 +10,18 @@ import React, {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import {
-  runWorkspaceBackfill,
-  warnBackfillFailure,
-} from "@/lib/streaming/fleet-stream-backfill";
-import { applyLiveFrame, mergeBackfill } from "@/lib/streaming/fleet-stream-frames";
-import {
-  noteServerFrameTime,
-  subscribeFleet,
-  subscribeStatus,
-  subscribeWorkspaceFrames,
-  WORKSPACE_CONNECTION_STATUS,
-} from "@/lib/streaming/workspace-stream";
+  EMPTY_TILE,
+  EMPTY_WORKSPACE,
+  WorkspaceStore,
+  type Listener,
+  type WorkspaceStreamSnapshot,
+  type WorkspaceTileSnapshot,
+} from "@/lib/streaming/workspace-store";
 
-type Listener = () => void;
-
-export type WorkspaceTileSnapshot = {
-  events: FleetEvent[];
-  connectionStatus: ConnectionStatus;
-  helloReceived: boolean;
-  isLive: boolean;
-  catchingUp: boolean;
-};
-
-const EMPTY_TILE: WorkspaceTileSnapshot = Object.freeze({
-  events: [],
-  connectionStatus: CONNECTION_STATUS.CONNECTING,
-  helloReceived: false,
-  isLive: true,
-  catchingUp: false,
-});
+// Re-exported so every existing caller keeps importing its snapshot type from
+// the hook it uses, rather than reaching past it into the store.
+export type { WorkspaceStreamSnapshot, WorkspaceTileSnapshot };
 
 const WorkspaceStreamContext = createContext<WorkspaceStore | null>(null);
 
@@ -78,176 +54,41 @@ export function useWorkspaceFleetStream(fleetId: string): WorkspaceTileSnapshot 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-class WorkspaceStore {
-  readonly #workspaceId: string;
-  #status: ConnectionStatus = CONNECTION_STATUS.CONNECTING;
-  #helloReceived = false;
-  #catchingUp = false;
-  #liveFleetIds = new Set<string>();
-  #eventsByFleet = new Map<string, FleetEvent[]>();
-  #snapshots = new Map<string, WorkspaceTileSnapshot>();
-  #listenersByFleet = new Map<string, Set<Listener>>();
-  #dirtyFleetIds = new Set<string>();
-  #notifyFrame: number | null = null;
-  #notifyAll = false;
-  #generation = 0;
-  #subscribedFleetIds = new Set<string>();
-
-  constructor(workspaceId: string) {
-    this.#workspaceId = workspaceId;
-  }
-
-  connect(fleetIds: string[]) {
-    const generation = ++this.#generation;
-    this.#subscribedFleetIds = new Set(fleetIds);
-    const backfill = (workspaceId: string, anchorMs: number | null) =>
-      this.#backfill(workspaceId, anchorMs, generation);
-    const unsubs = [
-      subscribeStatus(this.#workspaceId, (next) => this.#setStatus(next), backfill),
-      subscribeWorkspaceFrames(this.#workspaceId, (frame) => this.#applyWorkspaceFrame(frame)),
-      ...fleetIds.map((fleetId) =>
-        subscribeFleet(this.#workspaceId, fleetId, (frame) => this.#applyFleetFrame(fleetId, frame)),
-      ),
-    ];
-    return () => {
-      for (const unsub of unsubs) unsub();
-      this.#generation += 1;
-      this.#cancelNotification();
-    };
-  }
-
-  subscribe(fleetId: string, listener: Listener) {
-    let listeners = this.#listenersByFleet.get(fleetId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#listenersByFleet.set(fleetId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) this.#listenersByFleet.delete(fleetId);
-    };
-  }
-
-  snapshot(fleetId: string): WorkspaceTileSnapshot {
-    const cached = this.#snapshots.get(fleetId);
-    if (cached) return cached;
-    const next: WorkspaceTileSnapshot = {
-      events: this.#eventsByFleet.get(fleetId) ?? [],
-      connectionStatus: this.#status,
-      helloReceived: this.#helloReceived,
-      isLive: !this.#helloReceived || this.#liveFleetIds.has(fleetId),
-      catchingUp: this.#catchingUp,
-    };
-    this.#snapshots.set(fleetId, next);
-    return next;
-  }
-
-  #notifySoon(fleetId?: string) {
-    if (fleetId === undefined) {
-      this.#snapshots.clear();
-      this.#notifyAll = true;
-    } else {
-      this.#snapshots.delete(fleetId);
-      this.#dirtyFleetIds.add(fleetId);
-    }
-    if (this.#notifyFrame !== null) return;
-    this.#notifyFrame = requestAnimationFrame(() => this.#flushNotifications());
-  }
-
-  #flushNotifications() {
-    this.#notifyFrame = null;
-    if (this.#notifyAll) {
-      for (const listeners of this.#listenersByFleet.values()) {
-        for (const listener of listeners) listener();
-      }
-    } else {
-      for (const fleetId of this.#dirtyFleetIds) {
-        for (const listener of this.#listenersByFleet.get(fleetId) ?? []) {
-          listener();
-        }
-      }
-    }
-    this.#notifyAll = false;
-    this.#dirtyFleetIds.clear();
-  }
-
-  #setStatus(next: WorkspaceConnectionStatus) {
-    const status = toConnectionStatus(next);
-    if (status === this.#status) return;
-    this.#status = status;
-    this.#notifySoon();
-  }
-
-  #applyWorkspaceFrame(frame: WorkspaceControlFrame) {
-    if (frame.kind === FRAME_KIND.HELLO) {
-      this.#helloReceived = true;
-      this.#liveFleetIds = new Set(frame.fleet_ids);
-      this.#catchingUp = false;
-    } else {
-      const catchingUp = frame.dropped > 0;
-      if (catchingUp === this.#catchingUp) return;
-      this.#catchingUp = catchingUp;
-    }
-    this.#notifySoon();
-  }
-
-  #applyFleetFrame(fleetId: string, frame: WorkspaceLiveFrame) {
-    const events = applyLiveFrame(this.#eventsByFleet.get(fleetId) ?? [], frame);
-    this.#eventsByFleet.set(fleetId, events);
-    this.#notifySoon(fleetId);
-  }
-
-  async #backfill(workspaceId: string, anchorMs: number | null, generation: number) {
-    try {
-      const outcome = await runWorkspaceBackfill({
-        workspaceId,
-        anchorMs,
-        stillCurrent: () => this.#generation === generation,
-        onPage: (rows) => this.#applyBackfillPage(rows),
-      });
-      if (outcome.ok && this.#generation === generation) {
-        if (outcome.watermark !== null) noteServerFrameTime(workspaceId, outcome.watermark);
-        if (this.#catchingUp) {
-          this.#catchingUp = false;
-          this.#notifySoon();
-        }
-      }
-    } catch (error) {
-      warnBackfillFailure(error);
-    }
-  }
-
-  #applyBackfillPage(rows: EventRow[]) {
-    const rowsByFleet = new Map<string, EventRow[]>();
-    for (const row of rows) {
-      if (!this.#subscribedFleetIds.has(row.fleet_id)) continue;
-      const fleetRows = rowsByFleet.get(row.fleet_id) ?? [];
-      fleetRows.push(row);
-      rowsByFleet.set(row.fleet_id, fleetRows);
-    }
-    for (const [fleetId, fleetRows] of rowsByFleet) {
-      const events = mergeBackfill(this.#eventsByFleet.get(fleetId) ?? [], fleetRows);
-      this.#eventsByFleet.set(fleetId, events);
-      this.#notifySoon(fleetId);
-    }
-  }
-
-  #cancelNotification() {
-    if (this.#notifyFrame !== null) cancelAnimationFrame(this.#notifyFrame);
-    this.#notifyFrame = null;
-    this.#notifyAll = false;
-    this.#dirtyFleetIds.clear();
-  }
+/**
+ * The wall's own view of the one workspace stream: whether it is connected,
+ * and whether any tile has had to ask for the server's counters.
+ * One subscription for the whole wall, independent of tile count.
+ */
+export function useWorkspaceStream(): WorkspaceStreamSnapshot {
+  const store = useContext(WorkspaceStreamContext);
+  const subscribe = useCallback(
+    (listener: Listener) => store?.subscribeWorkspace(listener) ?? (() => {}),
+    [store],
+  );
+  const getSnapshot = useCallback(
+    () => store?.workspaceSnapshot() ?? EMPTY_WORKSPACE,
+    [store],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-function toConnectionStatus(status: WorkspaceConnectionStatus): ConnectionStatus {
-  switch (status) {
-    case WORKSPACE_CONNECTION_STATUS.LIVE:
-      return CONNECTION_STATUS.LIVE;
-    case WORKSPACE_CONNECTION_STATUS.RECONNECTING:
-      return CONNECTION_STATUS.RECONNECTING;
-    case WORKSPACE_CONNECTION_STATUS.CONNECTING:
-      return CONNECTION_STATUS.CONNECTING;
-  }
+/**
+ * Ask the wall to re-read the server's counters once.
+ *
+ * The frames answer the common case on their own, so this fires only when a
+ * tile meets a settled row it cannot price. Stable across renders, so a tile
+ * can name it as an effect dependency without re-running the effect.
+ */
+export function useRequestWorkspaceCounters(): () => void {
+  const store = useContext(WorkspaceStreamContext);
+  return useCallback(() => store?.requestCounters(), [store]);
+}
+
+/**
+ * Tell the stream that a fresh server read already accounts for the rows
+ * streamed so far, so the tile footers restart their delta from the new base.
+ */
+export function useAbsorbWorkspaceCounters(): (fleetIds: readonly string[]) => void {
+  const store = useContext(WorkspaceStreamContext);
+  return useCallback((fleetIds: readonly string[]) => store?.absorb(fleetIds), [store]);
 }

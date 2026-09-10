@@ -15,6 +15,9 @@ vi.mock("next/link", () => ({
 const streamMock = vi.fn();
 vi.mock("@/components/domain/useWorkspaceStream", () => ({
   useWorkspaceFleetStream: (...a: unknown[]) => streamMock(...a),
+  // The tile asks for the server's counters only when a settled row arrived
+  // with no price; these tiles never do, so a no-op stands in.
+  useRequestWorkspaceCounters: () => () => {},
 }));
 
 import FleetTile, {
