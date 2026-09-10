@@ -1,25 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
 import { cn, EYEBROW_CLASS, WakePulse } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
-import {
-  useAbsorbWorkspaceCounters,
-  useWorkspaceStream,
-} from "@/components/domain/useWorkspaceStream";
+import { useWorkspaceStream } from "@/components/domain/useWorkspaceStream";
 
 /**
  * The wall's one honest answer to "is this page still telling me the truth?"
  *
  * The count of live fleets alone said "live" while the EventSource was still
  * opening, which is the thing an operator most needs not to be lied to about.
- * This reads the stream's real connection state instead.
- *
- * It also relays the one case the frames cannot answer. A settled row normally
- * carries its own charge, so the tile footers move with no request at all;
- * when a row arrives without one, `countersStale` bumps and the wall re-reads
- * just the fleet summaries. One badge per wall, so several tiles asking at
- * once still costs one read — and nothing is re-rendered on the server.
+ * This reads the stream's real connection state instead. The tile footers
+ * need no help from here: every frame carries the fleet's counters, so the
+ * wall never has to re-read them.
  */
 
 const CONNECTING_COPY = "connecting…";
@@ -29,12 +21,6 @@ const LIVE_SUFFIX = "live";
 
 type Props = {
   liveTotal: number;
-  /**
-   * Re-read the fleet summaries because the frames could not price a settled
-   * row, and answer with the ids that came back so the stream can drop the
-   * rows the fresh base now accounts for.
-   */
-  onStaleCounters: () => Promise<readonly string[]>;
 };
 
 /** What the badge says, and whether its dot should pulse. */
@@ -58,26 +44,8 @@ function reading(
   return { text: `${liveTotal} ${LIVE_SUFFIX}`, live: true };
 }
 
-export default function WallLiveBadge({ liveTotal, onStaleCounters }: Props) {
-  const { connectionStatus, helloReceived, countersStale } = useWorkspaceStream();
-  const absorb = useAbsorbWorkspaceCounters();
-
-  useEffect(() => {
-    // Zero is the initial value: the page was just rendered from the server,
-    // so nothing is stale yet and a read here would be pure waste.
-    if (countersStale === 0) return;
-    let live = true;
-    void onStaleCounters().then((ids) => {
-      // Absorbing after an unmount would mutate a store this wall no longer
-      // renders, and absorbing a stale answer would drop rows the newer read
-      // did not cover.
-      if (live) absorb(ids);
-    });
-    return () => {
-      live = false;
-    };
-  }, [countersStale, onStaleCounters, absorb]);
-
+export default function WallLiveBadge({ liveTotal }: Props) {
+  const { connectionStatus, helloReceived } = useWorkspaceStream();
   const shown = reading(connectionStatus, helloReceived, liveTotal);
   if (shown === null) return null;
   return (

@@ -150,19 +150,22 @@ impl Gates {
     /// Tell the fleet's live tail a human has been asked, best-effort.
     ///
     /// After both writes, so a watcher reacting to the frame finds the row it
-    /// names. The count rode the insert, so the frame costs the park one
-    /// publish and no read; a publish that fails costs the tail one frame and
-    /// the park nothing — the row is down, the reference is down, and the
+    /// names. The count rode the insert; the fleet's counters are one read,
+    /// best-effort like the publish, and a read that does not answer sends
+    /// the frame without them. A publish that fails costs the tail one frame
+    /// and the park nothing — the row is down, the reference is down, and the
     /// card is what the answer lands on.
     async fn announce(&self, request: &Park<'_>, gate_id: &Uuid7, pending_approvals: i64) {
+        let fleet_id = request.fleet_id.as_str();
+        let counters = afd_events::fleet_counters_best_effort(self.database(), fleet_id).await;
         let frame = TailFrame::GateOpened {
             gate_id: Cow::Borrowed(gate_id.as_str()),
             event_id: Cow::Borrowed(request.event_id),
             pending_approvals,
-            counters: None,
+            counters,
         };
         FleetStreams::new(self.queue().clone())
-            .publish_frame(request.fleet_id.as_str(), &frame)
+            .publish_frame(fleet_id, &frame)
             .await;
     }
 

@@ -4,8 +4,10 @@
 //! resolve and the sweep move rows; this tells whoever is watching the fleet
 //! that they did, and how many answers the fleet is still owed — the count
 //! rides the frame so a console shows "N approvals waiting" without a read,
-//! and it rode the statement that moved the row so the announcement costs no
-//! read of its own either.
+//! and it rode the statement that moved the row so the count costs no read of
+//! its own. The fleet's activity counters ride beside it, read by the caller
+//! right before the announcement — the moving statement touches no event row,
+//! so the counters it would have returned are the ones the frame carries.
 //!
 //! # Best-effort, and what that licenses
 //!
@@ -17,7 +19,7 @@
 use std::borrow::Cow;
 
 use afd_redis::FleetStreams;
-use afd_wire::tail::TailFrame;
+use afd_wire::tail::{FleetCounters, TailFrame};
 
 use super::Inbox;
 
@@ -36,6 +38,8 @@ pub(super) struct Answer<'a> {
     pub resolved_by: &'a str,
     /// How many of the fleet's gates still wait, as the moving statement counted.
     pub pending_approvals: i64,
+    /// Where the fleet's counters stand, or none when the read did not answer.
+    pub counters: Option<FleetCounters>,
 }
 
 impl Inbox {
@@ -50,7 +54,7 @@ impl Inbox {
             status: Cow::Borrowed(answer.status),
             resolved_by: Cow::Borrowed(answer.resolved_by),
             pending_approvals: answer.pending_approvals,
-            counters: None,
+            counters: answer.counters,
         };
         FleetStreams::new(self.queue.clone())
             .publish_frame(answer.fleet_id, &frame)

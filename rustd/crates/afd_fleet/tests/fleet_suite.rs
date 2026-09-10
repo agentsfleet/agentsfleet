@@ -64,5 +64,7 @@ mod integration_runner_row;
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
+#[path = "integration_wall_counters.rs"]
+mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]
 mod verdict_matrix;

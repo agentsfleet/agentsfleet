@@ -21,13 +21,11 @@ let streamState = {
   connectionStatus: "live",
   helloReceived: true,
   catchingUp: false,
-  countersStale: 0,
 };
 vi.mock("@/components/domain/useWorkspaceStream", () => ({
   WorkspaceStreamProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
   useWorkspaceStream: () => streamState,
-  useAbsorbWorkspaceCounters: () => () => {},
 }));
 const listFleetsAction = vi.fn();
 vi.mock("../actions", () => ({ listFleetsAction: (...a: unknown[]) => listFleetsAction(...a) }));
@@ -35,7 +33,7 @@ vi.mock("../actions", () => ({ listFleetsAction: (...a: unknown[]) => listFleets
 import FleetWall from "./FleetWall";
 
 function liveStream() {
-  return { connectionStatus: "live", helloReceived: true, catchingUp: false, countersStale: 0 };
+  return { connectionStatus: "live", helloReceived: true, catchingUp: false };
 }
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
@@ -79,6 +77,13 @@ describe("FleetWall", () => {
     streamState = { ...liveStream(), connectionStatus: "reconnecting" };
     renderWall([fleet()]);
     expect(screen.getByLabelText("reconnecting…")).toBeTruthy();
+  });
+
+  it("says offline when the stream has given up, rather than going quiet", () => {
+    streamState = { ...liveStream(), connectionStatus: "offline" };
+    renderWall([fleet()]);
+    expect(screen.getByLabelText("offline")).toBeTruthy();
+    expect(screen.queryByLabelText("1 live")).toBeNull();
   });
 
   it("hides the live counter when no loaded fleet is active", () => {

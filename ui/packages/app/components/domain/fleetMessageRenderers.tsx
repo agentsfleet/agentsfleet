@@ -10,7 +10,7 @@ import {
   FleetGroupRow,
   FleetMessageRow,
   ROW_TONE,
-  useFleetName,
+  useSenderLabel,
 } from "./FleetMessageRow";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { FleetReply } from "./FleetReplyBody";
@@ -57,8 +57,8 @@ export function renderFleetMessage({ message }: { message: MessageState }): Reac
 }
 
 function FleetMessage({ message }: { message: MessageState }) {
-  const fleetName = useFleetName();
-  const sender = senderLabelFor(readActor(message), fleetName);
+  const senderLabel = useSenderLabel();
+  const sender = senderLabelFor(readActor(message), senderLabel);
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
   const failed = status === STATUS_FAILED;
@@ -68,11 +68,11 @@ function FleetMessage({ message }: { message: MessageState }) {
   const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // A run of identical deliveries is one row until the operator opens it.
   const group = readGroupMembers(message);
-  if (group) return <FleetGroupMessage fleetName={fleetName} members={group} />;
+  if (group) return <FleetGroupMessage senderLabel={senderLabel} members={group} />;
   // Integration deliveries recede to a flat trace so the operator's own
   // conversation dominates the column. Order is untouched.
   if (message.role === "system") {
-    return <FleetActivityMessage message={message} fleetName={fleetName} />;
+    return <FleetActivityMessage message={message} senderLabel={senderLabel} />;
   }
   return (
     <>
@@ -91,7 +91,7 @@ function FleetMessage({ message }: { message: MessageState }) {
       {isSplitTrigger ? null : (
         <FleetReply
           message={message}
-          fleetName={fleetName}
+          senderLabel={senderLabel}
           tools={tools}
           status={status}
         />
@@ -107,10 +107,10 @@ function FleetMessage({ message }: { message: MessageState }) {
  */
 function FleetActivityMessage({
   message,
-  fleetName,
+  senderLabel,
 }: {
   message: MessageState;
-  fleetName: string;
+  senderLabel: string;
 }) {
   const status = readCustomStatus(message);
   const reply = readReply(message);
@@ -127,7 +127,7 @@ function FleetActivityMessage({
   return (
     <>
       <FleetActivityRow
-        sender={senderLabelFor(readActor(message), fleetName)}
+        sender={senderLabelFor(readActor(message), senderLabel)}
         createdAt={message.createdAt}
         headline={activityHeadline(readText(message), reference)}
         outcome={outcome}
@@ -152,7 +152,7 @@ function FleetActivityMessage({
  * it renders every member as its own tick, so the count is always a summary
  * the operator can check rather than a claim they have to trust.
  */
-function FleetGroupMessage({ fleetName, members }: { fleetName: string; members: FleetEvent[] }) {
+function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; members: FleetEvent[] }) {
   const [expanded, setExpanded] = useState(false);
   // Everything is derived from `members` (guaranteed non-empty by the caller):
   // `reduce` yields the newest as a definite `FleetEvent`, and the span reads
@@ -163,7 +163,7 @@ function FleetGroupMessage({ fleetName, members }: { fleetName: string; members:
   const failed = newest.status === STATUS_AGENT_ERROR;
   return (
     <FleetGroupRow
-      sender={senderLabelFor(newest.actor, fleetName)}
+      sender={senderLabelFor(newest.actor, senderLabel)}
       headline={newest.text}
       outcome={eventOutcome(newest)}
       failed={failed}
@@ -176,7 +176,7 @@ function FleetGroupMessage({ fleetName, members }: { fleetName: string; members:
         ? members.map((member) => (
             <FleetActivityRow
               key={member.id}
-              sender={senderLabelFor(member.actor, fleetName)}
+              sender={senderLabelFor(member.actor, senderLabel)}
               createdAt={member.createdAt}
               headline={member.text}
               outcome={eventOutcome(member)}

@@ -24,6 +24,9 @@ afd_core.workspace = true
 # The process's ONE pub/sub connection. A stream costs a map entry here, never
 # a Redis dial — which is the whole reason a wall of tiles is affordable.
 afd_redis.workspace = true
+# The counter snapshot a `hello` carries per fleet. A leaf crate: it knows no
+# stream, no hub, and nothing about this crate.
+afd_wire.workspace = true
 # The fan-in polls N subscriptions as one stream, and the tail is a `Stream`
 # the HTTP layer hands to axum without this crate knowing axum exists.
 futures-util.workspace = true

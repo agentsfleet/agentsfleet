@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -16,12 +16,11 @@ import { type Fleet } from "@/lib/api/fleets";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { workspacePath } from "@/lib/workspace-routes";
 import {
-  useRequestWorkspaceCounters,
   useWorkspaceFleetStream,
+  type TileCounters,
 } from "@/components/domain/useWorkspaceStream";
-import { deriveTileCounters, type TileCounters } from "@/lib/wall/tile-counters";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
-import { deriveFleetIdentity, type FleetIdentity } from "./fleetIdentity";
+import { deriveFleetIdentity, type FleetIdentity } from "@/lib/fleets/identity";
 import {
   deriveTileLiveness,
   fleetRowState,
@@ -110,17 +109,11 @@ function DrainedTile({ fleet, workspaceId }: Props) {
 }
 
 function StreamingTile({ fleet, workspaceId }: Props) {
-  const { events, connectionStatus, helloReceived, isLive, catchingUp } =
+  // The footer is the snapshot the last frame carried — server truth the
+  // stream ASSIGNED, never a sum the browser kept. Until the stream has said
+  // anything about this fleet it is undefined and the server render stands.
+  const { events, connectionStatus, helloReceived, isLive, catchingUp, counters } =
     useWorkspaceFleetStream(fleet.id);
-  // The frames carry each settled row's own charge, so the footer moves with
-  // no request at all. `exact` is false only when a settled row arrived with
-  // no price, which is the one case the wall has to ask the server about.
-  const counters = useMemo(() => deriveTileCounters(fleet, events), [fleet, events]);
-  const requestCounters = useRequestWorkspaceCounters();
-  useEffect(() => {
-    if (counters.exact) return;
-    requestCounters();
-  }, [counters.exact, requestCounters]);
   const liveness = deriveTileLiveness(fleet.status, connectionStatus);
   const kind = liveness.kind === "live" && helloReceived && !isLive ? "snapshot" : liveness.kind;
   const actuallyLive =
@@ -166,7 +159,7 @@ function StreamingTile({ fleet, workspaceId }: Props) {
 
 type ShellProps = {
   fleet: Fleet;
-  /** Stream-advanced footer. Absent on a drained tile, which opens no stream. */
+  /** The stream's snapshot for the footer. Absent on a drained tile, which opens no stream. */
   counters?: TileCounters;
   workspaceId: string;
   kind: TileKind;
@@ -229,7 +222,8 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }
 }
 
 function TileMetrics({ fleet, counters }: { fleet: Fleet; counters?: TileCounters }) {
-  // A drained tile has no stream, so it shows what the server rendered.
+  // A drained tile has no stream, and a live one has not yet been told where
+  // the fleet stands; both show what the server rendered.
   const spent = counters?.spentNanos ?? fleet.budget_used_nanos;
   const processed = counters?.eventsProcessed ?? fleet.events_processed;
   return (

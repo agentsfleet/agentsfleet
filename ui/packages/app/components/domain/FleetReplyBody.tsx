@@ -37,12 +37,12 @@ const REASONING_LIVE_LABEL = "Thinking…";
  */
 export function FleetReply({
   message,
-  fleetName,
+  senderLabel,
   tools,
   status,
 }: {
   message: MessageState;
-  fleetName: string;
+  senderLabel: string;
   tools: ReturnType<typeof readTools>;
   status: string;
 }) {
@@ -60,7 +60,7 @@ export function FleetReply({
   const awaitingFirstWord = streaming && reply.length === 0;
   return (
     <FleetMessageRow
-      sender={fleetName || "Fleet"}
+      sender={senderLabel || "Fleet"}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}

@@ -6,6 +6,9 @@
 )]
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+use afd_wire::tail::FleetCounters;
 
 use super::{DEFAULT_KIND, Frame, KIND_ANCHOR, KIND_CATCHING_UP, KIND_HELLO, KIND_KEY, kind_of};
 use crate::error::Error;
@@ -122,12 +125,41 @@ fn should_escape_the_tag_rather_than_trust_the_identifier() {
 /// The hello frame announces the set, at the synthetic sequence.
 #[test]
 fn should_announce_the_fleet_set_without_burning_a_sequence_number() {
-    let frame = Frame::hello(&["z1".to_owned(), "z2".to_owned()]);
+    let frame = Frame::hello(&["z1".to_owned(), "z2".to_owned()], &BTreeMap::new());
     assert_eq!(frame.seq, 0);
     assert_eq!(frame.kind, Cow::Borrowed(KIND_HELLO));
     assert_eq!(
-        frame.data, r#"{"kind":"hello","fleet_ids":["z1","z2"]}"#,
+        frame.data, r#"{"kind":"hello","fleet_ids":["z1","z2"],"counters":{}}"#,
         "`preserve_order` keeps insertion order, and the client reads by name"
+    );
+}
+
+/// A subscriber that arrives after the fleet has run is told where it stands
+/// in the `hello`, before any event frame — the figures the page rendered
+/// are the figures the wall shows, with no frame owed in between.
+#[test]
+fn hello_carries_the_counters_a_late_subscriber_missed() {
+    let counters = BTreeMap::from([(
+        "z1".to_owned(),
+        FleetCounters {
+            events_processed: 3,
+            budget_used_nanos: 21,
+        },
+    )]);
+    let frame = Frame::hello(&["z1".to_owned(), "z2".to_owned()], &counters);
+    let parsed: serde_json::Value = serde_json::from_str(&frame.data).expect("hello is JSON");
+    assert_eq!(
+        parsed.pointer("/counters/z1/events_processed"),
+        Some(&serde_json::json!(3)),
+        "the three events that ran before the subscribe are reported before any frame"
+    );
+    assert_eq!(
+        parsed.pointer("/counters/z1/budget_used_nanos"),
+        Some(&serde_json::json!(21))
+    );
+    assert!(
+        parsed.pointer("/counters/z2").is_none(),
+        "a fleet the read did not answer for is omitted, never zeroed"
     );
 }
 
@@ -137,8 +169,11 @@ fn should_announce_the_fleet_set_without_burning_a_sequence_number() {
 /// empty — silence is indistinguishable from a stream that never opened.
 #[test]
 fn should_announce_an_empty_fleet_set() {
-    let frame = Frame::hello(&[]);
-    assert_eq!(frame.data, r#"{"kind":"hello","fleet_ids":[]}"#);
+    let frame = Frame::hello(&[], &BTreeMap::new());
+    assert_eq!(
+        frame.data,
+        r#"{"kind":"hello","fleet_ids":[],"counters":{}}"#
+    );
 }
 
 /// The catching-up frame carries the count, at the synthetic sequence.

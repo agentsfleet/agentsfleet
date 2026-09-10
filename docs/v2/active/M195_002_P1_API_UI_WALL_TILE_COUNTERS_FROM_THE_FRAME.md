@@ -49,7 +49,9 @@
 | File | Action | Why |
 |------|--------------|-----|
 | `rustd/crates/afd_wire/src/tail.rs` · `rustd/crates/afd_fleet/src/lease/{bracket,pull}.rs` | EDIT | The counter snapshot rides every frame the fleet publishes, not only `event_complete`. `hello` carries it so a subscriber is correct before its first event; the receive carries it because that is when `events_processed` moves. |
-| `rustd/crates/afd_sse/src/frame.rs` · `rustd/crates/afd_api_tenant/src/handler/stream/wall.rs` · `rustd/crates/afd_http/src/services/fleets.rs` | EDIT | Dimension 1.2 requires these and the table omitted them, found at PLAN and added on the user's call. `hello` is built by `Frame::hello` and published from `wall.rs:88` and `:98`; its counters come from `live_set`, which returns identifiers only today. Widened columns on a statement that already runs every ten seconds per open stream, not a new round trip. |
+| `rustd/crates/afd_sse/src/frame.rs` · `rustd/crates/afd_api_tenant/src/handler/stream/wall.rs` · `rustd/crates/afd_http/src/services/fleets.rs` | EDIT | Dimension 1.2 requires these and the table omitted them, found at PLAN and added on the user's call. `hello` is built by `Frame::hello` and published from `wall.rs:88` and `:98`. Its counters do NOT ride `live_set`: that enumeration is cached ten seconds (`LiveSets`), and a counter that old is the staleness the frame exists to remove. A new `WorkspaceFleets::counters` reads them fresh by `ANY($1)`, only when a `hello` goes out — on connect and on a change to the set, never on a steady tick. |
+| `rustd/crates/afd_fleet_lifecycle/src/{live_set.rs,sql.rs,sql/live_set.rs}` · `rustd/crates/afd_fleet_lifecycle/tests/integration_wall_counters.rs` | EDIT/CREATE | The set statements move to `sql/live_set.rs` (`sql.rs` was at its 350-line cap) beside the new `SELECT_FLEET_COUNTERS_FOR_SET`, driven from `core.fleets` so a fleet that never ran answers zeros. |
+| `rustd/crates/afd_events/src/{counters.rs,closed.rs,sql.rs}` · `rustd/crates/afd_approval/src/inbox{.rs,/announce.rs,/sweep.rs}` · `rustd/crates/afd_gate/src/gate/park.rs` (+ `Cargo.toml`) · `rustd/crates/afd_fleet/tests/integration_wall_counters.rs` | EDIT/CREATE | The publishers. `Closed` widens its own closing statement; the receive, the continuation, the park, the resolve and the sweep call `afd_events::fleet_counters_best_effort` right before their publish. `afd_gate` gains an `afd_events` dependency (acyclic). |
 | `rustd/crates/afd_fleet_lifecycle/src/sql.rs` · `rustd/crates/afd_fleet_lifecycle/src/sql/install.rs` | EDIT/CREATE | The page statements read the counters by primary key instead of joining; the `core.fleet_library` install lookups move to their own module to keep `sql.rs` under the 350-line cap. Already written — see Carry-over. |
 | `ui/packages/app/lib/api/events.ts` · `ui/packages/app/lib/streaming/workspace-store.ts` · `ui/packages/app/components/domain/useWorkspaceStream.ts` | EDIT/CREATE | The client replaces counters from the frame. The snapshot fields land on the explicit `{fleet_status?; pending_approvals?}` block, never on `EventRow`, which carries per-event figures and not fleet totals. |
 | `ui/.../fleets/components/{FleetTile,FleetWall,WallLiveBadge}.tsx` | EDIT/CREATE | The tile renders the snapshot it was handed. |
@@ -91,51 +93,51 @@
 
 ## Sections (implementation slices)
 
-### §1 — The snapshot rides every frame
+### §1 — The snapshot rides every frame — DONE
 
-- **Dimension 1.1** — every frame a fleet publishes carries an absolute counter snapshot, and the client REPLACES its values rather than accumulating; a frame delivered twice leaves the tile identical → Test `a_repeated_frame_leaves_the_tile_unchanged`
-- **Dimension 1.2** — the `hello` frame carries the snapshot, so a subscriber is correct before its first event rather than after it, closing both the dropped-frame hole and the gap between server render and subscribe → Test `hello_carries_the_counters_a_late_subscriber_missed`
-- **Dimension 1.3** — a receive publishes the snapshot, so an event that parks awaiting approval leaves the tile showing the event it counted → Test `a_parked_event_still_reports_its_event_count`
-- **Dimension 1.4** — the park writes no ledger row and moves no budget, pinning that it is durably a retry and not a charge → Test `a_parked_event_moves_no_budget`
-- **Dimension 1.5** — a frame lost in transport is corrected by the next one, because each carries the whole truth rather than a difference → Test `a_dropped_frame_is_corrected_by_the_next_snapshot`
-- **Dimension 1.6** — a workspace past the per-instance stream cap degrades to a snapshot tile rather than showing a stale live one → Test `a_capped_stream_degrades_to_a_snapshot_tile`
+- **Dimension 1.1** — DONE — every frame a fleet publishes carries an absolute counter snapshot, and the client REPLACES its values rather than accumulating; a frame delivered twice leaves the tile identical → Test `a_repeated_frame_leaves_the_tile_unchanged`
+- **Dimension 1.2** — DONE — the `hello` frame carries the snapshot, so a subscriber is correct before its first event rather than after it, closing both the dropped-frame hole and the gap between server render and subscribe → Test `hello_carries_the_counters_a_late_subscriber_missed`
+- **Dimension 1.3** — DONE — a receive publishes the snapshot, so an event that parks awaiting approval leaves the tile showing the event it counted → Test `a_parked_event_still_reports_its_event_count`
+- **Dimension 1.4** — DONE — the park writes no ledger row and moves no budget, pinning that it is durably a retry and not a charge → Test `a_parked_event_moves_no_budget`
+- **Dimension 1.5** — DONE — a frame lost in transport is corrected by the next one, because each carries the whole truth rather than a difference → Test `a_dropped_frame_is_corrected_by_the_next_snapshot`
+- **Dimension 1.6** — DONE — a workspace past the per-instance stream cap degrades to a snapshot tile rather than showing a stale live one → Test `a_capped_stream_degrades_to_a_snapshot_tile`
 
-### §2 — The counters are read by key, never joined
+### §2 — The counters are read by key, never joined — DONE
 
-- **Dimension 2.1** — the page statements read `core.fleet_activity_counters` by primary key per fleet; both spellings carry the same columns in the same order → Test `both_page_statements_read_the_same_columns_in_the_same_order`
-- **Dimension 2.2** — a fleet with no counter row still lists, with zeroes, which an INNER JOIN would drop → Test `a_fleet_with_no_counter_row_still_lists`
+- **Dimension 2.1** — DONE — the page statements read `core.fleet_activity_counters` by primary key per fleet; both spellings carry the same columns in the same order → Test `both_page_statements_read_the_same_columns_in_the_same_order`
+- **Dimension 2.2** — DONE — a fleet with no counter row still lists, with zeroes, which an INNER JOIN would drop → Test `a_fleet_with_no_counter_row_still_lists`
 
-### §3 — The delta machinery goes
+### §3 — The delta machinery goes — DONE
 
-- **Dimension 3.1** — `tile-counters.ts`, `absorb` and `countersStale` are deleted, and the event-map trimming `absorb` carried is re-homed BEFORE the deletion → Test `the_store_still_bounds_its_event_map_without_absorb`
+- **Dimension 3.1** — DONE — `tile-counters.ts`, `absorb` and `countersStale` are deleted, and the event-map trimming `absorb` carried is re-homed BEFORE the deletion → Test `the_store_still_bounds_its_event_map_without_absorb`
 
-### §4 — The wall's chrome sits on the grid (folded in on the user's call)
+### §4 — The wall's chrome sits on the grid (folded in on the user's call) — DONE
 
 Measured in the operator's own browser session against `app-dev` before any edit — every left-nav destination and every rendered table. The numbers are the rendered geometry, not the class names.
 
-- **Dimension 4.1** — a nav item is a symmetric pill: rounded on every corner, no accent rail. The rail sat 12px inside every consumer's inset and read as a clipped corner, and its two pixels pushed the icon column (22) off the eyebrow column (20). The shell's own regression pin, `renders the active navigation item as a filled pill, never a rail`, rides beside it → Test `is a symmetric pill: rounded on every corner, with no accent rail`
-- **Dimension 4.2** — the four nav groups share one rhythm: a 16px eyebrow with its text on one column, no gap between items, 48px between groups. Before, Platform's eyebrow was a 32px `Button` with its text 5px right of the others and a 2px item gap, so the gaps ran 47.6 / 64 / 47.6 → Test `renders the Platform toggle at eyebrow scale, on the eyebrow column`
-- **Dimension 4.3** — a paginated table lets the page scroll rather than opening a second scroll region, so header, body and footer share a 13px inset on both edges. Before, the `max-h-96` default put a 6px scrollbar inside the cell padding, so on exactly the tables with more rows than the box the header text and row actions sat at 19 while the footer stayed at 13 → Test `is unbounded by default, so a paginated table lets the page scroll`
-- **Dimension 4.4** — the footer's trailing page controls sit on the body's right column. Prev and Next are ghost buttons whose 12px padding paints nothing, so the "›" glyph ended 26px from the edge against 13 for everything else → Test `pulls the trailing page controls back onto the body's right column`
-- **Dimension 4.5** — cell padding and the section-label row sit on the 4px scale: `py-2` in place of `py-1.5`, and `SectionHeader` centres its label against its action so the gap to the section body is 28 rather than 29 → Test `centers the label on its action's middle rather than its baseline`
+- **Dimension 4.1** — DONE — a nav item is a symmetric pill: rounded on every corner, no accent rail. The rail sat 12px inside every consumer's inset and read as a clipped corner, and its two pixels pushed the icon column (22) off the eyebrow column (20). The shell's own regression pin, `renders the active navigation item as a filled pill, never a rail`, rides beside it → Test `is a symmetric pill: rounded on every corner, with no accent rail`
+- **Dimension 4.2** — DONE — the four nav groups share one rhythm: a 16px eyebrow with its text on one column, no gap between items, 48px between groups. Before, Platform's eyebrow was a 32px `Button` with its text 5px right of the others and a 2px item gap, so the gaps ran 47.6 / 64 / 47.6 → Test `renders the Platform toggle at eyebrow scale, on the eyebrow column`
+- **Dimension 4.3** — DONE — a paginated table lets the page scroll rather than opening a second scroll region, so header, body and footer share a 13px inset on both edges. Before, the `max-h-96` default put a 6px scrollbar inside the cell padding, so on exactly the tables with more rows than the box the header text and row actions sat at 19 while the footer stayed at 13 → Test `is unbounded by default, so a paginated table lets the page scroll`
+- **Dimension 4.4** — DONE — the footer's trailing page controls sit on the body's right column. Prev and Next are ghost buttons whose 12px padding paints nothing, so the "›" glyph ended 26px from the edge against 13 for everything else → Test `pulls the trailing page controls back onto the body's right column`
+- **Dimension 4.5** — DONE — cell padding and the section-label row sit on the 4px scale: `py-2` in place of `py-1.5`, and `SectionHeader` centres its label against its action so the gap to the section body is 28 rather than 29 → Test `centers the label on its action's middle rather than its baseline`
 
-### §5 — The agent's identity has one home (finding #15, folded in on the user's call)
+### §5 — The agent's identity has one home (finding #15, folded in on the user's call) — DONE
 
 The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `FleetTile.test.tsx:210-211` pins its outputs — so the hash and the 32-name table do not change. What changes is where it lives and who composes the label from it. Impact report: Discovery, below.
 
-- **Dimension 5.1** — `deriveFleetIdentity` lives in `lib/fleets/identity.ts`, byte-identical, and all six importers point there; the pinned sigil and callsign for the fixture id are unchanged → Test `the moved derivation still yields the pinned sigil and callsign`
-- **Dimension 5.2** — the `Agent <callsign>` string is composed in exactly one function, which `AgentLabel.tsx` renders and `chargeAgentLabel` sorts by; billing no longer imports from a fleets component directory → Test `billing and the domain label compose one string`
-- **Dimension 5.3** — the fleet page's thread receives the callsign under a prop named for what it carries, and `fleetName` means the name on every prop that has it → Test `the thread takes its sender label under its own name`
-- **Dimension 5.4** — the admin lease table names the agent by callsign, as every other agent column does, and keeps the UUID in `title` → Test `a lease row names its agent and keeps the uuid in title`
+- **Dimension 5.1** — DONE — `deriveFleetIdentity` lives in `lib/fleets/identity.ts`, byte-identical, and all six importers point there; the pinned sigil and callsign for the fixture id are unchanged → Test `the moved derivation still yields the pinned sigil and callsign`
+- **Dimension 5.2** — DONE — the `Agent <callsign>` string is composed in exactly one function, which `AgentLabel.tsx` renders and `chargeAgentLabel` sorts by; billing no longer imports from a fleets component directory → Test `billing and the domain label compose one string`
+- **Dimension 5.3** — DONE — the fleet page's thread receives the callsign under a prop named for what it carries, and `fleetName` means the name on every prop that has it → Test `the thread takes its sender label under its own name`
+- **Dimension 5.4** — DONE — the admin lease table names the agent by callsign, as every other agent column does, and keeps the UUID in `title` → Test `a lease row names its agent and keeps the uuid in title`
 
-### §6 — The strip states only what the read can vouch for (finding #11, folded in on the user's call)
+### §6 — The strip states only what the read can vouch for (finding #11, folded in on the user's call) — DONE
 
 `RunMetricsStrip.test.tsx:68` pins `processed + response_text: null → "Completed with no reply recorded."` as correct. The list read carries no bodies (`RunMetricsStrip.tsx:127`), so that null means UNKNOWN, but `EventRow` documents it as no reply (`events.ts:76-78`) and the strip trusts the document. Every successful run's strip therefore contradicts the thread below it, which shows the reply.
 
-- **Dimension 6.1** — a processed run whose row carries no body says the run completed, and does not claim a reply was never recorded; the test that pinned the contradiction is rewritten to pin this → Test `says a run completed rather than claiming no reply when the read carries no body`
-- **Dimension 6.2** — absence of a reply is stated by the one surface that holds the body, the event detail dialog, from the body itself and in its own words; no list surface claims it, because no list read can vouch for it → Test `states no reply only when the row affirmatively carries none`
+- **Dimension 6.1** — DONE — a processed run whose row carries no body says the run completed, and does not claim a reply was never recorded; the test that pinned the contradiction is rewritten to pin this → Test `says a run completed rather than claiming no reply when the read carries no body`
+- **Dimension 6.2** — DONE — absence of a reply is stated by the one surface that holds the body, the event detail dialog, from the body itself and in its own words; no list surface claims it, because no list read can vouch for it → Test `states no reply only when the row affirmatively carries none`
 
-### §7 — Action buttons follow one rule (finding #10, folded in on the user's call)
+### §7 — Action buttons follow one rule (finding #10, folded in on the user's call) — DONE
 
 **The premise was counted wrong twice — by the walk, and by the brief's grep.** `variant="…"` matches every component with a variant prop: all 8 `warning` are `<Alert>`, all 4 `cyan` are `<Badge>`, the 6 `default` are `<Badge>`/`<Link>`, and most of the 31 `destructive` are Alerts. A tag-aware count finds **76 `<Button>`s in 42 files**: destructive 6 · ghost 23 · outline 16 · secondary 5 · link 3 · 2 whose variant comes from a per-action config · **and 21 with no variant prop, which render `default` — the primary mint** — a group no grep counted. Those 21 are the real subject: nearly every dialog's submit, every stub page's one action, "Approve", "Open fleet →".
 
@@ -195,7 +197,7 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 
 Confirmed by the user (Sep 10, 2026): 47 sites — 26 keep · 19 → `ghost` · 2 → `default` · 0 open. The rule's third clause (`default` for the one primary on a surface) is accepted; Install stays the primary on every library card; Disconnect is `ghost`.
 
-- **Dimension 7.1** — every action button under the dashboard renders `default`, `ghost`, `destructive`, or `link` as the confirmed table says for that site; a repository test enumerates the sites tag-aware and fails on any other → Test `no dashboard action button uses a variant outside the rule`
+- **Dimension 7.1** — DONE — every action button under the dashboard renders `default`, `ghost`, `destructive`, or `link` as the confirmed table says for that site; a repository test enumerates the sites tag-aware and fails on any other → Test `no dashboard action button uses a variant outside the rule`
 
 ## Interfaces
 

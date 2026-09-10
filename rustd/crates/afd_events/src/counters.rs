@@ -16,8 +16,8 @@
 //! have standing" — rather than with zeros, which it would read as a fleet
 //! that has done nothing.
 
+use afd_db::Db;
 use afd_wire::tail::FleetCounters;
-use sqlx::PgConnection;
 use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
@@ -31,12 +31,15 @@ const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
 
 /// The fleet's counters as the database has them.
 ///
+/// Takes the pool rather than a connection: every publisher reads right
+/// before its publish, after the connection its own write held has gone
+/// back, so the read costs one acquire and holds nothing across the publish.
+///
 /// # Errors
-/// Reports a statement that would not run, or a row this build cannot read.
-pub async fn fleet_counters(
-    connection: &mut PgConnection,
-    fleet_id: &str,
-) -> Result<FleetCounters> {
+/// Reports a pool that would not give a connection, a statement that would
+/// not run, or a row this build cannot read.
+pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounters> {
+    let mut connection = database.acquire().await?;
     let row = sqlx::query(SELECT_FLEET_COUNTERS)
         .bind(fleet_id)
         .fetch_one(&mut *connection)
@@ -50,11 +53,8 @@ pub async fn fleet_counters(
 
 /// The fleet's counters for a frame about to be published, or `None` with the
 /// failure logged — never zeros.
-pub async fn fleet_counters_best_effort(
-    connection: &mut PgConnection,
-    fleet_id: &str,
-) -> Option<FleetCounters> {
-    match fleet_counters(connection, fleet_id).await {
+pub async fn fleet_counters_best_effort(database: &Db, fleet_id: &str) -> Option<FleetCounters> {
+    match fleet_counters(database, fleet_id).await {
         Ok(counters) => Some(counters),
         Err(error) => {
             let code = error.code().as_str();

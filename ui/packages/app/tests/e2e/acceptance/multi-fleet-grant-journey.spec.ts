@@ -34,7 +34,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
 import type { ApprovalGate } from "@/lib/api/approvals";
-import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity";
+import { deriveFleetIdentity } from "@/lib/fleets/identity";
 import { fixtureSubject, signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
