@@ -126,7 +126,12 @@ function PageSizeControl({ pageSize, pageSizeOptions, onPageSizeChange, isLoadin
 
 function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPageChange, isLoading }: Pick<PagePaginationProps, "page" | "total" | "totalLabel" | "onPageChange" | "isLoading"> & { totalPages: number | null; canAdvance: boolean }) {
   return (
-    <div className="flex items-center gap-1">
+    // -mr-3 is optical alignment, not layout: Prev and Next are ghost buttons,
+    // so their 12px padding paints nothing, and inside the footer's own px-3
+    // the "›" glyph ended 26px from the edge while the row actions above it
+    // and "Rows per page" beside it sit at 13. Pulling the cluster back by the
+    // button's padding puts the glyph on the same column as the rest.
+    <div className="-mr-3 flex items-center gap-1">
       <div className="mr-2 flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
         <span aria-live="polite" aria-atomic="true">
           {totalPages != null
