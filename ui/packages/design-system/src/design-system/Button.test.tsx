@@ -103,6 +103,15 @@ describe("Button", () => {
     expect(cls).toContain("w-9");
   });
 
+  it("eyebrow size sits on the 16px eyebrow line with no border of its own", () => {
+    render(<Button size="eyebrow">Platform</Button>);
+    const className = screen.getByRole("button").className;
+    expect(className).toContain("h-4");
+    expect(className).toContain("border-0");
+    expect(className).toContain("px-2");
+    expect(className).not.toContain("h-8");
+  });
+
   it("icon-sm size is 24px square (inline affordance, e.g. CopyButton)", () => {
     render(<Button size="icon-sm" aria-label="copy">⧉</Button>);
     const cls = screen.getByRole("button").className;

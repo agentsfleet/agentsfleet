@@ -56,6 +56,8 @@
 | `ui/packages/app/lib/wall/tile-counters.ts` | DELETE | The client-side delta this design supersedes. `absorb` and `countersStale` go with it — but only after whatever trims `#eventsByFleet` is re-homed, since `absorb` is its only caller today (`useWorkspaceStream.ts:93`). |
 | `ui/packages/app/tests/e2e/acceptance/wall-live-counters.spec.ts` | EDIT | The cross-context no-refresh guard. It fails deliberately until this spec lands; do not weaken it. |
 | `docs/v2/pending/M195_001_P1_DOCS_OBS_UI_DASHBOARD_LOAD_LATENCY_INVESTIGATION.md` | EDIT | Declared out-of-band, on the user's call: `d05c0ff81` committed the same two conflict markers into that spec, and its sequencing claim about this workstream is one of the two sides. Resolved to the side its own Files Changed table supports; no other line of that spec is touched. |
+| `ui/packages/design-system/src/design-system/{NavItem,Button,DataTableView,Pagination,SectionHeader}.tsx` + their `*.test.tsx` | EDIT | Folded in on the user's call after a measured design review of every left-nav page and every rendered table (§4). The defects live in the primitives, so the fix is spelled once and holds on all eleven pages by construction. |
+| `ui/packages/app/components/layout/SidebarNavigation.tsx` · `ui/packages/app/tests/app-shell-navigation.test.ts` | EDIT | The Platform group was the one group that broke the nav's rhythm — a 32px form control where the other three render a 16px eyebrow, plus a 2px item gap the others lack (§4.2). |
 
 ## Applicable Rules
 
@@ -102,6 +104,16 @@
 
 - **Dimension 3.1** — `tile-counters.ts`, `absorb` and `countersStale` are deleted, and the event-map trimming `absorb` carried is re-homed BEFORE the deletion → Test `the_store_still_bounds_its_event_map_without_absorb`
 
+### §4 — The wall's chrome sits on the grid (folded in on the user's call)
+
+Measured in the operator's own browser session against `app-dev` before any edit — every left-nav destination and every rendered table. The numbers are the rendered geometry, not the class names.
+
+- **Dimension 4.1** — a nav item is a symmetric pill: rounded on every corner, no accent rail. The rail sat 12px inside every consumer's inset and read as a clipped corner, and its two pixels pushed the icon column (22) off the eyebrow column (20). The shell's own regression pin, `renders the active navigation item as a filled pill, never a rail`, rides beside it → Test `is a symmetric pill: rounded on every corner, with no accent rail`
+- **Dimension 4.2** — the four nav groups share one rhythm: a 16px eyebrow with its text on one column, no gap between items, 48px between groups. Before, Platform's eyebrow was a 32px `Button` with its text 5px right of the others and a 2px item gap, so the gaps ran 47.6 / 64 / 47.6 → Test `renders the Platform toggle at eyebrow scale, on the eyebrow column`
+- **Dimension 4.3** — a paginated table lets the page scroll rather than opening a second scroll region, so header, body and footer share a 13px inset on both edges. Before, the `max-h-96` default put a 6px scrollbar inside the cell padding, so on exactly the tables with more rows than the box the header text and row actions sat at 19 while the footer stayed at 13 → Test `is unbounded by default, so a paginated table lets the page scroll`
+- **Dimension 4.4** — the footer's trailing page controls sit on the body's right column. Prev and Next are ghost buttons whose 12px padding paints nothing, so the "›" glyph ended 26px from the edge against 13 for everything else → Test `pulls the trailing page controls back onto the body's right column`
+- **Dimension 4.5** — cell padding and the section-label row sit on the 4px scale: `py-2` in place of `py-1.5`, and `SectionHeader` centres its label against its action so the gap to the section body is 28 rather than 29 → Test `centers the label on its action's middle rather than its baseline`
+
 ## Interfaces
 
 ```
@@ -145,6 +157,11 @@ No new product or operator signal. The change corrects a number already rendered
 | 3.1 | unit | `the_store_still_bounds_its_event_map_without_absorb` | Push events for 200 fleets with `absorb` deleted → `#eventsByFleet` stays bounded |
 | 1.5 | integration | `a_dropped_frame_is_corrected_by_the_next_snapshot` | Drop one frame, deliver the next → the tile matches the database without a reload |
 | 1.6 | integration | `a_capped_stream_degrades_to_a_snapshot_tile` | Open `SSE_MAX_STREAMS + 1` streams → 503 `UZ-API-002` and the extra tile renders as `snapshot`, never as a stale `live` |
+| 4.1 | unit | `is a symmetric pill: rounded on every corner, with no accent rail` | Render an active `NavItem` → class carries `rounded-md` and `data-[active=true]:bg-pulse/10`, never `border-l-2` or `border-pulse` |
+| 4.2 | unit | `renders the Platform toggle at eyebrow scale, on the eyebrow column` | Render the shell for a platform-scoped operator → the Platform button carries `h-4` and `px-2`, never `h-8` |
+| 4.3 | unit | `is unbounded by default, so a paginated table lets the page scroll` | Render a default `DataTable` → the viewport carries no `max-h-*` class; `viewportClassName="max-h-72"` still bounds it |
+| 4.4 | unit | `pulls the trailing page controls back onto the body's right column` | Render a paged table → the cluster holding Next carries `-mr-3` |
+| 4.5 | unit | `centers the label on its action's middle rather than its baseline` | Render a `SectionHeader` with an action → `items-center`, never `items-baseline` |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -155,6 +172,7 @@ No new product or operator signal. The change corrects a number already rendered
 | R3 | A counter-less fleet still lists (§2) | `make test-integration-rustd` | `a_fleet_with_no_counter_row_still_lists` passes | P0 | |
 | R4 | The delta machinery is gone (§3) | `git grep -n "tile-counters\|countersStale\|absorb(" -- ui/packages/app` | 0 matches | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | The nav and every table measure symmetric (§4) | `cd ui/packages/design-system && bun run test -- NavItem DataTable SectionHeader Pagination Button` | the §4 pins pass; a re-measure on `app-dev` after deploy reads 12/12 on the nav and 13/13 on each table | P1 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S3 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
