@@ -50,6 +50,7 @@ impl Inbox {
             status: Cow::Borrowed(answer.status),
             resolved_by: Cow::Borrowed(answer.resolved_by),
             pending_approvals: answer.pending_approvals,
+            counters: None,
         };
         FleetStreams::new(self.queue.clone())
             .publish_frame(answer.fleet_id, &frame)

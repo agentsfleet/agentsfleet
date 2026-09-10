@@ -159,6 +159,7 @@ impl Gates {
             gate_id: Cow::Borrowed(gate_id.as_str()),
             event_id: Cow::Borrowed(request.event_id),
             pending_approvals,
+            counters: None,
         };
         FleetStreams::new(self.queue().clone())
             .publish_frame(request.fleet_id.as_str(), &frame)
