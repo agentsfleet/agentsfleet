@@ -22,8 +22,8 @@ from the `deploy-dev` workflow run that shipped the build you are looking at.
 1. Confirm the `deploy-dev / acceptance` run for `<BUILD_SHA>` is green. A red
    automated run is not something a person signs off.
 2. Sign in to the development dashboard as a regular workspace member. The
-   operator identity is used in step 6 only.
-3. Have a second browser tab ready for step 4.
+   operator identity is used in step 7 only.
+3. Have a second browser tab ready for step 3, and a third for step 4.
 
 ## The walk
 
@@ -35,16 +35,17 @@ step as a defect in the verdict file. Do not continue past a failed step.
 | 1 | Open **Fleets → Install fleet**. Pick any library card and press **Install**. | The install states advance to ready with no confirm dialog and no name field. **Open fleet →** appears. |
 | 2 | Press **Open fleet →**. | The fleet's page opens on **Chat** with the status **ACTIVE** and the chat marked **Live**. |
 | 3 | In a second tab, open **Fleets**. | A tile for the fleet you installed, reading **Waiting for the next event.** with a live dot. |
-| 4 | Back in the first tab, type a short message into **Message this fleet…** and press **Send**. | Your message appears at once as an operator turn. Within two minutes an assistant turn appears below it with text in it. The metrics strip shows tokens and a duration. |
-| 5 | Switch to the second tab without reloading it. | The tile for this fleet no longer reads **Waiting for the next event.** and shows the activity. Every other tile is unchanged. |
-| 6 | Sign in as the operator identity. Open **Admin → Runners** and press the card of the runner that took the work. | The **Runner leases** table has a row naming your fleet, and the row shows a finished lease rather than a failure sentence. |
-| 7 | Return to the fleet and press **Kill**. | The fleet page reads killed, and the fleet's row on **Fleets** reads failed. |
+| 4 | In a third tab, open **Approvals**. Find the row naming the fleet you installed, kind `INTEGRATION_GRANT`, status **Pending**, and press ✓. | The row moves to **Approved** and the DECIDED column names you. Every library card declares a mintable credential, so an install always raises this card; until it is answered the fleet cannot mint and step 5 will not complete. |
+| 5 | Back in the first tab, type a short message into **Message this fleet…** and press **Send**. | Your message appears at once as an operator turn. Within two minutes an assistant turn appears below it with text in it. The metrics strip shows tokens and a duration. |
+| 6 | Switch to the second tab without reloading it. | The tile for this fleet no longer reads **Waiting for the next event.** and shows the activity. Every other tile is unchanged. |
+| 7 | Sign in as the operator identity. Open **Admin → Runners** and press the card of the runner that took the work. | The **Runner leases** table has a row naming your fleet, and the row shows a finished lease rather than a failure sentence. |
+| 8 | Return to the fleet and press **Kill**. | The fleet page reads killed, and the fleet's row on **Fleets** reads **killed** too. |
 
 ## Record the verdict
 
 Create `playbooks/operations/acceptance/verdicts/<BUILD_SHA>.md` from the
-template below and fill every field. Attach the screenshots of steps 4, 5 and
-6 to the milestone's PR.
+template below and fill every field. Attach the screenshots of steps 5, 6 and
+7 to the milestone's PR.
 
 ```markdown
 # Acceptance visual verdict
