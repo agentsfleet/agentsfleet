@@ -6,19 +6,15 @@
 **Milestone:** M195
 **Workstream:** 002
 **Date:** Sep 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the wall reports fewer events than a fleet has processed until someone reloads. Nothing is lost or double-charged; what is wrong is the number an operator reads while deciding whether a fleet is stuck.
 **Categories:** API, UI
 **Batch:** B1 — one workstream; the frame that carries the snapshot and the client that renders it are one change.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m195-wall-tile-counters`
+**Baseline revision:** `a4e0ef2bda8a62742a400be18f58588056786f8c`
+**Test Baseline:** pending — measured before the Pull Request (declared `verify.unit` and `verify.integration` lanes)
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-<<<<<<< Updated upstream
-**Depends on:** M194_001 — its §4 acceptance walk recorded this defect at step 6, and its Pull Request carries the partial work this spec restores. Sequenced BEFORE M195_001: that spec measures the wall's requests, and measurements taken over this data path are stale the moment it is rewritten.
-=======
 **Depends on:** M194_001 — its §4 acceptance walk recorded this defect at step 6, and its Pull Request carries the partial work this spec restores. Runs in PARALLEL with M195_001 — the two declare no file in common — except that its §2 request inventory is taken after this spec lands, since carrying the counters on the frame removes the wall's separate counter fetch.
->>>>>>> Stashed changes
 **Provenance:** agent-generated from M194_001's acceptance walk (step 6, recorded defect) and a code read of the counter triggers, the lease park and the frame publishers. One premise carried from an earlier session note did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
 
@@ -174,7 +170,7 @@ No new product or operator signal. The change corrects a number already rendered
 - **`Last-Event-ID` / `id:` lines.** The transport is Redis PUB/SUB with no replay, so an id line would be a decorative guarantee.
 - **Cycling reconnect backoff.** Measured at ~2.76× traffic per open tab against a capacity-gated route and rejected; the saturating cap stays, jitter only.
 - **Raising `SSE_MAX_STREAMS`.** The 64-per-instance cap is a capacity decision, not a defect of this data path.
-- **The dashboard load-latency attribution.** That is M195_001, sequenced after this spec.
+- **The dashboard load-latency attribution.** That is M195_001, which runs in parallel; only its §2 request inventory waits on this spec.
 
 ## Product Clarity (authoring record)
 
@@ -199,8 +195,4 @@ The patch alternative is a client-side delta that accumulates counter changes pe
 - **What the carried work is, and what is wrong with it.** `lib/wall/tile-counters.ts`, `absorb` and `countersStale` are the client-side delta this spec supersedes — to be DELETED, not finished. `absorb` is today the only thing trimming `#eventsByFleet`, so whatever bounds that map must be re-homed before the deletion. `wall-live-counters.spec.ts` fails on purpose until the replacement lands. `FleetTile.tsx`, `FleetWall.tsx`, `WallLiveBadge.tsx` and `useWorkspaceStream.ts` carry the half-built client.
 - **Correction to an earlier session note, recorded because a fix aimed where it pointed would have missed.** The note said a gate park publishes no completion "while its charge has already landed". The park leaves NO charge: `admit/mod.rs:56` documents `Admission::Await` as "durably identical to `Admission::Retry` — no row, delivery left leasable", so `budget_used_nanos` is untouched and the delivery is re-leased when the human answers. What drifts is `events_processed`, which `schema/890` bumps `AFTER INSERT ON core.fleet_events` — at receive. The client hears counters only on `event_complete`, and the park returns `Step::Stop` at `lease/pull.rs:209` without reaching `publish_completion` at `:329`.
 - **Measured during the split, so it is not re-derived.** The wall's page read: `LEFT JOIN core.fleet_activity_counters` plans as a hash join whose build side sequentially scans every counter row, to answer for the fifty fleets on one page. At 50k fleets and 14k counter rows that is 1.69 ms against 0.21 ms for a per-row primary-key lookup, and the gap widens with the counters table because the scan is O(counters) where the lookups are O(page). `LEFT JOIN LATERAL` does not help — the planner flattens it back into the same join. `SELECT_FLEET_DETAIL` needs no change: one driving row already plans as a nested loop over both primary keys, 5 buffers. An INNER JOIN is wrong everywhere — 126 of 174 fleets on the development database have no counter row at all, so it renders an empty wall. The carried patch already contains this change.
-<<<<<<< Updated upstream
-- **Sequencing against M195_001.** This spec runs FIRST. M195_001 §2 measures every request the wall makes; measurements taken over this data path are stale the moment it is rewritten, and both specs touch `FleetWall.tsx` and `useWorkspaceStream.ts`.
-=======
 - **Sequencing against M195_001 — checked, not assumed.** The two specs' Files Changed tables share NO path: M195_001 measures through `ui/packages/app/lib/acceptance/workspace-fetch-audit.ts` rather than by editing the wall. They run in parallel. The single coupling is M195_001 §2's request inventory, which this spec changes by removing the wall's separate counter fetch — so that inventory is taken after this lands, or re-taken.
->>>>>>> Stashed changes
