@@ -6,7 +6,7 @@
 **Milestone:** M195
 **Workstream:** 001
 **Date:** Sep 10, 2026
-**Status:** IN_PROGRESS
+**Status:** IN_PROGRESS — PARKED after the measurement landed; §2 and §5.3 remain open
 **Priority:** P1 — nothing here changes behaviour; it produces the measurements a behaviour change would have to be argued from. The fixes M194_001 is already making are the P0s.
 **Categories:** DOCS, OBS, UI
 **Batch:** B1 — one workstream; the measurement lane and the page it writes into are one change.
@@ -98,9 +98,9 @@ Finding 8 is a question, so the deliverable is an answer a person can read: an A
 
 Finding 9 asks whether the Fleets dashboard is a one-time load. The answer is a counted inventory, not a reading: one row per request, what issues it, and whether it repeats. The premise the finding arrived with — one connection per live fleet — is what the inventory tests rather than assumes.
 
-- **Dimension 2.1** — the page carries the wall's request inventory: one row per request a load issues, with its route template, its issuer (server render, route handler, or `EventSource`), and whether it repeats; every count read from the server-side audit → Test `test_fleets_wall_request_inventory_is_measured`
-- **Dimension 2.2** — the audited path set covers every read the wall's load issues, so a read added later is counted rather than invisible; an unaudited read on the load path fails the pin → Test `the audited path set covers every wall read`
-- **Dimension 2.3** — a settled wall issues no repeating read: across an idle window the audited total does not move, and the only open connection is the single workspace stream → Test `test_the_settled_wall_issues_no_repeating_read`
+- **Dimension 2.1** — the page carries the wall's request inventory: one row per request a load issues, with its route template, its issuer (server render, route handler, or `EventSource`), and whether it repeats; every count read from the server-side audit → Test `test_fleets_wall_request_inventory_is_measured` — **PARKED** (operator-acked; the wall's counter data path is being rewritten and any inventory taken now is stale on arrival)
+- **Dimension 2.2** — the audited path set covers every read the wall's load issues, so a read added later is counted rather than invisible; an unaudited read on the load path fails the pin → Test `the audited path set covers every wall read` — **PARKED** (operator-acked; the wall's counter data path is being rewritten and any inventory taken now is stale on arrival)
+- **Dimension 2.3** — a settled wall issues no repeating read: across an idle window the audited total does not move, and the only open connection is the single workspace stream → Test `test_the_settled_wall_issues_no_repeating_read` — **PARKED** (operator-acked; the wall's counter data path is being rewritten and any inventory taken now is stale on arrival)
 
 ### §3 — One status, one colour, or a named disagreement
 
@@ -122,7 +122,7 @@ Finding 14 reads as a page that never returns and asks whether Postgres connecti
 
 - **Dimension 5.1** — measured: the Runners navigation returns, and its wait is attributed across the scope check, the credential resolve, each list attempt, and each retry sleep, with the observed attempt count recorded per navigation → Test `test_runners_navigation_returns_and_its_wait_is_attributed` — **DONE**. **Implemented** after the operator authorised transport instrumentation. One stage needed no instrumentation and is settled by reading: `hasScope` resolves from session claims (`lib/auth/platform.ts:32`), so the scope check costs no upstream call and is eliminated as the wait rather than left open.
 - **Dimension 5.2** — the worst case is arithmetic rather than anecdote: computed from the retry defaults — the attempt ceiling, the per-attempt timeout, and the ladder deadline — so changing any one of them moves the assertion. **Corrected during EXECUTE:** the bound is the ladder deadline itself, not the deadline plus one attempt timeout. Two clamps make it a true total — `retry.ts` `#withinDeadline` refuses a sleep that would end past the deadline, and `client.ts` `attemptTimeoutMs` gives a late attempt only what remains of it — so no attempt outlives the deadline by its own ceiling → Test `the render wait is bounded by the declared retry ladder` — **DONE**
-- **Dimension 5.3** — the page names which candidate cause the measurement implicates and which stay unresolved: pool acquisition, the upstream query, a cold instance, or the auth hop. Pool acquisition is claimed only where the datastore layer's own classification says pool rather than datastore; everything else is recorded as unresolved with the measurement that would settle it → Test `the Runners verdict is accepted`
+- **Dimension 5.3** — the page names which candidate cause the measurement implicates and which stay unresolved: pool acquisition, the upstream query, a cold instance, or the auth hop. Pool acquisition is claimed only where the datastore layer's own classification says pool rather than datastore; everything else is recorded as unresolved with the measurement that would settle it → Test `the Runners verdict is accepted` — **IN_PROGRESS** (the verdict table is written into the page's §The Runners wait; it needs the operator's sign-off, which is the whole content of this manual test)
 
 ## Interfaces
 
