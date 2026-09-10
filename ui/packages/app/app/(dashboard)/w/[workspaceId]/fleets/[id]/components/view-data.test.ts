@@ -92,3 +92,36 @@ describe("startViewData", () => {
     await expect(data.thread).resolves.toBeNull();
   });
 });
+
+// The overlap the chat-load sequence diagram claims: `page.tsx` calls
+// `startViewData` BEFORE the `Promise.all` that awaits the fleet detail and
+// billing reads, so a slow detail read never serialises the transcript behind
+// itself. The tests above prove the read is ISSUED early; this one proves it
+// can also SETTLE early, which is the half a reordering would break.
+const THREAD_SETTLED_FIRST = "thread";
+
+describe("chat load overlap", () => {
+  it("the thread read is in flight before the fleet read is awaited", async () => {
+    resetMocks();
+    let releaseThread: (page: unknown) => void = () => {};
+    listFleetMessagesMock.mockReturnValue(
+      new Promise((resolve) => {
+        releaseThread = resolve;
+      }),
+    );
+
+    // Stands in for a fleet detail read that is still outstanding. It never
+    // settles, so anything that resolves ahead of it did not wait on it.
+    const heldOpenFleetRead = new Promise<never>(() => {});
+    const data = startViewData(FLEET_VIEW.chat, ARGS) as ChatViewData;
+
+    expect(listFleetMessagesMock).toHaveBeenCalledTimes(1);
+
+    releaseThread({ items: [], next_cursor: null });
+    const settledFirst = await Promise.race([
+      data.thread.then(() => THREAD_SETTLED_FIRST),
+      heldOpenFleetRead,
+    ]);
+    expect(settledFirst).toBe(THREAD_SETTLED_FIRST);
+  });
+});
