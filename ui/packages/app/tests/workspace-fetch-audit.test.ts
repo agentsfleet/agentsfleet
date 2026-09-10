@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AUDITED_PATH,
+  MAX_TIMING_SAMPLES_PER_PATH,
   beginWorkspaceFetchOutcome,
   readWorkspaceFetchTimings,
   FLEET_RUNNERS_PATH,
@@ -143,6 +144,26 @@ describe("workspace fetch acceptance audit", () => {
     const unaudited = beginWorkspaceFetchOutcome("/v1/something/not/audited");
     unaudited.settle();
     expect(readWorkspaceFetchTimings(), "an unaudited template stays absent").toEqual({});
+  });
+
+  it("stops recording timings at the cap instead of growing without bound", () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+
+    // The counter is module-global and lives for the life of the server
+    // process. A long lane would otherwise push a duration per request forever;
+    // the cap sits far above any declared sample count, so a measurement never
+    // silently loses one it asked for.
+    for (let i = 0; i < MAX_TIMING_SAMPLES_PER_PATH + 5; i += 1) {
+      beginWorkspaceFetchOutcome(FLEET_RUNNERS_PATH).settle();
+    }
+
+    const timing = readWorkspaceFetchTimings()[AUDITED_PATH.fleetRunners];
+    expect(timing?.durationsMs.length, "durations stop at the cap").toBe(
+      MAX_TIMING_SAMPLES_PER_PATH,
+    );
+    expect(timing?.attempts.length, "attempts stay in step with durations").toBe(
+      MAX_TIMING_SAMPLES_PER_PATH,
+    );
   });
 
   it("guards the route while disabled", async () => {

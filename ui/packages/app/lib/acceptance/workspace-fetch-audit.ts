@@ -75,7 +75,7 @@ type GlobalWithAudit = typeof globalThis & {
 
 // A long lane would otherwise grow these arrays without bound. The cap is far
 // above any declared sample count, so a measurement never silently loses one.
-const MAX_TIMING_SAMPLES_PER_PATH = 200;
+export const MAX_TIMING_SAMPLES_PER_PATH = 200;
 /** The handle a caller uses when nothing should be recorded — a non-GET, or a
  * runtime with the audit gate off. Exported so callers say what they mean
  * rather than passing a path they know will not match. */
