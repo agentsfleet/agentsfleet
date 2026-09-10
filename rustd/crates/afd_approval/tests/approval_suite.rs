@@ -37,10 +37,10 @@ mod integration_grant_request;
 mod integration_grants;
 #[path = "integration_inbox.rs"]
 mod integration_inbox;
-#[path = "integration_inbox_decider_name.rs"]
-mod integration_inbox_decider_name;
 #[path = "integration_inbox_continuation.rs"]
 mod integration_inbox_continuation;
+#[path = "integration_inbox_decider_name.rs"]
+mod integration_inbox_decider_name;
 #[path = "integration_inbox_paging.rs"]
 mod integration_inbox_paging;
 #[path = "integration_inbox_tail.rs"]

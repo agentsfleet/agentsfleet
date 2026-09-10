@@ -37,6 +37,18 @@
 /// was shaped. `$7` binds as NULL when there is no cursor, which `::uuid` accepts
 /// and `''` would not.
 ///
+/// # The name falls back to the address, because the deleted code did
+///
+/// `core.users.display_name` is written once, at `user.created`, from the
+/// provider's first and last name alone (`identity_route.rs:138`) — there is no
+/// `user.updated` path. Someone who signed up without a name has NULL there
+/// forever. The browser lookup this replaced fell back full name → username →
+/// email → shortened subject, so capturing `display_name` alone would show a
+/// shortened subject where an address used to read. [`RESOLVE_GATE`] therefore
+/// captures `COALESCE(NULLIF(display_name, ''), email)`: same information, same
+/// tenant, and now behind both authorization axes instead of an admin API call
+/// from a browser.
+///
 /// # `resolved_by_name` is read, never resolved
 ///
 /// The decider's name is a COLUMN, written by [`RESOLVE_GATE`] at the moment
@@ -140,7 +152,7 @@ WITH resolved AS (
   SET status = $1, detail = $2, resolved_by = $3, updated_at = $4,
       active_grant_id = NULL,
       resolved_by_name = COALESCE(
-        (SELECT u.display_name FROM core.users u
+        (SELECT COALESCE(NULLIF(u.display_name, ''), u.email) FROM core.users u
           JOIN core.fleets z ON z.id = core.fleet_approval_gates.fleet_id
           WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id), '')
   WHERE action_id = $5 AND status = $6

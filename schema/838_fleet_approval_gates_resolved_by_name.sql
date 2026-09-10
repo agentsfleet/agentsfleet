@@ -28,15 +28,20 @@
 ALTER TABLE core.fleet_approval_gates
     ADD COLUMN IF NOT EXISTS resolved_by_name TEXT NOT NULL DEFAULT '';
 
--- Rows decided before this slot existed. One pass, matched on the same pair the
--- write path will use from here: the subject, and the tenant that owns the
--- gate's fleet. A decider this deployment has no user row for keeps the DEFAULT
--- and renders as the shortened subject, exactly as it did before the column.
-UPDATE core.fleet_approval_gates g
-   SET resolved_by_name = u.display_name
-  FROM core.fleets z, core.users u
- WHERE z.id = g.fleet_id
-   AND u.oidc_subject = g.resolved_by
-   AND u.tenant_id = z.tenant_id
-   AND u.display_name IS NOT NULL
-   AND g.resolved_by_name = '';
+-- No backfill, and that is not an oversight.
+--
+-- `trg_fleet_approval_gates_append_only` (slot 810, function last replaced in
+-- 833) is BEFORE DELETE OR UPDATE FOR EACH ROW and raises
+-- "terminal row is immutable" on any update to a non-pending row. A backfill can
+-- only ever match non-pending rows -- `resolved_by` is '' until a decision
+-- lands -- so it is refused by construction. Verified against a live database:
+-- updating one approved row raises at fleet_approval_gates_append_only() line 42.
+--
+-- A migration that raises rolls back its whole transaction, so the ALTER above
+-- would not land either; `ledger::record_failure(838)` then makes every
+-- subsequent daemon start fail identically. The append-only trigger IS this
+-- table's audit boundary, so widening it to admit a convenience backfill is a
+-- decision about the boundary, not about this column.
+--
+-- Gates decided before this slot keep `''` and render as the shortened subject,
+-- which is exactly what they rendered before the column existed.

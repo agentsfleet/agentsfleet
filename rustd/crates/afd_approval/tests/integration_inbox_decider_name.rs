@@ -40,7 +40,23 @@ const KNOWN_SUBJECT: &str = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
 const KNOWN_NAME: &str = "Ada Lovelace";
 
 /// A subject with no user row — a person who never signed up here.
+///
+/// Distinct from [`FOREIGN_SUBJECT`] on purpose. `seed_person` upserts
+/// `ON CONFLICT (oidc_subject) DO UPDATE`, the suite shares one database, and
+/// `approval_suite.rs` runs these concurrently — so one subject across both
+/// tests would let the no-row assertion pass through the tenant predicate
+/// instead of through the absence it names.
 const STRANGER_SUBJECT: &str = "user_2StRaNgErNoBoDyKnOwSaBoUtIt";
+
+/// A subject whose only user row belongs to another tenant.
+const FOREIGN_SUBJECT: &str = "user_4FoReIgNtEnAnTsUbJeCtHeRe";
+
+/// Someone who signed up without a name: `display_name` is NULL, and the
+/// address is the most human thing this deployment holds about them.
+const NAMELESS_SUBJECT: &str = "user_5NaMeLeSsBuThAsAnAdDrEsS";
+
+/// What that person's row carries instead of a name.
+const NAMELESS_EMAIL: &str = "nameless@fixture.invalid";
 
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
@@ -110,9 +126,9 @@ async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
 async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
     let lane = Lane::isolated().await;
     let other_tenant = seed_other_tenant(&lane).await;
-    seed_person(&lane, &other_tenant, STRANGER_SUBJECT, KNOWN_NAME).await;
+    seed_person(&lane, &other_tenant, FOREIGN_SUBJECT, KNOWN_NAME).await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    resolve_as(&lane, &action, STRANGER_SUBJECT).await;
+    resolve_as(&lane, &action, FOREIGN_SUBJECT).await;
 
     let page = lane
         .inbox
@@ -175,6 +191,51 @@ async fn the_single_gate_read_names_the_decider_too() {
         .expect("the single-gate read must not fault")
         .expect("the gate this test just resolved");
     assert_eq!(one.resolved_by_name, KNOWN_NAME);
+}
+
+/// Someone with no name still reads as a person, not as an identifier.
+///
+/// `core.users.display_name` is written once at signup from the provider's
+/// first and last name alone, so an account created without one has NULL there
+/// permanently. The browser lookup this replaced fell back to the address, and
+/// dropping that would show a shortened subject where a human string used to be.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_decider_with_no_display_name_reads_as_their_address() {
+    let lane = Lane::isolated().await;
+    seed_nameless_person(&lane, NAMELESS_SUBJECT, NAMELESS_EMAIL).await;
+    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    resolve_as(&lane, &action, NAMELESS_SUBJECT).await;
+
+    let page = lane
+        .inbox
+        .page(&lane.workspace, Filter::default(), None, WHOLE_PAGE)
+        .await
+        .expect("the queue read must not fault");
+    assert_eq!(
+        page.first().expect("the resolved gate").resolved_by_name,
+        NAMELESS_EMAIL,
+        "a nameless account falls back to its address, as the deleted lookup did"
+    );
+}
+
+/// One user row carrying an address and no name at all.
+async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
+    sqlx::query(
+        "INSERT INTO core.users
+           (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4, NULL, $5, $5)
+         ON CONFLICT (oidc_subject) DO UPDATE
+           SET tenant_id = EXCLUDED.tenant_id, display_name = NULL",
+    )
+    .bind(afd_db::test_util::mint_id())
+    .bind(lane.tenant.as_str())
+    .bind(subject)
+    .bind(email)
+    .bind(NOW_MS)
+    .execute(&mut *connection(lane).await)
+    .await
+    .expect("seeding a nameless person");
 }
 
 /// Answers `action` as `subject`, asserting the decision landed.

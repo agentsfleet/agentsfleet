@@ -16,6 +16,8 @@ vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 // opaque string the boundary hands back — and a realistic `eyJ…` fixture
 // trips the secret scanner on entropy, which is the scanner working.
 const TOKEN = "a-bearer-for-this-test";
+/** A second answer, so a cache that outlives a request is visible. */
+const OTHER_TOKEN = "a-different-bearer";
 const SIGN_IN = "/sign-in";
 
 afterEach(() => {
@@ -45,17 +47,24 @@ describe("credential — the dashboard's only bearer", () => {
     expect(await credential()).toBeNull();
   });
 
-  // Rendering one approvals page resolves a bearer four times: the dashboard
-  // layout, the workspace layout, and the page twice. `cache()` collapses those
-  // to one — but only inside a React request scope, which a unit test does not
-  // have, so the CALL COUNT is deliberately not asserted here. What is asserted
-  // is the contract every one of those callers depends on: same request, same
-  // answer, no caller racing another into a different token.
-  it("answers every caller in a request with the same token", async () => {
-    authMock.mockResolvedValue({ getToken: async () => TOKEN });
+  // The invariant the module calls load-bearing: `cache()` is scoped to ONE
+  // request and torn down with it, so a module-level cache would survive
+  // between requests and hand one visitor another visitor's bearer.
+  //
+  // Asserting "three calls agree" cannot catch that — a module-scope cache
+  // agrees too. This asks the opposite question: within ONE module instance,
+  // does a second resolution see the NEW answer? Outside a React request scope
+  // `cache()` is a pass-through, so it must. A module-level `let token` would
+  // return the first token here and fail.
+  it("does not hold a bearer across resolutions in module scope", async () => {
+    const getToken = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce(TOKEN)
+      .mockResolvedValueOnce(OTHER_TOKEN);
+    authMock.mockResolvedValue({ getToken });
     const { credential } = await load();
-    const answers = await Promise.all([credential(), credential(), credential()]);
-    expect(answers).toEqual([TOKEN, TOKEN, TOKEN]);
+    expect(await credential()).toBe(TOKEN);
+    expect(await credential()).toBe(OTHER_TOKEN);
   });
 });
 

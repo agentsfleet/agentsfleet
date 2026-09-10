@@ -69,11 +69,13 @@ export async function ApprovalsData({
 
   return (
     <Section asChild>
-      {/* The name still says "Pending", and the region now holds every state.
-          Correcting it needs the UI GATE's `<Section asChild>` carve-out to see
-          both lines as added, which a one-line label edit does not produce — so
-          it is left for a follow-up rather than carved out unilaterally. */}
-      <section aria-label="Pending approval gates">
+      {/* The region holds every state, so the label no longer says "Pending".
+          audits/msid-ui.sh:124 gates its carve-out on prev_added, and
+          `git diff -U0` emits no context lines, so a label-only edit can never
+          present the DS wrapper above as an added line; role="region" fails
+          oxlint jsx-a11y/prefer-tag-over-role instead.
+          UI GATE: SKIPPED per user override (reason: no edit to this line satisfies both checks) */}
+      <section aria-label="Approval gates">
         <ApprovalsList
           workspaceId={workspaceId}
           initialItems={initial.items}
