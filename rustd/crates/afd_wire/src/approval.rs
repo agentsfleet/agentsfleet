@@ -77,6 +77,13 @@ pub struct ApprovalSummary<'a> {
     pub updated_at: Option<i64>,
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
+    /// That person's display name, empty when this deployment holds no user
+    /// row for the subject.
+    ///
+    /// Sent so a client never has to ask an identity provider who a subject
+    /// is. `resolved_by` stays the identifier of record; this is the label
+    /// beside it, and a client that gets `""` shows the subject itself.
+    pub resolved_by_name: Cow<'a, str>,
     /// The evidence behind the proposal, verbatim.
     //
     // `null` for a row whose stored text will not parse. That cannot happen
@@ -96,7 +103,7 @@ pub struct ApprovalSummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ApprovalsResponse<'a> {
-    /// The gates on this page, oldest first.
+    /// The gates on this page, newest first.
     pub items: Vec<ApprovalSummary<'a>>,
     /// Where the next page resumes, or `null` on the last one.
     pub next_cursor: Option<Cow<'a, str>>,

@@ -89,9 +89,10 @@ pub(crate) struct ResolvePath {
     path = "/v1/workspaces/{workspace_id}/approvals",
     tag = afd_http::openapi::tag::APPROVALS,
     operation_id = "list_workspace_approvals",
-    summary = "List pending approval gates for a workspace",
+    summary = "List approval gates for a workspace",
     description = concat!(
-        "Returns approval gates oldest-first (oldest is most urgent). Each ",
+        "Returns approval gates newest-first, in every state unless `status` ",
+        "narrows them. Each ",
         "row surfaces the fleet's proposed action, gathered evidence, ",
         "blast-radius assessment, and timeout countdown. Filter by fleet, gate ",
         "kind, or status. Cursor pagination over (created_at, id) so ",
@@ -99,7 +100,7 @@ pub(crate) struct ResolvePath {
     ),
     params(
         afd_http::openapi::path::Workspace,
-        ("status" = Option<String>, Query, description = "Defaults to \"pending\". Supply \"approved\", \"denied\", \"timed_out\" to query terminal states."),
+        ("status" = Option<String>, Query, description = "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state."),
         ("fleet_id" = Option<String>, Query),
         ("gate_kind" = Option<String>, Query),
         ("limit" = Option<String>, Query),
@@ -233,6 +234,7 @@ fn summary(gate: &GateRow) -> ApprovalSummary<'_> {
         timeout_at: gate.timeout_at,
         updated_at: gate.updated_at,
         resolved_by: Cow::Borrowed(&gate.resolved_by),
+        resolved_by_name: Cow::Borrowed(&gate.resolved_by_name),
         // `None` on a row that will not parse — see the field's own note on
         // why a corrupt gate is still shown rather than failing the queue.
         evidence: serde_json::from_str::<&RawValue>(&gate.evidence_json).ok(),

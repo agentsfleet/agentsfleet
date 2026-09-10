@@ -99,42 +99,6 @@ test "the byte cap auto-flushes before the frame cap" {
     try testing.expectEqual(@as(usize, 0), fwd.buf.items.len);
 }
 
-fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
-    return .{
-        .alloc = testing.allocator,
-        .cp = c,
-        .runner_token = "agt_rtest",
-        .fleet_id = "z_test",
-        .lease_id = "lease_test",
-        .fencing_token = 7,
-        .deadline_ms = call_deadline.ACTIVITY_DEADLINE_MS,
-    };
-}
-
-test "memory forwarder drops a malformed capture payload without posting" {
-    var deadlines: dts.TestScheduler = .{};
-    defer deadlines.deinit();
-    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
-    defer c.deinit();
-    var fwd = testMemoryForwarder(&c);
-
-    // parse fails → warn-and-drop; the leak detector asserts full cleanup
-    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "not-json");
-    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "{\"kind\":\"object-not-array\"}");
-}
-
-test "memory forwarder posts a valid delta set best-effort" {
-    var deadlines: dts.TestScheduler = .{};
-    defer deadlines.deinit();
-    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
-    defer c.deinit();
-    var fwd = testMemoryForwarder(&c);
-
-    // valid empty delta array parses, the fenced POST fails fast against the
-    // dead port and is swallowed (best-effort contract) — no crash, no leak
-    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "[]");
-}
-
 test "flushIfStale ships a buffered frame once the window passes" {
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();

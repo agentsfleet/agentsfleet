@@ -35,6 +35,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { LeaseTable } from "./LeaseTable";
+import { agentDisplayName } from "@/components/domain/AgentLabel";
 
 afterEach(() => cleanup());
 
@@ -189,7 +190,7 @@ describe("LeaseTable", () => {
     expect(goToPage).toHaveBeenCalledWith(2);
   });
 
-  it("should show the fleet id when the fleet was deleted out from under its leases", () => {
+  it("should name a fleet deleted out from under its leases, keeping the id on hover", () => {
     render(
       <LeaseTable
         initial={{
@@ -199,9 +200,13 @@ describe("LeaseTable", () => {
         }}
         pageSize={25}
       />, { wrapper: TooltipProvider });
-    // The defensive render the cascade failure-mode names: id shown, never a
-    // blank cell and never a fabricated name.
-    expect(screen.getByText("fleet-gone-1")).toBeTruthy();
+    // The defensive render the cascade failure-mode names: never a blank cell
+    // and never a fabricated name. The callsign is derived from the id, so it
+    // is the name the fleet carried while it existed rather than one invented
+    // here, and the id itself is still reachable.
+    const cell = screen.getByText(agentDisplayName("fleet-gone-1"));
+    expect(cell).toBeTruthy();
+    expect(cell.getAttribute("title")).toBe("fleet-gone-1");
   });
 
   it("renders the workspace cell as a shortened link carrying the full id", () => {

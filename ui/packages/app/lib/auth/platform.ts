@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { claims } from "@/lib/auth/credential";
 import { expandScopes } from "@/lib/auth/scopes";
 
 /**
@@ -21,16 +21,11 @@ import { expandScopes } from "@/lib/auth/scopes";
  *
  * Returns an empty set when the auth provider isn't available, the session is
  * anonymous, or the claim is absent (fail-closed) — every caller treats a
- * missing scope as "not permitted".
+ * missing scope as "not permitted". `claims()` owns reaching the provider and
+ * absorbs its failures; this function owns what the claim MEANS.
  */
 export async function readSessionScopes(): Promise<ReadonlySet<string>> {
-  try {
-    const { sessionClaims } = await auth();
-    const raw = (sessionClaims as Record<string, unknown> | null)?.scopes;
-    return parseScopes(raw);
-  } catch {
-    return new Set();
-  }
+  return parseScopes((await claims())?.scopes);
 }
 
 /** True iff the live session token carries `scope`. Fail-closed on any error. */

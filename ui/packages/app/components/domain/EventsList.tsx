@@ -15,6 +15,7 @@ import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
+import { AgentLabel, agentDisplayName } from "./AgentLabel";
 import {
   groupEventRows,
   isZeroMetricOnFailure,
@@ -67,9 +68,18 @@ function createEventColumns(
 ): DataTableColumn<EventRow>[] {
   return [
     {
-      // Leading column: how many consecutive deliveries this row stands for.
-      // Blank for a row that stands only for itself, so the eye catches the
-      // repeats rather than a column of "×1".
+      // Leading column: which fleet, by the name it carries everywhere else.
+      // This printed `01a0…7b2a` — the durable id, correct and unreadable, and
+      // the same class of thing as a raw user subject in the Decided column.
+      key: "fleet",
+      header: "Fleet",
+      sortValue: (row) => agentDisplayName(row.fleet_id),
+      cell: (row) => <AgentLabel fleetId={row.fleet_id} />,
+    },
+    {
+      // How many consecutive identical deliveries this row stands for. Blank
+      // for a row that stands only for itself, so the eye catches the repeats
+      // rather than a column of "×1".
       key: "runs",
       header: "Runs",
       sortValue: (row) => runs.countFor(row) ?? 0,
@@ -91,15 +101,6 @@ function createEventColumns(
         <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
           {row.status}
         </Badge>
-      ),
-    },
-    {
-      key: "fleet",
-      header: "Fleet",
-      hideOnMobile: true,
-      sortValue: (row) => row.fleet_id,
-      cell: (row) => (
-        <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>
       ),
     },
     {
@@ -336,8 +337,4 @@ function EventSummaryCell({ row }: { row: EventRow }) {
 function eventSummaryText(row: EventRow): string {
   if (row.failure_label) return failureSentenceFor(row.failure_label);
   return "No result recorded";
-}
-
-function shortId(id: string): string {
-  return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
 }

@@ -1,7 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import Link from "next/link";
 import { workspacePath } from "@/lib/workspace-routes";
-import { redirect } from "next/navigation";
 import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { SlidersHorizontalIcon } from "lucide-react";
 
@@ -15,9 +14,7 @@ export default async function SettingsDefaultsPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
 
   return (
     <PageLayout>

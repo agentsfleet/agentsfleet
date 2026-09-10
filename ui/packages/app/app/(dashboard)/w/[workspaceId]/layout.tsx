@@ -1,5 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
-import { notFound, redirect } from "next/navigation";
+import { requireCredential } from "@/lib/auth/credential";
+import { notFound } from "next/navigation";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 
 // Ownership guard for the workspace-scoped subtree. The URL `workspaceId` is a
@@ -16,9 +16,7 @@ export default async function WorkspaceLayout({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // Fail OPEN on a transient list-read failure: this guard is a UX affordance,
   // not the security boundary — every backend call under this route re-authorizes

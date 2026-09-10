@@ -52,6 +52,14 @@ pub struct GateRow {
     pub updated_at: Option<i64>,
     /// Who resolved it, empty while pending.
     pub resolved_by: String,
+    /// That person's name, from `core.users`, empty when this database has no
+    /// row for the subject.
+    ///
+    /// Empty is ordinary and not an error: a pending gate has no decider, the
+    /// sweeper is not a person, and a subject this deployment never saw sign up
+    /// has no row. Every one of those renders as the shortened subject, which
+    /// is what the column showed before a name was joined at all.
+    pub resolved_by_name: String,
 }
 
 /// Where a page resumes.
@@ -70,7 +78,13 @@ pub struct Cursor<'a> {
 /// What a queue read is narrowed by.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Filter<'a> {
-    /// Only gates at this status; pending when absent.
+    /// Only gates at this status; every status when absent.
+    ///
+    /// Absent used to mean `pending`, which made the status the one filter here
+    /// that could not be turned off: an inbox wanting all five states had to ask
+    /// five times. `?status=` is a filter, and omitting a filter returns
+    /// everything — the same shape `fleet_id` and `gate_kind` already have in
+    /// this struct and in the predicate they share.
     ///
     /// [`GateStatus`] and not [`Decision`]: a filter names states a row can BE
     /// in, and the writer's vocabulary has three arms because two of the five
@@ -153,6 +167,7 @@ pub(super) fn read_gate(row: &sqlx::postgres::PgRow, context: &'static str) -> R
         timeout_at: row.try_get(14).map_err(&unreadable)?,
         updated_at: row.try_get(15).map_err(&unreadable)?,
         resolved_by: row.try_get(16).map_err(&unreadable)?,
+        resolved_by_name: row.try_get(17).map_err(&unreadable)?,
     })
 }
 

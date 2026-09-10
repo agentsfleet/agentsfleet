@@ -3,8 +3,9 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 import { Alert, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
+import { RefreshButton } from "@/components/domain/RefreshButton";
 import { type RunnerDetail, type RunnerListItem } from "@/lib/api/runners";
 import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE, type RunnerAdminState, type RunnerStateAction } from "@/lib/api/runners-types";
 import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
@@ -29,9 +30,9 @@ import {
   COPY_RUNNER_ID_LABEL,
   OPEN_GRAFANA_LABEL,
   REFRESH_RUNNER_LABEL,
+  RUNNERS_CRUMB_LABEL,
   RUNNER_ACTIONS_LABEL,
   RUNNER_BREADCRUMB_LABEL,
-  RUNNERS_CRUMB_LABEL,
 } from "./runner-copy";
 
 // The FleetHeader shape verbatim: breadcrumb left, actions right, one
@@ -264,9 +265,7 @@ export function RunnerHeader({
           {/* Manual re-read, chosen over polling: the platform admin decides
               when the page is stale. Rides the same router refresh every
               action above already ends on. */}
-          <TooltipButton size="sm" variant="outline" className="aspect-square px-0" aria-label={REFRESH_RUNNER_LABEL} tooltip={REFRESH_RUNNER_LABEL} onClick={() => router.refresh()}>
-            <RefreshCwIcon aria-hidden="true" />
-          </TooltipButton>
+          <RefreshButton onRefresh={() => router.refresh()} label={REFRESH_RUNNER_LABEL} />
         </div>
       </div>
 

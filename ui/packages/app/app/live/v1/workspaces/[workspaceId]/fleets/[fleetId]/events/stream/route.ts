@@ -5,7 +5,7 @@
 //
 // See docs/AUTH.md "UI · SSE stream" for the full sequence.
 
-import { auth } from "@clerk/nextjs/server";
+import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
 
 export const runtime = "nodejs";
@@ -18,14 +18,7 @@ type Params = {
 export async function GET(req: Request, { params }: Params) {
   const { workspaceId, fleetId } = await params;
 
-  const { getToken } = await auth();
-  // Post-Stage-1: the customized default session token
-  // now carries `aud=https://api.agentsfleet.net` + `metadata.tenant_id` +
-  // `metadata.role`, so bare `getToken()` satisfies agentsfleetd's OIDC
-  // verifier without the `api` JWT template. The legacy api-template
-  // path survives only in `app/cli-auth/[session_id]/page.tsx` (CLI
-  // carve-out — see that file for the rationale).
-  const token = await getToken();
+  const token = await credential();
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
       status: 401,

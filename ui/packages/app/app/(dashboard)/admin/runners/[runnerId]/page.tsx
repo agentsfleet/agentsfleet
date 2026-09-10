@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { Alert } from "@agentsfleet/design-system";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
@@ -68,9 +68,7 @@ export default async function RunnerDetailPage({
 
   const { runnerId } = await params;
   const query: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   const view = resolveRunnerView(typeof query.view === "string" ? query.view : undefined);
   const pageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);

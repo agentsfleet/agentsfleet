@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
 import { Badge } from "@agentsfleet/design-system";
 import { GitPullRequestIcon } from "lucide-react";
-import { readTools, ToolCalls } from "./FleetToolCalls";
+import { readTools } from "./FleetToolCalls";
 import {
   FleetActivityRow,
   FleetGroupRow,
@@ -13,6 +13,13 @@ import {
   useFleetName,
 } from "./FleetMessageRow";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
+import { FleetReply } from "./FleetReplyBody";
+import {
+  STATUS_AGENT_ERROR,
+  STATUS_FAILED,
+  STATUS_IN_FLIGHT,
+  STATUS_OPTIMISTIC,
+} from "./fleetMessageStatus";
 import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 import {
   readActor,
@@ -32,17 +39,8 @@ import {
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
-const STATUS_OPTIMISTIC = "optimistic";
-const STATUS_FAILED = "failed";
-const STATUS_AGENT_ERROR = "fleet_error";
-const STATUS_IN_FLIGHT = "received";
 const SENDING_LABEL = "sending";
 const FAILED_LABEL = "not sent";
-const STREAM_CURSOR = "▍";
-const WORKING_LABEL = "Working";
-// Staggered so the three dots read as one travelling wave rather than three
-// lights blinking in unison.
-const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
 const SOURCE_LINK_FALLBACK = "View source";
 
 /**
@@ -234,78 +232,6 @@ function activityHeadline(headline: string, reference: string | null): string {
   }
   if (suffix.length === 0 && prefix.endsWith("·")) return prefix.slice(0, -1).trimEnd();
   return `${prefix}${suffix.length > 0 ? ` ${suffix}` : ""}`.trim();
-}
-
-// A trigger and its fleet answer are separate rows so a reply never appears
-// beneath the operator or integration identity that woke the fleet.
-function FleetReply({
-  message,
-  fleetName,
-  tools,
-  status,
-}: {
-  message: MessageState;
-  fleetName: string;
-  tools: ReturnType<typeof readTools>;
-  status: string;
-}) {
-  const reply = readReply(message);
-  const outcome = messageOutcome(message);
-  const errored = status === STATUS_AGENT_ERROR;
-  const streaming = status === STATUS_IN_FLIGHT;
-  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
-  // A turn that has started but said nothing yet gets motion, not a sentence.
-  // "Still working." is true and completely inert — it reads the same at one
-  // second and at five minutes, so the operator cannot tell the fleet is alive.
-  const awaitingFirstWord = streaming && reply.length === 0;
-  const body = reply.length > 0 ? reply : outcome;
-  return (
-    <FleetMessageRow
-      sender={fleetName || "Fleet"}
-      tone={ROW_TONE.FLEET}
-      messageRole="assistant"
-      failed={errored}
-    >
-      <ToolCalls tools={tools} />
-      {awaitingFirstWord ? (
-        <WorkingIndicator />
-      ) : (
-        <>
-          <span
-            className={errored ? "text-label font-medium leading-label text-foreground" : undefined}
-          >
-            {body}
-          </span>
-          {streaming ? (
-            <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
-              {STREAM_CURSOR}
-            </span>
-          ) : null}
-        </>
-      )}
-    </FleetMessageRow>
-  );
-}
-
-// Three dots, staggered, under one live region so a screen reader is told
-// once that the fleet is working rather than on every animation frame.
-function WorkingIndicator() {
-  return (
-    <output
-      className="inline-flex items-baseline gap-xs"
-      aria-label={WORKING_LABEL}
-      data-testid="fleet-working"
-    >
-      {WORKING_DOT_DELAYS.map((delay) => (
-        <span
-          key={delay}
-          aria-hidden="true"
-          className="inline-block size-1 rounded-full bg-pulse motion-safe:animate-pulse"
-          style={{ animationDelay: delay }}
-        />
-      ))}
-    </output>
-  );
 }
 
 function Annotation({ optimistic, failed }: { optimistic: boolean; failed: boolean }) {

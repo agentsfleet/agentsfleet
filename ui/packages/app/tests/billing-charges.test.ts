@@ -66,7 +66,7 @@ describe("describeCharge", () => {
   });
 
   it("describes a run with explicit input and output token counts", () => {
-    expect(describeCharge(charge())).toBe("Run · 820 input tokens · 1,040 output tokens");
+    expect(describeCharge(charge())).toBe("Run · 1,860 tokens · 820 in · 1,040 out");
   });
 
   it("explains when a run recorded no token usage", () => {

@@ -119,7 +119,8 @@ pub const ActivityForwarder = struct {
 /// the daemon (not the child) holds the `agt_r` token, so capture rides the
 /// trusted plane. The frame is a JSON array of deltas; the daemon wraps it with
 /// the held lease's `lease_id` + `fencing_token` so the write is fenced. A blip
-/// is logged and swallowed — the next capture re-sends the full set.
+/// is logged and swallowed — the next capture re-sends the full set. An EMPTY
+/// set is not sent at all: it would upsert nothing.
 pub const MemoryForwarder = struct {
     alloc: std.mem.Allocator,
     cp: *client_mod,
@@ -136,6 +137,11 @@ pub const MemoryForwarder = struct {
             return;
         };
         defer parsed.deinit();
+        // A fleet whose `tools` omits `memory_store` never writes to the in-run
+        // store, so every checkpoint and every run end captures an empty set.
+        // Upserting zero deltas cannot change a row, so the fenced POST is pure
+        // cost — one round trip per checkpoint on every run that never remembers.
+        if (parsed.value.len == 0) return;
         const req = protocol.MemoryPushRequest{
             .lease_id = self.lease_id,
             .fencing_token = self.fencing_token,
@@ -148,4 +154,5 @@ pub const MemoryForwarder = struct {
 
 test {
     _ = @import("forwarders_test.zig");
+    _ = @import("forwarders_memory_test.zig");
 }

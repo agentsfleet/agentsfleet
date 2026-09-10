@@ -51,8 +51,25 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
     let item = format!("{collection}/{}", fixture.gate);
     assert_approval_reads(&router, &fixture, &collection, &item).await;
-    assert_approval_resolution(&router, &fixture.token, &item, &fixture.gate).await;
+    assert_approval_resolution(&router, &fixture.token, &item, &fixture.gate, &collection).await;
     fixture.cleanup().await;
+}
+
+/// The address the fixture seeds on its `core.users` row.
+///
+/// The SQL below cannot take a constant — the statement is a `&str` whose other
+/// braces rule out `format!`, and every `$n` slot is spoken for — so the pair is
+/// pinned by [`the_fixture_seeds_the_address_the_assertion_expects`] instead.
+const SEEDED_EMAIL: &str = "approval-live@example.test";
+
+/// The fixture SQL and the assertion name one address. A rename that touches
+/// only one of them fails here rather than in a confusing body assertion.
+#[test]
+fn the_fixture_seeds_the_address_the_assertion_expects() {
+    assert!(
+        include_str!("integration_workspace_approvals.rs").contains(&format!("'{SEEDED_EMAIL}'")),
+        "the fixture SQL no longer seeds {SEEDED_EMAIL}"
+    );
 }
 
 async fn assert_approval_reads(
@@ -80,7 +97,13 @@ async fn assert_approval_reads(
     );
 }
 
-async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &str, gate: &str) {
+async fn assert_approval_resolution(
+    router: &axum::Router,
+    token: &str,
+    item: &str,
+    gate: &str,
+    collection: &str,
+) {
     let resolved = send(
         router,
         Method::POST,
@@ -99,6 +122,23 @@ async fn assert_approval_resolution(router: &axum::Router, token: &str, item: &s
     assert_eq!(
         resolved.get("resolved_by").and_then(Value::as_str),
         Some(SUBJECT)
+    );
+
+    // The name reaches the WIRE, not just the row. `openapi_artifact.rs` pins
+    // that the key exists and is required; nothing pinned that `summary()` maps
+    // the right source field, so `resolved_by_name: &gate.resolved_by` would
+    // compile, serialize, and match the schema. This lane's `core.users` row
+    // carries an address and no display name, so it also exercises the fallback
+    // the deleted browser lookup had.
+    let after = send(router, Method::GET, collection, Some(token), "").await;
+    assert_eq!(after.status(), StatusCode::OK);
+    let after = json_body(after).await;
+    assert_eq!(
+        after
+            .pointer("/items/0/resolved_by_name")
+            .and_then(Value::as_str),
+        Some(SEEDED_EMAIL),
+        "the captured name is the deployment's own user row, not the subject"
     );
 
     // The second answer is a 409 rather than a 200 reporting the first. Both

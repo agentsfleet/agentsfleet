@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import {
   EmptyState,
   PageHeader,
@@ -10,7 +9,7 @@ import {
   TabsTrigger,
 } from "@agentsfleet/design-system";
 import { ReceiptIcon, CreditCardIcon } from "lucide-react";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import {
   getTenantBilling,
   listTenantBillingCharges,
@@ -45,9 +44,7 @@ export default async function BillingSettingsPage({
       query[CURSOR_PAGE_SIZE_PARAM],
     ),
   );
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // Both reads are independent. Failures reach the shared retry boundary so an
   // unavailable ledger never becomes a successful "No charges yet" result.

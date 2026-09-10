@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useOptimistic, useTransition } from "react";
+import { useState, useOptimistic, useTransition, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import { CircleStopIcon, PlayIcon, PowerOffIcon } from "lucide-react";
 import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { Fleet, FleetStatusSettable } from "@/lib/api/fleets";
@@ -16,6 +17,14 @@ interface KillSwitchProps {
 interface ActionConfig {
   target: FleetStatusSettable;
   buttonLabel: string;
+  /**
+   * The glyph beside the label, the way every runner action carries one.
+   *
+   * Stop and Kill are the two most consequential controls in the product and
+   * they read as plain words in a row of plain words; the icon is what makes
+   * them findable before they are read.
+   */
+  icon: ComponentType<{ "aria-hidden"?: boolean }>;
   variant: "outline" | "destructive";
   dialogTitle: string;
   dialogDescription: string;
@@ -89,6 +98,7 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const stopAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.STOPPED,
     buttonLabel: "Stop",
+    icon: CircleStopIcon,
     variant: "outline",
     dialogTitle: "Stop this fleet?",
     dialogDescription: "Halt execution now. You can resume it later from this page or via the CLI.",
@@ -99,6 +109,7 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const resumeAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.ACTIVE,
     buttonLabel: "Resume",
+    icon: PlayIcon,
     variant: "outline",
     dialogTitle: "Resume this fleet?",
     dialogDescription:
@@ -112,6 +123,7 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const killAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.KILLED,
     buttonLabel: "Kill",
+    icon: PowerOffIcon,
     variant: "destructive",
     dialogTitle: "Kill this fleet permanently?",
     dialogDescription:
@@ -142,17 +154,21 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
         </Button>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-sm">
-          {actions.map((action) => (
-            <Button
-              key={action.target}
-              variant={action.variant}
-              size="sm"
-              className="min-h-11 sm:min-h-0"
-              onClick={() => setPendingAction(action)}
-            >
-              {action.buttonLabel}
-            </Button>
-          ))}
+          {actions.map((action) => {
+            const ActionIcon = action.icon;
+            return (
+              <Button
+                key={action.target}
+                variant={action.variant}
+                size="sm"
+                className="min-h-11 sm:min-h-0"
+                onClick={() => setPendingAction(action)}
+              >
+                <ActionIcon aria-hidden={true} />
+                {action.buttonLabel}
+              </Button>
+            );
+          })}
         </div>
       )}
       <ConfirmDialog
