@@ -37,6 +37,20 @@
 /// was shaped. `$7` binds as NULL when there is no cursor, which `::uuid` accepts
 /// and `''` would not.
 ///
+/// # `resolved_by_name` is read, never resolved
+///
+/// The decider's name is a COLUMN, written by [`RESOLVE_GATE`] at the moment
+/// the decision was made (slot 838). This read does not join `core.users` and
+/// must not start: joining it was measured at 157 shared buffers and 0.410ms
+/// against 7 and 0.169ms for the column, because `uq_users_oidc_subject` is
+/// searched once per row and, unlike the fleet-name join beside it, does not
+/// memoize — a page is usually one fleet but rarely one decider.
+///
+/// The dashboard once resolved this in the browser instead, against the
+/// identity provider's admin API: an instance-wide read that reached every
+/// tenant, outside both `requireScope` and `authorizeWorkspace`, for a string
+/// this database already held.
+///
 /// `$1` workspace, `$2` status filter, `$3` fleet filter, `$4` kind filter,
 /// `$5` has-cursor, `$6` cursor instant, `$7` cursor id, `$8` limit.
 pub(crate) const SELECT_GATE_PAGE: &str = "\
@@ -44,7 +58,7 @@ SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
        g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
        g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
        g.status, g.detail, g.created_at, g.timeout_at,
-       g.updated_at, g.resolved_by
+       g.updated_at, g.resolved_by, g.resolved_by_name
 FROM core.fleet_approval_gates g
 JOIN core.fleets z ON z.id = g.fleet_id
 WHERE g.workspace_id = $1::uuid
@@ -59,13 +73,14 @@ LIMIT $8";
 ///
 /// The scope is an AUTHORIZATION and not a filter: a valid gate id belonging to
 /// another workspace resolves to no row, so a cross-tenant lookup leaks nothing
-/// beyond "not found". `$1` gate, `$2` workspace.
+/// beyond "not found". The decider's name joins the same way the page read
+/// explains above. `$1` gate, `$2` workspace.
 pub(crate) const SELECT_GATE_BY_ID: &str = "\
 SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
        g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
        g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
        g.status, g.detail, g.created_at, g.timeout_at,
-       g.updated_at, g.resolved_by
+       g.updated_at, g.resolved_by, g.resolved_by_name
 FROM core.fleet_approval_gates g
 JOIN core.fleets z ON z.id = g.fleet_id
 WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
@@ -123,7 +138,11 @@ pub(crate) const RESOLVE_GATE: &str = "\
 WITH resolved AS (
   UPDATE core.fleet_approval_gates
   SET status = $1, detail = $2, resolved_by = $3, updated_at = $4,
-      active_grant_id = NULL
+      active_grant_id = NULL,
+      resolved_by_name = COALESCE(
+        (SELECT u.display_name FROM core.users u
+          JOIN core.fleets z ON z.id = core.fleet_approval_gates.fleet_id
+          WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id), '')
   WHERE action_id = $5 AND status = $6
     AND ($7::text = '' OR fleet_id::text = $7)
   RETURNING id, action_id, workspace_id, fleet_id, status,

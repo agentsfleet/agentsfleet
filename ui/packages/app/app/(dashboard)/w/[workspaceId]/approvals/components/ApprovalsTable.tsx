@@ -125,7 +125,11 @@ function DecidedCell({ gate }: { gate: ApprovalGate }) {
         <Time value={new Date(gate.updated_at)} format="relative" className={TIME_CELL_CLASS} />
       )}
       {gate.resolved_by ? (
-        <PersonLabel actor={gate.resolved_by} className="text-xs text-muted-foreground" />
+        <PersonLabel
+          actor={gate.resolved_by}
+          name={gate.resolved_by_name}
+          className="text-xs text-muted-foreground"
+        />
       ) : null}
     </div>
   );

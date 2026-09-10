@@ -7,7 +7,7 @@
 //
 // See docs/AUTH.md "UI · SSE stream" for the auth sequence.
 
-import { auth } from "@clerk/nextjs/server";
+import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
 
 export const runtime = "nodejs";
@@ -39,8 +39,7 @@ export async function GET(req: Request, { params }: Params) {
     });
   }
 
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await credential();
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
       status: 401,

@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
@@ -17,9 +17,7 @@ const PLATFORM_NOTICES = new Set([
 export default async function SettingsPage({ searchParams }: {
   searchParams?: Promise<{ notice?: string }>;
 } = {}) {
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  await requireCredential();
   const query = searchParams ? await searchParams : {};
   if (PLATFORM_NOTICES.has(query.notice ?? "")) {
     return (

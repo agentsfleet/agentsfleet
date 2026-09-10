@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
 import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { PROVIDER_MODE } from "@/lib/types";
 import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
 import SecretsList from "./components/SecretsList";
@@ -15,9 +14,7 @@ export default async function SecretsPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   const [secretsResp, providerResult] = await Promise.all([
     listSecretsCached(workspaceId, token),

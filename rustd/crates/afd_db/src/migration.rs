@@ -148,6 +148,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("835_repair_verifications.sql"),
     migration!("836_fleet_approval_gates_grant_card.sql"),
     migration!("837_fleet_approval_gates_inbox_page.sql"),
+    migration!("838_fleet_approval_gates_resolved_by_name.sql"),
     migration!("880_fleet_activity_counters.sql"),
     migration!("890_fleet_activity_counter_triggers.sql"),
 ];

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import { notFound, redirect } from "next/navigation";
 import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -63,9 +63,7 @@ export default async function FleetDetailPage({
   const query: Record<string, string | string[] | undefined> = searchParams
     ? await searchParams
     : {};
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   const view = resolveFleetView(
     typeof query.view === "string" ? query.view : undefined,

@@ -12330,7 +12330,8 @@
           "detail",
           "created_at",
           "timeout_at",
-          "resolved_by"
+          "resolved_by",
+          "resolved_by_name"
         ],
         "properties": {
           "action_id": {
@@ -12384,6 +12385,10 @@
           "resolved_by": {
             "type": "string",
             "description": "Who resolved it, empty while pending."
+          },
+          "resolved_by_name": {
+            "type": "string",
+            "description": "That person's display name, empty when this deployment holds no user\nrow for the subject.\n\nSent so a client never has to ask an identity provider who a subject\nis. `resolved_by` stays the identifier of record; this is the label\nbeside it, and a client that gets `\"\"` shows the subject itself."
           },
           "status": {
             "type": "string",

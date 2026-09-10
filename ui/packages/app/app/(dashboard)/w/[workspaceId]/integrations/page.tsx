@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import {
   PageHeader,
   PageLayout,
@@ -6,7 +5,7 @@ import {
   Section,
   SectionHeader,
 } from "@agentsfleet/design-system";
-import { auth } from "@clerk/nextjs/server";
+import { requireCredential } from "@/lib/auth/credential";
 import {
   getConnector,
   getConnectorCatalog,
@@ -28,9 +27,7 @@ export default async function IntegrationsPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) redirect("/sign-in");
+  const token = await requireCredential();
 
   // The registry-driven catalog (the card list) plus the two connectors with a
   // bespoke status route (GitHub/Slack tri-state + the Slack team), fetched

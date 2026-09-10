@@ -2,29 +2,16 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { resolvePeopleActionMock } = vi.hoisted(() => ({
-  resolvePeopleActionMock: vi.fn(),
-}));
-vi.mock("@/app/actions/identity", () => ({
-  resolvePeopleAction: resolvePeopleActionMock,
-}));
-
 import {
   AgentLabel,
   DELETED_AGENT_LABEL,
   agentDisplayName,
 } from "@/components/domain/AgentLabel";
 import { RefreshButton } from "@/components/domain/RefreshButton";
-import {
-  nameFor,
-  requestName,
-  resetPersonDirectory,
-} from "@/lib/identity/person-directory";
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  resolvePeopleActionMock.mockReset();
 });
 
 describe("AgentLabel — a fleet that no longer exists", () => {
@@ -70,33 +57,5 @@ describe("RefreshButton — repeated refreshes", () => {
     // for its window and then the control is a refresh button again.
     await vi.advanceTimersByTimeAsync(2_100);
     await waitFor(() => expect(screen.getByTestId("refresh-ack").textContent).toBe(""));
-  });
-});
-
-describe("person-directory — the batch that empties before it flushes", () => {
-  beforeEach(() => {
-    resetPersonDirectory();
-    resolvePeopleActionMock.mockResolvedValue({});
-  });
-
-  it("asks nobody when the queue is cleared before the microtask runs", async () => {
-    requestName("user_2abcRealPersonId");
-    // The reset drains the queue that the scheduled flush was going to read —
-    // a component unmounting between the render and the microtask. The flush
-    // must return without a round trip rather than asking for an empty list.
-    resetPersonDirectory();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(resolvePeopleActionMock).not.toHaveBeenCalled();
-  });
-
-  it("records a subject the directory did not answer for as unknown", async () => {
-    const missing = "user_2abcNobodyKnowsThis";
-    resolvePeopleActionMock.mockResolvedValue({});
-    requestName(missing);
-    await waitFor(() => expect(resolvePeopleActionMock).toHaveBeenCalled());
-    // Recorded as empty, not left open, so the same table does not ask again
-    // on every render.
-    await waitFor(() => expect(nameFor(missing)).toBe(""));
   });
 });

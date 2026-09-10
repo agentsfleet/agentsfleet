@@ -39,6 +39,12 @@ export type ApprovalGate = {
   /** epoch ms; null when still pending */
   updated_at: number | null;
   resolved_by: string;
+  /**
+   * The decider's name, joined from this deployment's own user rows. Empty
+   * while pending, for the daemon's sentinels, and for a subject with no row —
+   * all three render as the shortened subject.
+   */
+  resolved_by_name: string;
 };
 
 export type ApprovalsListResponse = {
