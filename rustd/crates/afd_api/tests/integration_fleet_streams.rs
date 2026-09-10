@@ -20,12 +20,21 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_redis::SubscriptionHub;
+use afd_redis::streams::{FleetStreams, fleet_activity_channel};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
 use self::harness::{Fleet, send};
 
 const SUBJECT: &str = "user_live_workspace_stream";
+
+/// More frames than the hub's per-subscriber queue (256) holds, so a body
+/// nobody reads falls behind and the fan-in reports the gap.
+const GAP_FRAMES: usize = 400;
+
+/// How many chunks to read looking for the gap and the greeting behind it —
+/// a few, in case the first published frames land before the overflow.
+const GAP_READS: usize = 8;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
@@ -69,6 +78,79 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     drop(body);
     hub.shutdown();
     tokio::time::resume();
+    fixture.cleanup().await;
+}
+
+/// A gap the server could not carry is followed by a fresh `hello`.
+///
+/// More frames are published than the fan-in's queue holds while nothing
+/// reads the body, so the first thing read back is the `catching_up`, and
+/// the second is a `hello` carrying where every fleet stands now — the
+/// dropped frames are exactly the ones that moved the counters.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let hub = SubscriptionHub::start(harness::redis_config())
+        .await
+        .expect("the lane's subscription connection starts");
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_live_hub(hub.clone())
+    .router();
+    let mut body = open_stream(&router, &fixture).await;
+
+    let publisher = FleetStreams::new(
+        afd_redis::Redis::connect(&harness::redis_config())
+            .await
+            .expect("the lane's Redis accepts a publisher"),
+    );
+    let channel = fleet_activity_channel(&fixture.fleet);
+    for sequence in 0..GAP_FRAMES {
+        let payload = format!(r#"{{"kind":"chunk","event_id":"e{sequence}","text":"…"}}"#);
+        publisher
+            .publish(&channel, &payload)
+            .await
+            .expect("the frame publishes");
+    }
+
+    let mut heard = Vec::new();
+    for _ in 0..GAP_READS {
+        let chunk = next_chunk(&mut body).await;
+        if chunk.contains("event: catching_up") {
+            heard.push("catching_up");
+            continue;
+        }
+        if chunk.contains("event: hello") {
+            heard.push("hello");
+            let data = chunk
+                .lines()
+                .find_map(|line| line.strip_prefix("data:"))
+                .expect("the hello carries a data line");
+            let hello: serde_json::Value =
+                serde_json::from_str(data.trim()).expect("the hello is JSON");
+            assert!(
+                hello
+                    .pointer(&format!("/counters/{}/events_processed", fixture.fleet))
+                    .is_some(),
+                "the hello after a gap carries the fleet's counters: {hello}"
+            );
+            break;
+        }
+    }
+    assert_eq!(
+        heard,
+        ["catching_up", "hello"],
+        "a gap is announced, then the set is re-announced with its figures"
+    );
+
+    drop(body);
+    hub.shutdown();
     fixture.cleanup().await;
 }
 
