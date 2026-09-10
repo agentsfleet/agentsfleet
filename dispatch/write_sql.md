@@ -40,7 +40,7 @@ The **Schema Table Removal Guard** card dissolves into this façade; its prose i
 
 **Family:** Schema discipline. **Source:** `AGENTS.orly.md` (project-side guard). Related: **RULE STS** (no static strings in SQL schema), **RULE NSQ** (named constants, schema-qualified SQL) — both in `docs/greptile-learnings/RULES.md`.
 
-**Triggers** — before any of these, run `cat VERSION` and print the guard output:
+**Triggers** — before any of these, run `cat VERSION` and print the guard output. `0.30.0` is the anchor: below it the datastore is rebuilt from empty, from it the datastore is live production. Compare the version field by field, never as a string — `0.29.0` is under the anchor and `0.30.0` is not, while a lexical compare puts `0.30.0` under `0.9.0` and reads the era backwards.
 
 - Creating, editing, or deleting any file under `schema/*.sql`.
 - Editing `schema/embed.zig` (any `@embedFile` constant).
@@ -50,9 +50,11 @@ The **Schema Table Removal Guard** card dissolves into this façade; its prose i
 
 **Override:** `SCHEMA GUARD: SKIPPED per user override (reason: ...)`. **User-invokable only.** Spec violates the guard → amend the spec first.
 
-#### Pre-v2.0.0 (teardown-rebuild era)
+#### Below v0.30.0 (teardown-rebuild era)
 
 > [JUDGMENT → SCH]
+
+The era runs while `VERSION` is under `0.30.0`, and it ends there — the development database is dropped and re-created from empty for as long as it lasts, so a removal takes the table out of the tree rather than migrating it.
 
 To remove a table:
 
@@ -62,24 +64,24 @@ To remove a table:
 
 **Forbidden:** `ALTER TABLE`, `DROP TABLE`, `SELECT 1;` markers, comment-only files, "keep file for slot numbering". Slot gaps are fine — the DB is wiped on rebuild.
 
-#### v2.0.0+
+#### v0.30.0 and above (production datastore)
 
 > [JUDGMENT → SCH]
 
-Proper `ALTER`/`DROP` migrations in new numbered files. No teardown.
+The teardown path is closed. Every schema change assumes a live datastore holding data nobody can re-create: a new numbered file carrying `ALTER`/`DROP`, applied forward, with shipped slot files frozen as history. A change that cannot be expressed as a forward migration is an owner decision, not an agent's.
 
 #### Required output
 
 > [JUDGMENT → SCH]
 
 ```
-SCHEMA GUARD: VERSION=<v> (<2.0.0 ? teardown : alter)
+SCHEMA GUARD: VERSION=<v> (<0.30.0 ? teardown : migrate)
   rm:schema/<file>.sql
   rm-embed:<const>
   rm-migration:v<N>
 ```
 
-For pre-v2.0.0 path, all three rm- lines appear. For v2.0.0+, replace with `migration:schema/<NNN>_<change>.sql`.
+Below `0.30.0`, all three rm- lines appear. From `0.30.0`, replace them with `migration:schema/<NNN>_<change>.sql`.
 
 ## Companion SQL rules (retained in `docs/greptile-learnings/RULES.md`)
 

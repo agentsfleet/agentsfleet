@@ -80,9 +80,23 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 # be written, committed and never run.
 SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 
-lint-scripts:  ## Run every scripts/*_test.py self-test
+lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine pin
 	@echo "→ [scripts] Running script self-tests..."
 	@$(SCRIPT_SELF_TESTS)
+	@# The orly engine pin rides this lane rather than getting a target of its
+	@# own, and it belongs on a lane `lint-all` reaches for two reasons.
+	@# `make lint-all` IS the `verify.lint` command .oracle/orly.json declares,
+	@# so an engine that reaches this row grades its own version here. And
+	@# `core.hooksPath` is local git config that a clone never carries — the
+	@# reason governance.yml re-runs the gate in CI at all — so on a clone with
+	@# unarmed hooks this is the only local path that asserts the pin.
+	@#
+	@# Tests first, then the guard for real: the check-gh-actions-valid shape.
+	@# A gate with no self-test can pass vacuously, and this guard's whole
+	@# subject is a pin that was recorded and never enforced.
+	@echo "→ [scripts] orly engine matches the pin in .oracle/orly.json..."
+	@bash scripts/check_orly_pin_test.sh
+	@bash scripts/check_orly_pin.sh
 	@echo "✓ [scripts] Script self-tests passed"
 
 # The cutover probe runner's own tests, plus its three asserts run for real

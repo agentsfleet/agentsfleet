@@ -42,7 +42,7 @@ export const STATUS_LABEL = {
 // so it is the only warm one; the two nobody chose are muted rather than red,
 // because a deadline passing is not a refusal.
 export const STATUS_VARIANT = {
-  pending: "warn",
+  pending: "amber",
   approved: "green",
   denied: "destructive",
   timed_out: "orange",

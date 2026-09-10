@@ -307,6 +307,17 @@ pub const FLEET_BUNDLE_FETCH_FAILED: ErrorCode = ErrorCode::declare("UZ-BUNDLE-0
 /// failure carries the store's own error as its source.
 pub const FLEET_BUNDLE_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-BUNDLE-005");
 
+/// A bundle names a credential that is not a storable vault key.
+///
+/// Split from [`FLEET_BUNDLE_INVALID`] for the same reason
+/// [`SSE_STREAM_CAP`] is split from [`API_BACKPRESSURE`]: the remedy differs.
+/// That code's message names a missing `SKILL.md` or an oversized file, so an
+/// author who wrote `my-credential` instead of `my_credential` was sent to
+/// re-package a bundle that was never malformed. The rule broken is carried on
+/// `afd_fleet_runtime::Error::InvalidCredentialRef`, which already names the
+/// reference and the rule; this code is what lets that reach the author.
+pub const FLEET_BUNDLE_CREDENTIAL_NAME_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-006");
+
 /// No platform Fleet-library entry has the supplied slug.
 pub const CATALOG_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-CATALOG-001");
 

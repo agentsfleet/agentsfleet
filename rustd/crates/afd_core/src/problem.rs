@@ -120,9 +120,9 @@ mod request;
 /// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
 ///
 /// Split the same way [`crate::error_code`] is, so a code and the entry
-/// describing it live in comparable files. `test_entries_match_the_zig_registry`
-/// walks both against the Zig table, and a family that had drifted out of order
-/// would fail there rather than in a reader's memory.
+/// describing it live in comparable files. The order is load-bearing: it is
+/// what lets [`ENTRIES`] be flattened from the parts rather than written out
+/// a second time that could disagree with them.
 const FAMILIES: [&[Problem]; 4] = [
     self::request::REQUEST,
     self::auth::AUTH,
@@ -137,10 +137,9 @@ const TOTAL: usize = FAMILIES[0].len() + FAMILIES[1].len() + FAMILIES[2].len() +
 ///
 /// Flattened from [`FAMILIES`] at compile time rather than written out once
 /// more: a table assembled from its parts cannot disagree with them, and
-/// `Problem` is `Copy`, so the assembly costs nothing at run time. Every string
-/// is byte-identical to the Zig entry it mirrors, and
-/// `test_entries_match_the_zig_registry` reads that file and fails if either
-/// side moves.
+/// `Problem` is `Copy`, so the assembly costs nothing at run time.
+/// `test_every_declared_code_has_an_entry_and_no_entry_is_orphaned` is what
+/// holds it total over `REGISTRY` in both directions.
 #[expect(
     clippy::indexing_slicing,
     reason = "every index is bounded by the loop condition above it, and the whole block is const-evaluated — an out-of-bounds here is a build failure, not a panic"

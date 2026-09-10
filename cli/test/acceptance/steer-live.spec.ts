@@ -54,6 +54,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { installSteerProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { trailingJsonObject } from "./fixtures/steer-envelope.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -78,10 +79,6 @@ const WHITESPACE_MESSAGE = "   " as const;
 const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
 const STATUS_FLEET_ERROR = "fleet_error" as const;
 const NO_COLOR = "1" as const;
-const OPEN_BRACE = "{" as const;
-const CLOSE_BRACE = "}" as const;
-const QUOTE = '"' as const;
-const BACKSLASH = "\\" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a
 // timeout, then renders. Budget well above that so a slow-but-valid turn
@@ -93,35 +90,6 @@ interface SteerEnvelope {
   readonly [ENVELOPE_EVENT_ID_KEY]?: unknown;
   readonly [ENVELOPE_KIND_KEY]?: unknown;
   readonly [ENVELOPE_STATUS_KEY]?: unknown;
-}
-
-// Extract the trailing balanced `{…}` object from stdout. The CLI
-// interleaves `[claw] …` / `[tool] …` content frames (which may contain
-// braces) before the final pretty-printed JSON envelope, so a naive
-// `JSON.parse(stdout)` would throw. Scan from the last `}` back to its
-// depth-0 `{`, ignoring braces inside string literals.
-function trailingJsonObject(stdout: string): string {
-  const end = stdout.lastIndexOf(CLOSE_BRACE);
-  assert.ok(end >= 0, `steer --json produced no JSON object: ${stdout}`);
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = end; i >= 0; i--) {
-    const ch = stdout[i];
-    if (escaped) { escaped = false; continue; }
-    if (inString) {
-      if (ch === BACKSLASH) { escaped = true; continue; }
-      if (ch === QUOTE) inString = false;
-      continue;
-    }
-    if (ch === QUOTE) { inString = true; continue; }
-    if (ch === CLOSE_BRACE) depth++;
-    else if (ch === OPEN_BRACE) {
-      depth--;
-      if (depth === 0) return stdout.slice(i, end + 1);
-    }
-  }
-  throw new assert.AssertionError({ message: `unbalanced JSON in steer stdout: ${stdout}` });
 }
 
 function parseSteerEnvelope(stdout: string): SteerEnvelope {

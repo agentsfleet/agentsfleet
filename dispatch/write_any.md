@@ -544,7 +544,7 @@ String-literals audit: <N literals scanned, M violations>
 > [JUDGMENT → NLR]
 
 
-**Family:** Legacy-control. Sibling rules: **RULE NDC** (no dead code at write time), **RULE NLG** (no new legacy framing pre-v2.0.0), **Legacy-Design Consult Guard** (judgment calls on whole subsystems). **Source:** `docs/greptile-learnings/RULES.md` RULE NLR.
+**Family:** Legacy-control. Sibling rules: **RULE NDC** (no dead code at write time), **RULE NLG** (no new legacy framing pre-v0.30.0), **Legacy-Design Consult Guard** (judgment calls on whole subsystems). **Source:** `docs/greptile-learnings/RULES.md` RULE NLR.
 
 **Triggers:** any Edit/Write to a file containing pre-existing legacy framing or dead code.
 
@@ -616,7 +616,7 @@ If any of these patterns is in play, surface it via the NLR DECISION block. The 
 > [JUDGMENT → NLR]
 
 - **RULE NDC** — prevention at write time (don't author dead code).
-- **RULE NLG** — ban new legacy framing pre-v2.0.0.
+- **RULE NLG** — ban new legacy framing below v0.30.0.
 - **Legacy-Design Consult Guard** — harder judgment calls ("should this whole subsystem exist") that need user input.
 - **RULE NLR** — mechanical cleanup on touch.
 
@@ -627,15 +627,15 @@ If any of these patterns is in play, surface it via the NLR DECISION block. The 
 
 **Family:** Legacy-control. Sibling rules: **RULE NDC**, **RULE NLR**, **Legacy-Design Consult Guard**. **Source:** `docs/greptile-learnings/RULES.md` RULE NLG.
 
-**Triggers:** introducing any new `legacy_*` name, `V2`-twin type, `if (legacy_caller)` branch, backward-compat shim, command-line alias for an old verb or flag, "rejecting legacy X" prose, or violation tracking-list while `cat VERSION` < `2.0.0`.
+**Triggers:** introducing any new `legacy_*` name, `V2`-twin type, `if (legacy_caller)` branch, backward-compat shim, command-line alias for an old verb or flag, "rejecting legacy X" prose, or violation tracking-list while `cat VERSION` < `0.30.0`. Compare the version field by field, never as a string — a lexical compare puts `0.30.0` under `0.9.0` and arms the gate in the wrong era.
 
-**Override:** `RULE NLG: SKIPPED per user override (reason: ...)` immediately preceding the edit. **User-invokable only.** Requires a concrete external consumer that can't migrate same-commit (vanishingly rare pre-v2.0.0).
+**Override:** `RULE NLG: SKIPPED per user override (reason: ...)` immediately preceding the edit. **User-invokable only.** Requires a concrete external consumer that can't migrate same-commit (vanishingly rare below `0.30.0`).
 
 #### What this gate enforces
 
 > [JUDGMENT → NLG]
 
-While `cat VERSION` < `2.0.0`, the project has no external consumers and no published API. Do not introduce *new* legacy concepts in any form:
+While `cat VERSION` < `0.30.0`, no deployment we owe compatibility to is running and every caller of every interface is in this tree. `0.30.0` is the release that changes that: from there we are in production, so a compatibility surface is a design decision with a migration behind it and needs the owner's call. Below it, do not introduce *new* legacy concepts in any form:
 
 - No `legacy_*` error variant names.
 - No `if (legacy_caller)` branches.
@@ -729,7 +729,7 @@ Every triggered consult is logged in the active spec's **Discovery** section, or
 
 > [JUDGMENT → LDC]
 
-NLR is the cleanup-on-touch arm; NLG bans new legacy framing pre-v2.0.0; this guard covers the harder judgment calls ("should this whole subsystem exist") that need the user's input.
+NLR is the cleanup-on-touch arm; NLG bans new legacy framing below v0.30.0; this guard covers the harder judgment calls ("should this whole subsystem exist") that need the user's input.
 
 ## Porting a codebase between languages (RULE PORT)
 

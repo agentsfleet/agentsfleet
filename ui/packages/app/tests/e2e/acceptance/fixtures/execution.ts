@@ -263,6 +263,25 @@ export function leaseIsSettled(outcome: string): boolean {
 }
 
 /**
+ * How many chat turns the thread holds, whatever their status.
+ *
+ * The send is a Server Action, so a walk that clicks Send and navigates away in
+ * the same beat can abort it in flight — the optimistic row renders either way.
+ * This is the server-side acknowledgement a walk waits on before it leaves the
+ * page.
+ */
+export async function countChatTurns(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<number> {
+  const page = await clientFor(handle).get<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+  );
+  return page.items.filter((item) => item.event_type === EVENT_TYPE_CHAT).length;
+}
+
+/**
  * The newest chat turn on the fleet's thread that has left `received`, or
  * `null` while the delivery is still in flight. Reads the messages route
  * because it is the one read that carries `response_text`.

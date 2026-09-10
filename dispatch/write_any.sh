@@ -43,7 +43,7 @@ dispatch_delegate "ERR" "make harness-verify (error-codes.sh — needs the produ
 # ── judgment gates (no script can decide; agent states verdict in chat) ──
 dispatch_judgment "GRP" "per-iteration (diff langs change) + end-of-turn: audit the diff against docs/greptile-learnings/RULES.md — one row per applicable code (UFS/ORP/TST-NAM/PRI/EMS/…); \"it's just a label\" is not an exception"
 dispatch_judgment "NLR" "touching a file with legacy framing / dead code? clean it in the same diff (touch-it-fix-it), or state the surviving legacy + why — never retain silently"
-dispatch_judgment "NLG" "new legacy_* / V2 twin / compat shim / tracking-list while VERSION < 2.0.0? rename to the what-is-wrong form; no new legacy framing pre-2.0"
+dispatch_judgment "NLG" "new legacy_* / V2 twin / compat shim / tracking-list while VERSION < 0.30.0 (compare field by field, not as a string)? rename to the what-is-wrong form; no new legacy framing below 0.30"
 dispatch_judgment "LDC" "patching / keeping / testing a legacy-design path? consult Indy — A (remove) / B (patch) / C (keep) — before proceeding; no unilateral call"
 
 dispatch_verdict
