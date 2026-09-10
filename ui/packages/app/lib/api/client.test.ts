@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRetryAfterHeaderValue, request, requireApiOrigin } from "./client";
-import { readWorkspaceFetchAudit, resetWorkspaceFetchAudit, WORKSPACE_LIST_PATH } from "../acceptance/workspace-fetch-audit";
+import {
+  readWorkspaceFetchAudit,
+  readWorkspaceFetchTimings,
+  resetWorkspaceFetchAudit,
+  WORKSPACE_LIST_PATH,
+} from "../acceptance/workspace-fetch-audit";
 import { ApiError, RequestCancelledError } from "./errors";
 
 const fetchMock = vi.fn();
@@ -288,5 +293,46 @@ describe("test_library_trace_and_stage_schema — traceparent propagation", () =
 
     // A caller continuing an existing trace knows better than the default.
     expect(sentTraceparent(0)).toBe(explicit);
+  });
+});
+
+describe("acceptance timing on the failure path", () => {
+  it("should record the attempt count when the request fails, not only when it succeeds", async () => {
+    // The transport settles its audit handle in a `.finally`, so a request that
+    // ends in an error still reports what it cost. That is the case a latency
+    // investigation most needs — a read that exhausted its retry ladder is
+    // exactly the wait someone is trying to explain — and a `.then`-shaped
+    // instrumentation would silently drop it.
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "nope" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(request(WORKSPACE_LIST_PATH, { method: "GET" }, "tok")).rejects.toBeInstanceOf(
+      ApiError,
+    );
+
+    const timing = readWorkspaceFetchTimings()[WORKSPACE_LIST_PATH];
+    expect(timing?.attempts, "attempts recorded for a failed read").toEqual([1]);
+    expect(timing?.durationsMs.length, "one duration for the failed read").toBe(1);
+  });
+
+  it("should leave no timing behind when the audit env gate is off", async () => {
+    // The instrumentation must stay inert in production: no gate, no record,
+    // and no work in the promise chain beyond one branch.
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await request(WORKSPACE_LIST_PATH, { method: "GET" }, "tok");
+
+    expect(readWorkspaceFetchTimings()).toEqual({});
+    expect(readWorkspaceFetchAudit().total).toBe(0);
   });
 });
