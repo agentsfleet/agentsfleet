@@ -318,10 +318,10 @@ done < <(doc_files | bash "$SCRIPT_DIR/check_architecture_doc_anchors.sh")
 
 # ---------------------------------------------------------------------------
 # 9. test_arch_no_retired_slot_numbers
-#    Slot numbering starts at 1xx: `schema/embed.zig` records that 001–046 are
-#    retired wholesale, so no new slot can reuse one. A page citing a `0xx` slot
-#    is therefore describing a schema that no longer exists, whether it writes
-#    the number as a filename or as prose.
+#    Slot numbering starts at 1xx: the rebuild retired 001–046 wholesale and no
+#    new slot reuses one, which is why the ledger in afd_db/src/migration.rs
+#    opens at 100. A page citing a `0xx` slot describes a schema that no longer
+#    exists, whether it writes the number as a filename or as prose.
 # ---------------------------------------------------------------------------
 # Link text is stripped first: a published decision record keeps the title it was
 # published under, and renaming it in a citation would point at the wrong thing.

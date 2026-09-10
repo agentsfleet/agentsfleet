@@ -7,15 +7,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 
-import { readSessionScopes, hasScope } from "./platform";
 import { expandScopes } from "@/lib/auth/scopes";
 
-beforeEach(() => vi.clearAllMocks());
+// `readSessionScopes` reads through `credential.ts`'s `claims()`, which is
+// wrapped in React's `cache()`. Outside a request scope that wrapper happens to
+// pass every call through today, and these tests used to ride on it: nothing
+// here reset the module graph, so per-test isolation was an accident of React's
+// out-of-scope behaviour rather than something the suite arranged. A `cache()`
+// that memoised — or a hand-rolled module-level memo, the shape credential.ts's
+// own docstring warns against — would have leaked one test's claim set into the
+// next and made the results say nothing about the code.
+//
+// So the registry is reset per test and every test imports `./platform` itself.
+// Each import builds a fresh credential.ts, hence a fresh claim reader, whatever
+// memoisation lives inside it. `expandScopes` stays a static import: it is a
+// pure function over its argument with no module state to leak.
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.resetModules();
+});
 afterEach(() => vi.resetAllMocks());
 
 describe("readSessionScopes", () => {
   it("parses the top-level space-delimited scopes claim into a set (with closure)", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:read runner:enroll model:admin" } });
+    const { readSessionScopes } = await import("./platform");
     const scopes = await readSessionScopes();
     // model:admin closes down to model:read; runner:read already explicit.
     expect([...scopes].sort()).toEqual(["model:admin", "model:read", "runner:enroll", "runner:read"]);
@@ -23,12 +39,14 @@ describe("readSessionScopes", () => {
 
   it("accepts a JSON-array scopes claim too (backend-tolerant reader parity)", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: ["runner:read", "model:read"] } });
+    const { readSessionScopes } = await import("./platform");
     const scopes = await readSessionScopes();
     expect([...scopes].sort()).toEqual(["model:read", "runner:read"]);
   });
 
   it("collapses arbitrary whitespace and ignores empty tokens", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "  runner:read   model:read  " } });
+    const { readSessionScopes } = await import("./platform");
     const scopes = await readSessionScopes();
     expect([...scopes].sort()).toEqual(["model:read", "runner:read"]);
   });
@@ -38,6 +56,7 @@ describe("readSessionScopes", () => {
     // runner:write / model:admin (not the :read rungs) — the read-gated pages
     // must still resolve, matching the backend requireScope decision.
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:write model:admin" } });
+    const { readSessionScopes } = await import("./platform");
     const scopes = await readSessionScopes();
     expect(scopes.has("runner:read")).toBe(true);
     expect(scopes.has("model:read")).toBe(true);
@@ -47,22 +66,26 @@ describe("readSessionScopes", () => {
 
   it("is empty (fail-closed) when the scopes claim is absent", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { tenant_id: "t1" } } });
+    const { readSessionScopes } = await import("./platform");
     expect((await readSessionScopes()).size).toBe(0);
   });
 
   it("is empty (fail-closed) — the legacy metadata.platform_admin boolean is never consulted", async () => {
     // A session carrying only the retired boolean grants nothing now.
     authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { platform_admin: true } } });
+    const { readSessionScopes } = await import("./platform");
     expect((await readSessionScopes()).size).toBe(0);
   });
 
   it("is empty (fail-closed) for an anonymous session with no claims", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: null });
+    const { readSessionScopes } = await import("./platform");
     expect((await readSessionScopes()).size).toBe(0);
   });
 
   it("is empty (fail-closed) when the auth provider throws", async () => {
     authMock.mockRejectedValueOnce(new Error("clerk unavailable"));
+    const { readSessionScopes } = await import("./platform");
     expect((await readSessionScopes()).size).toBe(0);
   });
 });
@@ -70,12 +93,14 @@ describe("readSessionScopes", () => {
 describe("hasScope", () => {
   it("is true only for a scope the session token actually carries", async () => {
     authMock.mockResolvedValue({ sessionClaims: { scopes: "runner:read model:read" } });
+    const { hasScope } = await import("./platform");
     await expect(hasScope("runner:read")).resolves.toBe(true);
     await expect(hasScope("runner:enroll")).resolves.toBe(false);
   });
 
   it("is false (fail-closed) when the auth provider throws", async () => {
     authMock.mockRejectedValueOnce(new Error("clerk unavailable"));
+    const { hasScope } = await import("./platform");
     await expect(hasScope("runner:read")).resolves.toBe(false);
   });
 });

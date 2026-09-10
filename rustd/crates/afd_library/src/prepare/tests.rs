@@ -66,6 +66,33 @@ fn trigger_uses_the_full_runtime_schema() {
 }
 
 #[test]
+fn test_a_misnamed_credential_is_refused_by_the_code_that_says_rename_it() {
+    // The seam the classification test cannot reach: a real TRIGGER.md, parsed
+    // by the live path, must actually PRODUCE the variant that arm matches.
+    // Without this, `code()` could map correctly forever while the parser hands
+    // it something else and the author still reads "it's missing SKILL.md".
+    let mut input = body();
+    input.trigger_markdown = Some(
+        "---\nname: github-pr-reviewer\nx-agentsfleet:\n  triggers:\n    - type: cron\n      schedule: '0 * * * *'\n  tools: [http_request]\n  credentials: [my-credential]\n  budget:\n    daily_dollars: 1\n---\n"
+            .to_owned()
+            .into_bytes(),
+    );
+
+    let error = prepare(&input).expect_err("a hyphen is not a storable vault key byte");
+
+    assert!(
+        matches!(
+            &error,
+            crate::Error::TriggerConfig(afd_fleet_runtime::Error::InvalidCredentialRef { .. })
+        ),
+        "{error:?}"
+    );
+    assert_eq!(error.code().as_str(), "UZ-BUNDLE-006");
+    // The remedy the author reads names the reference, not a missing file.
+    assert!(error.to_string().contains("TRIGGER.md"), "{error}");
+}
+
+#[test]
 fn test_bundle_import_rejects_hostile() {
     let cases = [
         (

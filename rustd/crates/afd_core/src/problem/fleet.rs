@@ -257,6 +257,18 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_CREDENTIAL_NAME_INVALID,
+        status: 400,
+        title: "Invalid credential reference",
+        hint: "A credential named in TRIGGER.md is not a storable vault key; the reference, and the rule it broke, are on the error's source.",
+        // The one bundle refusal an author fixes by editing a name rather than
+        // by re-packaging, so it says which characters are allowed instead of
+        // sending them to look for a file that is not missing.
+        user_message: Some(
+            "A credential name in that Fleet Bundle isn't valid. Credential names may use only letters, digits and `_` — rename it in TRIGGER.md and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",

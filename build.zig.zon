@@ -3,7 +3,7 @@
     // builds. What it builds is the shared `src/lib` tests the runner links by
     // source, and the incident-response harness.
     .name = .agentsfleet,
-    .version = "0.29.0",
+    .version = "0.30.0",
     .minimum_zig_version = "0.16.0",
     // Moved with the rename below: Zig derives the fingerprint from the package
     // name, and refuses the build when the two disagree. This value is the one

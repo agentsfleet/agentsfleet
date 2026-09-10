@@ -94,4 +94,4 @@ export const METRICS_APPROVALS_LABEL = "approvals waiting";
 // The sentence the delete confirm gains so the operator learns delete destroys
 // memory but editing keeps it. Pinned by test_delete_confirm_states_memory_trap.
 export const DELETE_MEMORY_TRAP_NOTICE =
-  "Its memory is deleted with it. Editing the source instead keeps everything it learned.";
+  "Its memory goes with it — editing the source keeps what it learned. Are you sure?";

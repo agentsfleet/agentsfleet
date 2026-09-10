@@ -27,7 +27,7 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 |---|---|
 | NDC | No Dead Code |
 | NLR | No Legacy Retained (touch-it-fix-it) |
-| NLG | No Legacy compat shims (pre-v2.0.0) |
+| NLG | No Legacy compat shims (pre-v0.30.0) |
 | UFS | Unified Form for Symbols (literals → named consts) |
 | TGU | Tagged-Union over optional-field structs |
 | PRI | Prompt-injection Resistance from user Input |
@@ -46,7 +46,7 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 | TSJ | TypeScript/Bun judgment conventions (Bun-native, file ordering, error style) |
 | UIS | UI Substitution (design-system primitive over raw HTML) |
 | DTK | Design ToKens (named token utility over arbitrary value) |
-| SCH | SCHema teardown (pre-2.0 full removal; no ALTER/DROP/marker) |
+| SCH | SCHema teardown (pre-0.30 full removal; no ALTER/DROP/marker) |
 | ITF | Integration Test Fixtures (real schema, not TEMP-table mock) |
 | LOG | LOGging discipline (scoped event, error_code, severity, redaction) |
 | MSID | Milestone-ID ban in source (M{N}_{NNN} / §x.y / T{N} / dim) |
@@ -192,7 +192,7 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 
 ## RULE MIG — Migration index assertions track position
 
-**Rule:** When inserting, splitting, or removing migration files, update every index-based assertion in `src/cmd/common.zig`. While `cat VERSION` < 2.0.0, removed files become `SELECT 1;` (see RULE SCH) — their array slot stays but the assertion must match the new content.
+**Rule:** When inserting, splitting, or removing migration files, update every index-based assertion in `src/cmd/common.zig`. While `cat VERSION` < 0.30.0, removed files become `SELECT 1;` (see RULE SCH) — their array slot stays but the assertion must match the new content.
 **Why:** Stale index silently points at the wrong SQL file with no compile-time error. assertions checked for CREATE TABLE in files that were now `SELECT 1;` version markers.
 **Tags:** zig, sql
 **Example:** migrations[7] pointed at wrong file after a split. migrations[14]/[15] asserted dropped table names in version marker files.
@@ -386,19 +386,19 @@ a rename of the first would have disabled the account purge with no failing test
 **Tags:** zig
 **Example:** HMAC version "v0" derived by slicing "v0=" prefix — fixed with explicit hmac_version field.
 
-## RULE SCH — Pre-v2.0 schema removal: full teardown, no markers, no DROP
+## RULE SCH — Pre-v0.30 schema removal: full teardown, no markers, no DROP
 
-**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removing tables MUST be a full teardown: (1) delete the SQL file (`rm schema/NNN_foo.sql`), (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the migration array entry from `src/cmd/common.zig` and update its array length + any index-based tests. Never write ALTER TABLE, DROP TABLE, or `SELECT 1;` placeholders. Never keep version-marker files. Migration slot numbers are not sacred pre-v2.0 — the DB is wiped on every rebuild, and gaps in numbering are fine. After VERSION >= 2.0.0, switch to proper ALTER/DROP migrations in new numbered files.
-**Why:** Markers accumulate dead code and still force CI to splitter-parse them. Pre-v2.0 there is zero production data to protect; full removal is cleaner and leaves no false grep hits or stale migration slots.
+**Rule:** While `cat VERSION` < 0.30.0 (teardown-rebuild era), removing tables MUST be a full teardown: (1) delete the SQL file (`rm schema/NNN_foo.sql`), (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the migration array entry from `src/cmd/common.zig` and update its array length + any index-based tests. Never write ALTER TABLE, DROP TABLE, or `SELECT 1;` placeholders. Never keep version-marker files. Migration slot numbers are not sacred pre-v0.30 — the DB is wiped on every rebuild, and gaps in numbering are fine. From VERSION >= 0.30.0 the datastore is live production data, so every removal or reshape is a numbered ALTER/DROP migration and the teardown path is closed. **Compare the version field by field, never as a string:** `0.29.0` is under the anchor, `0.30.0` is not, and a lexical compare puts `0.30.0` below `0.9.0` — the anchor moved off a major-number boundary precisely so the minor field decides.
+**Why:** Markers accumulate dead code and still force CI to splitter-parse them. Below 0.30.0 the development database is dropped and re-created from empty, so there is no production data to protect and full removal leaves no false grep hits or stale migration slots. At 0.30.0 that stops being true: the deployment holds data nobody can re-create, which is what makes an in-place migration the only safe shape from then on.
 **Tags:** sql, process
 **Example:** harness teardown — supersedes prior "replace with `SELECT 1;`" guidance. Under the old rule, comment-only markers broke CI (apostrophe in "slots" opened unterminated string in splitter); full deletion avoids the marker problem entirely.
 
-## RULE EP4 — Removed endpoints return 410 Gone, not 404 (post-v2.0 only)
+## RULE EP4 — Removed endpoints return 410 Gone, not 404 (from v0.30 on)
 
-**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removed endpoints MAY simply 404 — API drift is allowed because there are no stable external clients. Do NOT write 410 Gone stubs for pre-v2.0 removals; they are ceremony without value. Once VERSION >= 2.0.0, intentionally removed endpoints MUST return HTTP 410 Gone with a named error code — 404 implies a routing error to monitors and clients, 410 signals permanent intentional removal.
-**Why:** Pre-v2.0 mirrors the schema teardown policy (RULE SCH) — we tear down DB + APIs freely because nobody downstream is pinned to them. Post-v2.0, 410 becomes load-bearing for client behavior and deprecation signals.
+**Rule:** While `cat VERSION` < 0.30.0 (teardown-rebuild era), removed endpoints MAY simply 404 — API drift is allowed because no deployed client is pinned to the route. Do NOT write 410 Gone stubs for pre-v0.30 removals; they are ceremony without value. From VERSION >= 0.30.0, intentionally removed endpoints MUST return HTTP 410 Gone with a named error code — 404 implies a routing error to monitors and clients, 410 signals permanent intentional removal.
+**Why:** Below 0.30.0 this mirrors the schema teardown policy (RULE SCH) — we tear down DB + APIs freely because nobody downstream is pinned to them. From 0.30.0 the deployment is in production and 410 becomes load-bearing for client behavior and deprecation signals.
 **Tags:** zig, api
-**Example:** shipped /v1/runs/* + /v1/specs as 410 stubs before this rule was scoped. removed /v1/harness/* and /v1/agents/{id} as bare 404s under the pre-v2.0 carve-out.
+**Example:** shipped /v1/runs/* + /v1/specs as 410 stubs before this rule was scoped. removed /v1/harness/* and /v1/agents/{id} as bare 404s under the teardown-era carve-out.
 
 ## RULE FXS — Fixed-size scan buffers are security bypasses
 
@@ -935,11 +935,11 @@ const handleConfirm = useCallback(async () => {
 **Tags:** cli, error-messages, ux, refactor
 **Example:** Zig — pR #258. Greptile P1 finding `3145406909`: UZ-ZMB-008 hint still said `Run 'agentsfleet install <template>'` after the legacy positional form was removed in §1 of the same PR. Sweep also caught a stale `// agentsfleet up sends both files raw` comment in `config.zig` header. Fix in commit (this commit).
 
-## RULE NLG — No legacy compat shims pre-v2.0.0
+## RULE NLG — No legacy compat shims pre-v0.30.0
 
-**Rule:** Until `VERSION` reaches `2.0.0`, the codebase has no external consumers and no published API. Every interface change extends the existing surface in place — never via a `V2`-suffixed twin, parallel "legacy" path, `if (legacy_caller)` branch, command-line alias for an old verb or flag, or backward-compat fallback. When an RPC, route, struct, table, command, flag, or config key changes, edit the existing one and update every caller in the same commit. When a behavior is replaced, delete the old code path, do not leave it `orelse` reachable. The Schema Table Removal Guard's "teardown-rebuild era" framing applies to every interface, not just SQL.
+**Rule:** Until `VERSION` reaches `0.30.0`, no deployment we owe compatibility to is running: the datastore is rebuilt from empty and every caller of every interface is in this tree. Every interface change therefore extends the existing surface in place — never via a `V2`-suffixed twin, parallel "legacy" path, `if (legacy_caller)` branch, command-line alias for an old verb or flag, or backward-compat fallback. When an RPC, route, struct, table, command, flag, or config key changes, edit the existing one and update every caller in the same commit. When a behavior is replaced, delete the old code path, do not leave it `orelse` reachable. The Schema Table Removal Guard's "teardown-rebuild era" framing applies to every interface, not just SQL. `0.30.0` is the release that ends it: from there the deployment is in production, a caller can be outside this tree, and a compatibility surface is a design decision with a migration behind it — proposed to the owner, never added as a hedge. Compare the version field by field, never as a string.
 
-**Why:** Pre-alpha duplicates rot faster than any documentation. Every `CreateExecutionV2`, every `if (caller_is_legacy)` arm, every "we'll keep the old one for now" hedge becomes a phantom contract that nobody owns and every future spec has to reason about. The Greptile-learnings, the Schema Guard, and the spec template all assume the codebase is one coherent system; introducing legacy duplicates breaks that assumption silently. Post-v2.0.0 we earn the right to versioning ceremonies; before then, the cost of a duplicate is paid by every reader.
+**Why:** Duplicates rot faster than any documentation. Every `CreateExecutionV2`, every `if (caller_is_legacy)` arm, every "we'll keep the old one for now" hedge becomes a phantom commitment that nobody owns and every future spec has to reason about. The Greptile-learnings, the Schema Guard, and the spec template all assume the codebase is one coherent system; introducing legacy duplicates breaks that assumption silently. From 0.30.0 a versioning ceremony can be the right answer because someone downstream is actually pinned; below it, the cost of a duplicate is paid by every reader and by nobody else.
 
 **How to apply:**
 
@@ -950,10 +950,10 @@ const handleConfirm = useCallback(async () => {
 - Legacy-Design Consult Guard still fires when you find a *pre-existing* legacy shim left over from the v1→v2 teardown. This rule says: don't create new ones.
 - Command-line renames follow the same rule: if the product verb moves to `create`, do not add `add` as an alias. If a flag or command spelling changes, use the new spelling only unless Indy explicitly asks for a compatibility alias in the same session.
 
-**Override syntax:** `RULE NLG: SKIPPED per user override (reason: ...)` immediately preceding the edit. Override requires a concrete external consumer that can't be migrated in the same commit — vanishingly rare pre-v2.0.0.
+**Override syntax:** `RULE NLG: SKIPPED per user override (reason: ...)` immediately preceding the edit. Override requires a concrete external consumer that can't be migrated in the same commit — vanishingly rare below 0.30.0.
 
 **Tags:** architecture, refactor, versioning, plan, execute
-**Example:** PLAN, Apr 29, 2026. The temptation to introduce `CreateExecutionV2` to avoid editing the existing RPC and its callers came up during spec audit — rejected because (a) the executor RPC has a single in-tree caller (the worker) and (b) v2.0.0 has not shipped, so no external compatibility is owed. Rule generalizes the call: in-place extension is the only sanctioned path until VERSION crosses 2.0.0.
+**Example:** PLAN, Apr 29, 2026. The temptation to introduce `CreateExecutionV2` to avoid editing the existing RPC and its callers came up during spec audit — rejected because (a) the executor RPC has a single in-tree caller (the worker) and (b) the release that puts us in production had not shipped, so no external compatibility was owed. Rule generalizes the call: in-place extension is the only sanctioned path until VERSION crosses 0.30.0.
 
 ## RULE RTM — Route matchers segment-based, never substring-based
 

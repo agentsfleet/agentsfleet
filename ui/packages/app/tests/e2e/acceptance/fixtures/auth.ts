@@ -35,11 +35,11 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { createSignInTicket } from "./clerk-admin";
 import { recordBrowserSession } from "./browser-sessions";
-import type { FixtureKey } from "./constants";
+import { VERCEL_BYPASS_STATE_FILENAME, type FixtureKey } from "./constants";
 
 export type { FixtureKey } from "./constants";
 
@@ -119,4 +119,33 @@ export async function signInAsUser(page: Page, clerkUserId: string): Promise<voi
 
 export function fixtureEmail(key: FixtureKey): string {
   return getFixtureEntry(loadCache(), key).email;
+}
+
+/** The identity-provider subject a fixture signs in as — what the daemon
+ * records as `resolved_by` when that fixture decides something. */
+export function fixtureSubject(key: FixtureKey): string {
+  return getFixtureEntry(loadCache(), key).clerkUserId;
+}
+
+/**
+ * A second browser session for the same fixture user — its own cookie jar, its
+ * own in-memory stores, its own stream.
+ *
+ * `context.newPage()` would share both with the first tab, which is exactly the
+ * property a cross-session claim must not lean on: two tabs of one context can
+ * pass on a store neither page's socket ever fed. The Vercel bypass state is
+ * threaded explicitly because the config only applies it to the `page` fixture,
+ * and without it a protected deployment answers the challenge instead of the
+ * dashboard.
+ */
+export async function signedInContext(
+  browser: Browser,
+  key: FixtureKey,
+): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({
+    storageState: path.join(process.cwd(), VERCEL_BYPASS_STATE_FILENAME),
+  });
+  const page = await context.newPage();
+  await signInAs(page, key);
+  return { context, page };
 }

@@ -21,6 +21,7 @@ import { runFleetctl } from "./cli.js";
 import { FleetNotFoundError, getStatus } from "./lifecycle.ts";
 import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
 import {
+  buildConnectorProbeContent,
   buildPlatformOpsContent,
   buildSteerProbeContent,
   onboardUploadTemplate,
@@ -96,6 +97,26 @@ export async function installPlatformOpsFleet(opts: InstallOptions): Promise<Ins
 
 export async function installSteerProbeFleet(opts: InstallOptions): Promise<InstalledFleet> {
   return installFixtureFleet(opts, "steer-probe", (name) => buildSteerProbeContent(name, opts.model), false);
+}
+
+/**
+ * The steer probe declaring one connector credential, so its install leaves a
+ * pending grant card behind.
+ *
+ * The workspace must already hold `credentialName` as a connector handle — an
+ * install that cannot resolve a declared credential FAILS its delivery instead
+ * of parking it. `grant-ops.ts` seeds the handle.
+ */
+export async function installConnectorProbeFleet(
+  opts: InstallOptions,
+  credentialName: string,
+): Promise<InstalledFleet> {
+  return installFixtureFleet(
+    opts,
+    "connector-probe",
+    (name) => buildConnectorProbeContent(name, credentialName),
+    false,
+  );
 }
 
 async function installFixtureFleet(
