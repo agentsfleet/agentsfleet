@@ -13,7 +13,7 @@
 **Branch:** `feat/m195-dashboard-load-measurement`
 **Baseline revision:** `a4e0ef2bda8a62742a400be18f58588056786f8c`
 **Test Baseline:** unit=2713 integration=445 (at `a4e0ef2b`; HEAD unit=2733, +20 tests / +3 files). The diff touches no `.rs` file, so the integration lane is unchanged by it.
-**Baseline evidence:** PR Session Notes §Baseline. Unit counts measured per revision (`285 files / 2713 tests` at the comparison commit, `288 / 2733` at HEAD), integration `445 passed / 0 failed`. Commands: `make test-unit-all` (both revisions), `make test-integration-rustd` (HEAD), `make lint-all`, `make check-version`. Baseline lane run in the base checkout pinned at `a4e0ef2bda8a62742a400be18f58588056786f8c`; HEAD lane in the linked worktree at `2e2662f62`. Environment: macOS 15.6, Node 26.8.1, Bun workspace install, docker compose Postgres + Redis for the integration lane, schemas reset per run.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M195_001-a4e0ef2bd.md`
 **Depends on:** M194_001 for the build the measurement is taken on; its Pull Request also carries the CTA and action-button fixes this spec must not overlap. Runs in PARALLEL with M195_002 — the two declare no file in common — with one exception: **§2's request inventory is taken after M195_002 lands, or re-taken**, because that spec removes the wall's separate counter fetch by carrying the figures on the frame. §1, §3, §4 and §5 are independent of it.
 **Provenance:** agent-generated from an operator's numbered findings on the development dashboard (findings 8, 9, 12, 13, 14), each cited fact read at source. One premise the findings carried did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
