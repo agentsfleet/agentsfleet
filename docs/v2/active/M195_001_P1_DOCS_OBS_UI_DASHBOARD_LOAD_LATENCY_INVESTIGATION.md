@@ -6,19 +6,15 @@
 **Milestone:** M195
 **Workstream:** 001
 **Date:** Sep 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — nothing here changes behaviour; it produces the measurements a behaviour change would have to be argued from. The fixes M194_001 is already making are the P0s.
 **Categories:** DOCS, OBS, UI
 **Batch:** B1 — one workstream; the measurement lane and the page it writes into are one change.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m195-dashboard-load-measurement`
+**Baseline revision:** `a4e0ef2bda8a62742a400be18f58588056786f8c`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-<<<<<<< Updated upstream
-**Depends on:** M194_001 for the build the measurement is taken on, and **M195_002 must land first**: that spec rewrites the wall's counter data path, and §2's request inventory is stale the moment it does. The CTA and action-button fixes this spec must not overlap ship in M194_001's Pull Request.
-=======
 **Depends on:** M194_001 for the build the measurement is taken on; its Pull Request also carries the CTA and action-button fixes this spec must not overlap. Runs in PARALLEL with M195_002 — the two declare no file in common — with one exception: **§2's request inventory is taken after M195_002 lands, or re-taken**, because that spec removes the wall's separate counter fetch by carrying the figures on the frame. §1, §3, §4 and §5 are independent of it.
->>>>>>> Stashed changes
 **Provenance:** agent-generated from an operator's numbered findings on the development dashboard (findings 8, 9, 12, 13, 14), each cited fact read at source. One premise the findings carried did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
 
@@ -28,7 +24,7 @@
 
 **Goal (testable):** every wait an operator named on the dashboard is measured, attributed to a named stage, and written down where the next reader finds it — with the causes the measurement does not settle recorded as unresolved rather than guessed.
 
-**Problem:** an operator walked the dashboard and asked five questions nobody in the repository can answer from a file: why a chat takes a while to load and how its concurrency works; what the Fleets wall actually requests, once or forever; whether ACTIVE is the same colour on every surface; why Secrets spins for about two seconds; and why Runners reads as if it never returns. Each is currently answered by reading source and guessing. There is no measured number for any dashboard surface anywhere in the repository, and the one place a wait was measured (`docs/v2/active/M194_001_P0_API_INFRA_UI_INTEGRATION_GRANT_REQUEST_PATH.md` §5) found a 4.6-second page that source-reading had not predicted.
+**Problem:** an operator walked the dashboard and asked five questions nobody in the repository can answer from a file: why a chat takes a while to load and how its concurrency works; what the Fleets wall actually requests, once or forever; whether ACTIVE is the same colour on every surface; why Secrets spins for about two seconds; and why Runners reads as if it never returns. Each is currently answered by reading source and guessing. There is no measured number for any dashboard surface anywhere in the repository, and the one place a wait was measured (`docs/v2/done/M194_001_P0_API_INFRA_UI_INTEGRATION_GRANT_REQUEST_PATH.md` §5) found a 4.6-second page that source-reading had not predicted.
 
 **Solution summary:** one measurement lane and one page. The lane is a Playwright acceptance spec that navigates each named surface repeatedly, reads the server-side request audit the repository already has (`ui/packages/app/lib/acceptance/workspace-fetch-audit.ts`), times each stage, and attaches the table to its run. The page is `docs/architecture/dashboard_load.md`: the ASCII sequence diagram of a chat load, the concurrency model beside it, the wall's request inventory, the status matrix, and the measured tables with the run that produced them. Three of the claims the page makes are pinned by tests, so the drawing cannot drift from the code. No dashboard behaviour changes.
 
@@ -253,7 +249,10 @@ N/A — no files deleted. The spec adds one page, five index rows, one measureme
 | Sep 10, 2026 | Premise check — finding 9's "one stream per live fleet" | Read before authoring, and it did not hold: the wall already opens one EventSource per workspace and demultiplexes per fleet, with an acceptance test asserting at most one live connection. The finding's question stands; its premise is corrected here rather than encoded, and §2 measures the inventory instead of assuming it. |
 | Sep 10, 2026 | Architecture consult — where the answer lives | `docs/architecture/` over a spec appendix or a Pull Request body: the citation gate there grades paths, links and anchors on every lint run, so a drawing that drifts from the code fails a command. Five index rows keep it reachable by question. |
 | Sep 10, 2026 | Gate-flag triage — finding 14's stated cause | Surfaced before authoring: the report names Postgres connections, the code names a bounded retry ladder, and the datastore layer explicitly refuses to conflate a full pool with an absent datastore. Recorded as a hypothesis with the measurement that settles it, never as a finding. |
+| Sep 10, 2026 | Sequencing against M195_002 — resolved at CHORE(open) | This line arrived as an unresolved `git stash pop` conflict committed to `main` in `d05c0ff81`. Settled against the two Files Changed tables rather than the prose: they intersect in **zero paths** — M195_002 owns the `rustd/` frame publishers and the wall components, this spec owns docs plus four test files and measures through `ui/packages/app/lib/acceptance/workspace-fetch-audit.ts`. The "must land first" side justified itself with a shared `FleetWall.tsx` and `useWorkspaceStream.ts`; this spec touches neither, so that reason does not hold. Parallel, with §2 deferred. |
 
 - **Metrics review** — events added, extra events found during `/review`, analytics or funnel playbook update, or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an operator-acked verbatim quote here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is incomplete scope, not deferral, and blocks CHORE(close) until the item lands or the quote is captured.
+
+> Indy (2026-09-10 21:37 IST): "Start now, §2 deferred" — context: §2 (the wall's request inventory, Dimensions 2.1–2.3) is held until M195_002 lands, because that spec removes the wall's separate counter fetch and any inventory measured before it is stale by construction. §1, §3, §4 and §5 proceed now. §2 stays `IN_PROGRESS` at CHORE(close) rather than `DONE`.
