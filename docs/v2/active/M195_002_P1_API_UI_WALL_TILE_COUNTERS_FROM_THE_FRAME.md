@@ -54,6 +54,7 @@
 | `ui/.../fleets/components/{FleetTile,FleetWall,WallLiveBadge}.tsx` | EDIT/CREATE | The tile renders the snapshot it was handed. |
 | `ui/packages/app/lib/wall/tile-counters.ts` | DELETE | The client-side delta this design supersedes. `absorb` and `countersStale` go with it — but only after whatever trims `#eventsByFleet` is re-homed, since `absorb` is its only caller today (`useWorkspaceStream.ts:93`). |
 | `ui/packages/app/tests/e2e/acceptance/wall-live-counters.spec.ts` | EDIT | The cross-context no-refresh guard. It fails deliberately until this spec lands; do not weaken it. |
+| `docs/v2/pending/M195_001_P1_DOCS_OBS_UI_DASHBOARD_LOAD_LATENCY_INVESTIGATION.md` | EDIT | Declared out-of-band, on the user's call: `d05c0ff81` committed the same two conflict markers into that spec, and its sequencing claim about this workstream is one of the two sides. Resolved to the side its own Files Changed table supports; no other line of that spec is touched. |
 
 ## Applicable Rules
 
