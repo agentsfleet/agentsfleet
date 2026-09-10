@@ -62,6 +62,71 @@ fn test_the_docs_link_is_derived_from_the_code() {
     );
 }
 
+/// Client-facing problem metadata keeps a floor now that the byte-for-byte
+/// snapshot is gone.
+///
+/// The retired Zig table pinned every status, title and sentence verbatim; it
+/// could do that because it was an INDEPENDENT record of a second binary. With
+/// that binary gone there is nothing independent left to compare against, and a
+/// table copied from `entries()` would only assert that `entries()` equals
+/// itself (RULE TCF). What survives an accidental edit is the SHAPE each entry
+/// must hold, which is what this asserts — a status a client can act on, prose
+/// that is present and is not a placeholder, and a hint an integrator can read.
+#[test]
+fn test_every_entry_holds_the_shape_a_client_can_act_on() {
+    for entry in entries() {
+        let code = entry.code().as_str();
+
+        // A status outside this set reaches a client as an unhandled branch.
+        // The set is the one `Problem` is allowed to answer with; a new member
+        // is a public-contract decision that belongs in a spec, not a typo.
+        assert!(
+            matches!(
+                entry.status(),
+                400 | 401 | 402 | 403 | 404 | 409 | 410 | 412 | 413 | 424 | 429 | 500 | 502 | 503
+            ),
+            "{code} answers {}, which is not a status this registry may use",
+            entry.status()
+        );
+
+        // A server error is one of three answers, never 501 or 504: this
+        // daemon does not decline to implement, and its own timeouts surface
+        // as the datastore code rather than a gateway one.
+        if entry.status() >= 500 {
+            assert!(
+                matches!(entry.status(), 500 | 502 | 503),
+                "{code} answers {} — a server error here is 500, 502 or 503",
+                entry.status()
+            );
+        }
+
+        assert!(!entry.title().is_empty(), "{code} has no title");
+        assert!(
+            !entry.title().ends_with('.'),
+            "{code}: a title is a label, not a sentence — {:?}",
+            entry.title()
+        );
+
+        // The hint is what an integrator reads to act. An entry that carries
+        // none sends them to the code and nothing else.
+        assert!(!entry.hint().is_empty(), "{code} has no hint");
+
+        // `eu()` authored a dashboard sentence and `e()` did not. Which one a
+        // code used is a fact about who reads it; an EMPTY sentence is neither,
+        // and renders as blank space where an instruction belongs.
+        if let Some(message) = entry.user_message() {
+            assert!(
+                !message.is_empty(),
+                "{code} carries an empty dashboard sentence — omit it or write it"
+            );
+            assert!(
+                message.ends_with('.') || message.ends_with('!'),
+                "{code}: a dashboard sentence is read by a person — {message:?}"
+            );
+        }
+    }
+}
+
 /// The statuses the auth plane depends on, stated rather than inferred.
 ///
 /// These four are load-bearing beyond the envelope: `docs/AUTH.md` rests on
