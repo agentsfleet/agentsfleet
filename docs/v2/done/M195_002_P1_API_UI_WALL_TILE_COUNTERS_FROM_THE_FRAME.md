@@ -14,7 +14,6 @@
 **Baseline revision:** `a4e0ef2bda8a62742a400be18f58588056786f8c`
 **Test Baseline:** `unit=5920 integration=445` — `make test-unit-all` (Rust 2501 + app 2713 + 146 + 560) and `make test-integration-rustd` (445 passed), both exit 0 at `a4e0ef2bd`, measured in the base checkout sitting at that exact revision. Final: `unit=5966 integration=452` (Rust 2510 + app 2746 + 146 + 564; 452 passed), both exit 0.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M195_002-a4e0ef2bd.md`
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M194_001 — its §4 acceptance walk recorded this defect at step 6, and its Pull Request carries the partial work this spec restores. Runs in PARALLEL with M195_001 — the two declare no file in common — except that its §2 request inventory is taken after this spec lands, since carrying the counters on the frame removes the wall's separate counter fetch.
 **Provenance:** agent-generated from M194_001's acceptance walk (step 6, recorded defect) and a code read of the counter triggers, the lease park and the frame publishers. One premise carried from an earlier session note did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
@@ -33,7 +32,7 @@
 
 - **PR title (eventual):** carry fleet counters on every frame, and let the tile replace them
 - **Intent (one sentence):** the number on a wall tile is the number in the database, without a reload.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — performed at PLAN (Sep 10, 2026), before EXECUTE. Restatement: every frame the daemon publishes on a fleet's tail, and the workspace `hello`, carries where the fleet's two counters stand right now, read from the table the triggers maintain; the wall assigns that figure to the tile — keeping the greater, since both only grow — and never derives it from the rows it streamed. Assumptions made, each confirmed in Discovery: (1) the receive must read after its insert because the insert fires the counter trigger; (2) `hello` counters cannot ride the cached `live_set`; (3) a read that does not answer omits the pair, never zeros; (4) the counters table is keyed by fleet and the never-run fleet has no row, so every read is `COALESCE` by key. No mismatch with the Intent above was found.
 
 ## Implementing agent — read these first
 
