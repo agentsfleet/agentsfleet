@@ -149,7 +149,7 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   return (
     <>
       {actions.length === 0 ? (
-        <Button variant="outline" size="sm" disabled>
+        <Button variant="ghost" size="sm" disabled>
           Killed
         </Button>
       ) : (

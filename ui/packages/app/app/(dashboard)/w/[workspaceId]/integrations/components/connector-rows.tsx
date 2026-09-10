@@ -185,7 +185,7 @@ export function OAuthConnectorRow({
           ) : isConnected ? (
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => void disconnect()}
               disabled={disconnecting}
@@ -197,7 +197,7 @@ export function OAuthConnectorRow({
           ) : (
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => void connect()}
               disabled={connecting}

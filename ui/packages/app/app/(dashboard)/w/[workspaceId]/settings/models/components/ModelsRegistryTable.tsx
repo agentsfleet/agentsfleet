@@ -316,7 +316,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         */}
         {nextCursor !== null ? (
           <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={() => loadMore(nextCursor)} disabled={pending}>
+            <Button variant="ghost" onClick={() => loadMore(nextCursor)} disabled={pending}>
               {pending ? "Loading…" : "Load more"}
             </Button>
             <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -334,7 +334,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         {readError ? (
           <div role="alert" className="flex items-center gap-3">
             <p className="text-sm text-destructive">{readErrorCopy(readError)}</p>
-            <Button variant="secondary" onClick={refresh} disabled={pending}>
+            <Button variant="ghost" onClick={refresh} disabled={pending}>
               Retry
             </Button>
           </div>

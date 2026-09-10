@@ -195,7 +195,7 @@ export function PolicyBindsField({
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   aria-label={`${REMOVE_BIND_LABEL} ${index + 1}`}
                   onClick={() => remove(index)}
@@ -208,7 +208,7 @@ export function PolicyBindsField({
 
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={atCap}
             onClick={() => append({ ...BIND_ROW_DEFAULT })}

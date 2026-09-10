@@ -324,7 +324,7 @@ export default function AddModelEntryDialog({
         {secretsLoad === SECRETS_LOAD.error ? (
           <Alert variant="destructive" className="flex items-center gap-3 text-xs">
             {SECRETS_LOAD_FAILED}
-            <Button type="button" variant="outline" size="sm" onClick={onSecretsNeeded}>
+            <Button type="button" variant="ghost" size="sm" onClick={onSecretsNeeded}>
               Retry
             </Button>
           </Alert>
@@ -336,7 +336,7 @@ export default function AddModelEntryDialog({
           <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" variant="outline" disabled={pending || !canSubmit} onClick={() => void onSubmit(false)}>
+          <Button type="button" variant="ghost" disabled={pending || !canSubmit} onClick={() => void onSubmit(false)}>
             {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
             Save
           </Button>
