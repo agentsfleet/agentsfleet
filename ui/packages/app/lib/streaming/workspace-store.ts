@@ -69,14 +69,27 @@ const EMPTY_WORKSPACE: WorkspaceStreamSnapshot = Object.freeze({
 });
 
 /**
+ * A counter as the daemon writes one: a whole, non-negative number a JSON
+ * payload can carry exactly. Anything else is not a counter, whatever the
+ * frame calls it.
+ */
+function isCounter(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
  * The snapshot a frame carries, or nothing. Both fields or neither: the
  * daemon flattens an optional pair, so a frame with one number and not the
  * other is malformed and is treated as carrying none — the figures already
- * standing stay, and nothing is guessed.
+ * standing stay, and nothing is guessed. The wire is untrusted, so the carrier
+ * itself is checked before it is read: a hello whose map holds `null` for a
+ * fleet must not throw halfway through applying the greeting.
  */
-function readCounters(carried: FleetCountersSnapshot): TileCounters | undefined {
-  const { events_processed: eventsProcessed, budget_used_nanos: spentNanos } = carried;
-  if (typeof eventsProcessed !== "number" || typeof spentNanos !== "number") return undefined;
+function readCounters(carried: unknown): TileCounters | undefined {
+  if (typeof carried !== "object" || carried === null) return undefined;
+  const { events_processed: eventsProcessed, budget_used_nanos: spentNanos } =
+    carried as FleetCountersSnapshot;
+  if (!isCounter(eventsProcessed) || !isCounter(spentNanos)) return undefined;
   return { eventsProcessed, spentNanos };
 }
 
@@ -237,8 +250,13 @@ export class WorkspaceStore {
       // The set arrives with where each fleet stands, so a subscriber that
       // came late is right before its first event frame. A fleet the map
       // omits keeps whatever it had: the server chose silence over a guess.
-      for (const [fleetId, carried] of Object.entries(frame.counters ?? {})) {
-        this.#assignCounters(fleetId, carried);
+      // Only subscribed fleets are kept — the map is bounded by the tiles on
+      // screen, never by what a payload chose to name.
+      const carried: unknown = frame.counters;
+      if (typeof carried === "object" && carried !== null) {
+        for (const [fleetId, snapshot] of Object.entries(carried)) {
+          if (this.#subscribedFleetIds.has(fleetId)) this.#assignCounters(fleetId, snapshot);
+        }
       }
     } else {
       const catchingUp = frame.dropped > 0;
@@ -260,12 +278,24 @@ export class WorkspaceStore {
   }
 
   // ASSIGNED, never added to. Every daemon frame carries the whole truth, so
-  // the same frame twice, or one arriving late, leaves the tile where the
-  // newest snapshot put it — the reason no frame owns an increment.
-  #assignCounters(fleetId: string, carried: FleetCountersSnapshot) {
+  // the same frame twice leaves the tile where it was — the reason no frame
+  // owns an increment. Both counters only ever grow on the server, so what
+  // is kept is the GREATER of the standing figure and the carried one: a
+  // frame that crossed a `hello` in flight, or two publishers whose reads
+  // and publishes interleaved, cannot walk a tile backwards.
+  #assignCounters(fleetId: string, carried: unknown) {
     const counters = readCounters(carried);
     if (counters === undefined) return;
-    this.#countersByFleet.set(fleetId, counters);
+    const standing = this.#countersByFleet.get(fleetId);
+    this.#countersByFleet.set(
+      fleetId,
+      standing === undefined
+        ? counters
+        : {
+            eventsProcessed: Math.max(standing.eventsProcessed, counters.eventsProcessed),
+            spentNanos: Math.max(standing.spentNanos, counters.spentNanos),
+          },
+    );
   }
 
   async #backfill(workspaceId: string, anchorMs: number | null, generation: number) {

@@ -59,8 +59,10 @@ function tagEnd(source: string, from: number): number {
 type Offender = { site: string; variant: string };
 
 function offendersIn(path: string): Offender[] {
-  const source = readFileSync(path, "utf8");
-  const site = relative(DASHBOARD_ROOT, path);
+  return offendersFromSource(readFileSync(path, "utf8"), relative(DASHBOARD_ROOT, path));
+}
+
+function offendersFromSource(source: string, site: string): Offender[] {
   const found: Offender[] = [];
   let at = source.indexOf(BUTTON_OPEN);
   while (at !== -1) {
@@ -71,8 +73,11 @@ function offendersIn(path: string): Offender[] {
       continue;
     }
     const end = tagEnd(source, at + BUTTON_OPEN.length);
-    const tag = source.slice(at, end + 1);
     const line = source.slice(0, at).split("\n").length;
+    // A tag that never closes would send the scan back to the start of the
+    // file and loop forever; name it instead.
+    if (end === -1) throw new Error(`unterminated <Button in ${site}:${line}`);
+    const tag = source.slice(at, end + 1);
     const literal = /variant="([a-z-]+)"/.exec(tag);
     const dynamic = /variant=\{/.test(tag);
     if (literal && !PERMITTED_LITERAL_VARIANTS.has(literal[1]!)) {
@@ -86,6 +91,24 @@ function offendersIn(path: string): Offender[] {
 }
 
 describe("dashboard action buttons", () => {
+  it("names an offender the scanner is built to catch, past an arrow inside the tag", () => {
+    // The positive control: without it the sweep above would pass vacuously
+    // the day the tag reader stopped matching. The `>` inside `onClick` is
+    // exactly what truncated the brief's own grep.
+    const source = [
+      'export const X = () => (',
+      '  <Button variant="outline" onClick={() => a > b}>go</Button>',
+      ");",
+      '<ButtonGroup variant="secondary" />',
+    ].join("\n");
+    expect(offendersFromSource(source, "fixture.tsx")).toEqual([
+      { site: "fixture.tsx:2", variant: "outline" },
+    ]);
+    expect(() => offendersFromSource("<Button variant=\"outline\"", "open.tsx")).toThrow(
+      "unterminated <Button in open.tsx:1",
+    );
+  });
+
   it("no dashboard action button uses a variant outside the rule", () => {
     const offenders = tsxFiles(DASHBOARD_ROOT).flatMap(offendersIn);
     expect(

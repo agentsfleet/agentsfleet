@@ -25,6 +25,7 @@ use std::time::Duration;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Delivery;
+use afd_fleet::lease::envelope::Acquired;
 use afd_redis::hub::Received;
 use afd_redis::streams::{FleetStreams, fleet_activity_channel};
 use afd_redis::{Subscription, SubscriptionHub};
@@ -55,12 +56,13 @@ const PROBE: &str = r#"{"kind":"probe"}"#;
 struct Parked {
     fixtures: Fixtures,
     fleet: String,
+    held: Acquired,
     tail: Subscription,
     counters: FleetCounters,
 }
 
-/// Leases a seeded event, records its receive, and reads the counters the
-/// pull would hand the frame — the row is then left open, which is what a
+/// Leases a seeded event and records its receive, which answers the counters
+/// the pull hands the frame — the row is then left open, which is what a
 /// park is from the tail's point of view: nothing closes it.
 async fn parked() -> Parked {
     let fixtures = Fixtures::create_with_queue().await;
@@ -82,21 +84,27 @@ async fn parked() -> Parked {
         .await
         .expect("the selection pass must not fault")
         .expect("the fleet is leasable");
-    assert_eq!(
-        leases
-            .record_received(&held, now)
-            .await
-            .expect("the narrative log must open"),
-        Delivery::First
-    );
-    let counters = afd_events::fleet_counters(&fixtures.database, &fleet)
+    let received = leases
+        .record_received(&held, now)
         .await
-        .expect("the counters read after the row landed");
+        .expect("the narrative log must open");
+    assert_eq!(received.delivery, Delivery::First);
+    let counters = received
+        .counters
+        .expect("a first delivery reads its counters on the connection the insert held");
+    assert_eq!(
+        afd_events::fleet_counters(&fixtures.database, &fleet)
+            .await
+            .expect("the counters read back"),
+        counters,
+        "the figures the receive carries are the database's"
+    );
     leases.publish_received(&held, now, Some(counters)).await;
 
     Parked {
         fixtures,
         fleet,
+        held,
         tail,
         counters,
     }
@@ -220,5 +228,31 @@ async fn a_parked_event_moves_no_budget() {
         status,
         afd_core::event::status::RECEIVED,
         "the parked row is still open — a retry, not a settled charge"
+    );
+}
+
+/// A redelivery finds the row already there: it answers no counters, and the
+/// pull publishes nothing for it — the tail heard the opening once.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
+    let mut run = parked().await;
+    let _opening = next_frame(&mut run.tail).await;
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+
+    let again = run
+        .fixtures
+        .leases()
+        .record_received(&run.held, now)
+        .await
+        .expect("the redelivery must not fault");
+    assert_eq!(again.delivery, Delivery::Repeat);
+    assert_eq!(again.counters, None, "a redelivery reads nothing");
+    // The pull publishes the opening only on a first delivery, so nothing
+    // more reaches the tail.
+    let silence = tokio::time::timeout(SILENCE_BUDGET, run.tail.recv()).await;
+    assert!(
+        silence.is_err(),
+        "a redelivery publishes no frame: {silence:?}"
     );
 }

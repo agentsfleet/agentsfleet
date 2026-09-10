@@ -27,6 +27,7 @@ use afd_core::clock::UnixMillis;
 
 use afd_core::id::Uuid7;
 use afd_events::Closed;
+use afd_wire::tail::FleetCounters;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
@@ -53,18 +54,38 @@ pub enum Delivery {
     Repeat,
 }
 
+/// What opening the narrative log answered: whether this was the first
+/// delivery, and where the fleet's counters stand if it was.
+///
+/// The counters ride here because the insert is what moves them — the
+/// trigger fires on it, and a `RETURNING` cannot see the trigger's write —
+/// so the read follows the insert on the same connection, where the write is
+/// already visible and no second acquire is paid. `None` on a redelivery,
+/// whose frame was published by the delivery that wrote the row, and on a
+/// first delivery whose read did not answer: the frame then goes out without
+/// its figures, never with zeros.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Received {
+    /// Whether this delivery wrote the row.
+    pub delivery: Delivery,
+    /// The fleet's counters after the row landed, when this delivery wrote it.
+    pub counters: Option<FleetCounters>,
+}
+
 impl Leases {
     /// Open the narrative log for `acquired`, if it is not already open.
     ///
     /// Answers [`Delivery::Repeat`] when the row was already there — the
     /// `ON CONFLICT` arm — which is how a re-leased or re-polled event is told
-    /// apart from a new one without a second read.
+    /// apart from a new one without a second read. A first delivery also
+    /// answers the fleet's counters, read right after the insert on the same
+    /// connection.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. The workspace is already a
     /// [`Uuid7`](afd_core::id::Uuid7) by the time it arrives — the envelope
     /// parsed it — so there is nothing left here to validate.
-    pub async fn record_received(&self, acquired: &Acquired, now: UnixMillis) -> Result<Delivery> {
+    pub async fn record_received(&self, acquired: &Acquired, now: UnixMillis) -> Result<Received> {
         let mut connection = self.pool().acquire().await?;
         let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
             .bind(acquired.fleet_id.as_str())
@@ -82,10 +103,18 @@ impl Leases {
 
         // Zero rows is the `ON CONFLICT DO NOTHING` arm: the row was already
         // there, so somebody has already paid for this event.
-        Ok(if landed.rows_affected() == 0 {
-            Delivery::Repeat
-        } else {
-            Delivery::First
+        if landed.rows_affected() == 0 {
+            return Ok(Received {
+                delivery: Delivery::Repeat,
+                counters: None,
+            });
+        }
+        let counters =
+            afd_events::fleet_counters_best_effort_on(&mut connection, acquired.fleet_id.as_str())
+                .await;
+        Ok(Received {
+            delivery: Delivery::First,
+            counters,
         })
     }
 }

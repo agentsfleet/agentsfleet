@@ -134,18 +134,24 @@ impl Fleets {
             .collect()
     }
 
-    /// Where every fleet in `fleets` stands, by identifier.
+    /// Where every fleet of `workspace` in `fleets` stands, by identifier.
     ///
-    /// Every identifier answers — zeros for a fleet that has never run — so
-    /// the map is as long as the set, and a client can assign each tile from
-    /// it without a fallback. Read fresh on every call; see the module note.
+    /// Every identifier the workspace holds answers — zeros for a fleet that
+    /// has never run — so a client can assign each tile from the map without
+    /// a fallback; one it does not hold is absent, never disclosed. Read fresh
+    /// on every call; see the module note.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a row this build cannot
     /// read.
-    pub async fn counters(&self, fleets: &[String]) -> Result<BTreeMap<String, FleetCounters>> {
+    pub async fn counters(
+        &self,
+        workspace: &Uuid7,
+        fleets: &[String],
+    ) -> Result<BTreeMap<String, FleetCounters>> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::SELECT_FLEET_COUNTERS_FOR_SET)
+            .bind(workspace.as_str())
             .bind(fleets)
             .fetch_all(connection.as_mut())
             .await

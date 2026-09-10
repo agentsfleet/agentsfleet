@@ -200,7 +200,8 @@ async fn test_renew_after_reclaim_is_lost() {
         leases
             .record_received(&acquired, now)
             .await
-            .expect("the narrative log must open"),
+            .expect("the narrative log must open")
+            .delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );

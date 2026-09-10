@@ -83,5 +83,20 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         Some(&json!(1)),
         "the gate just raised is the one waiting"
     );
+    // The park's frame carries where the fleet stands, read on the insert's
+    // own connection: the figures on the wire are the database's.
+    let counters = afd_events::fleet_counters(&fixture.database, fixture.fleet.as_str())
+        .await
+        .expect("the counters read back");
+    assert_eq!(
+        frame.get("events_processed"),
+        Some(&json!(counters.events_processed)),
+        "gate_opened carries the fleet's event count"
+    );
+    assert_eq!(
+        frame.get("budget_used_nanos"),
+        Some(&json!(counters.budget_used_nanos)),
+        "gate_opened carries the fleet's spend"
+    );
     fixture.cleanup().await;
 }

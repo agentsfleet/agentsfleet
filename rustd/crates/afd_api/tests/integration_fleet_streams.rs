@@ -102,6 +102,25 @@ async fn open_stream(router: &axum::Router, fixture: &Fixture) -> axum::body::Bo
     let opening = std::str::from_utf8(&chunk).expect("SSE is UTF-8");
     assert!(opening.contains("event: hello"));
     assert!(opening.contains(&fixture.fleet));
+    // The greeting says where each fleet stands, read fresh for it: a fleet
+    // that has never run answers with zeros rather than being left out.
+    let data = opening
+        .lines()
+        .find_map(|line| line.strip_prefix("data:"))
+        .expect("the hello carries a data line");
+    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
+    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+        .await
+        .expect("the counters read back");
+    assert_eq!(
+        hello.pointer(&format!("/counters/{}/events_processed", fixture.fleet)),
+        Some(&serde_json::json!(counters.events_processed)),
+        "the hello carries the fleet's event count: {hello}"
+    );
+    assert_eq!(
+        hello.pointer(&format!("/counters/{}/budget_used_nanos", fixture.fleet)),
+        Some(&serde_json::json!(counters.budget_used_nanos))
+    );
     body
 }
 

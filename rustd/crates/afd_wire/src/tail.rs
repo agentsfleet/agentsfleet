@@ -128,8 +128,10 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
 /// it, because they do not move together. `events_processed` is bumped
 /// `AFTER INSERT ON core.fleet_events` (`schema/890`) — at RECEIVE, not at
 /// completion — while `budget_used_nanos` follows the ledger write, which may
-/// update one row many times across a run. A client that assigns both from
-/// whichever frame arrived last is right under either clock.
+/// update one row many times across a run. Both only ever grow — the
+/// triggers add, and the backfill's conflict arm takes `GREATEST` — so a
+/// client that keeps the greater of what it holds and what a frame carries is
+/// right under either clock, and right when frames cross in flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct FleetCounters {
     /// Lifetime event count. Server truth, never client arithmetic.

@@ -15,9 +15,19 @@
 //! out with the counters absent — which the client reads as "leave what you
 //! have standing" — rather than with zeros, which it would read as a fleet
 //! that has done nothing.
+//!
+//! # On the connection the write held, where there is one
+//!
+//! A publisher whose own write moved the counters — the receive, the
+//! continuation, the park — still holds that connection when the read is
+//! due, and the trigger's write is visible to the next statement on it. The
+//! `_on` variants read there, so the hot path pays one statement and no
+//! second acquire; the pool-taking variants are for the publishers whose
+//! write already returned its connection.
 
 use afd_db::Db;
 use afd_wire::tail::FleetCounters;
+use sqlx::PgConnection;
 use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
@@ -40,6 +50,17 @@ const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
 /// not run, or a row this build cannot read.
 pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounters> {
     let mut connection = database.acquire().await?;
+    fleet_counters_on(&mut connection, fleet_id).await
+}
+
+/// The fleet's counters as the database has them, read on `connection`.
+///
+/// # Errors
+/// Reports a statement that would not run, or a row this build cannot read.
+pub async fn fleet_counters_on(
+    connection: &mut PgConnection,
+    fleet_id: &str,
+) -> Result<FleetCounters> {
     let row = sqlx::query(SELECT_FLEET_COUNTERS)
         .bind(fleet_id)
         .fetch_one(&mut *connection)
@@ -54,7 +75,21 @@ pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounte
 /// The fleet's counters for a frame about to be published, or `None` with the
 /// failure logged — never zeros.
 pub async fn fleet_counters_best_effort(database: &Db, fleet_id: &str) -> Option<FleetCounters> {
-    match fleet_counters(database, fleet_id).await {
+    unread_logged(fleet_counters(database, fleet_id).await, fleet_id)
+}
+
+/// [`fleet_counters_best_effort`] on the connection a publisher's own write
+/// held, so the hot path pays no second acquire.
+pub async fn fleet_counters_best_effort_on(
+    connection: &mut PgConnection,
+    fleet_id: &str,
+) -> Option<FleetCounters> {
+    unread_logged(fleet_counters_on(connection, fleet_id).await, fleet_id)
+}
+
+/// The figures, or `None` with the refusal logged under its registry code.
+fn unread_logged(read: Result<FleetCounters>, fleet_id: &str) -> Option<FleetCounters> {
+    match read {
         Ok(counters) => Some(counters),
         Err(error) => {
             let code = error.code().as_str();
