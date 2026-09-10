@@ -65,7 +65,7 @@ export default function RunMetricsStrip({
         <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} divided />
       </DescriptionList>
       {pendingApprovals > 0 ? (
-        <Button asChild variant="outline" size="sm">
+        <Button asChild variant="ghost" size="sm">
           <Link href={approvalsHref}>
             {pendingApprovals}{" "}
             {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} →

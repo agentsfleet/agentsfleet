@@ -171,14 +171,14 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 | `w/…/fleets/[id]/components/RunMetricsStrip.tsx:68` | outline | **ghost** | link to the approvals inbox | |
 | `w/…/fleets/[id]/components/SkillEditor.tsx:253` | secondary | **default** | Save — the editor's primary | |
 | `w/…/fleets/[id]/components/SkillEditor.tsx:271` | outline | **ghost** | Edit — opens the editor | |
-| `w/…/fleets/new/InstallSourceSelector.tsx:190` | default | **judgment** | "Install" on every library card — one primary per card in a grid, the app-store shape; keep, or ghost so the page has one primary? | |
+| `w/…/fleets/new/InstallSourceSelector.tsx:190` | default | keep | "Install" on every library card — one primary per card, the catalogue shape; M98 §9 made Install the one-click primary | ✓ user |
 | `w/…/fleets/new/InstallSourceSelector.tsx:208` | secondary | **ghost** | load more | |
 | `w/…/fleets/new/InstallSourceSelector.tsx:241` | secondary | **ghost** | retry | |
 | `w/…/fleets/new/InstallStates.tsx:198` | default | keep | Connect — the step's primary | |
 | `w/…/fleets/new/InstallStreamSteps.tsx:94` | default | keep | "Open fleet →" — the primary | |
 | `w/…/fleets/new/install-state-list.tsx:22` | link | keep | "← Back to library" — inline navigation | |
 | `w/…/fleets/new/library-docs.tsx:35` | outline | **ghost** | "Learn more" — external | |
-| `w/…/integrations/components/connector-rows.tsx:186` | outline | **judgment** | Disconnect — revokes access but reconnecting restores it; destructive, or ghost with the label doing the work? | |
+| `w/…/integrations/components/connector-rows.tsx:186` | outline | **ghost** | Disconnect — reversible in one click; the restraint principle says no alarm on a reversible action, and the word is the signal | ✓ user |
 | `w/…/integrations/components/connector-rows.tsx:198` | outline | **ghost** | Connect | |
 | `w/…/secrets/components/AddSecretForm.tsx:211` | link | keep | "+ Add field" — inline in a form | |
 | `w/…/secrets/components/EditSecretDialog.tsx:123` | default | keep | dialog submit | |
@@ -193,7 +193,7 @@ The derivation is identity data — `fleetIdentity.ts:19-20` says so, and `Fleet
 | `w/…/settings/models/components/ModelsRegistryTable.tsx:337` | secondary | **ghost** | retry | |
 | `w/…/settings/security/page.tsx:29` | default | keep | a stub page's one action | |
 
-First pass over 47 sites: 25 keep · 18 ghost · 2 default · 2 judgment. The sweep is the mechanical half; the judgment rows and the rule's third clause are the user's.
+Confirmed by the user (Sep 10, 2026): 47 sites — 26 keep · 19 → `ghost` · 2 → `default` · 0 open. The rule's third clause (`default` for the one primary on a surface) is accepted; Install stays the primary on every library card; Disconnect is `ghost`.
 
 - **Dimension 7.1** — every action button under the dashboard renders `default`, `ghost`, `destructive`, or `link` as the confirmed table says for that site; a repository test enumerates the sites tag-aware and fails on any other → Test `no dashboard action button uses a variant outside the rule`
 

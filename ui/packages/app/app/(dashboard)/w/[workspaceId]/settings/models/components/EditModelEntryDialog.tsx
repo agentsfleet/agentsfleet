@@ -211,7 +211,7 @@ function EditForm({
       </div>
       {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
       <DialogFooter>
-        <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
+        <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
         <Button type="button" disabled={pending || !canSubmit} onClick={() => void save()}>
