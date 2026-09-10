@@ -14,11 +14,7 @@
 **Baseline revision:** pending — record the full comparison commit at CHORE(open)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-<<<<<<< Updated upstream
-**Depends on:** M194_001 for the build the measurement is taken on, and **M195_002 must land first**: that spec rewrites the wall's counter data path, and §2's request inventory is stale the moment it does. The CTA and action-button fixes this spec must not overlap ship in M194_001's Pull Request.
-=======
 **Depends on:** M194_001 for the build the measurement is taken on; its Pull Request also carries the CTA and action-button fixes this spec must not overlap. Runs in PARALLEL with M195_002 — the two declare no file in common — with one exception: **§2's request inventory is taken after M195_002 lands, or re-taken**, because that spec removes the wall's separate counter fetch by carrying the figures on the frame. §1, §3, §4 and §5 are independent of it.
->>>>>>> Stashed changes
 **Provenance:** agent-generated from an operator's numbered findings on the development dashboard (findings 8, 9, 12, 13, 14), each cited fact read at source. One premise the findings carried did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
 
