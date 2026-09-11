@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import {
   getDefaultWorkspaceId,
@@ -18,15 +18,29 @@ import {
 } from "./fixtures/blank-frame-audit";
 
 const ROUTE_TIMEOUT_MS = 10_000;
-const STREAM_PREFIX = `m143-fluidity-${crypto.randomBytes(4).toString("hex")}`;
+const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
-async function installBlankFrameAudit(page: import("@playwright/test").Page) {
+// The shell's `data-surface` lands with the layout, before the Fleets route's
+// own Suspense boundary resolves: on a slow read the canvas is still the
+// route's text-free skeleton, and an audit installed then counts the server's
+// latency as blank shell frames. Gate on content only the loaded route
+// carries — the Fleets region (the wall) or the Getting started title (the
+// empty wall) — so the audit measures navigation, not the first read.
+async function expectFleetsRouteLoaded(page: Page): Promise<void> {
+  const wall = page.getByRole("region", { name: "Fleets", exact: true });
+  const emptyWall = page.getByRole("heading", {
+    name: "Getting started",
+    level: 1,
+  });
+  await expect(wall.or(emptyWall)).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
+}
+
+async function installBlankFrameAudit(page: Page): Promise<void> {
+  await expectFleetsRouteLoaded(page);
   await page.evaluate(installPaintBoundaryAudit);
 }
 
-async function blankFrameCount(
-  page: import("@playwright/test").Page,
-): Promise<number> {
+async function blankFrameCount(page: Page): Promise<number> {
   try {
     return await page.evaluate(readBlankFrames);
   } finally {
