@@ -48,9 +48,13 @@ describe("the canvas gutter is stated once", () => {
     // 54px from the right, because the 6px scrollbar came out of the content
     // box only once there was something to scroll.
     const canvas = read(GLOBALS).split(".app-dashboard-canvas {")[1]?.split("}")[0] ?? "";
-    expect(canvas).toMatch(
-      /padding-inline:\s*calc\(var\(--app-canvas-gutter\)\s*-\s*var\(--app-scrollbar\)\)/,
-    );
+    // both-edges, not bare `stable`: reserving on the end edge alone is what
+    // made a scrolling page read 48 left against 54 right. And the gutter is
+    // never subtracted back out of the padding — whether the browser reserves
+    // it at all varies, and subtracting where it does not costs 6px of the
+    // token on every route.
+    expect(canvas).toMatch(/padding-inline:\s*var\(--app-canvas-gutter\)/);
+    expect(canvas).not.toMatch(/padding-inline:\s*calc/);
     expect(canvas).toMatch(/scrollbar-gutter:\s*stable both-edges/);
   });
 
@@ -59,7 +63,9 @@ describe("the canvas gutter is stated once", () => {
     // 1920px, because the header ran pr-4/md:pr-6 against the canvas's
     // px-4/sm:px-6/md:px-8/2xl:px-12.
     const trailing = read(GLOBALS).split(".app-shell-trailing {")[1]?.split("}")[0] ?? "";
-    expect(trailing).toMatch(/padding-right:\s*var\(--app-canvas-gutter\)/);
+    expect(trailing).toMatch(
+      /padding-right:\s*calc\(var\(--app-canvas-gutter\)\s*\+\s*var\(--app-scrollbar\)\)/,
+    );
   });
 
   it("leaves neither shell element a horizontal inset of its own", () => {

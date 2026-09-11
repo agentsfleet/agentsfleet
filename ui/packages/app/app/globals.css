@@ -35,12 +35,17 @@ body {
  * pr-4/md:pr-6, so above 640px the avatar sat 8px outboard of the content
  * below it, and 24px outboard past 1536px.
  *
- * `scrollbar-gutter: stable` is the other half. The canvas takes its 6px
- * scrollbar out of its own content box, so on a page long enough to scroll the
- * content edge moved 6px left while the header stayed put — the gutters read
- * 48 left against 54 right on exactly the pages where there is most to look at.
- * Reserving the gutter always makes the canvas's right edge one number, and
- * the header adds that same width back to land on it. */
+ * `scrollbar-gutter: stable both-edges` is the other half, and it is on
+ * BOTH edges for a reason. The canvas takes its scrollbar out of its own
+ * content box, so with the gutter reserved on one edge only the content read
+ * 48 left against 54 right on exactly the pages long enough to scroll.
+ *
+ * The gutter is NOT subtracted back out of the padding. Whether the browser
+ * reserves it at all depends on the platform's scrollbar and on whether this
+ * page overflows: measured here, most dashboard routes reserve nothing, and
+ * subtracting left every one of them inset 42px against a 48px token. Adding
+ * the scrollbar where it IS reserved costs symmetric width on both edges;
+ * subtracting it where it is NOT costs the token itself. */
 :root {
   --app-scrollbar: 6px;
   --app-canvas-gutter: 1rem;
@@ -51,18 +56,17 @@ body {
 
 .app-dashboard-canvas {
   background: var(--bg);
-  /* The scrollbar lives INSIDE the gutter rather than beside it: reserve it on
-   * both edges and take its width back out of the padding, so the content is
-   * inset by the gutter token itself — equally, on both sides, whether or not
-   * this page happens to scroll. */
-  padding-inline: calc(var(--app-canvas-gutter) - var(--app-scrollbar));
+  padding-inline: var(--app-canvas-gutter);
   scrollbar-gutter: stable both-edges;
 }
 
-/* The header does not scroll, so the same gutter lands its trailing cluster on
- * the canvas's content edge with no scrollbar arithmetic of its own. */
+/* The header does not scroll, so nothing reserves a scrollbar for it: it adds
+ * that width itself to land its trailing cluster on the canvas's content edge.
+ * Measured across fleets, events, approvals, secrets and billing, the canvas
+ * reserves the gutter on both edges and its content sits at gutter + scrollbar
+ * from each side; this puts the avatar on exactly that line. */
 .app-shell-trailing {
-  padding-right: var(--app-canvas-gutter);
+  padding-right: calc(var(--app-canvas-gutter) + var(--app-scrollbar));
 }
 
 /* In @layer base so per-element text-colour utilities win on <a> elements
