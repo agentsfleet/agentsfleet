@@ -205,13 +205,17 @@ function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed
   if (collapsed) return <NavSection items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} />;
   return (
     <NavGroup>
-      <Button variant="ghost" size="sm"
+      {/* The one group with a toggle renders its eyebrow at the same 16px
+          line, on the same column, as the three that do not. As a `sm`
+          control it was 32px tall with its text 5px to the right, and the gap
+          into this group measured 64px against 48 into every other. */}
+      <Button variant="ghost" size="eyebrow"
         type="button"
         aria-expanded={open}
         aria-controls={regionId}
         className={cn(
           EYEBROW_CLASS,
-          "flex w-full items-center justify-between px-2 mb-2 text-muted-foreground hover:text-foreground",
+          "flex w-full items-center justify-between mb-2 text-muted-foreground hover:text-foreground",
           active && "text-foreground",
         )}
         onClick={() => setOpen((current) => !current)}
@@ -219,7 +223,7 @@ function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed
         <span>Platform</span>
         {open ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
       </Button>
-      <div id={regionId} hidden={!open} className="flex flex-col gap-0.5">
+      <div id={regionId} hidden={!open} className="flex flex-col">
         {open ? <NavItems items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} /> : null}
       </div>
     </NavGroup>

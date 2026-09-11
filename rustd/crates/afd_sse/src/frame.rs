@@ -20,6 +20,9 @@
 //! client can tell. The durable row is still there to be paged.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+use afd_wire::tail::FleetCounters;
 
 use crate::error::{Error, Result};
 
@@ -106,10 +109,21 @@ impl Frame {
         })
     }
 
-    /// The control frame announcing which fleets this connection carries.
+    /// The control frame announcing which fleets this connection carries, and
+    /// where each of them stands.
+    ///
+    /// `counters` is keyed by fleet id and is allowed to be shorter than
+    /// `fleet_ids`: a read that did not answer sends the set without its
+    /// figures, and a client leaves what it has standing for a fleet the map
+    /// omits — never zeros, which it would read as a fleet that has done
+    /// nothing.
     #[must_use]
-    pub fn hello(fleet_ids: &[String]) -> Self {
-        let data = serde_json::json!({ KIND_KEY: KIND_HELLO, "fleet_ids": fleet_ids });
+    pub fn hello(fleet_ids: &[String], counters: &BTreeMap<String, FleetCounters>) -> Self {
+        let data = serde_json::json!({
+            KIND_KEY: KIND_HELLO,
+            "fleet_ids": fleet_ids,
+            "counters": counters,
+        });
         Self {
             seq: SYNTHETIC_SEQ,
             kind: Cow::Borrowed(KIND_HELLO),

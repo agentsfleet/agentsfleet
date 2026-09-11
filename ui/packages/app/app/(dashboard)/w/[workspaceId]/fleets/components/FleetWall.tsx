@@ -6,11 +6,8 @@ import { PlusIcon } from "lucide-react";
 import {
   Alert,
   Button,
-  cn,
-  EYEBROW_CLASS,
   SectionHeader,
   TooltipButton,
-  WakePulse,
 } from "@agentsfleet/design-system";
 import { type Fleet } from "@/lib/api/fleets";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
@@ -20,6 +17,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_FLEET_TOOLTIP } from "../new/library-docs";
 import FleetTile from "./FleetTile";
+import WallLiveBadge from "./WallLiveBadge";
 import { tileShouldStream } from "@/lib/wall/tile-liveness";
 
 type Props = {
@@ -67,23 +65,12 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   }
 
   return (
-    <div className="grid gap-xl">
+    <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
+      <div className="grid gap-xl">
       <SectionHeader
         actions={
           <div className="flex items-center gap-3">
-            {liveTotal > 0 ? (
-              <span
-                className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}
-                aria-label={`${liveTotal} live`}
-              >
-                <WakePulse
-                  live
-                  className="inline-block w-2 h-2 rounded-full bg-pulse"
-                  aria-hidden="true"
-                />
-                {liveTotal} live
-              </span>
-            ) : null}
+            <WallLiveBadge liveTotal={liveTotal} />
             <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
               <Link href={workspacePath(workspaceId, "fleets/new")}>
                 <PlusIcon size={14} /> Install fleet
@@ -96,13 +83,11 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
       </SectionHeader>
 
       <div>
-        <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {fleets.map((z) => (
-              <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
-            ))}
-          </div>
-        </WorkspaceStreamProvider>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {fleets.map((z) => (
+            <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
+          ))}
+        </div>
 
         {error ? (
           <Alert variant="destructive" className="mt-3">{error}</Alert>
@@ -122,6 +107,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
           </div>
         ) : null}
       </div>
-    </div>
+      </div>
+    </WorkspaceStreamProvider>
   );
 }

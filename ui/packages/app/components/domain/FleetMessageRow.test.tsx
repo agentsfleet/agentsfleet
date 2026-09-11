@@ -10,9 +10,9 @@ import {
   FleetActivityRow,
   FleetGroupRow,
   FleetMessageRow,
-  FleetNameProvider,
+  SenderLabelProvider,
   ROW_TONE,
-  useFleetName,
+  useSenderLabel,
 } from "./FleetMessageRow";
 
 const AT = new Date(Date.UTC(2026, 6, 21, 10, 42, 17));
@@ -163,7 +163,7 @@ describe("FleetActivityRow", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(AT.getTime() + 2 * 60_000));
     const { container } = render(
-      <FleetNameProvider fleetName="github-pr-reviewer">
+      <SenderLabelProvider senderLabel="github-pr-reviewer">
         <FleetActivityRow
           sender="GitHub App"
           headline="Webhook received"
@@ -172,7 +172,7 @@ describe("FleetActivityRow", () => {
         >
           <span>delivery context</span>
         </FleetActivityRow>
-      </FleetNameProvider>,
+      </SenderLabelProvider>,
     );
     const time = container.querySelector("time") as HTMLTimeElement;
     const accessibleTime = screen.getByText(/^Occurred /, {
@@ -237,16 +237,16 @@ describe("FleetGroupRow", () => {
   });
 });
 
-describe("FleetNameProvider", () => {
+describe("SenderLabelProvider", () => {
   function Probe() {
-    return <span>{useFleetName() || "(none)"}</span>;
+    return <span>{useSenderLabel() || "(none)"}</span>;
   }
 
   it("carries the console's fleet name to rows the thread primitive renders", () => {
     render(
-      <FleetNameProvider fleetName="github-pr-reviewer">
+      <SenderLabelProvider senderLabel="github-pr-reviewer">
         <Probe />
-      </FleetNameProvider>,
+      </SenderLabelProvider>,
     );
     expect(screen.getByText("github-pr-reviewer")).toBeTruthy();
   });

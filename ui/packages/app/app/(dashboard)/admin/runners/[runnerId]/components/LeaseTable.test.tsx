@@ -35,7 +35,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { LeaseTable } from "./LeaseTable";
-import { agentDisplayName } from "@/components/domain/AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 afterEach(() => cleanup());
 
@@ -169,7 +169,7 @@ describe("LeaseTable", () => {
     // The fencing token lives only in Review lease — absent until a row is
     // activated, present after, gone again once the panel closes.
     expect(screen.queryByText("1,884")).toBeNull();
-    fireEvent.click(screen.getByText("Search Services"));
+    fireEvent.click(screen.getByText(agentDisplayName("fleet-1")));
     expect(screen.getByText("1,884")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
     expect(screen.queryByText("1,884")).toBeNull();
@@ -188,6 +188,25 @@ describe("LeaseTable", () => {
       />, { wrapper: TooltipProvider });
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(goToPage).toHaveBeenCalledWith(2);
+  });
+
+  it("a lease row names its agent and keeps the uuid in title", () => {
+    // Dimension 5.4. The cell reads the callsign — the name every other agent
+    // column uses — even though the row carries the fleet's given name, and
+    // the UUID stays reachable on hover rather than painted in the cell.
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "named-1", fleet_name: "Search Services", fleet_id: "fleet-1" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    const cell = screen.getByText(agentDisplayName("fleet-1"));
+    expect(cell.textContent).toMatch(/^Agent [A-Za-z]+-[0-9A-F]{4}$/);
+    expect(cell.getAttribute("title")).toBe("fleet-1");
+    expect(screen.queryByText("Search Services")).toBeNull();
   });
 
   it("should name a fleet deleted out from under its leases, keeping the id on hover", () => {
@@ -368,8 +387,8 @@ describe("LeaseTable", () => {
       <LeaseTable
         initial={{
           items: [
-            lease({ id: "older", fleet_name: "Alpha Fleet", created_at: OLDER_INSTANT_MS, outcome: "succeeded" }),
-            lease({ id: "newer", fleet_name: "Beta Fleet", created_at: NEWER_INSTANT_MS, outcome: "succeeded" }),
+            lease({ id: "older", fleet_id: "fleet-older", created_at: OLDER_INSTANT_MS, outcome: "succeeded" }),
+            lease({ id: "newer", fleet_id: "fleet-newer", created_at: NEWER_INSTANT_MS, outcome: "succeeded" }),
           ],
           // total unknown (null) — the pager renders without a fabricated count.
           total: null,
@@ -381,7 +400,7 @@ describe("LeaseTable", () => {
       screen
         .getAllByRole("row")
         .slice(1)
-        .map((row) => (row.textContent?.includes("Alpha Fleet") ? "older" : "newer"));
+        .map((row) => (row.textContent?.includes(agentDisplayName("fleet-older")) ? "older" : "newer"));
     fireEvent.click(screen.getByRole("button", { name: /time/i }));
     const firstSort = orderOf();
     fireEvent.click(screen.getByRole("button", { name: /time/i }));

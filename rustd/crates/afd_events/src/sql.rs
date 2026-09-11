@@ -61,12 +61,55 @@ macro_rules! closed_columns {
     };
 }
 
-/// The tail of [`closed_columns!`]: the pending-status bind, then the join.
+/// The fleet's two activity counters, read by primary key off `$fleet`.
+///
+/// Written once and spliced into every statement that answers them, so the
+/// closing select and the standalone read cannot drift apart. Two correlated
+/// subselects rather than a join, and never an inner one: `LEFT JOIN` plans as
+/// a hash join that sequentially scans every counter row to answer for one
+/// fleet, and an inner join drops a fleet that has never run. `COALESCE` gives
+/// that fleet the same zeros the fleets page shows for it.
+macro_rules! counter_columns {
+    ($fleet:literal) => {
+        concat!(
+            counter_column!("events_processed", $fleet),
+            ",\n",
+            counter_column!("budget_used_nanos", $fleet)
+        )
+    };
+}
+
+/// One counter: the correlated key lookup that [`counter_columns!`] composes,
+/// so the lookup's shape is written once for both.
+macro_rules! counter_column {
+    ($column:literal, $fleet:literal) => {
+        concat!(
+            "       COALESCE((SELECT k.",
+            $column,
+            " FROM core.fleet_activity_counters k\n",
+            "                  WHERE k.fleet_id = ",
+            $fleet,
+            "), 0) AS ",
+            $column
+        )
+    };
+}
+
+/// The tail of [`closed_columns!`]: the pending-status bind, then the fleet's
+/// counters as they stand at the ending, then the join.
+///
+/// The counters ride the closing so the completion frame carries the whole
+/// truth without a second read, and both are final at the closing:
+/// `events_processed` moved at receive, and `budget_used_nanos` moved when
+/// the report's ledger settle committed, which `afd_fleet`'s report path does
+/// before it marks the row terminal; a gate refusal writes no ledger row.
 macro_rules! closed_from {
     () => {
-        ") AS pending_approvals
-FROM closed c
-JOIN core.fleets f ON f.id = c.fleet_id"
+        concat!(
+            ") AS pending_approvals,\n",
+            counter_columns!("c.fleet_id"),
+            "\nFROM closed c\nJOIN core.fleets f ON f.id = c.fleet_id"
+        )
     };
 }
 
@@ -144,6 +187,19 @@ WITH closed AS (
     "$11",
     closed_from!()
 );
+
+/// A fleet's activity counters as the database has them, by primary key.
+///
+/// Answers exactly one row for any fleet id, zeros for a fleet with no counter
+/// row: the trigger that maintains the row creates it on the first event, so a
+/// fleet that has never run has none, and it is not an error to ask about it.
+/// Read right before a frame is published, so the number on the wire is the
+/// number in the table at that instant — the receive path's own insert has
+/// already fired the trigger by then, which a `RETURNING` on that insert could
+/// not see.
+///
+/// `$1` fleet.
+pub const SELECT_FLEET_COUNTERS: &str = concat!("SELECT\n", counter_columns!("$1::uuid"));
 
 /// One event's current status.
 ///

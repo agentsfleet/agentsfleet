@@ -32,12 +32,16 @@
 //! one plane writes from being one another cannot recognise.
 
 mod closed;
+mod counters;
 mod error;
 mod history;
 pub mod sql;
 mod steer;
 
 pub use self::closed::Closed;
+pub use self::counters::{
+    fleet_counters, fleet_counters_best_effort, fleet_counters_best_effort_on, fleet_counters_on,
+};
 pub use self::error::{Error, Result};
 pub use self::history::{
     Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,

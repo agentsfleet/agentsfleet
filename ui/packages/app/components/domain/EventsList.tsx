@@ -15,7 +15,8 @@ import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
-import { AgentLabel, agentDisplayName } from "./AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { AgentLabel } from "./AgentLabel";
 import {
   groupEventRows,
   isZeroMetricOnFailure,

@@ -13,14 +13,28 @@ vi.mock("./FleetTile", () => ({
   default: ({ fleet }: { fleet: Fleet }) =>
     React.createElement("div", { "data-testid": "tile", "data-status": fleet.status }, fleet.name),
 }));
+// The badge reports the STREAM's state, not the count of active fleets, so a
+// wall test has to say which stream state it is describing. Connected-and-
+// greeted is the default; `streamState` is reassigned by the test that checks
+// the wall refuses to claim "live" before the stream says so.
+let streamState = {
+  connectionStatus: "live",
+  helloReceived: true,
+  catchingUp: false,
+};
 vi.mock("@/components/domain/useWorkspaceStream", () => ({
   WorkspaceStreamProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
+  useWorkspaceStream: () => streamState,
 }));
 const listFleetsAction = vi.fn();
 vi.mock("../actions", () => ({ listFleetsAction: (...a: unknown[]) => listFleetsAction(...a) }));
 
 import FleetWall from "./FleetWall";
+
+function liveStream() {
+  return { connectionStatus: "live", helloReceived: true, catchingUp: false };
+}
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
   return { id: "f1", name: "alpha", status: "active", created_at: 0, updated_at: 0, ...over };
@@ -39,6 +53,7 @@ function renderWall(fleets: Fleet[], cursor: string | null = null) {
 afterEach(() => {
   cleanup();
   listFleetsAction.mockReset();
+  streamState = liveStream();
 });
 
 describe("FleetWall", () => {
@@ -46,6 +61,29 @@ describe("FleetWall", () => {
     renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
     expect(screen.getByLabelText("1 live")).toBeTruthy();
+  });
+
+  it("refuses to claim live before the stream is connected and greeted", () => {
+    // The old eyebrow counted ACTIVE fleets, so it read "1 live" while the
+    // EventSource was still opening — the page asserting liveness it had no
+    // evidence for. Connection state, not fleet status, decides this now.
+    streamState = { ...liveStream(), connectionStatus: "connecting", helloReceived: false };
+    renderWall([fleet()]);
+    expect(screen.queryByLabelText("1 live")).toBeNull();
+    expect(screen.getByLabelText("connecting…")).toBeTruthy();
+  });
+
+  it("says reconnecting when the stream dropped, rather than going quiet", () => {
+    streamState = { ...liveStream(), connectionStatus: "reconnecting" };
+    renderWall([fleet()]);
+    expect(screen.getByLabelText("reconnecting…")).toBeTruthy();
+  });
+
+  it("says offline when the stream has given up, rather than going quiet", () => {
+    streamState = { ...liveStream(), connectionStatus: "offline" };
+    renderWall([fleet()]);
+    expect(screen.getByLabelText("offline")).toBeTruthy();
+    expect(screen.queryByLabelText("1 live")).toBeNull();
   });
 
   it("hides the live counter when no loaded fleet is active", () => {

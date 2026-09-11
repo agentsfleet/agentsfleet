@@ -3,6 +3,19 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { Nav, NavItem } from "../index";
 
 describe("NavItem", () => {
+  it("is a symmetric pill: rounded on every corner, with no accent rail", () => {
+    render(<NavItem href="/fleets" active>Fleets</NavItem>);
+    const link = screen.getByRole("link", { name: "Fleets" });
+    expect(link).toHaveClass("rounded-md");
+    // The rail floated 12px inside every consumer's inset and read as a
+    // clipped corner; its two pixels also pushed the icon off the eyebrow
+    // column. The active state is the fill and the weight alone.
+    expect(link).not.toHaveClass("rounded-r-md");
+    expect(link).not.toHaveClass("border-l-2");
+    expect(link.className).not.toContain("border-pulse");
+    expect(link.className).toContain("data-[active=true]:bg-pulse/10");
+  });
+
   it("owns interface typography, theme tokens, and visible keyboard focus", () => {
     render(<NavItem href="/fleets">Fleets</NavItem>);
     const link = screen.getByRole("link", { name: "Fleets" });

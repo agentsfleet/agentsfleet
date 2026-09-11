@@ -8,7 +8,9 @@ import {
   useWorkspaceFleetStream,
 } from "@/components/domain/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";
+import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
 
 const WORKSPACE_ID = "ws_wall";
 const FLEET_A = "fleet_a";
@@ -24,6 +26,11 @@ const CURRENT_LABEL = "current";
 const CATCHING_UP_LABEL = "catching up";
 const FLEET_ACTOR = "fleet";
 const ONE_EVENT_LABEL = "events:1";
+const SNAPSHOT_KIND_LABEL = "kind:snapshot";
+const LIVE_KIND_LABEL = "kind:live";
+const COUNT_BEFORE_THE_DROP = 5;
+const COUNT_AFTER_THE_DROP = 7;
+const SPENT_NANOS = 2_000_000_000;
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -292,6 +299,44 @@ describe("workspace fleet wall provider", () => {
     expect(view.queryByTestId(FLEET_A)).toBeNull();
   });
 
+  it("a_dropped_frame_is_corrected_by_the_next_snapshot", () => {
+    // Dimension 1.5. The frame carrying 6 never arrives; the one carrying 7
+    // does, and the tile reads 7 — the database's figure — with no reload:
+    // every frame carries the whole truth, so nothing owed the missing one.
+    const view = renderWall([FLEET_A]);
+    const source = onlyEventSource();
+    source.open();
+    source.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    source.emit(completionFrame(FLEET_A, "e5", COUNT_BEFORE_THE_DROP));
+    flushAnimationFrame();
+    expect(view.getByTestId(FLEET_A).textContent).toContain(`processed:${COUNT_BEFORE_THE_DROP}`);
+
+    // e6's frame is the one transport lost.
+    source.emit(completionFrame(FLEET_A, "e7", COUNT_AFTER_THE_DROP));
+    flushAnimationFrame();
+
+    expect(view.getByTestId(FLEET_A).textContent).toContain(`processed:${COUNT_AFTER_THE_DROP}`);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it("a_capped_stream_degrades_to_a_snapshot_tile", () => {
+    // Dimension 1.6, the client half. A stream the daemon refused at its
+    // ceiling (`SSE_MAX_STREAMS`, `UZ-API-002` — the admission is pinned by
+    // `afd_api/tests/fleet_streams.rs`) errors at the EventSource; the tile
+    // must then say `snapshot`, never a stale `live`.
+    const view = renderWall([FLEET_A]);
+    const source = onlyEventSource();
+    source.open();
+    flushAnimationFrame();
+    expect(view.getByTestId(FLEET_A).textContent).toContain(LIVE_KIND_LABEL);
+
+    source.fail();
+    flushAnimationFrame();
+
+    expect(view.getByTestId(FLEET_A).textContent).toContain(SNAPSHOT_KIND_LABEL);
+    expect(view.getByTestId(FLEET_A).textContent).not.toContain(LIVE_KIND_LABEL);
+  });
+
   it("cancels a queued tile notification when the provider unmounts", () => {
     const view = renderWall([FLEET_A]);
     const source = onlyEventSource();
@@ -307,10 +352,12 @@ function FleetProbe({ fleetId }: { fleetId: string }) {
   const state = useWorkspaceFleetStream(fleetId);
   const live = state.isLive ? LIVE_LABEL : LAST_KNOWN_LABEL;
   const recovery = state.catchingUp ? CATCHING_UP_LABEL : CURRENT_LABEL;
+  const kind = deriveTileLiveness(AGENTSFLEET_STATUS.ACTIVE, state.connectionStatus).kind;
+  const processed = state.counters?.eventsProcessed ?? "none";
   return React.createElement(
     "output",
     { "data-testid": fleetId },
-    `events:${state.events.length} ${live} ${recovery}`,
+    `events:${state.events.length} ${live} ${recovery} kind:${kind} processed:${processed}`,
   );
 }
 
@@ -331,6 +378,19 @@ function activityFrame(fleetId: string) {
     kind: FRAME_KIND.EVENT_RECEIVED,
     event_id: `event_${fleetId}`,
     actor: FLEET_ACTOR,
+  };
+}
+
+function completionFrame(fleetId: string, eventId: string, eventsProcessed: number) {
+  return {
+    fleet_id: fleetId,
+    kind: FRAME_KIND.EVENT_COMPLETE,
+    event_id: eventId,
+    status: "processed",
+    created_at: EVENT_CREATED_AT_MS,
+    updated_at: EVENT_CREATED_AT_MS,
+    events_processed: eventsProcessed,
+    budget_used_nanos: SPENT_NANOS,
   };
 }
 

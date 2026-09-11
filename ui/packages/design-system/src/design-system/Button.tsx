@@ -38,6 +38,13 @@ export const buttonVariants = cva(
         lg: "h-12 px-2xl py-xl text-body",
         icon: "h-9 w-9 p-0",
         "icon-sm": "h-6 w-6 shrink-0 p-0",
+        // A control that sits on the eyebrow line — a collapsible nav group's
+        // label, say. Geometry only; the caller adds EYEBROW_CLASS for the
+        // type, exactly as a plain eyebrow does, so the two never drift. A
+        // size rather than className overrides because `cn` registers only
+        // the font-size tokens with tailwind-merge: `px-2` against `sm`'s
+        // `px-lg` is decided by stylesheet order, and it lost.
+        eyebrow: "h-4 border-0 px-2 py-0 font-normal",
       },
       wrap: { true: "h-auto max-w-full whitespace-normal", false: "" },
     },

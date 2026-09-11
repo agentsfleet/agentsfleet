@@ -59,7 +59,8 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         leases
             .record_received(&held, now)
             .await
-            .expect("the narrative log must open"),
+            .expect("the narrative log must open")
+            .delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );

@@ -13,6 +13,10 @@ mod support;
 
 // No datastore: a source scan over the workspace, so it carries no `#[ignore]`
 // and runs in the unit lane (`docs/architecture/testing.md`, filename rule).
+#[path = "counters_refused.rs"]
+mod counters_refused;
+#[path = "counters_statement.rs"]
+mod counters_statement;
 #[path = "fleet_event_writers.rs"]
 mod fleet_event_writers;
 

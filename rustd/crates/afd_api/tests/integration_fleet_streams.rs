@@ -20,12 +20,33 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_redis::SubscriptionHub;
+use afd_redis::streams::{FleetStreams, fleet_activity_channel};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
 use self::harness::{Fleet, send};
 
 const SUBJECT: &str = "user_live_workspace_stream";
+
+/// More frames than the hub's per-subscriber queue (256) holds, so a body
+/// nobody reads falls behind and the fan-in reports the gap.
+const GAP_FRAMES: usize = 400;
+
+/// How many chunks to read looking for the gap and the greeting behind it —
+/// a few, in case the first published frames land before the overflow.
+const GAP_READS: usize = 8;
+
+/// The pool knobs a deployment sets, spelled here so the refused-read test
+/// configures the pool the way an operator can.
+const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE_API";
+const MIN_POOL_SIZE_KNOB: &str = "DATABASE_MIN_POOL_SIZE_API";
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+const ONE_CONNECTION: &str = "1";
+
+/// Under the read's two-second deadline, so the paused clock reaches the
+/// acquire budget first; long enough that the fixture's own real connects —
+/// the seed and the opening, over the lane's TLS — are not refused by it.
+const SHORT_ACQUIRE_MS: &str = "1500";
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
@@ -54,13 +75,20 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
         .await
         .expect("the invalidated set refreshes before the clock is paused");
     assert!(refreshed.contains(&second));
+    // Skip the tick's ten seconds on the paused clock, then let real time
+    // run again before reading: the changed `hello` reads the fleets'
+    // counters from Postgres, and a paused runtime that goes idle on a socket
+    // auto-advances its clock — which would fire the read's own deadline
+    // before the datastore answers.
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
+    tokio::time::resume();
     let changed = next_chunk(&mut body).await;
     assert!(changed.contains("event: hello"));
     assert!(changed.contains(&second));
 
     ownership.revoke();
+    tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
     assert!(
         stream_ends(&mut body).await,
@@ -69,6 +97,152 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     drop(body);
     hub.shutdown();
     tokio::time::resume();
+    fixture.cleanup().await;
+}
+
+/// A `hello` whose counters read is refused still announces the set — with
+/// no figures, never with zeros.
+///
+/// The pool holds one connection and the test keeps it, so the tick's read
+/// waits on the pool; on the paused clock the runtime auto-advances to the
+/// acquire budget, which is the refusal the wall handles. The set still goes
+/// out (`fleet_ids` carries the fleet added since the opening) and the map is
+/// empty, so a client leaves what it has standing.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
+    let fixture = Fixture::with_pool(&[
+        (POOL_SIZE_KNOB, ONE_CONNECTION),
+        (MIN_POOL_SIZE_KNOB, ONE_CONNECTION),
+        (ACQUIRE_TIMEOUT_KNOB, SHORT_ACQUIRE_MS),
+    ])
+    .await;
+    fixture.seed().await;
+    let hub = SubscriptionHub::start(harness::redis_config())
+        .await
+        .expect("the lane's subscription connection starts");
+    let fleet = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_live_hub(hub.clone());
+    let fleet_store = fleet.fleet_store();
+    let router = fleet.router();
+    let mut body = open_stream(&router, &fixture).await;
+
+    let second = fixture.seed_second_fleet().await;
+    fleet_store.invalidate_live_set(&fixture.workspace).await;
+    let refreshed = fleet_store
+        .live_set(&fixture.workspace)
+        .await
+        .expect("the invalidated set refreshes before the connection is held");
+    assert!(refreshed.contains(&second));
+
+    // The one connection, held for the tick: the counters read can only wait.
+    let held = fixture
+        .database
+        .acquire()
+        .await
+        .expect("the pool's one connection is free to hold");
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let changed = next_chunk(&mut body).await;
+    tokio::time::resume();
+    drop(held);
+
+    assert!(changed.contains("event: hello"));
+    assert!(
+        changed.contains(&second),
+        "the set is announced whether or not it was priced"
+    );
+    let data = changed
+        .lines()
+        .find_map(|line| line.strip_prefix("data:"))
+        .expect("the hello carries a data line");
+    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
+    assert_eq!(
+        hello.pointer("/counters"),
+        Some(&serde_json::json!({})),
+        "a refused read sends the set without figures, never with zeros: {hello}"
+    );
+
+    drop(body);
+    hub.shutdown();
+    fixture.cleanup().await;
+}
+
+/// A gap the server could not carry is followed by a fresh `hello`.
+///
+/// More frames are published than the fan-in's queue holds while nothing
+/// reads the body, so the first thing read back is the `catching_up`, and
+/// the second is a `hello` carrying where every fleet stands now — the
+/// dropped frames are exactly the ones that moved the counters.
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let hub = SubscriptionHub::start(harness::redis_config())
+        .await
+        .expect("the lane's subscription connection starts");
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_live_hub(hub.clone())
+    .router();
+    let mut body = open_stream(&router, &fixture).await;
+
+    let publisher = FleetStreams::new(
+        afd_redis::Redis::connect(&harness::redis_config())
+            .await
+            .expect("the lane's Redis accepts a publisher"),
+    );
+    let channel = fleet_activity_channel(&fixture.fleet);
+    for sequence in 0..GAP_FRAMES {
+        let payload = format!(r#"{{"kind":"chunk","event_id":"e{sequence}","text":"…"}}"#);
+        publisher
+            .publish(&channel, &payload)
+            .await
+            .expect("the frame publishes");
+    }
+
+    let mut heard = Vec::new();
+    for _ in 0..GAP_READS {
+        let chunk = next_chunk(&mut body).await;
+        if chunk.contains("event: catching_up") {
+            heard.push("catching_up");
+            continue;
+        }
+        if chunk.contains("event: hello") {
+            heard.push("hello");
+            let data = chunk
+                .lines()
+                .find_map(|line| line.strip_prefix("data:"))
+                .expect("the hello carries a data line");
+            let hello: serde_json::Value =
+                serde_json::from_str(data.trim()).expect("the hello is JSON");
+            assert!(
+                hello
+                    .pointer(&format!("/counters/{}/events_processed", fixture.fleet))
+                    .is_some(),
+                "the hello after a gap carries the fleet's counters: {hello}"
+            );
+            break;
+        }
+    }
+    assert_eq!(
+        heard,
+        ["catching_up", "hello"],
+        "a gap is announced, then the set is re-announced with its figures"
+    );
+
+    drop(body);
+    hub.shutdown();
     fixture.cleanup().await;
 }
 
@@ -102,6 +276,25 @@ async fn open_stream(router: &axum::Router, fixture: &Fixture) -> axum::body::Bo
     let opening = std::str::from_utf8(&chunk).expect("SSE is UTF-8");
     assert!(opening.contains("event: hello"));
     assert!(opening.contains(&fixture.fleet));
+    // The greeting says where each fleet stands, read fresh for it: a fleet
+    // that has never run answers with zeros rather than being left out.
+    let data = opening
+        .lines()
+        .find_map(|line| line.strip_prefix("data:"))
+        .expect("the hello carries a data line");
+    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
+    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+        .await
+        .expect("the counters read back");
+    assert_eq!(
+        hello.pointer(&format!("/counters/{}/events_processed", fixture.fleet)),
+        Some(&serde_json::json!(counters.events_processed)),
+        "the hello carries the fleet's event count: {hello}"
+    );
+    assert_eq!(
+        hello.pointer(&format!("/counters/{}/budget_used_nanos", fixture.fleet)),
+        Some(&serde_json::json!(counters.budget_used_nanos))
+    );
     body
 }
 

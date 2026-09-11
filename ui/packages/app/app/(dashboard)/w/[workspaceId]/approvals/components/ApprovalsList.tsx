@@ -285,7 +285,7 @@ export default function ApprovalsList({
       {cursor !== null ? (
         <div className="mt-md flex justify-center">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={() => loadMore(cursor)}
             disabled={loadingMore}

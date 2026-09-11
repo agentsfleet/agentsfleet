@@ -126,7 +126,8 @@ pub(crate) async fn held() -> Held {
         leases
             .record_received(&acquired, now)
             .await
-            .expect("the narrative log must open"),
+            .expect("the narrative log must open")
+            .delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );

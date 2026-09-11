@@ -24,7 +24,7 @@ import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEn
 import type { EventRow } from "@/lib/api/events";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
-import { FleetNameProvider } from "./FleetMessageRow";
+import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator } from "./FleetConnectionIndicator";
 import {
@@ -44,7 +44,7 @@ export type FleetThreadProps = {
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
-  fleetName: string;
+  senderLabel: string;
   /**
    * Server-rendered initial event rows. The browser holds no credential —
    * this data is fetched in the parent Server Component and passed as a
@@ -68,7 +68,7 @@ export type FleetThreadProps = {
 export function FleetThread({
   workspaceId,
   fleetId,
-  fleetName,
+  senderLabel,
   initial,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
@@ -111,7 +111,7 @@ export function FleetThread({
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <FleetNameProvider fleetName={fleetName}>
+      <SenderLabelProvider senderLabel={senderLabel}>
         <DashboardPanel
           id="fleet-chat-transcript"
           aria-label="Fleet chat"
@@ -135,7 +135,7 @@ export function FleetThread({
             onRetry={retryFailedDelivery}
           />
         </DashboardPanel>
-      </FleetNameProvider>
+      </SenderLabelProvider>
     </AssistantRuntimeProvider>
   );
 }

@@ -167,11 +167,15 @@ impl Plane {
             )?));
         };
 
-        let delivery = self.leases.record_received(&acquired, now).await?;
+        let received = self.leases.record_received(&acquired, now).await?;
+        let delivery = received.delivery;
         // The tail's opening bracket, once per row: a redelivery found the row
-        // already there, and its watchers already hold the marker.
+        // already there, and its watchers already hold the marker. The counters
+        // were read after the row landed, because the insert is what moves them.
         if delivery == crate::lease::event::Delivery::First {
-            self.leases.publish_received(&acquired, now).await;
+            self.leases
+                .publish_received(&acquired, now, received.counters)
+                .await;
         }
 
         let Some(event_type) = EventType::parse(&acquired.event_type) else {

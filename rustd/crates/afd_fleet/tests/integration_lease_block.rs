@@ -80,7 +80,8 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
         leases
             .record_received(&held, now)
             .await
-            .expect("the narrative log must open"),
+            .expect("the narrative log must open")
+            .delivery,
         Delivery::First
     );
     let fleet_id = Uuid7::parse(&fleet).expect("the fixture id is a v7 spelling");
@@ -112,6 +113,17 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
         matches!(ended, Ended::Now(_)),
         "the first refusal decides, and carries the closing it wrote"
     );
+    // The closing reads the counters beside the row it ends, so the frame it
+    // announces carries the figures the database holds at that instant.
+    if let Ended::Now(closed) = &ended {
+        assert_eq!(
+            closed.counters,
+            afd_events::fleet_counters(&fixtures.database, fleet.as_str())
+                .await
+                .expect("the counters read back"),
+            "the closing's snapshot is the database's"
+        );
+    }
     let (label, detail) = failure_of(&fixtures, fleet.as_str(), &event).await;
     assert_eq!(label, FIRST_LABEL);
     assert_eq!(detail.as_deref(), Some(DETAIL));

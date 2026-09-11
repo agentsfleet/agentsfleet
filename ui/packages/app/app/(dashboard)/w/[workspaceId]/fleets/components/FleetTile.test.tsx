@@ -251,6 +251,23 @@ describe("FleetTile kinds", () => {
     expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
   });
 
+  it("the footer is the snapshot the stream assigned, over the server render", () => {
+    // The stream ASSIGNS what the last frame said; the tile never adds to the
+    // figures it was rendered with, so the server's 7 events and $1.20 are
+    // replaced by the frame's 9 and $2.50 outright.
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+      counters: { eventsProcessed: 9, spentNanos: 2_500_000_000 },
+    });
+    const { getByText } = renderTile(fleet());
+    expect(getByText("spent").textContent).toBe("$2.50 spent");
+    expect(getByText("events").textContent).toBe("9 events");
+  });
+
   it("a fleet the daemon sent no aggregates for renders dashes, not $0.00", () => {
     streamMock.mockReturnValue({
       events: [],

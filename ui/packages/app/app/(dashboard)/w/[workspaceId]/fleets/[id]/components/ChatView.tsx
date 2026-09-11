@@ -9,7 +9,7 @@ import RunMetricsStrip from "./RunMetricsStrip";
 type Props = {
   workspaceId: string;
   fleetId: string;
-  fleetName: string;
+  senderLabel: string;
   /** The thread turns the server rendered — the stream takes over from here. */
   initial: EventDetail[];
   /** The strip's figures as the server rendered them. */
@@ -27,7 +27,7 @@ type Props = {
 export function ChatView({
   workspaceId,
   fleetId,
-  fleetName,
+  senderLabel,
   initial,
   initialSummary,
   approvalsHref,
@@ -48,7 +48,7 @@ export function ChatView({
       <FleetThreadDynamic
         workspaceId={workspaceId}
         fleetId={fleetId}
-        fleetName={fleetName}
+        senderLabel={senderLabel}
         initial={initial}
       />
     </div>

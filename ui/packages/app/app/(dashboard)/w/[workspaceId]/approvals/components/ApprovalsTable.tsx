@@ -13,7 +13,8 @@ import { CheckIcon, XIcon } from "lucide-react";
 
 import type { ApprovalGate } from "@/lib/api/approvals";
 import { APPROVAL_STATUS, type ApprovalStatusTag } from "@/lib/api/approvals-types";
-import { AgentLabel, agentDisplayName } from "@/components/domain/AgentLabel";
+import { AgentLabel } from "@/components/domain/AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { PersonLabel } from "@/components/domain/PersonLabel";
 import { workspacePath } from "@/lib/workspace-routes";
 import {
