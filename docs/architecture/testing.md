@@ -158,8 +158,8 @@ statements; it removes the whole row-collision class.
 **ISO-2 — ISO-1 does not reach a key the product spells globally.** `fleet:ready` is
 one hash for the whole deployment and `HRANDFIELD` hands a poller somebody's
 fleet at random — competing consumers, which is the design. Minted row ids do
-not touch it. Isolation here means a keyspace of the test's own (a Redis logical
-database in the connection URL, or a key prefix), and until one exists, ISO-3.
+not touch it. Isolation here means a keyspace with the test's own prefix; until one exists, use ISO-3.
+The Dragonfly Swarm target uses database 0; logical databases cannot isolate its tests.
 
 **ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
 `UPDATE … WHERE status = pending AND timeout_at <= $5`: no workspace, no fleet,

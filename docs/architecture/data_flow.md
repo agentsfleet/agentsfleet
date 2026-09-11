@@ -386,6 +386,9 @@ Two Redis surfaces carry a fleet's work: a durable stream for ingress, and an ep
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
+This section describes the implemented Redis connections.
+The [Dragonfly target](./datastore_scaling.md#sharded-live-tail) replaces standard pub/sub and the one-subscription-socket invariant after prototype proof.
+
 The Rust daemon shares one multiplexed Redis connection for ordinary commands.
 A lease request checks readiness and reads available work without `BLOCK`.
 An empty response tells the runner when to poll again; the runner holds no Redis connection.
