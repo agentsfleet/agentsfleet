@@ -49,13 +49,15 @@ pub(super) fn dependency_closure(revision: &str) -> Result<Vec<u8>> {
     )?;
     exclude_bench_member(&checkout.join(RUST_MANIFEST))?;
     exclude_bench_lock(&checkout.join("rustd/Cargo.lock"))?;
+    // Cargo may prune transitive packages used only by afd_bench from this
+    // disposable lockfile. Offline mode keeps the committed versions as the
+    // only resolution input without treating that deterministic prune as drift.
     let metadata = run(
         Command::new("cargo")
             .args([
                 "metadata",
                 "--format-version",
                 "1",
-                "--locked",
                 "--offline",
                 "--manifest-path",
             ])
