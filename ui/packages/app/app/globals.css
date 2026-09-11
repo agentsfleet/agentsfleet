@@ -26,8 +26,43 @@ body {
   overflow: hidden;
 }
 
+/* One rhythm for the dashboard's horizontal edges.
+ *
+ * The canvas scrolls and the header does not, so they each need the same
+ * number stated once rather than two Tailwind scales that agree at some
+ * breakpoints and not others. They did not agree: the canvas ran
+ * px-4/sm:px-6/md:px-8/2xl:px-12 while the header's trailing cluster ran
+ * pr-4/md:pr-6, so above 640px the avatar sat 8px outboard of the content
+ * below it, and 24px outboard past 1536px.
+ *
+ * `scrollbar-gutter: stable` is the other half. The canvas takes its 6px
+ * scrollbar out of its own content box, so on a page long enough to scroll the
+ * content edge moved 6px left while the header stayed put — the gutters read
+ * 48 left against 54 right on exactly the pages where there is most to look at.
+ * Reserving the gutter always makes the canvas's right edge one number, and
+ * the header adds that same width back to land on it. */
+:root {
+  --app-scrollbar: 6px;
+  --app-canvas-gutter: 1rem;
+}
+@media (min-width: 40rem) { :root { --app-canvas-gutter: 1.5rem; } }
+@media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; } }
+@media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
+
 .app-dashboard-canvas {
   background: var(--bg);
+  /* The scrollbar lives INSIDE the gutter rather than beside it: reserve it on
+   * both edges and take its width back out of the padding, so the content is
+   * inset by the gutter token itself — equally, on both sides, whether or not
+   * this page happens to scroll. */
+  padding-inline: calc(var(--app-canvas-gutter) - var(--app-scrollbar));
+  scrollbar-gutter: stable both-edges;
+}
+
+/* The header does not scroll, so the same gutter lands its trailing cluster on
+ * the canvas's content edge with no scrollbar arithmetic of its own. */
+.app-shell-trailing {
+  padding-right: var(--app-canvas-gutter);
 }
 
 /* In @layer base so per-element text-colour utilities win on <a> elements
@@ -40,7 +75,7 @@ body {
 
 code, pre, kbd { font-family: var(--ff-mono); }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: var(--app-scrollbar); height: var(--app-scrollbar); }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }

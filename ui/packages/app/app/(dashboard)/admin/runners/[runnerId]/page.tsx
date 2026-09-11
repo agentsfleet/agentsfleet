@@ -91,7 +91,11 @@ export default async function RunnerDetailPage({
   const content = await renderRunnerView(runner, viewRead);
 
   return (
-    <div className="flex min-h-full flex-1 flex-col">
+    // gap-3xl, not a margin under the identity line: the header row and the
+    // view row are two blocks in the same column as the cards below them, and
+    // the page owns one rhythm for all of it. The identity line's own mb-2xl
+    // made this one gap 24 where every other gap on the page is 32.
+    <div className="flex min-h-full flex-1 flex-col gap-3xl">
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}

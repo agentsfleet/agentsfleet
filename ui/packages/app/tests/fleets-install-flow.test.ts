@@ -120,7 +120,7 @@ describe("test_install_template_gallery_render", () => {
     renderFlow();
     expect(screen.getByText("Fleet library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
-    expect(screen.getByText("needs: github")).toBeTruthy();
+    expect(screen.getByText("requires: github")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Install" }).length).toBe(2);
   });
 
