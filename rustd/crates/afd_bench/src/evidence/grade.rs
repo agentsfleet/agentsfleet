@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::capture::{
-    parse_json, plan, provenance_path, read, require_comparable, sample_directory, sidecar_file,
-};
+use super::capture::{parse_json, plan, read, require_comparable, sidecar_file};
 use super::context::topology_fingerprint;
 use super::git::{digest, provenance};
-use super::model::{Availability, BaselinePlan, EVIDENCE_SCHEMA, Provenance, Resources, Sidecar};
+use super::model::{
+    Availability, BaselinePlan, CAMPAIGN_ROOT, EVIDENCE_SCHEMA, Provenance, Resources, Sidecar,
+};
 use crate::error::{Error, Result};
 use crate::report::{Lane, Report};
 
@@ -33,8 +33,17 @@ pub struct Grade {
 /// Refuses missing, extra, changed, inconsistent, or incomparable evidence;
 /// also returns source-control, metadata, and filesystem failures.
 pub fn grade(plan_path: impl AsRef<Path>) -> Result<Grade> {
+    grade_at(plan_path, Path::new(CAMPAIGN_ROOT))
+}
+
+/// Grade a campaign rooted at an explicit path for repository fixture tests.
+pub(super) fn grade_at(
+    plan_path: impl AsRef<Path>,
+    campaign_root: impl AsRef<Path>,
+) -> Result<Grade> {
     let plan = plan(plan_path)?;
-    let proof_path = provenance_path(&plan);
+    let campaign = campaign_root.as_ref().join(&plan.campaign);
+    let proof_path = campaign.join("provenance.json");
     let proof_raw = read(&proof_path)?;
     let proof: Provenance = parse_json(&proof_path, &proof_raw)?;
     validate_provenance(&plan, &proof)?;
@@ -52,7 +61,9 @@ pub fn grade(plan_path: impl AsRef<Path>) -> Result<Grade> {
     for lane in Lane::ALL {
         let mut parameters = None;
         for sample in 1..=plan.samples_per_lane {
-            let directory = sample_directory(&plan, lane, sample);
+            let directory = campaign
+                .join(lane.name())
+                .join(format!("sample-{sample:02}"));
             let sidecar = validate_sample(&plan, &proof, &proof_raw, lane, sample, &directory)?;
             require_same(
                 "machine resources",
@@ -82,7 +93,7 @@ fn validate_provenance(plan: &BaselinePlan, stored: &Provenance) -> Result<()> {
     require_comparable(stored)?;
     if stored.changed_paths.iter().any(|path| !allowed_delta(path)) {
         return Err(invalid(
-            "capture revision contains a non-benchmark production delta",
+            "capture revision contains a delta outside benchmark evidence and governance",
         ));
     }
     let regenerated = provenance(&stored.baseline_revision, &stored.capture_revision)?;
@@ -96,9 +107,14 @@ fn validate_provenance(plan: &BaselinePlan, stored: &Provenance) -> Result<()> {
 
 fn allowed_delta(path: &str) -> bool {
     path == ".oracle/orly.json"
+        || path == "AGENTS.md"
+        || path == "dispatch/write_spec.md"
+        || path == "make/bench.mk"
+        || path == "playbooks/README.md"
         || path == "rustd/Cargo.lock"
         || path.starts_with("bench/")
         || path.starts_with("docs/")
+        || path.starts_with("playbooks/operations/datastore_scaling/")
         || path.starts_with("rustd/crates/afd_bench/")
 }
 

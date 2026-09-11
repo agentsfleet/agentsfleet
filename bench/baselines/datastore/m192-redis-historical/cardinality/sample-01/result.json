@@ -1,0 +1,53 @@
+{
+  "lane": "cardinality",
+  "profile": "rig",
+  "created": true,
+  "parameters": {
+    "BENCH_FLEETS": 10000
+  },
+  "measurements": {
+    "candidate_plan_ms": 1.469,
+    "candidate_query_ms": 0.639,
+    "postgres_fleets_table_bytes": 5611520.0,
+    "redis_bytes_total": 46472496.0
+  },
+  "series": {
+    "ladder_fleets": [
+      10.0,
+      100.0,
+      1000.0,
+      10000.0
+    ],
+    "peek_ms": [
+      0.207875,
+      0.27458400000000005,
+      0.37875000000000003,
+      0.436459
+    ],
+    "redis_bytes_per_fleet": [
+      4613.6,
+      4439.466666666666,
+      4637.288888888889,
+      4650.360888888888
+    ],
+    "stream_read_ms": [
+      0.191834,
+      0.196333,
+      0.235916,
+      0.217042
+    ]
+  },
+  "datastores": {
+    "redis": {
+      "operations": 0
+    },
+    "postgres": {
+      "operations": 0
+    }
+  },
+  "fixture": {
+    "run_prefix": "bench-1789154761701-60699",
+    "created": 30001,
+    "swept": 30001
+  }
+}

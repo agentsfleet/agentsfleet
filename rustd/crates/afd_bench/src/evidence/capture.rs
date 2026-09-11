@@ -199,10 +199,6 @@ pub(crate) fn sample_directory(plan: &BaselinePlan, lane: Lane, sample: u32) -> 
         .join(format!("sample-{sample:02}"))
 }
 
-pub(crate) fn provenance_path(plan: &BaselinePlan) -> PathBuf {
-    campaign_directory(plan).join(PROVENANCE_FILE)
-}
-
 pub(crate) const fn sidecar_file() -> &'static str {
     SIDECAR_FILE
 }

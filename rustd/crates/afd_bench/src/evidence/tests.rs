@@ -6,7 +6,8 @@
 )]
 
 use super::capture::require_comparable;
-use super::model::{EVIDENCE_SCHEMA, ProofPair, Provenance};
+use super::grade::{Grade, grade_at};
+use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance};
 
 fn pair(equal: bool) -> ProofPair {
     let baseline = "sha256:baseline".to_owned();
@@ -46,5 +47,22 @@ fn test_incomparable_datastore_runs_are_rejected() {
         refusal
             .to_string()
             .contains("outside the benchmark harness")
+    );
+}
+
+#[test]
+fn test_redis_baseline_records_complete_evidence() {
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let plan = repository.join("bench/profiles/datastore/redis-historical.json");
+    let campaign_root = repository.join(CAMPAIGN_ROOT);
+
+    let grade = grade_at(plan, campaign_root).expect("checked-in evidence must be complete");
+
+    assert_eq!(
+        grade,
+        Grade {
+            lanes: 4,
+            samples: 12,
+        }
     );
 }

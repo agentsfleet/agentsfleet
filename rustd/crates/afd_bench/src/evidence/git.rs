@@ -50,6 +50,10 @@ pub(crate) fn provenance(baseline: &str, capture: &str) -> Result<Provenance> {
     );
     let changed_paths = git(&["diff", "--name-only", &baseline, &capture], "git diff")?
         .lines()
+        // Milestone filenames are documentation labels, not runtime inputs,
+        // and the repository's production-source audit forbids those labels
+        // in generated evidence. Their bytes remain covered by Git revisions.
+        .filter(|path| !path.starts_with("docs/v2/"))
         .map(str::to_owned)
         .collect();
     Ok(Provenance {

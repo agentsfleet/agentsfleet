@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "campaign": "m192-redis-historical",
+  "lane": "cardinality",
+  "sample": 2,
+  "profile": "rig",
+  "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
+  "capture_revision": "71b58da9345786b8918411b4035c08159abbf166",
+  "captured_at_unix_ms": 1789154840334,
+  "parameters": {
+    "BENCH_FLEETS": 10000
+  },
+  "payload_bytes": {
+    "status": "unavailable",
+    "reason": "historical driver did not record payload bytes"
+  },
+  "window_seconds": {
+    "status": "unavailable",
+    "reason": "historical driver has no measured window"
+  },
+  "offered_rate_per_second": {
+    "status": "unavailable",
+    "reason": "historical driver was closed-loop and did not record offered rate"
+  },
+  "seed": {
+    "status": "unavailable",
+    "reason": "historical driver did not accept a deterministic seed"
+  },
+  "resources": {
+    "os": "macos",
+    "architecture": "aarch64",
+    "logical_cpus": 8,
+    "memory_bytes": {
+      "status": "available",
+      "value": 17179869184
+    }
+  },
+  "topology_fingerprint_sha256": "sha256:4e6aa76cdf9726d15071c4f51b9f4f7e6a09bcbf08cfdbd0e895f073e3f135e0",
+  "datastore_probe": {
+    "postgres_raw": "address=172.18.0.2/32\nport=5432\ndatabase=agentsfleetdb\nversion=PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit\n",
+    "redis_server_raw": "# Server\r\nredis_version:7.4.11\r\nredis_git_sha1:00000000\r\nredis_git_dirty:0\r\nredis_build_id:c8d8130a4710f7c0\r\nredis_mode:standalone\r\nos:Linux 7.0.12-linuxkit aarch64\r\narch_bits:64\r\nmonotonic_clock:POSIX clock_gettime\r\nmultiplexing_api:epoll\r\natomicvar_api:c11-builtin\r\ngcc_version:14.2.0\r\nprocess_id:17\r\nprocess_supervised:no\r\nrun_id:b4203e73f240d58584f2f77bdf8af4ca755d7358\r\ntcp_port:6380\r\nserver_time_usec:1789154840305572\r\nuptime_in_seconds:1139\r\nuptime_in_days:0\r\nhz:10\r\nconfigured_hz:10\r\nlru_clock:10769944\r\nexecutable:/data/redis-server\r\nconfig_file:\r\nio_threads_active:0\r\nlistener0:name=tcp,bind=*,bind=-::*,port=6380\r\nlistener2:name=tls,bind=*,bind=-::*,port=6379\r\n",
+    "redis_replication_raw": "# Replication\r\nrole:master\r\nconnected_slaves:0\r\nmaster_failover_state:no-failover\r\nmaster_replid:caa4cf9a121441f4aefff06ffe34804f233e8afe\r\nmaster_replid2:0000000000000000000000000000000000000000\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0\r\nrepl_backlog_histlen:0\r\n",
+    "redis_topology_raw": "refused: [UZ-INTERNAL-003] CLUSTER failed",
+    "discovered_hosts": []
+  },
+  "result_file": "result.json",
+  "result_sha256": "sha256:6e87b4e75796a1678db800b0f19fce3e97d02bd7972c92bb538c8d14f0b8a890",
+  "raw_log_file": "raw.log",
+  "raw_log_sha256": "sha256:b763887356f52edce917ab357c187407e67691d34f0228c792ae16a94b3d46ec",
+  "provenance_file": "../../provenance.json",
+  "provenance_sha256": "sha256:e203eb92f6b7f596b069bd8153cc1e0c4d5014e3359dae89c19a267030d1c214",
+  "postgres_raw_sha256": "sha256:70b9ae9473fb6946d6ed18affbaa12c303859fbbc80c29b64cb8207477661b6f",
+  "redis_server_raw_sha256": "sha256:dabfa15f93263121ea1d626c027880d92e2622c679343498ad308d48f17a24f3",
+  "redis_replication_raw_sha256": "sha256:d13423366479d8775aee039e8619c5feea5484e41b41769045e87b46eb394740",
+  "redis_topology_raw_sha256": "sha256:222d7bdeab2c50e51496b24554d1fca0f86dfd2b1bd635a06a96d9c5c75ce6bd"
+}

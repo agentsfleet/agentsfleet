@@ -24,18 +24,27 @@ pub(super) fn dependency_closure(revision: &str) -> Result<Vec<u8>> {
     let scratch = Scratch::new()?;
     let archive = scratch.path.join("source.tar");
     let checkout = scratch.path.join("checkout");
+    let repository = run(
+        Command::new(GIT_COMMAND).args(["rev-parse", "--show-toplevel"]),
+        "git repository root",
+    )?;
+    let repository = String::from_utf8_lossy(&repository.stdout)
+        .trim()
+        .to_owned();
     fs::create_dir_all(&checkout).map_err(|source| Error::ResultUnwritable {
         path: checkout.clone(),
         source,
     })?;
     run(
-        Command::new(GIT_COMMAND).args([
-            "archive",
-            "--format=tar",
-            &format!("--output={}", archive.display()),
-            revision,
-            "rustd",
-        ]),
+        Command::new(GIT_COMMAND)
+            .args([
+                "archive",
+                "--format=tar",
+                &format!("--output={}", archive.display()),
+                revision,
+                "rustd",
+            ])
+            .current_dir(repository),
         "git archive",
     )?;
     run(

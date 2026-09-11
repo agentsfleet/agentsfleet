@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
+  "capture_revision": "71b58da9345786b8918411b4035c08159abbf166",
+  "production_source": {
+    "baseline_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
+    "capture_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
+    "equal": true
+  },
+  "schema_files": {
+    "baseline_sha256": "sha256:05e696520bb4a739fc4057e62199d3b164250aedb97991ad5f038e7d90c56b6c",
+    "capture_sha256": "sha256:05e696520bb4a739fc4057e62199d3b164250aedb97991ad5f038e7d90c56b6c",
+    "equal": true
+  },
+  "production_build": {
+    "baseline_sha256": "sha256:c73afb85aa0195a5952a584075b72bf2f31d463f8b9797e80748e4b47d6e9bfc",
+    "capture_sha256": "sha256:c73afb85aa0195a5952a584075b72bf2f31d463f8b9797e80748e4b47d6e9bfc",
+    "equal": true
+  },
+  "cargo_lock": {
+    "baseline_sha256": "sha256:99b5a37a4f2461d2477601fa59d396c37d9f9125fb4b17beefc595d67401d47f",
+    "capture_sha256": "sha256:823bb08aba35d831fac695792d3cbf0c2e85eacb8af8711129497ade960bfca4",
+    "equal": false
+  },
+  "production_lock": {
+    "baseline_sha256": "sha256:751dcb68e5e1e624b320490d5174d94e4114a675b40da6a1aa549ef8d6405c3b",
+    "capture_sha256": "sha256:751dcb68e5e1e624b320490d5174d94e4114a675b40da6a1aa549ef8d6405c3b",
+    "equal": true
+  },
+  "production_dependency_closure": {
+    "baseline_sha256": "sha256:b6a70d4b59a5429e4e4f3a1b29839116185495dac0cbc940e990bfe3508b6ea8",
+    "capture_sha256": "sha256:b6a70d4b59a5429e4e4f3a1b29839116185495dac0cbc940e990bfe3508b6ea8",
+    "equal": true
+  },
+  "changed_paths": [
+    ".oracle/orly.json",
+    "AGENTS.md",
+    "bench/profiles/datastore/redis-historical.json",
+    "dispatch/write_spec.md",
+    "docs/AUTH_DEVICE_LOGIN.md",
+    "docs/TEMPLATE.md",
+    "docs/architecture/README.md",
+    "docs/architecture/data_flow.md",
+    "docs/architecture/datastore_scaling.md",
+    "docs/architecture/roadmap.md",
+    "docs/architecture/testing.md",
+    "make/bench.mk",
+    "playbooks/README.md",
+    "playbooks/operations/datastore_scaling/001_playbook.md",
+    "rustd/Cargo.lock",
+    "rustd/crates/afd_bench/Cargo.toml",
+    "rustd/crates/afd_bench/src/abort.rs",
+    "rustd/crates/afd_bench/src/bin/cardinality.rs",
+    "rustd/crates/afd_bench/src/bin/datastore_evidence.rs",
+    "rustd/crates/afd_bench/src/bin/lease.rs",
+    "rustd/crates/afd_bench/src/bin/outbound.rs",
+    "rustd/crates/afd_bench/src/bin/steer.rs",
+    "rustd/crates/afd_bench/src/cli.rs",
+    "rustd/crates/afd_bench/src/cli/tests.rs",
+    "rustd/crates/afd_bench/src/datastores.rs",
+    "rustd/crates/afd_bench/src/datastores/probe.rs",
+    "rustd/crates/afd_bench/src/error.rs",
+    "rustd/crates/afd_bench/src/error/pre_flight.rs",
+    "rustd/crates/afd_bench/src/evidence.rs",
+    "rustd/crates/afd_bench/src/evidence/capture.rs",
+    "rustd/crates/afd_bench/src/evidence/context.rs",
+    "rustd/crates/afd_bench/src/evidence/git.rs",
+    "rustd/crates/afd_bench/src/evidence/git/metadata.rs",
+    "rustd/crates/afd_bench/src/evidence/grade.rs",
+    "rustd/crates/afd_bench/src/evidence/model.rs",
+    "rustd/crates/afd_bench/src/evidence/tests.rs",
+    "rustd/crates/afd_bench/src/fixture.rs",
+    "rustd/crates/afd_bench/src/fixture/tests.rs",
+    "rustd/crates/afd_bench/src/lane/cardinality.rs",
+    "rustd/crates/afd_bench/src/lane/lease.rs",
+    "rustd/crates/afd_bench/src/lane/lease/window.rs",
+    "rustd/crates/afd_bench/src/lane/outbound.rs",
+    "rustd/crates/afd_bench/src/lane/steer.rs",
+    "rustd/crates/afd_bench/src/lane/sweep.rs",
+    "rustd/crates/afd_bench/src/lib.rs",
+    "rustd/crates/afd_bench/src/profile.rs",
+    "rustd/crates/afd_bench/src/profile/target.rs",
+    "rustd/crates/afd_bench/src/profile/target/tests.rs"
+  ]
+}
