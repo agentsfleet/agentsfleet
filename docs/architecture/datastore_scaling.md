@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-09-06
-product_version: 0.28.0
+verified: 2026-09-11
+product_version: 0.30.0
 executable: false
 ---
 
@@ -10,76 +10,78 @@ executable: false
 
 | Decision | Requirement |
 |---|---|
-| Required target | Dragonfly Cloud Swarm must pass the application and recovery tests before this work is complete. |
-| Existing deployment | Redis remains supported and remains the deployment default during implementation. |
-| Rust client | Use redis-rs through the existing operation-specific boundaries. |
-| Evidence | Compare Redis before and after each change on the same deployment and workload. |
+| Required target | Dragonfly Cloud Swarm is the sole deployment target; no single-shard migration stage. |
+| Redis retirement | Retire the Redis server after verified cutover and reconciliation of accepted work. |
+| Rust client | Keep redis-rs and Redis protocol compatibility through the existing operation-specific boundaries. |
+| Evidence | Capture one historical Redis baseline on an isolated rig, then validate Dragonfly behavior, recovery, and capacity. |
 | Scale | Report measured capacity against an explicit workload; fleet population alone proves no throughput guarantee. |
 
 ## What it is
 
-This page records the approved requirements for datastore scaling. It does not claim that Dragonfly support or million-fleet capacity has shipped.
+This page records the approved datastore migration requirements. Dragonfly support and million-fleet capacity remain unproven until implementation evidence passes.
 
-The [datastore scaling roadmap](./roadmap.md#datastore-scaling-and-redis-parity) links the pending implementation and benchmark plans.
-The existing runtime topology remains documented in [data_flow.md](./data_flow.md) and [runner_fleet.md](./runner_fleet.md).
-Implementation must update those pages in the same commit as any topology change.
+The [datastore roadmap](./roadmap.md#datastore-scaling-and-redis-parity) links the benchmark drivers and pending implementation.
+The configured Redis deployment remains in place until the cutover action.
+The runtime topology is documented in [data_flow.md](./data_flow.md) and [runner_fleet.md](./runner_fleet.md).
 
 ## Why it exists
 
 Redis carries event streams, readiness hints, authentication state, and outbound delivery.
-Those uses require different retention and failure rules.
-Treating all of them as disposable cached values would weaken accepted-work recovery.
+These uses require different retention and failure rules.
+A provider change must preserve application behavior and accepted work.
 
-Dragonfly Cloud Swarm is the required destination.
-There is no Dragonfly single-shard migration stage.
-Changing that destination requires an explicit user decision.
-Redis support remains part of the acceptance requirements.
+The approved destination is Dragonfly Cloud Swarm, followed by Redis retirement.
+Permanent Redis server support and repeated same-deployment Redis comparisons are outside this migration.
+Redis protocol compatibility remains useful because Swarm uses Redis Cluster clients.
 
 ## How it behaves
 
-The work has separate sections for durability, retention and backpressure, shared coordination, and cluster compatibility.
-Benchmark preparation precedes behavior changes.
-Each section produces Redis regression evidence before a Dragonfly cutover is considered.
+Capture the existing implementation's Redis measurements once on an isolated rig, using M188's Make targets.
+Record revision, workload, application capacity, PostgreSQL capacity, network path, and datastore resources.
+Freeze absolute latency, queue-age, memory, recovery, and cost budgets before grading Dragonfly acceptance.
+
+Reuse M188's benchmark drivers for Dragonfly and extend them to measure accepted and completed work together.
+Different resources or workload manifests cannot establish a provider speedup.
+Redis results remain historical evidence; subsequent implementation comparisons use Dragonfly.
 
 Use redis-rs through `FleetStreams`, `ReadyIndex`, `SessionStore`, `OutboundQueue`, and `SubscriptionHub`.
 Keep local identity caches independent of this migration.
 A generic cache interface must not erase queue, authentication, or delivery semantics.
 
-Work accepted by the target design must remain recoverable after the in-memory datastore is lost, provided the durable database survives.
-This requirement includes pending inbound work and queued outbound answers.
-Third-party side effects retain their documented retry and idempotency limits; this page makes no exactly-once promise for external services.
+Build real multi-shard support first, including cluster routing, compatible atomic keys, isolated blocking readers, subscription recovery, and scans across shards.
+Then complete durable acceptance, retention, backpressure, and measured coordination improvements before Cloud acceptance.
+Correctness-sensitive reads use primaries; a failed connection never silently selects another provider.
 
-Build and test multi-shard behavior from the first Dragonfly integration.
-The evidence sequence is Redis baseline, Redis with the added capability, then Dragonfly Cloud Swarm.
-Swarm requires cluster-aware connections, compatible multi-key operations, subscription recovery, and scans covering the intended shards.
-Replica reads must not weaken admission, authentication, fencing, or deduplication decisions.
+Accepted inbound work and queued outbound answers must survive in-memory datastore loss when PostgreSQL survives.
+Replay preserves logical event identity, fencing, and single internal settlement across new stream IDs.
+External services retain their documented retry and idempotency limits; exactly-once external effects are not promised.
 
-Deploy implementation increments to the same application services while retaining their Redis endpoint.
-Record an immutable revision and configuration for every comparison.
-Changes in instance count, database capacity, region, payload distribution, or background traffic must be disclosed and separated from code improvements.
+Prepare local multi-shard tests before activating the Cloud trial.
+Cloud proof covers managed networking, failover, restore, resizing, and resharding.
+Shared deployments receive only bounded application probes; fault injection and saturation use isolated datastores and synthetic destinations.
 
-Changing the selected datastore requires an explicit rollout action after evidence passes.
+Rehearse cutover with queued work, active leases, outbound answers, authentication state, deduplication records, and expiry.
+The procedure must handle records accepted before durable replay existed, and account for each migrated, drained, rebuilt, or expired state class.
 Do not send an accepted event to both backends for comparison.
-A failed connection must not silently select another backend or an empty queue.
+
+Record the last safe abort point before Dragonfly accepts new work.
+After that point, recovery uses the rehearsed durable replay procedure; changing an endpoint alone is insufficient.
+Retire Redis only after reconciliation, verification, and the recorded observation window pass.
 
 ## Limits
 
 One million stored fleets, active fleets, concurrent runs, and runner processes are separate workload dimensions.
-Reports must state all four, together with offered load, completion rate, queue age, memory, and database cost.
-Small deployment probes prove behavior at their tested load; they do not prove the million-fleet target.
+Reports include all four, offered load, completion rate, queue age, memory, and database cost.
+Small probes establish behavior only at their tested load.
 
-Fault injection and saturation testing use isolated datastores and synthetic destinations.
-Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records.
-No shared Redis flush, database reset, failover exercise, or provider switch follows from spec approval alone.
-
-Prepare a local multi-shard Dragonfly cluster and load tests before activating the Cloud trial.
-Use the trial to validate managed networking, failover, capacity, and Swarm behavior.
-Missing Cloud evidence leaves the Dragonfly acceptance rows incomplete.
+Implementation preparation records budgets, resource requirements, secret references, and the cutover procedure before dependent runs.
+Missing Cloud evidence leaves acceptance incomplete.
+Spec approval alone does not activate a trial, change billing, reset shared data, or perform the live cutover.
 
 ## Related pages
 
-- [Scaling](./scaling.md) describes existing capacity assumptions that measurements must verify.
-- [Datastore scaling roadmap](./roadmap.md#datastore-scaling-and-redis-parity) identifies the shared benchmark drivers and implementation plan.
-- [Dragonfly Cloud data stores](https://www.dragonflydb.io/docs/cloud/datastores) describes single-shard, Swarm, eviction, and replica settings.
+- [Scaling](./scaling.md) describes capacity assumptions that measurements must verify.
+- [Datastore roadmap](./roadmap.md#datastore-scaling-and-redis-parity) identifies the shared benchmark drivers and migration plan.
+- [Dragonfly Cloud data stores](https://www.dragonflydb.io/docs/cloud/datastores) describes Swarm, eviction, and replica settings.
 - [Dragonfly compatibility](https://www.dragonflydb.io/docs/command-reference/compatibility) distinguishes command support from identical behavior.
-- [Dragonfly AOF documentation](https://www.dragonflydb.io/docs/managing-dragonfly/aof) must be checked when reviewing durability assumptions.
+- [Dragonfly cluster mode](https://www.dragonflydb.io/docs/managing-dragonfly/cluster-mode) explains local setup and Cloud management boundaries.

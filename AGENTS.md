@@ -11,9 +11,10 @@ facts.
 - Write the product as `agentsfleet`; binaries are `agentsfleetd` and
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
 - Datastore scaling must follow [the Dragonfly Cloud requirements](docs/architecture/datastore_scaling.md).
-  Preserve Redis behavior and prove each increment on the same deployment.
-  Dragonfly Cloud Swarm is the required target, with no single-shard migration stage.
-  Redis remains the default until an explicit cutover.
+  Dragonfly Cloud Swarm is the sole deployment target, with no single-shard migration stage.
+  Preserve application behavior and redis-rs protocol compatibility; retire the Redis server after verified cutover.
+  Capture one historical Redis baseline on an isolated rig; repeated same-deployment Redis comparisons are not required.
+  The configured Redis deployment stays in place until the cutover action.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`,
