@@ -79,8 +79,16 @@ jobs:
     runs-on: ubuntu-latest
     # Hard release budget: the suite fails fast on a dead prerequisite (the
     # preflight project) and never retries deterministic failures, so a run
-    # that needs more than 10 minutes IS a release-readiness failure.
-    timeout-minutes: 10
+    # that needs more than this budget IS a release-readiness failure.
+    #
+    # The headroom above a green run is the point. A green suite lands around
+    # nine minutes; each failing walk then adds its own expectation timeout on
+    # top before the run can report. At a ten-minute cap a single failure ate
+    # the margin and the job was killed mid-suite, which reports as `cancelled`
+    # with no failing test named — the diagnosis the red would have handed you
+    # is exactly what the cancel throws away. Thirteen leaves room for a
+    # handful of failures to finish and be read.
+    timeout-minutes: 13
     steps:
       - uses: actions/checkout@v7
 
