@@ -7,7 +7,7 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
-use super::invalid;
+use super::{invalid, without_bench_lock};
 use crate::error::{Error, Result};
 
 const GIT_COMMAND: &str = "git";
@@ -48,6 +48,7 @@ pub(super) fn dependency_closure(revision: &str) -> Result<Vec<u8>> {
         "tar extract",
     )?;
     exclude_bench_member(&checkout.join(RUST_MANIFEST))?;
+    exclude_bench_lock(&checkout.join("rustd/Cargo.lock"))?;
     let metadata = run(
         Command::new("cargo")
             .args([
@@ -63,6 +64,17 @@ pub(super) fn dependency_closure(revision: &str) -> Result<Vec<u8>> {
         "cargo metadata",
     )?;
     canonical_metadata(&metadata.stdout)
+}
+
+fn exclude_bench_lock(lockfile: &std::path::Path) -> Result<()> {
+    let raw = fs::read(lockfile).map_err(|source| Error::ResultUnreadable {
+        path: lockfile.to_path_buf(),
+        source,
+    })?;
+    fs::write(lockfile, without_bench_lock(&raw)).map_err(|source| Error::ResultUnwritable {
+        path: lockfile.to_path_buf(),
+        source,
+    })
 }
 
 fn exclude_bench_member(manifest: &std::path::Path) -> Result<()> {

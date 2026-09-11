@@ -1,5 +1,10 @@
 //! Pre-flight tests that bind profiles to datastore targets.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
 use super::{Profile, Target};
 
 #[test]

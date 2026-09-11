@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use super::{
     ACKNOWLEDGEMENT_VALUE, ACKNOWLEDGEMENT_VARIABLE, Parameter, Profile, TARGET_RIG,
-    TARGET_VARIABLE,
+    TARGET_VARIABLE, Target,
 };
 
 /// An environment holding exactly what a test put in it.
