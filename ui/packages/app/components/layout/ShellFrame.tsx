@@ -1,5 +1,6 @@
 import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
+import CanvasScrollbarProbe from "./CanvasScrollbarProbe";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 import {
   DesktopSidebarNavigation,
@@ -40,7 +41,7 @@ export function ShellFrame({
             operatorScopes={operatorScopes}
             sidebarNavId={SIDEBAR_NAV_ID}
           />
-          <div className="ml-auto flex min-w-0 items-center gap-md pr-4 md:gap-xl md:pr-6">
+          <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
             <WorkspaceSwitcher workspaces={workspaces} />
             <ThemeToggle />
             <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
@@ -57,7 +58,9 @@ export function ShellFrame({
           />
         </aside>
 
-        <main className="app-dashboard-canvas min-h-0 overflow-y-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12 has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
+        <CanvasScrollbarProbe />
+
+        <main className="app-dashboard-canvas min-h-0 overflow-y-auto py-6 md:py-8 has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 has-[[data-page-layout]]:h-full has-[[data-page-layout]]:min-h-0">
             {children}
           </div>
