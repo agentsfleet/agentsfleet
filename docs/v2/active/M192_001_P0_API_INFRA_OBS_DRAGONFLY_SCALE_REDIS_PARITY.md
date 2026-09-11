@@ -62,7 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/{afd_sse,afd_api,afd_observability,agentsfleetd}/{Cargo.toml,src/**/*.rs,tests/**/*.rs}` | EDIT / CREATE | Unchanged channel parser, cluster probes, import-receipt guard, telemetry, application transport proofs. |
 | New numbered `schema/*.sql` migrations; `rustd/crates/afd_db/{src/migration.rs,tests/*.rs}` | CREATE migrations / EDIT registration and tests | Admission, ledger/grants, numeric indexes, counters and auth tables; shipped slots stay frozen. Fresh/populated upgrade and interrupted-rerun proofs. |
 | `rustd/crates/{afd_tenant,afd_connector,afd_api_tenant}/{Cargo.toml,src/**/*.rs,tests/**/*.rs}` | EDIT / CREATE | PostgreSQL device/nonce stores, existing protocol semantics, commit-before-release and no Redis fallback. |
-| `make/{test-infra,test-integration-rustd,acceptance}.mk`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/{bench,test-integration-rustd,deploy-dev,deploy-dev-fly,deploy-dev-verify,release}.yml`, `deploy/fly/agentsfleetd-*/fly.toml` | EDIT after required approval | Local cluster/image proof; existing vault-to-Fly secret flow and import preflight; no new cloud provisioning system. |
+| `make/{test-infra,test-integration-rustd,acceptance}.mk`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/{bench,test,test-integration-rustd,deploy-dev,deploy-dev-fly,deploy-dev-verify,release}.yml`, `deploy/fly/agentsfleetd-*/fly.toml` | EDIT after required approval | Local cluster/image proof; evidence-history checkout; existing vault-to-Fly secret flow and import preflight; no new cloud provisioning system. |
 | `playbooks/operations/datastore_scaling/{001_playbook.md,*.sh}`, `playbooks/founding/02_preflight/00_gate.sh`, `playbooks/README.md` | CREATE / EDIT | Bounded source migration tool, rehearsal, and cutover procedure. |
 | `docs/AUTH_DEVICE_LOGIN.md`, `ui/packages/app/tests/**/*.ts`, `cli/tests/**/*.ts` | EDIT if affected | Authentication migration and real existing acceptance fixtures. |
 | Separate `~/Projects/docs` branch and its changelog | EDIT during implementation if public behavior changes | Document preserved ID shape and revised retry/stream semantics; never edit from this worktree. |
@@ -90,7 +90,7 @@ Reuse M188 drivers, real Redis fault fixtures, redis-rs cluster routing, and Dra
 
 ## Sections (implementation slices)
 
-Execution: §1 → local cluster setup → §0 → §2 → §5 → §3 → §4 → §6 → §7. §2 proves admission on the existing Redis fixture; §1 needs no CI/compose edit.
+Execution: §1 → local cluster setup → §0 → §2 → §5 → §3 → §4 → §6 → §7. §2 proves admission on the existing Redis fixture; §1 needs full Git history in Rust CI but no compose edit.
 ### §0: Prototype Dragonfly primitives and sharded coordination
 
 Dependencies: §1 and local cluster compose setup within Indy's stated scope. Test-only prototypes precede the runtime refactor.
@@ -316,5 +316,5 @@ Explicit physical-ID replay is rejected because out-of-order replay into an exis
 - **Indy override (verbatim):** "we just stick to local that runs containers today (with the cluster config, no single mode crap for dragonfly)". Interpretation: cluster-only new daemon; no temporary provider mode.
 - **Indy deployment direction (verbatim):** "in production this would be stood up by Indy on dragondb just like indy did for upstash and stick the key in deployment to deploy-dev.yml". Reuse its called Fly workflow and vault flow.
 - **Final review:** Indy confirms acceptance of about 5 ms Fly iad → Dragonfly Cloud AWS us-east-1 in this handoff; this is his planning decision, not measured p99. Choose PostgreSQL auth authority: WAIT cannot guarantee single use. Hub duplicate-frame, ledger SELECT and populated-migration checks are required; Dragonfly, migration, and Cloud runtime proofs remain NOT RUN.
-- **Override boundary:** supersedes temporary standalone deployability/later-removal requirements; does not waive import/billing proofs, numeric budgets, paid-capacity consent, or live action approval. No benchmark/prototype has run.
+- **Override boundary:** supersedes temporary standalone deployability/later-removal requirements; does not waive import/billing proofs, numeric budgets, paid-capacity consent, or live action approval. The historical Redis baseline ran locally; no Dragonfly prototype has run.
 - **Indy recovery override (verbatim):** "since We are not in production yet, so i would just skip that". Reverse migrations and old-image rollback are out of scope; cancellation ends when the first new migration commits, then recovery is forward-only. Data preservation remains required.

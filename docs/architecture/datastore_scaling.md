@@ -280,7 +280,7 @@ Shared application probes are bounded and never share a synthetic outbound consu
 
 Raw files include collector output, command logs, server identity, topology, samples, and cleanup results, with SHA-256 digests.
 Keep all planned grader modes. Reuse canonical test-lane output by archiving its command, exit status, test counts, revision, and raw logs; console-only output cannot satisfy evidence grading.
-The grader recomputes digests and statistics and checks consistency; hashes detect alteration, not who generated a file.
+The grader recomputes digests and statistics, checks consistency, and matches the historical archive byte-for-byte to its pinned Git evidence commit; neither mechanism proves who generated a file.
 Cloud evidence also requires an authenticated CI run reference, matching revision, immutable artifact identity, and a Cloud datastore identifier verified through its control plane.
 
 Live actions remain manual evidence. The named human verifies the live revision, observation window, reconciliation, and retirement record.

@@ -66,6 +66,12 @@ fn test_local_target_rejects_a_remote_discovered_node() {
     Target::Rig
         .check_discovered_host("advertised datastore node", "127.0.0.1")
         .expect("the rig advertises loopback");
+    assert!(
+        Target::Rig
+            .check_discovered_host("advertised datastore node", "local")
+            .is_err(),
+        "an arbitrary hostname named local is not loopback proof"
+    );
 }
 
 #[test]

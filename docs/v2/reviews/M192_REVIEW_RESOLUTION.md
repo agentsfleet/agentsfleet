@@ -281,7 +281,7 @@ Source `afd_fleet/src/lease/pull.rs:170,244` observes receipt before money gates
 
 ### Evidence trust boundary
 
-Hashes detect altered bytes; authenticated CI provenance identifies the collector run.
+Hashes detect altered bytes, and the historical archive is pinned to a Git evidence commit; authenticated CI provenance identifies future Cloud collector runs.
 The canonical [workload evidence](../../architecture/datastore_scaling.md#workload-and-evidence) names the Cloud GET mechanism and secret-redaction boundary.
 Official source proves the request shape exists, not that an available key can access the intended datastore or that the account has passed the probe.
 
@@ -292,7 +292,7 @@ The readiness/live delivery split and fixture-only outbound remain proposals; th
 Indy's override removes temporary standalone transport; no automatic fallback or early-merge global deployment hold is planned.
 
 The first implemented slice is §1: benchmark address/fixture hardening, twelve-sample capture, sidecars/digests, baseline grader, and B/B0 dependency proof.
-It needed no CI or compose change. §0 requires local cluster setup under Indy's stated scope before its implementation.
+It needed full Git history in the Rust unit and coverage jobs, with no compose change. §0 requires local cluster setup under Indy's stated scope before its implementation.
 M192_001 is ACTIVE with §1 complete. M192_002 remains PENDING on the readiness work.
 
 ## Limits

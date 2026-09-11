@@ -6,7 +6,7 @@
 )]
 
 use super::metadata::dependency_closure;
-use super::{Surface, selected};
+use super::{Surface, capture_only, selected};
 
 #[test]
 fn production_build_provenance_covers_toolchain_and_build_scripts() {
@@ -24,5 +24,23 @@ fn agentsfleetd_dependency_closure_excludes_the_benchmark_harness() {
     assert!(
         !rendered.contains("afd_bench@"),
         "the rig-only harness must not enter a production package dependency closure"
+    );
+}
+
+#[test]
+fn capture_allows_only_its_own_untracked_archive() {
+    let campaign = "m192-example";
+    let archive = b"?? bench/baselines/datastore/m192-example/provenance.json\0";
+    assert!(capture_only(archive, campaign));
+
+    let dirty_source = b" M rustd/crates/afd_bench/src/lib.rs\0";
+    assert!(
+        !capture_only(dirty_source, campaign),
+        "tracked source bytes cannot be attributed to HEAD"
+    );
+    let foreign_archive = b"?? bench/baselines/datastore/another-run/result.json\0";
+    assert!(
+        !capture_only(foreign_archive, campaign),
+        "another campaign is not part of this capture"
     );
 }

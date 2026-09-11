@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::context::{Inputs, RAW_LOG_FILE, RESULT_FILE, sidecar};
-use super::git::provenance;
+use super::git::{provenance, require_capture_tree};
 use super::model::{BaselinePlan, CAMPAIGN_ROOT, EVIDENCE_SCHEMA, Provenance};
 use crate::datastores::DatastoreProbe;
 use crate::error::{Error, Result};
@@ -36,6 +36,7 @@ pub(super) fn plan(path: impl AsRef<Path>) -> Result<BaselinePlan> {
 /// bound to another capture revision; also returns filesystem/tool failures.
 pub fn prepare(path: impl AsRef<Path>) -> Result<PathBuf> {
     let plan = plan(path)?;
+    require_capture_tree(&plan.campaign)?;
     let directory = campaign_directory(&plan);
     let target = directory.join(PROVENANCE_FILE);
     let proof = provenance(&plan.baseline_revision, HEAD_REVISION)?;
@@ -71,6 +72,7 @@ pub fn capture(
     probe: &DatastoreProbe,
 ) -> Result<PathBuf> {
     let plan = plan(plan_path)?;
+    require_capture_tree(&plan.campaign)?;
     validate_slot(&plan, lane, sample)?;
     let provenance_path = campaign_directory(&plan).join(PROVENANCE_FILE);
     let provenance_raw = read(&provenance_path)?;

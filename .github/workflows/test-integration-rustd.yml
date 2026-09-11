@@ -45,6 +45,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Coverage runs unit tests too, including the grader that resolves
+          # the pinned historical evidence commits.
+          fetch-depth: 0
       # No toolchain input: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # here would be a second source of truth that silently disagrees.

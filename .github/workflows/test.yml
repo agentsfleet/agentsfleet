@@ -28,6 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The checked-in baseline grader resolves pinned B0, capture, and
+          # evidence commits. A depth-1 clone cannot verify those objects.
+          fetch-depth: 0
       # No toolchain input here: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # in this file would be a second source of truth that silently disagrees.

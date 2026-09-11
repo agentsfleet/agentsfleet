@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use sha2::{Digest as _, Sha256};
 
 use self::metadata::dependency_closure;
-use super::model::{EVIDENCE_SCHEMA, ProofPair, Provenance};
+use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance};
 use crate::error::{Error, Result};
 
 mod metadata;
@@ -28,6 +28,32 @@ pub(crate) fn revision(name: &str) -> Result<String> {
         "git revision",
     )
     .map(|raw| raw.trim().to_owned())
+}
+
+/// Refuse capture when working bytes could differ from the named revision.
+pub(super) fn require_capture_tree(campaign: &str) -> Result<()> {
+    let result = output(
+        Command::new(GIT_COMMAND).args(["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+        "git status",
+    )?;
+    if capture_only(&result.stdout, campaign) {
+        return Ok(());
+    }
+    Err(invalid(
+        "capture worktree differs from HEAD outside its evidence campaign",
+    ))
+}
+
+fn capture_only(status: &[u8], campaign: &str) -> bool {
+    let allowed = format!("{CAMPAIGN_ROOT}/{campaign}/");
+    status
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .all(|entry| {
+            entry
+                .get(3..)
+                .is_some_and(|path| path.starts_with(allowed.as_bytes()))
+        })
 }
 
 /// Build all B/B0 source, schema, build and resolved-dependency proofs.

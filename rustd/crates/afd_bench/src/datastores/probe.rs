@@ -10,7 +10,6 @@ use crate::profile::Target;
 /// The connected Postgres identity, with no configured URL or credential.
 const POSTGRES_IDENTITY_QUERY: &str = "SELECT COALESCE(inet_server_addr()::text, 'local'), \
      COALESCE(inet_server_port(), 0), current_database(), version()";
-const LOCAL_HOST: &str = "local";
 const REDIS: &str = "redis";
 const CLUSTER_DISABLED_DISPLAY: &str = "ResponseError: This instance has cluster support disabled";
 const CONNECTED_REPLICAS: &str = "connected_slaves:";
@@ -93,9 +92,7 @@ impl Datastores {
         discovered_hosts.sort();
         discovered_hosts.dedup();
         for host in &discovered_hosts {
-            if host != LOCAL_HOST {
-                target.check_discovered_host("advertised datastore node", host)?;
-            }
+            target.check_discovered_host("advertised datastore node", host)?;
         }
 
         Ok(DatastoreProbe {
