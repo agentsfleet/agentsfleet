@@ -68,6 +68,29 @@ pub(crate) struct Prepared {
     otlp: crate::preflight::OtlpConfig,
 }
 
+/// Delivers what a boot buffered when that boot is not going to finish.
+///
+/// [`attach_exports`] fills the reload slot before `open_runtime` runs, which
+/// is the entire point of the split — the pool records an operator wants are
+/// emitted inside it. The cost is a window: from that line until
+/// [`open_telemetry`] hands the exporters to the supervised flush, the only
+/// thing holding those records is a `Prepared`, and a failure that drops it
+/// throws them away. Before the split they at least reached stderr; after it,
+/// unflushed, they reach nothing — so the window has to be closed rather than
+/// noted.
+///
+/// `None` is a deployment with no collector, which has nothing to deliver.
+///
+/// [`FLUSH_BUDGET`] is reused rather than given one of its own: this path has
+/// no supervisor join to protect, but an operator waiting on a container that
+/// will not start is owed the same bound, and a second constant would be a
+/// second thing to keep honest.
+pub(crate) async fn flush_unsupervised(prepared: Option<Prepared>) {
+    if let Some(prepared) = prepared {
+        crate::telemetry::flush_within(prepared.exports, FLUSH_BUDGET).await;
+    }
+}
+
 /// Builds the export pipelines and points this process's records at them,
 /// BEFORE anything worth exporting is logged.
 ///

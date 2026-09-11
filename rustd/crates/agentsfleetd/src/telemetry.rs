@@ -45,7 +45,10 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use crate::error::BootFailure;
 use crate::preflight::{OtlpConfig, PROTOCOL_JSON};
 
+mod flush;
 mod resource;
+
+pub use self::flush::flush_within;
 
 #[cfg(test)]
 mod tests;
