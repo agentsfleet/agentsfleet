@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m192-dragonfly-migration
 **Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
 **Test Baseline:** harness/lint/version, 459 integration tests, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
-**Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical` and anchored at `e9ead416d63e23a3c6d8fceba99e09b0f30feeee`; later Dragonfly sections remain pending.
+**Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical` and anchored at `5eb0c2044ac15e6fa8f2204541fe3ebaf8aaa08f`; later Dragonfly sections remain pending.
 **Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; runtime context in `docs/architecture/data_flow.md`.
@@ -106,7 +106,7 @@ The hub handles SUnsubscribe by reconciling viewers and reissuing SSUBSCRIBE; te
 
 ### §1: Safe historical baseline and trustworthy capture
 
-**Status: DONE.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `a24d3055d721a7bde8f7294e521a24db991ef4c5`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples. The evidence index is `docs/v2/reviews/datastore-scale-evidence.md`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
+**Status: DONE.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples. The evidence index is `docs/v2/reviews/datastore-scale-evidence.md`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
 Prove B/B0 production source/schema/build and dependency-closure equality, including Cargo.lock; allow only proven bench-exclusive deltas. Capture three samples per existing `make bench-steer`, `bench-lease`, `bench-outbound`, and `bench-cardinality`.
 Archive each fixed-path result immediately under a unique campaign/lane/sample path with sidecars containing B, parameters, payload bytes, window, resources, raw server/topology output, and SHA-256 digests. Historical drivers have no seed or offered-rate guarantee; preserve their actual measurements and mark unavailable fields explicitly.
 Fix the M188 rig-label/address gap before capture or remote use: verify both datastores and every discovered node, reject shared targets, scope leases and consumers.

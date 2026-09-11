@@ -8,7 +8,7 @@
 use super::capture::{require_comparable, validate_plan};
 use super::git::digest;
 use super::grade::{
-    Grade, grade_at, require_distinct_capture, require_unique_prefix, validate_log,
+    Grade, allowed_delta, grade_at, require_distinct_capture, require_unique_prefix, validate_log,
 };
 use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance, Sidecar};
 
@@ -54,6 +54,15 @@ fn test_incomparable_datastore_runs_are_rejected() {
             .contains("outside the benchmark harness")
     );
     assert_coordinated_rewrite_is_rejected();
+}
+
+#[test]
+fn only_the_history_required_ci_workflows_are_governance_deltas() {
+    assert!(allowed_delta(".github/workflows/test.yml"));
+    assert!(allowed_delta(
+        ".github/workflows/test-integration-rustd.yml"
+    ));
+    assert!(!allowed_delta(".github/workflows/deploy-dev.yml"));
 }
 
 #[test]

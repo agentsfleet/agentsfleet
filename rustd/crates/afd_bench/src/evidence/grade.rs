@@ -144,8 +144,10 @@ fn validate_provenance(plan: &BaselinePlan, stored: &Provenance) -> Result<()> {
     Ok(())
 }
 
-fn allowed_delta(path: &str) -> bool {
-    path == ".oracle/orly.json"
+pub(super) fn allowed_delta(path: &str) -> bool {
+    path == ".github/workflows/test-integration-rustd.yml"
+        || path == ".github/workflows/test.yml"
+        || path == ".oracle/orly.json"
         || path == "AGENTS.md"
         || path == "dispatch/write_spec.md"
         || path == "make/bench.mk"

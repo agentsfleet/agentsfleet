@@ -19,8 +19,8 @@ Dragonfly behavior or set a future pass budget.
 | Campaign | `m192-redis-historical` |
 | Environment | Repository-owned local rig on macOS arm64, 8 logical CPUs, 16 GiB memory |
 | Baseline revision B0 | `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d` |
-| Capture revision B | `a24d3055d721a7bde8f7294e521a24db991ef4c5` |
-| Evidence revision E | `e9ead416d63e23a3c6d8fceba99e09b0f30feeee` |
+| Capture revision B | `f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886` |
+| Evidence revision E | `5eb0c2044ac15e6fa8f2204541fe3ebaf8aaa08f` |
 | Archive | `bench/baselines/datastore/m192-redis-historical/` |
 | Topology fingerprint | `sha256:13b761e01637f8787c055f113480bd0cd56bb273e33548b24263d2e808e9c357` |
 | Grade | 4 lanes and 12 samples validated |
@@ -43,10 +43,10 @@ The recorded local measurements are:
 
 | Lane | Frozen parameters | Median | Three-sample range |
 |---|---|---|---|
-| Steer | 50 fleets, concurrency 8, 15-second window | 2,521.30 accepted/s; p95 11.615 ms | 2,181.68–3,237.84 accepted/s; p95 9.143–12.591 ms |
-| Lease | 200 fleets, 8 runners, 30-second window | 56.30 polls/s; p95 291.327 ms | 55.03–60.54 polls/s; p95 269.823–318.463 ms |
-| Outbound fixture | 200 jobs, one slow destination, 60-second window | 48.49 delivered/s; p95 3,825.663 ms | 46.88–48.75 delivered/s; p95 3,805.183–3,969.023 ms |
-| Cardinality | 10,000 fleets | candidate query 1.225 ms; Redis 46,472,496 bytes | query 0.544–1.346 ms; Redis 46,472,496–46,490,264 bytes |
+| Steer | 50 fleets, concurrency 8, 15-second window | 10,012.88 accepted/s; p95 1.265 ms | 9,822.39–10,176.39 accepted/s; p95 1.215–1.267 ms |
+| Lease | 200 fleets, 8 runners, 30-second window | 78.58 polls/s; p95 214.143 ms | 71.65–86.17 polls/s; p95 212.479–263.935 ms |
+| Outbound fixture | 200 jobs, one slow destination, 60-second window | 48.40 delivered/s; p95 3,837.951 ms | 48.22–48.57 delivered/s; p95 3,823.615–3,860.479 ms |
+| Cardinality | 10,000 fleets | candidate query 0.606 ms; Redis 46,472,496 bytes | query 0.544–1.429 ms; Redis 46,472,496 bytes |
 
 Every archived report completed without an abort and swept at least as many
 fixtures as it created. The grader also requires identical machine resources,
