@@ -24,7 +24,8 @@ make bench-datastore-capture PROFILE=rig
 The target starts and resets the repository's compose Postgres and Redis for
 each sample. It captures three samples for each of `steer`, `lease`, `outbound`,
 and `cardinality`, immediately copying the fixed result path into a unique
-campaign path. Rig URLs and every server-advertised node must be loopback.
+campaign path. Rig URLs use literal loopback addresses whose family and port
+match the Compose binding; every server-advertised node must also be loopback.
 
 Grade the checked-in archive without changing either datastore:
 

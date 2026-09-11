@@ -42,6 +42,8 @@ use afd_redis::OutboundDelivery;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use crate::RunPrefix;
+
 /// What one destination does when asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Behaviour {
@@ -108,22 +110,41 @@ pub struct Scripted {
     settled_signal: Arc<Notify>,
     /// Cancels the lane before a foreign entry can be acknowledged.
     cancellation: CancellationToken,
+    /// Exact workspace marker every job from this run carries.
+    run_prefix: Option<String>,
 }
 
 impl Scripted {
     /// A poster over `behaviours`, keyed by destination (the job's fleet id).
     #[must_use]
     pub fn new(behaviours: BTreeMap<String, Behaviour>, fast: Duration, slow: Duration) -> Self {
-        Self::with_cancellation(behaviours, fast, slow, CancellationToken::new())
+        Self::build(behaviours, fast, slow, CancellationToken::new(), None)
     }
 
-    /// A script that can stop its worker when the shared stream yields foreign work.
+    /// A script that stops its worker before dispatching shared-stream foreign work.
     #[must_use]
-    pub fn with_cancellation(
+    pub fn owned(
         behaviours: BTreeMap<String, Behaviour>,
         fast: Duration,
         slow: Duration,
         cancellation: CancellationToken,
+        run_prefix: &RunPrefix,
+    ) -> Self {
+        Self::build(
+            behaviours,
+            fast,
+            slow,
+            cancellation,
+            Some(run_prefix.as_str().to_owned()),
+        )
+    }
+
+    fn build(
+        behaviours: BTreeMap<String, Behaviour>,
+        fast: Duration,
+        slow: Duration,
+        cancellation: CancellationToken,
+        run_prefix: Option<String>,
     ) -> Self {
         Self {
             behaviours: Arc::new(behaviours),
@@ -133,6 +154,7 @@ impl Scripted {
             settled: Arc::new(AtomicU64::new(0)),
             settled_signal: Arc::new(Notify::new()),
             cancellation,
+            run_prefix,
         }
     }
 
@@ -204,6 +226,18 @@ impl Scripted {
 }
 
 impl Deliver for Scripted {
+    fn permits(&self, job: &OutboundDelivery) -> bool {
+        let permitted = self
+            .run_prefix
+            .as_ref()
+            .is_none_or(|prefix| job.workspace_id == *prefix);
+        if !permitted {
+            self.foreign();
+            self.cancellation.cancel();
+        }
+        permitted
+    }
+
     fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
         let at = Instant::now();
         let scripted = self.behaviour_of(&job.fleet_id);

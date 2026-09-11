@@ -10,7 +10,7 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
-use afd_outbound::{Deliver as _, Verdict};
+use afd_outbound::{Deliver as _, Posters, Verdict, dispatch};
 use afd_redis::{EventId, OutboundDelivery};
 use tokio_util::sync::CancellationToken;
 
@@ -66,16 +66,24 @@ async fn test_a_delivered_job_settles_and_a_refused_one_does_not_until_the_ladde
 #[tokio::test]
 async fn test_a_job_this_run_did_not_queue_cancels_without_delivery_or_ack() {
     let cancellation = CancellationToken::new();
-    let poster = Scripted::with_cancellation(
+    let prefix = crate::RunPrefix::existing("bench-123-1").expect("valid prefix");
+    let poster = Scripted::owned(
         BTreeMap::new(),
         Duration::ZERO,
         Duration::ZERO,
         cancellation.clone(),
+        &prefix,
     );
+    let mut foreign = job("9-0", "somebody-elses-destination");
+    foreign.provider = "github".to_owned();
 
-    let verdict = poster
-        .deliver(&job("9-0", "somebody-elses-destination"))
-        .await;
+    let verdict = dispatch(
+        &Posters {
+            slack: poster.clone(),
+        },
+        &foreign,
+    )
+    .await;
 
     assert_eq!(verdict, Verdict::Retryable, "the worker must not ack it");
     assert!(cancellation.is_cancelled(), "the worker must stop now");

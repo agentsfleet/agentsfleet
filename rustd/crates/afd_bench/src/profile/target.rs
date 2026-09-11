@@ -1,11 +1,14 @@
 //! The target a profile selected and the addresses that decision admits.
 
+use std::net::{IpAddr, SocketAddr};
 use std::process::Command;
 
 use url::{Host, Url};
 
 use super::{DATABASE_ENDPOINT, Profile, REDIS_ENDPOINT, TARGET_VARIABLE};
 use crate::error::{Error, Result};
+
+const UNPARSEABLE: &str = "unparseable";
 
 /// The datastores a lane opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,47 +103,49 @@ fn verify_service(
     service: &'static str,
     container_port: &'static str,
 ) -> Result<()> {
-    let configured = endpoint_port(surface, endpoint)?;
+    let configured = endpoint_socket(surface, endpoint)?;
     let output = Command::new("docker")
         .args(["compose", "port", service, container_port])
         .output()
         .map_err(|source| Error::RigIdentityUnavailable { service, source })?;
-    let published = output
-        .status
-        .success()
-        .then(|| published_port(&output.stdout))
-        .flatten();
-    if published != Some(configured) {
+    let published = output.status.success()
+        && published_sockets(&output.stdout).any(|binding| binding_covers(binding, configured));
+    if !published {
         return Err(Error::RigIdentityUnverified { surface, service });
     }
     Ok(())
 }
 
-fn endpoint_port(surface: &'static str, raw: &str) -> Result<u16> {
-    Url::parse(raw)
-        .ok()
-        .and_then(|url| url.port_or_known_default())
-        .ok_or_else(|| Error::UnsafeTarget {
-            surface,
-            address: "portless".to_owned(),
-        })
+fn endpoint_socket(surface: &'static str, raw: &str) -> Result<SocketAddr> {
+    let parsed = Url::parse(raw).map_err(|_source| unsafe_address(surface, UNPARSEABLE))?;
+    let ip: IpAddr = parsed
+        .host_str()
+        .and_then(|host| host.trim_matches(['[', ']']).parse().ok())
+        .ok_or_else(|| unsafe_address(surface, "non-literal"))?;
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| unsafe_address(surface, "portless"))?;
+    Ok(SocketAddr::new(ip, port))
 }
 
-fn published_port(raw: &[u8]) -> Option<u16> {
+fn published_sockets(raw: &[u8]) -> impl Iterator<Item = SocketAddr> + '_ {
     core::str::from_utf8(raw)
-        .ok()?
-        .trim()
-        .rsplit_once(':')?
-        .1
-        .parse()
-        .ok()
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.parse().ok())
+}
+
+fn binding_covers(binding: SocketAddr, configured: SocketAddr) -> bool {
+    binding.port() == configured.port()
+        && binding.is_ipv4() == configured.is_ipv4()
+        && (binding.ip().is_unspecified() || binding.ip() == configured.ip())
 }
 
 /// Require one URL to name loopback, using the same parser for every scheme.
 fn local_endpoint(surface: &'static str, raw: &str) -> Result<()> {
     let parsed = Url::parse(raw).map_err(|_source| Error::UnsafeTarget {
         surface,
-        address: "unparseable".to_owned(),
+        address: UNPARSEABLE.to_owned(),
     })?;
     let host = parsed.host().ok_or_else(|| Error::UnsafeTarget {
         surface,
@@ -158,6 +163,13 @@ fn local_endpoint(surface: &'static str, raw: &str) -> Result<()> {
         });
     }
     Ok(())
+}
+
+fn unsafe_address(surface: &'static str, address: &str) -> Error {
+    Error::UnsafeTarget {
+        surface,
+        address: address.to_owned(),
+    }
 }
 
 /// Whether a server-reported host is loopback.

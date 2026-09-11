@@ -32,7 +32,7 @@ One row per item, so an agent can check a status without reading the ledger; eac
 [M192_002](../v2/pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) proposes the live cutover and retirement follow-up.
 The [datastore scaling requirements](./datastore_scaling.md) record the required target, recovery behavior, and rollout limits.
 
-M188 is complete; both proposed M192 workstreams remain pending. Dragonfly capacity and recovery remain unproven until its acceptance evidence passes.
+M188 is complete; M192_001 is active and M192_002 remains pending. Dragonfly capacity and recovery remain unproven until their acceptance evidence passes.
 The migration captures Redis before runtime changes, then validates increments on the owned local Dragonfly cluster.
 Indy creates Cloud Swarm and supplies deployment credentials; the tested cluster-only build merges/deploys at the coordinated switch, followed by observation and source retirement.
 The parked SSE follow-up is not a prerequisite; streaming tests use the merged runtime's behavior.

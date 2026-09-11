@@ -5,13 +5,51 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use super::{Profile, Target, published_port};
+use std::net::SocketAddr;
+
+use super::{Profile, Target, binding_covers, endpoint_socket, published_sockets};
 
 #[test]
-fn test_compose_port_output_is_read_without_trusting_its_host_spelling() {
-    assert_eq!(published_port(b"0.0.0.0:20735\n"), Some(20_735));
-    assert_eq!(published_port(b"[::]:20735\n"), Some(20_735));
-    assert_eq!(published_port(b"not a published port\n"), None);
+fn test_compose_bindings_cover_only_their_address_family_and_port() {
+    let bindings: Vec<SocketAddr> = published_sockets(b"0.0.0.0:20735\n[::]:20736\n").collect();
+    let ipv4: SocketAddr = "127.0.0.1:20735".parse().expect("valid socket");
+    let wrong_family: SocketAddr = "[::1]:20735".parse().expect("valid socket");
+    let wrong_port: SocketAddr = "127.0.0.1:20736".parse().expect("valid socket");
+
+    assert!(
+        bindings
+            .iter()
+            .any(|binding| binding_covers(*binding, ipv4))
+    );
+    assert!(
+        !bindings
+            .iter()
+            .any(|binding| binding_covers(*binding, wrong_family))
+    );
+    assert!(
+        !bindings
+            .iter()
+            .any(|binding| binding_covers(*binding, wrong_port))
+    );
+    assert!(
+        published_sockets(b"not a published port\n")
+            .next()
+            .is_none()
+    );
+}
+
+#[test]
+fn test_rig_endpoints_require_literal_loopback_addresses() {
+    assert_eq!(
+        endpoint_socket(
+            "database endpoint",
+            "postgres://user:secret@127.0.0.1:20735/database"
+        )
+        .expect("literal loopback is deterministic"),
+        "127.0.0.1:20735".parse().expect("valid socket")
+    );
+    endpoint_socket("database endpoint", "postgres://localhost:20735/database")
+        .expect_err("a hostname does not bind one published address family");
 }
 
 #[test]
