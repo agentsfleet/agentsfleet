@@ -39,7 +39,7 @@ export function RunnerIdentityLine({
   adminState: RunnerAdminState;
 }) {
   return (
-    <div className="mb-2xl flex flex-col gap-md">
+    <div className="flex flex-col gap-md">
       <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
         <span className="inline-flex items-center gap-md">
           <RunnerStatus adminState={adminState} liveness={runner.liveness} />

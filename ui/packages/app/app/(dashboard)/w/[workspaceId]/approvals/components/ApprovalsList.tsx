@@ -261,7 +261,7 @@ export default function ApprovalsList({
           its name, not floating in the gap above the table. Rendered here
           rather than on the page because `refresh` is this component's state,
           and the page is a Server Component that cannot hold it. */}
-      <SectionHeader className="mb-md" actions={<RefreshButton onRefresh={refresh} />}>
+      <SectionHeader actions={<RefreshButton onRefresh={refresh} />}>
         {APPROVALS_SECTION_LABEL}
       </SectionHeader>
 
