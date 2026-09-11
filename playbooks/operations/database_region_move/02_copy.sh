@@ -88,17 +88,67 @@ for table in "${LEDGER_TABLES[@]}"; do
   exclude_args+=("--exclude-table=$table")
 done
 
+# The target is NOT empty, and that is what a naive restore gets wrong.
+#
+# It was migrated first — that is this playbook's own step 4 — so it already
+# holds everything the migrations write. Migration 410 seeds
+# `core.model_catalogue_revision` with `id = 1` under a singleton CHECK, so
+# restoring the source's row is a duplicate key every time. And
+# `core.fleet_activity_counters` is maintained by triggers (migrations 880 and
+# 890): restoring `core.fleets` creates counter rows before the dump's own
+# counter rows arrive, so the load either collides or silently substitutes
+# trigger defaults for the counts the source actually had. A real run hit the
+# second of these on the first attempt.
+#
+# So the load truncates first and runs with triggers suppressed, and all of it
+# — truncate and every COPY — happens inside ONE transaction. A failure rolls
+# the whole thing back to the migrated-and-empty state the step began from,
+# which is what makes a retry clean instead of leaving a half-populated target
+# that has to be recreated.
+cat >"$work_dir/load.sql" <<'SQL'
+-- Suppress triggers for the load so the dump's own values land, rather than
+-- whatever a trigger would compute from the insert order. Requires no
+-- superuser: a role with the branch's admin membership may set it.
+SET session_replication_role = 'replica';
+
+-- Catalog-derived and CASCADE: a hand-kept list rots the moment a migration
+-- adds a table, and foreign keys decide the order, not the author. The ledger
+-- is excluded because the migration wrote it and the copy must not.
+DO $$
+DECLARE targets text;
+BEGIN
+  SELECT string_agg(format('%I.%I', table_schema, table_name), ', ')
+  INTO targets
+  FROM information_schema.tables
+  WHERE table_type = 'BASE TABLE'
+    AND table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND table_schema NOT LIKE 'pg\_%'
+    AND table_schema NOT LIKE 'pscale%'
+    AND NOT (table_schema = 'audit' AND table_name LIKE 'schema_migration%');
+  IF targets IS NULL THEN
+    RAISE EXCEPTION 'no user tables on the target — it was never migrated';
+  END IF;
+  EXECUTE 'TRUNCATE TABLE ' || targets || ' CASCADE';
+END $$;
+SQL
+
 # One container, one volume: the dump never leaves the temp dir, and both
 # URLs are forwarded by name so neither password appears in `ps`.
+#
+# Plain format rather than custom, because the load has to be ONE psql session:
+# `session_replication_role` is a session setting and pg_restore offers no hook
+# to set it. `--single-transaction` is what makes the whole load atomic.
 echo "Copying..."
 SOURCE_URL="$source_url" TARGET_URL="$target_url" docker run --rm \
   -e SOURCE_URL -e TARGET_URL \
   -v "$work_dir:/work" \
   "$POSTGRES_IMAGE" \
-  sh -c 'pg_dump --data-only --format=custom --no-owner --no-privileges "$@" \
-           --file=/work/data.dump "$SOURCE_URL" \
-         && pg_restore --data-only --no-owner --no-privileges --exit-on-error \
-           --dbname="$TARGET_URL" /work/data.dump' \
+  sh -c 'set -e
+         pg_dump --data-only --format=plain --no-owner --no-privileges "$@" \
+           --file=/work/data.sql "$SOURCE_URL"
+         cat /work/data.sql >>/work/load.sql
+         psql "$TARGET_URL" -v ON_ERROR_STOP=1 -q --single-transaction \
+           -f /work/load.sql' \
   sh "${exclude_args[@]}"
 
 echo ""

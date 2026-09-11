@@ -216,7 +216,50 @@ test_the_staged_vault_strings_carry_no_sslrootcert() {
   fi
 }
 
+# The target is migrated before the copy, so it already holds what the
+# migrations wrote. A restore that ignores that collides on migration 410's
+# singleton row and substitutes trigger defaults for migration 880's counters.
+test_the_load_clears_the_target_and_suppresses_triggers() {
+  local name="the load truncates, suppresses triggers, and is atomic"
+  local out status=0
+  out="$(printf 'dev\n' | run "$COPY" ALLOW_PROVIDER_WRITES=1)" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "status=$status: $out"
+    return
+  fi
+  if ! grep -q -- '--single-transaction' "$calls"; then
+    bad "$name" "the load is not atomic, so a failure leaves the target half-populated"
+  elif ! grep -q -- '--format=plain' "$calls"; then
+    bad "$name" "custom format cannot carry a session setting through pg_restore"
+  else
+    ok "$name"
+  fi
+}
+
+# The two statements the load depends on live in the generated SQL, not in the
+# docker argv, so they are asserted against the file the script writes.
+test_the_load_sql_carries_the_two_statements_it_depends_on() {
+  local name="the load SQL truncates and sets replica role"
+  local body
+  body="$(sed -n "/cat >\"\$work_dir\/load.sql\"/,/^SQL$/p" "$SCRIPT_DIR/02_copy.sh")"
+  if [ -z "$body" ]; then
+    bad "$name" "no load.sql heredoc found in 02_copy.sh"
+  elif [[ "$body" != *"session_replication_role = 'replica'"* ]]; then
+    bad "$name" "triggers are not suppressed: counters would take trigger defaults"
+  elif [[ "$body" != *"TRUNCATE TABLE"* ]] || [[ "$body" != *"CASCADE"* ]]; then
+    bad "$name" "the target is not cleared, so seeded rows collide"
+  elif [[ "$body" != *"information_schema.tables"* ]]; then
+    bad "$name" "the table list is hand-kept and will rot"
+  elif [[ "$body" != *"schema_migration%"* ]]; then
+    bad "$name" "the ledger is not excluded from the truncate"
+  else
+    ok "$name"
+  fi
+}
+
 echo "database-region-move regression tests"
+test_the_load_clears_the_target_and_suppresses_triggers
+test_the_load_sql_carries_the_two_statements_it_depends_on
 test_system_roots_are_added_for_the_container
 test_the_staged_vault_strings_carry_no_sslrootcert
 test_gate_refuses_all
