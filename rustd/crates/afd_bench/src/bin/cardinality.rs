@@ -13,6 +13,7 @@ use afd_bench::knobs::number;
 use afd_bench::lane::{cardinality, sweep};
 use afd_bench::profile::Parameter;
 use afd_bench::report::Lane;
+use tokio_util::sync::CancellationToken;
 
 /// The ladder's top rung when the caller does not say.
 ///
@@ -35,11 +36,24 @@ async fn measure() -> Result<String> {
     };
     parameters.admit(profile)?;
 
-    let stores = cli::datastores(&env).await?;
+    let stores = cli::datastores(profile, &target, &env).await?;
     let prefix = RunPrefix::mint();
+    cli::announce_prefix(&prefix);
+    let cancellation = CancellationToken::new();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = cardinality::run(profile, &target, parameters, &stores, &prefix).await;
+    let measured = cli::cancellable(
+        cancellation.clone(),
+        Box::pin(cardinality::run_cancelled(
+            profile,
+            &target,
+            parameters,
+            &stores,
+            &prefix,
+            cancellation,
+        )),
+    )
+    .await;
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
     cli::finish(Lane::Cardinality, profile, measured, swept)
 }

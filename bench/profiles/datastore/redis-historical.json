@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "campaign": "m192-redis-historical",
+  "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
+  "profile": "rig",
+  "samples_per_lane": 3,
+  "lanes": [
+    "steer",
+    "lease",
+    "outbound",
+    "cardinality"
+  ]
+}

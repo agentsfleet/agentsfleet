@@ -17,6 +17,7 @@ use afd_bench::knobs::{
     RETRYABLE_FRACTION_VARIABLE, SLOW_FRACTION_VARIABLE, WINDOW_VARIABLE, fraction, number,
 };
 use afd_bench::profile::Parameter;
+use tokio_util::sync::CancellationToken;
 
 /// Jobs to queue when the caller does not say.
 const DEFAULT_JOBS: u64 = 200;
@@ -39,7 +40,7 @@ async fn main() -> ExitCode {
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
     let env = cli::process_env();
-    let (profile, _target) = cli::admitted(&env)?;
+    let (profile, target) = cli::admitted(&env)?;
     let parameters = outbound::Parameters {
         jobs: number(&env, Parameter::Jobs.name(), DEFAULT_JOBS)?,
         slow_fraction: fraction(&env, SLOW_FRACTION_VARIABLE, DEFAULT_SLOW_FRACTION)?,
@@ -52,11 +53,24 @@ async fn measure() -> Result<String> {
     };
     parameters.admit(profile)?;
 
-    let stores = cli::datastores(&env).await?;
+    let stores = cli::datastores(profile, &target, &env).await?;
+    sweep::require_outbound_empty(&stores.queue).await?;
     let prefix = RunPrefix::mint();
+    cli::announce_prefix(&prefix);
+    let cancellation = CancellationToken::new();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = outbound::run(profile, parameters, &stores, &prefix).await;
+    let measured = cli::cancellable(
+        cancellation.clone(),
+        Box::pin(outbound::run_cancelled(
+            profile,
+            parameters,
+            &stores,
+            &prefix,
+            cancellation,
+        )),
+    )
+    .await;
     let swept = sweep::outbound_stream(&stores.queue, &prefix).await;
     cli::finish(Lane::Outbound, profile, measured, swept)
 }

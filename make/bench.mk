@@ -143,7 +143,8 @@ BENCH_LANE_ENV := BENCH_PROFILE="$(PROFILE)" \
 # build profile rather than of the path.
 BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-compare
+.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-compare \
+	bench-datastore bench-datastore-capture bench-datastore-archive bench-sweep
 
 bench-lease: _ensure-test-infra  ## Lease throughput: rate, p95, round trips per lease (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
 	@echo "→ [bench-lease] profile=$(PROFILE)"
@@ -163,3 +164,40 @@ bench-cardinality: _ensure-test-infra  ## Cost per idle fleet up a ladder (PROFI
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"
+
+# The M192 historical campaign is deliberately local-only. Each lane still
+# writes its convenient fixed result, then the archive command copies those
+# exact bytes before another sample can replace them.
+BENCH_EVIDENCE_RUN := $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) datastore_evidence --
+
+bench-datastore:  ## Grade immutable datastore evidence (CHECK=baseline)
+	@case "$(CHECK)" in \
+	  baseline) $(BENCH_EVIDENCE_RUN) grade ;; \
+	  *) echo "✗ CHECK=$(CHECK) is unsupported; expected baseline"; exit 1 ;; \
+	esac
+
+bench-datastore-archive: _ensure-test-infra  ## Archive one completed result (LANE=lease SAMPLE=1 LOG=.tmp/run.log)
+	@test -n "$(LANE)" || { echo "✗ LANE is required"; exit 1; }
+	@test -n "$(SAMPLE)" || { echo "✗ SAMPLE is required"; exit 1; }
+	@test -n "$(LOG)" || { echo "✗ LOG is required"; exit 1; }
+	@$(BENCH_EVIDENCE_RUN) capture "$(LANE)" "$(SAMPLE)" "$(LOG)"
+
+bench-datastore-capture: _ensure-test-infra  ## Capture 3 local-rig samples for all four historical lanes
+	@$(BENCH_EVIDENCE_RUN) prepare
+	@mkdir -p .tmp/datastore-baseline
+	@set -e; \
+	for lane in steer lease outbound cardinality; do \
+	  for sample in 1 2 3; do \
+	    $(MAKE) _reset-test-db; \
+	    $(MAKE) _migrate-test-db; \
+	    log=".tmp/datastore-baseline/$$lane-$$sample.log"; \
+	    if ! $(MAKE) "bench-$$lane" PROFILE=rig >"$$log" 2>&1; then cat "$$log"; exit 1; fi; \
+	    cat "$$log"; \
+	    $(MAKE) bench-datastore-archive PROFILE=rig LANE="$$lane" SAMPLE="$$sample" LOG="$$log"; \
+	  done; \
+	done
+	@$(MAKE) bench-datastore CHECK=baseline PROFILE=rig
+
+bench-sweep: _ensure-test-infra  ## Recover fixtures from an interrupted run (PREFIX=bench-...)
+	@test -n "$(PREFIX)" || { echo "✗ PREFIX is required"; exit 1; }
+	@$(BENCH_EVIDENCE_RUN) sweep "$(PREFIX)"

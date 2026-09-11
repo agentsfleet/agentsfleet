@@ -26,6 +26,7 @@
 mod probe;
 
 use afd_redis::ReadyIndex;
+use tokio_util::sync::CancellationToken;
 
 use self::probe::{
     FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
@@ -93,6 +94,31 @@ pub async fn run(
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
+    run_cancelled(
+        profile,
+        target,
+        parameters,
+        stores,
+        prefix,
+        CancellationToken::new(),
+    )
+    .await
+}
+
+/// Run the lane with an operator cancellation token.
+///
+/// # Errors
+///
+/// The same failures as [`run`], plus [`crate::Error::Cancelled`] while the
+/// local population is growing.
+pub async fn run_cancelled(
+    profile: Profile,
+    target: &Target,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+    cancellation: CancellationToken,
+) -> Result<Report> {
     parameters.admit(profile)?;
     let mut report = Report::new(Lane::Cardinality, profile);
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
@@ -101,7 +127,15 @@ pub async fn run(
     match target {
         Target::Rig => {
             report.created = true;
-            climb(stores, prefix, parameters, &mut report, &mut ledger).await?;
+            climb(
+                stores,
+                prefix,
+                parameters,
+                &cancellation,
+                &mut report,
+                &mut ledger,
+            )
+            .await?;
         }
         Target::Deployed { .. } => {
             report.created = false;
@@ -132,6 +166,7 @@ async fn climb(
     stores: &Datastores,
     prefix: &RunPrefix,
     parameters: Parameters,
+    cancellation: &CancellationToken,
     report: &mut Report,
     ledger: &mut FixtureLedger,
 ) -> Result<()> {
@@ -146,6 +181,9 @@ async fn climb(
     let mut last_fleet = String::new();
     for rung in rungs(parameters.fleets) {
         for index in seeded_to..rung {
+            if cancellation.is_cancelled() {
+                return Err(crate::Error::Cancelled);
+            }
             let fleet = seed::ready_fleet(
                 &stores.database,
                 &stores.queue,

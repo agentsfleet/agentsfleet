@@ -15,6 +15,7 @@ use core::time::Duration;
 
 use afd_bench::knobs::{WINDOW_VARIABLE, number};
 use afd_bench::profile::Parameter;
+use tokio_util::sync::CancellationToken;
 
 /// Fleets to spread steers across when the caller does not say.
 ///
@@ -36,7 +37,7 @@ async fn main() -> ExitCode {
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
     let env = cli::process_env();
-    let (profile, _target) = cli::admitted(&env)?;
+    let (profile, target) = cli::admitted(&env)?;
     let parameters = steer::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
         concurrency: number(&env, Parameter::Concurrency.name(), DEFAULT_CONCURRENCY)?,
@@ -44,11 +45,23 @@ async fn measure() -> Result<String> {
     };
     parameters.admit(profile)?;
 
-    let stores = cli::datastores(&env).await?;
+    let stores = cli::datastores(profile, &target, &env).await?;
     let prefix = RunPrefix::mint();
+    cli::announce_prefix(&prefix);
+    let cancellation = CancellationToken::new();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = steer::run(profile, parameters, &stores, &prefix).await;
+    let measured = cli::cancellable(
+        cancellation.clone(),
+        Box::pin(steer::run_cancelled(
+            profile,
+            parameters,
+            &stores,
+            &prefix,
+            cancellation,
+        )),
+    )
+    .await;
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
     cli::finish(Lane::Steer, profile, measured, swept)
 }

@@ -50,6 +50,28 @@ impl RunPrefix {
         }
     }
 
+    /// Reopen a prefix printed by an interrupted run for an explicit sweep.
+    ///
+    /// # Errors
+    ///
+    /// Refuses strings outside the minted alphabet so cleanup cannot become
+    /// an unbounded wildcard deletion.
+    pub fn existing(value: &str) -> crate::Result<Self> {
+        let valid = value.starts_with(&format!("{PREFIX_TOKEN}-"))
+            && value.len() <= 96
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
+        if !valid {
+            return Err(crate::Error::EvidenceInvalid(
+                "orphan sweep prefix is not a minted benchmark prefix".to_owned(),
+            ));
+        }
+        Ok(Self {
+            value: value.to_owned(),
+        })
+    }
+
     /// The prefix itself, for writing into a created object's name.
     #[must_use]
     pub fn as_str(&self) -> &str {

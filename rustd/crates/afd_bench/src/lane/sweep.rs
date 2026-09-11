@@ -18,8 +18,8 @@ use afd_db::Db;
 use afd_redis::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
 use sqlx::Row as _;
 
-use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
-use crate::error::Result;
+use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XLEN, XRANGE};
+use crate::error::{Error, Result};
 use crate::fixture::RunPrefix;
 
 /// Matches every name a run prefixed.
@@ -147,3 +147,23 @@ pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
 
 /// The entry field the outbound producer writes the workspace into.
 const WORKSPACE_FIELD: &str = "workspace_id";
+
+/// Refuse to attach the deployment-wide outbound consumer to existing work.
+///
+/// The queue has one stream and group. A synthetic worker cannot distinguish
+/// another producer's entry before consuming it, so saturation requires an
+/// empty repository-owned stream.
+///
+/// # Errors
+///
+/// [`Error::SharedTargetState`] when entries already exist, or the queue's
+/// error when it cannot read the stream length.
+pub async fn require_outbound_empty(queue: &Redis) -> Result<()> {
+    let mut length = redis::cmd(XLEN);
+    length.arg(OUTBOUND_STREAM_KEY);
+    let entries: u64 = queue.command(XLEN, OUTBOUND_STREAM_KEY, &length).await?;
+    if entries > 0 {
+        return Err(Error::SharedTargetState { entries });
+    }
+    Ok(())
+}

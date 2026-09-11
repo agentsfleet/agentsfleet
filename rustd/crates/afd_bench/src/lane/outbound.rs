@@ -119,6 +119,29 @@ pub async fn run(
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
+    run_cancelled(
+        profile,
+        parameters,
+        stores,
+        prefix,
+        CancellationToken::new(),
+    )
+    .await
+}
+
+/// Run the lane with an operator cancellation token.
+///
+/// # Errors
+///
+/// The same failures as [`run`], plus [`Error::Cancelled`] while queuing or
+/// draining synthetic jobs.
+pub async fn run_cancelled(
+    profile: Profile,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+    cancellation: CancellationToken,
+) -> Result<Report> {
     parameters.admit(profile)?;
     let queue = OutboundQueue::new(stores.queue.clone());
     queue.ensure_group().await?;
@@ -130,6 +153,9 @@ pub async fn run(
     let mut ledger = FixtureLedger::new();
     let mut queued_at = HashMap::new();
     for (index, destination) in (0..parameters.jobs).zip(destinations.iter().cycle()) {
+        if cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
         let id = queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
@@ -143,13 +169,14 @@ pub async fn run(
         ledger.created(1);
     }
 
-    let drained = drain(stores, queue, poster.clone(), parameters).await?;
+    let drained = drain(stores, queue, poster.clone(), parameters, &cancellation).await?;
     let ids: Vec<String> = queued_at.keys().cloned().collect();
     ledger.swept(sweep::outbound_entries(&stores.queue, &ids).await?);
 
     let mut report = Report::new(Lane::Outbound, profile);
     report.created = true;
     report.parameter(Parameter::Jobs.name(), parameters.jobs);
+    report.parameter(crate::knobs::WINDOW_VARIABLE, parameters.window.as_secs());
     report.parameter(
         SLOW_FRACTION_VARIABLE,
         fraction_of(DESTINATIONS, parameters.slow_fraction),
@@ -212,6 +239,7 @@ async fn drain(
     queue: OutboundQueue,
     poster: Scripted,
     parameters: Parameters,
+    cancellation: &CancellationToken,
 ) -> Result<Drained> {
     let reader = OutboundReader::new(
         stores.dedicated(afd_outbound::LONGEST_PARK).await?,
@@ -219,7 +247,7 @@ async fn drain(
     );
     let redis_before = redis_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
-    let token = CancellationToken::new();
+    let token = cancellation.child_token();
     let started = Instant::now();
     let worker = tokio::spawn(
         Worker::new(
@@ -233,7 +261,10 @@ async fn drain(
     );
 
     let deadline = started + parameters.window;
-    while Instant::now() < deadline && poster.settled() < parameters.jobs {
+    while Instant::now() < deadline
+        && poster.settled() < parameters.jobs
+        && !cancellation.is_cancelled()
+    {
         poster.settlement(SETTLEMENT_WAIT).await;
     }
     let settled = poster.settled();
@@ -242,6 +273,9 @@ async fn drain(
         .await
         .map_err(|_elapsed| Error::TaskLost { role: WORKER_ROLE })?
         .map_err(|_joined| Error::TaskLost { role: WORKER_ROLE })?;
+    if cancellation.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
 
     // The window ends at the last answer this run's jobs received, not at the
     // last attempt's start; the deadline stands in only when nothing was asked.

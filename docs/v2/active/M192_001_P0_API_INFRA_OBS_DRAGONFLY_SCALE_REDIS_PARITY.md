@@ -21,7 +21,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, INFRA, OBS
 **Batch:** B2
 **Branch:** feat/m192-dragonfly-migration
-**Baseline revision:** 67e7f1c58723ec1f33b8a7c03bf0997ee2c8e7ed
+**Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
 **Test Baseline:** pending — measured before the Pull Request.
 **Baseline evidence:** pending — unit and integration reports for the exact baseline revision are due before the Pull Request.
 **Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.

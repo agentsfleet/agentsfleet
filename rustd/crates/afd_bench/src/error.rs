@@ -1,22 +1,8 @@
-//! The one error type this crate returns, and why every variant is a refusal.
+//! The one error type this crate returns.
 //!
-//! # A bench failure is a refusal to measure, never a bad measurement
-//!
-//! Everything here is raised BEFORE or INSTEAD OF a number. A cap exceeded, a
-//! missing acknowledgement, a datastore that will not answer — each one ends
-//! the run with no result file written. That is deliberate: a partial run read
-//! as a measurement is worse than no run at all, because it is a number
-//! somebody will quote. The one thing this type never describes is a slow
-//! result; slowness is the output, not a failure.
-
-//! # No registry code, deliberately
-//!
-//! Twelve members already carry a plain `thiserror` type rather than
-//! `afd_core::error_shell!`, and this crate joins them. The shell exists to
-//! attach an operator-facing registry code to a failure an API will render;
-//! nothing here is ever rendered to a tenant. Minting `BENCH_*` codes would
-//! grow the registry an operator reads with entries only a developer running a
-//! make target can ever see.
+//! Every variant refuses to write a
+//! partial or misleading measurement. This developer-only harness uses plain
+//! `thiserror`; no failure reaches a tenant or needs an operator registry code.
 
 use std::path::PathBuf;
 
@@ -61,9 +47,6 @@ pub enum Error {
     },
 
     /// The production profile without its acknowledgement variable.
-    ///
-    /// Its own variant rather than a cap, because the answer is not "use a
-    /// smaller number" — it is "say out loud that you meant production".
     #[error("profile prod refuses to run without {variable}={expected}")]
     AcknowledgementMissing {
         /// The variable that must be set.
@@ -105,10 +88,6 @@ pub enum Error {
     },
 
     /// A server counter the lane could not read a number out of.
-    ///
-    /// Raised rather than summed to zero: a datastore that answered its
-    /// statistics command with nothing this crate recognises did not serve
-    /// zero operations, and the attribution would be a zero nobody measured.
     #[error("the {datastore} counter would not parse: no {field} field in the reply")]
     CounterUnreadable {
         /// Which datastore answered.
@@ -118,10 +97,6 @@ pub enum Error {
     },
 
     /// A knob that was set to something this lane cannot read as a number.
-    ///
-    /// Refused rather than defaulted: `BENCH_FLEETS=1O00` with a letter O
-    /// would otherwise measure the default population under the name of the
-    /// one asked for.
     #[error("{variable}={value:?} is not a number this lane can use")]
     VariableUnreadable {
         /// The variable that was set.
@@ -323,6 +298,48 @@ pub enum Error {
         variable: &'static str,
         /// The value that selects the local rig.
         rig: &'static str,
+    },
+
+    /// A saturation run pointed outside the repository-owned loopback rig.
+    #[error("{surface} points at {address:?}; the rig saturation profile accepts loopback only")]
+    UnsafeTarget {
+        /// Which configured or discovered address failed closed.
+        surface: &'static str,
+        /// Host only, with credentials deliberately excluded.
+        address: String,
+    },
+
+    /// The deployment-wide outbound stream already contains another workload.
+    #[error("the shared outbound stream contains {entries} existing entries")]
+    SharedTargetState {
+        /// Entries the lane did not create and cannot safely consume.
+        entries: u64,
+    },
+
+    /// The operator interrupted a measurement before it completed.
+    #[error("the benchmark was cancelled; its prefix sweep still ran")]
+    Cancelled,
+
+    /// The process could not install its cancellation listener.
+    #[error("the benchmark cancellation listener failed")]
+    InterruptUnavailable {
+        /// What the operating system reported.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Archived evidence is incomplete, inconsistent, or changed.
+    #[error("datastore evidence is invalid: {0}")]
+    EvidenceInvalid(String),
+
+    /// A source-control or metadata command could not start.
+    #[error("the {operation} evidence command would not start")]
+    EvidenceCommand {
+        /// Which source-control or metadata operation was starting.
+        operation: &'static str,
+        /// What the operating system reported.
+        #[source]
+        source: std::io::Error,
     },
 }
 

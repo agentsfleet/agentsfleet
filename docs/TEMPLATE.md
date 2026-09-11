@@ -19,11 +19,6 @@ Three markup classes appear below the divider. The gate tells them apart mechani
 
 Everything else — headings, table skeletons, the standard rubric rows — is kept and filled. The result: the executing agent reads **100% instance content, zero template noise**, and the 320-line budget buys signal, not boilerplate.
 
-## Authoring policy authorization
-
-Indy explicitly requested: "update the base TEMPLATE.md so the subsequent agents can come up with one shot implementation from the spec produced by orly from the template."
-The [review record](./v2/reviews/M192_REVIEW_RESOLUTION.md#follow-up-at-b01294265-cutover-simplification-and-governance) preserves the full request and scope. This guidance change is paired with dispatch/write_spec.md; required sections, gates and verification commands remain unchanged.
-
 ## What a spec pins
 
 A milestone spec is a **goal rulebook** the executing agent plans and ships from without repeated architecture questions. It pins **intent, invariants, enforcement mechanisms, tests and source pointers**. Leave routine variable names, import statements and code layout to repository conventions.
@@ -57,9 +52,9 @@ Before finalizing a spec, attack the proposed design using the applicable rows b
 | Safety and authority | Name one authority per invariant, the guarded state change, commit/release point and retry behavior. Attack lost replies, concurrent calls, owner failover and snapshot rollback separately; an acknowledgment is not automatically durable failover proof. Preserve intentional idempotent response retries. |
 | Identity and history | State identity scope across tenants/streams, ordering and cursor tie-breaks, nulls, deletion and expiry. Trace all conflict writers and downstream consumers such as billing enforcement. Separate pre-existing defects from new risks; name irrecoverable history and a bounded disposition instead of an impossible backfill. |
 | Schema and privileges | Follow the current shipped-migration policy. For populated changes, cover fresh bootstrap, incremental upgrade, interrupted rerun and old/new build compatibility. Test successful operations under the actual role, including SELECT needed by UPDATE, as well as forbidden writes. |
-| Client, server and platform | Check pinned client routing/reconnect/push behavior against the server and managed service. Probe advertised nodes, TLS, required commands and real ACL grants. Local source inspection and successful seed connection are not managed-service evidence. |
+| Client, server and platform | Check pinned client routing/reconnect/push behavior against the server and managed service. Probe advertised nodes, TLS, required commands and real access-control-list grants. Local source inspection and successful seed connection are not managed-service evidence. |
 | Deployment and recovery | Identify the actual deployment graph, secret staging, writer fence, restart/autostart paths, import authorization and empty/nonempty deploy shape. Prove pre-mutation refusal, abort/forward recovery and later ordinary deploys; inventory ephemeral auth and provider deliveries during the fence too. |
-| Performance and scope | Budget the whole request path: transaction/commit rate, fan-out, sequential round trips, connection pools, WAL, memory, backlog/drain and cost. Prefer the existing layout unless measurements require partitioning, batching or another subsystem. Name each comparison reference and prove workload/resource equivalence; distinguish planning inputs from measured thresholds. |
+| Performance and scope | Budget the whole request path: transaction/commit rate, fan-out, sequential round trips, connection pools, write-ahead log, memory, backlog/drain and cost. Prefer the existing layout unless measurements require partitioning, batching or another subsystem. Name each comparison reference and prove workload/resource equivalence; distinguish planning inputs from measured thresholds. |
 | Evidence and proof tier | Bind raw output to revision, parameters, resources and run identity; include lockfile/resolved production dependency closure for bench-only baselines. Distinguish inspected, proposed, NOT RUN and observed results. Unit stubs do not prove deployments; local tests do not prove Cloud. |
 | Decisions and prerequisites | Record agent defaults, measured outputs and required user decisions separately. Attribute only real quotes and explicit overrides; do not infer risk acceptance from reviewer advice. Name the first executable slice and the boundary each unresolved prerequisite blocks. |
 
@@ -471,6 +466,6 @@ platform constants (docs/architecture/direction.md). -->
 <!-- tpl: Keep the four bullet headers. At authoring, record consultations,
 source findings and user decisions already supplied; leave future skill/runtime
 outcomes pending and all Graded cells empty. A confirmed planning input is not a
-measured SLO; a proposed risk exception is not approval. Record superseded
-requirements explicitly and update canonical docs/tests so old alternatives
-cannot be mistaken for simultaneous requirements. -->
+measured service-level objective; a proposed risk exception is not approval.
+Record superseded requirements explicitly and update canonical docs/tests so old
+alternatives cannot be mistaken for simultaneous requirements. -->

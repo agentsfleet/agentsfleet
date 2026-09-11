@@ -32,6 +32,7 @@ pub mod abort;
 pub mod cli;
 pub mod datastores;
 pub mod error;
+pub mod evidence;
 pub mod fixture;
 pub mod instrument;
 pub mod knobs;

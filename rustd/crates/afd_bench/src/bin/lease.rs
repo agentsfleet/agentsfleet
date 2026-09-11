@@ -15,6 +15,7 @@ use core::time::Duration;
 
 use afd_bench::knobs::{WINDOW_VARIABLE, number};
 use afd_bench::profile::Parameter;
+use tokio_util::sync::CancellationToken;
 
 /// Ready fleets to seed when the caller does not say.
 const DEFAULT_FLEETS: u64 = 200;
@@ -37,7 +38,7 @@ async fn main() -> ExitCode {
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
     let env = cli::process_env();
-    let (profile, _target) = cli::admitted(&env)?;
+    let (profile, target) = cli::admitted(&env)?;
     let parameters = lease::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
         runners: number(&env, Parameter::Runners.name(), DEFAULT_RUNNERS)?,
@@ -45,11 +46,23 @@ async fn measure() -> Result<String> {
     };
     parameters.admit(profile)?;
 
-    let stores = cli::datastores(&env).await?;
+    let stores = cli::datastores(profile, &target, &env).await?;
     let prefix = RunPrefix::mint();
+    cli::announce_prefix(&prefix);
+    let cancellation = CancellationToken::new();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = lease::run(profile, parameters, &stores, &prefix).await;
+    let measured = cli::cancellable(
+        cancellation.clone(),
+        Box::pin(lease::run_cancelled(
+            profile,
+            parameters,
+            &stores,
+            &prefix,
+            cancellation,
+        )),
+    )
+    .await;
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
     cli::finish(Lane::Lease, profile, measured, swept)
 }

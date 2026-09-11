@@ -93,6 +93,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/ci_zig_images` — build pinned Zig images for Continuous Integration (CI).
 - `operations/credential_rotation` — rotate an exposed development credential.
 - `operations/database_region_move` — move a PlanetScale database to another region, verified table by table.
+- `operations/datastore_scaling` — capture and grade migration baselines, then recover prefix-scoped benchmark orphans.
 - `operations/github_app_registration` — register the platform GitHub App.
 - `operations/installer_deploy` — deploy and verify `agentsfleet.dev`.
 - `operations/ip_allowlisting` — restrict datastore ingress to Fly.io egress.

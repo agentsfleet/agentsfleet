@@ -15,6 +15,9 @@
 
 use std::process::ExitCode;
 
+use tokio_util::sync::CancellationToken;
+
+use crate::RunPrefix;
 use crate::datastores::{
     DATABASE_URL_VARIABLE, Datastores, REDIS_CA_CERT_VARIABLE, REDIS_URL_VARIABLE,
 };
@@ -47,10 +50,18 @@ pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target
 /// # Errors
 ///
 /// A variable that is unset, or a datastore that would not answer.
-pub async fn datastores(env: &dyn Fn(&str) -> Option<String>) -> Result<Datastores> {
-    Datastores::open(
-        &required(env, DATABASE_URL_VARIABLE)?,
-        &required(env, REDIS_URL_VARIABLE)?,
+pub async fn datastores(
+    profile: Profile,
+    target: &Target,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Result<Datastores> {
+    let database_url = required(env, DATABASE_URL_VARIABLE)?;
+    let redis_url = required(env, REDIS_URL_VARIABLE)?;
+    profile.check_endpoints(target, &database_url, &redis_url)?;
+    Datastores::open_checked(
+        target,
+        &database_url,
+        &redis_url,
         variable(env, REDIS_CA_CERT_VARIABLE),
     )
     .await
@@ -76,6 +87,45 @@ pub fn finish(
     let path = lane.result_path(profile);
     report.write(&path)?;
     Ok(path.display().to_string())
+}
+
+/// Print the identifier an interrupted run needs for orphan recovery.
+pub fn announce_prefix(prefix: &RunPrefix) {
+    // logging: developer CLI recovery input; no telemetry subscriber or sensitive data.
+    println!("run_prefix={prefix}");
+}
+
+/// Await a lane until it finishes or the operator requests cancellation.
+///
+/// The caller still owns the prefix and always runs its sweep after this
+/// returns, including when cancellation wins the race.
+///
+/// # Errors
+///
+/// Returns the lane's error, [`crate::Error::Cancelled`], or the operating
+/// system failure that prevented installing the cancellation listener.
+pub async fn cancellable<T>(
+    cancellation: CancellationToken,
+    lane: impl Future<Output = Result<T>>,
+) -> Result<T> {
+    cancellable_on(cancellation, lane, tokio::signal::ctrl_c()).await
+}
+
+async fn cancellable_on<T>(
+    cancellation: CancellationToken,
+    lane: impl Future<Output = Result<T>>,
+    interrupt: impl Future<Output = std::io::Result<()>>,
+) -> Result<T> {
+    tokio::pin!(lane);
+    tokio::select! {
+        result = &mut lane => result,
+        interrupted = interrupt => {
+            interrupted.map_err(|source| crate::Error::InterruptUnavailable { source })?;
+            cancellation.cancel();
+            let _finished = lane.await;
+            Err(crate::Error::Cancelled)
+        }
+    }
 }
 
 /// Turn a lane's outcome into the process's, printing what a person needs.

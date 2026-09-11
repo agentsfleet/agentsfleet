@@ -261,15 +261,18 @@ dependencies = [
  "afd_runner",
  "afd_wire",
  "hdrhistogram",
+ "hex",
  "opentelemetry",
  "opentelemetry_sdk",
  "redis",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "thiserror",
  "tokio",
  "tokio-util",
+ "url",
 ]
 
 [[package]]

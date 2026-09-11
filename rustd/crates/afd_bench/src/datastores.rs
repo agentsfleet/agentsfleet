@@ -19,8 +19,13 @@ use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_redis::{Dedicated, Redis, RedisConfig, RedisRole};
+use sqlx::Row as _;
 
 use crate::error::Result;
+
+mod probe;
+
+pub use probe::DatastoreProbe;
 
 /// The Redis commands this crate spells itself, in one place.
 ///
@@ -35,6 +40,16 @@ pub mod command {
     pub const COMMANDSTATS: &str = "commandstats";
     /// The `INFO` section carrying memory.
     pub const MEMORY: &str = "memory";
+    /// The `INFO` section carrying server identity.
+    pub const SERVER: &str = "server";
+    /// The `INFO` section carrying primary/replica topology.
+    pub const REPLICATION: &str = "replication";
+    /// Redis Cluster topology command.
+    pub const CLUSTER: &str = "CLUSTER";
+    /// `CLUSTER` subcommand listing every advertised node.
+    pub const NODES: &str = "NODES";
+    /// Count entries in a stream without consuming them.
+    pub const XLEN: &str = "XLEN";
     /// Read a stream by id range.
     pub const XRANGE: &str = "XRANGE";
     /// Delete named entries from a stream.
@@ -199,8 +214,6 @@ pub(crate) fn redis_calls_in(info: &str) -> Option<u64> {
 /// [`crate::Error::DatabaseUnavailable`] when the statistics view will not
 /// answer, [`crate::Error::CounterUnreadable`] when it answers a negative.
 pub async fn postgres_transactions(database: &Db) -> Result<u64> {
-    use sqlx::Row as _;
-
     let mut connection = database.acquire().await?;
     let total: i64 = sqlx::query(TRANSACTIONS_QUERY)
         .fetch_one(&mut *connection)

@@ -46,7 +46,7 @@ afd_wire.workspace = true
 # three rows directly, as the lease suites do.
 sqlx.workspace = true
 # The concurrency the lanes exist to measure.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "signal"] }
 # The daemon's own lease instrument. Invariant 5: round trips per lease are
 # READ from `producers::fleet::lease_polled`, never recounted by wrapping the
 # queries -- a wrapper would measure the wrapper.
@@ -62,6 +62,12 @@ hdrhistogram.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+# Parse datastore endpoints before opening them. The saturation profile is
+# local-only; string-prefix checks do not prove where the socket goes.
+url.workspace = true
+# Digests bind archived results and their raw evidence.
+sha2.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 # `Db::unreachable` and `Redis::unreachable`: handles that open no socket, so

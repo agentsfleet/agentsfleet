@@ -6,8 +6,12 @@
 )]
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::{admitted, finish};
+use tokio_util::sync::CancellationToken;
+
+use super::{admitted, cancellable_on, finish};
 use crate::error::Error;
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
 use crate::report::{Lane, Report};
@@ -86,5 +90,43 @@ fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
     assert_eq!(
         read.fixture.swept, 200,
         "a fallback that found nothing must not erase what the lane swept"
+    );
+}
+
+#[tokio::test]
+async fn test_cancellation_is_returned_to_the_caller_that_owns_the_sweep() {
+    let cancellation = CancellationToken::new();
+    let wait = cancellation.clone();
+    let cleaned = Arc::new(AtomicBool::new(false));
+    let lane_cleaned = Arc::clone(&cleaned);
+    let lane = async move {
+        wait.cancelled().await;
+        lane_cleaned.store(true, Ordering::SeqCst);
+        Ok(())
+    };
+    let interrupted = std::future::ready(Ok(()));
+
+    let refusal = cancellable_on(cancellation.clone(), lane, interrupted)
+        .await
+        .expect_err("an interrupt must stop the measurement");
+
+    assert!(matches!(refusal, Error::Cancelled));
+    assert!(cancellation.is_cancelled());
+    assert!(
+        cleaned.load(Ordering::SeqCst),
+        "the wrapper waits for lane shutdown before the caller sweeps"
+    );
+}
+
+#[tokio::test]
+async fn test_a_completed_lane_wins_without_waiting_for_an_interrupt() {
+    let lane = std::future::ready(Ok::<_, Error>(42));
+    let interrupted = std::future::pending::<std::io::Result<()>>();
+
+    assert_eq!(
+        cancellable_on(CancellationToken::new(), lane, interrupted)
+            .await
+            .expect("the lane completed"),
+        42
     );
 }

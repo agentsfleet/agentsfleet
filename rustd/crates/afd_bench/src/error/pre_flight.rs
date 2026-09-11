@@ -25,6 +25,8 @@ impl Error {
             | Self::CapExceeded { .. }
             | Self::AcknowledgementMissing { .. }
             | Self::TargetMissing { .. }
+            | Self::UnsafeTarget { .. }
+            | Self::SharedTargetState { .. }
             | Self::VariableUnset { .. }
             | Self::VariableUnreadable { .. }
             | Self::UnknownLane { .. }
@@ -48,7 +50,11 @@ impl Error {
             | Self::FixtureUnseedable { .. }
             | Self::RunnerUnenrollable { .. }
             | Self::TaskLost { .. }
-            | Self::CounterUnreadable { .. } => false,
+            | Self::CounterUnreadable { .. }
+            | Self::EvidenceInvalid(_)
+            | Self::EvidenceCommand { .. }
+            | Self::Cancelled
+            | Self::InterruptUnavailable { .. } => false,
         }
     }
 }

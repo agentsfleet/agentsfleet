@@ -49,12 +49,18 @@ impl Abort {
     /// A monitor that cancels past `threshold`, the profile's abort rate.
     #[must_use]
     pub fn new(threshold: f64) -> Self {
+        Self::with_token(threshold, CancellationToken::new())
+    }
+
+    /// A monitor sharing an operator-controlled cancellation token.
+    #[must_use]
+    pub fn with_token(threshold: f64, token: CancellationToken) -> Self {
         Self {
             threshold,
             attempts: AtomicU64::new(0),
             failures: AtomicU64::new(0),
             streak: AtomicU64::new(0),
-            token: CancellationToken::new(),
+            token,
         }
     }
 

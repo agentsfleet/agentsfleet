@@ -22,11 +22,21 @@ use core::time::Duration;
 
 use crate::error::{Error, Result};
 
+mod target;
+
+pub use target::Target;
+
 /// Variable every lane reads its profile from; absent means the rig.
 pub const PROFILE_VARIABLE: &str = "BENCH_PROFILE";
 
 /// Variable a deployed profile reads its target address from.
 pub const TARGET_VARIABLE: &str = "BENCH_TARGET";
+
+/// The Postgres URL checked before a lane opens it.
+pub const DATABASE_ENDPOINT: &str = "BENCH_DATABASE_URL";
+
+/// The Redis URL checked before a lane opens it.
+pub const REDIS_ENDPOINT: &str = "BENCH_REDIS_URL";
 
 /// The least of any parameter a lane will run with.
 ///
@@ -296,18 +306,6 @@ impl Profile {
             address => Ok(Target::Deployed { address }),
         }
     }
-}
-
-/// The datastores a lane opens.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
-    /// The compose Postgres and Redis `make/test-infra.mk` starts.
-    Rig,
-    /// A deployed environment, reached at this address.
-    Deployed {
-        /// What [`TARGET_VARIABLE`] carried.
-        address: String,
-    },
 }
 
 impl fmt::Display for Profile {

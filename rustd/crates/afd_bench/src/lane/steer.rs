@@ -108,13 +108,41 @@ pub async fn run(
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
+    run_cancelled(
+        profile,
+        parameters,
+        stores,
+        prefix,
+        CancellationToken::new(),
+    )
+    .await
+}
+
+/// Run the lane with an operator cancellation token.
+///
+/// # Errors
+///
+/// The same failures as [`run`], plus [`Error::Cancelled`] while seeding.
+pub async fn run_cancelled(
+    profile: Profile,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+    cancellation: CancellationToken,
+) -> Result<Report> {
     parameters.admit(profile)?;
-    let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
+    let abort = Arc::new(Abort::with_token(
+        profile.caps().abort_error_rate,
+        cancellation,
+    ));
     let tag = seed::placement_tag(prefix);
     let mut ledger = FixtureLedger::new();
 
     let mut fleets = Vec::new();
     for index in 0..parameters.fleets {
+        if abort.fired() {
+            return Err(Error::Cancelled);
+        }
         fleets.push(
             seed::empty_fleet(
                 &stores.database,
@@ -135,6 +163,7 @@ pub async fn run(
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Concurrency.name(), parameters.concurrency);
+    report.parameter(crate::knobs::WINDOW_VARIABLE, parameters.window.as_secs());
     measured.record(&mut report);
     report.abort = abort.recorded();
     report.fixture = Fixture::of(prefix, ledger);

@@ -1,6 +1,11 @@
 //! What the prefix promises the sweep, and what the ledger promises the result
 //! file.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
 use super::{FixtureLedger, PREFIX_TOKEN, RunPrefix};
 
 #[test]
@@ -90,4 +95,18 @@ fn test_the_ledger_saturates_rather_than_wrapping() {
         u64::MAX,
         "a count that wrapped to zero would report a clean sweep of everything"
     );
+}
+
+#[test]
+fn test_an_interrupted_runs_prefix_can_be_reopened_for_orphan_recovery() {
+    let minted = RunPrefix::mint();
+    let reopened = RunPrefix::existing(minted.as_str()).expect("a minted prefix is valid");
+
+    assert_eq!(reopened, minted);
+    for unsafe_value in ["bench-%", "other-1-2", "bench-*", "bench-/../"] {
+        assert!(
+            RunPrefix::existing(unsafe_value).is_err(),
+            "{unsafe_value} could widen a prefix-scoped cleanup"
+        );
+    }
 }

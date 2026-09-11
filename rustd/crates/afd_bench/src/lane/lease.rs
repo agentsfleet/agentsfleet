@@ -27,29 +27,25 @@
 
 pub mod drive;
 pub mod seed;
+mod window;
 
 use core::time::Duration;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::time::Instant;
 
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::Leases;
 use afd_redis::ReadyIndex;
+use tokio_util::sync::CancellationToken;
 
-use self::drive::Shared;
 use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
 use crate::abort::Abort;
-use crate::datastores::{Datastores, redis_calls};
+use crate::datastores::Datastores;
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
-use crate::instrument::{LeaseInstrument, PollCounters};
-use crate::lane::outcomes::Outcomes;
+use crate::instrument::LeaseInstrument;
 use crate::profile::{Parameter, Profile};
-use crate::report::{
-    DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, per_second, ratio,
-};
+use crate::report::{Fixture, Lane, Report};
 
 /// Measurement key: polls issued per second, lease or miss.
 const POLLS_PER_SECOND: &str = "polls_per_second";
@@ -133,6 +129,28 @@ pub async fn run(
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
+    run_cancelled(
+        profile,
+        parameters,
+        stores,
+        prefix,
+        CancellationToken::new(),
+    )
+    .await
+}
+
+/// Run the lane with an operator cancellation token.
+///
+/// # Errors
+///
+/// The same failures as [`run`], plus [`Error::Cancelled`] while seeding.
+pub async fn run_cancelled(
+    profile: Profile,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+    cancellation: CancellationToken,
+) -> Result<Report> {
     parameters.admit(profile)?;
     if parameters.runners > u64::from(stores.pool_size) {
         return Err(Error::RunnersExceedPool {
@@ -140,7 +158,10 @@ pub async fn run(
             pool: stores.pool_size,
         });
     }
-    let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
+    let abort = Arc::new(Abort::with_token(
+        profile.caps().abort_error_rate,
+        cancellation,
+    ));
     let instrument = LeaseInstrument::install()?;
     let leases = Leases::new(
         stores.database.clone(),
@@ -150,9 +171,9 @@ pub async fn run(
     let tag = seed::placement_tag(prefix);
 
     let mut ledger = FixtureLedger::new();
-    let (seeded, runners) = populate(stores, prefix, &tag, parameters, &mut ledger).await?;
+    let (seeded, runners) = populate(stores, prefix, &tag, parameters, &abort, &mut ledger).await?;
 
-    let contended = measure(
+    let contended = window::measure(
         &instrument,
         &leases,
         stores,
@@ -167,6 +188,7 @@ pub async fn run(
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Runners.name(), parameters.runners);
+    report.parameter(crate::knobs::WINDOW_VARIABLE, parameters.window.as_secs());
     report.parameter(POOL_SIZE, u64::from(stores.pool_size));
     contended.record(&mut report);
 
@@ -175,7 +197,7 @@ pub async fn run(
     // per-poll ratios would describe a window that never polled.
     if !abort.fired() {
         let depth = quiesce(&stores.queue, &seeded).await?;
-        let idle = measure(
+        let idle = window::measure(
             &instrument,
             &leases,
             stores,
@@ -198,10 +220,14 @@ async fn populate(
     prefix: &RunPrefix,
     tag: &str,
     parameters: Parameters,
+    abort: &Abort,
     ledger: &mut FixtureLedger,
 ) -> Result<(Vec<SeededFleet>, Vec<Uuid7>)> {
     let mut seeded = Vec::new();
     for index in 0..parameters.fleets {
+        if abort.fired() {
+            return Err(Error::Cancelled);
+        }
         seeded.push(
             seed::ready_fleet(
                 &stores.database,
@@ -218,6 +244,9 @@ async fn populate(
     }
     let mut runners = Vec::new();
     for index in 0..parameters.runners {
+        if abort.fired() {
+            return Err(Error::Cancelled);
+        }
         let host = prefix.name(&format!("host-{index}"));
         runners.push(seed::runner(&stores.database, &host, tag, SEEDED_AT).await?);
         ledger.created(ROWS_PER_RUNNER);
@@ -233,117 +262,4 @@ async fn quiesce(queue: &afd_redis::Redis, seeded: &[SeededFleet]) -> Result<u64
         ready.force_clear(&fleet.fleet).await?;
     }
     Ok(ready.len().await?)
-}
-
-/// One window: every runner polling at once, with the cost either side of it.
-struct Window {
-    outcomes: Outcomes,
-    length: Duration,
-    exhausted: bool,
-    counters: PollCounters,
-    redis_calls: u64,
-}
-
-/// Drive every runner concurrently, measuring what it cost.
-async fn measure(
-    instrument: &LeaseInstrument,
-    leases: &Leases,
-    stores: &Datastores,
-    runners: &[Uuid7],
-    window: Duration,
-    stop_after: Option<u64>,
-    abort: &Arc<Abort>,
-) -> Result<Window> {
-    let before = instrument.read()?;
-    let redis_before = redis_calls(&stores.queue).await?;
-    let started = Instant::now();
-    let shared = Arc::new(Shared {
-        deadline: started + window,
-        leased: AtomicU64::new(0),
-        stop_after,
-        abort: Arc::clone(abort),
-    });
-
-    let mut tasks = Vec::with_capacity(runners.len());
-    for runner in runners {
-        let leases = leases.clone();
-        let runner = runner.clone();
-        let shared = Arc::clone(&shared);
-        // Per runner, because the thing under measurement is what happens when
-        // R of them reach the same readiness index at the same instant.
-        tasks.push(tokio::spawn(async move {
-            drive::poll_until(&leases, &runner, &shared).await
-        }));
-    }
-
-    let mut outcomes = Outcomes::new()?;
-    let mut last_lease: Option<Instant> = None;
-    for task in tasks {
-        let (theirs, their_last) = task
-            .await
-            .map_err(|_joined| Error::TaskLost { role: "runner" })??;
-        outcomes.absorb(&theirs)?;
-        last_lease = last_lease.max(their_last);
-    }
-    let ended = Instant::now();
-    let exhausted = stop_after.is_some_and(|ceiling| shared.leased_so_far() >= ceiling);
-
-    Ok(Window {
-        outcomes,
-        length: drive::window_length(started, ended, last_lease, exhausted),
-        exhausted,
-        counters: instrument.read()?.since(before),
-        redis_calls: redis_calls(&stores.queue)
-            .await?
-            .saturating_sub(redis_before),
-    })
-}
-
-impl Window {
-    /// Write the contended window's numbers into the report.
-    fn record(&self, report: &mut Report) {
-        let seconds = self.length.as_secs_f64();
-        report.latency(seconds, &self.outcomes.latency);
-        report.measurement(
-            POLLS_PER_SECOND,
-            per_second(self.outcomes.attempts(), seconds),
-        );
-        report.measurement(LEASES, count(self.outcomes.successes));
-        report.measurement(FAILURES, count(self.outcomes.failures));
-        report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
-        report.measurement(EXHAUSTED, if self.exhausted { 1.0 } else { 0.0 });
-        report.measurement(WASTED_CLAIM_RATE, self.outcomes.wasted_fraction());
-        report.measurement(
-            ROUNDTRIPS_PER_LEASE,
-            ratio(self.counters.roundtrips, self.outcomes.successes),
-        );
-        // No `time_ms`: this lane times the poll end to end, which is already
-        // the p95, and splitting that between the two datastores would need a
-        // timer inside the pass rather than around it.
-        report.datastores = DatastoreCosts {
-            redis: DatastoreCost {
-                operations: self.redis_calls,
-                time_ms: None,
-            },
-            postgres: DatastoreCost {
-                operations: self.counters.roundtrips,
-                time_ms: None,
-            },
-        };
-    }
-
-    /// Write the idle window's numbers, which are per-poll rather than a rate.
-    fn record_idle(&self, report: &mut Report, index_depth: u64) {
-        let polls = self.outcomes.attempts();
-        report.measurement(IDLE_INDEX_DEPTH, count(index_depth));
-        report.measurement(IDLE_POLLS, count(polls));
-        if polls == 0 {
-            return;
-        }
-        report.measurement(
-            IDLE_ROUNDTRIPS_PER_POLL,
-            self.counters.roundtrips_per_poll(),
-        );
-        report.measurement(IDLE_REDIS_CALLS_PER_POLL, ratio(self.redis_calls, polls));
-    }
 }
