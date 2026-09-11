@@ -105,7 +105,7 @@ Do not invent placeholders for these values:
 | `agentsfleet-admin/api-key` | `operations/admin_bootstrap` from the dashboard's one-time reveal |
 | `github-app`, `slack-app`, `zoho-app`, `jira-app`, `linear-app` | the matching provider registration playbook |
 | `qstash` | `operations/qstash_registration` |
-| `grafana-observability` | `operations/observability` |
+| `agentsfleet-fleets-investigation-service-token` | `operations/observability` |
 | runner `tailscale-hostname` and `deploy-user` | the environment runner-bootstrap step |
 | runner `runner-token` | the dashboard **Add runner** action |
 

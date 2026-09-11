@@ -173,7 +173,7 @@ test_deployment_checks_complete_infrastructure_inputs() {
   if [[ "$output" == *"github-app/"* ]] ||
      [[ "$output" == *"qstash/token"* ]] ||
      [[ "$output" == *"agentsfleet-admin/api-key"* ]] ||
-     [[ "$output" == *"grafana-observability/"* ]]; then
+     [[ "$output" == *"agentsfleet-fleets-investigation-service-token/"* ]]; then
     bad "$name" "post-deploy operations input blocked initial deployment"
   elif [[ "$output" == *do-not-print-provider-secret* ]]; then
     bad "$name" "gate printed a provider secret"
