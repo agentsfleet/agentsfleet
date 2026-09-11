@@ -74,8 +74,11 @@ A publisher starting through another seed must route to the channel owner; cross
 Probe both wrong-node redirection and routed delivery, including subscription acknowledgment before publishing.
 Assert that wrong-node SSUBSCRIBE and SPUBLISH receive MOVED; routed clients must then reach the owner.
 Observe the server-initiated unsubscribe after slot migration and rebuild the subscription on its new owner within the frozen recovery budget.
-The pinned server implements this in src/server/channel_store.cc; whether redis-rs 1.6.0 exposes the push correctly remains a required client prototype.
-Also refresh ownership after disconnect; a healthy socket with a removed subscription cannot count as recovery.
+The pinned server sends a RESP3 sunsubscribe push on the still-open socket; redis-rs 1.6.0 forwards it but repairs subscriptions automatically only after disconnection.
+The hub owns recovery: on PushKind::SUnsubscribe, consult desired viewer membership and re-issue SSUBSCRIBE for any still-wanted channel through cluster routing and MOVED handling.
+Serialize reconciliation per channel with a generation/refcount guard; coalesce repeated pushes, bound retries, and await the new subscribe acknowledgment before claiming recovery.
+A delayed acknowledgment of our own unsubscribe can race a new viewer: desired membership wins. A final viewer drop cancels recovery and prevents resurrected subscriptions.
+Test these races with a healthy connection and repeated slot moves; do not wait for a socket failure to trigger repair. Timing and ordering remain NOT RUN.
 
 Permanent command, authentication, or topology errors fail readiness; they must not become endless reconnect loops hidden behind successful boot.
 Slow readers receive explicit lag or stream closure so clients can recover durable history.
@@ -136,11 +139,17 @@ The current ledger conflict key is `(event_id, charge_type)` in `schema/710_usag
 Redis already mints IDs per stream, so cross-fleet collisions are a source defect, not only an allocator migration risk.
 Change all three write statements: rustd/crates/afd_billing/src/sql.rs:126, rustd/crates/afd_fleet/src/lease/sql/renew.rs:137, and rustd/crates/afd_fleet/src/lease/sql/report.rs:158.
 Receive currently drops the colliding row; renewal and report accumulate into it, potentially attributing another fleet or tenant's charges to the retained row.
-Keep the nullable fleet_id foreign key and its ON DELETE SET NULL behavior. Add an immutable, non-null billing_fleet_id carrying the original fleet UUID without a deletion-cleared foreign key.
-Use UNIQUE (billing_fleet_id, event_id, charge_type) and that conflict target in all three statements; derive billing_fleet_id from the authenticated/fenced fleet, never client input.
-Preserve tenant cascade and existing ledger IDs; prevent runtime updates to billing_fleet_id and validate tenant ownership on accumulation.
-NULLS NOT DISTINCT on the nullable fleet_id alone is insufficient: deleting two fleets with equal event IDs would collapse their keys and fail deletion.
-Backfill surviving fleet identities under the source fence; recover already-null identities only from trustworthy retained evidence. Missing provenance blocks migration for explicit reconciliation, never a guessed fleet or new charge.
+The fleet-scoped budget query in rustd/crates/afd_billing/src/sql.rs then undercounts the victim's spend; test budget enforcement as well as ledger reporting.
+Keep the nullable fleet_id foreign key and ON DELETE SET NULL. Add immutable billing_fleet_id without a deletion-cleared foreign key; it remains nullable for legacy orphan rows only.
+Backfill known fleet IDs under the fence. Preserve unknown legacy orphans with billing_fleet_id NULL, their existing row IDs, amounts and tenant ownership; do not fabricate deleted identities.
+Use UNIQUE (billing_fleet_id, event_id, charge_type) with default NULLs-distinct semantics, and that conflict target in all three statements. Legacy null rows never participate in new accumulation.
+Every receive/renew/report writer supplies a non-null billing_fleet_id from its authenticated/fenced fleet; a deleted fleet cannot pass the lease guard. New rows keep that identity after fleet deletion.
+Test all three actual writers, including retries after deletion; permitting historical nulls must not create a nullable binding in a runtime writer.
+Replace the existing table-level UPDATE grant with explicit REVOKE UPDATE and GRANT UPDATE on only credit_deducted_nanos, token_count_input, token_count_cached_input, token_count_output, wall_ms and last_charged_at.
+Keep SELECT/INSERT and tenant cascade. Check effective privileges under api_runtime, including inherited grants; identity updates must fail while renewal/report accumulation and FK deletion actions succeed.
+Do not add an ON CONFLICT DO UPDATE WHERE tenant check: skipping the ledger arm could leave the independent wallet CTE draining. Derive ownership from the existing guard; assert tenant/fleet consistency in tests.
+Prove that a failed ledger write rolls back the whole renewal/report statement, including wallet and lease effects; preserve existing ledger IDs and tenant erasure behavior.
+NULLS NOT DISTINCT on fleet_id is rejected: two deleted fleets with equal event IDs would collide again. Legacy null billing identities instead remain preserved historical records.
 Prove equal IDs across fleets and tenants, retry idempotency, and deletion of both fleets/workspaces retain separate charges while tenant erasure still cascades.
 Run the following read-only audit before cutover; archive restricted results and reconciliation digests in the playbook evidence. It selects suspected merged stage rows and missing receive candidates, not a lossless reconstruction:
 
@@ -159,7 +168,9 @@ FROM billing.usage_ledger WHERE fleet_id IS NULL;
 
 Run on the fenced source snapshot and repeat against imported queue-only identities absent from core.fleet_events.
 An empty query is not proof against deleted or expired source history. Reconcile stage totals against retained metering and wallet evidence; never divide an already-merged total heuristically or recharge it.
-If historical attribution cannot be established, the reconciliation blocks cutover and names the affected ledger rows and tenants.
+Null legacy identity alone does not block cutover. List these rows and the audit's limits explicitly; surviving data cannot prove that no historical collision ever occurred.
+Detected or suspected collision evidence, unexplained wallet discrepancies, or ambiguous payment for unfinished work requires a row/tenant-scoped Indy disposition before cutover: evidence-backed repair or an explicit historical exception.
+Never auto-waive a detected collision, invent a split, or recharge old work. An unimplicated orphan remains historical and cannot block migration merely because its fleet was deleted.
 Preserve zero debit for pre-charge refusal and exactly one policy-appropriate receive debit after those gates pass.
 `lease/pull.rs` runs the approval check after money gates; preserve that ordering and its existing charge policy, including zero-cost postures.
 Update `record_received`, money gates, billing transaction ownership, ingress comments, and insert-triggered counters together.
@@ -167,7 +178,7 @@ First receipt observation is separate from charge eligibility: a durable once-on
 Both pre-charge refusals and transient retries retain that accounting; subsequent receipt/terminal transitions must not count the event again.
 Save the observation marker and counter in one transaction; it never authorizes or suppresses billing.
 Accepted rows without receipt observation remain hidden from received-history views; observed rows preserve existing public status and streaming behavior.
-Import historical received/terminal rows and ledger evidence without charging them again; ambiguous historical payment state blocks upgrade for reconciliation.
+Import historical received/terminal rows and ledger evidence without charging them again; ambiguous payment for runnable imported work requires reconciliation; legacy orphans follow the explicit policy above.
 
 Prototype clock rollback, concurrent admission, allocator contention, imported high IDs, expiry races, lost replies, and older replay behind newer receipts.
 Include approval continuation, repair cleanup, tenant scoping, history pagination, and partial App fan-out retries.
@@ -191,6 +202,8 @@ Existing-layout readiness races, worker-loss recovery, ordering, bounded resourc
 
 ### Blocking reads, scans, and retention
 
+Keep all daemon commands on primaries, including sharded pub/sub. Never enable read_from_replicas or any replica-selecting read_routing_strategy.
+redis-rs classifies SPUBLISH/SSUBSCRIBE as read-only for routing; its default chooses the primary, so a replica-read optimization would change pub/sub routing as well.
 Extend the existing non-cloneable `afd_redis::Dedicated` ownership model with slot-owner routing for cluster mode.
 The inspected outbound reader already owns a dedicated socket; preserve that protection when adding slot-owner routing.
 Refresh its owner on redirects and reconnects; cancellation closes the blocking connection without consuming the shared command pool.
@@ -250,9 +263,13 @@ An unavailable mechanism blocks Cloud grading until repaired or replaced by a se
 
 Use the public Swarm endpoint with certificate/hostname-verified TLS on every seed and discovered shard, and vault-held authentication.
 Indy supplies a dedicated datastore ACL credential limited to the daemon's actual commands, key prefixes, and sharded channels, including client handshake/topology commands.
+Explicitly allow +cluster for redis-rs CLUSTER SLOTS discovery; category-only connection/stream/script/pubsub grants omit this command in the pinned server. Keep DFLYCLUSTER/DFLYMIGRATE denied to the daemon.
+Validate exact ACL rules and channel globs in §6; a local working rule is not proof that the Cloud account accepts it.
 Keep operator/admin and Cloud control-plane credentials out of the daemon; test allowed commands and refusal of unrelated/admin access on the actual Cloud account.
 The provider exposes acl_rules; live command/channel permissions remain a §6 probe, distinct from Cloud console user roles.
-Before load or cutover, probe every advertised primary and failover address from the intended Fly app/region using its deployed client and credential.
+In §6 Cloud evidence, probe every currently advertised primary from the intended Fly app/region using its deployed client and credential.
+The Cloud fault matrix still covers failover, restore, resize and resharding under combined load.
+After managed failover, prove the newly advertised primary is reachable and restores operations. Do not require enumerating hidden replicas or hypothetical future addresses.
 Prove redirects, TLS hostname verification, sharded subscribe, and reconnect after movement; seed PING alone cannot pass. Freeze measured Fly-to-Swarm latency and transfer cost in the budget.
 Public networking with TLS and mandatory passkey is documented in [Cloud datastore security](https://www.dragonflydb.io/docs/cloud/datastores#security).
 The inspected provider and public Cloud documentation name no source-IP allowlist mechanism; Indy asks support whether restrictions can be enforced for every shard endpoint.
@@ -265,8 +282,13 @@ Require at least one replica per Swarm primary, No Eviction, and an enabled back
 Record actual replica and backup settings in Cloud evidence; an unset/default replica count cannot satisfy availability.
 [Swarm restore](https://www.dragonflydb.io/docs/cloud/backups#swarm-multi-shard-backups) requires matching shard count and reinstates the backup's slot layout; verify these prerequisites and refresh topology after restore.
 Restore replaces target data. Treat rollback/loss as queue loss: fence processing, reconcile durable PostgreSQL admissions and settlement, then replay under the drain budget.
-Snapshots preserve stream structures but do not promise zero data loss or current auth state. Never resurrect consumed sessions/nonces from an older snapshot; invalidate unverifiable auth state and require a fresh login/connection flow.
-Prove that restore recovery also reconciles gate/anomaly state before reopening processing; replication and backups cannot replace these tests.
+For an operator restore, keep all API/auth/connector writers fenced through completion. Scan every current primary and delete auth:session:*, the five inventoried connect:<provider>:nonce:* families, and fleet:gate:response:*.
+Use scoped per-key DEL/UNLINK, not FLUSHALL; repeat topology-aware scans until no matching keys remain before reopening. Old device codes and OAuth state must fail and users start fresh flows.
+Reconcile gate references/responses against PostgreSQL and preserve or conservatively close unverifiable anomaly windows before processing; deleting mirrors alone is not approval reconciliation.
+Record counts and digests without tokens or payloads; an interrupted purge remains fenced and safely reruns. Dimension 6.2 proves this procedure with pre-consume snapshots.
+This operator procedure cannot protect an unannounced automatic failover that loses a consume/abort/nonce-delete write. No bounded loss interval or acceptance of that security risk has been established.
+The one-time-use requirements in docs/AUTH_DEVICE_LOGIN.md remain binding. §6 injects replication loss around consumption; an observed replay blocks live rollout until mitigated or Indy explicitly approves a precisely described exception in that document.
+Do not label Fable's suggested risk acceptance as Indy's approval, infer zero loss from replica count, or introduce a daemon generation-detection framework as part of the restore playbook.
 
 ### PostgreSQL admission budgets
 
@@ -275,6 +297,9 @@ Owned infrastructure for 1,000 runner processes and a paid Swarm datastore requi
 Count offered provider requests, expanded per-fleet admissions, accepted rows, and commits separately.
 Freeze live-tail frames/second, frame bytes, subscriber fan-out, recovery delay, and lag/stream-closure rate alongside event throughput.
 The current hub has a 256-frame per-channel buffer (rustd/crates/afd_redis/src/hub.rs:48); drive token-frame load and slow viewers independently of events/second.
+The loop in rustd/crates/afd_fleet/src/lease/activity.rs:115 awaits one publish per frame: measure batch size N, RTT and complete runner-request p95/p99 together; its network component scales approximately as N times RTT.
+Use the reported Fly iad → AWS us-east-1 approximately 5 ms RTT as a planning input only; measure actual percentiles and freeze the acceptance budget before load.
+If the existing loop misses budget, compare a bounded same-channel pipeline; preserve frame order, backpressure and best-effort loss semantics. Do not assume pipelining gains or add an unbounded fire-and-forget queue.
 The 16,667 events/second target means per-fleet admissions; App fan-out amplification must also be reported.
 Without measured batching, admission alone requires one commit per event, before receive, terminal, dispatch-progress, or allocator work.
 Do not infer sustainable database throughput from the Dragonfly result or assume a batching benefit.
@@ -324,7 +349,11 @@ The live plan consumes the verified candidate from the readiness branch; it does
 Implement the deploy preflight as a self-tested shell script in playbooks/operations/datastore_scaling that the existing workflow calls; use injected command stubs for negative proofs, not a workflow emulator.
 Before staging Fly secrets or replacing machines, that script verifies the approved destination, candidate revision, and completed import receipt.
 Missing inputs stop that deployment before mutation and leave the existing deployed image/configuration intact.
-The playbook stops every old Fly daemon Machine, disables restart/autostart/autoscale paths for the fence window, and suspends competing deploy jobs and external source writers before importing.
+The playbook stops every old Fly daemon Machine and external source writer and suspends competing deploy/restart jobs, explicitly deploy-dev-verify.yml and release verification, before importing.
+Inventory actual starters: the inspected daemon fly.toml has no proxy service, so do not invent a proxy-autostart setting to disable. Fence any real restart/autoscale path found in the live inventory.
+Prefer stopping inventoried Machines to destroying them with scale count 0. Pin desired running and total Machine counts by process/region in the reviewed playbook.
+If the app has zero Machines, pass --ha=false during initial deploy, then explicitly establish the approved count; verify image, count and absence of spare old-image Machines before reopening automation.
+[Fly deployment defaults](https://fly.io/docs/apps/app-availability/) can add a spare Machine; a successful deploy exit alone does not prove the intended process count.
 Record stopped Machine IDs and verify no source writes, leases, or renewal activity; stopping ingress alone does not fence embedded cron, repair, and consumers.
 Then import old work/claims, reconcile billing/auth state, and authorize the new deployment; restore normal automation only for the approved new build.
 Inventory provider delivery IDs spanning the fence window and redeliver failed/unconfirmed deliveries after the switch (or after abort), retaining original producer identities.

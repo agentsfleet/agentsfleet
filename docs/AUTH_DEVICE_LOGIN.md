@@ -240,6 +240,18 @@ Six invariants. All are tested explicitly.
 5. **`session_id` is high-entropy.** UUIDv7; 128 bits; CSPRNG; not enumerable.
 6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the API-generated `login_url` (`https://app.agentsfleet.net/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — redacted to the first 8 hex characters), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
 
+### Planned Dragonfly recovery boundary
+
+The [Dragonfly target requirements](./architecture/datastore_scaling.md#cloud-connectivity-and-persistence) add recovery tests; they are not implemented or verified by this spec revision.
+For an operator snapshot restore, keep API/auth/connector writers fenced, delete restored auth:session:* and the inventoried connector nonce keys across all current primaries, verify absence and require fresh device/OAuth flows before reopening.
+The playbook also clears gate-response mirrors and reconciles their durable approval state; an interrupted cleanup must remain fenced.
+
+Automatic failover is a different boundary: a replica missing the consume, abort or nonce-deletion write could expose an earlier active state while the daemon remains available.
+The affected login response is the existing encrypted payload; this is a replay-invariant risk, not evidence that an arbitrary caller can decrypt it or mint a credential.
+No maximum loss window or Indy acceptance of this exception has been established. A replica count or restore-time cleanup does not prove the single-use invariants across failover.
+M192 §6 must inject these failures and demonstrate preserved single-use behavior; observed replay blocks rollout until mitigated or an explicit, precisely scoped Indy exception is recorded here with evidence.
+Keep the current replay requirements intact; Fable's proposed acceptance is not authorization to weaken them.
+
 ## Cryptographic primitives (pinned)
 
 | Primitive | Value | Why pinned |

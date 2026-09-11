@@ -10,10 +10,10 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| What was reviewed? | Claude Fable 5.1 reviews through 8b415cc90; this revision addresses the eight adversarial findings and server-source additions, retaining Indy's cluster-only deployment override. |
+| What was reviewed? | Claude Fable 5.1 reviews through 8b452d2e0; this revision adversarially checks the final ten corrections, retaining Indy's cluster-only deployment override. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
 | What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
-| What still needs a decision? | Fixture-only outbound versus a new delivery feature; the proposed two-spec delivery split; service/cost budgets and live approval. |
+| What still needs a decision? | Fixture-only outbound versus a new delivery feature; the proposed two-spec delivery split; service/cost budgets, disposition of any detected historical billing damage, automatic-failover auth proof/exception, and live approval. |
 
 ## What it is
 
@@ -94,7 +94,7 @@ Local cluster work follows Indy's direction; this pass edits documentation only 
 
 ### Adversarial review of 8b415cc90
 
-All eight findings are addressed in the spec; closure below means a documented correction, not runtime acceptance.
+This records the eight corrections made at 8b452d2e0; the final review below supersedes its billing-backfill and client-recovery details. Closure means documented correction, not runtime acceptance.
 Local source inspection used Dragonfly v1.40.2 at e94300e6990093ec093cfb00d60c2e77ea4907e4 and Terraform provider e25af703daf80c5f0c973845ce4a5191e9523c2e.
 
 | # | Finding | Spec disposition and required proof |
@@ -127,6 +127,40 @@ The server behavior is source-verified; redis-rs 1.6.0 push handling remains NOT
 The [Cloud connectivity and persistence requirements](../../architecture/datastore_scaling.md#cloud-connectivity-and-persistence) cite current vendor documentation, including Fly's app-scoped egress and Swarm restore constraints.
 Public TLS/auth is the proposed simple deployment path addressing Indy's concern; no private network or vendor IP restriction is claimed to exist or have passed a live probe.
 Indy's earlier verbatim local-cluster/manual-provisioning overrides remain in both specs; these corrections do not reinstate a standalone Dragonfly mode or a provisioning framework.
+
+### Final review of 8b452d2e0: adversarial assessment
+
+The remaining findings do not prevent §1 baseline preparation. Hub recovery and billing rules must be corrected before their integration; live connectivity/authentication and measured budgets gate rollout.
+No benchmark, prototype, Cloud probe or migration has run. Changes below are spec requirements, not claims that defects are fixed in runtime code.
+
+| # | Importance / blocking boundary | Adversarial conclusion and spec change |
+|---|---|---|
+| 1 | Blocks hub integration (§0.1/§5) | Confirmed: redis-rs forwards SUnsubscribe but does not repair it on a healthy socket. The hub reconciles desired membership, reissues SSUBSCRIBE, waits for acknowledgment, coalesces retries, and handles delayed own acknowledgments/final-drop races without resurrecting subscriptions. |
+| 2 | Blocks populated upgrade (§2/§7) | The previous blanket NOT NULL backfill was wrong for deleted fleets; source history can be gone. Keep unknown legacy billing_fleet_id null with NULLs-distinct uniqueness; all three real writers supply non-null identities. Preserve rows/amounts without guessing. Null alone does not block; detected billing damage needs an explicit disposition. |
+| 3 | Required billing correctness (§2.2) | Replace table-level UPDATE with explicit revoke and grants on the six accumulator columns. Verify effective api_runtime permissions on populated upgrade; identity writes fail while real accumulation and FK deletion actions pass. Merely adding a narrow grant would leave the broad grant in force. |
+| 4 | Blocks any partial wallet/ledger implementation (§2.2) | Remove the tenant WHERE suggestion. A skipped conflict arm could leave the independent wallet CTE draining. Tenant/fleet identity comes from the lease guard; tests verify ownership and whole-statement rollback on ledger failure. Fleet budget enforcement is included, not only reporting. |
+| 5 | Restore procedure required; automatic-failover risk gates rollout (§6.2) | Adopt fenced, scoped multi-primary deletion of auth sessions, connector nonces and gate-response mirrors, followed by approval/anomaly reconciliation. Reject the assertion that this fixes automatic failover or that Indy has accepted replay. Keep single-use requirements; a demonstrated failure requires mitigation or an explicit scoped Indy exception before rollout. |
+| 6 | Required cluster correctness (§5.1) | Keep default primary routing; disallow both read_from_replicas and replica-selecting read_routing_strategy. SPUBLISH/SSUBSCRIBE are classified read-only by this client; enabling replica reads could misroute the live tail. |
+| 7 | Blocks real topology access if absent (§5.1/§6.3) | Name +cluster for CLUSTER SLOTS and test channel globs. Keep DFLYCLUSTER/DFLYMIGRATE denied to the daemon. Exact Cloud ACL acceptance remains a probe. |
+| 8 | Correct proof scope (§6.3/§6.4) | Move Fly assertions out of local §5.1. Probe advertised primaries, then the newly advertised primary after managed failover. The cited managed_service_info branch is GetEmulatedShardInfo, so it does not prove that every Swarm topology hides replicas; avoid depending on hidden or hypothetical addresses either way. |
+| 9 | Performance measurement before optimization (§6.4) | Confirmed per-frame await. Measure batch N, actual RTT and runner-request p95/p99; roughly N × RTT is the network contribution. Adopt bounded same-channel pipelining only if needed, preserving order/backpressure and best-effort loss semantics. |
+| 10 | Operational correctness; RTT is an input (§7.2/live §2) | Record Fable's report of roughly 5 ms Fly iad → AWS us-east-1 as a planning input, not a fabricated Indy quote or measured SLO. Prefer stopping Machines; pin running/total counts and use --ha=false if deploying from zero, then establish/verify the approved count. Suspend actual starter workflows including deploy-dev-verify. |
+
+Billing qualification: source deletion can erase attribution, but it does not prove every orphan has suffered a collision. Preserve unimplicated historical nulls and document detection limits.
+The existing schema's global key may already have merged stage charges, dropped receive rows and undercounted a fleet's budget (afd_billing/src/sql.rs). A new key prevents recurrence; it cannot reconstruct missing history or authorize financial adjustments.
+
+| Additional source checked | Evidence |
+|---|---|
+| redis-rs 1.6.0 src/subscription_tracker.rs:70–96 and src/cluster_handling/async_connection/mod.rs:211–226,1292–1295 | Tracking follows requests; only Disconnection triggers reconnect and its resubscribe path. Other pushes reach the caller. |
+| Dragonfly e94300e6 src/facade/dragonfly_connection.cc:734–739 | Server force-unsubscribe sends sunsubscribe/channel/0 over a still-open RESP3 socket. |
+| redis-rs 1.6.0 src/commands/mod.rs:228–233 and src/cluster_handling/client.rs:486–505 | Sharded pub/sub is read-only for routing; default primary strategy can be changed by either replica-routing API. |
+| Dragonfly e94300e6 src/server/cluster/cluster_family.cc:52,147–153 | CLUSTER belongs to @slow; the cited managed-service filtering branch is in the emulated-topology function. |
+| schema/710_usage_ledger.sql:50,91; rustd/crates/afd_fleet/src/lease/sql/renew.rs:119–149 and sql/report.rs:140–170 | Fleet FK nulls on deletion, broad UPDATE exists, wallet and ledger are sibling CTEs, and six columns accumulate. |
+| rustd/crates/afd_fleet/src/lease/activity.rs:115; deploy/fly/agentsfleetd-dev/fly.toml; .github/workflows/deploy-dev-verify.yml:80 | Each frame publish is awaited; the daemon has no proxy service in that file; verification can restart a stopped Machine. |
+
+[PostgreSQL column grants](https://www.postgresql.org/docs/17/sql-grant.html) support the narrow update boundary; the old table-level privilege must be revoked during upgrade.
+[Fly availability defaults](https://fly.io/docs/apps/app-availability/) distinguish service processes from processes without services; do not claim that every default deploy starts two active workers.
+[The auth recovery boundary](../../AUTH_DEVICE_LOGIN.md#planned-dragonfly-recovery-boundary) records the unapproved failover risk and the required proof without changing the current replay invariant.
 
 ### Prototype admission and completion
 

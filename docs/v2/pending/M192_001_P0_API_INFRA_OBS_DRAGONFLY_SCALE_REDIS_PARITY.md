@@ -60,8 +60,8 @@ One new daemon targets local Dragonfly clusters and Indy-created Cloud Swarm. Ex
 | `rustd/crates/{afd_core,afd_billing,afd_events,afd_ingress,afd_cron,afd_gate,afd_approval,afd_runner,afd_fleet_lifecycle}/{Cargo.toml,src/**/*.rs,tests/**/*.rs}` | EDIT / CREATE | Every real admission/replay producer and install/group lifecycle. |
 | `rustd/crates/{afd_fleet,afd_wire,afd_outbound}/{Cargo.toml,src/**/*.rs,tests/**/*.rs}` | EDIT / CREATE | Logical/physical identity, fencing, partitioned coordination, fixture-only outbound. |
 | `rustd/crates/{afd_sse,afd_api,afd_observability,agentsfleetd}/{Cargo.toml,src/**/*.rs,tests/**/*.rs}` | EDIT / CREATE | Unchanged channel parser, cluster probes, import-receipt guard, telemetry, application transport proofs. |
-| `schema/{710_usage_ledger,800_fleet_events,880_fleet_activity_counters,890_fleet_activity_counter_triggers}.sql`, `schema/*queue*.sql`, `rustd/crates/afd_db/{src/migration.rs,tests/*.rs}` | EDIT / CREATE | Admission/dispatch/import receipt, fleet-scoped ledger uniqueness, numeric history indexes, counters, populated upgrade proof. |
-| `make/{test-infra,test-integration-rustd,acceptance}.mk`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/{bench,test-integration-rustd,deploy-dev,deploy-dev-fly,release}.yml` | EDIT after required approval | Local cluster/image proof; existing vault-to-Fly secret flow and import preflight; no new cloud provisioning system. |
+| `schema/{710_usage_ledger,800_fleet_events,880_fleet_activity_counters,890_fleet_activity_counter_triggers}.sql`, `schema/*queue*.sql`, `rustd/crates/afd_db/{src/migration.rs,tests/*.rs}` | EDIT / CREATE | Admission/dispatch/import receipt, legacy-aware ledger identity and column grants, numeric history indexes, counters, populated upgrade proof. |
+| `make/{test-infra,test-integration-rustd,acceptance}.mk`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/{bench,test-integration-rustd,deploy-dev,deploy-dev-fly,deploy-dev-verify,release}.yml`, `deploy/fly/agentsfleetd-*/fly.toml` | EDIT after required approval | Local cluster/image proof; existing vault-to-Fly secret flow and import preflight; no new cloud provisioning system. |
 | `playbooks/operations/datastore_scaling/{001_playbook.md,*.sh}`, `playbooks/founding/02_preflight/00_gate.sh`, `playbooks/README.md` | CREATE / EDIT | Bounded source migration tool, rehearsal, and cutover procedure. |
 | `docs/AUTH_DEVICE_LOGIN.md`, `ui/packages/app/tests/**/*.ts`, `cli/tests/**/*.ts` | EDIT if affected | Authentication migration and real existing acceptance fixtures. |
 | Separate `~/Projects/docs` branch and its changelog | EDIT during implementation if public behavior changes | Document preserved ID shape and revised retry/stream semantics; never edit from this worktree. |
@@ -97,7 +97,7 @@ Dependencies: §1 and local cluster compose setup within Indy's stated scope. Te
 Use canonical candidate pins, listen/publish wiring, health and snapshot/restart proofs; resolve the image digest first. Keep administrative commands on the main port and measure fault recovery/resources.
 Use the canonical single-service multi-process cluster: 127.0.0.1:7001..700N advertisements, host-published ports, daemon network_mode: "service:dragonfly", stable --cluster_node_id, per-node --dir/snapshot_cron, config bootstrap on every start, two primaries and replicas.
 Compare per-fleet streams with bounded partitioned-stream layouts if population cost misses budget; public ordering and fencing govern the choice.
-Record results in the evidence index. Failed or missing prototype evidence blocks the corresponding production integration and Cloud trial.
+The hub handles SUnsubscribe by reconciling desired viewers and reissuing SSUBSCRIBE; test late acknowledgments/final-drop races on a healthy socket. Archive results; missing/failed proofs block dependent integration.
 
 - **Dimension 0.1**: sharded pub/sub routes from another seed and recovers without unbounded buffers → Test `test_sharded_tail_prototype_recovers`.
 - **Dimension 0.2**: retained single-key scripts and dedicated readers survive topology movement → Test `test_cluster_primitives_prototype_survives_movement`.
@@ -122,8 +122,8 @@ Test cancellation cleanup and orphan recovery. Missing provenance, changed bytes
 
 Dependencies: §0.3 and §1, not §5. Prove durable acceptance and all producer migrations on isolated Redis before cluster integration; no early runtime deployment.
 Use the canonical PostgreSQL producer-identity/expiry authority and ordered outbox; remove admission Lua claims across all producers. Preserve numeric IDs and separate physical XACK receipts.
-Use the canonical state machine: receipt and existing billing.usage_ledger row commit together, including zero charges; no second billing marker. Preserve renewal balance writes, gates, and first-attempt counters.
-Cover every producer/expiry; use numeric history/cursors and immutable billing_fleet_id uniqueness across receive/renew/report, preserving nullable fleet deletion. Run the canonical historical-collision audit; unresolved attribution blocks import. Missing/mismatched receipt closes admission.
+Use canonical receipt/ledger atomicity, zero charges, renewal policy, gates and counters; no second billing marker. Prove cross-fleet budget enforcement and wallet/ledger rollback together. Missing/mismatched import receipt closes all admission paths.
+Cover every producer/expiry and numeric history/cursors. All three billing writers supply immutable billing_fleet_id; legacy orphan nulls survive without guessing. Revoke broad UPDATE, grant only six accumulator columns; no tenant WHERE that skips ledger while wallet drains. Audit collisions; require a disposition for detected damage.
 The pinned report path has no outbound enqueue caller. This draft preserves that behavior; fixture-only outbound tests cannot claim delivered connector answers.
 
 - **Dimension 2.1**: each admission crash boundary retains accepted work → Test `test_acceptance_recovers_at_each_crash_boundary`.
@@ -156,12 +156,12 @@ Prove recovery and fairness with skewed runner eligibility; aggregate throughput
 
 ### §5: Integrate the proven Dragonfly topology
 
-Dependencies: §0, §1, and §2. All admission Lua callers are gone before cluster integration; use cluster-aware redis-rs routing and primary reads.
+Dependencies: §0, §1, and §2. Remove all admission Lua first; route every command to primaries. Never enable read_from_replicas or replica-selecting read_routing_strategy, including for sharded pub/sub.
 Use SPUBLISH/SSUBSCRIBE/SUNSUBSCRIBE with RESP3 and bounded resources; no daemon standalone transport/fallback. Retain afd_redis::client::Redis for import tools and isolated fixtures.
 Keep fleet:<id>:events and fleet:<id>:activity unchanged; route the channel by its own slot. Preserve afd_sse parsing and verify workspace fan-in.
 Single-key XADD publishes PostgreSQL admissions; no target Redis ingress claims. Probe retained scripts and use a test-only CROSSSLOT negative control.
 Extend existing Dedicated ownership with node routing/redirects; standalone already isolates blocking reads. Scan all primaries with topology reconciliation.
-Cluster capability/auth errors fail readiness; sharded pub/sub and durable import-receipt checks must pass before any admission or dispatch.
+Cluster/auth errors fail readiness; explicitly allow +cluster for topology discovery and deny DFLYCLUSTER/DFLYMIGRATE to the daemon. Sharded pub/sub and import-receipt checks precede admission/dispatch.
 Local tests keep prefix isolation and database 0; owned-cluster reset covers all primaries and verifies replicas before tests. Never flush a Cloud/shared target.
 
 - **Dimension 5.1**: unsafe topology, TLS, auth, eviction, or pub/sub capability refuses boot → Test `test_datastore_preflight_refuses_invalid_configuration`.
@@ -174,8 +174,8 @@ Dependencies: §2 through §5 and Indy-approved budgets/infrastructure for 1,000
 Run `make test-integration-rustd`, `make acceptance-e2e`, and `make cli-acceptance`; use synthetic execution providers and no real outbound messages.
 Extend M188 with combined acceptance-to-completion load: 1,000,000 active fleet records, 1,000 concurrent runs, 1,000 real runner processes, 16,667 offered events/second.
 Use 1,000-byte and 16,000-byte/skew cases; freeze both stores’ budgets: commits, admission p99, allocator/pool waits, WAL/I/O, cost, backlog/drain, live-tail frames/bytes per second, viewer fan-out and lag rate. Count fan-out admissions separately.
-Reject generator saturation or growing unaccounted backlog. Comparable Dragonfly revisions require three samples, p99 <=1.10x baseline, completion >=0.95x, and no correctness failures.
-Before Cloud load, prove canonical GET identity, Fly reachability/TLS/auth on every advertised shard, restricted ACLs, replicas >=1 and backup policy. Grade failover/restore/resize/resharding and CI provenance; static egress is conditional on vendor-enforced IP restrictions.
+Measure N sequential frame publishes and runner-request p95/p99 against actual RTT before choosing bounded pipelining. Reject generator saturation/backlog; require three comparable samples, p99 <=1.10x baseline and completion >=0.95x without correctness failures.
+Prove GET identity, Fly TLS/ACL access to advertised primaries and newly advertised owners after managed failover, replicas >=1, backups and provenance. Rehearse fenced auth/mirror purge after restore; automatic-failover replay blocks rollout without mitigation or explicit Indy exception.
 
 - **Dimension 6.1**: real application and streaming paths preserve documented behavior → Test `test_dragonfly_preserves_application_outcomes`.
 - **Dimension 6.2**: failure/session semantics survive races and script loss → Test `test_dragonfly_preserves_failure_and_session_semantics`.
@@ -185,7 +185,7 @@ Before Cloud load, prove canonical GET identity, Fly reachability/TLS/auth on ev
 ### §7: Migration tooling and deployment-safe rehearsal
 
 Dependencies: §6. The offline tool reads old Redis state; the new daemon accepts only Dragonfly clusters. Rehearse the one coordinated durability/Swarm cutover.
-Stop old Fly Machines and restart/deploy automation; fence all source writers, import/reconcile prefixes, then record the protected receipt. Missing/wrong/unreadable receipt closes admission. Rehearse provider redelivery after the fence.
+Stop old Fly Machines and actual restart/deploy jobs including deploy-dev-verify; pin running/total counts, including deploy from zero. Fence/import/reconcile then record receipt; missing/wrong/unreadable receipt closes admission. Rehearse provider redelivery.
 Handle events accepted before durable admission existed. Inventory historical outbound jobs and block on unsupported nonempty state; never assume the queue is empty.
 Every prefix has counts/types, authority, and drain/import/rebuild proof; unmatched keys block. Include no-expiry claims, gate mirrors, nonces, anomaly windows, leases, and billing reconciliation.
 The existing deploy-dev → deploy-dev-fly path calls a self-tested shell preflight before secret/Machine changes; test with command stubs. Keep the branch unmerged until Indy's coordinated switch is ready.
@@ -237,7 +237,7 @@ Record typed signal names in observability.md; no product analytics/funnel chang
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 0.1 | integration | `test_sharded_tail_prototype_recovers` | Wrong-node SSUBSCRIBE/SPUBLISH return MOVED; acknowledgments arrive; server-initiated unsubscribe on slot migration is observed and rebuilt on the new owner; lag, unsubscribe races and tenant isolation pass. |
+| 0.1 | integration | `test_sharded_tail_prototype_recovers` | Wrong-node SSUBSCRIBE/SPUBLISH return MOVED; acknowledgments arrive; hub handles SUnsubscribe on a healthy socket, resubscribes wanted channels on the owner, coalesces pushes and never resurrects a final-drop channel; late own acknowledgments, lag and isolation pass. |
 | 0.2 | integration | `test_cluster_primitives_prototype_survives_movement` | Bootstrap/restart restores slots and snapshot stream/group/PEL/consumer state; CROSSSLOT control fails, retained scripts survive redirects/cache loss, and Dedicated cancellation preserves responsiveness. |
 | 0.3 | integration | `test_durable_identity_prototype_survives_replay` | Commit/append crashes, imported IDs, clock rollback, late replay, and 9/10/100 numeric sequence pagination preserve identity/order without missing or repeated page entries. |
 | 0.4 | integration | `test_sharded_coordination_prototype_bounds_hotspots` | Hot fleets, skewed tags, slow destinations, and partition-owner loss cannot starve unrelated eligible work. |
@@ -245,7 +245,7 @@ Record typed signal names in observability.md; no product analytics/funnel chang
 | 1.2 | unit / integration | `test_shared_deployment_refuses_saturation_profile` | Unsafe seed/discovered addresses open no destructive connection; fixtures cannot lease or acknowledge non-fixture work. |
 | 1.3 | integration | `test_redis_baseline_records_complete_evidence` | Three raw outputs per existing lane, digests, B/B0 source/schema/build/dependency equality including Cargo.lock, and cleanup are verified. |
 | 2.1 | integration | `test_acceptance_recovers_at_each_crash_boundary` | No runnable entry before durable commit; committed accepted work replays after every injected stop. |
-| 2.2 | integration | `test_queue_loss_replays_without_duplicate_settlement` | Admission creates accepted, not received; duplicates/races and charge-boundary crashes yield one receive ledger row even at zero cost, no pre-charge-refusal row, preserved approval/renewal policy, separate billing across fleets/tenants with equal IDs even after fleet deletion, immutable billing identity, tenant-erasure cascade, rejected ambiguous historical attribution, and once-only counters/settlement. |
+| 2.2 | integration | `test_queue_loss_replays_without_duplicate_settlement` | Admission creates accepted, not received; duplicates/races and charge-boundary crashes yield one receive ledger row even at zero cost, no pre-charge-refusal row, preserved approval/renewal policy, separate billing/budget enforcement across fleets/tenants with equal IDs after deletion, legacy null preservation, non-null new writers, role-enforced identity immutability, whole-statement wallet rollback, tenant cascade and once-only counters/settlement. |
 | 2.3 | integration | `test_durable_store_failure_refuses_acceptance` | Absent/incomplete/wrong-target/unreadable import receipt and failed commit yield retryable refusal, readiness false, no ingress success, lease, or background dispatch; daemon cannot self-complete receipt. |
 | 3.1 | integration | `test_retention_preserves_pending_work_under_pressure` | Pending-aware cleanup and missing-group recovery lose no accepted work under retention pressure. |
 | 3.2 | integration | `test_full_datastore_applies_explicit_backpressure` | No silent drops; bounded durable admission and retry classes remain correct. |
@@ -253,15 +253,15 @@ Record typed signal names in observability.md; no product analytics/funnel chang
 | 4.1 | integration | `test_ready_races_preserve_work_and_bound_poll_cost` | Token races, candidate caps and durable repair pass; partition-map assertions alone may be N/A with archived existing-layout budget proof. |
 | 4.2 | integration | `test_skewed_workload_preserves_discovery_and_delivery_fairness` | Per-partition and eligible-work queue age stay within frozen budgets; fixture delivery is labeled synthetic. |
 | 4.3 | integration | `test_coordination_recovers_during_partition_movement` | Destination order, fencing, worker-loss recovery and resource budgets pass; extra map-movement assertions alone may be N/A with measured existing-layout proof. |
-| 5.1 | integration | `test_datastore_preflight_refuses_invalid_configuration` | Wrong engine/topology, trust, credentials, ACLs, eviction, or unsupported commands refuse readiness; Fly reaches/authenticates every shard with verified TLS, including failover addresses. |
+| 5.1 | integration | `test_datastore_preflight_refuses_invalid_configuration` | Local probes reject wrong engine/topology/trust/auth/eviction, missing CLUSTER permission and replica routing; discovery and sharded pub/sub succeed on primaries. Fly connectivity belongs to §6.3/6.4. |
 | 5.2 | integration | `test_cluster_resharding_preserves_outbox_identity` | Lost replies/redirects may duplicate physical receipts; ordered durable admission, lease fencing, and settlement preserve logical work without Redis ingress claims. |
 | 5.3 | integration | `test_cluster_connections_recover_without_missing_scoped_state` | Routed cross-seed frames resume; scoped scans reconcile; bounded subscription/socket counts survive churn. |
 | 6.1 | e2e | `test_dragonfly_preserves_application_outcomes` | Login, approvals, steer, lease, report, fleet/workspace streaming, and reconnect backfill pass on both Dragonfly environments. |
-| 6.2 | integration | `test_dragonfly_preserves_failure_and_session_semantics` | One-time login, expiry, Lua reload, lost responses and tenant isolation pass; snapshot restore cannot resurrect consumed sessions/nonces or bypass gate/anomaly decisions. |
-| 6.3 | unit / integration | `test_dragonfly_evidence_refuses_unsafe_or_incomplete_runs` | Wrong/stale Cloud identity, auth/API failure, missing/null/false cluster.enabled, endpoint mismatch, unreachable Fly shard, insufficient replicas or missing backup policy, leaked response secrets, relabeled runs, absent CI origin, tampering, and fixture leaks fail. |
-| 6.4 | e2e | `test_dragonfly_sustained_workload_has_complete_evidence` | Both datastore budgets pass: per-fleet offered/accepted/completed rates, fan-out amplification, commits, pool/allocator wait, WAL/I/O, backlog/drain, cost, live-tail frame/byte rates, fan-out, lag/closure rate, restore topology/drain, and generator headroom. |
-| 7.1 | integration | `test_cutover_recovery_preserves_source_state` | Every canonical prefix, no-expiry/tombstone claims, nonces, anomaly/gate windows, IDs, and billing reconcile at the combined admission/Swarm cutover; unknown keys, ambiguous historical charges and overlapping writers fail; fence-window provider redelivery preserves deduplication. |
-| 7.2 | unit | `test_deploy_preflight_requires_completed_import` | Self-tested shell preflight called by the workflow, with stubbed commands: missing receipt, wrong destination/build, or unfenced source produces zero secret/image mutations; completed approved inputs select the expected Fly secret reference and image. No live-deploy claim. |
+| 6.2 | integration | `test_dragonfly_preserves_failure_and_session_semantics` | Existing single-use/expiry, Lua reload, lost-response and tenant-isolation tests still pass. Fenced restore purges scoped auth sessions/nonces/gate-response mirrors across primaries; old codes fail, interrupted purge stays closed, approvals reconcile. Test consume/abort/delete loss under automatic failover; replay is a failed security proof, not an assumed accepted risk. |
+| 6.3 | unit / integration | `test_dragonfly_evidence_refuses_unsafe_or_incomplete_runs` | Wrong/stale Cloud identity, auth/API failure, missing/null/false cluster.enabled, endpoint mismatch, unreachable advertised/newly promoted Fly primary, bad CLUSTER/channel ACLs, insufficient replicas or missing backup policy, leaked response secrets, relabeled runs, absent CI origin, tampering, and fixture leaks fail. |
+| 6.4 | e2e | `test_dragonfly_sustained_workload_has_complete_evidence` | Both datastore budgets pass: per-fleet offered/accepted/completed rates, fan-out amplification, commits, pool/allocator wait, WAL/I/O, backlog/drain, cost, frame/byte rates, fan-out, lag/closure rate, batch-size/RTT/runner-request latency, managed failover/resize/resharding, advertised-primary reachability, restore/drain and generator headroom. |
+| 7.1 | integration | `test_cutover_recovery_preserves_source_state` | Every canonical prefix, no-expiry/tombstone claims, nonces, anomaly/gate windows, IDs, and billing reconcile at the combined admission/Swarm cutover; unknown keys, detected billing damage without disposition and overlapping writers fail; fence-window provider redelivery preserves deduplication. |
+| 7.2 | unit | `test_deploy_preflight_requires_completed_import` | Self-tested shell preflight called by the workflow, with stubbed commands: missing receipt, wrong destination/build, or unfenced source produces zero secret/image mutations; completed inputs select the expected secret/image and pinned running/total Machine counts, including zero-Machine deploy. No live-deploy claim. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -316,5 +316,5 @@ Explicit physical-ID replay is rejected because out-of-order replay into an exis
 - **Refactor direction:** Indy asked "You shouldnt be shy enough to do a refactor and do it in a better sharded way as well?"; Swarm correctness is required; additional application partitioning needs measured justification.
 - **Indy override (verbatim):** "we just stick to local that runs containers today (with the cluster config, no single mode crap for dragonfly)". Interpretation: cluster-only new daemon; no temporary provider mode.
 - **Indy deployment direction (verbatim):** "in production this would be stood up by Indy on dragondb just like indy did for upstash and stick the key in deployment to deploy-dev.yml". Reuse its called Fly workflow and vault flow.
-- **Adversarial pass:** latest eight findings and server-source additions mapped in the resolution record; immutable billing identity handles nullable fleet deletion. Public TLS/auth is the proposed simple Fly path; vendor IP restrictions remain unverified.
+- **Final review:** ten findings mapped in the resolution record. Fable reports Indy accepted roughly 5 ms RTT, Fly iad → AWS us-east-1; use as a planning input, not a verbatim Indy quote/measured SLO. Automatic-failover auth replay is not approved.
 - **Override boundary:** supersedes temporary standalone deployability/later-removal requirements; does not waive import/billing proofs, numeric budgets, paid-capacity consent, or live action approval. No benchmark/prototype has run.
