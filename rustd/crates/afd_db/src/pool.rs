@@ -210,10 +210,16 @@ impl Db {
     /// # On a budget of its own
     ///
     /// `deadline` is the caller's, and it is deliberately not `acquire_timeout`:
-    /// that one bounds a single request's wait, and warming is a boot activity
-    /// whose cost is `floor × establishment`. Every individual acquire is still
+    /// that one bounds a single acquire, and warming is a boot activity whose
+    /// cost is `floor × establishment`. Every individual acquire is still
     /// bounded by `acquire_timeout` underneath, so a hung server cannot make
     /// this outlast its own deadline by much.
+    ///
+    /// That inner bound is why `acquire_timeout` must exceed the handshake:
+    /// warming cannot buy its way past a budget it inherits. A pool whose
+    /// establishment costs more than one acquire budget warms to ZERO however
+    /// generous this deadline is, and then serves every request from an empty
+    /// pool. See `config::ACQUIRE_TIMEOUT_MS_DEFAULT`.
     ///
     /// # Errors
     /// Never. A pool that could not reach its floor is a slower pool, not a
