@@ -20,7 +20,7 @@ import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   CLEAR_WORKSPACE_FILTER_LABEL,
   LEASES_EMPTY_TITLE,
-  LEASES_TABLE_LABEL,
+  REVIEW_LEASE_TITLE,
   WORKSPACE_FILTER_PARAM,
   WORKSPACE_LABEL,
 } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
@@ -29,6 +29,7 @@ import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { agentCellFor, expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import {
   emptyBodySkillMd,
   getDefaultWorkspaceId,
@@ -115,7 +116,7 @@ async function expectEveryRowInWorkspace(table: Locator, workspaceId: string): P
 
 interface SeededFailedLease extends FailedLeaseLocation {
   workspaceId: string;
-  fleetName: string;
+  fleetId: string;
 }
 
 // Arrange, as the regular tenant: a delivery that fails at startup, settled
@@ -161,14 +162,14 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
       { timeout: LEASE_SETTLE_TIMEOUT_MS, intervals: [LEASE_POLL_INTERVAL_MS] },
     )
     .toBe(true);
-  return { ...location!, workspaceId: ws, fleetName: name };
+  return { ...location!, workspaceId: ws, fleetId: fleet.fleet_id };
 }
 
 test.describe("runner detail", () => {
   test("wall → detail → failed lease sentence → Review lease", async ({ page }) => {
     test.setTimeout(LEASE_SETTLE_TIMEOUT_MS + 120_000);
 
-    const { runnerId, hostId, fleetName: name } = await seedFailedLease(page);
+    const { runnerId, hostId, fleetId } = await seedFailedLease(page);
 
     // ── Walk: the operator's triage path ──
     await signInAs(page, FIXTURE_KEY.operator);
@@ -183,21 +184,21 @@ test.describe("runner detail", () => {
     await expect(page).toHaveURL(new RegExp(`/admin/runners/${runnerId}$`), {
       timeout: RENDER_TIMEOUT_MS,
     });
-    const leases = page.getByRole("table", { name: "Runner leases" });
+    const leases = leasesTable(page);
     await expect(leases).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
 
-    // The failed row reads the shared sentence; the machine tag never renders.
-    const failedRow = leases
-      .getByRole("row")
-      .filter({ hasText: name })
+    // The failed row names its agent by callsign and reads the shared
+    // sentence; the machine tag never renders.
+    const failedRow = leaseRowsFor(page, fleetId)
       .filter({ hasText: failureSentenceFor(EXPECTED_FAILURE_TAG) })
       .first();
     await expect(failedRow).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expectAgentLabel(failedRow, fleetId);
     await expect(page.getByText(EXPECTED_FAILURE_TAG)).toHaveCount(0);
 
-    // The workspace link stops row activation; target the fleet name to review.
-    await failedRow.getByText(name, { exact: true }).click();
-    const review = page.getByRole("dialog", { name: "Review lease" });
+    // The workspace link stops row activation; target the agent cell to review.
+    await agentCellFor(failedRow, fleetId).click();
+    const review = page.getByRole("dialog", { name: REVIEW_LEASE_TITLE });
     await expect(review).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(review.getByText("Fencing token")).toBeVisible();
     await expect(review.getByText(failureSentenceFor(EXPECTED_FAILURE_TAG))).toBeVisible();
@@ -209,12 +210,12 @@ test.describe("runner detail", () => {
   }) => {
     test.setTimeout(LEASE_SETTLE_TIMEOUT_MS + 120_000);
 
-    const { runnerId, workspaceId, fleetName } = await seedFailedLease(page);
+    const { runnerId, workspaceId, fleetId } = await seedFailedLease(page);
     await signInAs(page, FIXTURE_KEY.operator);
 
     const detailPath = `/admin/runners/${runnerId}`;
-    const leases = page.getByRole("table", { name: LEASES_TABLE_LABEL });
-    const seededRow = leases.getByRole("row").filter({ hasText: fleetName });
+    const leases = leasesTable(page);
+    const seededRow = leaseRowsFor(page, fleetId);
     const chip = page.getByText(`${WORKSPACE_LABEL} ${shortWorkspaceId(workspaceId)}`);
 
     // ── Deep link: the URL alone puts the table in the filtered state ──
