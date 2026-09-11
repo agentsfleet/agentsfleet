@@ -10,7 +10,7 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| What was reviewed? | Claude Fable reviews through b01294265; current corrections remove auth import, define reverse migration, preserve concurrent verify retries, bound subscription ownership and name PlanetScale evidence. Template governance is separately recorded below. |
+| What was reviewed? | Claude Fable reviews through b01294265; current corrections remove auth import, preserve concurrent verify retries, bound subscription ownership and name PlanetScale evidence. Indy subsequently excludes reverse migrations and selects forward recovery after schema changes. Template governance is separately recorded below. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
 | What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
 | What still needs a decision? | Service/cost budgets and infrastructure, actual PostgreSQL failover durability, any detected historical billing-damage disposition, and live approval. Fixture-only outbound and the readiness/live split remain the scoped implementation defaults; no auth-risk exception is planned. |
@@ -206,7 +206,7 @@ The docs/TEMPLATE.md update carries the general lessons into authoring: name enf
 
 ### Follow-up at b01294265: cutover simplification and governance
 
-This is the current disposition. All runtime, reversal and Cloud proofs remain NOT RUN; §1 has no new prerequisite.
+Historical disposition before Indy's recovery override below. Finding 2's reverse-migration requirement is superseded; other corrections remain. All runtime and Cloud proofs remain NOT RUN; §1 has no new prerequisite.
 
 | Finding | Adversarial assessment and correction | Proof boundary |
 |---|---|---|
@@ -226,6 +226,32 @@ Source checks: afd_redis/src/session.rs:88 (300-second session TTL); afd_connect
 Scope: docs/TEMPLATE.md and the matching dispatch/write_spec.md authoring guidance. This is the separately requested authoring-policy change, outside M192 runtime implementation scope. It changes no gate script, required section, line cap or verification command. Forward reversion/reapplication separates the previous mixed template edit without rewriting committed history.
 
 Adversarial checks after correction: count-only auth handling cannot resurrect a source token; the ordinary deployment receipt does not imply empty auth tables on later deploys; reverse-migration bookkeeping cannot conceal unapplied reversal; provider documentation does not silently authorize a platform risk exception. These requirements are documented, not tested runtime outcomes.
+
+### Indy recovery override: pre-production forward recovery
+
+**Indy, verbatim:** "since We are not in production yet, so i would just skip that".
+Context: the user accepts removing reverse migrations and the promise of old-image rollback because the product is not in production.
+The old migrator's refusal remains a valid source fact. The selected recovery policy no longer depends on booting that binary after schema changes.
+Cancel before any new migration is applied; after the first new migration commits, keep affected writers fenced and fix/redeploy the compatible new build.
+Complete forward migration/import reconciliation before reopening. Remove reverse DDL, migration-ledger deletion and old-build migrate-success assertions from §7.1 and the live procedure.
+This scope decision preserves data and migration bookkeeping; it authorizes no database reset. The playbook records the possibility of a longer outage during repair.
+The canonical design and both specs quote the decision. Fresh/populated upgrade, interrupted forward recovery, source preservation and all other correctness proofs remain required and NOT RUN.
+
+### Final implementation-readiness review
+
+Verdict: ready to begin the ordered implementation at §1; no open design blocker for that slice. This is a design review, not runtime acceptance.
+The review checked Section dependencies, real producer/billing/auth boundaries, cluster ownership, test mappings, full-path capacity budgets, source inventory and the updated forward-recovery decision.
+One remaining ordering gap was corrected: §5/§6 application tests need a valid startup receipt, while the full import tool belongs to §7. §2 now delivers the same tool's operator-only empty-source initializer for owned fixtures, with nonempty-source/wrong-target rejection; §7 adds populated import. No daemon bypass is introduced.
+The live spec now states the auth restart boundary in its invariant and removes a duplicate Files Changed row.
+
+| Boundary | Prerequisite and resulting action |
+|---|---|
+| Start §1 | CHORE(open) records B0 and opens the implementation lifecycle; use the owned Redis/PostgreSQL reset rig. Harden/collect twelve historical samples before production-source or schema edits. No Cloud account or new compose topology is required for this slice. |
+| §0 and local integration | Bring up the specified local cluster; pass pinned-client/server prototypes, then follow §2 → §5 → §3 → §4. Failed proofs stop their dependent slice. |
+| §6 capacity and Cloud | Freeze numeric budgets and approved paid capacity; obtain Cloud identity, Fly TLS/ACL, managed-fault and PlanetScale promotion evidence/disposition. These are measured/operational inputs, not reasons to delay §1. |
+| Live switch | Require the completed candidate, source census, stopped writers, import reconciliation and explicit deployment approval. After a schema migration commits, recover forward; no reverse-migration requirement remains. |
+
+No additional sharding layer, provider mode, auth-import system or rollback framework is required. Further batching/partitioning follows measured need. All runtime and Cloud proofs remain NOT RUN.
 
 ### Prototype admission and completion
 

@@ -57,9 +57,8 @@ This proposed successor owns the complete live outcome as P0. M192_001 completio
 | `AGENTS.md`, `docs/architecture/{datastore_scaling,data_flow,scaling,testing,roadmap}.md` | EDIT | Describe observed deployment and completed retirement. |
 | `playbooks/operations/datastore_scaling/{001_playbook.md,*.sh}`, `playbooks/README.md` | EDIT | Run and finalize the procedure prepared in M192_001. |
 | `.github/workflows/{deploy-dev,deploy-dev-fly,deploy-dev-verify,release,bench,test-integration-rustd}.yml`, `deploy/**`, `docker-compose.yml` | EDIT after approval | Select Dragonfly, prevent old-source deployment, remove obsolete server dependencies. |
-| `rustd/crates/afd_bench/{src/**/*.rs,tests/**/*.rs}` | EDIT if required | Grade protected import receipt and all-environment resource-retirement proof; runtime transport is already cluster-only. |
 | `playbooks/founding/**`, `playbooks/operations/teardown/redis/**` | EDIT / DELETE after caller inventory | Retire source-specific operational procedures and repair all callers. |
-| `rustd/crates/afd_bench/{src/**/*.rs,tests/**/*.rs}`, `make/bench.mk` | EDIT if rehearsal gaps require it | Enforce live proof provenance and terminal checks; durability design remains M192_001's. |
+| `rustd/crates/afd_bench/{src/**/*.rs,tests/**/*.rs}`, `make/bench.mk` | EDIT if rehearsal gaps require it | Grade import receipt, live provenance and all-environment retirement proof; durability design remains M192_001's. |
 | Separate `~/Projects/docs` branch, affected operator pages, and changelog | EDIT during rollout | Document observed provider, Fly secret setup, and recovery procedure. |
 
 Expand exact operational paths before mutation; inventory external datastore and vault consumers separately. No credential values belong in evidence or commits.
@@ -89,7 +88,7 @@ Use M192_001's validated migration tool and Dragonfly evidence grader. The new d
 Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated source import, closed-until-import admission, and workflow preflight dry-run. Recheck both datastore budgets, sequential frame-batch/request latency, Fly TLS/ACL access to advertised primaries after failover, replicas and backup/restore settings. Require PostgreSQL auth authority, PlanetScale commit/promotion evidence and disposition of the named shared platform risk by Indy; no risk acceptance is inferred.
 Expand the canonical source key-prefix inventory for every actual environment; unknown keys, unresolved no-expiry claims, or unknown outbound jobs block.
 Credentials remain references: upstash-dev/api-url under VAULT_DEV and upstash-prod/api-url under VAULT_PROD, plus approved destination references.
-Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-admission abort, and forward recovery procedure. Include provider redelivery access/deadlines and historical billing-collision audit disposition.
+Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-migration cancellation, and forward recovery procedure. Include provider redelivery access/deadlines and historical billing-collision audit disposition.
 Indy creates the Swarm datastore and supplies its vault reference; the existing deploy-dev-fly/release flow stages it into Fly after preflight.
 Indy approves the environment, tested candidate, fencing/import steps, and first merge/deploy together; missing inputs leave the implementation branch unmerged.
 
@@ -102,7 +101,7 @@ Under the approved procedure, stop every old Fly daemon Machine/external writer 
 Apply new numbered migrations to the populated source with old writers fenced; shipped schema slots stay frozen. The tool writes the protected PostgreSQL completion receipt only after reconciliation and Indy's fence confirmation; schema success or an empty database cannot self-authorize work or auth.
 Reconcile work IDs, dedup expiry/tombstones, gate/anomaly state and billing before admission; preserve legacy orphan nulls and disposition detected damage. Count Redis device sessions/nonces only and exclude them from exports/imports. New PostgreSQL auth state starts empty; users restart in-flight flows. Established credentials/grants remain valid.
 The workflow calls the self-tested shell preflight before secret/Machine changes; the daemon independently requires the receipt. Pin running and total counts by process/region; when starting from zero Machines use --ha=false, establish approved counts and verify all images before restoring automation.
-Before any destination work/auth admission, abort under the writer fence and migration lock: reverse every new migration in reverse dependency order, restoring old data/constraints/grants, then delete its exact audit.schema_migrations row atomically with reversal where supported. Require old-build agentsfleetd migrate exit zero and boot/source checks before resuming; image-only rollback fails. After admission, recover forward.
+Per Indy's pre-production decision, cancel only before any new migration is applied. After the first new migration commits, keep affected writers fenced and fix/redeploy the compatible new build, then complete reconciliation before reopening. Reverse DDL, migration-ledger deletion and old-build migrate-success proofs are excluded; preserve data and bookkeeping.
 A Dragonfly restore keeps writers fenced while the tool purges restored legacy auth/nonce and gate-response keys across primaries and reconciles approvals/anomalies. PostgreSQL auth remains authoritative; never re-import restored Redis auth. PostgreSQL snapshot rollback separately requires invalidating restored auth state before reopening.
 After the switch, redeliver failed/unconfirmed provider deliveries from the fence window with original identities; GitHub requires explicit redelivery within its documented window. Reconcile results before closing observation.
 Run real API/dashboard/CLI acceptance and record live samples for the full frozen window; relabeled rehearsal evidence must fail.
@@ -142,7 +141,7 @@ Manual reviews use the operation's 001_playbook.md and attach immutable receipts
 
 1. Source and destination admission never run concurrently during migration; fenced controls and writer checks enforce this.
 2. Source destruction follows reconciliation, observation, and explicit approval; the procedure fails closed before destructive actions.
-3. Old accepted work and authentication state retain their documented meaning; reconciliation and negative tests enforce it.
+3. Accepted work and established credentials/grants survive; in-flight login/connect flows restart at cutover. Reconciliation and negative tests enforce this boundary.
 4. Live completion requires authentic evidence and human verification; rehearsal files cannot satisfy the rollout grader.
 
 ## Metrics & Observability
@@ -161,7 +160,7 @@ Use M192_001's typed operational signals and update the playbook; no product ana
 |---|---|---|---|
 | 1.1 | unit / integration | `test_live_cutover_preflight_refuses_incomplete_readiness` | Missing approvals/readiness, failed auth proof, missing PlanetScale posture evidence or unresolved platform-risk disposition, drifted topology, unknown jobs, wrong revision or unpinned Machine counts refuse mutation. |
 | 1.2 | manual | `review_live_cutover_authorization` | Indy approves exact environment, build, procedure, budget, observation window, and recovery; quote and evidence are recorded. |
-| 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Fresh/populated schema upgrades converge; old IDs, TTLs, count-only legacy auth disposal and fresh login/connect flows, approvals, leases, legacy ledger nulls and accepted work reconcile without duplicate settlement or simultaneous writers; reverse DDL precedes exact ledger removal and old-build migrate exits zero on abort; existing credentials/grants survive, detected billing damage needs disposition. |
+| 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Fresh/populated schema upgrades converge; old IDs, TTLs, count-only legacy auth disposal and fresh login/connect flows, approvals, leases, legacy ledger nulls and accepted work reconcile without duplicate settlement or simultaneous writers; pre-migration cancellation preserves the old deployment; after a new migration commits, interrupted forward recovery preserves data/ledger and reopens only a compatible new build; existing credentials/grants survive, detected billing damage needs disposition. |
 | 2.2 | manual | `review_live_dragonfly_observation` | Verify recorded live acceptance commands and raw samples across the full approved window; failures block retirement. Provider redelivery reconciles; newly advertised primary reachability, replica/backup settings, running/total Machine counts and restore/auth recovery meet the frozen requirements. |
 | 3.1 | unit / integration | `test_rollout_grader_rejects_unverified_retirement` | Missing/fabricated receipts, incorrect artifact origin, changed digests, and rehearsal-only evidence cannot pass. |
 | 3.2 | unit / integration | `test_retirement_requires_all_environments_on_cluster` | Any unswitched/unobserved environment, wrong deployed build, or remaining source consumer blocks resource retirement. |
@@ -220,3 +219,4 @@ A single implementation PR claiming unperformed retirement or relying on a parke
 - **Metrics review:** use existing migration signals; no product analytics changes.
 - **Skill-chain outcomes:** orly-spec-new authored the proposed live follow-up; no runtime or manual verdict is claimed.
 - **Deferrals:** none; this pending spec explicitly owns the live outcome.
+- **Indy recovery override (verbatim):** "since We are not in production yet, so i would just skip that". No reverse-migration or old-image rollback requirement; use pre-migration cancellation and forward recovery after schema changes.

@@ -401,10 +401,11 @@ Other providers need their documented retry/redelivery procedure; an unrecoverab
 Add new numbered migrations for admission, ledger, counters, identity indexes and auth; shipped slots 710/800/880/890 are source references, not editable upgrade scripts. Register new slots in rustd/crates/afd_db/src/migration.rs; the retired Zig embed is not an implementation dependency.
 Prove fresh bootstrap and a populated B0-schema upgrade reach the same constraints, grants and behavior, including interrupted migration/import reruns. Apply incompatible changes only with old processes fenced.
 The old migrator unconditionally rejects unknown recorded versions at or above its migration floor in rustd/crates/afd_db/src/migrate.rs:191–201, independently of AheadPolicy::Refuse. Fly's release command runs agentsfleetd migrate; restoring only the old image cannot abort this upgrade.
-Prepare a reviewed reverse script for every new migration and apply them in reverse dependency order, under the source/destination writer fence and migration lock. Reverse the schema/data changes first, then remove only their corresponding audit.schema_migrations rows; commit each reversal and its ledger removal atomically where supported.
-Preserve a restricted pre-upgrade snapshot and original ledger identities/values needed to undo backfill or imported rows. Restore the old uniqueness, triggers, indexes and grants; never delete migration bookkeeping while leaving its DDL applied or remove unrelated rows.
-Reconcile any failure bookkeeping for these exact versions, test interruption/rerun of the reverse procedure, and require the old build's agentsfleetd migrate to exit zero followed by boot/readiness and source-state checks before old writers resume.
-This reverse path is authorized only before destination work or auth is admitted. Missing reverse evidence blocks the switch; after admission use forward recovery or a separately approved reverse migration. Never bypass the migrator's refusal.
+Indy explicitly skips reverse migrations because the product is not in production: "since We are not in production yet, so i would just skip that".
+Before any new migration is applied, cancel the switch and resume the unchanged deployment after checking its source state and configuration.
+After the first new migration commits, recover forward: keep affected writers fenced, fix or redeploy the compatible new build, and complete migration/import reconciliation before reopening.
+No reverse DDL, migration-ledger deletion or old-build migrate-success proof is required. Preserve migration bookkeeping and existing data; this decision does not authorize a database reset or bypass of the old migrator's refusal.
+The playbook must state this boundary and the possibility of a longer outage while the new build is repaired. Rehearsal proves pre-migration cancellation and interrupted forward recovery.
 Changing the ledger conflict key is not automatically backward-compatible; do not leave an old uniqueness constraint that rejects valid cross-fleet IDs.
 Source writers stay fenced after import. A marker alone cannot stop the old binary or make a rolling overlap safe.
 
@@ -412,6 +413,7 @@ The import tool records one durable cutover receipt in PostgreSQL after successf
 Bind it to the deployment, source/destination identities, admission format, and reconciliation digest; the deploy preflight separately binds the tested build revision.
 Only the operator/import-tool role can complete the receipt; agentsfleetd reads it but cannot create or self-approve it.
 An empty datastore also requires an explicit empty-source initialization through the same tool; schema migration success is not import completion.
+Deliver the operator-only empty-source initializer in §2 for owned local/Cloud fixtures before application tests need the receipt. Verify source emptiness and target ownership; refuse nonempty or mismatched state. §7 extends the same tool with populated import and full rehearsal, so §5/§6 do not depend on a later Section.
 Absent, incomplete, mismatched, or unreadable receipt keeps readiness false and every ingress/lease/background dispatch and device/connect auth path closed, with retryable refusal. At the initial cutover, auth opens with empty new state after work reconciliation; no auth import field is required. Later deployments retain PostgreSQL auth rows and never reinitialize them.
 Open neither success responses nor runnable work until the receipt and cluster capability checks pass.
 Recheck the receipt at each startup and require a new one if destination or admission format changes; unrelated builds do not need a new import.
@@ -420,7 +422,7 @@ After the coordinated switch, ordinary deployments validate their normal reviewe
 The one playbook covers local Docker image proof, source census, import/fencing, Indy-supplied secret references, Fly preflight, switch, and observation.
 Rehearse these steps locally; automated workflow tests prove preflight decisions, not that a real deployment occurred.
 Live deployment, observation, and retirement remain manual evidence in the live plan.
-Abort before destination admission with source preserved; after admission use forward recovery or a separately proven reverse migration.
+Cancel before schema migration with source preserved; after any new migration commits, use forward recovery with the compatible new build.
 No live secret mutation, deployment, paid trial, or resource deletion is performed by this documentation pass.
 
 ### Source-state inventory
