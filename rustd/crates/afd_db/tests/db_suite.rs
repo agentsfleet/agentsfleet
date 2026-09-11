@@ -39,6 +39,8 @@ mod integration_migrate_faults;
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]
 mod integration_pool_faults;
+#[path = "integration_pool_retry.rs"]
+mod integration_pool_retry;
 #[path = "integration_pool_tls.rs"]
 mod integration_pool_tls;
 #[path = "lock_policy.rs"]

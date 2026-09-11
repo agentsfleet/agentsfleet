@@ -52,9 +52,22 @@ primary_region = "iad"
 #                      pub/sub connection per instance regardless of viewers.
 #                      Watch agentsfleet_sse_in_flight_streams +
 #                      agentsfleet_sse_dropped_frames_total.
+# Postgres connections this replica may open. Same reasoning as the
+# development app's, different arithmetic: `SHOW max_connections` on the
+# production cluster is also 25, with the same 6 held by reservations and
+# PlanetScale's own roles, and the release workflow runs exactly three
+# machines. Three at 5 is 15, inside the ~17 the service may take.
+#
+# Fifteen concurrent statements across the fleet is genuinely tight, and it is
+# the constraint PgBouncer exists to remove: once DATABASE_URL_API names port
+# 6432, this number is client connections to a pooler rather than backends on
+# the primary, and it rises. Until then, a pool that promises more than the
+# server can give does not serve more traffic — it answers 503 to the request
+# that needed connection eighteen.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "2"
+  DATABASE_POOL_SIZE_API = "5"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
   # not a credential — so it lives here rather than in the 1Password-staged
   # secrets list. agentsfleetd builds `{CLERK_API_BASE}/users/{id}` directly

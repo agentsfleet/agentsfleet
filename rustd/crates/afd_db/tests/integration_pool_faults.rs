@@ -21,28 +21,22 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::net::SocketAddr;
-use std::time::Duration;
-
 use afd_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::migration::Migration;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, Migrator};
 
+// Declared once, here, and reached by `integration_pool_retry.rs` through
+// `super`: the crate aggregates every suite into one binary, and clippy
+// refuses a file loaded as two modules of it.
 #[path = "support/fault_net.rs"]
-mod fault_net;
+pub(crate) mod fault_net;
+#[path = "support/lane.rs"]
+pub(crate) mod lane;
 
 use self::fault_net::{FaultProxy, install_subscriber};
-
-const LANE_KNOB: &str = "TEST_DATABASE_URL";
-
-/// Short enough that a test waits it out, long enough that a loaded machine
-/// does not trip it while the proxy is still relaying normally.
-const ACQUIRE_BUDGET_MS: &str = "400";
-
-/// The same, for the handshake the probe makes.
-const CONNECT_BUDGET: Duration = Duration::from_millis(400);
+use self::lane::{ACQUIRE_BUDGET_MS, CONNECT_BUDGET, config_through, lane_database, lane_target};
 
 /// One migration that would apply cleanly, so the only thing that can go wrong
 /// is the transaction the migrator opens to apply it in.
@@ -51,70 +45,6 @@ const TRIVIAL: &[Migration] = &[Migration::for_test(
     "9101_trivial.sql",
     "CREATE TABLE public.trivial_marker (id int)",
 )];
-
-/// The lane's Postgres, as an address a proxy can forward to.
-fn lane_target() -> SocketAddr {
-    let url = std::env::var(LANE_KNOB).unwrap_or_else(|_| {
-        panic!("{LANE_KNOB} is unset — run these through the integration lane")
-    });
-    let after_scheme = url.split_once("://").expect("a URL has a scheme").1;
-    let authority = after_scheme
-        .rsplit_once('@')
-        .map_or(after_scheme, |(_credentials, host)| host);
-    let host_port = authority
-        .split_once('/')
-        .map_or(authority, |(host, _path)| host);
-    let (host, port) = host_port
-        .rsplit_once(':')
-        .expect("the lane URL names a port");
-    // The lane spells this `localhost`, which resolves to both stacks. The
-    // proxy binds v4, so the target is pinned to v4 rather than left to
-    // whichever the resolver returns first.
-    let host = if host == "localhost" {
-        "127.0.0.1"
-    } else {
-        host
-    };
-    format!("{host}:{port}")
-        .parse()
-        .expect("the lane's Postgres address must parse")
-}
-
-/// The lane's own database, for the faults that only need a socket to die on.
-fn lane_database() -> String {
-    let url = std::env::var(LANE_KNOB).unwrap_or_else(|_| {
-        panic!("{LANE_KNOB} is unset — run these through the integration lane")
-    });
-    let after_scheme = url.split_once("://").expect("a URL has a scheme").1;
-    let path = after_scheme
-        .split_once('/')
-        .expect("the lane URL names a database")
-        .1;
-    path.split_once('?')
-        .map_or(path, |(database, _query)| database)
-        .to_owned()
-}
-
-/// A configuration pointed at `addr` instead of the real datastore.
-///
-/// `database` is a parameter and not the lane's own, because one test below
-/// runs a MIGRATOR through the proxy. `Migrator::run` reaps every ledger row
-/// below its migration list's floor, and [`TRIVIAL`] sits at 9101 — so pointed
-/// at the shared lane database it deletes all forty-seven rows the lane's
-/// `_migrate-test-db` just wrote. The schema objects survive that, the ledger
-/// does not, and the next `agentsfleetd migrate` replays 810 onto a trigger
-/// that already exists. The failure surfaces in `agentsfleetd`, three crates
-/// away from the test that caused it.
-fn config_through(addr: SocketAddr, role: DbRole, database: &str) -> PoolConfig {
-    let url = format!("postgres://agentsfleet:agentsfleet@{addr}/{database}?sslmode=disable");
-    let env = MapEnv::from_pairs([
-        (role.url_knob(), url.as_str()),
-        ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_BUDGET_MS),
-    ]);
-    PoolConfig::resolve(&env, role)
-        .expect("the constructed URL must resolve")
-        .with_connect_timeout(CONNECT_BUDGET)
-}
 
 /// A datastore that accepts the socket and never completes the handshake fails
 /// the connect on its own deadline, naming the role.
@@ -152,13 +82,15 @@ async fn test_a_handshake_that_never_completes_fails_on_its_own_deadline() {
     );
 }
 
-/// A pool that loses the datastore after connecting reports it as unavailable,
-/// not as a pool that ran out of connections.
+/// A pool that loses the datastore after connecting reports a stall, not a
+/// pool that ran out of connections.
 ///
 /// The pool is below its own ceiling the whole time — it opens connections
 /// lazily and never got one — so the census is what tells the two apart. A
 /// build that reported capacity here would send an operator to raise the pool
-/// size against a Postgres that is not answering.
+/// size against a Postgres that is not answering. `integration_pool_retry.rs`
+/// proves the rest of the stall's contract: the retry, and the census in the
+/// message.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
@@ -181,8 +113,12 @@ async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
         .expect_err("an acquire that cannot open a connection must fail");
 
     assert!(
+        error.is_acquire_stalled(),
+        "below the ceiling and still timing out is a stall: {error}"
+    );
+    assert!(
         error.is_datastore_unavailable(),
-        "below the ceiling and still timing out is the datastore: {error}"
+        "and a stall is still a request with no datastore: {error}"
     );
     assert!(
         !error.is_pool_capacity(),
@@ -273,7 +209,10 @@ async fn test_warming_a_pool_whose_datastore_went_away_reports_the_shortfall() {
     // one keeps its footprint to the single acquire the claim needs.
     let env = MapEnv::from_pairs([
         (DbRole::Api.url_knob(), url.as_str()),
-        ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_BUDGET_MS),
+        (
+            "DATABASE_ACQUIRE_TIMEOUT_MS",
+            &ACQUIRE_BUDGET_MS.to_string(),
+        ),
         ("DATABASE_POOL_SIZE_API", "1"),
         ("DATABASE_MIN_POOL_SIZE_API", "1"),
     ]);

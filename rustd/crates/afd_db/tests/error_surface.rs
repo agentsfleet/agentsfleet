@@ -18,7 +18,7 @@ use afd_db::error::one_of_each_kind;
 #[test]
 fn test_every_kind_renders_with_its_code() {
     let kinds = one_of_each_kind();
-    assert!(kinds.len() >= 11, "a kind was added without a sample");
+    assert!(kinds.len() >= 12, "a kind was added without a sample");
 
     for (label, error) in &kinds {
         let rendered = error.to_string();
@@ -69,6 +69,38 @@ fn test_the_accessors_partition_the_kinds() {
         let claimed = answers.iter().filter(|answer| **answer).count();
         assert_eq!(claimed, 1, "{label} is claimed by {claimed} accessors");
     }
+}
+
+/// A stall is a refinement of "unavailable", never a partition of its own.
+///
+/// Every stall answers `is_datastore_unavailable`, because the request had no
+/// datastore either way and every crate downstream turns on that question to
+/// pick a 503. What the finer accessor adds is the one thing a caller can act
+/// on — `Db::acquire` retries a stall and nothing else — and the census in the
+/// message is what an operator acts on.
+#[test]
+fn test_a_stall_is_unavailable_and_carries_its_census() {
+    for (label, error) in one_of_each_kind() {
+        if !error.is_acquire_stalled() {
+            continue;
+        }
+        assert!(
+            error.is_datastore_unavailable(),
+            "{label} is not unavailable"
+        );
+        assert!(!error.is_pool_capacity(), "{label} claims capacity");
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains(" of ") && rendered.contains("could not open another"),
+            "{label} hides the census an operator needs: {rendered}"
+        );
+    }
+    assert!(
+        one_of_each_kind()
+            .iter()
+            .any(|(_label, error)| error.is_acquire_stalled()),
+        "the sampler carries no stall to prove any of this against"
+    );
 }
 
 /// Capacity and unreachable stay apart, because the operator's next move does.
