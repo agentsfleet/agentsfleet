@@ -28,7 +28,7 @@ One row per item, so an agent can check a status without reading the ledger; eac
 ## Dragonfly migration and Redis retirement
 
 [M188_001](../v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md) defines the shared throughput benchmark drivers.
-[M192_001](../v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) defines the pending Dragonfly prototypes, implementation readiness, and migration rehearsal.
+[M192_001](../v2/active/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) defines the active Dragonfly prototypes, implementation readiness, and migration rehearsal.
 [M192_002](../v2/pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) proposes the live cutover and retirement follow-up.
 The [datastore scaling requirements](./datastore_scaling.md) record the required target, recovery behavior, and rollout limits.
 

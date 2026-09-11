@@ -44,7 +44,7 @@ This proposed successor owns the complete live outcome as P0. M192_001 completio
 ## Implementing agent — read these first
 
 1. `docs/architecture/datastore_scaling.md`, migration identity, authentication, source-state, and recovery rules.
-2. `docs/v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md`, readiness dependencies and evidence format.
+2. `docs/v2/active/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md`, readiness dependencies and evidence format.
 3. `.github/workflows/deploy-dev-fly.yml` and `.github/workflows/release.yml`, source secret references and automatic deployment behavior.
 4. `docs/AUTH_DEVICE_LOGIN.md` and `playbooks/operations/teardown/redis/001_playbook.md`, authentication state and destructive-action boundaries.
 5. https://www.dragonflydb.io/docs/cloud/datastores, Cloud settings and managed behavior.

@@ -16,12 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M192
 **Workstream:** 001
 **Date:** Sep 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0
 **Categories:** API, INFRA, OBS
 **Batch:** B2
-**Branch:** docs/m192-dragonfly-migration; authoring only, implementation branch pending CHORE(open).
-**Test Baseline:** pending; CHORE(open) records B0, canonical baseline counts are due before the implementation Pull Request.
+**Branch:** feat/m192-dragonfly-migration
+**Baseline revision:** 67e7f1c58723ec1f33b8a7c03bf0997ee2c8e7ed
+**Test Baseline:** pending — measured before the Pull Request.
+**Baseline evidence:** pending — unit and integration reports for the exact baseline revision are due before the Pull Request.
 **Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; runtime context in `docs/architecture/data_flow.md`.
@@ -30,8 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** a sharded Dragonfly build passes prototype, application, capacity, Cloud recovery, and migration-rehearsal proofs before live cutover.
 **Problem:** standard pub/sub, cross-slot scripts, global coordination, queue-only acceptance, and weak evidence cannot establish Swarm readiness.
-**Solution summary:** prototype first, then refactor around sharding, durable event/auth state, bounded resources, and verifiable results.
-One new daemon targets local Dragonfly clusters and Indy-created Cloud Swarm. Existing Redis stays deployed until the coordinated switch; no temporary runtime provider mode.
+**Solution summary:** prototype first, then refactor around sharding, durable event/auth state, bounded resources, and verifiable results. One new daemon targets local Dragonfly clusters and Indy-created Cloud Swarm. Existing Redis stays deployed until the coordinated switch; no temporary runtime provider mode.
 
 ## PR Intent & comprehension handshake
 
@@ -107,8 +108,7 @@ The hub handles SUnsubscribe by reconciling viewers and reissuing SSUBSCRIBE; te
 
 Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
 Prove B/B0 production source/schema/build and dependency-closure equality, including Cargo.lock; allow only proven bench-exclusive deltas. Capture three samples per existing `make bench-steer`, `bench-lease`, `bench-outbound`, and `bench-cardinality`.
-Archive each fixed-path result immediately under a unique campaign/lane/sample path with sidecars containing B, parameters, payload bytes, window, resources, raw server/topology output, and SHA-256 digests.
-Historical drivers have no seed or offered-rate guarantee; preserve their actual measurements and mark unavailable fields explicitly.
+Archive each fixed-path result immediately under a unique campaign/lane/sample path with sidecars containing B, parameters, payload bytes, window, resources, raw server/topology output, and SHA-256 digests. Historical drivers have no seed or offered-rate guarantee; preserve their actual measurements and mark unavailable fields explicitly.
 Fix the M188 rig-label/address gap before capture or remote use: verify both datastores and every discovered node, reject shared targets, scope leases and consumers.
 Test cancellation cleanup and orphan recovery. Missing provenance, changed bytes, inconsistent topology, or overwritten samples must fail the grader.
 

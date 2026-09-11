@@ -19,7 +19,7 @@ executable: false
 
 This record maps the original findings and subsequent re-reviews to documentation corrections and outstanding proofs.
 The specifications carry executable acceptance requirements; this record does not award runtime acceptance.
-[M192_001](../pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) covers readiness; proposed [M192_002](../pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) covers live retirement.
+[M192_001](../active/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) covers readiness; proposed [M192_002](../pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) covers live retirement.
 
 ## Why it exists
 
