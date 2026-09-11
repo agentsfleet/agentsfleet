@@ -106,7 +106,7 @@ The hub handles SUnsubscribe by reconciling viewers and reissuing SSUBSCRIBE; te
 
 ### §1: Safe historical baseline and trustworthy capture
 
-**Status: DONE.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `71b58da9345786b8918411b4035c08159abbf166`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples. The evidence index is `docs/v2/reviews/datastore-scale-evidence.md`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
+**Status: DONE.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `a24d3055d721a7bde8f7294e521a24db991ef4c5`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples. The evidence index is `docs/v2/reviews/datastore-scale-evidence.md`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
 Prove B/B0 production source/schema/build and dependency-closure equality, including Cargo.lock; allow only proven bench-exclusive deltas. Capture three samples per existing `make bench-steer`, `bench-lease`, `bench-outbound`, and `bench-cardinality`.
 Archive each fixed-path result immediately under a unique campaign/lane/sample path with sidecars containing B, parameters, payload bytes, window, resources, raw server/topology output, and SHA-256 digests. Historical drivers have no seed or offered-rate guarantee; preserve their actual measurements and mark unavailable fields explicitly.
 Fix the M188 rig-label/address gap before capture or remote use: verify both datastores and every discovered node, reject shared targets, scope leases and consumers.

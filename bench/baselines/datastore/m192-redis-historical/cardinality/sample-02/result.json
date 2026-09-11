@@ -6,9 +6,9 @@
     "BENCH_FLEETS": 10000
   },
   "measurements": {
-    "candidate_plan_ms": 1.303,
-    "candidate_query_ms": 0.435,
-    "postgres_fleets_table_bytes": 5570560.0,
+    "candidate_plan_ms": 1.362,
+    "candidate_query_ms": 1.346,
+    "postgres_fleets_table_bytes": 6070272.0,
     "redis_bytes_total": 46472496.0
   },
   "series": {
@@ -19,22 +19,22 @@
       10000.0
     ],
     "peek_ms": [
-      0.249583,
-      0.363459,
-      0.427417,
-      0.386041
+      0.176417,
+      0.278042,
+      0.377042,
+      0.30954099999999996
     ],
     "redis_bytes_per_fleet": [
       4613.6,
-      4433.777777777777,
-      4638.995555555555,
-      4650.247111111111
+      4439.466666666666,
+      4637.288888888889,
+      4650.360888888888
     ],
     "stream_read_ms": [
-      0.218209,
-      0.188583,
-      0.259458,
-      0.197584
+      0.186917,
+      0.192292,
+      0.208834,
+      0.190333
     ]
   },
   "datastores": {
@@ -46,7 +46,7 @@
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789154807535-61561",
+    "run_prefix": "bench-1789164908777-8352",
     "created": 30001,
     "swept": 30001
   }

@@ -11,14 +11,14 @@
   "measurements": {
     "delivered": 200.0,
     "foreign_entries": 0.0,
-    "max_ms": 4114.431,
-    "others_p95_ms": 3823.615,
-    "p95_ms": 3823.615,
-    "p99_ms": 4106.239,
-    "rate_per_second": 48.60176271730806,
+    "max_ms": 4102.143,
+    "others_p95_ms": 3805.183,
+    "p95_ms": 3805.183,
+    "p99_ms": 4093.951,
+    "rate_per_second": 48.74596386831388,
     "retry_occupancy": 0.0,
     "slow_destinations": 1.0,
-    "slow_p95_ms": 3835.903,
+    "slow_p95_ms": 3817.471,
     "unsettled": 0.0
   },
   "datastores": {
@@ -30,7 +30,7 @@
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789154723007-59988",
+    "run_prefix": "bench-1789164700993-3308",
     "created": 200,
     "swept": 200
   }

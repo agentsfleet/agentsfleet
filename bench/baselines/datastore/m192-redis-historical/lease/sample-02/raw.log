@@ -1,13 +1,13 @@
 → [infra] Host ports: postgres=20735 redis=20736 qstash=20737
 → [infra] Starting postgres + redis + qstash (waiting for healthchecks)...
+ Container agentsfleet-m192-dragonfly-migration-postgres-1 Running 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Running 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Running 
- Container agentsfleet-m192-dragonfly-migration-postgres-1 Running 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Waiting 
  Container agentsfleet-m192-dragonfly-migration-postgres-1 Waiting 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Waiting 
- Container agentsfleet-m192-dragonfly-migration-postgres-1 Healthy 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Healthy 
+ Container agentsfleet-m192-dragonfly-migration-postgres-1 Healthy 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Healthy 
 → [infra] Extracting Redis TLS CA cert...
  agentsfleet-m192-dragonfly-migration-redis-1 Copying agentsfleet-m192-dragonfly-migration-redis-1:/tls/ca.crt to /private/tmp/agentsfleet-m192-dragonfly-migration/.tmp/redis-ca.crt
@@ -16,5 +16,5 @@
  agentsfleet-m192-dragonfly-migration-redis-1 Copied agentsfleet-m192-dragonfly-migration-redis-1:/tls/foreign-ca.crt to /private/tmp/agentsfleet-m192-dragonfly-migration/.tmp/redis-foreign-ca.crt
 ✓ [infra] postgres + redis ready; Redis CA cert at /private/tmp/agentsfleet-m192-dragonfly-migration/.tmp/redis-ca.crt
 → [bench-lease] profile=rig
-run_prefix=bench-1789154629193-56973
+run_prefix=bench-1789164564578-97732
 wrote bench/results/lease.rig.json
