@@ -86,7 +86,7 @@ Use M192_001's validated migration tool and Dragonfly evidence grader. The new d
 
 ### §1: Verify readiness and authorize the live procedure
 
-Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated source import, closed-until-import admission, and workflow preflight dry-run. Recheck both datastore budgets, sequential frame-batch/request latency, Fly TLS/ACL access to advertised primaries after failover, replicas and backup/restore settings. Require PostgreSQL auth authority and verified acknowledged-commit recovery for auth/admission; replay or a lossy/unverified promotion policy blocks rollout.
+Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated source import, closed-until-import admission, and workflow preflight dry-run. Recheck both datastore budgets, sequential frame-batch/request latency, Fly TLS/ACL access to advertised primaries after failover, replicas and backup/restore settings. Require PostgreSQL auth authority, PlanetScale commit/promotion evidence and disposition of the named shared platform risk by Indy; no risk acceptance is inferred.
 Expand the canonical source key-prefix inventory for every actual environment; unknown keys, unresolved no-expiry claims, or unknown outbound jobs block.
 Credentials remain references: upstash-dev/api-url under VAULT_DEV and upstash-prod/api-url under VAULT_PROD, plus approved destination references.
 Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-admission abort, and forward recovery procedure. Include provider redelivery access/deadlines and historical billing-collision audit disposition.
@@ -100,9 +100,9 @@ Indy approves the environment, tested candidate, fencing/import steps, and first
 
 Under the approved procedure, stop every old Fly daemon Machine/external writer and suspend actual restart/deploy paths including deploy-dev-verify. The inspected daemon has no proxy service; fence actual starters. Record stopped IDs and absence of writes/leases/renewals before import.
 Apply new numbered migrations to the populated source with old writers fenced; shipped schema slots stay frozen. The tool writes the protected PostgreSQL completion receipt only after reconciliation and Indy's fence confirmation; schema success or an empty database cannot self-authorize work or auth.
-Old IDs, absolute dedup expiry, no-expiry tombstones, sessions, gate mirrors, nonces, anomaly windows and historical billing audit results reconcile before destination admission; preserve legacy orphan nulls and require recorded disposition for detected collision damage. PostgreSQL owns admission and device/nonce state; import original auth expiry/attempts/terminal state once, and reject auth re-import after receipt completion.
+Reconcile work IDs, dedup expiry/tombstones, gate/anomaly state and billing before admission; preserve legacy orphan nulls and disposition detected damage. Count Redis device sessions/nonces only and exclude them from exports/imports. New PostgreSQL auth state starts empty; users restart in-flight flows. Established credentials/grants remain valid.
 The workflow calls the self-tested shell preflight before secret/Machine changes; the daemon independently requires the receipt. Pin running and total counts by process/region; when starting from zero Machines use --ha=false, establish approved counts and verify all images before restoring automation.
-The pre-admission abort restores old-build schema compatibility and source state before resuming old writers. After admission, recover forward through the rehearsed durable path.
+Before any destination work/auth admission, abort under the writer fence and migration lock: reverse every new migration in reverse dependency order, restoring old data/constraints/grants, then delete its exact audit.schema_migrations row atomically with reversal where supported. Require old-build agentsfleetd migrate exit zero and boot/source checks before resuming; image-only rollback fails. After admission, recover forward.
 A Dragonfly restore keeps writers fenced while the tool purges restored legacy auth/nonce and gate-response keys across primaries and reconciles approvals/anomalies. PostgreSQL auth remains authoritative; never re-import restored Redis auth. PostgreSQL snapshot rollback separately requires invalidating restored auth state before reopening.
 After the switch, redeliver failed/unconfirmed provider deliveries from the fence window with original identities; GitHub requires explicit redelivery within its documented window. Reconcile results before closing observation.
 Run real API/dashboard/CLI acceptance and record live samples for the full frozen window; relabeled rehearsal evidence must fail.
@@ -159,9 +159,9 @@ Use M192_001's typed operational signals and update the playbook; no product ana
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | unit / integration | `test_live_cutover_preflight_refuses_incomplete_readiness` | Missing approvals/readiness, failed auth proof or unverified PostgreSQL acknowledged-commit durability, drifted topology, unknown jobs, wrong revision or unpinned Machine counts refuse mutation. |
+| 1.1 | unit / integration | `test_live_cutover_preflight_refuses_incomplete_readiness` | Missing approvals/readiness, failed auth proof, missing PlanetScale posture evidence or unresolved platform-risk disposition, drifted topology, unknown jobs, wrong revision or unpinned Machine counts refuse mutation. |
 | 1.2 | manual | `review_live_cutover_authorization` | Indy approves exact environment, build, procedure, budget, observation window, and recovery; quote and evidence are recorded. |
-| 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Fresh/populated schema upgrades converge; old IDs, TTLs, one-time PostgreSQL auth import, approvals, leases, legacy ledger nulls and accepted work reconcile without duplicate settlement or simultaneous writers; detected billing damage needs explicit disposition. |
+| 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Fresh/populated schema upgrades converge; old IDs, TTLs, count-only legacy auth disposal and fresh login/connect flows, approvals, leases, legacy ledger nulls and accepted work reconcile without duplicate settlement or simultaneous writers; reverse DDL precedes exact ledger removal and old-build migrate exits zero on abort; existing credentials/grants survive, detected billing damage needs disposition. |
 | 2.2 | manual | `review_live_dragonfly_observation` | Verify recorded live acceptance commands and raw samples across the full approved window; failures block retirement. Provider redelivery reconciles; newly advertised primary reachability, replica/backup settings, running/total Machine counts and restore/auth recovery meet the frozen requirements. |
 | 3.1 | unit / integration | `test_rollout_grader_rejects_unverified_retirement` | Missing/fabricated receipts, incorrect artifact origin, changed digests, and rehearsal-only evidence cannot pass. |
 | 3.2 | unit / integration | `test_retirement_requires_all_environments_on_cluster` | Any unswitched/unobserved environment, wrong deployed build, or remaining source consumer blocks resource retirement. |
@@ -196,7 +196,7 @@ A production environment is not assumed to exist merely because a release workfl
 ## Product Clarity (authoring record)
 
 1. **Successful user moment:** fleet workflows keep working after the approved live switch and source retirement.
-2. **Preserved user behaviour:** accepted work, IDs, login, approvals, ordering, fencing, and billing survive.
+2. **Preserved user behaviour:** accepted work, IDs, approvals, ordering, fencing, billing and established credentials/grants survive; in-flight login/connect flows restart.
 3. **Optimal-way check:** reuse one proven procedure and verify every state class before destructive retirement.
 4. **Rebuild-vs-iterate:** operational completion of the tested M192_001 refactor.
 5. **What we build:** live configuration, authentic migration evidence, and retired source bindings.

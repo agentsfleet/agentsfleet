@@ -10,7 +10,7 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| What was reviewed? | Claude Fable reviews through 6603eb7d8; this revision checks the final auth/WAIT, hub, billing and latency feedback, then adversarially reviews the amended spec and updates docs/TEMPLATE.md. |
+| What was reviewed? | Claude Fable reviews through b01294265; current corrections remove auth import, define reverse migration, preserve concurrent verify retries, bound subscription ownership and name PlanetScale evidence. Template governance is separately recorded below. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
 | What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
 | What still needs a decision? | Service/cost budgets and infrastructure, actual PostgreSQL failover durability, any detected historical billing-damage disposition, and live approval. Fixture-only outbound and the readiness/live split remain the scoped implementation defaults; no auth-risk exception is planned. |
@@ -166,7 +166,7 @@ The existing schema's global key may already have merged stage charges, dropped 
 
 ### Follow-up at 6603eb7d8: final feedback and adversarial review
 
-This is the current disposition. Source findings below are verified against that application revision, Dragonfly e94300e6 and redis-rs 1.6.0; runtime behavior is NOT RUN.
+Historical disposition at 6603eb7d8. The b01294265 follow-up below supersedes auth import and the generic PostgreSQL evidence requirement. Source checks remain valid; runtime behavior is NOT RUN.
 
 | Feedback | Decision and blocking boundary | Spec proof |
 |---|---|---|
@@ -203,6 +203,29 @@ Remaining execution prerequisites are explicit: §1 needs CHORE(open), B0 and an
 No remaining text defect found in this pass prevents §1. This is readiness to start the ordered implementation, not proof that later integration, load or live cutover can pass.
 
 The docs/TEMPLATE.md update carries the general lessons into authoring: name enforcement and failure assumptions, verify both protocol sides, trace real writers, handle historical identity and populated upgrades, budget the full path with a named comparator, distinguish evidence tiers and decision provenance, and run a separate adversarial pass. It preserves the existing sections, rubric and 320-line filled-spec limit.
+
+### Follow-up at b01294265: cutover simplification and governance
+
+This is the current disposition. All runtime, reversal and Cloud proofs remain NOT RUN; §1 has no new prerequisite.
+
+| Finding | Adversarial assessment and correction | Proof boundary |
+|---|---|---|
+| 1: Remove auth import | Adopt explicit invalidation of in-flight device/connect flows. Count only; exclude their values from exports/imports and start new PostgreSQL auth tables empty. Source TTLs of 300/600 seconds do not prove a minimum cutover duration; the restart rule applies even to a fast cutover. Existing credentials and installed grants survive. | §7.1 and live §2.1 prove old flows reject and new flows work, with no auth-copy or auth-format receipt field. |
+| 2: Old migrator refuses new versions | Confirmed unconditional unknown-version check before AheadPolicy. Fly runs migrate as its release command. Reverse each new migration in reverse dependency order, restore original data/constraints/grants, then remove only its matching migration ledger entry atomically where supported. Never erase bookkeeping first or bypass refusal. | §7.1 proves interrupted reversal and old-build migrate exit zero, then boot/source checks under the fence before reopening. After new work/auth admission, use forward recovery. |
+| 3: Concurrent verify loser | A zero-row guarded update must re-read committed state with a fresh snapshot and evaluate the same-fingerprint retry window. Serialization failures retry the transaction. No unconditional 410 from the row count. | §5.4 races same-fingerprint verifies and proves both receive the permitted identical encrypted response; other fingerprints still reject. |
+| 4: PlanetScale evidence | Cite architecture plus durable replica-confirmation documentation. Additional operations documentation names most-caught-up promotion. Narrow the remaining question to loss/partition of the acknowledging replica; record the provider answer and actual deployed posture. Any negative/ambiguous result goes to Indy as a platform-wide billing/admission/auth risk, without presumed acceptance. | §6 evidence and live preflight require the answer/disposition; local proofs and §1 proceed. No vendor ticket was sent. |
+| 5: Subscription ownership | One subscribing ClusterConnection object per daemon hub, shared across channels/viewers and reused on repair. Multiple node sockets remain necessary. | §5.3 checks client ownership and node resources; §0.1 checks reconnect/movement without duplicate forwarding. |
+| 6: Template governance | User authorization already exists in this conversation; quote below. Align dispatch authoring guidance and isolate the template change in its own forward commit, without rewriting b01294265 or changing the gate script. | Template/dispatch authoring checks; no runtime criterion is credited. |
+
+Source checks: afd_redis/src/session.rs:88 (300-second session TTL); afd_connector/src/registry.rs:55 (600-second state TTL); afd_db/src/migrate.rs:191–201,238–275 (unknown-version refusal and transactional migration ledger); both deploy/fly/agentsfleetd-*/fly.toml files (migrate release command).
+[PlanetScale replicas](https://planetscale.com/docs/postgres/scaling/replicas) documents durable confirmation before commit success. [Operations philosophy](https://planetscale.com/docs/postgres/operations-philosophy#primaries) identifies most-caught-up promotion; neither was treated as evidence that the actual deployment has passed a fault test.
+
+**Indy's explicit template authorization, verbatim from this conversation:**
+> And the learning you did in this who process and go and update the base TEMPLATE.md so the subsequent agents can come up with one shot implementation from the spec produced by orly from the template.
+
+Scope: docs/TEMPLATE.md and the matching dispatch/write_spec.md authoring guidance. This is the separately requested authoring-policy change, outside M192 runtime implementation scope. It changes no gate script, required section, line cap or verification command. Forward reversion/reapplication separates the previous mixed template edit without rewriting committed history.
+
+Adversarial checks after correction: count-only auth handling cannot resurrect a source token; the ordinary deployment receipt does not imply empty auth tables on later deploys; reverse-migration bookkeeping cannot conceal unapplied reversal; provider documentation does not silently authorize a platform risk exception. These requirements are documented, not tested runtime outcomes.
 
 ### Prototype admission and completion
 

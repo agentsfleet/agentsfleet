@@ -66,7 +66,7 @@ Use `SPUBLISH`, `SSUBSCRIBE`, and `SUNSUBSCRIBE`. Standard and pattern pub/sub c
 Use RESP3 push delivery through redis-rs, with a bounded subscription registry and bounded queues for viewers.
 The prototype must establish the client API and recovery behavior before those choices become production code.
 
-The hub shares subscriptions by channel and owning primary, rather than promising one subscription socket per process.
+Each daemon hub owns one redis-rs ClusterConnection object for all subscriptions and shares it across viewers/channels. Repair reuses that object; it never constructs a second subscribing client. The client may own multiple node sockets, so this does not promise one subscription socket per process.
 Topology refresh and reconnect rebuild referenced subscriptions; dropping the final reader releases its subscription and unused connection resources.
 Count connections, tasks, queued bytes, lag, and recovery time across repeated movement and cancellation.
 
@@ -199,6 +199,7 @@ Create core.auth_device_sessions and core.connector_nonces in new migrations; th
 The session primary key is the existing session ID. Preserve owner binding, public keys, code HMAC, attempt count, encrypted envelope including its AES-GCM nonce, absolute expiry, status, consumed fingerprint and retry-payload deadline; retain constant-time code-digest comparison.
 Implement existing approve/verify/abort/cancel-all transitions with guarded row transactions; concurrent approve/consume/cancel and wrong-code attempts must have the existing single winning transition and lockout behavior.
 Commit state before returning ciphertext, approval or cancellation success. An uncertain commit returns a retryable failure; a retry reads authoritative state and never resets attempts, expiry, or terminal status.
+When a concurrent verify loses its guarded update, re-read the committed row and evaluate the same-fingerprint retry window before returning an error. Under READ COMMITTED use a fresh statement snapshot; a serialization failure retries the transaction. Zero updated rows alone must not produce 410.
 Preserve the documented same-fingerprint encrypted-payload retry for 60 seconds and the existing session expiry rules; another fingerprint or a request outside the permitted window cannot replay. Single use does not prohibit this intentional response retry.
 Nonce identity is unique by the existing provider/binding namespace and a digest of the opaque nonce; retain its absolute expiry. Signed state verification and caller/workspace authorization still precede the guarded unexpired nonce deletion.
 Commit the winning deletion before any external token exchange. After an uncertain nonce commit, fail closed and start a fresh connect flow; do not repeat a possibly authorized external exchange or promise exactly-once vendor effects.
@@ -206,14 +207,18 @@ All auth reads use the PostgreSQL primary. Missing/expired rows reject; database
 Keep existing code HMAC/ciphertext protection, scoped ownership and redaction; never persist plaintext codes, bearer credentials or raw OAuth anti-replay nonces in new tables, evidence or logs. The encrypted envelope's AES-GCM nonce is required protocol data, distinct from a connector state nonce. Scope table grants and cover cross-tenant access in service tests.
 
 Use durably acknowledged PostgreSQL commits for both acceptance and auth; forbid synchronous_commit=off and replica reads. Local crash/restart proof covers persisted commits, not managed failover.
-Before Cloud grading, record the actual PostgreSQL service and its acknowledged-commit recovery guarantee: synchronous durable replication to eligible failover nodes, or the provider's documented equivalent. synchronous_commit=on alone does not configure synchronous standbys.
-Do not replace queue replay with the same exposure on an asynchronous PostgreSQL standby. An unverified/lossy promotion policy blocks live readiness; the operator must configure a safe promotion policy or keep the database fenced until authoritative WAL recovery. No custom consensus layer is planned.
+PlanetScale's [architecture](https://planetscale.com/docs/postgres/postgres-architecture) describes replica-confirmed writes; its [replica documentation](https://planetscale.com/docs/postgres/scaling/replicas) specifies durable confirmation by at least one replica before commit success.
+Its [operations policy](https://planetscale.com/docs/postgres/operations-philosophy#primaries) says promotion chooses the most caught-up replica. Record the actual deployment/configuration against this documented posture; synchronous_commit=on alone does not configure it.
+One operator-owned support question remains: when the acknowledging replica is unavailable or partitioned, does promotion wait for a candidate containing every acknowledged commit, or can it lose one? Record the answer and applicable failure model; no ticket has been sent by this documentation pass.
+A negative or ambiguous answer is a shared platform risk for existing billing/durable PostgreSQL writes and planned admission/auth, requiring Indy's recorded disposition. The platform exposure predates this queue migration; it does not automatically require another database architecture.
+Until that disposition, do not claim verified zero-loss failover or silently waive the auth invariant. Any accepted exception must name affected guarantees and recovery in this document and AUTH_DEVICE_LOGIN.md. No custom consensus layer is planned.
 This is the existing durable-admission dependency made explicit. A PostgreSQL snapshot rollback is disaster recovery, not ordinary queue recovery: keep auth closed, invalidate restored device sessions/nonces before reopening and reconcile accepted work separately.
 
 Implement and prove this bounded store replacement in §5 before §6, including crash-before/after commit, concurrent consumers, approved retries, lockout, cancel-all and every connector nonce family.
-Under the one source fence, import live device state and unspent nonce digests to PostgreSQL with original absolute expiry. Re-runs cannot overwrite terminal state or recreate consumed/missing nonces; the protected import receipt authorizes only this initial import.
-After receipt completion, repeated tool invocation verifies only and refuses another auth copy; a deleted spent nonce must not be recreated from the source export.
-Historical Redis state may already lack evidence of a lost consume write; do not claim import reconstructs missing history. Redis-only restores after cutover must never overwrite the new PostgreSQL authority.
+Do not import Redis device sessions or connector nonces. Inventory counts only; exclude their values from source exports and migration payloads. These short-lived flows restart after cutover, even if the switch finishes before their expiry.
+The source lifetimes are 300 seconds for device sessions and 600 seconds for connector state. They do not establish a minimum cutover duration; explicit invalidation removes timing and resurrection dependencies.
+Initialize the new auth tables empty for the first switch; verify old login IDs and OAuth callbacks fail while newly started flows work. This does not revoke existing issued CLI credentials or installed connector grants.
+The work-import receipt still gates opening the new daemon, including auth, but carries no auth import format or auth-copy completion field. Every later import/restore tool rejects copying legacy auth state. Gate-response reconciliation remains required.
 
 ### Measured coordination partitioning
 
@@ -389,12 +394,17 @@ Prefer stopping inventoried Machines to destroying them with scale count 0. Pin 
 If the app has zero Machines, pass --ha=false during initial deploy, then explicitly establish the approved count; verify image, count and absence of spare old-image Machines before reopening automation.
 [Fly deployment defaults](https://fly.io/docs/apps/app-availability/) can add a spare Machine; a successful deploy exit alone does not prove the intended process count.
 Record stopped Machine IDs and verify no source writes, leases, or renewal activity; stopping ingress alone does not fence embedded cron, repair, and consumers.
-Then import old work/claims, reconcile billing/auth state, and authorize the new deployment; restore normal automation only for the approved new build.
+Then import old work/claims, reconcile billing and gate state, record discarded auth-flow counts, and authorize the new deployment; restore normal automation only for the approved new build.
 Inventory provider delivery IDs spanning the fence window and redeliver failed/unconfirmed deliveries after the switch (or after abort), retaining original producer identities.
 [GitHub does not automatically retry failed webhooks](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks); its redelivery window is three days. Verify access and recovery deadlines before fencing, and reconcile results before closing observation.
 Other providers need their documented retry/redelivery procedure; an unrecoverable window blocks the planned switch for a decision. Do not claim PostgreSQL protects requests never accepted.
 Add new numbered migrations for admission, ledger, counters, identity indexes and auth; shipped slots 710/800/880/890 are source references, not editable upgrade scripts. Register new slots in rustd/crates/afd_db/src/migration.rs; the retired Zig embed is not an implementation dependency.
-Prove fresh bootstrap and a populated B0-schema upgrade reach the same constraints, grants and behavior, including interrupted migration/import reruns. Apply incompatible changes only with old processes fenced; rehearse the old-build schema restore required by a pre-admission abort.
+Prove fresh bootstrap and a populated B0-schema upgrade reach the same constraints, grants and behavior, including interrupted migration/import reruns. Apply incompatible changes only with old processes fenced.
+The old migrator unconditionally rejects unknown recorded versions at or above its migration floor in rustd/crates/afd_db/src/migrate.rs:191–201, independently of AheadPolicy::Refuse. Fly's release command runs agentsfleetd migrate; restoring only the old image cannot abort this upgrade.
+Prepare a reviewed reverse script for every new migration and apply them in reverse dependency order, under the source/destination writer fence and migration lock. Reverse the schema/data changes first, then remove only their corresponding audit.schema_migrations rows; commit each reversal and its ledger removal atomically where supported.
+Preserve a restricted pre-upgrade snapshot and original ledger identities/values needed to undo backfill or imported rows. Restore the old uniqueness, triggers, indexes and grants; never delete migration bookkeeping while leaving its DDL applied or remove unrelated rows.
+Reconcile any failure bookkeeping for these exact versions, test interruption/rerun of the reverse procedure, and require the old build's agentsfleetd migrate to exit zero followed by boot/readiness and source-state checks before old writers resume.
+This reverse path is authorized only before destination work or auth is admitted. Missing reverse evidence blocks the switch; after admission use forward recovery or a separately approved reverse migration. Never bypass the migrator's refusal.
 Changing the ledger conflict key is not automatically backward-compatible; do not leave an old uniqueness constraint that rejects valid cross-fleet IDs.
 Source writers stay fenced after import. A marker alone cannot stop the old binary or make a rolling overlap safe.
 
@@ -402,7 +412,7 @@ The import tool records one durable cutover receipt in PostgreSQL after successf
 Bind it to the deployment, source/destination identities, admission format, and reconciliation digest; the deploy preflight separately binds the tested build revision.
 Only the operator/import-tool role can complete the receipt; agentsfleetd reads it but cannot create or self-approve it.
 An empty datastore also requires an explicit empty-source initialization through the same tool; schema migration success is not import completion.
-Absent, incomplete, mismatched, or unreadable receipt keeps readiness false and every ingress/lease/background dispatch and device/connect auth path closed, with retryable refusal. Include the auth-state format in the receipt so auto-deploy cannot serve before its import.
+Absent, incomplete, mismatched, or unreadable receipt keeps readiness false and every ingress/lease/background dispatch and device/connect auth path closed, with retryable refusal. At the initial cutover, auth opens with empty new state after work reconciliation; no auth import field is required. Later deployments retain PostgreSQL auth rows and never reinitialize them.
 Open neither success responses nor runnable work until the receipt and cluster capability checks pass.
 Recheck the receipt at each startup and require a new one if destination or admission format changes; unrelated builds do not need a new import.
 After the coordinated switch, ordinary deployments validate their normal reviewed/CI build and the existing receipt; do not pin every later deployment to the first candidate or demand another cutover approval.
@@ -426,9 +436,9 @@ Redis patterns below describe source bytes; angle-bracket fields come from the o
 | `fleet:repair-verification:<once_id>` | `afd_redis/src/streams/once.rs` | Import repair/continuation identities with no time expiry; release only after the durable successor/cleanup condition is proven. |
 | `fleet:ready` | `afd_redis/src/ready.rs` | Rebuild from durable unfinished and eligible state; stale tokens cannot suppress new work. |
 | `connector:outbound` and group `connector_workers` | `afd_redis/src/outbound.rs` | Inventory entries and pending receipts; prove drain/import for any jobs or block. Fixture-only tests never justify dropping historical jobs. |
-| `auth:session:<session_id>` | `afd_redis/src/session.rs` | Import into PostgreSQL device state with original absolute expiry, ownership, approval, abort, attempts, consumed fingerprint and retry deadline; reruns cannot reopen terminal state. |
+| `auth:session:<session_id>` | `afd_redis/src/session.rs` | Count only; exclude from exports/import. In-flight device logins restart after cutover; new PostgreSQL auth state begins empty. |
 | `fleet:gate:byevent:<fleet_id>:<event_id>`; `fleet:gate:response:<action_id>` | `afd_gate/src/gate/store.rs` | Reconcile references and decisions against durable approvals; preserve expiry or rebuild only from a proven durable equivalent. |
-| `connect:slack:nonce:*`, `connect:gh:nonce:*`, `connect:zoho:nonce:*`, `connect:jira:nonce:*`, `connect:linear:nonce:*` | `afd_connector/src/registry.rs`, `state/nonce.rs` | Import namespace/nonce digest and original expiry into PostgreSQL under fencing; consumed/missing markers stay absent. No raw nonce in evidence or target tables. |
+| `connect:slack:nonce:*`, `connect:gh:nonce:*`, `connect:zoho:nonce:*`, `connect:jira:nonce:*`, `connect:linear:nonce:*` | `afd_connector/src/registry.rs`, `state/nonce.rs` | Count only; exclude from exports/import. Old callbacks reject after cutover; users start fresh connect flows. Installed grants are unaffected. |
 | `fleet:anomaly:<fleet_id>:<tool>:<action>` | `afd_gate/src/gate/store.rs` | Preserve count and remaining window; resetting it could bypass an approval trigger. |
 | `fleet:<fleet_id>:activity` | `afd_redis/src/streams.rs` | Ephemeral channel, not a stored key; keep channel bytes; reconnect viewers through sharded pub/sub and durable history. |
 | `core.fleet_events`, `core.fleet_sessions`, `fleet.runner_leases`, `fleet.runner_affinity`, approval and billing rows | `docs/architecture/data_flow.md` | PostgreSQL stays authoritative; reconcile identities, terminal/payment state, lease fencing, approvals, counters, and allocator high watermarks. |
