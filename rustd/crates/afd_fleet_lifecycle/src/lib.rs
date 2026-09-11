@@ -55,6 +55,31 @@ use afd_db::Db;
 use afd_redis::{FleetStreams, ReadyIndex, Redis};
 use afd_vault::Directory;
 
+/// The purge's statements, for the lane that runs them against a live role.
+///
+/// Gated on `test-util` because nothing in production reaches SQL text through
+/// this crate's surface — the purge runs its own constants. The integration lane
+/// needs them by name rather than by copy: a test that retypes the statements
+/// proves the copy in the test file, and the pair drifts silently the moment one
+/// side is edited, which is the RULE STS failure in miniature.
+/// Bindings rather than `pub use`, because the statements stay `pub(crate)`.
+/// Re-exporting them would make each one a `pub` item in a private module —
+/// `unreachable_pub` without the feature, and a wider surface with it. A `const`
+/// initialised from the crate's own is the same text with no second definition.
+#[cfg(feature = "test-util")]
+pub mod purge_statements {
+    /// See `crate::sql::purge::ALLOW_GATE_PURGE`.
+    pub const ALLOW_GATE_PURGE: &str = crate::sql::purge::ALLOW_GATE_PURGE;
+    /// See `crate::sql::purge::ASSUME_MEMORY_ROLE`.
+    pub const ASSUME_MEMORY_ROLE: &str = crate::sql::purge::ASSUME_MEMORY_ROLE;
+    /// See `crate::sql::purge::RELEASE_ROLE`.
+    pub const RELEASE_ROLE: &str = crate::sql::purge::RELEASE_ROLE;
+    /// See `crate::sql::purge::PURGE_MEMORY`.
+    pub const PURGE_MEMORY: &str = crate::sql::purge::PURGE_MEMORY;
+    /// See `crate::sql::purge::PURGE_CHILDREN`.
+    pub const PURGE_CHILDREN: &[&str] = crate::sql::purge::PURGE_CHILDREN;
+}
+
 pub use self::edit::{ConfigSource, Patch, Patched, Requested};
 pub use self::error::{Error, Result};
 pub use self::install::{Install, Installed, LibrarySource};

@@ -14,6 +14,15 @@
 //! approval gates and sessions do not, so they are deleted here, in the same
 //! transaction as the parent.
 //!
+//! # The memory rows need a role this path does not otherwise hold
+//!
+//! `memory.memory_entries` sits behind `memory_runtime`, which `api_runtime`
+//! holds WITH INHERIT FALSE (schema/110) and must assume per transaction. The
+//! purge assumes it, deletes, and gives it straight back — see
+//! [`purge_children`]. Every other memory reader in the product already did
+//! this; the purge did not, and a login role carrying `pg_write_all_data` meant
+//! no deployment could report the difference.
+//!
 //! `billing.usage_ledger` survives deliberately. Its `fleet_id` is
 //! `ON DELETE SET NULL`, so a charge the wallet was already debited for outlives
 //! the fleet with its tenant scope intact. Erasing one would falsify the
@@ -67,7 +76,7 @@ impl Fleets {
         // the missing opt-in was unreachable. Install now raises a card for every
         // fleet declaring a mintable credential, which is the whole class of
         // fleets this would otherwise refuse to delete.
-        sqlx::query(sql::ALLOW_GATE_PURGE)
+        sqlx::query(sql::purge::ALLOW_GATE_PURGE)
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_ALLOW_PURGE))?;
@@ -85,13 +94,7 @@ impl Fleets {
             return Err(ErrorKind::MustKillFirst.into());
         }
 
-        for &statement in sql::PURGE_CHILDREN {
-            sqlx::query(statement)
-                .bind(fleet.as_str())
-                .execute(&mut *transaction)
-                .await
-                .map_err(error::query(CONTEXT_CHILDREN))?;
-        }
+        purge_children(&mut transaction, fleet.as_str()).await?;
 
         // Guarded on `killed` again, and that is not belt-and-braces: between
         // the probe above and this statement a concurrent PATCH can resurrect
@@ -144,6 +147,45 @@ impl Fleets {
 /// `warn` rather than `error`: the purge SUCCEEDED — Postgres committed — and
 /// what is left behind is unreachable rather than harmful. Paging somebody for
 /// keys that age out on their own would train them to ignore the signal.
+/// Deletes the child rows, each under the role entitled to reach it.
+///
+/// Split out of [`Fleets::purge`] because the memory rows need a role change
+/// either side of them, and three statements with two role changes between them
+/// read as a sequence rather than as the loop this used to be.
+///
+/// The order is load-bearing twice over. Memory first, while the role is held;
+/// `core` after, once it is given back — [`sql::purge::RELEASE_ROLE`] says why
+/// the reverse deadlocks on a permission error rather than merely looking untidy.
+///
+/// Every statement shares [`CONTEXT_CHILDREN`], so a refusal names the purge
+/// step rather than the role, which is the level an operator reads at.
+async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Result<()> {
+    sqlx::query(sql::purge::ASSUME_MEMORY_ROLE)
+        .execute(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_CHILDREN))?;
+
+    sqlx::query(sql::purge::PURGE_MEMORY)
+        .bind(fleet)
+        .execute(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_CHILDREN))?;
+
+    sqlx::query(sql::purge::RELEASE_ROLE)
+        .execute(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_CHILDREN))?;
+
+    for &statement in sql::purge::PURGE_CHILDREN {
+        sqlx::query(statement)
+            .bind(fleet)
+            .execute(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_CHILDREN))?;
+    }
+    Ok(())
+}
+
 fn report(fleet: &str, failure: &afd_redis::Error, event: &'static str) {
     let reason = failure.to_string();
     tracing::warn!(
