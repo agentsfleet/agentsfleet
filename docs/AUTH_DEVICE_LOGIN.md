@@ -242,15 +242,19 @@ Six invariants. All are tested explicitly.
 
 ### Planned Dragonfly recovery boundary
 
-The [Dragonfly target requirements](./architecture/datastore_scaling.md#cloud-connectivity-and-persistence) add recovery tests; they are not implemented or verified by this spec revision.
-For an operator snapshot restore, keep API/auth/connector writers fenced, delete restored auth:session:* and the inventoried connector nonce keys across all current primaries, verify absence and require fresh device/OAuth flows before reopening.
-The playbook also clears gate-response mirrors and reconciles their durable approval state; an interrupted cleanup must remain fenced.
+The [planned durable auth design](./architecture/datastore_scaling.md#durable-single-use-authentication) moves device-session and connector nonce state to PostgreSQL within the existing services. It is not implemented or verified by this documentation revision; the Redis flow elsewhere on this page still describes current code.
+Preserve existing state transitions, owner binding, code HMACs, encrypted payloads, attempt limits, expiry and the permitted 60-second same-fingerprint response retry. Guard transitions in PostgreSQL transactions and commit before returning protected ciphertext or authorizing a connector token exchange.
+An uncertain commit must not release a protected result; session retries consult committed state, while an uncertain nonce spend requires a fresh connect flow. Database failure never authorizes a Redis fallback. Expiry enforcement and indexed cleanup keep retained state bounded.
 
-Automatic failover is a different boundary: a replica missing the consume, abort or nonce-deletion write could expose an earlier active state while the daemon remains available.
-The affected login response is the existing encrypted payload; this is a replay-invariant risk, not evidence that an arbitrary caller can decrypt it or mint a credential.
-No maximum loss window or Indy acceptance of this exception has been established. A replica count or restore-time cleanup does not prove the single-use invariants across failover.
-M192 §6 must inject these failures and demonstrate preserved single-use behavior; observed replay blocks rollout until mitigated or an explicit, precisely scoped Indy exception is recorded here with evidence.
-Keep the current replay requirements intact; Fable's proposed acceptance is not authorization to weaken them.
+The source relies on Redis atomic consumption without a durable failover guarantee. [Upstash documents asynchronous replication](https://upstash.com/docs/redis/features/consistency), so this is a pre-existing protocol exposure, not evidence of a production exploit or a problem unique to Dragonfly.
+The replayed login response would be the original device-encrypted payload; this does not imply arbitrary callers can decrypt it or mint credentials. Nonetheless, unauthorized replay violates the invariant above.
+[Dragonfly WAIT](https://www.dragonflydb.io/docs/command-reference/generic/wait) reduces the loss window but does not guarantee acknowledged writes survive promotion. A retry after primary replacement also cannot attest to a consumed write lost on the old primary. WAIT is an optional diagnostic, not the selected mitigation.
+PostgreSQL auth state must use primary reads and durably acknowledged commits, with the service's actual failover durability verified before rollout; synchronous_commit=on alone does not establish synchronous replication. Lossy or unverified promotion cannot pass.
+
+The cutover fence covers every device/connect writer. Import surviving source state once with its original expiry and terminal/retry metadata; never manufacture evidence missing from historical Redis state or re-import auth after the protected receipt completes.
+After a Dragonfly snapshot restore, keep writers fenced while the playbook purges restored legacy auth/nonce keys and reconciles gate mirrors. PostgreSQL consumed/aborted/spent state stays authoritative, and valid unconsumed flows retain their usual behavior.
+A PostgreSQL snapshot rollback is a separate disaster: invalidate restored device/nonce state under the operator fence before reopening. Queue restore must never roll back or overwrite PostgreSQL auth state.
+M192 §5.4 and §6.2 test commit failures, races, permitted retries, queue failover and restore. Unauthorized replay fails readiness and must be fixed; no auth-risk exception is assumed.
 
 ## Cryptographic primitives (pinned)
 

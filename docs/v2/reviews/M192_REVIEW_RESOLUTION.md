@@ -10,10 +10,10 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| What was reviewed? | Claude Fable 5.1 reviews through 8b452d2e0; this revision adversarially checks the final ten corrections, retaining Indy's cluster-only deployment override. |
+| What was reviewed? | Claude Fable reviews through 6603eb7d8; this revision checks the final auth/WAIT, hub, billing and latency feedback, then adversarially reviews the amended spec and updates docs/TEMPLATE.md. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
 | What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
-| What still needs a decision? | Fixture-only outbound versus a new delivery feature; the proposed two-spec delivery split; service/cost budgets, disposition of any detected historical billing damage, automatic-failover auth proof/exception, and live approval. |
+| What still needs a decision? | Service/cost budgets and infrastructure, actual PostgreSQL failover durability, any detected historical billing-damage disposition, and live approval. Fixture-only outbound and the readiness/live split remain the scoped implementation defaults; no auth-risk exception is planned. |
 
 ## What it is
 
@@ -130,6 +130,8 @@ Indy's earlier verbatim local-cluster/manual-provisioning overrides remain in bo
 
 ### Final review of 8b452d2e0: adversarial assessment
 
+Historical disposition: the later 6603eb7d8 follow-up below supersedes this section's auth mitigation/exception and RTT-attribution wording; other requirements remain.
+
 The remaining findings do not prevent §1 baseline preparation. Hub recovery and billing rules must be corrected before their integration; live connectivity/authentication and measured budgets gate rollout.
 No benchmark, prototype, Cloud probe or migration has run. Changes below are spec requirements, not claims that defects are fixed in runtime code.
 
@@ -160,7 +162,47 @@ The existing schema's global key may already have merged stage charges, dropped 
 
 [PostgreSQL column grants](https://www.postgresql.org/docs/17/sql-grant.html) support the narrow update boundary; the old table-level privilege must be revoked during upgrade.
 [Fly availability defaults](https://fly.io/docs/apps/app-availability/) distinguish service processes from processes without services; do not claim that every default deploy starts two active workers.
-[The auth recovery boundary](../../AUTH_DEVICE_LOGIN.md#planned-dragonfly-recovery-boundary) records the unapproved failover risk and the required proof without changing the current replay invariant.
+[The auth recovery boundary](../../AUTH_DEVICE_LOGIN.md#planned-dragonfly-recovery-boundary) now records the selected PostgreSQL mitigation and preserves the current protocol, including its intentional same-fingerprint response retry.
+
+### Follow-up at 6603eb7d8: final feedback and adversarial review
+
+This is the current disposition. Source findings below are verified against that application revision, Dragonfly e94300e6 and redis-rs 1.6.0; runtime behavior is NOT RUN.
+
+| Feedback | Decision and blocking boundary | Spec proof |
+|---|---|---|
+| 1: Single-use replay is a blocker; add WAIT | Agree on the invariant and the pre-existing source exposure. Reject WAIT as a complete mitigation: acknowledged data may still be lost on promotion, and WAIT on a successor cannot attest to a lost old-primary consume. Choose the review's PostgreSQL alternative now, within existing tenant/connector services, with commit-before-release and no dual auth authority. Blocks auth integration until proven, not §1 baseline work. | Canonical durable-auth design, §5.4 and §6.2; device retries/expiry/attempts/cancellation and every nonce family, races, commit uncertainty, queue failover and restore. WAIT remains optional diagnostics only. |
+| 2a: Reconnect after hub resubscribe | Add the explicit no-duplicate-frame proof after hub repair followed by reconnect. The client's set avoids duplicate tracker entries, but the hub must also avoid duplicate local forwarding. This does not assert exactly-once best-effort pub/sub across failures. | §0.1 uniquely published frames, wanted-membership reconciliation and final-drop races. |
+| 2b: Accumulation needs SELECT too | Retain existing table SELECT/INSERT while replacing broad UPDATE with the six-column grant. Prove the actual DO UPDATE reads and writes under api_runtime as well as rejected identity changes. | §2.2; no new marker table or tenant WHERE that skips the ledger while draining the wallet. |
+| 2c: Deleted-fleet audit limits | Preserve the qualification: a deleted fleet is not itself corruption, and missing history can hide collisions. Null legacy identity alone does not block; detected damage needs Indy's bounded disposition. | Canonical ledger audit and §2.2/§7.1; never reconstruct missing charges by guessing. |
+| 3: RTT attribution | Attribute acceptance of about 5 ms Fly iad → Dragonfly Cloud AWS us-east-1 to Indy, confirmed by the final handoff, rather than to Fable. Preserve the supplied decision without inventing an unavailable original sentence or timestamp; it is not measured request p99. | Both Discovery records and the canonical frame/request budget. |
+
+The revised auth design changes backing stores, not the cryptographic or HTTP protocol. It adds two bounded PostgreSQL state tables and uses existing pools/services; no new service, consensus layer, provider mode, or general auth framework is planned.
+
+| Source / counterexample | What it establishes |
+|---|---|
+| Dragonfly e94300e6 src/server/server_family.cc:3641–3781 | WAIT captures global shard LSNs, solicits replica ACKs and returns a count; replica/role changes and timeout are explicit. The wait loop sleeps 100 ms when the first count is insufficient. It is real, but neither one in-zone RTT nor safe promotion is established. |
+| redis-rs 1.6.0 src/cluster_handling/routing.rs:558,662 | WAIT fans out to all primaries and takes the minimum; this is an availability/latency coupling, not an atomic consume-plus-replication transaction. |
+| Consume succeeds on A; A loses the consume before WAIT; cluster retry sends WAIT to B | B's current journal does not contain the old mutation. A successful acknowledgment cannot prove a mutation absent from that journal. This is a design counterexample, not a reported test result. |
+| rustd/crates/afd_tenant/src/session/mod.rs; afd_redis/src/session/verify_consume.lua; afd_connector/src/state/nonce.rs and connect.rs | Existing services own the device state machine, same-fingerprint retry and nonce spend-before-exchange; move storage while retaining caller authorization order and cryptographic boundaries. |
+| schema/710_usage_ledger.sql:91; three ledger statements | SELECT already exists; effective privileges must allow real accumulation while rejecting identity mutation. |
+
+[Dragonfly's WAIT documentation](https://www.dragonflydb.io/docs/command-reference/generic/wait) explicitly limits failover guarantees. [Upstash's consistency documentation](https://upstash.com/docs/redis/features/consistency) establishes asynchronous replication, not an observed incident on this deployment.
+[PostgreSQL synchronous replication](https://www.postgresql.org/docs/17/warm-standby.html#SYNCHRONOUS-REPLICATION) and [commit configuration](https://www.postgresql.org/docs/17/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT) distinguish durable local commit from a properly configured failover guarantee.
+
+The separate adversarial pass after the amendments found and corrected these gaps:
+
+| Gap | Correction / remaining boundary |
+|---|---|
+| Moving auth to PostgreSQL could merely move the replay window | Require primary reads and acknowledged-commit durability under the actual service's promotion policy. synchronous_commit=on alone is insufficient. Verify that policy before Cloud readiness; lossy/unverified promotion blocks rollout. Its configuration remains unverified, not silently assumed. |
+| Source re-import could recreate a spent nonce | Auth stays closed before the protected import receipt. Initial import preserves expiry and terminal state; after completion the tool verifies only and refuses another auth copy. Queue snapshot restore never overwrites PostgreSQL auth. §2.3/§5.4/§7.1 cover these boundaries. |
+| Files Changed implied editing already-shipped schema slots | Replace that scope with new numbered migrations and current Rust registration. Fresh/populated upgrade, interrupted rerun and pre-admission abort must work; the retired Zig embed is not a dependency. This is required before §2 schema implementation. |
+| §6 used an unnamed “baseline” for a workload absent from historical Redis | Name three matched fault-free Dragonfly references per case, fixed fault/recovery windows, relative post-recovery checks and absolute budgets. Historical B cannot be the denominator. Collect these before fault grading. |
+| New auth persistence lacked cost/scope coverage | Include tenant/connector/API composition, tables/grants and tests; freeze auth transaction/commit rates, request latency, pool contention, WAL and expiry cleanup under combined load. This extends the existing PostgreSQL budget, not the Dragonfly throughput claim. |
+
+Remaining execution prerequisites are explicit: §1 needs CHORE(open), B0 and an owned reset rig; §0 needs local cluster setup; §6 needs numeric budgets, paid capacity approval, real Cloud identity/TLS/ACL and PostgreSQL durability evidence. Shard hostname/IP behavior and vendor IP restriction support remain named Cloud probes, not a peering project.
+No remaining text defect found in this pass prevents §1. This is readiness to start the ordered implementation, not proof that later integration, load or live cutover can pass.
+
+The docs/TEMPLATE.md update carries the general lessons into authoring: name enforcement and failure assumptions, verify both protocol sides, trace real writers, handle historical identity and populated upgrades, budget the full path with a named comparator, distinguish evidence tiers and decision provenance, and run a separate adversarial pass. It preserves the existing sections, rubric and 320-line filled-spec limit.
 
 ### Prototype admission and completion
 
@@ -173,6 +215,7 @@ The prototype grader requires historical capture and the complete risk matrix; d
 | Sharded live tail | Wrong node, restart, slot movement, unsubscribe races, slow viewers, and bounded memory/socket counts. | Frames resume within budget; no tenant misrouting, permanent-error reconnect loop, or unbounded buffers. |
 | Outbox and retained scripts | CROSSSLOT test-only control, single-key Lua flush, lost XADD replies, moved slots, and cancelled BLOCK. | Physical duplicates preserve logical identity/order; Dedicated resources return to baseline. |
 | Durable identity and replay | Stop around admission/receipt/charge commits and append; destroy queue; replay late; race expiry and gate refusal. | No lost acceptance or missing eligible debit; no double charge/run/count; pre-charge refusals remain unpaid and post-charge approval policy survives. |
+| Durable authentication | Race approve/consume/cancel and nonce spends, stop around PostgreSQL commits, lose responses and restore/fail over the queue. | No unauthorized ciphertext/exchange or terminal-state resurrection; permitted retry and expiry remain intact. PostgreSQL durability and combined-load cost require separate evidence. |
 | Admission and coordination | PostgreSQL pool/allocator pressure, hot fleets, App fan-out, stalled destinations, owner movement, and population growth. | Frozen budgets for both stores, fairness, and recovery pass; further batching/partitioning requires measured proof. |
 | Operational rehearsal | All inventoried prefixes, no-expiry claims, consumed nonces, queue-only work, leases/payment records, and duplicate writers. | Combined import/Swarm cutover reconciles; missing receipt closes admission and workflow mutations; unsafe abort and unknown keys block. |
 | Evidence integrity | Change raw bytes, topology, claimed Cloud environment, run IDs, or live/rehearsal labels. | Grader rejects each mutation; authenticated origin and manual approvals remain independent requirements. |

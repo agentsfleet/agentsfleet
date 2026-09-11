@@ -4,7 +4,7 @@
 >
 > **Scope:** this file describes the runtime as it runs now — after the M80_002 cutover. `agentsfleetd` is the **control plane** (owns Postgres, Redis, the Vault, the HTTP API, and work assignment); the host-resident **`agentsfleet-runner`** daemon is the **execution plane** (leases work over Hypertext Transfer Protocol Secure (HTTPS), runs NullClaw in a forked sandboxed child, reports back). The single-process `agentsfleetd worker` loop and the standalone sandbox sidecar are deleted. See [`runner_fleet.md`](./runner_fleet.md) for the why and the guarantees.
 
-> **Planned admission change:** [Durable event identity](./datastore_scaling.md#durable-event-identity) defines acceptance before queue publication, receipt/ledger atomicity, and numeric history ordering. The insert-on-lease flow below remains the inspected implementation until those proofs land.
+> **Planned admission change:** [Durable event identity](./datastore_scaling.md#durable-event-identity) defines acceptance before queue publication, receipt/ledger atomicity, and numeric history ordering. [Durable authentication](./datastore_scaling.md#durable-single-use-authentication) also moves device/nonce state into PostgreSQL. The insert-on-lease and Redis-auth flows below remain the inspected implementation until those proofs land.
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 
