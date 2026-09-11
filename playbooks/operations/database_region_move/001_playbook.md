@@ -44,10 +44,26 @@ For the environment being moved:
    lock. The login roles the strings name are branch credentials created in
    the console. The migrator's creates every schema, so it needs what the
    live one has; the API's must be a member of `api_runtime`
-   (`schema/110_roles_and_privileges.sql`). unverified: the grant that made
-   the live API login a member of `api_runtime` is not recorded in
-   `playbooks/` — when you create the new branch's credentials, apply the
-   same grant and write it into this step.
+   (`schema/110_roles_and_privileges.sql`) — and of nothing else:
+
+       pscale role create <db> <branch> <name> --inherited-roles api_runtime
+
+   Measured on both branches rather than assumed. The API login on the live
+   `us-east` branch holds exactly `api_runtime` (INHERIT TRUE, SET TRUE), and
+   that is sufficient: `SET ROLE memory_runtime` resolves transitively through
+   it, because `schema/110` grants `memory_runtime` to `api_runtime` SET TRUE
+   and every hop on the chain carries the same option.
+
+   **Do not add `pg_read_all_data` or `pg_write_all_data`.** The Ohio login
+   carried both, which is why nothing ever reported that `fleet delete` was
+   issuing three statements `api_runtime` had no grant for — the two built-in
+   roles cover every table in every schema, including the `memory` schema
+   `schema/110` fences on purpose. A branch created without them refuses the
+   purge on its first attempt, which is how the gap was finally found. The
+   grants are now correct in `schema/900`, and
+   `integration_purge_privileges.rs` asserts both directions against a database
+   migrated from `schema/`. Re-adding the blanket roles would put the fence
+   back to decorative and re-hide the next one.
 5. IP restrictions are per database, not per branch, so the Fly egress
    allowlist carries over. Nothing to redo.
 
