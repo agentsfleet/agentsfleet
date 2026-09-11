@@ -15,9 +15,12 @@ import {
 import { type Fleet } from "@/lib/api/fleets";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { workspacePath } from "@/lib/workspace-routes";
-import { useWorkspaceFleetStream } from "@/components/domain/useWorkspaceStream";
+import {
+  useWorkspaceFleetStream,
+  type TileCounters,
+} from "@/components/domain/useWorkspaceStream";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
-import { deriveFleetIdentity, type FleetIdentity } from "./fleetIdentity";
+import { deriveFleetIdentity, type FleetIdentity } from "@/lib/fleets/identity";
 import {
   deriveTileLiveness,
   fleetRowState,
@@ -35,7 +38,7 @@ import {
 type Props = { fleet: Fleet; workspaceId: string };
 
 export const FLEET_AGENT_DESCRIPTION =
-  "Always-on AI agent that wakes on events and gathers evidence.";
+  "Runs in a loop: wakes on events, gathers evidence.";
 export const FLEET_WAITING_COPY = "Waiting for the next event.";
 export const FLEET_NO_LIVE_ACTIVITY_COPY = "No live activity.";
 export const MANAGE_FLEET_LABEL = "Manage fleet";
@@ -106,7 +109,10 @@ function DrainedTile({ fleet, workspaceId }: Props) {
 }
 
 function StreamingTile({ fleet, workspaceId }: Props) {
-  const { events, connectionStatus, helloReceived, isLive, catchingUp } =
+  // The footer is the snapshot the last frame carried — server truth the
+  // stream ASSIGNED, never a sum the browser kept. Until the stream has said
+  // anything about this fleet it is undefined and the server render stands.
+  const { events, connectionStatus, helloReceived, isLive, catchingUp, counters } =
     useWorkspaceFleetStream(fleet.id);
   const liveness = deriveTileLiveness(fleet.status, connectionStatus);
   const kind = liveness.kind === "live" && helloReceived && !isLive ? "snapshot" : liveness.kind;
@@ -133,6 +139,7 @@ function StreamingTile({ fleet, workspaceId }: Props) {
       eyebrow={eyebrowInfo?.text}
       eyebrowTitle={eyebrowInfo?.tooltip}
       feed={lastEvent?.text}
+      counters={counters}
       emptyActivity={actuallyLive ? FLEET_WAITING_COPY : FLEET_NO_LIVE_ACTIVITY_COPY}
     >
       <span
@@ -152,6 +159,8 @@ function StreamingTile({ fleet, workspaceId }: Props) {
 
 type ShellProps = {
   fleet: Fleet;
+  /** The stream's snapshot for the footer. Absent on a drained tile, which opens no stream. */
+  counters?: TileCounters;
   workspaceId: string;
   kind: TileKind;
   live: boolean;
@@ -212,17 +221,21 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }
   );
 }
 
-function TileMetrics({ fleet }: { fleet: Fleet }) {
+function TileMetrics({ fleet, counters }: { fleet: Fleet; counters?: TileCounters }) {
+  // A drained tile has no stream, and a live one has not yet been told where
+  // the fleet stands; both show what the server rendered.
+  const spent = counters?.spentNanos ?? fleet.budget_used_nanos;
+  const processed = counters?.eventsProcessed ?? fleet.events_processed;
   return (
     <div className="flex items-center justify-between font-sans text-xs text-muted-foreground tabular-nums">
-      <span><span className="font-mono">{formatTileSpend(fleet.budget_used_nanos)}</span> {TILE_SPEND_SUFFIX}</span>
-      <span><span className="font-mono">{formatTileEvents(fleet.events_processed)}</span> {TILE_EVENTS_SUFFIX}</span>
+      <span><span className="font-mono">{formatTileSpend(spent)}</span> {TILE_SPEND_SUFFIX}</span>
+      <span><span className="font-mono">{formatTileEvents(processed)}</span> {TILE_EVENTS_SUFFIX}</span>
       <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} className="font-mono" />
     </div>
   );
 }
 
-function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed, emptyActivity, children }: ShellProps) {
+function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed, emptyActivity, counters, children }: ShellProps) {
   // Stream frames re-render this tile frequently; identity changes only when
   // React reuses the tile for a different immutable Fleet identifier.
   const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
@@ -250,7 +263,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
         <div className="min-h-[1.25rem] font-sans text-xs text-muted-foreground truncate">
           {feed ?? emptyActivity}
         </div>
-        <TileMetrics fleet={fleet} />
+        <TileMetrics fleet={fleet} counters={counters} />
         <div className="mt-auto flex justify-end border-t border-border pt-3">
           <span className="font-sans text-xs font-medium text-pulse">
             {MANAGE_FLEET_LABEL} →

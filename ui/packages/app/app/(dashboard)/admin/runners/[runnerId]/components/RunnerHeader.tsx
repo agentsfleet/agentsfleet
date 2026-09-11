@@ -183,7 +183,7 @@ export function RunnerHeader({
           ) : null}
           {canWrite && canSelftest(adminState) ? (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={runner.selftest_requested_at !== null}
               onClick={runSelftest}
@@ -256,7 +256,7 @@ export function RunnerHeader({
             </Button>
           ) : null}
           {grafanaHref ? (
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="ghost" size="sm">
               <a href={grafanaHref} target="_blank" rel="noreferrer">
                 {OPEN_GRAFANA_LABEL} <ExternalLinkIcon size={12} aria-hidden="true" />
               </a>

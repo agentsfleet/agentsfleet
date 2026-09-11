@@ -91,7 +91,7 @@ describe("event_complete — the closing bracket", () => {
     });
     expect(event).toMatchObject({
       status: "processed",
-      outcome: OUTCOME.NO_REPLY,
+      outcome: OUTCOME.COMPLETED,
       tokens: 1200,
       wallMs: 12_000,
       costNanos: 40_000_000,

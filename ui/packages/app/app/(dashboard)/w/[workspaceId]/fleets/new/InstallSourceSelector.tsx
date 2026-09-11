@@ -205,7 +205,7 @@ export function InstallSourceSelector({
                 a null guard inside a handler: this branch is the only thing
                 that renders the control, so a guard could never have fired.
               */}
-              <Button type="button" variant="secondary" onClick={() => loadMore(nextCursor)} disabled={pending}>
+              <Button type="button" variant="ghost" onClick={() => loadMore(nextCursor)} disabled={pending}>
                 {pending ? "Loading…" : "Load more"}
               </Button>
               <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -238,7 +238,7 @@ export function InstallSourceSelector({
       {error ? (
         <div role="alert" className="flex items-center gap-3">
           <p className="text-sm text-destructive">{galleryErrorCopy(error)}</p>
-          <Button type="button" variant="secondary" onClick={retryFailedRead} disabled={pending}>
+          <Button type="button" variant="ghost" onClick={retryFailedRead} disabled={pending}>
             Retry
           </Button>
         </div>

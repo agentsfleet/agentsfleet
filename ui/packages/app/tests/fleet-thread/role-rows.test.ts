@@ -22,7 +22,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
       React.createElement(FleetThread, {
         workspaceId: WS,
         fleetId: ZID,
-        fleetName: "",
+        senderLabel: "",
         initial: [],
       }),
     );

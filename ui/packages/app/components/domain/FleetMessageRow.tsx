@@ -35,14 +35,14 @@ export type RowTone = (typeof ROW_TONE)[keyof typeof ROW_TONE];
 // The console's own fleet, so a fleet reply is labelled with the fleet's name
 // rather than the word "fleet". Rows are rendered by a callback the thread
 // primitive owns, so the name reaches them through context rather than props.
-const FleetNameContext = createContext<string>("");
+const SenderLabelContext = createContext<string>("");
 const RelativeNowContext = createContext<Date | null>(null);
 
-export function FleetNameProvider({
-  fleetName,
+export function SenderLabelProvider({
+  senderLabel,
   children,
 }: {
-  fleetName: string;
+  senderLabel: string;
   children: ReactNode;
 }) {
   const [now, setNow] = useState(() => new Date());
@@ -56,16 +56,16 @@ export function FleetNameProvider({
   }, []);
 
   return (
-    <FleetNameContext.Provider value={fleetName}>
+    <SenderLabelContext.Provider value={senderLabel}>
       <RelativeNowContext.Provider value={now}>
         {children}
       </RelativeNowContext.Provider>
-    </FleetNameContext.Provider>
+    </SenderLabelContext.Provider>
   );
 }
 
-export function useFleetName(): string {
-  return useContext(FleetNameContext);
+export function useSenderLabel(): string {
+  return useContext(SenderLabelContext);
 }
 
 export type FleetMessageRowProps = {

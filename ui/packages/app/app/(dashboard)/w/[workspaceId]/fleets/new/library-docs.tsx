@@ -32,7 +32,7 @@ export const FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY =
 // beside it is always the concrete action (Install fleet / Create fleet library).
 export function LibraryDocsLink() {
   return (
-    <Button asChild variant="outline" size="sm">
+    <Button asChild variant="ghost" size="sm">
       <a href={CREATE_LIBRARY_DOC_URL} target="_blank" rel="noopener noreferrer">
         <CircleHelpIcon size={14} aria-hidden="true" />
         Learn more

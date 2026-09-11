@@ -65,7 +65,7 @@ export default function RunMetricsStrip({
         <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} divided />
       </DescriptionList>
       {pendingApprovals > 0 ? (
-        <Button asChild variant="outline" size="sm">
+        <Button asChild variant="ghost" size="sm">
           <Link href={approvalsHref}>
             {pendingApprovals}{" "}
             {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} →
@@ -124,8 +124,11 @@ function Metric({
 function latestOutcome(latest: RunFigures | null, available: boolean): string {
   if (!available) return METRICS_UNAVAILABLE;
   if (latest === null) return METRICS_EMPTY;
-  // The reply text is not on the list row any more (the list read carries no
-  // bodies), so the strip states the outcome rather than quoting the answer.
+  // The list read carries no bodies, so the strip states the outcome rather
+  // than quoting the answer — and, for a processed run, states only that it
+  // completed. It used to say "no reply recorded" here, which the thread below
+  // contradicted on every successful run: the null it read was UNREAD, not
+  // absent.
   return outcomeFor(latest);
 }
 

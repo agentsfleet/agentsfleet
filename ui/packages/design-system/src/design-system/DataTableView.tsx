@@ -79,7 +79,7 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                 aria-sort={canSort ? ariaSort : undefined}
                 className={cn(
                   "text-left font-sans text-label font-medium uppercase tracking-label text-muted-foreground",
-                  canSort ? "p-0" : "px-3 py-1.5",
+                  canSort ? "p-0" : "px-3 py-2",
                   definition?.numeric && "text-right",
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
@@ -140,7 +140,7 @@ function DataTableBody<T extends DataTableRowData>({
               <td
                 key={cell.id}
                 className={cn(
-                  "px-3 py-1.5 align-middle text-foreground",
+                  "px-3 py-2 align-middle text-foreground",
                   definition?.numeric && "text-right tabular-nums",
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
@@ -259,11 +259,17 @@ export function DataTableView<T extends DataTableRowData>({
     >
       <div
         ref={viewportRef}
-        // Contain only horizontal overscroll so an unbounded table lets the page scroll.
+        // Unbounded by default: a table that already paginates lets the PAGE
+        // scroll rather than opening a second scroll region of its own. The
+        // old `max-h-96` default did the opposite, and its scrollbar sat inside
+        // the cell padding — so on exactly the tables with more rows than the
+        // box, header text and row actions moved 6px in from the right while
+        // the footer, outside the box, stayed put. A consumer that wants a
+        // bounded, sticky-headed pane passes the bound in `viewportClassName`;
+        // `overflow-y-auto` and the pinned header engage only once it does.
         className={cn(
           "overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
           stickyHeader && "overflow-y-auto",
-          stickyHeader && !viewportClassName && "max-h-96",
           viewportClassName,
         )}
         tabIndex={0}

@@ -227,24 +227,30 @@ describe("DataTable", () => {
     expect(headerCell.className).toContain("p-0");
     expect(headerButton.className).toContain("h-8");
     expect(headerButton.className).toContain("focus-visible:ring-inset");
-    expect(bodyCell.className).toContain("py-1.5");
-    expect(bodyCell.className).not.toContain("py-2");
+    // 8px, on the 4px scale: 6px put every row height off the grid.
+    expect(bodyCell.className).toContain("py-2");
+    expect(bodyCell.className).not.toContain("py-1.5");
   });
 
-  it("bounds the table and pins its header by default", () => {
+  it("is unbounded by default, so a paginated table lets the page scroll", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />,
     );
-    const scrollDiv = container.querySelector(".max-h-96.overflow-y-auto");
-    expect(scrollDiv).toBeInTheDocument();
-    expect(scrollDiv?.className).toContain("motion-safe:scroll-smooth");
-    expect(scrollDiv?.querySelector("table")).toBeInTheDocument();
+    const viewport = container.querySelector('[role="region"]') as HTMLElement;
+    expect(viewport.className).toContain("overflow-y-auto");
+    expect(viewport.className).toContain("motion-safe:scroll-smooth");
+    // No height bound of any size. The retired max-h-96 default opened a
+    // second scroll region whose scrollbar sat inside the cell padding, so on
+    // exactly the tables with more rows than the box the header text and row
+    // actions moved 6px in from the right while the footer stayed put.
+    expect(viewport.className).not.toMatch(/\bmax-h-/);
+    expect(viewport.querySelector("table")).toBeInTheDocument();
     const thead = container.querySelector("thead") as HTMLElement;
     expect(thead.className).toContain("sticky");
     expect(thead.className).toContain("top-0");
   });
 
-  it("uses an explicit viewport height instead of the default cap", () => {
+  it("bounds the viewport only when the consumer passes a height", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} viewportClassName="max-h-72" />,
     );
@@ -253,13 +259,30 @@ describe("DataTable", () => {
     expect(container.querySelector(".max-h-96")).toBeNull();
   });
 
-  it("stickyHeader=false removes the height bound and pinned header", () => {
+  it("stickyHeader=false removes the pinned header and the vertical scroll region", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader={false} />,
     );
-    expect(container.querySelector(".max-h-96")).toBeNull();
+    const viewport = container.querySelector('[role="region"]') as HTMLElement;
+    expect(viewport.className).not.toContain("overflow-y-auto");
     const thead = container.querySelector("thead") as HTMLElement;
     expect(thead.className).not.toContain("sticky");
+  });
+
+  it("pulls the trailing page controls back onto the body's right column", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(r) => r.id}
+        pagination={{ kind: "page", page: 1, pageSize: 2, total: 6, onPageChange: () => {} }}
+      />,
+    );
+    // Prev and Next are ghost buttons: their padding paints nothing, so
+    // inside the footer's px-3 the "›" glyph sat 13px further in than the row
+    // actions above it. The cluster is pulled back by exactly that padding.
+    const next = screen.getByRole("button", { name: "Next page" });
+    expect(next.parentElement).toHaveClass("-mr-3");
   });
 
   it("contains overscroll on the horizontal axis only", () => {

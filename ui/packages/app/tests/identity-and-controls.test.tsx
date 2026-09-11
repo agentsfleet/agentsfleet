@@ -2,11 +2,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import {
-  AgentLabel,
-  DELETED_AGENT_LABEL,
-  agentDisplayName,
-} from "@/components/domain/AgentLabel";
+import { AgentLabel } from "@/components/domain/AgentLabel";
+import { DELETED_AGENT_LABEL, agentDisplayName } from "@/lib/fleets/agent-label";
 import { RefreshButton } from "@/components/domain/RefreshButton";
 
 afterEach(() => {

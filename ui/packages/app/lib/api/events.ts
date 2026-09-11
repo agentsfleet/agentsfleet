@@ -161,17 +161,33 @@ export async function listWorkspaceEvents(
   );
 }
 
+/**
+ * Where the fleet's counters stand after a frame — absolute, so the client
+ * ASSIGNS them rather than adding to them. A snapshot is idempotent where a
+ * delta is not: a dropped, duplicated or late frame cannot leave a tile wrong.
+ *
+ * Both or neither. The daemon flattens an optional pair, and a read that did
+ * not answer sends the frame without them, which the store reads as "leave
+ * what you have standing" — never zeros, which would say the fleet has done
+ * nothing. Optional on the TYPE because the wire is untrusted.
+ */
+export type FleetCountersSnapshot = {
+  events_processed?: number;
+  budget_used_nanos?: number;
+};
+
 export type ActivityLiveFrame =
   // The row as the lease verb opened it: who raised it, how it entered, and
   // the row's own instant. Every field past the identifier is optional on the
   // TYPE because the wire is untrusted; the reducer guards each and falls back.
-  | {
+  // The counters ride here because a receive is when `events_processed` moves.
+  | ({
       kind: typeof FRAME_KIND.EVENT_RECEIVED;
       event_id: string;
       actor: string;
       event_type?: EventTypeValue;
       created_at?: number;
-    }
+    } & FleetCountersSnapshot)
 
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_STARTED;
@@ -200,31 +216,33 @@ export type ActivityLiveFrame =
   // the channel names, plus the two fleet facts a run can change — a watcher
   // folds this in and reads nothing. Typed partial past the identifier for
   // the reason the opening bracket is.
+  // The counters sit on this fleet-facts block, never on `EventRow`: the row
+  // carries one event's figures and the snapshot carries the fleet's totals.
   | ({ kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string } & Partial<
       Omit<EventRow, "event_id" | "fleet_id" | "workspace_id">
     > & {
         fleet_status?: string;
         pending_approvals?: number;
-      })
+      } & FleetCountersSnapshot)
   // A human has been asked about one of the fleet's actions; the count is how
   // many answers are owed, this one included.
-  | {
+  | ({
       kind: typeof FRAME_KIND.GATE_OPENED;
       gate_id: string;
       event_id: string;
       pending_approvals: number;
-    }
+    } & FleetCountersSnapshot)
 
   // A human answered, or the window closed with no answer. The event is null
   // for a gate raised outside a run (a standing grant).
-  | {
+  | ({
       kind: typeof FRAME_KIND.GATE_RESOLVED;
       gate_id: string;
       event_id: string | null;
       status: string;
       resolved_by: string;
       pending_approvals: number;
-    }
+    } & FleetCountersSnapshot)
 
   // Install-progression frames carry only their discriminating `kind` (the kind
   // itself names the step). The registry forks these off the chat-event path —
@@ -240,6 +258,13 @@ export type ActivityLiveFrame =
 export type WorkspaceHelloFrame = {
   kind: typeof FRAME_KIND.HELLO;
   fleet_ids: string[];
+  /**
+   * Where each announced fleet stands, keyed by fleet id, so a subscriber is
+   * right before its first event frame. May be shorter than `fleet_ids`: a
+   * read that did not answer omits the fleet, and the store leaves what it
+   * has standing for it.
+   */
+  counters?: Record<string, FleetCountersSnapshot>;
 };
 
 export type WorkspaceCatchingUpFrame = {

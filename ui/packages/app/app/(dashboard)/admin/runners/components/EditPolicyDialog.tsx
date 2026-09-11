@@ -90,7 +90,7 @@ export function EditPolicyDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
+        <Button type="button" variant="ghost" size="sm">
           <PencilIcon aria-hidden="true" /> {EDIT_POLICY_LABEL}
         </Button>
       </DialogTrigger>

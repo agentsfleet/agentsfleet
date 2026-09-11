@@ -34,21 +34,34 @@
 //! keep telling them apart. That is a deliberate follow-up rather than
 //! something to smuggle in behind a stream milestone, and the comment says so
 //! rather than claiming a coalescing the code does not perform.
+//!
+//! # The counters beside the set are NOT cached
+//!
+//! A `hello` names the set and where every fleet in it stands, so a subscriber
+//! is right before its first frame arrives. The set may be ten seconds old and
+//! nobody notices; a counter ten seconds old is the exact staleness the frame
+//! exists to remove. So [`Fleets::counters`] runs its statement every time,
+//! and it is asked only when a `hello` is about to go out — on connect and on
+//! a change to the set — never on the tick that finds the set steady.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
+use afd_wire::tail::FleetCounters;
 use moka::future::Cache;
 use sqlx::Row as _;
 
 use crate::Fleets;
 use crate::error::{self, Result};
-use crate::sql;
+use crate::sql::live_set as sql;
 
 /// What a failure in this read is reported as having been doing.
 const CONTEXT_LIVE_SET: &str = "enumerate a workspace's fleets";
+
+/// What a failure in the counters read is reported as having been doing.
+const CONTEXT_COUNTERS: &str = "read the counters of a workspace's fleets";
 
 /// How long an enumeration is served before it is read again.
 ///
@@ -117,6 +130,40 @@ impl Fleets {
             .map(|row| {
                 row.try_get::<String, _>(0)
                     .map_err(error::query(CONTEXT_LIVE_SET))
+            })
+            .collect()
+    }
+
+    /// Where every fleet of `workspace` in `fleets` stands, by identifier.
+    ///
+    /// Every identifier the workspace holds answers — zeros for a fleet that
+    /// has never run — so a client can assign each tile from the map without
+    /// a fallback; one it does not hold is absent, never disclosed. Read fresh
+    /// on every call; see the module note.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a row this build cannot
+    /// read.
+    pub async fn counters(
+        &self,
+        workspace: &Uuid7,
+        fleets: &[String],
+    ) -> Result<BTreeMap<String, FleetCounters>> {
+        let mut connection = self.database.acquire().await?;
+        let rows = sqlx::query(sql::SELECT_FLEET_COUNTERS_FOR_SET)
+            .bind(workspace.as_str())
+            .bind(fleets)
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_COUNTERS))?;
+        rows.iter()
+            .map(|row| {
+                let fleet_id: String = row.try_get(0).map_err(error::query(CONTEXT_COUNTERS))?;
+                let counters = FleetCounters {
+                    events_processed: row.try_get(1).map_err(error::query(CONTEXT_COUNTERS))?,
+                    budget_used_nanos: row.try_get(2).map_err(error::query(CONTEXT_COUNTERS))?,
+                };
+                Ok((fleet_id, counters))
             })
             .collect()
     }

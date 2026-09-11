@@ -25,12 +25,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
+use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
+use afd_db::{Db, PoolConfig};
 use afd_fleet_lifecycle::Fleets;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_redis::{Redis, fleet_stream_key};
@@ -47,6 +48,15 @@ const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 /// Port 1 is reserved and unbound on every platform this builds for, so a
 /// connection fails on refusal rather than waiting out a timeout.
 const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// A Postgres connection string nothing listens on.
+const NOWHERE_DATABASE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
+
+/// The acquire budget knob a deployment sets, and a short value for it — not
+/// so short the pool gives up before its first connect attempt answers, which
+/// `afd_db` would classify as capacity rather than an unreachable datastore.
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 /// The key this lane seals and opens every stored handle under.
 ///
@@ -184,6 +194,30 @@ impl Lane {
         Fleets::new(
             self.pool.clone(),
             dead,
+            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+            Entropy::new(),
+        )
+    }
+
+    /// The same store, pointed at a Postgres nobody answers on.
+    ///
+    /// `Db::unreachable` opens no socket, so the store is built without a
+    /// datastore anywhere near it and every acquire refuses as the transport
+    /// class — the shape of the outage a wall's `hello` has to survive.
+    pub(crate) fn with_dead_database() -> Fleets {
+        let environment = MapEnv::from_pairs([
+            (DbRole::Api.url_knob(), NOWHERE_DATABASE),
+            (ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS),
+        ]);
+        let dead = Db::unreachable(
+            &PoolConfig::resolve(&environment, DbRole::Api)
+                .expect("the fixture connection string is well formed"),
+        );
+        let config = RedisConfig::from_url(RedisRole::Default, NOWHERE.to_owned());
+        let queue = Redis::unreachable(&config).expect("a lazy manager opens no socket");
+        Fleets::new(
+            dead,
+            queue,
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),
             Entropy::new(),
         )

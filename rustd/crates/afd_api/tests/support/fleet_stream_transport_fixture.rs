@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use afd_wire::report::Outcome;
-use afd_wire::tail::{TailFrame, TailRow};
+use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_redis::streams::{FleetStreams, fleet_activity_channel};
@@ -226,6 +226,10 @@ pub(super) fn completion(event_id: &str) -> Value {
         }),
         fleet_status: afd_fleet_lifecycle::FleetStatus::Active.as_str().into(),
         pending_approvals: 0,
+        counters: Some(FleetCounters {
+            events_processed: 3,
+            budget_used_nanos: 21,
+        }),
     })
     .expect("the canonical completion frame serializes")
 }

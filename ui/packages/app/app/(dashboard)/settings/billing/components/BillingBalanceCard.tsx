@@ -90,7 +90,7 @@ function BuyCreditsButton() {
          * must not claim `disabled`/`aria-disabled` to assistive tech. Kept
          * visually muted (outline variant) since there's no in-app purchase
          * flow yet; the tooltip states exactly what clicking does. */}
-        <Button variant="outline" asChild data-testid="buy-credits-trigger">
+        <Button asChild data-testid="buy-credits-trigger">
           <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip">
             <CoinsIcon size={14} aria-hidden="true" />
             Buy credits

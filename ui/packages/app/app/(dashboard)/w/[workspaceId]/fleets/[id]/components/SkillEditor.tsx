@@ -250,7 +250,7 @@ function EditorActions({
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           {CANCEL_EDIT_LABEL}
         </Button>
-        <Button type="button" variant="secondary" size="sm" disabled={!changed} onClick={onSave}>
+        <Button type="button" size="sm" disabled={!changed} onClick={onSave}>
           {SAVE_SOURCE_LABEL}
         </Button>
       </div>
@@ -268,7 +268,7 @@ function EditorActions({
       >
         {expanded ? HIDE_SOURCE_LABEL : VIEW_SOURCE_LABEL}
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+      <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
         <PencilIcon size={14} /> {EDIT_SOURCE_LABEL}
       </Button>
     </div>

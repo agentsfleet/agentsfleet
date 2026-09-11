@@ -1,6 +1,6 @@
 import { EYEBROW_CLASS, cn } from "@agentsfleet/design-system";
 
-import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 /**
  * One fleet, spelled the same way on every surface that names one.
@@ -10,19 +10,9 @@ import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/co
  * carried by `EYEBROW_CLASS`. That split is why the Fleets tile read
  * `AGENT ORLY-6056` while Billing read `Agent Orly-6056` — each render site
  * decided its own casing, and one of them forgot. Rendering through this
- * component is what makes the decision once.
+ * component is what makes the decision once; the text itself is composed in
+ * `lib/fleets/agent-label.ts`, where billing and the sort keys read it too.
  */
-export const AGENT_PREFIX = "Agent";
-
-/** Shown where the fleet behind a historical row no longer exists. */
-export const DELETED_AGENT_LABEL = "Deleted agent";
-
-/** The agent's name as text, for sort keys, aria-labels and titles. */
-export function agentDisplayName(fleetId: string | null): string {
-  if (fleetId === null) return DELETED_AGENT_LABEL;
-  return `${AGENT_PREFIX} ${deriveFleetIdentity(fleetId).callsign}`;
-}
-
 export function AgentLabel({
   fleetId,
   className,

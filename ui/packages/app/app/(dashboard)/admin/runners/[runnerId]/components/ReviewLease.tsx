@@ -35,7 +35,7 @@ import {
   REVIEW_TOKENS_LABEL,
   UNKNOWN_OUTCOME_SENTENCE,
 } from "./runner-copy";
-import { agentDisplayName } from "@/components/domain/AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 const METER_SEPARATOR = " · ";

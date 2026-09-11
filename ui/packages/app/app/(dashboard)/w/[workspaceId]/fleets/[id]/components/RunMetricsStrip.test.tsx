@@ -50,7 +50,7 @@ describe("RunMetricsStrip", () => {
     // The strip names the outcome rather than quoting the answer: the list read
     // carries no reply text, so a completed run with nothing else to say reads
     // as exactly that.
-    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
+    expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("$0.04")).toBeTruthy();
     expect(screen.getByText("12.0s")).toBeTruthy();
@@ -65,10 +65,20 @@ describe("RunMetricsStrip", () => {
   it.each([
     [{ status: "gate_blocked", response_text: null }, OUTCOME.WAITING_APPROVAL],
     [{ status: "fleet_error", event_type: "ticket", response_text: null }, OUTCOME.FAILED],
-    [{ status: "processed", event_type: "ticket", response_text: null }, OUTCOME.NO_REPLY],
+    [{ status: "processed", event_type: "ticket", response_text: null }, OUTCOME.COMPLETED],
   ] as const)("derives every stored outcome fallback", (over, expected) => {
     renderStrip(event(over));
     expect(screen.getByText(expected)).toBeTruthy();
+  });
+
+  it("says a run completed rather than claiming no reply when the read carries no body", () => {
+    // Every processed row the list read returns looks like this: `response_text`
+    // is null because the page statement does not select it. The strip used to
+    // read that null as "no reply recorded" — while the thread underneath
+    // rendered the reply. The sentence may state completion and nothing more.
+    renderStrip(event({ status: "processed", response_text: null, failure_label: null }));
+    expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
+    expect(screen.queryByText(/no reply/i)).toBeNull();
   });
 
   it("renders a runner failure as a sentence, never as its raw tag", () => {
@@ -86,14 +96,14 @@ describe("RunMetricsStrip", () => {
     // A row whose stored timestamp does not read as a date still renders its
     // outcome; the strip drops the time instead of showing "Invalid Date".
     renderStrip(event({ created_at: Number.NaN }));
-    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
+    expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.queryByText(/invalid/i)).toBeNull();
   });
 
   it("shows when the latest outcome happened", () => {
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
     renderStrip(event({ created_at: at }));
-    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
+    expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.getByText(formatTimeClock(new Date(at)))).toBeTruthy();
   });
 

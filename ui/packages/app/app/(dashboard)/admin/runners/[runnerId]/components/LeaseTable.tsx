@@ -33,7 +33,7 @@ import {
   UNKNOWN_OUTCOME_SENTENCE,
   WORKSPACE_LABEL,
 } from "./runner-copy";
-import { agentDisplayName } from "@/components/domain/AgentLabel";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 const VALUE_UNKNOWN = "—";
 const SETTLED_OUTCOME_VARIANT: Partial<Record<RunnerLease["outcome"], BadgeVariant>> = {
@@ -66,13 +66,14 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       {
         key: "fleet",
         header: "Fleet",
-        // A lease whose fleet was deleted out from under it still names it: the
-        // callsign is derived from the id, so it is the same name the fleet
-        // carried while it existed, not one invented here. The id stays on the
-        // title, the way a person's subject does behind their name.
+        // The agent by callsign, as every other agent column names one — and
+        // the same whether or not the fleet still exists, because the callsign
+        // is derived from the id rather than read from a row that may be gone.
+        // The id stays on the title, the way a person's subject does behind
+        // their name; the fleet's given name is Review lease's to show.
         cell: (lease) => (
           <span className="truncate text-sm" title={lease.fleet_id}>
-            {lease.fleet_name ?? agentDisplayName(lease.fleet_id)}
+            {agentDisplayName(lease.fleet_id)}
           </span>
         ),
       },
