@@ -46,6 +46,7 @@ import {
   type LeaseLocation,
 } from "./fixtures/execution";
 import { installViaUI } from "./fixtures/install-ui";
+import { expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import {
   executionSkillMd,
@@ -95,7 +96,6 @@ const FLEET_STREAM_SEGMENT = "/fleets/";
 
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
-const LEASES_TABLE_LABEL = "Runner leases";
 const ASSISTANT_TURN = '[data-role="assistant"]';
 
 function uniqueTag(): string {
@@ -186,8 +186,8 @@ test.describe("fleet execution", () => {
     await observed(JOURNEY_LEG.install, () =>
       waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
     );
-    // The server may have suffixed the template's name; the tile and the
-    // lease row carry whatever it chose, so read it rather than assume it.
+    // The server may have suffixed the template's name; the tile carries
+    // whatever it chose, so read it rather than assume it.
     const name = await observed(JOURNEY_LEG.install, () =>
       readFleetName(FIXTURE_KEY.regular, workspaceId, fleetId),
     );
@@ -286,10 +286,9 @@ test.describe("fleet execution", () => {
     // ── 1.2, as the operator's own view: the lease on its runner's page ──
     await signInAs(page, FIXTURE_KEY.operator);
     await page.goto(`/admin/runners/${lease.runnerId}`);
-    const leases = page.getByRole("table", { name: LEASES_TABLE_LABEL });
-    await expect(leases).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(leases.getByRole("row").filter({ hasText: name }).first()).toBeVisible({
-      timeout: RENDER_TIMEOUT_MS,
-    });
+    await expect(leasesTable(page)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    const leaseRow = leaseRowsFor(page, fleetId).first();
+    await expect(leaseRow).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expectAgentLabel(leaseRow, fleetId);
   });
 });
