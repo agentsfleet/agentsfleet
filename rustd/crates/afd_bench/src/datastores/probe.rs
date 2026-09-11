@@ -23,7 +23,7 @@ pub struct DatastoreProbe {
     pub redis_replication_raw: String,
     /// `CLUSTER NODES`, or the exact refusal on a standalone server.
     pub redis_topology_raw: String,
-    /// Every address advertised by Postgres, replication or cluster topology.
+    /// Every address advertised by Redis replication or cluster topology.
     pub discovered_hosts: Vec<String>,
 }
 
@@ -60,10 +60,6 @@ impl Datastores {
         let postgres_port: i32 = row.try_get(1)?;
         let database: String = row.try_get(2)?;
         let postgres_version: String = row.try_get(3)?;
-        if postgres_host != LOCAL_HOST {
-            target.check_discovered_host("connected Postgres", &postgres_host)?;
-        }
-
         let redis_server_raw = redis_info(self, command::SERVER).await?;
         let redis_replication_raw = redis_info(self, command::REPLICATION).await?;
         let mut cluster = redis::cmd(command::CLUSTER);
@@ -79,7 +75,10 @@ impl Datastores {
             }
             Err(refusal) => (format!("refused: {refusal}"), Vec::new()),
         };
-        let mut discovered_hosts = vec![postgres_host.clone()];
+        // `inet_server_addr()` is the server's own container-side interface,
+        // not a client redirect or reconnect address. The configured Postgres
+        // endpoint was already checked before this connection opened.
+        let mut discovered_hosts = Vec::new();
         if let Some(master) = info_field(&redis_replication_raw, "master_host:") {
             discovered_hosts.push(master.to_owned());
         }
