@@ -47,10 +47,12 @@ case "$ref" in
     printf 'https://discord.example.test/%s\n' "${SECRET_SENTINEL:-stub-value}"
     ;;
   */migrator-connection-string)
-    printf 'postgres-migrator\n'
+    printf 'postgres://migrator:%s@db.example.test:5432/agentsfleet?sslmode=verify-full\n' \
+      "${SECRET_SENTINEL:-stub-value}"
     ;;
   */api-connection-string)
-    printf 'postgres-api\n'
+    printf 'postgres://api:%s@db.example.test:6432/agentsfleet?sslmode=verify-full\n' \
+      "${SECRET_SENTINEL:-stub-value}"
     ;;
   *)
     printf '%s\n' "${SECRET_SENTINEL:-stub-value}"
@@ -173,7 +175,7 @@ test_deployment_checks_complete_infrastructure_inputs() {
   if [[ "$output" == *"github-app/"* ]] ||
      [[ "$output" == *"qstash/token"* ]] ||
      [[ "$output" == *"agentsfleet-admin/api-key"* ]] ||
-     [[ "$output" == *"grafana-observability/"* ]]; then
+     [[ "$output" == *"agentsfleet-fleets-investigation-service-token/"* ]]; then
     bad "$name" "post-deploy operations input blocked initial deployment"
   elif [[ "$output" == *do-not-print-provider-secret* ]]; then
     bad "$name" "gate printed a provider secret"

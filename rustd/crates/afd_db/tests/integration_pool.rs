@@ -152,9 +152,14 @@ async fn test_pools_open_every_role_and_close() {
             .await
             .expect("each role must serve a connection");
     }
+    // The default reaches the pool a role actually opened, rather than being
+    // asserted only against the resolver. The number itself is pinned in
+    // `config.rs` beside the reason it moved: sqlx spends this one deadline on
+    // both the wait for a free connection and the handshake that opens one, so
+    // a budget under the handshake cost is a pool that never grows.
     assert_eq!(
         pools.api().acquire_timeout(),
-        std::time::Duration::from_millis(2_000)
+        std::time::Duration::from_millis(5_000)
     );
 
     pools.close().await;

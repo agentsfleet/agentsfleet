@@ -87,6 +87,11 @@ v2 ships hosted on Fly.io; the canonical Redis is **Upstash Redis**, accessed ov
 2. **Per-request pricing on Pay-as-you-go.** Every command is billable: `XADD`, the readiness `HRANDFIELD` (one per idle lease poll), `PUBLISH`, `XACK`, SSE acknowledgements. The idle bill is the lease-poll loop — see §"Per-request volume".
 3. **TLS dial cost + regional round-trip-time (RTT).** Pool warm-up matters because each dial pays a TLS handshake. Regional vs Global database choice sets the floor on every round-trip.
 
+Postgres is **PlanetScale**, and two of its properties bind the same way:
+
+1. **Per-cluster `max_connections`.** A conservative default that varies with cluster size (Clusters → Parameters). Every replica's `DATABASE_POOL_SIZE` (default 20) plus the migrator during a release must fit inside it. A connection asked for past the ceiling is refused with `53300`, which sqlx retries silently until the acquire budget runs out — so the daemon can only report it as a **stall** ("the pool held N of M and could not open another", `afd_db::pool::acquire`), retries the acquire once, and then answers `UZ-INTERNAL-001`. It is not an outage and must not be paged as one. The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling), which multiplexes replicas' connections onto one bounded server pool; the deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock. PgBouncer's own `default_pool_size` (20) counts against the same 25 once, beside PlanetScale's admin and exporter backends and the migrator at release — set it low enough in the console that all four fit.
+2. **Region.** Production's database sits in `us-east` beside Fly `iad`; development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place — `playbooks/operations/database_region_move/` moves it.
+
 ---
 
 ## Event-delivery latency

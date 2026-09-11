@@ -21,5 +21,7 @@ mod integration_install_grants;
 mod integration_install_rollback;
 #[path = "integration_patch_visibility.rs"]
 mod integration_patch_visibility;
+#[path = "integration_purge_privileges.rs"]
+mod integration_purge_privileges;
 #[path = "integration_wall_counters.rs"]
 mod integration_wall_counters;

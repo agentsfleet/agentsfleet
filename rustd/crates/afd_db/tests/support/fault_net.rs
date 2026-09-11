@@ -128,6 +128,16 @@ impl FaultProxy {
     pub(crate) fn swallow(&self) {
         self.swallowing.store(true, Ordering::Release);
     }
+
+    /// Relays again: from here, the NEXT connection reaches the server.
+    ///
+    /// Connections swallowed before this stay swallowed — the parked socket is
+    /// never answered — which is what makes it usable for proving a retry: the
+    /// attempt already waiting on a dead socket still expires, and only the
+    /// attempt made after this call meets a datastore that answers.
+    pub(crate) fn relay(&self) {
+        self.swallowing.store(false, Ordering::Release);
+    }
 }
 
 impl Drop for FaultProxy {

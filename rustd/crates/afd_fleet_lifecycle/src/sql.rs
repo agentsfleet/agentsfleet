@@ -37,6 +37,7 @@
 
 pub(crate) mod install;
 pub(crate) mod live_set;
+pub(crate) mod purge;
 
 /// The columns a list page reads, in the order [`crate::read`] indexes them.
 ///
@@ -167,36 +168,6 @@ DELETE FROM core.fleets \
 WHERE id = $1::uuid AND workspace_id = $2::uuid AND status = $3 \
 RETURNING id";
 
-/// The child rows no foreign key cascades, deleted before the parent.
-///
-/// `core.fleet_events` and `core.integration_grants` are absent because both
-/// are `ON DELETE CASCADE`. `billing.usage_ledger` is absent for a different
-/// reason: its `fleet_id` is `ON DELETE SET NULL`, so a charge the wallet was
-/// already debited for outlives the fleet with its tenant scope intact.
-/// Erasing one would falsify the reconciliation between the two, and no role
-/// here holds `DELETE` on that table anyway.
-///
-/// A slice rather than three named constants: the purge runs them in order
-/// inside one transaction and never reaches for an individual one, so naming
-/// each would be three symbols with no call site.
-/// Tells the append-only trigger that THIS transaction is a real purge.
-///
-/// `core.fleet_approval_gates` refuses a DELETE outright unless
-/// `fleet.allow_gate_purge` is `on` (schema/810). A hard purge is the one caller
-/// entitled to say so, and `SET LOCAL` keeps the entitlement inside the
-/// transaction that earned it rather than leaving it on a pooled connection for
-/// whatever runs next.
-///
-/// Not parameterised, because `SET LOCAL` takes no bind parameters — the value
-/// is a literal the trigger compares against, and it is the only literal here.
-pub(crate) const ALLOW_GATE_PURGE: &str = "SET LOCAL fleet.allow_gate_purge = 'on'";
-
-pub(crate) const PURGE_CHILDREN: &[&str] = &[
-    "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid",
-    "DELETE FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
-    "DELETE FROM core.fleet_sessions WHERE fleet_id = $1::uuid",
-];
-
 /// The editable surface a PATCH reads before it writes.
 ///
 /// `$1` fleet · `$2` workspace.
@@ -316,7 +287,7 @@ mod tests {
     /// stops working with nothing red.
     #[test]
     fn the_purge_statement_names_the_setting_the_schema_guards_on() {
-        let statement = super::ALLOW_GATE_PURGE;
+        let statement = super::purge::ALLOW_GATE_PURGE;
         let setting = afd_wire::schema::GATE_PURGE_SETTING;
         let enabled = afd_wire::schema::GATE_PURGE_ENABLED;
         assert!(

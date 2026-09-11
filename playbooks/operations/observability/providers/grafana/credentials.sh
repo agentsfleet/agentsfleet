@@ -18,12 +18,12 @@ for field in \
   grafana-sa-token \
   grafana-namespace \
   prometheus-datasource-uid; do
-  value="$(playbooks_read_ref_or_empty "op://$OBS_VAULT/grafana-observability/$field")"
+  value="$(playbooks_read_ref_or_empty "op://$OBS_VAULT/agentsfleet-fleets-investigation-service-token/$field")"
   if [ -z "$value" ]; then
-    echo "MISSING: $OBS_VAULT / grafana-observability / $field" >&2
+    echo "MISSING: $OBS_VAULT / agentsfleet-fleets-investigation-service-token / $field" >&2
     missing=$((missing + 1))
   else
-    echo "OK: $OBS_VAULT / grafana-observability / $field"
+    echo "OK: $OBS_VAULT / agentsfleet-fleets-investigation-service-token / $field"
   fi
 done
 

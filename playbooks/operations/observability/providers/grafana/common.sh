@@ -37,9 +37,9 @@ obs_read_required() {
   local field="$1"
   local value
   value="$(playbooks_read_ref_or_empty \
-    "op://$OBS_VAULT/grafana-observability/$field")"
+    "op://$OBS_VAULT/agentsfleet-fleets-investigation-service-token/$field")"
   if [ -z "$value" ]; then
-    echo "ERROR: missing $OBS_VAULT / grafana-observability / $field" >&2
+    echo "ERROR: missing $OBS_VAULT / agentsfleet-fleets-investigation-service-token / $field" >&2
     exit 1
   fi
   printf '%s' "$value"

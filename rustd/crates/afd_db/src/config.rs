@@ -71,7 +71,7 @@ fn pool_size_default() -> u32 {
 /// **This floor is established by [`crate::Db::warm`], not by sqlx.** Passing
 /// `min_connections` to the builder is necessary and not sufficient: sqlx only
 /// bootstraps the floor from zero when BOTH `max_lifetime` and `idle_timeout`
-/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and its defaults set
+/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and `pool.rs` pins
 /// both. Every other arm reaches the floor through the idle reaper, whose body
 /// is `for _ in 0..num_idle()` — zero on a pool that has never opened a
 /// connection, so the body never runs and the floor is never approached. The
@@ -88,12 +88,43 @@ fn min_connections_default(max_connections: u32) -> u32 {
     (max_connections / WARM_FRACTION).max(1)
 }
 
-/// A starved pool fails fast rather than stalling for seconds and reading as a
-/// slow request.
-const ACQUIRE_TIMEOUT_MS_DEFAULT: u64 = 2_000;
+/// How long an acquire may take, INCLUDING opening a connection if the pool
+/// has to.
+///
+/// This was two seconds, on the reasoning that a starved pool should fail fast
+/// rather than read as a slow request. That reasoning is sound and the number
+/// was still wrong, because it is not only the wait: sqlx spends ONE deadline
+/// on both halves. `PoolInner::acquire` sets `deadline = now + acquire_timeout`
+/// and hands that same deadline to `connect()`
+/// (`sqlx-core-0.9.0/src/pool/inner.rs`), and upstream's own `Debug` impl
+/// prints the field as `connect_timeout` (`options.rs:590`). There is no
+/// second knob.
+///
+/// So a budget below the handshake cost is a pool that can never grow. Every
+/// attempt to open a connection expires, [`crate::Db::warm`] reaches zero, the
+/// pool stays empty, and every request pays — and loses — the same race. A
+/// probe against the development database through the production pool showed
+/// exactly that: the boot handshake took 2.7 s, warm established 0 of 2 inside
+/// a 10 s deadline, and all eight callers failed their first acquire with the
+/// pool below its ceiling. Identical on the direct port and through
+/// `PgBouncer`,
+/// which is what rules the pooler out as the cause.
+///
+/// Five seconds covers a cross-region TLS handshake with headroom while still
+/// failing inside any sensible gateway timeout. A saturated pool now makes a
+/// caller wait longer before its 503, which is the trade: an answer at five
+/// seconds beats a refusal at two when the connection would have opened.
+///
+/// A deployment whose database is in the same region can lower it with
+/// `DATABASE_ACQUIRE_TIMEOUT_MS`. Do not lower it below the p99 establishment
+/// that deployment actually measures.
+const ACQUIRE_TIMEOUT_MS_DEFAULT: u64 = 5_000;
 
-/// The connection handshake budget, which is a different thing from the wait
-/// for a free connection and is not tunable per role.
+/// The handshake budget for the BOOT PROBE, which is the one place this crate
+/// can bound a handshake on its own.
+///
+/// Not the pool's: see [`ACQUIRE_TIMEOUT_MS_DEFAULT`] for why the pool cannot
+/// be given a separate one. Not tunable per role.
 const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
 
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
@@ -215,7 +246,9 @@ impl PoolConfig {
         self.min_connections
     }
 
-    /// How long an acquire waits for a free connection before giving up.
+    /// How long an acquire may take, the handshake included when the pool has
+    /// to open one. See [`ACQUIRE_TIMEOUT_MS_DEFAULT`]: sqlx spends this one
+    /// deadline on both halves.
     #[must_use]
     pub const fn acquire_timeout(&self) -> Duration {
         self.acquire_timeout
@@ -314,7 +347,41 @@ pub fn parse_env_bool(raw: &str) -> EnvBool {
 
 #[cfg(test)]
 mod pool_sizing_tests {
-    use super::{min_connections_default, pool_size_default};
+    use super::{ACQUIRE_TIMEOUT_MS_DEFAULT, min_connections_default, pool_size_default};
+
+    /// The acquire budget covers opening a connection, not only waiting for one.
+    ///
+    /// sqlx spends ONE deadline on both halves — `PoolInner::acquire` hands its
+    /// `acquire_timeout` deadline straight to `connect()` — so a budget under
+    /// the handshake cost is a pool that can never grow. It does not degrade,
+    /// it stops: `warm` reaches zero, the pool stays empty, and every request
+    /// pays and loses the same race while the census reads "below the
+    /// ceiling", which is indistinguishable from an outage.
+    ///
+    /// The floor asserted here is a MEASURED handshake, not a guess: a probe
+    /// against the development database through the production pool took
+    /// 2.7 s to complete one, and at the previous 2 s budget warmed 0 of 2 and
+    /// failed all eight callers. Anything at or below that number reproduces
+    /// the failure exactly, so the test names it.
+    #[test]
+    fn test_the_acquire_budget_can_outlast_a_connection_handshake() {
+        /// The slowest establishment measured against a real deployment, in
+        /// milliseconds. A budget at or below this cannot open a connection.
+        const MEASURED_SLOW_HANDSHAKE_MS: u64 = 2_700;
+
+        // Through `black_box` so the comparison survives as a comparison:
+        // both sides are constants, and clippy rejects an assertion it can
+        // fold away — correctly, since a folded assert proves nothing at run
+        // time. The budget is read the way a caller reads it instead.
+        let budget = std::hint::black_box(ACQUIRE_TIMEOUT_MS_DEFAULT);
+        let handshake = std::hint::black_box(MEASURED_SLOW_HANDSHAKE_MS);
+
+        assert!(
+            budget > handshake,
+            "an acquire budget of {budget}ms cannot open a connection that takes {handshake}ms: \
+             the pool would warm to zero and answer every request from empty"
+        );
+    }
 
     /// The ceiling is a real number, not four.
     ///

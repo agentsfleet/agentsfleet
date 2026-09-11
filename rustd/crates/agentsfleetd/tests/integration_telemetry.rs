@@ -141,12 +141,25 @@ fn bodies(received: &Received) -> String {
 /// The log half is the one worth having. A transport that carried metrics and
 /// spans but not logs would take the log backend dark at the swap with nothing
 /// to catch it — the signal nobody checks is the one that disappears quietly.
+/// The pipelines AND the claimed instrument set, which is what boot ends up
+/// with once both halves of the split have run.
+///
+/// `telemetry::install` stopped claiming producers when the log bridge was
+/// moved ahead of the pools — see `serve::exporting::attach_exports`. A test
+/// asserting that METRICS reach a collector needs the second half too, so it
+/// does here what `open_telemetry` does there.
+fn installed(config: &OtlpConfig) -> Exports {
+    let (exports, instruments) = install(config).expect("the fixture endpoint builds a transport");
+    let _claimed = afd_observability::producers::install(&instruments, &GaugeSources::silent())
+        .expect("the silent gauge set is one the producer layer accepts");
+    exports
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
 async fn all_three_signals_reach_a_collector() {
     let (endpoint, received) = collector().await;
-    let exports = install(&configured(&endpoint), &GaugeSources::silent())
-        .expect("the fixture endpoint builds a transport");
+    let exports = installed(&configured(&endpoint));
 
     emit_every_signal(&exports);
     exports.flush();
@@ -173,6 +186,44 @@ async fn all_three_signals_reach_a_collector() {
     );
 }
 
+/// A boot that fails still delivers what it buffered on the way down.
+///
+/// The regression this guards is the cost of attaching the exporters before
+/// `open_runtime`: from that moment the pool's own boot records go into the
+/// pipeline rather than to stderr, and until `open_telemetry` hands the
+/// exporters to the supervised flush there is nothing that would deliver them.
+/// A boot that returned through that window dropped them — and a crash-looping
+/// instance is exactly when an operator needs them most.
+///
+/// Drives `flush_within`, which is the function both boot-failure paths call,
+/// rather than `Exports::flush` — the bound and the blocking hop are the parts
+/// that could go wrong on a process that is already leaving.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
+async fn a_failed_boot_delivers_what_it_buffered() {
+    let (endpoint, received) = collector().await;
+    let exports = installed(&configured(&endpoint));
+
+    emit_every_signal(&exports);
+    // What `flush_unsupervised` does with a `Prepared` it is about to drop.
+    agentsfleetd::telemetry::flush_within(exports, DELIVERY_GRACE * 4).await;
+    tokio::time::sleep(DELIVERY_GRACE).await;
+
+    let delivered = paths(&received);
+    for signal in [TRACES, METRICS, LOGS] {
+        assert!(
+            delivered.iter().any(|path| path == signal),
+            "a failed boot must still deliver {signal}; the collector saw \
+             {delivered:?}"
+        );
+    }
+    assert!(
+        bodies(&received).contains(PORTED_EVENT),
+        "the records a failing boot emitted must reach the collector, or the \
+         early attach buys nothing for the boots that need it most"
+    );
+}
+
 /// Dimension 4.1 — an unreachable collector costs telemetry, never latency.
 ///
 /// Measured against the emit rather than against a wall-clock budget: the
@@ -183,7 +234,7 @@ async fn all_three_signals_reach_a_collector() {
 async fn an_unreachable_collector_costs_spans_and_not_requests() {
     // Port 1 on the loopback: nothing listens, and the connection is refused
     // rather than left hanging, so the export fails promptly and definitely.
-    let exports = install(&configured("http://127.0.0.1:1"), &GaugeSources::silent())
+    let (exports, _instruments) = install(&configured("http://127.0.0.1:1"))
         .expect("an unreachable endpoint still BUILDS — nothing is dialled here");
 
     assert_eq!(exports.spans_lost().count(), 0, "nothing has failed yet");
@@ -237,8 +288,7 @@ async fn an_unreachable_collector_costs_spans_and_not_requests() {
 #[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
 async fn the_subscriber_slot_takes_the_export_bridges() {
     let (endpoint, _received) = collector().await;
-    let exports = install(&configured(&endpoint), &GaugeSources::silent())
-        .expect("the pipeline builds against the fixture");
+    let exports = installed(&configured(&endpoint));
 
     // First installer wins the process-wide slot; every later one is told so
     // rather than silently replacing a subscriber somebody is already reading.

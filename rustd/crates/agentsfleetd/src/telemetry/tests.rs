@@ -13,7 +13,7 @@ use opentelemetry_otlp::Protocol;
 
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, preflight};
-use crate::serve::open_telemetry;
+use crate::serve::{attach_exports, open_telemetry};
 use crate::supervisor::Supervisor;
 
 /// A collector nothing is listening on.
@@ -76,8 +76,12 @@ async fn boot_supervises_the_export_under_its_inventoried_name() {
     // slot is set either way by the time the assertion below reads it.
     let _installed = crate::logs::install(&MapEnv::default());
 
-    open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
-        .expect("an endpoint the exporter can parse builds a transport");
+    open_telemetry(
+        attach_exports(&config).expect("the endpoint builds a transport"),
+        &mut supervisor,
+        &GaugeSources::silent(),
+    )
+    .expect("an endpoint the exporter can parse builds a transport");
 
     assert_eq!(
         supervisor.inventory(),
@@ -102,8 +106,12 @@ async fn no_endpoint_supervises_nothing_and_is_not_a_failure() {
     let config = configured(&[]);
     let mut supervisor = Supervisor::new();
 
-    open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
-        .expect("a deployment that exports nothing still boots");
+    open_telemetry(
+        attach_exports(&config).expect("the endpoint builds a transport"),
+        &mut supervisor,
+        &GaugeSources::silent(),
+    )
+    .expect("a deployment that exports nothing still boots");
 
     assert!(
         supervisor.inventory().is_empty(),
@@ -124,8 +132,12 @@ async fn the_json_protocol_builds_a_transport() {
     ]);
     let mut supervisor = Supervisor::new();
 
-    open_telemetry(&config, &mut supervisor, &GaugeSources::silent())
-        .expect("http/json is one of the two encodings this build carries");
+    open_telemetry(
+        attach_exports(&config).expect("the endpoint builds a transport"),
+        &mut supervisor,
+        &GaugeSources::silent(),
+    )
+    .expect("http/json is one of the two encodings this build carries");
     let _report = supervisor.shutdown().await;
 }
 
@@ -247,8 +259,8 @@ async fn a_new_pipeline_reports_no_losses_on_any_signal() {
     let config = configured(&[(OTEL_ENDPOINT_KNOB, UNREACHABLE)]);
     let otlp = config.otlp().expect("an endpoint is configured");
 
-    let exports = super::install(otlp, &GaugeSources::silent())
-        .expect("a well-formed endpoint builds every pipeline");
+    let (exports, _instruments) =
+        super::install(otlp).expect("a well-formed endpoint builds every pipeline");
 
     assert_eq!(
         exports.spans_lost().count(),
