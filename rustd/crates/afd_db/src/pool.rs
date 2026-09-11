@@ -46,9 +46,9 @@ pub use self::roles::Pools;
 /// pool between those two regimes without a line of this crate changing; a
 /// pinned value cannot.
 ///
-/// Ten minutes also sits inside `PgBouncer`'s `server_idle_timeout` (600 s), so
-/// a connection this pool still counts as live is not one the pooler has
-/// already closed underneath it.
+/// Behind `PgBouncer` the pool's sockets face its `client_idle_timeout`, which
+/// defaults to zero (never closed), so nothing on the pooler side reaps under
+/// this reaper; `test_before_acquire` covers a backend that went away anyway.
 const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// How long a connection may live before the reaper retires it, idle or not.

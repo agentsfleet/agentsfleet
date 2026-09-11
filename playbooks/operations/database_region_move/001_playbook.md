@@ -25,8 +25,11 @@ For the environment being moved:
 2. Open the new branch → **Connect** and copy its connection details. The
    host differs from the live one; the credentials are the branch's own.
 3. Open the new branch → **Clusters → Parameters** and read
-   `max_connections`. Every replica's `DATABASE_POOL_SIZE` (default 20) plus
-   the migrator must fit inside it; raise the cluster size if it does not.
+   `max_connections` (25 on the current cluster size, 3 reserved, 3 held by
+   PlanetScale's own admin and exporter roles). Then **PgBouncers →** the
+   local bouncer and set `default_pool_size` so that it, those three, and the
+   migrator at release all fit — 16 leaves room on a 25-connection cluster.
+   Raise the cluster size instead if the pool must stay at 20.
 4. Stage the new strings in the vault beside the live ones — do not overwrite
    the live fields yet:
 
@@ -107,6 +110,11 @@ the new one inside `postgres:18-alpine`, excluding the two ledger tables the
 migration already wrote. Data only, because a managed database will not let a
 dump restore ownership or privileges, and the migrator has already created
 every role and grant exactly as a deploy would.
+
+If `pg_restore` aborts on a duplicate key, a migration seeded that table on
+the target; confirm the seeded rows match the source's and rerun with the
+table added to `LEDGER_TABLES` in `02_copy.sh`. The verify step then proves
+the counts agree.
 
 `03_verify.sh` counts every user table on both branches from the catalog —
 never from a hand-kept list — and diffs the two censuses with the ledger
