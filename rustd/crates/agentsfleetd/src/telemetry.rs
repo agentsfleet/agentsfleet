@@ -34,7 +34,6 @@ use afd_observability::metrics::export::BatchDrops;
 use afd_observability::metrics::export::CountingMetricExporter;
 use afd_observability::metrics::instrument::{Instruments, series_ceilings};
 use afd_observability::metrics::registry::Registry;
-use afd_observability::producers::{self, GaugeSources};
 use afd_observability::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops, semconv};
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
@@ -178,12 +177,19 @@ impl Exports {
 /// Builds every pipeline, installs the process-wide handles, and claims the
 /// instrument set.
 ///
+/// It does NOT install the gauge producers, which is why it takes no
+/// `GaugeSources`: those read boot state that does not exist yet, while the
+/// span and log bridges need only the endpoint. That separation is what lets
+/// boot attach the exporter BEFORE it opens the pools — see
+/// `serve::exporting`, which finishes the job with `producers::install` and
+/// [`announce`].
+///
 /// # Errors
 ///
 /// A configuration the exporter will not accept — an endpoint that is not a
 /// URI — or a census the instrument layer refuses. Both refuse boot: each is a
 /// defect that would otherwise present as a collector receiving nothing.
-pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, BootFailure> {
+pub fn install(config: &OtlpConfig) -> Result<(Exports, Instruments), BootFailure> {
     let resource = self::resource::describe();
     let protocol = protocol_of(config);
     let headers: HashMap<String, String> = config.headers.iter().cloned().collect();
@@ -243,10 +249,7 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         cumulative.meter(semconv::SCOPE_NAME),
         delta.meter(semconv::SCOPE_NAME),
     );
-    let installed = producers::install(&instruments, sources)?;
-    announce(config, installed, &instruments);
-
-    Ok(Exports {
+    let exports = Exports {
         tracer,
         cumulative,
         delta,
@@ -260,7 +263,8 @@ pub fn install(config: &OtlpConfig, sources: &GaugeSources) -> Result<Exports, B
         // discarded-entries counter names precisely.
         cycles_lost,
         records_lost,
-    })
+    };
+    Ok((exports, instruments))
 }
 
 /// One meter provider, exporting at `temporality`.
@@ -312,7 +316,7 @@ fn protocol_of(config: &OtlpConfig) -> Protocol {
 /// The endpoint is named by its SOURCE and never by its value: it is read from
 /// the same place as the credential beside it, and a line carrying one is a
 /// line a reader will assume carries neither.
-fn announce(config: &OtlpConfig, installed: bool, instruments: &Instruments) {
+pub(crate) fn announce(config: &OtlpConfig, installed: bool, instruments: &Instruments) {
     let source = config.source;
     let protocol = config.protocol.as_ref();
     let families = instruments.registry().len() - instruments.unclaimed().len();

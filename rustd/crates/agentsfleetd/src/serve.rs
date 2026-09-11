@@ -44,7 +44,7 @@ pub use self::accept::serve_accepts;
 
 use self::accept::accept_loop;
 use self::exporting::gauge_sources;
-pub(crate) use self::exporting::open_telemetry;
+pub(crate) use self::exporting::{attach_exports, open_telemetry};
 use self::optional::open_analytics;
 use self::runtime::{open_runtime, spawn_background};
 use crate::daemon::{Daemon, Outcome};
@@ -129,13 +129,24 @@ async fn open(
     port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
+    // The exporter first, and its position here is load-bearing. `open_runtime`
+    // opens the database, and the records it emits while doing so —
+    // `pool_initialized`, `pool_warmed`, `pool_warm_incomplete` — are exactly
+    // the ones an operator wants when asking whether an instance warmed its
+    // pool. The reload slot `main` installed is empty until something fills
+    // it, so filling it after this line means those records reach stderr and
+    // nothing else. They did, for as long as this ran the other way round.
+    //
+    // Only the gauge PRODUCERS need what boot has not opened yet, and they
+    // wait below.
+    let prepared = attach_exports(&config)?;
     let runtime = open_runtime(&config, &analytics).await?;
     let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
     // Before the router takes them: both are the state a gauge reads, and the
     // clones are handles onto the same semaphore and the same ceiling rather
     // than second copies that could disagree with what admission decides.
     let sources = gauge_sources(&admission, &runtime.live);
-    open_telemetry(&config, supervisor, &sources)?;
+    open_telemetry(prepared, supervisor, &sources)?;
     let router = afd_api::router::build(runtime.plane, &admission);
     spawn_background(
         supervisor,
