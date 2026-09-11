@@ -16,33 +16,9 @@ primary_region = "iad"
 # API-class routes (/healthz and /readyz are ops-class and never shed;
 # SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
 # here). SSE_MAX_STREAMS (default 64) caps event streams per instance.
-#
-# Every connection is established BEFORE a request needs one.
-#
-# The default warm floor is a quarter of the ceiling (afd_db/src/config.rs:86),
-# which leaves the 6th concurrent caller onward paying a fresh TLS handshake to
-# a remote PlanetScale inside its 2000ms acquire budget — `connect_timeout` does
-# not apply to pool growth, only to the boot probe (pool.rs:65). On run
-# 34566271482 that cost twelve `UZ-INTERNAL-001` refusals in five clusters over
-# seven minutes, every one of them from the single machine carrying the load
-# while the other served the same database without a failure.
-#
-# Setting the floor to the ceiling moves establishment into `Db::warm`, which
-# has a budget of its own. The ceiling is deliberately NOT raised in the same
-# change: with floor == ceiling a genuine overload now answers `PoolCapacity`
-# ("the pool had none") instead of being misreported as an unreachable
-# datastore, so the next incident says what it is. Raise both only once that
-# code appears.
-#
-# `_API` and not the bare knob: `read_knob` prefers the role suffix and falls
-# back to the base (config.rs:266-269), so an unsuffixed value would also warm
-# the MIGRATOR pool — twenty session connections held open by a release command
-# that uses one.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "1"
-  DATABASE_MIN_POOL_SIZE_API = "20"
-  DATABASE_POOL_SIZE_API = "20"
   API_URL = "https://api-dev.agentsfleet.net"
   APP_URL = "https://app-dev.agentsfleet.net"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
