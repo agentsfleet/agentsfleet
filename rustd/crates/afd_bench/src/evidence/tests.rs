@@ -5,8 +5,10 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use super::capture::require_comparable;
-use super::grade::{Grade, grade_at};
+use super::capture::{require_comparable, validate_plan};
+use super::grade::{
+    Grade, grade_at, require_distinct_capture, require_unique_prefix, validate_log,
+};
 use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance};
 
 fn pair(equal: bool) -> ProofPair {
@@ -65,4 +67,76 @@ fn test_redis_baseline_records_complete_evidence() {
             samples: 12,
         }
     );
+}
+
+#[test]
+fn repeated_or_reordered_samples_are_not_distinct_evidence() {
+    let mut captures = std::collections::BTreeSet::new();
+    let mut captured_after = 0;
+    require_distinct_capture(&mut captures, &mut captured_after, 10, "result-a", "log-a")
+        .expect("the first sample establishes the order");
+
+    assert!(
+        require_distinct_capture(&mut captures, &mut captured_after, 9, "result-b", "log-b")
+            .is_err(),
+        "a sample captured before its predecessor is not a new ordered run"
+    );
+    assert!(
+        require_distinct_capture(&mut captures, &mut captured_after, 11, "result-a", "log-a")
+            .is_err(),
+        "copied result and log bytes are not a distinct run"
+    );
+
+    let mut prefixes = std::collections::BTreeSet::new();
+    require_unique_prefix(&mut prefixes, "bench-123-1".to_owned())
+        .expect("the first process prefix is unique");
+    assert!(
+        require_unique_prefix(&mut prefixes, "bench-123-1".to_owned()).is_err(),
+        "two sample slots cannot claim one benchmark process"
+    );
+}
+
+#[test]
+fn a_raw_log_must_name_the_run_it_proves() {
+    let log = b"\xe2\x86\x92 [bench-steer] profile=rig\nrun_prefix=bench-123-1\nwrote bench/results/steer.rig.json\n";
+    validate_log("rig", crate::report::Lane::Steer, "bench-123-1", log)
+        .expect("the three exact run markers bind the raw log");
+
+    assert!(
+        validate_log("rig", crate::report::Lane::Lease, "bench-123-1", log).is_err(),
+        "a log from another lane cannot prove this sample"
+    );
+    assert!(
+        validate_log("rig", crate::report::Lane::Steer, "bench-123-2", log).is_err(),
+        "a log from another benchmark process cannot prove this sample"
+    );
+}
+
+#[test]
+fn campaign_names_cannot_escape_the_evidence_root() {
+    let mut plan = super::model::BaselinePlan {
+        schema: EVIDENCE_SCHEMA,
+        campaign: "m192-safe_campaign".to_owned(),
+        baseline_revision: "baseline".to_owned(),
+        profile: "rig".to_owned(),
+        samples_per_lane: 3,
+        lanes: crate::report::Lane::ALL
+            .map(|lane| lane.name().to_owned())
+            .to_vec(),
+    };
+    validate_plan(&plan).expect("a bounded path component is safe");
+
+    for unsafe_name in [
+        ".",
+        "..",
+        "../elsewhere",
+        "nested/campaign",
+        "campaign\\other",
+    ] {
+        plan.campaign = unsafe_name.to_owned();
+        assert!(
+            validate_plan(&plan).is_err(),
+            "{unsafe_name} must not escape the campaign root"
+        );
+    }
 }

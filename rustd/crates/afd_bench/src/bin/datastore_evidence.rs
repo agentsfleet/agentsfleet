@@ -66,9 +66,31 @@ async fn run() -> Result<String> {
 }
 
 fn sample(raw: Option<String>) -> Result<u32> {
-    raw.ok_or_else(usage)?.parse().map_err(|_source| usage())
+    let value = raw.ok_or_else(usage)?;
+    value
+        .parse()
+        .map_err(|source| Error::SampleUnreadable { value, source })
 }
 
 fn usage() -> Error {
     Error::EvidenceInvalid(USAGE.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking on an unmet precondition"
+    )]
+
+    use super::sample;
+
+    #[test]
+    fn a_bad_sample_number_retains_its_parse_failure() {
+        let failure = sample(Some("first".to_owned())).expect_err("first is not a number");
+        assert!(
+            std::error::Error::source(&failure).is_some(),
+            "the integer parser remains in the cause chain"
+        );
+    }
 }

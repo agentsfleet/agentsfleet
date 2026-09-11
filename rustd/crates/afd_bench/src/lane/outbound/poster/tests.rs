@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver as _, Verdict};
 use afd_redis::{EventId, OutboundDelivery};
+use tokio_util::sync::CancellationToken;
 
 use super::{Behaviour, Scripted};
 
@@ -63,14 +64,21 @@ async fn test_a_delivered_job_settles_and_a_refused_one_does_not_until_the_ladde
 }
 
 #[tokio::test]
-async fn test_a_job_this_run_did_not_queue_is_answered_but_never_counted() {
-    let poster = poster();
+async fn test_a_job_this_run_did_not_queue_cancels_without_delivery_or_ack() {
+    let cancellation = CancellationToken::new();
+    let poster = Scripted::with_cancellation(
+        BTreeMap::new(),
+        Duration::ZERO,
+        Duration::ZERO,
+        cancellation.clone(),
+    );
 
     let verdict = poster
         .deliver(&job("9-0", "somebody-elses-destination"))
         .await;
 
-    assert_eq!(verdict, Verdict::Delivered, "it leaves the queue");
+    assert_eq!(verdict, Verdict::Retryable, "the worker must not ack it");
+    assert!(cancellation.is_cancelled(), "the worker must stop now");
     assert_eq!(poster.settled(), 0, "it is not one of ours");
     let seen = poster.seen();
     assert!(seen.attempts().is_empty());

@@ -24,7 +24,7 @@ use crate::fixture::RunPrefix;
 
 /// Matches every name a run prefixed.
 fn like(prefix: &RunPrefix) -> String {
-    format!("{}%", prefix.as_str())
+    format!("{}-%", prefix.as_str())
 }
 
 /// Remove everything carrying this run's prefix, returning how many rows went.
@@ -44,15 +44,13 @@ pub async fn everything(database: &Db, queue: &Redis, prefix: &RunPrefix) -> Res
 /// The fleet ids this run created, read before the rows go.
 async fn fleet_ids(database: &Db, pattern: &str) -> Result<Vec<String>> {
     let mut connection = database.acquire().await?;
-    Ok(
-        sqlx::query("SELECT id::text FROM core.fleets WHERE name LIKE $1")
-            .bind(pattern)
-            .fetch_all(&mut *connection)
-            .await?
-            .iter()
-            .filter_map(|row| row.try_get::<String, _>(0).ok())
-            .collect(),
-    )
+    sqlx::query("SELECT id::text FROM core.fleets WHERE name LIKE $1")
+        .bind(pattern)
+        .fetch_all(&mut *connection)
+        .await?
+        .iter()
+        .map(|row| row.try_get::<String, _>(0).map_err(Error::from))
+        .collect()
 }
 
 /// Drop each fleet's stream and its readiness mark.

@@ -54,14 +54,19 @@ impl RunPrefix {
     ///
     /// # Errors
     ///
-    /// Refuses strings outside the minted alphabet so cleanup cannot become
-    /// an unbounded wildcard deletion.
+    /// Refuses strings outside the exact minted shape so cleanup cannot become
+    /// an unbounded or neighboring-prefix deletion.
     pub fn existing(value: &str) -> crate::Result<Self> {
-        let valid = value.starts_with(&format!("{PREFIX_TOKEN}-"))
-            && value.len() <= 96
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
+        let mut parts = value.split('-');
+        let valid = parts.next() == Some(PREFIX_TOKEN)
+            && parts.next().is_some_and(|part| {
+                !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())
+            })
+            && parts.next().is_some_and(|part| {
+                !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())
+            })
+            && parts.next().is_none()
+            && value.len() <= 96;
         if !valid {
             return Err(crate::Error::EvidenceInvalid(
                 "orphan sweep prefix is not a minted benchmark prefix".to_owned(),
@@ -87,7 +92,8 @@ impl RunPrefix {
     /// Whether a name belongs to this run.
     #[must_use]
     pub fn owns(&self, name: &str) -> bool {
-        name.starts_with(&self.value)
+        name.strip_prefix(&self.value)
+            .is_some_and(|suffix| suffix.starts_with('-'))
     }
 }
 

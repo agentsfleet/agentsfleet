@@ -5,7 +5,14 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use super::{Profile, Target};
+use super::{Profile, Target, published_port};
+
+#[test]
+fn test_compose_port_output_is_read_without_trusting_its_host_spelling() {
+    assert_eq!(published_port(b"0.0.0.0:20735\n"), Some(20_735));
+    assert_eq!(published_port(b"[::]:20735\n"), Some(20_735));
+    assert_eq!(published_port(b"not a published port\n"), None);
+}
 
 #[test]
 fn test_shared_deployment_refuses_saturation_profile() {

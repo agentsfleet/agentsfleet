@@ -14,13 +14,13 @@
 //! three rows are inserted directly, exactly as `afd_fleet`'s own lease suites
 //! seed them.
 //!
-//! # Why the run prefix is in the NAME and not the identifier
+//! # Why the run prefix names rows and salts identifiers
 //!
 //! Every table here CHECKs the UUID version nibble, so an identifier cannot
-//! carry a text prefix and still be accepted. The prefix therefore lives in the
-//! `name` column of all three rows, and [`sweep`] deletes by name. The
-//! identifiers stay schema-legal and the sweep still recognises only its own
-//! work.
+//! carry a text prefix and still be accepted. The prefix lives in the `name`
+//! column so [`sweep`] can find the rows, and it also feeds the UUID entropy so
+//! a later process cannot adopt leaked rows from an earlier run. The resulting
+//! identifiers remain schema-legal `UUIDv7` values.
 //!
 //! # Placement tags keep concurrent runs apart
 //!
@@ -31,12 +31,13 @@
 //! leaves the assignment pass under test rather than around it.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
+use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_redis::{FleetStreams, ReadyIndex, Redis};
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
+use sha2::{Digest as _, Sha256};
 
 use crate::error::Result;
 use crate::fixture::RunPrefix;
@@ -111,14 +112,16 @@ pub struct SeededFleet {
 
 /// An identifier the schema's `uuidv7` CHECK accepts.
 ///
-/// The character after the second dash must be `7`. Process id plus index in
-/// the final group gives four billion distinct fleets per process, which is
-/// past anything the cardinality ladder climbs to.
-pub(crate) fn identifier(kind: u32, index: u64) -> String {
-    format!(
-        "0195b4ba-8d3a-7{kind:03x}-8abc-{:04x}{index:08x}",
-        std::process::id() & 0xffff
-    )
+/// The run prefix prevents a later process from adopting rows an interrupted
+/// process left behind. Kind and index keep every row distinct within a run.
+pub(crate) fn identifier(prefix: &RunPrefix, kind: u32, index: u64) -> Result<String> {
+    let digest: [u8; 32] =
+        Sha256::digest(format!("{}:{kind}:{index}", prefix.as_str()).as_bytes()).into();
+    let entropy: [u8; ENTROPY_LEN] =
+        std::array::from_fn(|offset| digest.get(offset).copied().unwrap_or_default());
+    Uuid7::encode(UnixMillis::from_millis(SEEDED_AT), entropy)
+        .map(|id| id.as_str().to_owned())
+        .map_err(crate::Error::from)
 }
 
 /// The tag that keeps this run's fleets placeable only by this run's runners.
@@ -145,9 +148,9 @@ pub async fn empty_fleet(
     now: i64,
 ) -> Result<SeededFleet> {
     let seeded = SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
+        fleet: identifier(prefix, KIND_FLEET, index)?,
+        workspace: identifier(prefix, KIND_WORKSPACE, index)?,
+        tenant: identifier(prefix, KIND_TENANT, index)?,
     };
     rows(database, prefix, &seeded, tag, now).await?;
     FleetStreams::new(queue.clone())
@@ -170,9 +173,9 @@ pub async fn ready_fleet(
     now: i64,
 ) -> Result<SeededFleet> {
     let seeded = SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
+        fleet: identifier(prefix, KIND_FLEET, index)?,
+        workspace: identifier(prefix, KIND_WORKSPACE, index)?,
+        tenant: identifier(prefix, KIND_TENANT, index)?,
     };
     rows(database, prefix, &seeded, tag, now).await?;
     enqueue(queue, &seeded, now).await?;

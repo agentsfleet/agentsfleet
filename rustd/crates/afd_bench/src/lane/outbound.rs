@@ -147,7 +147,12 @@ pub async fn run_cancelled(
     queue.ensure_group().await?;
 
     let behaviours = script(prefix, parameters);
-    let poster = Scripted::new(behaviours.clone(), FAST_ANSWER, SLOW_ANSWER);
+    let poster = Scripted::with_cancellation(
+        behaviours.clone(),
+        FAST_ANSWER,
+        SLOW_ANSWER,
+        cancellation.clone(),
+    );
     let destinations: Vec<&String> = behaviours.keys().collect();
 
     let mut ledger = FixtureLedger::new();

@@ -109,9 +109,13 @@ fn selected(path: &str, surface: Surface) -> bool {
         Surface::Build => {
             matches!(
                 path,
-                "Dockerfile" | "docker-compose.yml" | "rustd/Cargo.toml" | "rust-toolchain.toml"
+                "Dockerfile"
+                    | "docker-compose.yml"
+                    | "docs/metrics.census.tsv"
+                    | "rustd/Cargo.toml"
+                    | "rustd/rust-toolchain.toml"
             ) || (path.starts_with(CRATES_PATH)
-                && path.ends_with("/Cargo.toml")
+                && (path.ends_with("/Cargo.toml") || path.ends_with("/build.rs"))
                 && !path.starts_with(BENCH_CRATE_PATH))
         }
     }
@@ -159,3 +163,6 @@ fn output(command: &mut Command, operation: &'static str) -> Result<Output> {
 pub(super) fn invalid(detail: &str) -> Error {
     Error::EvidenceInvalid(detail.to_owned())
 }
+
+#[cfg(test)]
+mod tests;

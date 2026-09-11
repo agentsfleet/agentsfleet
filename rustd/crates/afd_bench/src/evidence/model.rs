@@ -76,7 +76,7 @@ pub(super) struct Provenance {
     pub production_lock: ProofPair,
     /// Resolved dependencies and features reachable from production roots.
     pub production_dependency_closure: ProofPair,
-    /// Every changed path between the two revisions, for auditability.
+    /// Every non-milestone changed path; the revisions retain the full delta.
     pub changed_paths: Vec<String>,
 }
 

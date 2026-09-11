@@ -58,6 +58,7 @@ pub async fn datastores(
     let database_url = required(env, DATABASE_URL_VARIABLE)?;
     let redis_url = required(env, REDIS_URL_VARIABLE)?;
     profile.check_endpoints(target, &database_url, &redis_url)?;
+    target.verify_owned_rig(&database_url, &redis_url)?;
     Datastores::open_checked(
         target,
         &database_url,
@@ -148,7 +149,7 @@ pub fn exit(name: &str, outcome: Result<String>) -> ExitCode {
             }
             if refusal.is_pre_flight() {
                 // logging: tells the reader there is nothing to sweep, on the stream the refusal went to.
-                eprintln!("  nothing was created: the refusal came before any connection opened");
+                eprintln!("  nothing was created by the benchmark lane");
             }
             ExitCode::FAILURE
         }

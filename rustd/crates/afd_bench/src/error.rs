@@ -105,6 +105,16 @@ pub enum Error {
         value: String,
     },
 
+    /// A sample position was not an unsigned integer.
+    #[error("benchmark sample {value:?} is not an unsigned integer")]
+    SampleUnreadable {
+        /// What the operator supplied.
+        value: String,
+        /// Why Rust could not parse it.
+        #[source]
+        source: std::num::ParseIntError,
+    },
+
     /// A lane name nothing maps to.
     #[error("unknown lane: {usage}")]
     UnknownLane {
@@ -191,6 +201,10 @@ pub enum Error {
         #[from]
         source: sqlx::Error,
     },
+
+    /// A deterministic fixture identifier could not be encoded.
+    #[error("the benchmark fixture identifier would not encode")]
+    FixtureIdentity(#[from] afd_core::error::Error),
 
     /// The daemon's instrument set would not install.
     ///
@@ -307,6 +321,25 @@ pub enum Error {
         surface: &'static str,
         /// Host only, with credentials deliberately excluded.
         address: String,
+    },
+
+    /// Docker could not establish which compose service owns a rig endpoint.
+    #[error("the repository-owned compose rig identity could not be read for {service}")]
+    RigIdentityUnavailable {
+        /// Compose service being verified.
+        service: &'static str,
+        /// What starting Docker reported.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// A loopback endpoint is not the port published by this worktree's rig.
+    #[error("{surface} is not owned by this worktree's compose {service} service")]
+    RigIdentityUnverified {
+        /// Configured endpoint being checked.
+        surface: &'static str,
+        /// Compose service that must own it.
+        service: &'static str,
     },
 
     /// The deployment-wide outbound stream already contains another workload.

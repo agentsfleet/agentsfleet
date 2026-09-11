@@ -1,5 +1,6 @@
 [package]
 name = "afd_bench"
+publish = false
 description = "Measurement lanes for the paths a fleet's life runs through: what steer, lease and delivery sustain, and which datastore gives out first."
 version.workspace = true
 edition.workspace = true

@@ -88,7 +88,16 @@ pub fn capture(
     refuse_existing(&final_directory)?;
     let pending = final_directory.with_extension("pending");
     refuse_existing(&pending)?;
-    fs::create_dir_all(&pending).map_err(|source| Error::ResultUnwritable {
+    let parent = final_directory
+        .parent()
+        .ok_or_else(|| invalid("sample directory has no parent"))?;
+    fs::create_dir_all(parent).map_err(|source| Error::ResultUnwritable {
+        path: parent.to_path_buf(),
+        source,
+    })?;
+    // `create_dir` reserves this exact slot atomically. Concurrent capture
+    // processes must never share a pending directory and race to publish it.
+    fs::create_dir(&pending).map_err(|source| Error::ResultUnwritable {
         path: pending.clone(),
         source,
     })?;
@@ -122,10 +131,9 @@ pub fn capture(
     Ok(final_directory)
 }
 
-fn validate_plan(plan: &BaselinePlan) -> Result<()> {
+pub(super) fn validate_plan(plan: &BaselinePlan) -> Result<()> {
     if plan.schema != EVIDENCE_SCHEMA
-        || plan.campaign.is_empty()
-        || plan.campaign.contains(['/', '\\'])
+        || !safe_campaign(&plan.campaign)
         || plan.profile != "rig"
         || plan.samples_per_lane == 0
     {
@@ -138,6 +146,14 @@ fn validate_plan(plan: &BaselinePlan) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn safe_campaign(campaign: &str) -> bool {
+    !campaign.is_empty()
+        && campaign.len() <= 96
+        && campaign
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn validate_slot(plan: &BaselinePlan, lane: Lane, sample: u32) -> Result<()> {

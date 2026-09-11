@@ -11,6 +11,9 @@ use crate::profile::Target;
 const POSTGRES_IDENTITY_QUERY: &str = "SELECT COALESCE(inet_server_addr()::text, 'local'), \
      COALESCE(inet_server_port(), 0), current_database(), version()";
 const LOCAL_HOST: &str = "local";
+const REDIS: &str = "redis";
+const CLUSTER_DISABLED_DISPLAY: &str = "ResponseError: This instance has cluster support disabled";
+const CONNECTED_REPLICAS: &str = "connected_slaves:";
 
 /// Raw server and topology evidence collected from the connected datastores.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,7 +76,10 @@ impl Datastores {
                 let hosts = cluster_hosts(&raw);
                 (raw, hosts)
             }
-            Err(refusal) => (format!("refused: {refusal}"), Vec::new()),
+            Err(failure) => match standalone_refusal(&failure) {
+                Some(refusal) => (format!("refused: {refusal}"), Vec::new()),
+                None => return Err(failure.into()),
+            },
         };
         // `inet_server_addr()` is the server's own container-side interface,
         // not a client redirect or reconnect address. The configured Postgres
@@ -82,6 +88,7 @@ impl Datastores {
         if let Some(master) = info_field(&redis_replication_raw, "master_host:") {
             discovered_hosts.push(master.to_owned());
         }
+        discovered_hosts.extend(replication_hosts(&redis_replication_raw)?);
         discovered_hosts.extend(cluster_hosts);
         discovered_hosts.sort();
         discovered_hosts.dedup();
@@ -101,6 +108,57 @@ impl Datastores {
             discovered_hosts,
         })
     }
+}
+
+fn standalone_refusal(failure: &afd_redis::Error) -> Option<String> {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(failure);
+    while let Some(error) = current {
+        let rendered = error.to_string();
+        if is_cluster_disabled(&rendered) {
+            return Some(rendered);
+        }
+        current = error.source();
+    }
+    None
+}
+
+fn is_cluster_disabled(rendered: &str) -> bool {
+    rendered == CLUSTER_DISABLED_DISPLAY
+}
+
+fn replication_hosts(raw: &str) -> Result<Vec<String>> {
+    let expected = info_field(raw, CONNECTED_REPLICAS)
+        .and_then(|value| value.parse::<usize>().ok())
+        .ok_or(crate::Error::CounterUnreadable {
+            datastore: REDIS,
+            field: CONNECTED_REPLICAS,
+        })?;
+    let hosts: Vec<String> = raw
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .filter(|(label, _fields)| replica_label(label))
+        .filter_map(|(_label, fields)| {
+            fields
+                .split(',')
+                .find_map(|field| field.strip_prefix("ip="))
+                .map(str::to_owned)
+        })
+        .collect();
+    if hosts.len() != expected {
+        return Err(crate::Error::CounterUnreadable {
+            datastore: REDIS,
+            field: "replica addresses",
+        });
+    }
+    Ok(hosts)
+}
+
+fn replica_label(label: &str) -> bool {
+    ["slave", "replica"].iter().any(|prefix| {
+        label.strip_prefix(prefix).is_some_and(|index| {
+            !index.is_empty() && index.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    })
 }
 
 /// One raw `INFO` section.
@@ -133,3 +191,6 @@ fn cluster_hosts(raw: &str) -> Vec<String> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

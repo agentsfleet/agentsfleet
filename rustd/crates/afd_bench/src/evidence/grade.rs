@@ -1,6 +1,6 @@
 //! Fail-closed validation for a complete immutable benchmark campaign.
 
-use std::fs;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,10 @@ use super::model::{
     Availability, BaselinePlan, CAMPAIGN_ROOT, EVIDENCE_SCHEMA, Provenance, Resources, Sidecar,
 };
 use crate::error::{Error, Result};
+use crate::fixture::RunPrefix;
 use crate::report::{Lane, Report};
+
+mod tree;
 
 const RESULT_ROLE: &str = "result";
 const RAW_LOG_ROLE: &str = "raw log";
@@ -47,24 +50,30 @@ pub(super) fn grade_at(
     let proof_raw = read(&proof_path)?;
     let proof: Provenance = parse_json(&proof_path, &proof_raw)?;
     validate_provenance(&plan, &proof)?;
+    tree::validate(&campaign, &plan)?;
 
     let expected = plan.lanes.len() * usize::try_from(plan.samples_per_lane).unwrap_or(0);
-    let actual = count_sidecars(proof_path.parent().unwrap_or_else(|| Path::new(".")))?;
-    if actual != expected {
-        return Err(invalid(&format!(
-            "campaign has {actual} sidecars; expected exactly {expected}"
-        )));
-    }
-
     let mut resources: Option<Resources> = None;
     let mut topology: Option<String> = None;
+    let mut run_prefixes = BTreeSet::new();
     for lane in Lane::ALL {
         let mut parameters = None;
+        let mut captures = BTreeSet::new();
+        let mut captured_after = 0;
         for sample in 1..=plan.samples_per_lane {
             let directory = campaign
                 .join(lane.name())
                 .join(format!("sample-{sample:02}"));
-            let sidecar = validate_sample(&plan, &proof, &proof_raw, lane, sample, &directory)?;
+            let (sidecar, run_prefix) =
+                validate_sample(&plan, &proof, &proof_raw, lane, sample, &directory)?;
+            require_unique_prefix(&mut run_prefixes, run_prefix)?;
+            require_distinct_capture(
+                &mut captures,
+                &mut captured_after,
+                sidecar.captured_at_unix_ms,
+                &sidecar.result_sha256,
+                &sidecar.raw_log_sha256,
+            )?;
             require_same(
                 "machine resources",
                 &mut resources,
@@ -82,6 +91,34 @@ pub(super) fn grade_at(
         lanes: plan.lanes.len(),
         samples: expected,
     })
+}
+
+pub(super) fn require_unique_prefix(
+    run_prefixes: &mut BTreeSet<String>,
+    run_prefix: String,
+) -> Result<()> {
+    if !run_prefixes.insert(run_prefix) {
+        return Err(invalid("campaign samples reuse a benchmark run prefix"));
+    }
+    Ok(())
+}
+
+pub(super) fn require_distinct_capture(
+    captures: &mut BTreeSet<(String, String)>,
+    captured_after: &mut u128,
+    captured_at: u128,
+    result_digest: &str,
+    raw_log_digest: &str,
+) -> Result<()> {
+    if captured_at <= *captured_after
+        || !captures.insert((result_digest.to_owned(), raw_log_digest.to_owned()))
+    {
+        return Err(invalid(
+            "lane samples are duplicated or outside capture order",
+        ));
+    }
+    *captured_after = captured_at;
+    Ok(())
 }
 
 fn validate_provenance(plan: &BaselinePlan, stored: &Provenance) -> Result<()> {
@@ -125,7 +162,7 @@ fn validate_sample(
     lane: Lane,
     sample: u32,
     directory: &Path,
-) -> Result<Sidecar> {
+) -> Result<(Sidecar, String)> {
     let sidecar_path = directory.join(sidecar_file());
     let sidecar: Sidecar = parse_json(&sidecar_path, &read(&sidecar_path)?)?;
     validate_sidecar_identity(plan, proof, lane, sample, &sidecar)?;
@@ -155,7 +192,23 @@ fn validate_sample(
             "archived report is incomplete or contradicts its sidecar",
         ));
     }
-    Ok(sidecar)
+    validate_log(&plan.profile, lane, &report.fixture.run_prefix, &log_raw)?;
+    Ok((sidecar, report.fixture.run_prefix))
+}
+
+pub(super) fn validate_log(profile: &str, lane: Lane, run_prefix: &str, raw: &[u8]) -> Result<()> {
+    RunPrefix::existing(run_prefix)?;
+    let log = core::str::from_utf8(raw).map_err(|_source| invalid("raw log is not UTF-8"))?;
+    for expected in [
+        format!("→ [bench-{}] profile={profile}", lane.name()),
+        format!("run_prefix={run_prefix}"),
+        format!("wrote bench/results/{}.{profile}.json", lane.name()),
+    ] {
+        if log.lines().filter(|line| *line == expected).count() != 1 {
+            return Err(invalid("raw log does not identify its archived run"));
+        }
+    }
+    Ok(())
 }
 
 fn validate_sidecar_identity(
@@ -267,29 +320,6 @@ fn require_same<T: PartialEq>(role: &str, expected: &mut Option<T>, value: T) ->
         *expected = Some(value);
     }
     Ok(())
-}
-
-fn count_sidecars(root: &Path) -> Result<usize> {
-    let mut pending = vec![root.to_path_buf()];
-    let mut count = 0;
-    while let Some(directory) = pending.pop() {
-        let entries = fs::read_dir(&directory).map_err(|source| Error::ResultUnreadable {
-            path: directory.clone(),
-            source,
-        })?;
-        for entry in entries {
-            let entry = entry.map_err(|source| Error::ResultUnreadable {
-                path: directory.clone(),
-                source,
-            })?;
-            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                pending.push(entry.path());
-            } else if entry.file_name() == sidecar_file() {
-                count += 1;
-            }
-        }
-    }
-    Ok(count)
 }
 
 fn invalid(detail: &str) -> Error {

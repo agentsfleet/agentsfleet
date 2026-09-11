@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2
 **Branch:** feat/m192-dragonfly-migration
 **Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
-**Test Baseline:** pending — measured before the Pull Request.
+**Test Baseline:** harness/lint/version, 459 integration tests, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
 **Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical`; later Dragonfly sections remain pending.
 **Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
@@ -93,7 +93,7 @@ Reuse M188 drivers, real Redis fault fixtures, redis-rs cluster routing, and Dra
 Execution: §1 → local cluster setup → §0 → §2 → §5 → §3 → §4 → §6 → §7. §2 proves admission on the existing Redis fixture; §1 needs no CI/compose edit.
 ### §0: Prototype Dragonfly primitives and sharded coordination
 
-Dependencies: §1 and local cluster compose setup within Indy's stated scope. Test-only prototypes precede the runtime refactor; this pass edits documentation only.
+Dependencies: §1 and local cluster compose setup within Indy's stated scope. Test-only prototypes precede the runtime refactor.
 Use canonical candidate pins, listen/publish wiring, health and snapshot/restart proofs; resolve the image digest first. Keep administrative commands on the main port and measure fault recovery/resources.
 Use the canonical single-service multi-process cluster: 127.0.0.1:7001..700N advertisements, host-published ports, daemon network_mode: "service:dragonfly", stable --cluster_node_id, per-node --dir/snapshot_cron, config bootstrap on every start, two primaries and replicas.
 Compare per-fleet streams with bounded partitioned-stream layouts if population cost misses budget; public ordering and fencing govern the choice.

@@ -1,5 +1,7 @@
 //! The target a profile selected and the addresses that decision admits.
 
+use std::process::Command;
+
 use url::{Host, Url};
 
 use super::{DATABASE_ENDPOINT, Profile, REDIS_ENDPOINT, TARGET_VARIABLE};
@@ -47,6 +49,28 @@ impl Profile {
 }
 
 impl Target {
+    /// Prove each loopback endpoint is published by this worktree's compose rig.
+    ///
+    /// Loopback alone is insufficient: an SSH tunnel can forward a local port
+    /// to a shared datastore. `docker compose port` binds the port to the
+    /// running service in the current repository's compose project before any
+    /// datastore client opens it.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a missing service, a port mismatch, or a Docker invocation that
+    /// cannot start.
+    pub fn verify_owned_rig(&self, database_url: &str, redis_url: &str) -> Result<()> {
+        if !matches!(self, Self::Rig) {
+            return Err(Error::RigIdentityUnverified {
+                surface: TARGET_VARIABLE,
+                service: "remote",
+            });
+        }
+        verify_service(DATABASE_ENDPOINT, database_url, "postgres", "5432")?;
+        verify_service(REDIS_ENDPOINT, redis_url, "redis", "6380")
+    }
+
     /// Whether every connected and discovered server must be loopback.
     #[must_use]
     pub const fn requires_loopback(&self) -> bool {
@@ -68,6 +92,48 @@ impl Target {
         }
         Ok(())
     }
+}
+
+fn verify_service(
+    surface: &'static str,
+    endpoint: &str,
+    service: &'static str,
+    container_port: &'static str,
+) -> Result<()> {
+    let configured = endpoint_port(surface, endpoint)?;
+    let output = Command::new("docker")
+        .args(["compose", "port", service, container_port])
+        .output()
+        .map_err(|source| Error::RigIdentityUnavailable { service, source })?;
+    let published = output
+        .status
+        .success()
+        .then(|| published_port(&output.stdout))
+        .flatten();
+    if published != Some(configured) {
+        return Err(Error::RigIdentityUnverified { surface, service });
+    }
+    Ok(())
+}
+
+fn endpoint_port(surface: &'static str, raw: &str) -> Result<u16> {
+    Url::parse(raw)
+        .ok()
+        .and_then(|url| url.port_or_known_default())
+        .ok_or_else(|| Error::UnsafeTarget {
+            surface,
+            address: "portless".to_owned(),
+        })
+}
+
+fn published_port(raw: &[u8]) -> Option<u16> {
+    core::str::from_utf8(raw)
+        .ok()?
+        .trim()
+        .rsplit_once(':')?
+        .1
+        .parse()
+        .ok()
 }
 
 /// Require one URL to name loopback, using the same parser for every scheme.

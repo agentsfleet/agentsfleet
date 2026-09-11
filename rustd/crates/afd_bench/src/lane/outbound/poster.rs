@@ -25,11 +25,10 @@
 //!
 //! # Only this run's jobs count
 //!
-//! The worker reads the shared stream, so an entry an earlier, unswept run
-//! left behind reaches this poster too. Its destination is one this script
-//! never named, and such a job is answered but never counted: not as an
-//! attempt, not as settled. Counting it would end the drain before this run's
-//! own jobs had all been reached.
+//! The worker reads the shared stream, so a concurrently queued foreign entry
+//! can reach this poster after the empty-stream preflight. Its destination is
+//! one this script never named. The poster cancels the worker and returns a
+//! retryable verdict, so the worker neither posts nor acknowledges that entry.
 
 use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
@@ -41,6 +40,7 @@ use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Verdict};
 use afd_redis::OutboundDelivery;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 /// What one destination does when asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,12 +106,25 @@ pub struct Scripted {
     settled: Arc<AtomicU64>,
     /// Woken on every settlement, so the drain need not poll.
     settled_signal: Arc<Notify>,
+    /// Cancels the lane before a foreign entry can be acknowledged.
+    cancellation: CancellationToken,
 }
 
 impl Scripted {
     /// A poster over `behaviours`, keyed by destination (the job's fleet id).
     #[must_use]
     pub fn new(behaviours: BTreeMap<String, Behaviour>, fast: Duration, slow: Duration) -> Self {
+        Self::with_cancellation(behaviours, fast, slow, CancellationToken::new())
+    }
+
+    /// A script that can stop its worker when the shared stream yields foreign work.
+    #[must_use]
+    pub fn with_cancellation(
+        behaviours: BTreeMap<String, Behaviour>,
+        fast: Duration,
+        slow: Duration,
+        cancellation: CancellationToken,
+    ) -> Self {
         Self {
             behaviours: Arc::new(behaviours),
             fast,
@@ -119,6 +132,7 @@ impl Scripted {
             seen: Arc::new(Mutex::new(Seen::default())),
             settled: Arc::new(AtomicU64::new(0)),
             settled_signal: Arc::new(Notify::new()),
+            cancellation,
         }
     }
 
@@ -197,9 +211,12 @@ impl Deliver for Scripted {
             Some(Behaviour::Fast) => (self.fast, Verdict::Delivered),
             Some(Behaviour::Slow) => (self.slow, Verdict::Delivered),
             Some(Behaviour::Retryable) => (self.fast, Verdict::Retryable),
-            // Not this run's job. Delivered at once so it leaves the queue —
-            // on the rig that is an earlier run's leftover — and never counted.
-            None => (Duration::ZERO, Verdict::Delivered),
+            // Foreign work stays unacknowledged. Cancellation makes the real
+            // worker stop its retry ladder before it can post or acknowledge.
+            None => {
+                self.cancellation.cancel();
+                (Duration::ZERO, Verdict::Retryable)
+            }
         };
         let settles = if let Some(behaviour) = scripted {
             self.stamp(

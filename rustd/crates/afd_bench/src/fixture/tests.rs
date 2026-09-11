@@ -10,11 +10,15 @@ use super::{FixtureLedger, PREFIX_TOKEN, RunPrefix};
 
 #[test]
 fn test_a_prefix_disowns_another_runs_names() {
-    let ours = RunPrefix::mint();
+    let ours = RunPrefix::existing("bench-123-1").expect("the fixture prefix is valid");
 
     assert!(
         !ours.owns("bench-1-2-fleet-7"),
         "sweeping by prefix must not reach another run's objects"
+    );
+    assert!(
+        !ours.owns("bench-123-10-fleet-7"),
+        "a process id that merely starts with ours belongs to another run"
     );
 }
 
@@ -103,7 +107,16 @@ fn test_an_interrupted_runs_prefix_can_be_reopened_for_orphan_recovery() {
     let reopened = RunPrefix::existing(minted.as_str()).expect("a minted prefix is valid");
 
     assert_eq!(reopened, minted);
-    for unsafe_value in ["bench-%", "other-1-2", "bench-*", "bench-/../"] {
+    for unsafe_value in [
+        "bench-",
+        "bench-123",
+        "bench-123-",
+        "bench-123-4-extra",
+        "bench-%",
+        "other-1-2",
+        "bench-*",
+        "bench-/../",
+    ] {
         assert!(
             RunPrefix::existing(unsafe_value).is_err(),
             "{unsafe_value} could widen a prefix-scoped cleanup"
