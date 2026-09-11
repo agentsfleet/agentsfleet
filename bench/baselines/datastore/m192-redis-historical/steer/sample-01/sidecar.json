@@ -5,8 +5,8 @@
   "sample": 1,
   "profile": "rig",
   "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
-  "capture_revision": "a24d3055d721a7bde8f7294e521a24db991ef4c5",
-  "captured_at_unix_ms": 1789164338045,
+  "capture_revision": "f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886",
+  "captured_at_unix_ms": 1789169814929,
   "parameters": {
     "BENCH_CONCURRENCY": 8,
     "BENCH_FLEETS": 50,
@@ -40,19 +40,19 @@
   "topology_fingerprint_sha256": "sha256:13b761e01637f8787c055f113480bd0cd56bb273e33548b24263d2e808e9c357",
   "datastore_probe": {
     "postgres_raw": "address=172.18.0.2/32\nport=5432\ndatabase=agentsfleetdb\nversion=PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit\n",
-    "redis_server_raw": "# Server\r\nredis_version:7.4.11\r\nredis_git_sha1:00000000\r\nredis_git_dirty:0\r\nredis_build_id:c8d8130a4710f7c0\r\nredis_mode:standalone\r\nos:Linux 7.0.12-linuxkit aarch64\r\narch_bits:64\r\nmonotonic_clock:POSIX clock_gettime\r\nmultiplexing_api:epoll\r\natomicvar_api:c11-builtin\r\ngcc_version:14.2.0\r\nprocess_id:17\r\nprocess_supervised:no\r\nrun_id:b4203e73f240d58584f2f77bdf8af4ca755d7358\r\ntcp_port:6380\r\nserver_time_usec:1789164337942881\r\nuptime_in_seconds:10636\r\nuptime_in_days:0\r\nhz:10\r\nconfigured_hz:10\r\nlru_clock:10779441\r\nexecutable:/data/redis-server\r\nconfig_file:\r\nio_threads_active:0\r\nlistener0:name=tcp,bind=*,bind=-::*,port=6380\r\nlistener2:name=tls,bind=*,bind=-::*,port=6379\r\n",
+    "redis_server_raw": "# Server\r\nredis_version:7.4.11\r\nredis_git_sha1:00000000\r\nredis_git_dirty:0\r\nredis_build_id:c8d8130a4710f7c0\r\nredis_mode:standalone\r\nos:Linux 7.0.12-linuxkit aarch64\r\narch_bits:64\r\nmonotonic_clock:POSIX clock_gettime\r\nmultiplexing_api:epoll\r\natomicvar_api:c11-builtin\r\ngcc_version:14.2.0\r\nprocess_id:17\r\nprocess_supervised:no\r\nrun_id:b4203e73f240d58584f2f77bdf8af4ca755d7358\r\ntcp_port:6380\r\nserver_time_usec:1789169814868313\r\nuptime_in_seconds:16113\r\nuptime_in_days:0\r\nhz:10\r\nconfigured_hz:10\r\nlru_clock:10784918\r\nexecutable:/data/redis-server\r\nconfig_file:\r\nio_threads_active:0\r\nlistener0:name=tcp,bind=*,bind=-::*,port=6380\r\nlistener2:name=tls,bind=*,bind=-::*,port=6379\r\n",
     "redis_replication_raw": "# Replication\r\nrole:master\r\nconnected_slaves:0\r\nmaster_failover_state:no-failover\r\nmaster_replid:caa4cf9a121441f4aefff06ffe34804f233e8afe\r\nmaster_replid2:0000000000000000000000000000000000000000\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0\r\nrepl_backlog_histlen:0\r\n",
     "redis_topology_raw": "refused: ResponseError: This instance has cluster support disabled",
     "discovered_hosts": []
   },
   "result_file": "result.json",
-  "result_sha256": "sha256:56e498707e66949fa4b42bf6a1323f39f5562fef1f35e6a65dfb1be283ac8c40",
+  "result_sha256": "sha256:67f1bcce920c5819445bc9790dff431867ee417975e6c04cd2f899e99a6c0d6f",
   "raw_log_file": "raw.log",
-  "raw_log_sha256": "sha256:e462df96d38c213a73f7cd3e7cd160d1cc0e2159726a7eec50b7c0248494de4d",
+  "raw_log_sha256": "sha256:5155ea5332894f7800898d10946d0056fce87bd3d964a4aaf6d723b84776715e",
   "provenance_file": "../../provenance.json",
-  "provenance_sha256": "sha256:5a2aa34bcaf4ae879bc5d93d275fa5ae89997c0e31e160bb41889be1bf3f80c8",
+  "provenance_sha256": "sha256:e4a31102c00fb4d59b39d0ca0fc1bbe86d2170458d4b3c0c41d2bb6dcd0f60d8",
   "postgres_raw_sha256": "sha256:70b9ae9473fb6946d6ed18affbaa12c303859fbbc80c29b64cb8207477661b6f",
-  "redis_server_raw_sha256": "sha256:13ccd507c3b29957374eeb6457573344bb7953a6b08cda11f42a73ec67025f21",
+  "redis_server_raw_sha256": "sha256:bb75b2f967dddf829d273b60f3c3db31755571b96852aa2f2049b8341d3ec6d8",
   "redis_replication_raw_sha256": "sha256:d13423366479d8775aee039e8619c5feea5484e41b41769045e87b46eb394740",
   "redis_topology_raw_sha256": "sha256:2b3896901eff361568bc0e2280a32fdd6350c6ef4cac8b0fe17a4aed1a6d1e01"
 }

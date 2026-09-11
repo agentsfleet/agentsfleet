@@ -13,28 +13,28 @@
     "exhausted": 1.0,
     "failures": 0.0,
     "idle_index_depth": 0.0,
-    "idle_polls": 35202.0,
-    "idle_redis_calls_per_poll": 1.0000852224305437,
+    "idle_polls": 44209.0,
+    "idle_redis_calls_per_poll": 1.0000226198285418,
     "idle_roundtrips_per_poll": 0.0,
     "leases": 200.0,
-    "max_ms": 327.423,
-    "p95_ms": 269.823,
-    "p99_ms": 319.487,
-    "polls_per_second": 56.29864554841918,
-    "rate_per_second": 56.29864554841918,
-    "roundtrips_per_lease": 34.7,
-    "wasted_claim_rate": 0.033816425120772944
+    "max_ms": 335.615,
+    "p95_ms": 263.935,
+    "p99_ms": 325.631,
+    "polls_per_second": 78.57784479133598,
+    "rate_per_second": 78.57784479133598,
+    "roundtrips_per_lease": 36.255,
+    "wasted_claim_rate": 0.05660377358490566
   },
   "datastores": {
     "redis": {
-      "operations": 610
+      "operations": 615
     },
     "postgres": {
-      "operations": 6940
+      "operations": 7251
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789164564578-97732",
+    "run_prefix": "bench-1789169941624-52598",
     "created": 608,
     "swept": 608
   }

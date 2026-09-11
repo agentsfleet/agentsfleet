@@ -3,9 +3,9 @@
  Container agentsfleet-m192-dragonfly-migration-postgres-1 Running 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Running 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Running 
- Container agentsfleet-m192-dragonfly-migration-postgres-1 Waiting 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Waiting 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Waiting 
+ Container agentsfleet-m192-dragonfly-migration-postgres-1 Waiting 
  Container agentsfleet-m192-dragonfly-migration-qstash-1 Healthy 
  Container agentsfleet-m192-dragonfly-migration-postgres-1 Healthy 
  Container agentsfleet-m192-dragonfly-migration-redis-1 Healthy 
@@ -16,5 +16,5 @@
  agentsfleet-m192-dragonfly-migration-redis-1 Copied agentsfleet-m192-dragonfly-migration-redis-1:/tls/foreign-ca.crt to /private/tmp/agentsfleet-m192-dragonfly-migration/.tmp/redis-foreign-ca.crt
 ✓ [infra] postgres + redis ready; Redis CA cert at /private/tmp/agentsfleet-m192-dragonfly-migration/.tmp/redis-ca.crt
 → [bench-steer] profile=rig
-run_prefix=bench-1789164437762-95060
+run_prefix=bench-1789169859035-50112
 wrote bench/results/steer.rig.json

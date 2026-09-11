@@ -8,19 +8,20 @@
     "BENCH_WINDOW_SECONDS": 15
   },
   "measurements": {
-    "accepted": 48575.0,
+    "accepted": 147344.0,
     "error_rate": 0.0,
     "failures": 0.0,
-    "max_ms": 65.119,
-    "p95_ms": 9.143,
-    "p99_ms": 20.287,
-    "postgres_transactions_per_steer": 0.00393206381883685,
-    "rate_per_second": 3237.8365412800163,
-    "redis_calls_per_steer": 2.001358723623263
+    "max_ms": 10.535,
+    "p95_ms": 1.267,
+    "p99_ms": 1.924,
+    "postgres_transactions_per_steer": 0.0011130415897491585,
+    "rate_per_second": 9822.39250127017,
+    "redis_calls_per_steer": 2.000454718210446
   },
   "series": {
     "ready_depth": [
       0.0,
+      50.0,
       50.0,
       50.0,
       50.0,
@@ -83,14 +84,14 @@
   },
   "datastores": {
     "redis": {
-      "operations": 97216
+      "operations": 294755
     },
     "postgres": {
-      "operations": 191
+      "operations": 164
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789164314546-91882",
+    "run_prefix": "bench-1789169796754-47640",
     "created": 150,
     "swept": 150
   }

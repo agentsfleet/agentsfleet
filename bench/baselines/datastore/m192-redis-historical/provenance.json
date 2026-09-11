@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
-  "capture_revision": "a24d3055d721a7bde8f7294e521a24db991ef4c5",
+  "capture_revision": "f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886",
   "production_source": {
     "baseline_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
     "capture_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
@@ -33,6 +33,8 @@
     "equal": true
   },
   "changed_paths": [
+    ".github/workflows/test-integration-rustd.yml",
+    ".github/workflows/test.yml",
     ".oracle/orly.json",
     "AGENTS.md",
     "bench/baselines/datastore/m192-redis-historical/cardinality/sample-01/raw.log",
@@ -106,6 +108,7 @@
     "rustd/crates/afd_bench/src/evidence/git/metadata.rs",
     "rustd/crates/afd_bench/src/evidence/git/tests.rs",
     "rustd/crates/afd_bench/src/evidence/grade.rs",
+    "rustd/crates/afd_bench/src/evidence/grade/anchor.rs",
     "rustd/crates/afd_bench/src/evidence/grade/tree.rs",
     "rustd/crates/afd_bench/src/evidence/grade/tree/tests.rs",
     "rustd/crates/afd_bench/src/evidence/model.rs",

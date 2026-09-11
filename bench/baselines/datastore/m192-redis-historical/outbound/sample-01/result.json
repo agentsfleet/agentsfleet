@@ -11,26 +11,26 @@
   "measurements": {
     "delivered": 200.0,
     "foreign_entries": 0.0,
-    "max_ms": 4124.671,
-    "others_p95_ms": 3825.663,
-    "p95_ms": 3825.663,
-    "p99_ms": 4114.431,
-    "rate_per_second": 48.488740808315185,
+    "max_ms": 4147.199,
+    "others_p95_ms": 3860.479,
+    "p95_ms": 3860.479,
+    "p99_ms": 4141.055,
+    "rate_per_second": 48.21605033950255,
     "retry_occupancy": 0.0,
     "slow_destinations": 1.0,
-    "slow_p95_ms": 3837.951,
+    "slow_p95_ms": 3874.815,
     "unsettled": 0.0
   },
   "datastores": {
     "redis": {
-      "operations": 604
+      "operations": 602
     },
     "postgres": {
-      "operations": 0
+      "operations": 1
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789164645444-154",
+    "run_prefix": "bench-1789170010350-54917",
     "created": 200,
     "swept": 200
   }
