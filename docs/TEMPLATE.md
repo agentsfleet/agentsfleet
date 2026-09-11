@@ -19,26 +19,51 @@ Three markup classes appear below the divider. The gate tells them apart mechani
 
 Everything else — headings, table skeletons, the standard rubric rows — is kept and filled. The result: the executing agent reads **100% instance content, zero template noise**, and the 320-line budget buys signal, not boilerplate.
 
-## What a spec pins — and refuses to pin
+## Authoring policy authorization
 
-A milestone spec is a **goal rulebook** the executing agent plans and ships from *without playing 20-questions with the author*. It pins **intent + invariants + tests + pointers**; the agent has agency on everything else. It must NOT pin implementation detail that rots within a sprint: allocator/capacity choices, library versions, line-by-line code, exact Structured Query Language (SQL) Data Definition Language (DDL), import statements — the agent derives those from the repository.
+Indy explicitly requested: "update the base TEMPLATE.md so the subsequent agents can come up with one shot implementation from the spec produced by orly from the template."
+The [review record](./v2/reviews/M192_REVIEW_RESOLUTION.md#follow-up-at-b01294265-cutover-simplification-and-governance) preserves the full request and scope. This guidance change is paired with dispatch/write_spec.md; required sections, gates and verification commands remain unchanged.
 
-> **Pseudocode litmus.** If the spec names a version (`postcard 1.1`), a variable (`var ctx = …`), or a DDL clause (`CREATE TABLE … DEFAULT 'foo'`), it's pseudocode — it will be wrong within a sprint. Replace with *"use the project's existing X"* + a pointer to where X lives.
+## What a spec pins
+
+A milestone spec is a **goal rulebook** the executing agent plans and ships from without repeated architecture questions. It pins **intent, invariants, enforcement mechanisms, tests and source pointers**. Leave routine variable names, import statements and code layout to repository conventions.
+
+Pin details when changing them could invalidate a proof: client/server versions and feature support, identity scope, uniqueness and null semantics, privilege boundaries, transaction/release ordering, failure behavior and measured resource budgets. Record the supporting source revision and which proofs a version/configuration change invalidates. The manifest remains the dependency source of truth; a compatibility claim must identify the manifest it checked.
+
+> **Mechanism litmus.** Could an implementer follow this sentence and still violate the invariant? “Preserve single use” is incomplete without the state authority, guarded transition, commit-before-release boundary and failover assumption. Name those; omit a line-by-line implementation. A bounded prototype may choose a performance parameter, but an unchosen security mitigation is not implementation-ready.
 
 ## Anti-patterns (reject on sight)
 
 | # | Anti-pattern | Do instead |
 |---|---|---|
-| 1 | Code blocks inside section bodies | Describe WHAT the slice delivers; pin precise behaviour as a Test. Prose code drifts; tests don't. |
+| 1 | Implementation listings inside section bodies | State the mechanism and behavioral proof. Keep code to necessary interface examples, reproducible evidence commands or a referenced diagnostic. |
 | 2 | Listing every variable name | Point at an existing implementation to mirror; names match local style. |
-| 3 | SQL DDL line-by-line | Table shape + constraints in prose; the agent conforms to existing migrations. |
-| 4 | Pinning library versions | *"Use the existing Redis client"* + import pointer; the package manifest is the source of truth. |
-| 5 | Step-by-step ordering ("Step 1… Step 2…") | **Sections** (value slices); the agent sequences within. |
+| 3 | SQL DDL line-by-line | Pin identity, null/deletion semantics, atomic effects and grants; use new migrations according to the repository's current migration policy. |
+| 4 | Assuming a client supports a server feature | Verify both sides at named revisions; pin the compatibility baseline and required reruns, including managed-service differences. |
+| 5 | Incidental coding recipes or circular Section dependencies | Declare an acyclic prerequisite order; explicitly pin commit/release, migration and deployment ordering when correctness depends on it. |
 | 6 | Test code in the spec | Name tests + assert behaviour in prose; the agent writes them in project style. |
 | 7 | One rubric row per Dimension, or pasted evidence walls | 5–12 outcome rows; Graded = ✅/❌ + one decisive output line. The Test Specification is the per-Dimension ledger. |
 | 8 | Template guidance surviving in the filled spec | Delete every `tpl:` comment; the executor reads instance content only. |
 
-Slipped into one? The fix is usually **point at a file** (read-first pointer) or **delete the detail** (the agent figures it out).
+Use source pointers to avoid duplicating code, but do not delegate a missing safety mechanism to the implementer's imagination.
+
+## Implementation readiness review
+
+Before finalizing a spec, attack the proposed design using the applicable rows below. Put the resulting requirements in the existing Sections, Failure Modes, Invariants, Tests, Files Changed and Discovery; do not copy this whole table into every spec or create another scoring surface. Small changes need only the relevant checks.
+
+| Surface | What the author must resolve |
+|---|---|
+| Real execution path | Trace actual producers, readers, side effects, backgrounds and cleanup. Separate an implemented caller from a comment, fixture or proposed feature; verify critical claims regardless of who wrote the review. |
+| Safety and authority | Name one authority per invariant, the guarded state change, commit/release point and retry behavior. Attack lost replies, concurrent calls, owner failover and snapshot rollback separately; an acknowledgment is not automatically durable failover proof. Preserve intentional idempotent response retries. |
+| Identity and history | State identity scope across tenants/streams, ordering and cursor tie-breaks, nulls, deletion and expiry. Trace all conflict writers and downstream consumers such as billing enforcement. Separate pre-existing defects from new risks; name irrecoverable history and a bounded disposition instead of an impossible backfill. |
+| Schema and privileges | Follow the current shipped-migration policy. For populated changes, cover fresh bootstrap, incremental upgrade, interrupted rerun and old/new build compatibility. Test successful operations under the actual role, including SELECT needed by UPDATE, as well as forbidden writes. |
+| Client, server and platform | Check pinned client routing/reconnect/push behavior against the server and managed service. Probe advertised nodes, TLS, required commands and real ACL grants. Local source inspection and successful seed connection are not managed-service evidence. |
+| Deployment and recovery | Identify the actual deployment graph, secret staging, writer fence, restart/autostart paths, import authorization and empty/nonempty deploy shape. Prove pre-mutation refusal, abort/forward recovery and later ordinary deploys; inventory ephemeral auth and provider deliveries during the fence too. |
+| Performance and scope | Budget the whole request path: transaction/commit rate, fan-out, sequential round trips, connection pools, WAL, memory, backlog/drain and cost. Prefer the existing layout unless measurements require partitioning, batching or another subsystem. Name each comparison reference and prove workload/resource equivalence; distinguish planning inputs from measured thresholds. |
+| Evidence and proof tier | Bind raw output to revision, parameters, resources and run identity; include lockfile/resolved production dependency closure for bench-only baselines. Distinguish inspected, proposed, NOT RUN and observed results. Unit stubs do not prove deployments; local tests do not prove Cloud. |
+| Decisions and prerequisites | Record agent defaults, measured outputs and required user decisions separately. Attribute only real quotes and explicit overrides; do not infer risk acceptance from reviewer advice. Name the first executable slice and the boundary each unresolved prerequisite blocks. |
+
+After editing, run a separate adversarial pass: search for stale/superseded requirements and circular dependencies; try to violate each critical invariant while obeying the text. Report remaining blockers by boundary (start, dependent integration, load or rollout), with a named resolving action. Do not promise that document checks prove runtime readiness.
 
 ## Hierarchy & terminology
 
@@ -108,11 +133,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Provenance:** human-written | LLM-drafted ({{fill:model}}, {{fill:date}}) | agent-generated (pre-spec, {{fill:source doc}})
 **Canonical architecture:** `docs/architecture/{{fill:relevant-doc}}.md` §{{fill:N}}
 
-<!-- tpl: Provenance is load-bearing — the implementing agent calibrates trust by
-who wrote the spec: LLM-drafted gets extra cross-checking against the codebase;
-human-written assumes the author read the relevant code. Canonical architecture:
-the docs/architecture/ directory is the source of truth (Architecture Consult &
-Update Gate); greenfield → point at the doc that defines the shape. -->
+<!-- tpl: Provenance records origin, not proof. Cross-check correctness-critical
+claims against the actual caller, schema and pinned dependencies regardless of
+author. Distinguish source-verified behavior, proposed mechanisms and observed
+runtime results. Canonical architecture: docs/architecture/ owns the detailed
+mechanism; keep spec defaults and acceptance tests consistent with it. -->
 
 ---
 
@@ -159,7 +184,11 @@ orphan sweeps, and review effort; per AGENTS.md the executing agent may only
 edit files in this table without explicit override. List FILES and ROLES —
 never line numbers or function names (they drift). Teardown/rename/flip specs
 open with a blast-radius grep first: git grep -rn -w '<token>' from repo root,
-no path filter (dispatch/write_spec.md, Authoring discipline). -->
+no path filter (dispatch/write_spec.md, Authoring discipline). Include all real
+writers/readers, schema registration, role grants, recovery tools, fixtures,
+deployment/secret references and protocol docs affected by the chosen mechanism.
+Distinguish source references from files to edit; do not schedule edits to
+frozen migration history. Expand planned file scopes before implementation. -->
 
 ## Applicable Rules
 
@@ -225,16 +254,20 @@ defined in docs/architecture/{{fill:doc}}.md." -->
 <!-- tpl: State prerequisites and who resolves each decision: agent choice,
 measured preparation output, or required human decision. A preparation Section
 may establish budgets or fixtures needed by later Sections; name its completion
-condition. Each Section: WHAT one slice delivers and WHY (not how); numbered
-Dimensions map 1:1 to Tests and get marked DONE in the same commit as their
-code. The agent picks each Implementation default unless it has evidence to
-deviate. Good: "§3 — Replay idempotency. Receiver dedupes on the delivery id.
-Implementation default: 24h dedupe window matching the upstream retry window;
-storage is a Redis key with a Time To Live (TTL) — the agent picks the key
-shape from existing dedupe patterns. Dimension 3.1 → test_dedupes_within_window;
-3.2 → test_evicts_after_ttl." Bad: "§3 — Use redis.SET(\"webhook:dedupe:\"+id,
-\"1\",\"NX\",\"EX\",86400) and check the return." — pseudocode; the agent reads
-the existing dedupe pattern and writes the call. -->
+condition and what missing evidence blocks; prerequisites must be acyclic.
+Each Section names the delivered behavior, required mechanism and proof, without
+coding recipes. For prototypes, name setup, fault, pass/fail evidence and the
+selected safe design or bounded decision rule before dependent integration.
+Do not leave a security invariant as "prototype, then find a mitigation".
+Numbered Dimensions map 1:1 to Tests and get marked DONE with their code.
+The agent follows each Implementation default unless evidence requires an
+amended design. Good: "§3 — Replay-safe admission. Uniqueness covers provider,
+tenant and delivery identity; acceptance and dispatch intent commit together
+before acknowledgment. Retention covers the provider retry window and unfinished
+work. Dimensions prove concurrent retries and crash recovery; storage follows
+the canonical outbox design." Bad: "Set a dedupe key, then append" without an
+atomicity/recovery rule, or a line-by-line Redis/SQL recipe. The agent writes
+the calls; the spec must already establish why a crash cannot lose acceptance. -->
 
 ## Interfaces
 
@@ -256,15 +289,21 @@ implementation. -->
 <!-- tpl: Every failure path the agent must handle; each row → a negative/
 integration test in the Test Specification. Cover at minimum: timeout,
 malformed input, auth failure, network blip, race, replay, exceeded quota,
-dependency unavailable. -->
+dependency unavailable where applicable. For stateful work, distinguish timeout
+from rollback, acknowledgment from durable recovery, and automatic failover
+from operator restore. State which protected response or side effect remains
+closed on uncertainty; name recovery instead of promising to resolve it later. -->
 
 ## Invariants
 
 1. {{fill:Invariant}} — {{fill:how it's enforced}}
 
 <!-- tpl: Each MUST be enforceable by code (compiler, lint, comptime assertion,
-runtime check) — NOT by review discipline. If a human can violate it silently,
-it's not an invariant. None → "N/A — no invariants." -->
+runtime check) — NOT by review discipline. Name the authority, enforcement
+mechanism and failure assumptions; database-backed does not itself prove safe
+replica promotion. Test the shortest counterexample across the commit/release
+boundary. An operator procedure is an operational prerequisite, not an invisible
+runtime guard. None → "N/A — no invariants." -->
 
 ## Metrics & Observability
 
@@ -302,7 +341,12 @@ real HTTP request / rendered UI); a unit test is not a substitute. Also
 include regression rows (pre-existing behaviour that must not change — "N/A —
 greenfield" if none) and idempotency/replay rows (any retry semantics).
 Human acceptance uses tier manual, with its procedure, required person, and
-durable evidence. An agent cannot manufacture human sign-off.
+durable evidence. An agent cannot manufacture human sign-off. Label stubbed
+workflow decisions as unit proofs, local multi-node behavior as integration,
+and actual deploy/managed-failover results at their operational boundary.
+For state replacement, include concurrency, ambiguous commit, expiry/deletion,
+identity collisions and fresh/populated upgrade where relevant. N/A applies
+only to demonstrably unnecessary assertions, never an unrun base behavior.
 Non-self-evident input shape → point at a fixture
 (samples/fixtures/m{{fill:N}}-fixtures/{{fill:name}}.json); don't inline JSON. Hard-to-
 describe behaviour in prose ⇒ the Goal is fuzzy — fix the Goal, not this
@@ -419,11 +463,14 @@ platform constants (docs/architecture/direction.md). -->
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+- **Consults** — Architecture / Legacy-Design / gate-flag triage: source/revision, question, actual decision and provenance. Separate direct quotes, confirmed decisions, reviewer suggestions and agent choices; never manufacture authorization.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
 
-<!-- tpl: Empty at creation (keep the four bullet headers). This is the spec's
-running record — where deferrals and skill outcomes are proven as the work
-proceeds. -->
+<!-- tpl: Keep the four bullet headers. At authoring, record consultations,
+source findings and user decisions already supplied; leave future skill/runtime
+outcomes pending and all Graded cells empty. A confirmed planning input is not a
+measured SLO; a proposed risk exception is not approval. Record superseded
+requirements explicitly and update canonical docs/tests so old alternatives
+cannot be mistaken for simultaneous requirements. -->
