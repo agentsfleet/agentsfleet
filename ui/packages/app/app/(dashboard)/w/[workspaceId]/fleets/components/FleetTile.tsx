@@ -101,7 +101,7 @@ function DrainedTile({ fleet, workspaceId }: Props) {
       emptyActivity={FLEET_NO_LIVE_ACTIVITY_COPY}
     >
       <span
-        className="inline-block w-2 h-2 rounded-full bg-muted-foreground"
+        className="inline-block size-2 rounded-full bg-muted-foreground"
         aria-hidden="true"
       />
     </TileShell>
@@ -144,7 +144,7 @@ function StreamingTile({ fleet, workspaceId }: Props) {
     >
       <span
         className={cn(
-          "inline-block w-2 h-2 rounded-full",
+          "inline-block size-2 rounded-full",
           fleet.status === AGENTSFLEET_STATUS.INSTALLING
             ? "bg-info"
             : actuallyLive
@@ -195,10 +195,10 @@ function TileEyebrow({ eyebrow, title }: { eyebrow?: string; title?: string }) {
 
 function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }: Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity"> & { identity: FleetIdentity }) {
   return (
-    <div className="flex items-start gap-4">
+    <div className="flex items-start gap-xl">
       <FleetSigil identity={identity} live={live} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-md">
           <div className="min-w-0">
             <div className="truncate font-medium">{fleet.name}</div>
             <div
@@ -208,12 +208,12 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }
               Agent {identity.callsign} · {fleet.status}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-md">
             <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
             {children}
           </div>
         </div>
-        <p className="mt-2 text-body-sm leading-body-sm text-muted-foreground">
+        <p className="mt-md text-body-sm leading-body-sm text-muted-foreground">
           {FLEET_AGENT_DESCRIPTION}
         </p>
       </div>
@@ -240,8 +240,11 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
   // React reuses the tile for a different immutable Fleet identifier.
   const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
   return (
+    // The system's own card inset, and one gap token down the tile. It ran
+    // p-4/gap-3/gap-4/gap-2/mt-2/pt-3 before — six numbers, none of them the
+    // inset that framed them.
     <Card
-      className="min-h-44 p-4"
+      className="min-h-44"
       data-kind={kind}
     >
       <Link
@@ -250,7 +253,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
         aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — Agent ${identity.callsign} — ${fleet.status}`}
         data-state={fleetRowState(fleet.status)}
       />
-      <div className="pointer-events-none flex h-full flex-col gap-3">
+      <div className="pointer-events-none flex h-full flex-col gap-lg">
         <TileIdentity
           fleet={fleet}
           identity={identity}
@@ -260,11 +263,11 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
         >
           {children}
         </TileIdentity>
-        <div className="min-h-[1.25rem] font-sans text-xs text-muted-foreground truncate">
+        <div className="min-h-5 font-sans text-xs text-muted-foreground truncate">
           {feed ?? emptyActivity}
         </div>
         <TileMetrics fleet={fleet} counters={counters} />
-        <div className="mt-auto flex justify-end border-t border-border pt-3">
+        <div className="mt-auto flex justify-end border-t border-border pt-lg">
           <span className="font-sans text-xs font-medium text-pulse">
             {MANAGE_FLEET_LABEL} →
           </span>

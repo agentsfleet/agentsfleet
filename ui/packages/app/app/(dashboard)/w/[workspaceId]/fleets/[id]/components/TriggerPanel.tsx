@@ -26,7 +26,7 @@ const TRIGGERS_EMPTY_DESCRIPTION =
 export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props) {
   return (
     <Card className="bg-card" aria-label={TRIGGERS_TITLE}>
-      <CardContent className="flex flex-col gap-md py-4">
+      <CardContent className="flex flex-col gap-md">
         <h2 className="font-sans text-sm font-medium">{TRIGGERS_TITLE}</h2>
         {triggers.length === 0 ? (
           <EmptyState
