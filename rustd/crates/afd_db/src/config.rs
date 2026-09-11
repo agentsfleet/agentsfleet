@@ -106,7 +106,8 @@ fn min_connections_default(max_connections: u32) -> u32 {
 /// probe against the development database through the production pool showed
 /// exactly that: the boot handshake took 2.7 s, warm established 0 of 2 inside
 /// a 10 s deadline, and all eight callers failed their first acquire with the
-/// pool below its ceiling. Identical on the direct port and through PgBouncer,
+/// pool below its ceiling. Identical on the direct port and through
+/// `PgBouncer`,
 /// which is what rules the pooler out as the cause.
 ///
 /// Five seconds covers a cross-region TLS handshake with headroom while still
@@ -368,11 +369,17 @@ mod pool_sizing_tests {
         /// milliseconds. A budget at or below this cannot open a connection.
         const MEASURED_SLOW_HANDSHAKE_MS: u64 = 2_700;
 
+        // Through `black_box` so the comparison survives as a comparison:
+        // both sides are constants, and clippy rejects an assertion it can
+        // fold away — correctly, since a folded assert proves nothing at run
+        // time. The budget is read the way a caller reads it instead.
+        let budget = std::hint::black_box(ACQUIRE_TIMEOUT_MS_DEFAULT);
+        let handshake = std::hint::black_box(MEASURED_SLOW_HANDSHAKE_MS);
+
         assert!(
-            ACQUIRE_TIMEOUT_MS_DEFAULT > MEASURED_SLOW_HANDSHAKE_MS,
-            "an acquire budget of {ACQUIRE_TIMEOUT_MS_DEFAULT}ms cannot open a connection that \
-             takes {MEASURED_SLOW_HANDSHAKE_MS}ms: the pool would warm to zero and answer every \
-             request from empty"
+            budget > handshake,
+            "an acquire budget of {budget}ms cannot open a connection that takes {handshake}ms: \
+             the pool would warm to zero and answer every request from empty"
         );
     }
 
