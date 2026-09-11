@@ -34,6 +34,16 @@ type AuditedWindow = typeof window & { __shellBlankAudit?: ShellBlankAudit };
 export function installPaintBoundaryAudit(): void {
   const main = document.querySelector("main");
   if (!main) throw new Error("dashboard main region is missing");
+  // A route's own Suspense fallback is a text-free skeleton inside the same
+  // `main`. Sampling from that state counts the server's read latency as
+  // blank shell frames — every frame until the data lands is "blank" by this
+  // audit's definition. Refuse the install: the caller gates on content only
+  // the loaded route carries, and a shell that never blanks stays provable.
+  if (!main.textContent?.trim()) {
+    throw new Error(
+      "dashboard main region has no content yet — wait for the loaded route before installing the audit",
+    );
+  }
   // This function is serialized into the page, so limits live inside it.
   const MAX_SAMPLES = 8;
   const MAX_CHILD_TAGS = 8;
