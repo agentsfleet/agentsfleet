@@ -101,6 +101,16 @@ Production is the same with `ENV=prod`, `agentsfleetd-prod`, the
 release workflow instead of `deploy-dev.yml`. Schedule the window: writes are
 stopped from step 3 to step 8.
 
+## One thing the connection strings must not carry
+
+`sslrootcert=system` is added to a URL **inside the container only**, by
+`region_move_with_system_roots`, because the `postgres` image has no trust
+store at `~/.postgresql/root.crt` and PlanetScale issues `verify-full` without
+naming a root. It must never reach a vault field: `afd_db` parses
+`sslrootcert` as a file path and refuses to boot when it cannot read one
+(`TlsCertFileUnreadable`), so a staged string carrying it is a daemon that
+does not start.
+
 ## What the copy does
 
 `02_copy.sh` refuses to run until the target's migration ledger stands at the

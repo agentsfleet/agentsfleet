@@ -45,3 +45,24 @@ region_move_url_port() {
   printf '%s' "$1" |
     sed -nE 's#^postgres(ql)?://[^@/]*@[^/?]*:([0-9]+)(/.*)?$#\2#p'
 }
+
+# The same URL, told to verify against the system trust store.
+#
+# PlanetScale issues `sslmode=verify-full` with no `sslrootcert`, so libpq
+# looks for `~/.postgresql/root.crt` — which does not exist inside the
+# `postgres` container, where HOME is /root and nothing was ever written
+# there. Every psql and pg_dump in this playbook runs in that container, so
+# every one of them failed on a certificate file rather than on anything to do
+# with the database.
+#
+# For the CONTAINER ONLY. This must never reach a vault field: the daemon
+# parses `sslrootcert` as a path and refuses to boot on one it cannot read
+# (`afd_db::config::tls`, TlsCertFileUnreadable), so a connection string
+# carrying it is a daemon that does not start.
+region_move_with_system_roots() {
+  case "$1" in
+    *sslrootcert=*) printf '%s' "$1" ;;
+    *\?*) printf '%s&sslrootcert=system' "$1" ;;
+    *) printf '%s?sslrootcert=system' "$1" ;;
+  esac
+}

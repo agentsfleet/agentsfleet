@@ -40,8 +40,8 @@ env_mode="$(region_move_require_env)"
 vault="$(region_move_vault "$env_mode")"
 item="$(region_move_item "$env_mode")"
 
-source_url="$(playbooks_read_ref_or_empty "op://$vault/$item/migrator-connection-string")"
-target_url="$(playbooks_read_ref_or_empty "op://$vault/$item/next-migrator-connection-string")"
+source_url="$(region_move_with_system_roots "$(playbooks_read_ref_or_empty "op://$vault/$item/migrator-connection-string")")"
+target_url="$(region_move_with_system_roots "$(playbooks_read_ref_or_empty "op://$vault/$item/next-migrator-connection-string")")"
 [ -n "$source_url" ] && [ -n "$target_url" ] || {
   echo "❌ connection strings missing — run ACTION=check first" >&2
   exit 1

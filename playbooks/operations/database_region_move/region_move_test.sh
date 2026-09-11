@@ -181,7 +181,44 @@ test_verify_passes_matching_branches() {
   fi
 }
 
+# The container's psql has no trust store, and the daemon rejects the flag
+# that fixes it. Both halves of that are load-bearing, so both are pinned.
+test_system_roots_are_added_for_the_container() {
+  local name="system roots are appended for the container, once"
+  # shellcheck source=./lib.sh
+  ( set +u; . "$SCRIPT_DIR/lib.sh"
+    with_query="$(region_move_with_system_roots 'postgres://u:p@h:5432/db?sslmode=verify-full')"
+    without_query="$(region_move_with_system_roots 'postgres://u:p@h:5432/db')"
+    already="$(region_move_with_system_roots 'postgres://u:p@h:5432/db?sslrootcert=/a.pem')"
+    [ "$with_query" = 'postgres://u:p@h:5432/db?sslmode=verify-full&sslrootcert=system' ] || exit 1
+    [ "$without_query" = 'postgres://u:p@h:5432/db?sslrootcert=system' ] || exit 2
+    [ "$already" = 'postgres://u:p@h:5432/db?sslrootcert=/a.pem' ] || exit 3
+    # The host and port parsers still read a wrapped URL, since the census
+    # prints the host it is about to compare.
+    [ "$(region_move_url_host "$with_query")" = 'h' ] || exit 4
+    [ "$(region_move_url_port "$with_query")" = '5432' ] || exit 5
+  ) && ok "$name" || bad "$name" "wrapping or parsing is wrong (exit $?)"
+}
+
+# A vault field carrying sslrootcert is a daemon that will not boot:
+# afd_db parses it as a path and raises TlsCertFileUnreadable.
+test_the_staged_vault_strings_carry_no_sslrootcert() {
+  local name="staged vault strings never carry sslrootcert"
+  if grep -q 'sslrootcert' "$SCRIPT_DIR/001_playbook.md" &&
+     ! grep -q 'never reach a vault field\|must never appear in a vault' "$SCRIPT_DIR/001_playbook.md"; then
+    bad "$name" "the playbook mentions sslrootcert without warning it off vault fields"
+    return
+  fi
+  if grep -nE 'next-(api|migrator)-connection-string.*sslrootcert' "$SCRIPT_DIR"/*.sh >/dev/null 2>&1; then
+    bad "$name" "a script writes sslrootcert into a staged vault field"
+  else
+    ok "$name"
+  fi
+}
+
 echo "database-region-move regression tests"
+test_system_roots_are_added_for_the_container
+test_the_staged_vault_strings_carry_no_sslrootcert
 test_gate_refuses_all
 test_check_refuses_same_host
 test_check_refuses_api_on_direct_port
