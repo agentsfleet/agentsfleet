@@ -46,15 +46,6 @@ pub enum Verdict {
 /// future: the worker takes its poster as a type parameter, so nothing here
 /// needs object safety and no allocation happens per delivery.
 pub trait Deliver: Send + Sync {
-    /// Decide whether this worker owns a job before provider dispatch.
-    ///
-    /// Production posters accept every queue entry. Measurement harnesses can
-    /// refuse foreign shared-stream work before an unknown or unsupported
-    /// provider would otherwise be acknowledged as permanently unroutable.
-    fn permits(&self, _job: &OutboundDelivery) -> bool {
-        true
-    }
-
     /// Attempts delivery once.
     ///
     /// Infallible by signature, which is the contract: everything that can go
@@ -84,9 +75,6 @@ pub struct Posters<S> {
 /// leaving it unacknowledged would redeliver it forever. The Zig drops an
 /// unknown provider for exactly this reason.
 pub async fn dispatch<S: Deliver>(posters: &Posters<S>, job: &OutboundDelivery) -> Verdict {
-    if !posters.slack.permits(job) {
-        return Verdict::Retryable;
-    }
     let Some(provider) = Provider::parse(&job.provider) else {
         return unroutable(job, "unknown_provider");
     };
@@ -187,22 +175,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Default)]
-    struct Rejecting {
-        calls: AtomicUsize,
-    }
-
-    impl Deliver for Rejecting {
-        fn permits(&self, _job: &OutboundDelivery) -> bool {
-            false
-        }
-
-        fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            std::future::ready(Verdict::Delivered)
-        }
-    }
-
     fn job(provider: &str) -> OutboundDelivery {
         OutboundDelivery {
             id: afd_redis::streams::EventId::of("1700000000001-0"),
@@ -241,18 +213,6 @@ mod tests {
             Verdict::Permanent,
             "an unroutable job retried forever is worse than one dropped"
         );
-        assert_eq!(posters.slack.calls.load(Ordering::Relaxed), 0);
-    }
-
-    #[tokio::test]
-    async fn test_an_ownership_refusal_happens_before_provider_dispatch() {
-        let posters = Posters {
-            slack: Rejecting::default(),
-        };
-
-        let verdict = dispatch(&posters, &job("github")).await;
-
-        assert_eq!(verdict, Verdict::Retryable);
         assert_eq!(posters.slack.calls.load(Ordering::Relaxed), 0);
     }
 

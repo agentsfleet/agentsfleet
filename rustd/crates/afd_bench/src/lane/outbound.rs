@@ -147,12 +147,11 @@ pub async fn run_cancelled(
     queue.ensure_group().await?;
 
     let behaviours = script(prefix, parameters);
-    let poster = Scripted::owned(
+    let poster = Scripted::with_cancellation(
         behaviours.clone(),
         FAST_ANSWER,
         SLOW_ANSWER,
         cancellation.clone(),
-        prefix,
     );
     let destinations: Vec<&String> = behaviours.keys().collect();
 
