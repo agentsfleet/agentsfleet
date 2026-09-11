@@ -62,9 +62,11 @@ body {
 
 /* The header does not scroll, so nothing reserves a scrollbar for it: it adds
  * that width itself to land its trailing cluster on the canvas's content edge.
- * Measured across fleets, events, approvals, secrets and billing, the canvas
- * reserves the gutter on both edges and its content sits at gutter + scrollbar
- * from each side; this puts the avatar on exactly that line. */
+ * `--app-scrollbar` above is only the value used before the page mounts —
+ * CanvasScrollbarProbe measures what the canvas actually reserved and writes it
+ * back, which is 0 wherever scrollbars overlay and on any route whose canvas
+ * does not scroll. Without that, this rule would push the header 6px past the
+ * content on every such platform: the same misalignment, mirrored. */
 .app-shell-trailing {
   padding-right: calc(var(--app-canvas-gutter) + var(--app-scrollbar));
 }
