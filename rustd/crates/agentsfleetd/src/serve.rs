@@ -44,7 +44,7 @@ pub use self::accept::serve_accepts;
 
 use self::accept::accept_loop;
 use self::exporting::gauge_sources;
-pub(crate) use self::exporting::{attach_exports, open_telemetry};
+pub(crate) use self::exporting::{attach_exports, flush_unsupervised, open_telemetry};
 use self::optional::open_analytics;
 use self::runtime::{open_runtime, spawn_background};
 use crate::daemon::{Daemon, Outcome};
@@ -140,7 +140,18 @@ async fn open(
     // Only the gauge PRODUCERS need what boot has not opened yet, and they
     // wait below.
     let prepared = attach_exports(&config)?;
-    let runtime = open_runtime(&config, &analytics).await?;
+    // Not `?`, and that is the cost of attaching early. From the line above
+    // until `open_telemetry` below, the exporters are filled but unsupervised:
+    // a `?` here would return holding the very pool records the attach exists
+    // to preserve, and drop them. This is the only fallible call in that
+    // window; after the handoff the supervisor owns the flush.
+    let runtime = match open_runtime(&config, &analytics).await {
+        Ok(runtime) => runtime,
+        Err(failure) => {
+            flush_unsupervised(prepared).await;
+            return Err(failure);
+        }
+    };
     let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
     // Before the router takes them: both are the state a gauge reads, and the
     // clones are handles onto the same semaphore and the same ceiling rather
@@ -254,7 +265,27 @@ where
     F: Future<Output = ()>,
 {
     let mut supervisor = Supervisor::new();
-    let booted = boot(env, port, &mut supervisor).await?;
+    // Not `?`, for [`open`]'s reason one stage later. Once `open_telemetry` has
+    // handed the exporters over, the thing that delivers them is a supervised
+    // task waiting on the cancellation token — and a supervisor that is dropped
+    // rather than shut down never cancels it. A bind that fails after that
+    // handoff would take the whole boot's records with it, silently.
+    //
+    // `shutdown` consumes the supervisor, which is why this is a match: the
+    // borrow `boot` held has to end before the move.
+    let booted = match boot(env, port, &mut supervisor).await {
+        Ok(booted) => booted,
+        Err(failure) => {
+            let report = supervisor.shutdown().await;
+            if !report.is_clean() {
+                tracing::warn!(
+                    event = "boot_teardown_unclean",
+                    "a task did not stop cleanly while tearing down a failed boot"
+                );
+            }
+            return Err(failure);
+        }
+    };
     crate::banner::show(
         env!("CARGO_PKG_VERSION"),
         &[

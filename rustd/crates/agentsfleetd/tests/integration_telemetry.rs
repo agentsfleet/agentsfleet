@@ -186,6 +186,44 @@ async fn all_three_signals_reach_a_collector() {
     );
 }
 
+/// A boot that fails still delivers what it buffered on the way down.
+///
+/// The regression this guards is the cost of attaching the exporters before
+/// `open_runtime`: from that moment the pool's own boot records go into the
+/// pipeline rather than to stderr, and until `open_telemetry` hands the
+/// exporters to the supervised flush there is nothing that would deliver them.
+/// A boot that returned through that window dropped them — and a crash-looping
+/// instance is exactly when an operator needs them most.
+///
+/// Drives `flush_within`, which is the function both boot-failure paths call,
+/// rather than `Exports::flush` — the bound and the blocking hop are the parts
+/// that could go wrong on a process that is already leaving.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
+async fn a_failed_boot_delivers_what_it_buffered() {
+    let (endpoint, received) = collector().await;
+    let exports = installed(&configured(&endpoint));
+
+    emit_every_signal(&exports);
+    // What `flush_unsupervised` does with a `Prepared` it is about to drop.
+    agentsfleetd::telemetry::flush_within(exports, DELIVERY_GRACE * 4).await;
+    tokio::time::sleep(DELIVERY_GRACE).await;
+
+    let delivered = paths(&received);
+    for signal in [TRACES, METRICS, LOGS] {
+        assert!(
+            delivered.iter().any(|path| path == signal),
+            "a failed boot must still deliver {signal}; the collector saw \
+             {delivered:?}"
+        );
+    }
+    assert!(
+        bodies(&received).contains(PORTED_EVENT),
+        "the records a failing boot emitted must reach the collector, or the \
+         early attach buys nothing for the boots that need it most"
+    );
+}
+
 /// Dimension 4.1 — an unreachable collector costs telemetry, never latency.
 ///
 /// Measured against the emit rather than against a wall-clock budget: the
