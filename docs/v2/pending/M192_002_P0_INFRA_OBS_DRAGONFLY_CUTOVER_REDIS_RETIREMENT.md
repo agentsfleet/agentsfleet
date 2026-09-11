@@ -86,10 +86,10 @@ Use M192_001's validated migration tool and Dragonfly evidence grader. The new d
 
 ### §1: Verify readiness and authorize the live procedure
 
-Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated source import, closed-until-import admission, and workflow preflight dry-run. Recheck both PostgreSQL and Dragonfly budgets.
+Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated source import, closed-until-import admission, and workflow preflight dry-run. Recheck both datastore budgets, frame/lag load, actual Fly-to-shard TLS/ACL reachability, replicas and backup/restore settings.
 Expand the canonical source key-prefix inventory for every actual environment; unknown keys, unresolved no-expiry claims, or unknown outbound jobs block.
 Credentials remain references: upstash-dev/api-url under VAULT_DEV and upstash-prod/api-url under VAULT_PROD, plus approved destination references.
-Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-admission abort, and forward recovery procedure.
+Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-admission abort, and forward recovery procedure. Include provider redelivery access/deadlines and historical billing-collision audit disposition.
 Indy creates the Swarm datastore and supplies its vault reference; the existing deploy-dev-fly/release flow stages it into Fly after preflight.
 Indy approves the environment, tested candidate, fencing/import steps, and first merge/deploy together; missing inputs leave the implementation branch unmerged.
 
@@ -98,11 +98,12 @@ Indy approves the environment, tested candidate, fencing/import steps, and first
 
 ### §2: Reconcile, switch, and observe
 
-Under the approved procedure, stop all source producers/consumers, verify their fence, and drain/import unfinished work and authentication state.
+Under the approved procedure, stop every old Fly daemon Machine and external source writer; disable autostart/restart/autoscale and competing deploy paths. Record stopped IDs and absence of writes/leases/renewals before import.
 The tool writes the protected PostgreSQL completion receipt only after reconciliation and Indy's fence confirmation; schema success or an empty database cannot self-authorize admission.
-Old IDs, absolute dedup expiry, no-expiry tombstones, sessions, gate mirrors, nonces, and anomaly windows reconcile before destination admission. PostgreSQL admission remains the authority.
-The existing workflow preflight checks receipt, endpoint, and candidate before staging Fly secrets or replacing machines; the new daemon independently refuses admission without a matching receipt.
+Old IDs, absolute dedup expiry, no-expiry tombstones, sessions, gate mirrors, nonces, anomaly windows and historical billing audit results reconcile before destination admission. PostgreSQL admission remains the authority.
+The existing workflow calls the self-tested shell preflight to check receipt, endpoint, and candidate before staging Fly secrets or replacing machines; the new daemon independently refuses admission without a matching receipt.
 The pre-admission abort restores old-build schema compatibility and source state before resuming old writers. After admission, recover forward through the rehearsed durable path.
+After the switch, redeliver failed/unconfirmed provider deliveries from the fence window with original identities; GitHub requires explicit redelivery within its documented window. Reconcile results before closing observation.
 Run real API/dashboard/CLI acceptance and record live samples for the full frozen window; relabeled rehearsal evidence must fail.
 
 - **Dimension 2.1**: old work, identity, claims, and authentication reconcile at cutover → Test `test_live_reconciliation_preserves_accepted_state`.
@@ -112,7 +113,7 @@ Run real API/dashboard/CLI acceptance and record live samples for the full froze
 
 Require reconciliation and observation in every inventoried environment before retiring source resources. Identify every remaining server, workflow, fixture, and vault consumer.
 There is no temporary runtime mode to remove; verify the deployed cluster-only build, secret references, and source-consumer inventory before any deletion.
-Remove Upstash bindings and source resources only within retirement approval; keep redis-rs, historical evidence, and approved recovery materials.
+Remove Upstash bindings and source resources only within retirement approval; keep redis-rs, afd_redis::client::Redis for fixtures/import tools, historical evidence, and approved recovery materials.
 Record retirement actions with control-plane receipts, configuration commit, live revision, observation evidence, and the named human verifier.
 The grader verifies raw digests, authenticated run/artifact provenance, datastore identity, and the manual approval record; a document claiming success is insufficient.
 
@@ -160,7 +161,7 @@ Use M192_001's typed operational signals and update the playbook; no product ana
 | 1.1 | unit / integration | `test_live_cutover_preflight_refuses_incomplete_readiness` | Missing approvals/readiness, drifted topology, unknown jobs, and wrong revision refuse mutation. |
 | 1.2 | manual | `review_live_cutover_authorization` | Indy approves exact environment, build, procedure, budget, observation window, and recovery; quote and evidence are recorded. |
 | 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Old IDs, TTLs, sessions, approvals, leases, and accepted work reconcile without duplicate settlement or simultaneous writers. |
-| 2.2 | manual | `review_live_dragonfly_observation` | Verify recorded live acceptance commands and raw samples across the full approved window; failures block retirement. |
+| 2.2 | manual | `review_live_dragonfly_observation` | Verify recorded live acceptance commands and raw samples across the full approved window; failures block retirement. Provider redelivery reconciles; Fly shard reachability, replica/backup settings and restore/auth recovery meet the frozen budgets. |
 | 3.1 | unit / integration | `test_rollout_grader_rejects_unverified_retirement` | Missing/fabricated receipts, incorrect artifact origin, changed digests, and rehearsal-only evidence cannot pass. |
 | 3.2 | unit / integration | `test_retirement_requires_all_environments_on_cluster` | Any unswitched/unobserved environment, wrong deployed build, or remaining source consumer blocks resource retirement. |
 | 3.3 | manual | `review_live_cutover_and_retirement_evidence` | Indy verifies live revision, reconciliation, observation window, retirement approval/receipts, and retirement commit before completion. |

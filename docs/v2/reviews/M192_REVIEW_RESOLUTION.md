@@ -10,14 +10,14 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| What was reviewed? | Claude Fable 5.1 reviews of d165f5f10, 7b233ba30, and b6b033e05; this revision addresses the latest seven findings and Indy's deployment override. |
+| What was reviewed? | Claude Fable 5.1 reviews through 8b415cc90; this revision addresses the eight adversarial findings and server-source additions, retaining Indy's cluster-only deployment override. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
 | What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
 | What still needs a decision? | Fixture-only outbound versus a new delivery feature; the proposed two-spec delivery split; service/cost budgets and live approval. |
 
 ## What it is
 
-This record maps the original findings and both re-reviews to documentation corrections and outstanding proofs.
+This record maps the original findings and subsequent re-reviews to documentation corrections and outstanding proofs.
 The specifications carry executable acceptance requirements; this record does not award runtime acceptance.
 [M192_001](../pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) covers readiness; proposed [M192_002](../pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) covers live retirement.
 
@@ -91,6 +91,42 @@ Additional prerequisites: cluster.enabled must be explicitly true; null/absent/f
 The large runner rig and paid Swarm require Indy-approved capacity/cost before §6; production existence remains unverified.
 Root Dockerfile, docker-compose.yml, deploy-dev/called Fly workflow, release workflow, and the founding credential gate are named in implementation scope.
 Local cluster work follows Indy's direction; this pass edits documentation only and performs no paid or live action.
+
+### Adversarial review of 8b415cc90
+
+All eight findings are addressed in the spec; closure below means a documented correction, not runtime acceptance.
+Local source inspection used Dragonfly v1.40.2 at e94300e6990093ec093cfb00d60c2e77ea4907e4 and Terraform provider e25af703daf80c5f0c973845ce4a5191e9523c2e.
+
+| # | Finding | Spec disposition and required proof |
+|---|---|---|
+| 1 | Live cross-fleet billing collision and nullable fleet ID | §2 changes receive, renew, and report conflict targets to an immutable billing_fleet_id plus event_id/charge_type. Keep nullable fleet FK and tenant cascade. Canonical audit selects collision/orphan candidates; unresolved historical attribution blocks cutover. §2.2 covers two fleets/tenants with equal IDs, deletion, retry, and ledger immutability. |
+| 2 | Local cluster addressing/bootstrap | §0 uses one supervised multi-process compose service with loopback advertisements, matching host ports, daemon sharing its network namespace, stable node IDs, and config re-push on every start. Listening interfaces allow Docker forwarding; health checks slots/replicas and host/container reachability. §0.2 verifies restart/bootstrap. |
+| 3 | Persistence posture | §0 specifies separate persistent directories and snapshot schedule. §6 requires replicas >=1 per primary, backup policy and approved recovery budgets; restore requires matching shard count, topology refresh, durable replay and auth-state reconciliation. §0.2/§6.2/§6.4 own tests. |
+| 4 | Fly-to-Swarm access | §6 uses public verified TLS, vault auth and restricted datastore ACLs; probe every advertised/failover address from Fly. Vendor IP restrictions remain unverified. Static egress is conditional on an enforceable allowlist and cost approval; use Fly's current app-scoped per-region model. |
+| 5 | Frame rate absent from load budget | §6 freezes frames/bytes per second, viewer fan-out, lag/closure rate and recovery delay separately from event admission. The 256-frame per-channel buffer makes slow-viewer/token-load tests required. |
+| 6 | Standalone client needed by tools | §5/§7 and live retirement explicitly retain afd_redis::client::Redis for import tooling and isolated fixtures; only daemon composition drops standalone construction. |
+| 7 | Webhooks during fence | §7 and live §2 stop old Fly Machines and restart/deploy paths, inventory provider delivery IDs during the fence, then explicitly redeliver/reconcile after switch or abort. Verify provider access and deadlines before stopping; never claim durability for unaccepted requests. |
+| 8 | Grader simplification and conditional partitioning | Keep every grader mode and archive canonical lane logs/exit/counts/revision. Only extra partition-map assertions in §4.1/§4.3 can be N/A with measured budget proof; base race/recovery tests remain mandatory. §7.2 is a unit-tested shell preflight invoked by the workflow, with command stubs. |
+
+The NULLS NOT DISTINCT suggestion is deliberately replaced: schema/710_usage_ledger.sql uses ON DELETE SET NULL, so two deleted fleets with equal IDs would collide again under a null-equal key.
+One immutable billing fleet column preserves identity without another ledger/marker table. Historical rows whose source fleet is already erased need evidence or explicit reconciliation; no automatic split of accumulated charges is defensible.
+Indy's decision to fold the billing correction into §2 is recorded in Fable's supplied handoff; this implements that scope without claiming a separate direct quote.
+
+Server-source additions are part of Dimension 0.1: wrong-node SSUBSCRIBE/SPUBLISH must return MOVED; a server-initiated unsubscribe after slot migration must be observed and rebuilt on the new owner.
+The server behavior is source-verified; redis-rs 1.6.0 push handling remains NOT RUN.
+
+| Pinned source | What the read establishes |
+|---|---|
+| [Ownership and pub/sub](https://github.com/dragonflydb/dragonfly/blob/e94300e6990093ec093cfb00d60c2e77ea4907e4/src/server/main_service.cc#L1234) | Sharded commands are slot-checked; MOVED uses configured ip/port (line 1308); standard pub/sub is refused in cluster mode (lines 2650–2695). |
+| [Cluster configuration](https://github.com/dragonflydb/dragonfly/blob/e94300e6990093ec093cfb00d60c2e77ea4907e4/src/server/cluster/cluster_family.cc#L42) | Stable cluster_node_id and ADMIN-flagged DFLYCLUSTER/DFLYMIGRATE; main-port administration. |
+| [Subscription removal](https://github.com/dragonflydb/dragonfly/blob/e94300e6990093ec093cfb00d60c2e77ea4907e4/src/server/channel_store.cc#L182) | Slot migration removes subscriptions and notifies their connections. |
+| [Snapshot stream encoding](https://github.com/dragonflydb/dragonfly/blob/e94300e6990093ec093cfb00d60c2e77ea4907e4/src/server/rdb_save.cc#L629) | Groups, PEL and consumers are serialized; this does not prove the configured fixture restarts correctly. |
+| [Persistence flags](https://github.com/dragonflydb/dragonfly/blob/e94300e6990093ec093cfb00d60c2e77ea4907e4/src/server/server_family.cc#L111) | dir and snapshot_cron exist at the release. |
+| [Cloud configuration fields](https://github.com/dragonflydb/terraform-provider-dfcloud/blob/e25af703daf80c5f0c973845ce4a5191e9523c2e/internal/sdk/datastore.go#L85) | Network, TLS, ACL, replicas and backup fields exist; there is no named source-IP allowlist field here. |
+
+The [Cloud connectivity and persistence requirements](../../architecture/datastore_scaling.md#cloud-connectivity-and-persistence) cite current vendor documentation, including Fly's app-scoped egress and Swarm restore constraints.
+Public TLS/auth is the proposed simple deployment path addressing Indy's concern; no private network or vendor IP restriction is claimed to exist or have passed a live probe.
+Indy's earlier verbatim local-cluster/manual-provisioning overrides remain in both specs; these corrections do not reinstate a standalone Dragonfly mode or a provisioning framework.
 
 ### Prototype admission and completion
 

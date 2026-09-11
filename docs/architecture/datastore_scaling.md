@@ -45,7 +45,15 @@ Resolve and record an immutable container digest before running tests; a moving 
 These are prototype candidates, not verified compatibility claims; version changes require rerunning the complete affected matrix.
 
 Use at least two local primaries owning distinct slots, with replicas for restart and movement cases.
-Local administration uses the version-matched `DFLYCLUSTER CONFIG` and `migrations[]` procedure, including configuration restoration after restart.
+Use one compose service named dragonfly running multiple supervised server processes, advertising 127.0.0.1:7001 through 700N.
+Listen on container interfaces and publish matching ports to host loopback; advertised loopback is distinct from the listen address needed for Docker forwarding.
+The local daemon uses network_mode: "service:dragonfly"; publish its HTTP port on that shared service and preserve PostgreSQL connectivity.
+This lets host-run integration tests and the containerized daemon follow the same advertised redirects; other containers must join that namespace to use the cluster.
+Give every process a stable --cluster_node_id, a separate persistent --dir, and an explicit --snapshot_cron schedule.
+A version-matched bootstrap pushes DFLYCLUSTER CONFIG to every node on every start, including restarts; fresh nodes own no slots before configuration.
+Use the pinned migrations[] procedure; administration runs on the main ports with separate operator credentials, without an extra admin-port service.
+Health requires expected node IDs, complete slot coverage, replicas, and reachable redirects; process liveness alone is insufficient.
+Restart/snapshot tests verify streams, groups, consumers, and pending entries; also test total volume loss and durable queue reconstruction.
 Cloud-managed failover must still be tested on Swarm; local control commands are not Cloud acceptance evidence.
 
 Each prototype records its revision, setup, fault trigger, expected result, observed result, raw files, and disposition.
@@ -64,7 +72,10 @@ Count connections, tasks, queued bytes, lag, and recovery time across repeated m
 
 A publisher starting through another seed must route to the channel owner; cross-node broadcast is not promised.
 Probe both wrong-node redirection and routed delivery, including subscription acknowledgment before publishing.
-On movement, disconnect, or migration push notifications, refresh ownership and restore subscriptions within the frozen recovery budget.
+Assert that wrong-node SSUBSCRIBE and SPUBLISH receive MOVED; routed clients must then reach the owner.
+Observe the server-initiated unsubscribe after slot migration and rebuild the subscription on its new owner within the frozen recovery budget.
+The pinned server implements this in src/server/channel_store.cc; whether redis-rs 1.6.0 exposes the push correctly remains a required client prototype.
+Also refresh ownership after disconnect; a healthy socket with a removed subscription cannot count as recovery.
 
 Permanent command, authentication, or topology errors fail readiness; they must not become endless reconnect loops hidden behind successful boot.
 Slow readers receive explicit lag or stream closure so clients can recover durable history.
@@ -122,8 +133,33 @@ Do not infer first delivery from INSERT conflict, or commit the received transit
 At the inspected revision, `afd_billing/src/charge.rs` records a zero-value receive row; balance deductions happen in the fenced renewal path.
 Preserve that policy: commit the received transition with its receive ledger row even when the amount is zero; do not invent a receive balance drain.
 The current ledger conflict key is `(event_id, charge_type)` in `schema/710_usage_ledger.sql`.
-Per-fleet logical IDs can collide across fleets, so scope ledger uniqueness/conflict targets to `(fleet_id, event_id, charge_type)` across receive, renewal, and report.
-Prove two fleets with the same logical ID retain separate rows and charges; preserve existing ledger IDs and reconcile historical collisions during import.
+Redis already mints IDs per stream, so cross-fleet collisions are a source defect, not only an allocator migration risk.
+Change all three write statements: rustd/crates/afd_billing/src/sql.rs:126, rustd/crates/afd_fleet/src/lease/sql/renew.rs:137, and rustd/crates/afd_fleet/src/lease/sql/report.rs:158.
+Receive currently drops the colliding row; renewal and report accumulate into it, potentially attributing another fleet or tenant's charges to the retained row.
+Keep the nullable fleet_id foreign key and its ON DELETE SET NULL behavior. Add an immutable, non-null billing_fleet_id carrying the original fleet UUID without a deletion-cleared foreign key.
+Use UNIQUE (billing_fleet_id, event_id, charge_type) and that conflict target in all three statements; derive billing_fleet_id from the authenticated/fenced fleet, never client input.
+Preserve tenant cascade and existing ledger IDs; prevent runtime updates to billing_fleet_id and validate tenant ownership on accumulation.
+NULLS NOT DISTINCT on the nullable fleet_id alone is insufficient: deleting two fleets with equal event IDs would collapse their keys and fail deletion.
+Backfill surviving fleet identities under the source fence; recover already-null identities only from trustworthy retained evidence. Missing provenance blocks migration for explicit reconciliation, never a guessed fleet or new charge.
+Prove equal IDs across fleets and tenants, retry idempotency, and deletion of both fleets/workspaces retain separate charges while tenant erasure still cascades.
+Run the following read-only audit before cutover; archive restricted results and reconciliation digests in the playbook evidence. It selects suspected merged stage rows and missing receive candidates, not a lossless reconstruction:
+
+```sql
+WITH collisions AS (
+  SELECT event_id, array_agg(DISTINCT fleet_id) AS fleets
+  FROM core.fleet_events GROUP BY event_id
+  HAVING count(DISTINCT fleet_id) > 1
+)
+SELECT c.event_id, c.fleets, l.id, l.tenant_id, l.fleet_id,
+       l.charge_type, l.credit_deducted_nanos
+FROM collisions c LEFT JOIN billing.usage_ledger l USING (event_id);
+SELECT id, tenant_id, event_id, charge_type, credit_deducted_nanos
+FROM billing.usage_ledger WHERE fleet_id IS NULL;
+```
+
+Run on the fenced source snapshot and repeat against imported queue-only identities absent from core.fleet_events.
+An empty query is not proof against deleted or expired source history. Reconcile stage totals against retained metering and wallet evidence; never divide an already-merged total heuristically or recharge it.
+If historical attribution cannot be established, the reconciliation blocks cutover and names the affected ledger rows and tenants.
 Preserve zero debit for pre-charge refusal and exactly one policy-appropriate receive debit after those gates pass.
 `lease/pull.rs` runs the approval check after money gates; preserve that ordering and its existing charge policy, including zero-cost postures.
 Update `record_received`, money gates, billing transaction ownership, ingress comments, and insert-triggered counters together.
@@ -150,6 +186,8 @@ If adopted, fence map transitions and replay durable readiness rather than losin
 Compare destination-partitioned fixture delivery with the existing worker; preserve order per destination and bound concurrent retries.
 Measure partition progress and eligible-work age separately from aggregate throughput.
 A passing existing design can remain; a failed budget requires redesign, not a waived acceptance row.
+For §4.1/§4.3, only additional application-partition/map-movement assertions may be NOT APPLICABLE, backed by archived comparison samples proving the existing layout meets frozen budgets.
+Existing-layout readiness races, worker-loss recovery, ordering, bounded resources, and §4.2 fairness still run and pass; N/A cannot stand for an unrun test.
 
 ### Blocking reads, scans, and retention
 
@@ -188,6 +226,7 @@ Make fixtures unable to lease or acknowledge non-fixture work, with cancellation
 Shared application probes are bounded and never share a synthetic outbound consumer with real delivery.
 
 Raw files include collector output, command logs, server identity, topology, samples, and cleanup results, with SHA-256 digests.
+Keep all planned grader modes. Reuse canonical test-lane output by archiving its command, exit status, test counts, revision, and raw logs; console-only output cannot satisfy evidence grading.
 The grader recomputes digests and statistics and checks consistency; hashes detect alteration, not who generated a file.
 Cloud evidence also requires an authenticated CI run reference, matching revision, immutable artifact identity, and a Cloud datastore identifier verified through its control plane.
 
@@ -207,11 +246,35 @@ The response includes a password: discard it, ACL secrets, and request headers i
 Refuse redirects outside the named host, authentication errors, missing fields, stale evidence, wrong IDs, and endpoint/topology mismatches.
 An unavailable mechanism blocks Cloud grading until repaired or replaced by a separately reviewed mechanism; no self-declared identity fallback.
 
+### Cloud connectivity and persistence
+
+Use the public Swarm endpoint with certificate/hostname-verified TLS on every seed and discovered shard, and vault-held authentication.
+Indy supplies a dedicated datastore ACL credential limited to the daemon's actual commands, key prefixes, and sharded channels, including client handshake/topology commands.
+Keep operator/admin and Cloud control-plane credentials out of the daemon; test allowed commands and refusal of unrelated/admin access on the actual Cloud account.
+The provider exposes acl_rules; live command/channel permissions remain a §6 probe, distinct from Cloud console user roles.
+Before load or cutover, probe every advertised primary and failover address from the intended Fly app/region using its deployed client and credential.
+Prove redirects, TLS hostname verification, sharded subscribe, and reconnect after movement; seed PING alone cannot pass. Freeze measured Fly-to-Swarm latency and transfer cost in the budget.
+Public networking with TLS and mandatory passkey is documented in [Cloud datastore security](https://www.dragonflydb.io/docs/cloud/datastores#security).
+The inspected provider and public Cloud documentation name no source-IP allowlist mechanism; Indy asks support whether restrictions can be enforced for every shard endpoint.
+Treat that as a vendor question, not a claimed feature or prerequisite to the public TLS design. Do not add a VPN/peering project here.
+Only if support confirms enforceable restrictions and Indy approves their cost, use [Fly app-scoped static egress](https://fly.io/docs/networking/egress-ips/) per deployed region and allowlist all allocated IPv4/IPv6 addresses actually used.
+Fly recommends app-scoped addresses over legacy per-Machine addresses; verify egress after replacement and connection/Machine limits before load.
+Static egress without an enforced destination allowlist adds no access restriction; omit it in that case.
+
+Require at least one replica per Swarm primary, No Eviction, and an enabled backup policy with Indy-approved schedule, retention, recovery-point, and restore/drain budgets.
+Record actual replica and backup settings in Cloud evidence; an unset/default replica count cannot satisfy availability.
+[Swarm restore](https://www.dragonflydb.io/docs/cloud/backups#swarm-multi-shard-backups) requires matching shard count and reinstates the backup's slot layout; verify these prerequisites and refresh topology after restore.
+Restore replaces target data. Treat rollback/loss as queue loss: fence processing, reconcile durable PostgreSQL admissions and settlement, then replay under the drain budget.
+Snapshots preserve stream structures but do not promise zero data loss or current auth state. Never resurrect consumed sessions/nonces from an older snapshot; invalidate unverifiable auth state and require a fresh login/connection flow.
+Prove that restore recovery also reconciles gate/anomaly state before reopening processing; replication and backups cannot replace these tests.
+
 ### PostgreSQL admission budgets
 
 Freeze PostgreSQL and Dragonfly budgets together before grading combined load; approval belongs to Indy.
 Owned infrastructure for 1,000 runner processes and a paid Swarm datastore require explicit capacity/cost approval before §6; a local pass grants neither.
 Count offered provider requests, expanded per-fleet admissions, accepted rows, and commits separately.
+Freeze live-tail frames/second, frame bytes, subscriber fan-out, recovery delay, and lag/stream-closure rate alongside event throughput.
+The current hub has a 256-frame per-channel buffer (rustd/crates/afd_redis/src/hub.rs:48); drive token-frame load and slow viewers independently of events/second.
 The 16,667 events/second target means per-fleet admissions; App fan-out amplification must also be reported.
 Without measured batching, admission alone requires one commit per event, before receive, terminal, dispatch-progress, or allocator work.
 Do not infer sustainable database throughput from the Dragonfly result or assume a batching benefit.
@@ -242,8 +305,9 @@ Inbound producers include steer, per-fleet webhook, App fan-out, cron, continuat
 
 Indy selects local container testing and manually created Cloud Swarm. The new daemon has one cluster transport and no REDIS_MODE/provider fallback.
 Keep `REDIS_URL_API`; the value identifies the selected cluster endpoint with authentication and TLS settings.
-Local `docker-compose.yml` starts PostgreSQL and a real multi-node Dragonfly cluster with deterministic slot configuration and health checks.
+Local docker-compose.yml follows the single-service, multiple-process topology in the prototype section; PostgreSQL remains its own service.
 Keep the existing Redis fixture only for the frozen baseline, §2 inner-loop proof, and source-import rehearsal; it is not a Dragonfly deployment mode.
+Retain afd_redis::client::Redis for that fixture and the bounded import tool; only the daemon composition root drops standalone construction. No runtime fallback follows from keeping the client type.
 The root Dockerfile packages agentsfleetd; database containers stay separate. Change that file only where the local image proof requires it.
 
 Indy creates the intended Swarm datastore, confirms its topology/capacity, and supplies its credential through the existing vault flow.
@@ -257,9 +321,15 @@ This leaves unrelated main deployments on the existing build path while local wo
 A readiness review can finish before live work, but the first cluster-only merge/deploy is the coordinated switch tracked by the live plan.
 The live plan consumes the verified candidate from the readiness branch; it does not require that candidate to be merged first.
 
-Before staging Fly secrets or replacing machines, the deploy preflight verifies the approved destination, candidate revision, and completed import receipt.
+Implement the deploy preflight as a self-tested shell script in playbooks/operations/datastore_scaling that the existing workflow calls; use injected command stubs for negative proofs, not a workflow emulator.
+Before staging Fly secrets or replacing machines, that script verifies the approved destination, candidate revision, and completed import receipt.
 Missing inputs stop that deployment before mutation and leave the existing deployed image/configuration intact.
-The playbook fences all old producers/consumers, imports old work and claims, reconciles billing/auth state, then authorizes the new deployment.
+The playbook stops every old Fly daemon Machine, disables restart/autostart/autoscale paths for the fence window, and suspends competing deploy jobs and external source writers before importing.
+Record stopped Machine IDs and verify no source writes, leases, or renewal activity; stopping ingress alone does not fence embedded cron, repair, and consumers.
+Then import old work/claims, reconcile billing/auth state, and authorize the new deployment; restore normal automation only for the approved new build.
+Inventory provider delivery IDs spanning the fence window and redeliver failed/unconfirmed deliveries after the switch (or after abort), retaining original producer identities.
+[GitHub does not automatically retry failed webhooks](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks); its redelivery window is three days. Verify access and recovery deadlines before fencing, and reconcile results before closing observation.
+Other providers need their documented retry/redelivery procedure; an unrecoverable window blocks the planned switch for a decision. Do not claim PostgreSQL protects requests never accepted.
 Apply admission and ledger schema changes with old processes fenced; rehearse the old-build schema restore required by a pre-admission abort.
 Changing the ledger conflict key is not automatically backward-compatible; do not leave an old uniqueness constraint that rejects valid cross-fleet IDs.
 Source writers stay fenced after import. A marker alone cannot stop the old binary or make a rolling overlap safe.
@@ -271,6 +341,7 @@ An empty datastore also requires an explicit empty-source initialization through
 Absent, incomplete, mismatched, or unreadable receipt keeps readiness false and every ingress/lease/background dispatch path closed, with retryable refusal.
 Open neither success responses nor runnable work until the receipt and cluster capability checks pass.
 Recheck the receipt at each startup and require a new one if destination or admission format changes; unrelated builds do not need a new import.
+After the coordinated switch, ordinary deployments validate their normal reviewed/CI build and the existing receipt; do not pin every later deployment to the first candidate or demand another cutover approval.
 
 The one playbook covers local Docker image proof, source census, import/fencing, Indy-supplied secret references, Fly preflight, switch, and observation.
 Rehearse these steps locally; automated workflow tests prove preflight decisions, not that a real deployment occurred.
