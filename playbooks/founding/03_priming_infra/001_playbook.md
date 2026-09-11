@@ -150,9 +150,33 @@ upstash-{env}/api-url
 upstash-{env}/url
 ```
 
-The two PlanetScale strings must differ. The migrator connection must be a
-direct session connection on port `5432`; a transaction pooler cannot hold the
-session advisory lock used by migrations.
+Create each PlanetScale Postgres database in the `us-east` region (AWS
+us-east-1, Northern Virginia). The daemon runs in Fly `iad`, which is the
+same metro; a database in any other region puts a cross-region round trip on
+every connection handshake and every query. A region cannot be changed once a
+branch exists — moving one is
+`playbooks/operations/database_region_move/001_playbook.md`.
+
+The two PlanetScale strings must differ, and they name different ports:
+
+| Field | Port | Why |
+|---|---|---|
+| `api-connection-string` | `6432` | PlanetScale's PgBouncer. Every database ships one; same host and credentials as the direct connection, only the port changes. It multiplexes the daemon's request-path connections onto a bounded server pool, so two replicas at `DATABASE_POOL_SIZE` each cannot exhaust the cluster's `max_connections`. |
+| `migrator-connection-string` | `5432` | Postgres itself. The migrator holds a session advisory lock, and a transaction pooler cannot keep a session. |
+
+The deployment preflight (`02_preflight/02_credentials.sh`) refuses either
+string on the other port.
+
+Read the cluster's `max_connections` under **Clusters → Parameters** before
+sizing anything: it is a conservative per-cluster-size default, and the
+daemon's direct connections — every replica's `DATABASE_POOL_SIZE`, plus the
+migrator during a release — must fit inside it with room for operator
+sessions. PgBouncer's own server pool (`default_pool_size`, 20 by default)
+counts against the same ceiling once. A pool that asks for a connection past
+that ceiling is refused with `53300 too_many_connections`, which the driver
+retries silently until its acquire budget runs out; the daemon reports that
+as a stall (`UZ-INTERNAL-001`, "the pool held N of M and could not open
+another") rather than an outage.
 
 The Upstash `api-url` is the restricted runtime connection. The root `url` is
 reserved for the explicitly approved Redis teardown runbook.

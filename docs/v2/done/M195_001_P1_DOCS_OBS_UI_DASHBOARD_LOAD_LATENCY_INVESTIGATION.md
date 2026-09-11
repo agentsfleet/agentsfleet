@@ -6,14 +6,14 @@
 **Milestone:** M195
 **Workstream:** 001
 **Date:** Sep 10, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — nothing here changes behaviour; it produces the measurements a behaviour change would have to be argued from. The fixes M194_001 is already making are the P0s.
 **Categories:** DOCS, OBS, UI
 **Batch:** B1 — one workstream; the measurement lane and the page it writes into are one change.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Branch:** `feat/m195-dashboard-load-measurement` — delivered as [PR #676](https://github.com/agentsfleet/agentsfleet/pull/676), closed unmerged
+**Baseline revision:** recorded on PR #676
+**Test Baseline:** recorded on PR #676
+**Baseline evidence:** PR #676 session notes
 **Depends on:** M194_001 for the build the measurement is taken on; its Pull Request also carries the CTA and action-button fixes this spec must not overlap. Runs in PARALLEL with M195_002 — the two declare no file in common — with one exception: **§2's request inventory is taken after M195_002 lands, or re-taken**, because that spec removes the wall's separate counter fetch by carrying the figures on the frame. §1, §3, §4 and §5 are independent of it.
 **Provenance:** agent-generated from an operator's numbered findings on the development dashboard (findings 8, 9, 12, 13, 14), each cited fact read at source. One premise the findings carried did not survive the read — see Discovery.
 **Canonical architecture:** `docs/architecture/web_app.md` §The two shapes
@@ -249,6 +249,7 @@ N/A — no files deleted. The spec adds one page, five index rows, one measureme
 | Sep 10, 2026 | Premise check — finding 9's "one stream per live fleet" | Read before authoring, and it did not hold: the wall already opens one EventSource per workspace and demultiplexes per fleet, with an acceptance test asserting at most one live connection. The finding's question stands; its premise is corrected here rather than encoded, and §2 measures the inventory instead of assuming it. |
 | Sep 10, 2026 | Architecture consult — where the answer lives | `docs/architecture/` over a spec appendix or a Pull Request body: the citation gate there grades paths, links and anchors on every lint run, so a drawing that drifts from the code fails a command. Five index rows keep it reachable by question. |
 | Sep 10, 2026 | Gate-flag triage — finding 14's stated cause | Surfaced before authoring: the report names Postgres connections, the code names a bounded retry ladder, and the datastore layer explicitly refuses to conflate a full pool with an absent datastore. Recorded as a hypothesis with the measurement that settles it, never as a finding. |
+| Sep 11, 2026 | Closure — where the work lives | Delivered as [PR #676](https://github.com/agentsfleet/agentsfleet/pull/676) (`feat/m195-dashboard-load-measurement`), closed without merging on the owner's call. The measurement did its job: Runners returns at p50 ~880 ms with retry attempts `1, 1, 1, 1, 1` across three runs, so `PoolTimedOut` never fired and finding 14's pool-exhaustion hypothesis is refuted by its own numbers. The pool stall seen later on the deploy lane (`UZ-INTERNAL-001`, one instance) is a different fault and is handled in `afd_db::pool::acquire`, not here. |
 
 - **Metrics review** — events added, extra events found during `/review`, analytics or funnel playbook update, or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).

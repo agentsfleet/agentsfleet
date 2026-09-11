@@ -16,9 +16,31 @@ primary_region = "iad"
 # API-class routes (/healthz and /readyz are ops-class and never shed;
 # SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
 # here). SSE_MAX_STREAMS (default 64) caps event streams per instance.
+# Postgres connections this replica may open, measured against the cluster's
+# own ceiling rather than left to the code's default.
+#
+# `SHOW max_connections` on the dev cluster is 25, of which 3 are
+# superuser-reserved and 3 more are permanently held by PlanetScale's
+# `pscale_admin` and `pscale_exporter`. That leaves about 17 for this service
+# once an operator session and the release-time migrator are kept clear. Two
+# replicas at 8 is 16.
+#
+# The code's default is 20 (`SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS`,
+# 80/4 in afd_db/src/config.rs), and that file says in as many words that a
+# deployment knowing its own budget must set this knob — the budget travels
+# with the Postgres a deployment actually runs, which no source file can know.
+# Two replicas at 20 asked 40 of 17, and the instance that had to grow past its
+# warm floor was refused `53300 too_many_connections`; sqlx retried that
+# silently to the acquire budget and reported it as a timeout, which the daemon
+# answered as UZ-INTERNAL-001.
+#
+# This rises again once DATABASE_URL_API names PlanetScale's PgBouncer on port
+# 6432: client connections to a pooler are cheap, and it is the bouncer's
+# `default_pool_size` that then counts against the 25.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "1"
+  DATABASE_POOL_SIZE_API = "8"
   API_URL = "https://api-dev.agentsfleet.net"
   APP_URL = "https://app-dev.agentsfleet.net"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,

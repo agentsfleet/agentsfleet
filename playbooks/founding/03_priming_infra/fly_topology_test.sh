@@ -83,5 +83,40 @@ require_literal prod_api_total_count_check "$release_workflow" \
 require_literal prod_api_running_count_check "$release_workflow" \
   'test "$RUNNING" -eq "$DESIRED_API_MACHINES"'
 
+# The pool ceilings fit the cluster that has to serve them.
+#
+# `SHOW max_connections` on both PlanetScale clusters is 25: 3 are
+# superuser-reserved and 3 are permanently held by `pscale_admin` and
+# `pscale_exporter`, leaving 19, from which an operator session and the
+# release-time migrator are kept clear. A fleet that promises more backends
+# than that does not serve more traffic — Postgres refuses the extra with
+# `53300` and the daemon answers UZ-INTERNAL-001, which is the incident this
+# arithmetic exists to prevent.
+#
+# Read from the files rather than restated, so raising a ceiling without
+# raising the cluster fails here instead of on the deploy lane.
+CLUSTER_BUDGET=17
+MIGRATOR_CONNECTIONS=1
+
+check_fleet_budget() {
+  local name="$1" api_dir="$2" replicas="$3"
+  local ceiling total
+  ceiling="$(sed -nE 's/^[[:space:]]*DATABASE_POOL_SIZE_API[[:space:]]*=[[:space:]]*"([0-9]+)".*/\1/p' \
+    "$api_dir/fly.toml")"
+  if [ -z "$ceiling" ]; then
+    bad "$name" "fly.toml sets no DATABASE_POOL_SIZE_API; the code default of 20 exceeds the cluster"
+    return
+  fi
+  total=$((ceiling * replicas + MIGRATOR_CONNECTIONS))
+  if [ "$total" -le "$CLUSTER_BUDGET" ]; then
+    ok "$name"
+  else
+    bad "$name" "$replicas replicas x $ceiling + migrator = $total, over the $CLUSTER_BUDGET the cluster allows"
+  fi
+}
+
+check_fleet_budget dev_pool_fits_cluster "$REPO_ROOT/deploy/fly/agentsfleetd-dev" 2
+check_fleet_budget prod_pool_fits_cluster "$REPO_ROOT/deploy/fly/agentsfleetd-prod" 3
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
