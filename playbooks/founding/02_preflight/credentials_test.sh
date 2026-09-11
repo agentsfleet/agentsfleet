@@ -47,10 +47,12 @@ case "$ref" in
     printf 'https://discord.example.test/%s\n' "${SECRET_SENTINEL:-stub-value}"
     ;;
   */migrator-connection-string)
-    printf 'postgres-migrator\n'
+    printf 'postgres://migrator:%s@db.example.test:5432/agentsfleet?sslmode=verify-full\n' \
+      "${SECRET_SENTINEL:-stub-value}"
     ;;
   */api-connection-string)
-    printf 'postgres-api\n'
+    printf 'postgres://api:%s@db.example.test:6432/agentsfleet?sslmode=verify-full\n' \
+      "${SECRET_SENTINEL:-stub-value}"
     ;;
   *)
     printf '%s\n' "${SECRET_SENTINEL:-stub-value}"

@@ -25,13 +25,38 @@
 
 use std::time::Duration;
 
-use sqlx::pool::PoolConnection;
+use sqlx::Connection as _;
 use sqlx::postgres::{PgPool, PgPoolOptions};
-use sqlx::{Connection as _, Postgres};
 
 use crate::config::{DbRole, PoolConfig};
 use crate::error::{Result, classify_acquire, unreachable_datastore};
-use afd_core::env::EnvSource;
+
+mod acquire;
+mod roles;
+
+pub use self::roles::Pools;
+
+/// How long a connection may sit idle before the reaper closes it.
+///
+/// sqlx's own default, written down rather than inherited. The value is
+/// load-bearing twice over: `config.rs` explains that the warm floor is
+/// established by [`Db::warm`] because sqlx only bootstraps it when THIS and
+/// [`MAX_LIFETIME`] are both `None`, and the lazy `connect_lazy_with` below
+/// relies on the same fact. An upgrade that changed the default would move the
+/// pool between those two regimes without a line of this crate changing; a
+/// pinned value cannot.
+///
+/// Ten minutes also sits inside `PgBouncer`'s `server_idle_timeout` (600 s), so
+/// a connection this pool still counts as live is not one the pooler has
+/// already closed underneath it.
+const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
+
+/// How long a connection may live before the reaper retires it, idle or not.
+///
+/// sqlx's default, pinned for the reason [`IDLE_TIMEOUT`] gives. Thirty
+/// minutes bounds how long a backend that a failover or a resize left behind
+/// keeps being reused.
+const MAX_LIFETIME: Duration = Duration::from_mins(30);
 
 /// One role's connection pool.
 #[derive(Debug, Clone)]
@@ -81,7 +106,10 @@ impl Db {
             // establishment measured at 147-337 ms lands inside an acquire
             // budget that was sized for a wait, not a handshake.
             .min_connections(config.min_connections())
-            .acquire_timeout(acquire_timeout);
+            .acquire_timeout(acquire_timeout)
+            // Pinned, not defaulted: see the constants for what turns on them.
+            .idle_timeout(IDLE_TIMEOUT)
+            .max_lifetime(MAX_LIFETIME);
 
         if role == DbRole::Migrator {
             // The backstop for a lock nobody released. Advisory locks live on
@@ -112,11 +140,12 @@ impl Db {
         // where it previously started and warmed as it went.
         //
         // So the pool opens empty and [`Db::warm`] fills it afterwards, on a
-        // budget of its own. What is NOT relied on is sqlx
-        // filling it: the background bootstrap runs only when `max_lifetime`
-        // and `idle_timeout` are both `None`, and leaving them unset is not
-        // that — the defaults are `Some`, which buys the reaper this pool wants
-        // and costs the one-shot warm-up it would otherwise have had.
+        // budget of its own. What is NOT relied on is sqlx filling it: the
+        // background bootstrap runs only when `max_lifetime` and
+        // `idle_timeout` are both `None`, and [`IDLE_TIMEOUT`] and
+        // [`MAX_LIFETIME`] pin both to `Some` — which buys the reaper this
+        // pool wants and costs the one-shot warm-up it would otherwise have
+        // had.
         let pool = builder.connect_lazy_with(config.connect_options());
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -166,29 +195,6 @@ impl Db {
             max_connections: config.max_connections(),
             min_connections: config.min_connections(),
         }
-    }
-
-    /// Takes a connection out of the pool.
-    ///
-    /// # Errors
-    /// Returns a capacity error when the pool had none free within the acquire
-    /// timeout, and a datastore-unavailable error when Postgres itself is the
-    /// problem. Those are two different incidents; see [`crate::error`].
-    pub async fn acquire(&self) -> Result<PoolConnection<Postgres>> {
-        self.pool.acquire().await.map_err(|source| {
-            let waited_ms = self.acquire_timeout.as_millis();
-            // sqlx says `PoolTimedOut` both when every connection is busy and
-            // when it could not open a new one at all. The pool's own census
-            // separates them: at the ceiling with none free is capacity;
-            // BELOW the ceiling and still timing out means the connections it
-            // tried to open never came up, which is the datastore.
-            if matches!(source, sqlx::Error::PoolTimedOut)
-                && self.pool.size() < self.max_connections
-            {
-                return unreachable_datastore(self.role.tag(), waited_ms);
-            }
-            classify_acquire(self.role.tag(), waited_ms, source)
-        })
     }
 
     /// Opens connections up to the configured floor, before traffic needs them.
@@ -301,73 +307,5 @@ impl Db {
     /// is still holding open. §7's supervisor calls this in stop order.
     pub async fn close(&self) {
         self.pool.close().await;
-    }
-}
-
-/// The three pools a daemon runs on.
-///
-/// Separate roles rather than one pool with three names: the migrator needs a
-/// session endpoint (advisory locks do not survive a transaction pooler) and
-/// the API role runs with narrower privileges, so a shared pool would silently
-/// give request-path queries the migrator's rights.
-#[derive(Debug, Clone)]
-pub struct Pools {
-    default: Db,
-    api: Db,
-    migrator: Db,
-}
-
-impl Pools {
-    /// Resolves and opens all three pools from `env`.
-    ///
-    /// # Errors
-    /// Returns the first role's config or connection error, naming the knob or
-    /// the role — no role is silently skipped, because a daemon missing one is
-    /// a daemon that fails later and further from the cause.
-    pub async fn connect_all<E: EnvSource + ?Sized>(env: &E) -> Result<Self> {
-        Ok(Self {
-            default: Self::open(env, DbRole::Default).await?,
-            api: Self::open(env, DbRole::Api).await?,
-            migrator: Self::open(env, DbRole::Migrator).await?,
-        })
-    }
-
-    async fn open<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Db> {
-        Db::connect(&PoolConfig::resolve(env, role)?).await
-    }
-
-    /// The pool for background work and anything unscoped.
-    #[must_use]
-    pub const fn default_role(&self) -> &Db {
-        &self.default
-    }
-
-    /// The request-path pool.
-    #[must_use]
-    pub const fn api(&self) -> &Db {
-        &self.api
-    }
-
-    /// The migration pool. Must be a session endpoint.
-    #[must_use]
-    pub const fn migrator(&self) -> &Db {
-        &self.migrator
-    }
-
-    /// The pool for `role`, for callers that carry the role as data.
-    #[must_use]
-    pub const fn role(&self, role: DbRole) -> &Db {
-        match role {
-            DbRole::Default => &self.default,
-            DbRole::Api => &self.api,
-            DbRole::Migrator => &self.migrator,
-        }
-    }
-
-    /// Closes every pool, in reverse of the order they were opened.
-    pub async fn close(&self) {
-        self.migrator.close().await;
-        self.api.close().await;
-        self.default.close().await;
     }
 }

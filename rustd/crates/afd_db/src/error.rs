@@ -14,8 +14,26 @@
 //! capacity incident gets diagnosed as an outage for twenty minutes, so
 //! [`Error::is_pool_capacity`] and [`Error::is_datastore_unavailable`] are two
 //! questions and `sqlx::Error::PoolTimedOut` is what separates them.
+//!
+//! # And why a stall is a third
+//!
+//! A pool below its ceiling that could not open a connection in time is
+//! neither. The datastore may be gone, or slow to handshake, or up and
+//! refusing one more backend at its own connection ceiling — sqlx retries
+//! that last case silently until the budget runs out, so it cannot be told
+//! apart from here. [`Error::is_acquire_stalled`] names exactly that
+//! uncertainty and carries the census (held, ceiling) an operator needs to
+//! resolve it. It still answers [`Error::is_datastore_unavailable`], because
+//! the request in hand had no datastore either way; what it stops doing is
+//! calling a refusal an outage.
 
 use afd_core::error_code::{self, ErrorCode};
+
+#[cfg(feature = "test-util")]
+mod samples;
+
+#[cfg(feature = "test-util")]
+pub use self::samples::one_of_each_kind;
 
 /// The result every fallible function in this crate returns.
 ///
@@ -67,6 +85,17 @@ pub(crate) enum ErrorKind {
 
     #[error("the {role} datastore did not answer within {waited_ms}ms")]
     DatastoreUnreachable { role: &'static str, waited_ms: u128 },
+
+    #[error(
+        "waited {waited_ms}ms for a {role} connection: the pool held {held} of {ceiling} and \
+         could not open another"
+    )]
+    AcquireStalled {
+        role: &'static str,
+        waited_ms: u128,
+        held: u32,
+        ceiling: u32,
+    },
 
     #[error("the {role} datastore is unreachable")]
     DatastoreUnavailable {
@@ -128,13 +157,28 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::PoolCapacity { .. })
     }
 
-    /// Whether Postgres could not be reached at all.
+    /// Whether this request could not reach Postgres — refused, unreachable,
+    /// or stalled below the pool's ceiling.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::DatastoreUnavailable { .. } | ErrorKind::DatastoreUnreachable { .. }
+            ErrorKind::DatastoreUnavailable { .. }
+                | ErrorKind::DatastoreUnreachable { .. }
+                | ErrorKind::AcquireStalled { .. }
         )
+    }
+
+    /// Whether the pool was below its ceiling and still could not open a
+    /// connection within the acquire timeout.
+    ///
+    /// A refinement of [`Self::is_datastore_unavailable`], not a partition of
+    /// its own: every stall is unavailable, and the accessor exists so the one
+    /// caller that can act on the difference — the retry in `Db::acquire` —
+    /// can see it.
+    #[must_use]
+    pub fn is_acquire_stalled(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::AcquireStalled { .. })
     }
 
     /// Whether a statement reached Postgres and Postgres refused it.
@@ -165,6 +209,7 @@ impl Error {
             ErrorKind::PoolCapacity { .. }
             | ErrorKind::DatastoreUnavailable { .. }
             | ErrorKind::DatastoreUnreachable { .. }
+            | ErrorKind::AcquireStalled { .. }
             | ErrorKind::MissingDatabaseUrl { .. }
             | ErrorKind::InvalidDatabaseUrl { .. }
             | ErrorKind::InvalidDatabaseUrlScheme { .. }
@@ -216,72 +261,21 @@ pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Erro
     Error::new(ErrorKind::DatastoreUnreachable { role, waited_ms })
 }
 
-/// One error of every kind, for tests that walk the whole surface.
+/// A pool below its ceiling that could not open a connection in time.
 ///
-/// The M-TEST-UTIL seam, and the same argument as the mocked entropy in
-/// `afd_crypto`: `Display`, `code()` and `source()` are what a human reads
-/// while something is already going wrong, and most of these kinds cannot be
-/// provoked on demand from a test — a pool does not exhaust itself politely.
-/// These are the values the production paths build, constructed directly.
-#[cfg(feature = "test-util")]
-#[must_use]
-pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    vec![
-        (
-            "missing url",
-            Error::new(ErrorKind::MissingDatabaseUrl {
-                knob: "DATABASE_URL",
-            }),
-        ),
-        (
-            "invalid url scheme",
-            Error::new(ErrorKind::InvalidDatabaseUrlScheme {
-                knob: "DATABASE_URL",
-            }),
-        ),
-        (
-            "unreadable tls cert file",
-            Error::new(ErrorKind::TlsCertFileUnreadable {
-                knob: "DATABASE_URL_MIGRATOR",
-                param: "sslrootcert",
-                path: "/nonexistent/ca.pem".to_owned(),
-                source: std::io::Error::from(std::io::ErrorKind::NotFound),
-            }),
-        ),
-        ("invalid bool knob", invalid_bool_knob("MIGRATE_ON_START")),
-        (
-            "pool capacity",
-            Error::new(ErrorKind::PoolCapacity {
-                role: "api",
-                waited_ms: 2_000,
-            }),
-        ),
-        (
-            "datastore unreachable",
-            unreachable_datastore("default", 10_000),
-        ),
-        (
-            "datastore unavailable",
-            classify_acquire("default", 2_000, sqlx::Error::PoolClosed),
-        ),
-        (
-            "query",
-            query("migrate.ensure_tables", sqlx::Error::PoolClosed),
-        ),
-        (
-            "migration failed",
-            Error::new(ErrorKind::MigrationFailed {
-                version: 100,
-                source: sqlx::Error::PoolClosed,
-            }),
-        ),
-        (
-            "lock unavailable",
-            Error::new(ErrorKind::MigrationLockUnavailable { waited_ms: 30_000 }),
-        ),
-        (
-            "schema ahead",
-            Error::new(ErrorKind::MigrationSchemaAhead { found: 999 }),
-        ),
-    ]
+/// Built directly for the same reason as [`unreachable_datastore`]: sqlx hands
+/// back `PoolTimedOut` with nothing inside it, and the census is the only
+/// evidence there is.
+pub(crate) fn acquire_stalled(
+    role: &'static str,
+    waited_ms: u128,
+    held: u32,
+    ceiling: u32,
+) -> Error {
+    Error::new(ErrorKind::AcquireStalled {
+        role,
+        waited_ms,
+        held,
+        ceiling,
+    })
 }

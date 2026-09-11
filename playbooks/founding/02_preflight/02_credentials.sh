@@ -141,6 +141,32 @@ check_distinct() {
   fi
 }
 
+# The port a Postgres URL names, checked without printing the URL.
+#
+# The API role must arrive at PlanetScale's PgBouncer on 6432 and the migrator
+# at Postgres itself on 5432. A string on the wrong port is a deploy that fails
+# later and further from the cause: the API on 5432 hits the cluster's own
+# `max_connections` under load and answers 503 while Postgres is healthy; the
+# migrator on 6432 loses its session advisory lock to the transaction pooler.
+check_port_ref() {
+  local ref="$1"
+  local expected="$2"
+  local label="$3"
+  local value port
+  value="$(op_read_with_retry "$ref" || true)"
+  # An absent string was already counted by check_ref; counting it twice would
+  # report one missing field as two failures.
+  [ -n "$value" ] || return 0
+  port="$(printf '%s' "$value" |
+    sed -nE 's#^postgres(ql)?://[^@/]*@[^/?]*:([0-9]+)(/.*)?$#\2#p')"
+  if [ "$port" = "$expected" ]; then
+    echo "✓ port $expected: $label"
+  else
+    echo "✗ INVALID: $label must name port $expected (found: ${port:-none})"
+    missing=$((missing + 1))
+  fi
+}
+
 check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v ($stage)"
@@ -195,6 +221,10 @@ check_prod() {
       "op://$v/planetscale-prod/migrator-connection-string" \
       "op://$v/planetscale-prod/api-connection-string" \
       "prod postgres migrator vs api"
+    check_port_ref "op://$v/planetscale-prod/api-connection-string" 6432 \
+      "prod postgres api (PgBouncer)"
+    check_port_ref "op://$v/planetscale-prod/migrator-connection-string" 5432 \
+      "prod postgres migrator (direct)"
   fi
 
 }
@@ -242,6 +272,10 @@ check_dev() {
       "op://$v/planetscale-dev/migrator-connection-string" \
       "op://$v/planetscale-dev/api-connection-string" \
       "dev postgres migrator vs api"
+    check_port_ref "op://$v/planetscale-dev/api-connection-string" 6432 \
+      "dev postgres api (PgBouncer)"
+    check_port_ref "op://$v/planetscale-dev/migrator-connection-string" 5432 \
+      "dev postgres migrator (direct)"
   fi
 
 }

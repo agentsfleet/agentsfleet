@@ -55,8 +55,8 @@ pub(super) async fn open_runtime(
     // Before the router exists, so the first request finds live connections
     // instead of paying a handshake inside an acquire budget sized for a wait.
     // sqlx does not do this itself: it bootstraps `min_connections` only when
-    // `idle_timeout` and `max_lifetime` are both unset, and its own defaults
-    // set both. `warm` reports its shortfall through `pool_warm_incomplete`.
+    // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
+    // both. `warm` reports its shortfall through `pool_warm_incomplete`.
     database.warm(POOL_WARM_DEADLINE).await;
     let queue = Redis::connect(config.redis()).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());

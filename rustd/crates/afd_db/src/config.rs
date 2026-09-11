@@ -71,7 +71,7 @@ fn pool_size_default() -> u32 {
 /// **This floor is established by [`crate::Db::warm`], not by sqlx.** Passing
 /// `min_connections` to the builder is necessary and not sufficient: sqlx only
 /// bootstraps the floor from zero when BOTH `max_lifetime` and `idle_timeout`
-/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and its defaults set
+/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and `pool.rs` pins
 /// both. Every other arm reaches the floor through the idle reaper, whose body
 /// is `for _ in 0..num_idle()` — zero on a pool that has never opened a
 /// connection, so the body never runs and the floor is never approached. The
