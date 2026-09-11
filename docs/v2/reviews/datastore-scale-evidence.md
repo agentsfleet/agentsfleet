@@ -20,6 +20,7 @@ Dragonfly behavior or set a future pass budget.
 | Environment | Repository-owned local rig on macOS arm64, 8 logical CPUs, 16 GiB memory |
 | Baseline revision B0 | `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d` |
 | Capture revision B | `a24d3055d721a7bde8f7294e521a24db991ef4c5` |
+| Evidence revision E | `e9ead416d63e23a3c6d8fceba99e09b0f30feeee` |
 | Archive | `bench/baselines/datastore/m192-redis-historical/` |
 | Topology fingerprint | `sha256:13b761e01637f8787c055f113480bd0cd56bb273e33548b24263d2e808e9c357` |
 | Grade | 4 lanes and 12 samples validated |
@@ -29,6 +30,8 @@ and build inputs. The complete Cargo lock differs only for the benchmark crate;
 the normalized production lock and resolved production dependency closure are
 equal. Each sample carries the result, raw lane log, raw datastore identity and
 topology responses, resource identity, fixture counts, and SHA-256 digests.
+The grader also compares every archived byte with evidence revision E, so a
+coordinated result and sidecar rewrite cannot create a new accepted history.
 
 Run the fail-closed grade from the repository root:
 

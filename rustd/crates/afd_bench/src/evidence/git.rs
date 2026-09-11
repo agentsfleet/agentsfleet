@@ -121,7 +121,7 @@ fn selected(path: &str, surface: Surface) -> bool {
     }
 }
 
-fn file_at(revision: &str, path: &str) -> Result<Vec<u8>> {
+pub(super) fn file_at(revision: &str, path: &str) -> Result<Vec<u8>> {
     output(
         Command::new(GIT_COMMAND).args(["show", &format!("{revision}:{path}")]),
         "git show",

@@ -15,6 +15,7 @@ use crate::error::{Error, Result};
 use crate::fixture::RunPrefix;
 use crate::report::{Lane, Report};
 
+mod anchor;
 mod tree;
 
 const RESULT_ROLE: &str = "result";
@@ -51,6 +52,7 @@ pub(super) fn grade_at(
     let proof: Provenance = parse_json(&proof_path, &proof_raw)?;
     validate_provenance(&plan, &proof)?;
     tree::validate(&campaign, &plan)?;
+    anchor::validate(&plan, &campaign)?;
 
     let expected = plan.lanes.len() * usize::try_from(plan.samples_per_lane).unwrap_or(0);
     let mut resources: Option<Resources> = None;

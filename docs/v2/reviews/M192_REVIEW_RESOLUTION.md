@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-09-11
+verified: 2026-09-12
 product_version: 0.30.0
 executable: false
 ---
@@ -12,7 +12,7 @@ executable: false
 |---|---|
 | What was reviewed? | Claude Fable reviews through b01294265; current corrections remove auth import, preserve concurrent verify retries, bound subscription ownership and name PlanetScale evidence. Indy subsequently excludes reverse migrations and selects forward recovery after schema changes. Template governance is separately recorded below. |
 | What changed? | Proposed design, prototype proofs, evidence grading, workload preparation, and readiness/live delivery boundaries. |
-| What is proven? | Code references and documentation were inspected; no Dragonfly prototype, workload, Cloud test, or migration was run. |
+| What is proven? | Code references and documentation were inspected; §1's unchanged-application Redis baseline ran on the repository-owned local rig. No Dragonfly prototype, Cloud test, or migration was run. |
 | What still needs a decision? | Service/cost budgets and infrastructure, actual PostgreSQL failover durability, any detected historical billing-damage disposition, and live approval. Fixture-only outbound and the readiness/live split remain the scoped implementation defaults; no auth-risk exception is planned. |
 
 ## What it is
@@ -39,13 +39,13 @@ A documented correction remains untested until its mapped proof runs.
 | 1 | Standard PUBLISH and RESP2 hub: `afd_redis/src/streams/tail.rs:13`, `hub/pump.rs:62`. | New daemon uses routed RESP3 sharded pub/sub with the existing activity channel bytes; no temporary standalone mode. | Documented; cluster transport/recovery proofs NOT RUN. |
 | 2 | Two-slot admission script: `afd_redis/src/streams/once.rs:161`, `streams.rs:79`. | Remove admission Lua across all producers; import all three source claim namespaces into PostgreSQL, preserving identity and expiry/no-expiry. Queue XADD is single-key. | Supersedes the tagged-claim design; migration and outbox proofs NOT RUN. |
 | 3 | No production outbound enqueue: `afd_outbound/src/worker.rs:136`, `afd_fleet/src/lease/report.rs:20`. | Fixture-only performance remains proposed; inventory actual historical outbound entries before any cutover. | Source checked; no connector-delivery result claimed. |
-| 4 | Fixed result files and absent seed/offered-rate controls: `afd_bench/src/report.rs:100`, `knobs.rs:15`. | Twelve unique raw samples and sidecars; B/B0 production build/dependency equality includes Cargo.lock. | Capture and grader NOT RUN. |
+| 4 | Fixed result files and absent seed/offered-rate controls: `afd_bench/src/report.rs:100`, `knobs.rs:15`. | Twelve unique raw samples and sidecars; B/B0 production build/dependency equality includes Cargo.lock. | Local rig capture and fail-closed grader pass; Dragonfly evidence remains NOT RUN. |
 | 5 | Hand-written environment labels prove no origin. | Authenticated CI evidence plus pinned provider-backed GET identity verification; response secrets discarded before saving. | Mechanism verified in official source; authenticated probe NOT RUN. |
 | 6 | Main/release auto-deploy to Upstash: `.github/workflows/deploy-dev.yml`, `deploy-dev-fly.yml:41`, `release.yml:520`. | Keep the candidate on its feature branch until Indy's coordinated switch; workflow preflight protects secret/image mutation and a durable import receipt protects admission. | Import/preflight/restart proofs NOT RUN; live switch and retirement need manual evidence. |
 | 7 | Public ID/receipt coupling and receive discriminator: `afd_wire/src/event.rs:375`, `afd_fleet/src/lease/event.rs:104`. | Stable logical ID; accepted-to-received transition, receive charge and marker are atomic after existing pre-charge gates; first-attempt counters have their own durable guard. | Billing/state/crash proofs NOT RUN. |
 | 8 | Prefix isolation and single-container reset: `afd_redis/tests/support/redis_harness.rs:52`, `make/test-infra.mk:218`. | Keep prefix isolation, DB0, owned-primary reset and replica checks; never flush Cloud. | Cluster reset proof NOT RUN. |
 | 9 | Source standalone access is required for import. | Offline tool reads old Redis state; baseline and §2 use isolated Redis fixtures. The shipped new daemon supports clusters only. | Combined admission/Swarm cutover rehearsal NOT RUN. |
-| 10 | M188 deferred address/fixture hardening. | §1 hardens both datastore addresses and discovered nodes before baseline/remote use. | Safety/cancellation proofs NOT RUN. |
+| 10 | M188 deferred address/fixture hardening. | §1 hardens both datastore addresses and discovered nodes before baseline/remote use. | Local rig ownership, topology, cancellation, and cleanup proofs pass; remote/cluster proofs remain NOT RUN. |
 | 11 | Dedicated blocking reader, trimming, and group recovery: `afd_redis/src/dedicated.rs`, `streams.rs:209`, `afd_outbound/src/worker.rs:129`. | Extend existing Dedicated ownership with cluster routing. Retention and durable group recovery still need redesign. | Correction: source already isolates outbound blocking sockets; remaining proofs NOT RUN. |
 | 12 | Names and acceptance surfaces: `make/acceptance.mk:12,17,23`. | Keep acceptance-e2e, acceptance-execution, and cli-acceptance references; install manages groups rather than producing work. | Source checked; original CLI-only claim was incorrect. |
 
@@ -64,7 +64,7 @@ Billing, PostgreSQL authority, evidence, inventory, and baseline requirements re
 | 4 / Medium | Cloud control-plane verification has no named mechanism. | Canonical workload evidence pins official provider source implementing authenticated GET `/v1/datastores/<DATASTORE_ID>` and identifies response fields. Dimension 6.3 rejects unavailable/mismatched/stale identity and leaked secrets; successful probe required before Cloud load. | API key permissions and actual account/datastore access remain unproven. No live request made. |
 | 5 / Medium | New PostgreSQL commit load has no budget. | Canonical PostgreSQL budget table and §6/Dimension 6.4 require admission/commit rates, pool and allocator waits, WAL/I/O, backlog/drain, replica lag, resources/cost, and fan-out amplification. | Indy must freeze numeric thresholds for both stores; throughput and batching gains remain unproven. |
 | 6 / Low | Migration inventory names concepts rather than keys. | Canonical Source-state inventory names all three claims, stream/groups, ready, outbound, sessions, gate mirrors, connector nonces, anomaly windows, and durable counterparts. Dimension 7.1 rejects unknown keys/types and validates every disposition. | Real source census, all prefix proofs, remaining expiry/no-expiry, fencing, and reconciliation NOT RUN. |
-| 7 / Low | Bench-only changes can alter shared production dependencies through Cargo.lock. | §1/Dimensions 1.1 and 1.3 compare source/schema/build inputs and resolved production dependency/feature closure at B/B0, allowing only proven bench-exclusive lockfile deltas. | Shared dependency/version/source/checksum/edge changes must fail; capture/equality proof NOT RUN. |
+| 7 / Low | Bench-only changes can alter shared production dependencies through Cargo.lock. | §1/Dimensions 1.1 and 1.3 compare source/schema/build inputs and resolved production dependency/feature closure at B/B0, allowing only proven bench-exclusive lockfile deltas. | Local capture proves the production closure is equal; the grader fails changed shared dependency/version/source/checksum/edges. |
 
 ### Indy deployment override and review of b6b033e05
 
@@ -291,14 +291,14 @@ Leave the existing deployed Redis build in service while proving the new build o
 The readiness/live delivery split and fixture-only outbound remain proposals; this correction does not add an outbound product feature.
 Indy's override removes temporary standalone transport; no automatic fallback or early-merge global deployment hold is planned.
 
-The first implementation slice is §1: benchmark address/fixture hardening, twelve-sample capture, sidecars/digests, baseline grader, and B/B0 dependency proof.
-It needs no CI or compose change. §0 requires local cluster setup under Indy's stated scope first; this documentation pass makes no infrastructure edit.
-Both specs remain PENDING. Runtime implementation still requires CHORE(open), resolved next-Section choices, and the repository lifecycle.
+The first implemented slice is §1: benchmark address/fixture hardening, twelve-sample capture, sidecars/digests, baseline grader, and B/B0 dependency proof.
+It needed no CI or compose change. §0 requires local cluster setup under Indy's stated scope before its implementation.
+M192_001 is ACTIVE with §1 complete. M192_002 remains PENDING on the readiness work.
 
 ## Limits
 
-No migration-confidence or capacity verdict is claimed. Every runtime/prototype proof above remains outstanding.
-The next implementation work is benchmark safety/capture plumbing and the unchanged-application Redis baseline, followed by isolated prototypes before production integration.
+No migration-confidence or capacity verdict is claimed. Dragonfly, migration, Cloud, and capacity runtime proofs above remain outstanding.
+The next implementation work is local cluster setup and the isolated prototypes before production integration.
 A failed prototype requires a corrected design and another run before its dependent integration proceeds.
 
 ## Related pages

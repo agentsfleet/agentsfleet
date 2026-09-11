@@ -92,8 +92,10 @@ impl RunPrefix {
     /// Whether a name belongs to this run.
     #[must_use]
     pub fn owns(&self, name: &str) -> bool {
-        name.strip_prefix(&self.value)
-            .is_some_and(|suffix| suffix.starts_with('-'))
+        name == self.value
+            || name
+                .strip_prefix(&self.value)
+                .is_some_and(|suffix| suffix.starts_with('-'))
     }
 }
 

@@ -29,6 +29,10 @@ fn test_a_minted_prefix_owns_the_names_it_builds() {
     let name = prefix.name("fleet-7");
 
     assert!(
+        prefix.owns(prefix.as_str()),
+        "a prefix used as an exact wire identifier must remain sweepable"
+    );
+    assert!(
         prefix.owns(&name),
         "a name the prefix built must be one the sweep recognises"
     );

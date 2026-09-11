@@ -6,10 +6,13 @@
 )]
 
 use super::capture::{require_comparable, validate_plan};
+use super::git::digest;
 use super::grade::{
     Grade, grade_at, require_distinct_capture, require_unique_prefix, validate_log,
 };
-use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance};
+use super::model::{CAMPAIGN_ROOT, EVIDENCE_SCHEMA, ProofPair, Provenance, Sidecar};
+
+const HISTORICAL_CAMPAIGN: &str = "m192-redis-historical";
 
 fn pair(equal: bool) -> ProofPair {
     let baseline = "sha256:baseline".to_owned();
@@ -50,6 +53,7 @@ fn test_incomparable_datastore_runs_are_rejected() {
             .to_string()
             .contains("outside the benchmark harness")
     );
+    assert_coordinated_rewrite_is_rejected();
 }
 
 #[test]
@@ -67,6 +71,72 @@ fn test_redis_baseline_records_complete_evidence() {
             samples: 12,
         }
     );
+}
+
+fn assert_coordinated_rewrite_is_rejected() {
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let plan_path = repository.join("bench/profiles/datastore/redis-historical.json");
+    let source = repository.join(CAMPAIGN_ROOT).join(HISTORICAL_CAMPAIGN);
+    let scratch = Scratch::new();
+    let campaign = scratch.0.join(HISTORICAL_CAMPAIGN);
+    copy_tree(&source, &campaign);
+
+    let sample = campaign.join("lease/sample-01");
+    let result_path = sample.join("result.json");
+    let mut result = std::fs::read(&result_path).expect("the copied result is readable");
+    result.push(b'\n');
+    std::fs::write(&result_path, &result).expect("the copied result is writable");
+
+    let sidecar_path = sample.join("sidecar.json");
+    let sidecar_raw = std::fs::read(&sidecar_path).expect("the copied sidecar is readable");
+    let mut sidecar: Sidecar =
+        serde_json::from_slice(&sidecar_raw).expect("the copied sidecar is valid");
+    sidecar.result_sha256 = digest(&result);
+    std::fs::write(
+        &sidecar_path,
+        serde_json::to_vec_pretty(&sidecar).expect("the changed sidecar renders"),
+    )
+    .expect("the copied sidecar is writable");
+
+    let refusal = grade_at(plan_path, &scratch.0)
+        .expect_err("Git-anchored evidence must reject a coordinated rewrite");
+    assert!(
+        refusal.to_string().contains("immutable evidence revision"),
+        "the refusal must identify the independent evidence anchor"
+    );
+}
+
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the test clock follows the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("afd-bench-anchor-{unique}"));
+        std::fs::create_dir(&path).expect("the scratch root is unique");
+        Self(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _result = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
+    std::fs::create_dir(destination).expect("each copied directory is new");
+    for entry in std::fs::read_dir(source).expect("the evidence directory is readable") {
+        let entry = entry.expect("every evidence entry is readable");
+        let target = destination.join(entry.file_name());
+        if entry.file_type().expect("entry type is readable").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).expect("every evidence file copies");
+        }
+    }
 }
 
 #[test]
@@ -118,6 +188,7 @@ fn campaign_names_cannot_escape_the_evidence_root() {
         schema: EVIDENCE_SCHEMA,
         campaign: "m192-safe_campaign".to_owned(),
         baseline_revision: "baseline".to_owned(),
+        evidence_revision: None,
         profile: "rig".to_owned(),
         samples_per_lane: 3,
         lanes: crate::report::Lane::ALL

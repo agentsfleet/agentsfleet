@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m192-dragonfly-migration
 **Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
 **Test Baseline:** harness/lint/version, 459 integration tests, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
-**Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical`; later Dragonfly sections remain pending.
+**Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical` and anchored at `e9ead416d63e23a3c6d8fceba99e09b0f30feeee`; later Dragonfly sections remain pending.
 **Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; runtime context in `docs/architecture/data_flow.md`.
@@ -315,6 +315,6 @@ Explicit physical-ID replay is rejected because out-of-order replay into an exis
 - **Refactor direction:** Indy asked "You shouldnt be shy enough to do a refactor and do it in a better sharded way as well?"; Swarm correctness is required; additional application partitioning needs measured justification.
 - **Indy override (verbatim):** "we just stick to local that runs containers today (with the cluster config, no single mode crap for dragonfly)". Interpretation: cluster-only new daemon; no temporary provider mode.
 - **Indy deployment direction (verbatim):** "in production this would be stood up by Indy on dragondb just like indy did for upstash and stick the key in deployment to deploy-dev.yml". Reuse its called Fly workflow and vault flow.
-- **Final review:** Indy confirms acceptance of about 5 ms Fly iad → Dragonfly Cloud AWS us-east-1 in this handoff; this is his planning decision, not measured p99. Choose PostgreSQL auth authority: WAIT cannot guarantee single use. Hub duplicate-frame, ledger SELECT and populated-migration checks are required; all runtime proofs remain NOT RUN.
+- **Final review:** Indy confirms acceptance of about 5 ms Fly iad → Dragonfly Cloud AWS us-east-1 in this handoff; this is his planning decision, not measured p99. Choose PostgreSQL auth authority: WAIT cannot guarantee single use. Hub duplicate-frame, ledger SELECT and populated-migration checks are required; Dragonfly, migration, and Cloud runtime proofs remain NOT RUN.
 - **Override boundary:** supersedes temporary standalone deployability/later-removal requirements; does not waive import/billing proofs, numeric budgets, paid-capacity consent, or live action approval. No benchmark/prototype has run.
 - **Indy recovery override (verbatim):** "since We are not in production yet, so i would just skip that". Reverse migrations and old-image rollback are out of scope; cancellation ends when the first new migration commits, then recovery is forward-only. Data preservation remains required.

@@ -262,7 +262,7 @@ Compare resolved production features and dependencies for every shipped binary/t
 Record the graph comparison and lockfile diff with the baseline. A bench-only path does not prove a bench-only dependency change.
 Capture three runs of each existing M188 lane, copying each result immediately to a unique campaign/lane/sample location.
 
-A sidecar records exact parameters, payload bytes, window, tool versions, resources, topology, and revision.
+A sidecar records exact parameters, payload bytes, window, datastore versions, resources, topology, and revision.
 Do not invent a seed or offered-rate control absent from the historical driver.
 The million-fleet, thousand-runner-process workload belongs to the Dragonfly combined-load tests, not historical capture.
 For §6, freeze three fault-free Dragonfly combined-load reference samples per payload/skew case before injecting faults, on the same deployment, revision, workload, auth traffic and resource envelope as the recovery samples.

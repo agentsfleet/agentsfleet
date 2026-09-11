@@ -24,6 +24,9 @@ pub struct BaselinePlan {
     pub campaign: String,
     /// Production revision the new capture must remain comparable to.
     pub baseline_revision: String,
+    /// Commit whose tree contains the immutable, reviewed archive bytes.
+    #[serde(default)]
+    pub evidence_revision: Option<String>,
     /// Profile all historical samples use.
     pub profile: String,
     /// Distinct captures required for every lane.
