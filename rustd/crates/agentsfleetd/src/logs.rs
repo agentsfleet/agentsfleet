@@ -147,9 +147,12 @@ pub fn install(env: &dyn EnvSource) -> bool {
 #[cfg(test)]
 mod tests {
     use core::time::Duration;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use afd_observability::producers::GaugeSources;
     use tracing_subscriber::{Registry, reload};
+
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::{Attached, Signals};
     use crate::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
@@ -162,16 +165,14 @@ mod tests {
     const UNREACHABLE: &str = "http://127.0.0.1:1";
 
     fn exports() -> Result<Exports, &'static str> {
-        crate::telemetry::install(
-            &OtlpConfig {
-                endpoint: UNREACHABLE.into(),
-                source: OTEL_ENDPOINT_KNOB,
-                headers: Vec::new(),
-                protocol: "http/json".into(),
-                timeout: Duration::from_millis(50),
-            },
-            &GaugeSources::silent(),
-        )
+        crate::telemetry::install(&OtlpConfig {
+            endpoint: UNREACHABLE.into(),
+            source: OTEL_ENDPOINT_KNOB,
+            headers: Vec::new(),
+            protocol: "http/json".into(),
+            timeout: Duration::from_millis(50),
+        })
+        .map(|(exports, _instruments)| exports)
         .map_err(|_refused| "a well-formed endpoint builds a transport")
     }
 
@@ -204,5 +205,59 @@ mod tests {
 
         drop(slot);
         Ok(())
+    }
+
+    /// A record emitted before the slot is filled reaches no layer at all.
+    ///
+    /// This is the whole reason boot attaches the exporter before it opens
+    /// anything that logs. It is not a preference about ordering: an empty
+    /// slot does not buffer, delay, or replay — the record goes to stderr and
+    /// is gone. `pool_initialized` and `pool_warmed` were emitted on the wrong
+    /// side of this line for as long as `open_telemetry` ran after
+    /// `open_runtime`, which is why a collector queried for "did this instance
+    /// warm its pool?" returned nothing and settled nothing.
+    ///
+    /// Counts through the slot rather than asserting a call order, because an
+    /// order is only evidence if the thing it protects is real. Reverse the
+    /// two halves below and the first assertion fails.
+    #[test]
+    fn test_a_record_emitted_before_the_slot_is_filled_reaches_no_layer() {
+        let seen = Arc::new(AtomicUsize::new(0));
+        let (slot, handle) = reload::Layer::<Attached, Registry>::new(Attached::None);
+        let subscriber = Registry::default().with(slot);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::info!(event = "before_attach");
+        assert_eq!(
+            seen.load(Ordering::Relaxed),
+            0,
+            "nothing is attached yet, so nothing can have counted"
+        );
+
+        let counted = Arc::clone(&seen);
+        let filled = handle
+            .modify(|held| *held = Some(Box::new(Counting(counted))))
+            .is_ok();
+        assert!(filled, "the slot must take the layer");
+
+        tracing::info!(event = "after_attach");
+        assert_eq!(
+            seen.load(Ordering::Relaxed),
+            1,
+            "the record emitted after the slot was filled is the one that reached it"
+        );
+    }
+
+    /// A layer that does nothing but count what it was given.
+    struct Counting(Arc<AtomicUsize>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Counting {
+        fn on_event(
+            &self,
+            _event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
