@@ -19,11 +19,12 @@ executable: false
 
 ## What it is
 
-This page defines the target design. The configured Redis deployment remains unchanged until the approved live cutover.
+This page defines the target design. Redis stays selected and deployable until the approved live cutover; the readiness build supports both explicit transport modes.
 No prototype, Cloud test, or migration has run as part of this documentation revision.
 
 The [roadmap](./roadmap.md#dragonfly-migration-and-redis-retirement) links the readiness plan and proposed live cutover follow-up.
 Readiness covers prototypes, implementation, Cloud proof, and rehearsal; the follow-up owns live retirement.
+Prove each runtime increment on the same configured deployment, preserving Redis behavior until explicit cutover.
 The [review resolution](../v2/reviews/M192_REVIEW_RESOLUTION.md) records the findings and remaining evidence.
 
 ## Why it exists
@@ -71,36 +72,59 @@ Transient token frames remain best-effort; durable history backfill does not pro
 
 ### Keys and atomic work
 
-Let `S` be the exact existing event-stream key returned by `fleet_stream_key(fleet_id)`.
-Keep that stream name. Build related claim keys with the literal hash tag `{S}`, substituting S's full bytes inside the braces.
-Use `activity:{S}` for the sharded live-tail channel, with the same literal-tag substitution.
+Keep the existing event-stream key `S` from `fleet_stream_key(fleet_id)`.
+Cluster mode uses `activity:{S}`, substituting the full stream key inside literal braces; standalone mode keeps `fleet:<id>:activity` and ordinary pub/sub.
+Validate fleet IDs and update channel builders, `afd_sse` parsing, and workspace fan-in together for each configured mode.
 
-Validate fleet identifiers before key construction; braces in external provider identifiers must not choose the first hash tag.
-Update both `afd_redis`'s builder and `afd_sse`'s channel parser together, including workspace fan-in and tenant-isolation proofs.
-Check actual `CLUSTER KEYSLOT` values for every atomic key set; shared readiness remains a separate operation with repair.
-
-Migration rewrites old claim names and activity subscriptions explicitly.
-Claims keep their original remaining expiry and original event identity; retries cannot reopen a deduplication window.
-Do not create one deployment-wide hash tag that concentrates all fleets on one slot.
+PostgreSQL owns admission deduplication. Remove ingress claim-plus-append Lua and migrate every `append_once` caller, including cron, approval continuation, and repair verification.
+The queue publisher uses single-key `XADD`; no target Redis admission claim keys are created or rebuilt.
+Single-key session consumption and readiness-token scripts remain; test script-cache loss, redirects, and lost replies using their actual invariants.
+A test-only two-slot script is a negative control for cluster routing, not a reason to retain a production multi-key admission script.
 
 ### Durable event identity
 
-Commit recoverable ingress and its stable logical event identity in PostgreSQL before publishing any runnable queue entry or returning acceptance.
-Keep the public `event_id` string in numeric stream-ID form; preserve imported event IDs verbatim.
-Generate new identities from a PostgreSQL-serialized per-fleet monotonic allocator, initialized above imported IDs and saved with the acceptance row.
+Commit the acceptance row, producer deduplication identity, per-fleet logical ID, and pending dispatch state in one PostgreSQL transaction before success or runnable work.
+Keep public `event_id` in numeric stream-ID form; preserve imported IDs verbatim.
+Serialize allocation per fleet and initialize its high watermark above all imported identities, including claim-only records.
 
-The durable identity travels in the internal queue envelope. The physical stream receipt may change on replay and is used only for acknowledgment and pending-entry management.
-Lease bookkeeping, event history, fencing, approvals, and billing use the stable identity; the runner's public fields retain their shape.
-Store dispatch state and serialize per-fleet dispatch so retries cannot reorder unfinished work behind new work.
+The `(fleet_id, event_id)` primary key alone cannot deduplicate a provider retry that has not received a logical ID.
+A unique producer identity uses the existing claim namespace and exact original identifier bytes, bound to the fleet and logical ID.
+Preserve the shared webhook/App namespace and original retention windows; do not split identities merely because callers use different surface names.
+Store absolute expiry, with null meaning no time expiry, and the outstanding-work obligation in PostgreSQL.
+Expired claims can admit a new event only after the prior obligation ends; serialize expiry/replacement against concurrent retries.
+Import source queue payloads before reconciling claims. A claim with proven settled work can remain a deduplication tombstone without a retained payload.
+An unresolved obligation with neither queue payload nor durable payload blocks upgrade; never fabricate work, drop acceptance, or reset expiry.
 
-Prototype concurrent admission, clock rollback, imported high watermarks, lost append replies, and replay of older work after newer physical entries.
-Do not rely on explicit-ID `XADD` replay: a nonempty stream can reject an older ID.
-Duplicate receipts must never cause duplicate runs after terminal settlement, receive charges, or terminal billing.
-Commit each debit with its durable idempotency marker; crashes must not leave a marker without its charge or a charge without its marker.
+A bounded sweeper dispatches committed rows in numeric logical order under per-fleet fencing.
+Put the logical ID in the queue envelope and let `XADD` generate the physical receipt; record dispatch progress only after confirmed publication.
+Lost append replies may create duplicate physical receipts. Lease admission selects the earliest unfinished logical event and ignores stale or settled receipts.
+Reconcile queue loss against unfinished durable rows even when previously marked published; recreate readiness independently.
+No transaction spans PostgreSQL and the queue; crashes around either write must remain recoverable.
 
-Keep a durable deduplication record until its retry window and unfinished-work obligation both expire.
-Queue-loss recovery rebuilds claims and readiness from durable state, independently of ephemeral claim expiry.
-Test both provider retries and dispatcher retries after queue destruction.
+The durable row transitions as follows; status constants and schema changes follow repository conventions.
+
+| Transition | Guard and atomic effects | Retry outcome |
+|---|---|---|
+| Absent → accepted | Commit payload, logical ID, producer identity, and dispatch state together. No receive debit or first-receipt counter increment. | Return the existing identity on duplicate admission. |
+| Accepted → received | After existing pre-charge gates pass, lock/fence the row; change state and commit receive debit plus ledger/idempotency marker together. | Only the transaction that changes state is `Delivery::First`; rollback leaves accepted and unpaid. |
+| Accepted → gate_blocked | A permanent pre-charge refusal records its reason without a receive debit; first-attempt event accounting still applies. | Follow the existing refusal/approval continuation rules; never re-charge the original identity. |
+| Received → gate_blocked | Preserve the existing post-charge approval/refusal behavior and already-paid marker. | No second receive charge or implicit refund. |
+| Received → terminal | Existing terminal outcomes, settlement, and terminal debit/marker commit under lease fencing. | Duplicate physical receipts cannot repeat terminal execution or charging. |
+
+Transient pre-charge faults leave accepted work retryable; received work can be reclaimed without another receive debit.
+Do not infer first delivery from INSERT conflict, or commit the received transition before its charge.
+Preserve zero debit for pre-charge refusal and exactly one policy-appropriate receive debit after those gates pass.
+`lease/pull.rs` runs the approval check after money gates; preserve that ordering and its existing charge policy, including zero-cost postures.
+Update `record_received`, money gates, billing transaction ownership, ingress comments, and insert-triggered counters together.
+First receipt observation is separate from charge eligibility: a durable once-only observation marker guards the event counter and received-frame intent before gates.
+Both pre-charge refusals and transient retries retain that accounting; subsequent receipt/terminal transitions must not count the event again.
+Save the observation marker and counter in one transaction; it never authorizes or suppresses billing.
+Accepted rows without receipt observation remain hidden from received-history views; observed rows preserve existing public status and streaming behavior.
+Import historical received/terminal rows and ledger evidence without charging them again; ambiguous historical payment state blocks upgrade for reconciliation.
+
+Prototype clock rollback, concurrent admission, allocator contention, imported high IDs, expiry races, lost replies, and older replay behind newer receipts.
+Include approval continuation, repair cleanup, tenant scoping, history pagination, and partial App fan-out retries.
+Keep both transport modes on this single durable admission path after the rehearsed data upgrade.
 
 ### Measured coordination partitioning
 
@@ -118,7 +142,8 @@ A passing existing design can remain; a failed budget requires redesign, not a w
 
 ### Blocking reads, scans, and retention
 
-A blocking reader owns a dedicated node connection resolved from its stream's slot.
+Extend the existing non-cloneable `afd_redis::Dedicated` ownership model with slot-owner routing for cluster mode.
+Standalone outbound reads already have a dedicated socket; preserve that protection in both modes.
 Refresh its owner on redirects and reconnects; cancellation closes the blocking connection without consuming the shared command pool.
 Measure unrelated command latency while reads block, and verify no abandoned socket or task accumulates.
 
@@ -133,7 +158,10 @@ Missing consumer groups recover against durable dispatch and settlement state; r
 ### Workload and evidence
 
 Bench-only capture and safety changes may precede historical baseline revision B.
-Verify production source and schema trees at B match the recorded comparison revision B0.
+Verify production source, schema, build configuration, and workspace manifests at B match comparison revision B0 except proven bench-only changes.
+Include `rustd/Cargo.lock`: each changed package/version/source/checksum/dependency edge must be outside the production build dependency closure at both revisions.
+Compare resolved production features and dependencies for every shipped binary/target, including build dependencies; shared-package changes fail baseline grading.
+Record the graph comparison and lockfile diff with the baseline. A bench-only path does not prove a bench-only dependency change.
 Capture three runs of each existing M188 lane, copying each result immediately to a unique campaign/lane/sample location.
 
 A sidecar records exact parameters, payload bytes, window, tool versions, resources, topology, and revision.
@@ -154,7 +182,38 @@ Cloud evidence also requires an authenticated CI run reference, matching revisio
 
 Live actions remain manual evidence. The named human verifies the live revision, observation window, reconciliation, and retirement record.
 A hand-written summary, local run relabeled Cloud, or rehearsal relabeled live cannot satisfy acceptance.
-An unavailable attestation or verification API blocks the claim rather than trusting the label.
+The named Cloud identity mechanism is an authenticated GET to `https://api.dragonflydb.cloud/v1/datastores/<DATASTORE_ID>`.
+The operator supplies DATASTORE_ID from the approved Cloud inventory; use a vault-held API key as a Bearer token, never in logs.
+Dragonfly's official Terraform provider implements this read in `internal/sdk/client.go` at commit `e25af703daf80c5f0c973845ce4a5191e9523c2e` (v0.0.27).
+Its `internal/sdk/datastore.go` defines `datastore_id`, `addr`, `status`, and `config.cluster.enabled` plus location, tier, TLS, and cache-mode fields.
+This is a source-verified mechanism, not a successful authenticated probe or a claim of a separate Terraform data source.
+
+Before any §6 Cloud workload, run a read-only capability probe for the approved account and datastore.
+Match returned identity, active status, address, TLS, cluster mode, and resource configuration to the workload endpoint and in-band topology.
+Record allowlisted fields, collection time, collector/source revision, and CI run identity before and after each run.
+The response includes a password: discard it, ACL secrets, and request headers in memory before any saved output; never archive full responses or Terraform state.
+Refuse redirects outside the named host, authentication errors, missing fields, stale evidence, wrong IDs, and endpoint/topology mismatches.
+An unavailable mechanism blocks Cloud grading until repaired or replaced by a separately reviewed mechanism; no self-declared identity fallback.
+
+### PostgreSQL admission budgets
+
+Freeze PostgreSQL and Dragonfly budgets together before grading combined load; approval belongs to Indy.
+Count offered provider requests, expanded per-fleet admissions, accepted rows, and commits separately.
+The 16,667 events/second target means per-fleet admissions; App fan-out amplification must also be reported.
+Without measured batching, admission alone requires one commit per event, before receive, terminal, dispatch-progress, or allocator work.
+Do not infer sustainable database throughput from the Dragonfly result or assume a batching benefit.
+
+| Required PostgreSQL budget | Evidence and refusal |
+|---|---|
+| Sustainable admission/completion rate | Three samples at frozen rates and payload/skew cases; no growing backlog hidden by accepted responses. |
+| Admission p95/p99 and pool wait | Measure transaction/commit latency, pool occupancy/timeouts, and allocator lock wait under hot-fleet and broad fan-out load. |
+| Database resources and cost | Pin CPU, memory, I/O, storage, WAL bytes/second, replica lag, connections, and cost ceiling alongside queue resources. |
+| Backlog and recovery | Bound accepted-unpublished rows/bytes/age, dispatch lag, replay rate, retry volume, and drain time after faults. |
+
+Fail grading on a missing threshold, breached budget, changed resource envelope, or generator saturation.
+If admission is the bottleneck, prototype bounded batching or another measured database improvement before accepting capacity.
+Batching still commits before success/visibility and must preserve per-fleet ordering, deduplication, fairness, and crash recovery.
+Database sharding is a separate decision; no Neki adoption follows from a failed budget.
 
 ### Outbound and delivery boundaries
 
@@ -168,21 +227,57 @@ Inbound producers include steer, per-fleet webhook, App fan-out, cron, continuat
 
 ### Delivery and cutover boundary
 
-The proposed first Pull Request completes implementation readiness, including Cloud proof and offline migration tools.
-The proposed follow-up carries every live cutover and retirement requirement as P0; readiness is not a migration-complete claim.
-Before landing a cluster-only build, establish a deployment hold or staged-image procedure so merge cannot deploy it to standalone Upstash.
+The readiness Pull Request prepares both transports, durable admission, Cloud proofs, and bounded offline upgrade/migration tools.
+The proposed follow-up owns live cutover and retirement; readiness is not a migration-complete claim.
 
-Only the bounded migration tool reads source standalone Redis. The daemon has no fallback provider.
-Use a source fixture containing old keys, claims, active leases, sessions, and unfinished work for the rehearsal.
-Import pre-durability queue records under original identities while source producers and consumers are stopped.
+During readiness, `REDIS_MODE` selects `standalone` (default when unset) or `cluster`; unknown values fail startup.
+Keep `REDIS_URL_API`. Standalone uses the configured Redis/Upstash endpoint, existing ordinary pub/sub, and dedicated blocking sockets.
+Cluster mode uses routed RESP3 sharded pub/sub and fails readiness on unsupported topology or commands.
+Never probe-and-fallback or change provider after a connection failure. The operator explicitly selects one mode for a deployment.
 
-Development credentials are referenced by `upstash-dev/api-url` under `VAULT_DEV`; release credentials use `upstash-prod/api-url` under `VAULT_PROD`.
-These are references from deployment workflows, not evidence either environment is live.
-Inventory actual deployments and consumers before planning their switch or deleting any vault item.
+Main and subsequent unrelated releases remain deployable on standalone Redis throughout the readiness/live interval.
+Before the first durability deployment, rehearse the schema/data upgrade on populated standalone Redis plus PostgreSQL.
+Fence old producers/consumers, import outstanding queue work and claims, reconcile billing and counters, then enable the new admission path.
+No old admission writer may overlap the new authority; retain source state and a tested abort before new admission.
+Prepare required approved deployment/schema steps before merging the affected build; an indefinite main-wide deployment hold is not an acceptable landing plan.
+Prove a later unrelated build deploys with the unchanged standalone configuration after this upgrade.
 
-The safe abort point is before destination admission, with source data preserved and source writers still stopped.
-After destination admission, recover forward through durable replay or a separately proven reverse migration; never just change the endpoint back.
-No trial activation, billing change, deployment edit, or live switch follows from a documentation revision alone.
+The offline tool reads old source state; the readiness daemon also supports standalone transport until retirement.
+For live cutover, use the same bounded reconciliation tool and source inventory with approved environment/revision-specific fencing.
+Development credentials are references `upstash-dev/api-url` under `VAULT_DEV`; release uses `upstash-prod/api-url` under `VAULT_PROD`.
+Inventory real environments and consumers; workflow names do not prove either exists.
+
+After every inventoried environment has switched and passed observation, retire standalone configuration, ordinary pub/sub, source bindings, and obsolete client branches.
+The retirement build requires explicit cluster configuration and refuses standalone endpoints; retain redis-rs and historical evidence.
+Test the exact retirement build before deploying it; source deletion still requires explicit approval.
+Abort before destination admission with source preserved; after admission use forward recovery or a separately proven reverse migration.
+No infrastructure mutation, paid trial, live deployment, or resource deletion is authorized by this documentation revision.
+
+### Source-state inventory
+
+Inventory every actual source key with type, count, expiry, authority, and disposition before either the durability upgrade or live cutover.
+Redis patterns below describe source bytes; angle-bracket fields come from the owning builder. Enumerate actual nonce prefixes from the connector registry.
+
+| Source key or durable state | Owning source | Required disposition |
+|---|---|---|
+| `fleet:<fleet_id>:events` and group `fleet_lease` | `afd_redis/src/streams.rs` | Import queue-only accepted events with original logical IDs; reconcile pending entries and lease fences; rebuild physical receipts/groups from durable state. |
+| `webhook:dedup:<once_id>` | `afd_redis/src/streams/once.rs` | Import exact namespace/identifier, original logical ID, and absolute remaining expiry into PostgreSQL; preserve shared webhook/App identity and different windows. |
+| `schedule:fire:<once_id>` | `afd_redis/src/streams/once.rs` | Import per-fleet/schedule/message identity and expiry into PostgreSQL; retries must not reopen the fire. |
+| `fleet:repair-verification:<once_id>` | `afd_redis/src/streams/once.rs` | Import repair/continuation identities with no time expiry; release only after the durable successor/cleanup condition is proven. |
+| `fleet:ready` | `afd_redis/src/ready.rs` | Rebuild from durable unfinished and eligible state; stale tokens cannot suppress new work. |
+| `connector:outbound` and group `connector_workers` | `afd_redis/src/outbound.rs` | Inventory entries and pending receipts; prove drain/import for any jobs or block. Fixture-only tests never justify dropping historical jobs. |
+| `auth:session:<session_id>` | `afd_redis/src/session.rs` | Preserve remaining expiry, ownership, approval, abort, and consumed state atomically; no token resurrection. |
+| `fleet:gate:byevent:<fleet_id>:<event_id>`; `fleet:gate:response:<action_id>` | `afd_gate/src/gate/store.rs` | Reconcile references and decisions against durable approvals; preserve expiry or rebuild only from a proven durable equivalent. |
+| `connect:slack:nonce:*`, `connect:gh:nonce:*`, `connect:zoho:nonce:*`, `connect:jira:nonce:*`, `connect:linear:nonce:*` | `afd_connector/src/registry.rs`, `state/nonce.rs` | Copy unconsumed nonce markers with remaining expiry under fencing; consumed/missing markers must stay absent. |
+| `fleet:anomaly:<fleet_id>:<tool>:<action>` | `afd_gate/src/gate/store.rs` | Preserve count and remaining window; resetting it could bypass an approval trigger. |
+| `fleet:<fleet_id>:activity` | `afd_redis/src/streams.rs` | Ephemeral channel, not a stored key; reconnect viewers using the selected mode and durable history. |
+| `core.fleet_events`, `core.fleet_sessions`, `fleet.runner_leases`, `fleet.runner_affinity`, approval and billing rows | `docs/architecture/data_flow.md` | PostgreSQL stays authoritative; reconcile identities, terminal/payment state, lease fencing, approvals, counters, and allocator high watermarks. |
+| Any unmatched source key/type | Full source scan and producer inventory | Refuse admission until its owner and preservation/removal proof are recorded; never silently skip. |
+
+Source paths in the table are relative to `rustd/crates/` unless prefixed with `docs/`.
+Sample expiry against source time, subtract migration elapsed time, preserve no-expiry separately, and never extend a retry/authentication window.
+A scan against active writers is not a consistent snapshot; import under fencing and repeat reconciliation before enabling admission.
+Keep secret-bearing source exports encrypted and access-controlled; evidence contains counts and digests, never payloads or session contents.
 
 ## Limits
 
@@ -197,5 +292,7 @@ PlanetScale Neki shards PostgreSQL; adopting it is a separate database change an
 - [Runtime data flow](./data_flow.md) describes the implementation being replaced.
 - [Dragonfly pub/sub design](https://github.com/dragonflydb/dragonfly/blob/1e5f9944834b6ed999a2baf137e929e6de3e3009/docs/pub-sub.md) describes supported command families.
 - [Dragonfly cluster design](https://github.com/dragonflydb/dragonfly/blob/1e5f9944834b6ed999a2baf137e929e6de3e3009/docs/cluster-mode.md) describes configuration, migration, and routing.
-- [redis-rs cluster support](https://docs.rs/redis/latest/redis/cluster_async/index.html) describes RESP3 push and node routing; validate the pinned dependency in prototypes.
+- [Cloud identity read implementation](https://github.com/dragonflydb/terraform-provider-dfcloud/blob/e25af703daf80c5f0c973845ce4a5191e9523c2e/internal/sdk/client.go) names the authenticated datastore read.
+- [Cloud identity response](https://github.com/dragonflydb/terraform-provider-dfcloud/blob/e25af703daf80c5f0c973845ce4a5191e9523c2e/internal/sdk/datastore.go) names returned fields and sensitive data.
+- [redis-rs cluster support](https://docs.rs/redis/1.6.0/redis/cluster_async/index.html) describes RESP3 push and node routing; validate the pinned dependency in prototypes.
 - [Dragonfly v1.40.2](https://github.com/dragonflydb/dragonfly/releases/tag/v1.40.2) is the initial server candidate; main-branch documentation does not prove release behavior.

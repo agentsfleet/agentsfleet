@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B3
 **Branch:** pending; proposed operational follow-up, implementation branch assigned at CHORE(open).
 **Test Baseline:** pending; record comparison revision at CHORE(open), canonical counts before the Pull Request.
-**Depends on:** M192_001 passing readiness, Cloud, migration-tool, rehearsal, and deployment-hold evidence; Indy approval of the delivery split.
+**Depends on:** M192_001 passing readiness, Cloud, migration-tool, rehearsal, and standalone-deployability evidence; Indy approval of the delivery split.
 **Provenance:** proposed decomposition of M192_001 live Dimension 7.4 and the live portion of R6 after Fable review.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`.
 
@@ -56,17 +56,18 @@ This proposed successor owns the complete live outcome as P0. M192_001 completio
 | This spec; `docs/v2/reviews/datastore-scale-evidence.md` | EDIT / MOVE | Record live evidence, approval, and completion. |
 | `AGENTS.md`, `docs/architecture/{datastore_scaling,data_flow,scaling,testing,roadmap}.md` | EDIT | Describe observed deployment and completed retirement. |
 | `playbooks/operations/datastore_scaling/{001_playbook.md,*.sh}`, `playbooks/README.md` | EDIT | Run and finalize the procedure prepared in M192_001. |
-| `.github/workflows/{deploy-dev-fly,release,bench,test-integration-rustd}.yml`, `deploy/**`, `docker-compose.yml` | EDIT after approval | Select Dragonfly, prevent old-source deployment, remove obsolete server dependencies. |
+| `.github/workflows/{deploy-dev,deploy-dev-fly,release,bench,test-integration-rustd}.yml`, `deploy/**`, `docker-compose.yml` | EDIT after approval | Select Dragonfly, prevent old-source deployment, remove obsolete server dependencies. |
+| `rustd/crates/{afd_redis,afd_sse,agentsfleetd}/{src/**/*.rs,tests/**/*.rs}`, `rustd/{Cargo.toml,Cargo.lock}` | EDIT | Remove standalone transport/configuration and ordinary pub/sub after all environments switch; prove the retirement build. |
 | `playbooks/founding/**`, `playbooks/operations/teardown/redis/**` | EDIT / DELETE after caller inventory | Retire source-specific operational procedures and repair all callers. |
-| `rustd/crates/afd_bench/{src/**/*.rs,tests/**/*.rs}`, `make/bench.mk` | EDIT if rehearsal gaps require it | Enforce live proof provenance and terminal checks; runtime design remains M192_001's. |
-| Separate `~/Projects/docs` branch, affected operator pages, and changelog | EDIT during rollout | Document observed provider and recovery procedure. |
+| `rustd/crates/afd_bench/{src/**/*.rs,tests/**/*.rs}`, `make/bench.mk` | EDIT if rehearsal gaps require it | Enforce live proof provenance and terminal checks; durability design remains M192_001's. |
+| Separate `~/Projects/docs` branch, affected operator pages, and changelog | EDIT during rollout | Document observed provider, removed standalone configuration, and recovery procedure. |
 
 Expand exact operational paths before mutation; inventory external datastore and vault consumers separately. No credential values belong in evidence or commits.
 
 ## Applicable Rules
 
 - VLT, OWN, ECL, ORP, TCF, and STR in `docs/greptile-learnings/RULES.md`: secret references, recovery, caller sweeps, and real proofs.
-- `dispatch/lifecycle.md`, `dispatch/write_shell.md`, `dispatch/write_documentation.md`, and `docs/DOCUMENTATION_RULES.md`: approved operational changes and honest completion.
+- `dispatch/lifecycle.md`, `dispatch/write_rust.md`, `docs/RUST_ERROR_STANDARD.md`, `dispatch/write_shell.md`, `dispatch/write_documentation.md`, and `docs/DOCUMENTATION_RULES.md`: approved operational changes and honest completion.
 - `docs/AUTH.md` and `docs/AUTH_DEVICE_LOGIN.md`: migration preserves one-time authentication and expiry.
 
 ## Applicable Gates
@@ -79,14 +80,14 @@ Expand exact operational paths before mutation; inventory external datastore and
 
 ## Prior-Art / Reference Implementations
 
-Use M192_001's validated migration tool and Dragonfly evidence grader. Do not introduce a second migration path or a daemon fallback provider.
+Use M192_001's validated migration tool and Dragonfly evidence grader. Retire M192_001's explicit standalone mode only after all environments switch; no automatic fallback is introduced.
 
 ## Sections (implementation slices)
 
 ### §1: Verify readiness and authorize the live procedure
 
-Require every M192_001 readiness and rehearsal result for the intended build and topology, including the landing/deployment hold.
-Inventory actual environments, source/destination IDs, all producers/consumers, old claims, active leases, sessions, approvals, and historical outbound jobs.
+Require every M192_001 readiness and rehearsal result for the intended build and topology, including populated standalone upgrade and subsequent-build deployability. Recheck both PostgreSQL and Dragonfly budgets.
+Expand the canonical source key-prefix inventory for every actual environment; unknown keys, unresolved no-expiry claims, or unknown outbound jobs block.
 Credentials remain references: upstash-dev/api-url under VAULT_DEV and upstash-prod/api-url under VAULT_PROD, plus approved destination references.
 Freeze the live revision, import-tool revision, capacity, observation window, reconciliation conditions, pre-admission abort, and forward recovery procedure.
 Indy reviews the concrete procedure and names the authorized environment and revision. Missing credentials or approval stop dependent work.
@@ -97,7 +98,7 @@ Indy reviews the concrete procedure and names the authorized environment and rev
 ### §2: Reconcile, switch, and observe
 
 Under the approved procedure, stop admission and source consumers, fence writers, then drain or import unfinished work and authentication state.
-Old stream IDs and deduplication TTLs remain valid; classify every state class and reconcile counts before enabling destination admission.
+Old IDs, absolute dedup expiry, no-expiry tombstones, sessions, gate mirrors, nonces, and anomaly windows reconcile before destination admission. PostgreSQL admission remains the authority.
 The pre-admission abort preserves source state and prevents concurrent writers. After admission, recover forward through the rehearsed durable path.
 Run real API/dashboard/CLI acceptance and record live samples for the full frozen window; relabeled rehearsal evidence must fail.
 
@@ -106,12 +107,14 @@ Run real API/dashboard/CLI acceptance and record live samples for the full froze
 
 ### §3: Retire source Redis and verify the live record
 
-Require reconciliation and observation to pass before approving source retirement. Identify every remaining server, workflow, local-fixture, and vault consumer.
-Remove obsolete Upstash bindings and source resources only within explicit retirement approval; keep redis-rs, historical evidence, and the approved recovery materials.
+Require reconciliation and observation in every inventoried environment before removing standalone support. Identify every remaining server, workflow, fixture, and vault consumer.
+Remove standalone client/config branches and ordinary pub/sub; the retirement build requires explicit cluster mode and refuses standalone endpoints. Test that exact build before approved deployment.
+Remove Upstash bindings and source resources only within retirement approval; keep redis-rs, historical evidence, and approved recovery materials.
 Record retirement actions with control-plane receipts, configuration commit, live revision, observation evidence, and the named human verifier.
 The grader verifies raw digests, authenticated run/artifact provenance, datastore identity, and the manual approval record; a document claiming success is insufficient.
 
 - **Dimension 3.1**: rehearsal-only, forged, or incomplete live records refuse completion → Test `test_rollout_grader_rejects_unverified_retirement`.
+- **Dimension 3.3**: retirement build removes standalone only after every environment switches → Test `test_retirement_requires_all_environments_on_cluster`.
 - **Dimension 3.2**: Indy verifies reconciliation, observation, and approved source retirement → Test `review_live_cutover_and_retirement_evidence`.
 
 ## Interfaces
@@ -127,6 +130,7 @@ Manual reviews use the operation's 001_playbook.md and attach immutable receipts
 | Wrong revision, missing Cloud proof, unexpected source state | Refuse; `test_live_cutover_preflight_refuses_incomplete_readiness`. |
 | Duplicate writers, lost old claim TTL, unaccounted active lease | Keep admission stopped; `test_live_reconciliation_preserves_accepted_state`. |
 | Rehearsal mislabeled live, altered raw files, missing retirement receipt | Refuse completion; `test_rollout_grader_rejects_unverified_retirement`. |
+| Early standalone removal or wrong retirement build | Refuse removal/deploy; `test_retirement_requires_all_environments_on_cluster`. |
 | Live budget failure | Apply the approved recovery procedure; failed `review_live_dragonfly_observation` blocks retirement. |
 
 ## Invariants
@@ -155,13 +159,14 @@ Use M192_001's typed operational signals and update the playbook; no product ana
 | 2.1 | integration | `test_live_reconciliation_preserves_accepted_state` | Old IDs, TTLs, sessions, approvals, leases, and accepted work reconcile without duplicate settlement or simultaneous writers. |
 | 2.2 | manual | `review_live_dragonfly_observation` | Verify recorded live acceptance commands and raw samples across the full approved window; failures block retirement. |
 | 3.1 | unit / integration | `test_rollout_grader_rejects_unverified_retirement` | Missing/fabricated receipts, incorrect artifact origin, changed digests, and rehearsal-only evidence cannot pass. |
+| 3.3 | unit / integration | `test_retirement_requires_all_environments_on_cluster` | Any unswitched/unobserved environment blocks removal; exact retirement build passes cluster behavior, refuses standalone config/endpoints, and retains no ordinary pub/sub path. |
 | 3.2 | manual | `review_live_cutover_and_retirement_evidence` | Indy verifies live revision, reconciliation, observation window, retirement approval/receipts, and retirement commit before completion. |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Approved live migration and source retirement | `make bench-datastore CHECK=rollout` | Exit 0; all live and manual proofs verified; no unaccounted work or unresolved source consumer. | P0 | |
+| R1 | Approved live migration and source retirement | `make bench-datastore CHECK=rollout` | Exit 0; all live/manual and exact-build retirement proofs pass; unaccounted work and unresolved source consumers = 0. | P0 | |
 | R2 | Dashboard live acceptance | `make acceptance-e2e` | Exit 0 against the recorded live Dragonfly revision. | P0 | |
 | R3 | CLI live acceptance | `make cli-acceptance` | Exit 0 against the same live revision. | P0 | |
 | S1 | Conformance | `make harness-verify` | Exit 0. | P0 | |
@@ -180,7 +185,7 @@ Remove only inventoried obsolete server bindings and callers; retain redis-rs an
 
 ## Out of Scope
 
-Reopening M192_001 runtime design, adding connector delivery, automatic fallback to Redis, and deleting unrelated shared infrastructure are excluded.
+Reopening M192_001 durability design, adding connector delivery, automatic fallback to Redis, and deleting unrelated shared infrastructure are excluded.
 A production environment is not assumed to exist merely because a release workflow references it.
 
 ## Product Clarity (authoring record)
@@ -203,7 +208,7 @@ A single implementation PR claiming unperformed retirement or relying on a parke
 
 ## Discovery (consult log)
 
-- **Consults:** two-spec delivery is proposed for the requested Fable re-review; live operational approval has not been given.
+- **Consults:** requested Fable corrections move standalone refusal/removal here, after all-environment observation; the delivery split remains proposed and live approval is still required.
 - **Transfer mapping:** M192_001's former live Dimension 7.4 maps to 1.2, 2.2, and 3.2 here; its live R6 outcome maps to R1 here, all P0.
 - **Metrics review:** use existing migration signals; no product analytics changes.
 - **Skill-chain outcomes:** orly-spec-new authored the proposed live follow-up; no runtime or manual verdict is claimed.

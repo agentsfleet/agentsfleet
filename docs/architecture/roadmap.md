@@ -33,7 +33,8 @@ One row per item, so an agent can check a status without reading the ledger; eac
 The [datastore scaling requirements](./datastore_scaling.md) record the required target, recovery behavior, and rollout limits.
 
 M188 is complete; both proposed M192 workstreams remain pending. Dragonfly capacity and recovery remain unproven until its acceptance evidence passes.
-The migration uses one historical Redis baseline, followed by Dragonfly validation; repeated Redis deployment comparisons are not required.
+The migration captures the Redis baseline before runtime changes, then validates each increment on the same configured deployment before cutover.
+The readiness build preserves standalone deployability; the retirement follow-up removes it after every environment switches and passes observation.
 The parked SSE follow-up is not a prerequisite; streaming tests use the merged runtime's behavior.
 
 ## v2.1 — authorization
