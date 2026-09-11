@@ -22,8 +22,8 @@ executable: false
 This page defines the target design. The configured Redis deployment remains unchanged until the approved live cutover.
 No prototype, Cloud test, or migration has run as part of this documentation revision.
 
-[M192_001](../v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) owns prototypes, implementation, Cloud readiness, and the migration rehearsal.
-[M192_002](../v2/pending/M192_002_P0_INFRA_OBS_DRAGONFLY_CUTOVER_REDIS_RETIREMENT.md) owns the proposed live cutover and retirement follow-up.
+The [roadmap](./roadmap.md#dragonfly-migration-and-redis-retirement) links the readiness plan and proposed live cutover follow-up.
+Readiness covers prototypes, implementation, Cloud proof, and rehearsal; the follow-up owns live retirement.
 The [review resolution](../v2/reviews/M192_REVIEW_RESOLUTION.md) records the findings and remaining evidence.
 
 ## Why it exists
@@ -168,8 +168,8 @@ Inbound producers include steer, per-fleet webhook, App fan-out, cron, continuat
 
 ### Delivery and cutover boundary
 
-The proposed first Pull Request completes M192_001 readiness, including Cloud proof and offline migration tools.
-M192_002 carries every live cutover and retirement requirement as P0; readiness is not a migration-complete claim.
+The proposed first Pull Request completes implementation readiness, including Cloud proof and offline migration tools.
+The proposed follow-up carries every live cutover and retirement requirement as P0; readiness is not a migration-complete claim.
 Before landing a cluster-only build, establish a deployment hold or staged-image procedure so merge cannot deploy it to standalone Upstash.
 
 Only the bounded migration tool reads source standalone Redis. The daemon has no fallback provider.
