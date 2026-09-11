@@ -17,14 +17,22 @@ const GLOBALS = "app/globals.css";
 const SHELL_FRAME = "components/layout/ShellFrame.tsx";
 const BALANCE_CARD = "app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx";
 const TRIGGER_PANEL = "app/(dashboard)/w/[workspaceId]/fleets/[id]/components/TriggerPanel.tsx";
+const LIBRARY_CARD = "app/(dashboard)/w/[workspaceId]/fleets/new/LibraryCard.tsx";
 const IDENTITY_LINE = "app/(dashboard)/admin/runners/[runnerId]/components/RunnerIdentityLine.tsx";
 const APPROVALS_LIST = "app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.tsx";
+const RUNNER_PAGE = "app/(dashboard)/admin/runners/[runnerId]/page.tsx";
+const FLEET_TILE = "app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx";
 
 // The canvas gutter at each breakpoint, in the rem the stylesheet states.
 const GUTTER_STEPS = ["1rem", "1.5rem", "2rem", "3rem"];
 // Anything that would re-introduce a per-element horizontal inset on the two
 // elements that must share the gutter.
 const HORIZONTAL_PADDING_UTILITY = /\b(?:px|pr|pl)-(?:\d|\[)/;
+// A spacing utility carrying a raw number or an arbitrary value rather than one
+// of the scale's names. `size-2` and `min-h-5` are sizes, not spacing, and stay;
+// so does a `-0` reset, which is on every scale and is how "none" is spelled.
+const RAW_SPACING_UTILITY =
+  /\b(?:gap|gap-x|gap-y|space-x|space-y|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-(?:\[|[1-9]\d*(?:\.\d+)?|0\.\d+)/g;
 
 describe("the canvas gutter is stated once", () => {
   it("declares the gutter and the scrollbar width as tokens the shell can share", () => {
@@ -77,7 +85,46 @@ describe("a card's inset is the card's, once", () => {
   });
 });
 
+describe("the cards on the wall and in the gallery use the named scale", () => {
+  it.each([
+    ["the fleet tile", FLEET_TILE],
+    ["the library card", LIBRARY_CARD],
+  ])("gives %s no raw spacing number", (_name, path) => {
+    // Measured before: the library card ran 15 · 12 · 16 · 19 · 15 down its
+    // length and the tile carried six values, most of them raw Tailwind
+    // numbers that no token names.
+    const source = read(path);
+    const inJsx = source
+      .split("\n")
+      .filter((line) => line.includes("className=") || line.includes('"'))
+      .join("\n");
+    expect(inJsx.match(RAW_SPACING_UTILITY) ?? []).toEqual([]);
+  });
+
+  it("leaves the library card's inset to the Card that frames it", () => {
+    const card = read(LIBRARY_CARD).split("<Card")[1]?.split(">")[0] ?? "";
+    expect(card).not.toMatch(/\bp-/);
+  });
+
+  it("states a credential requirement as a fact, not a warning", () => {
+    // Amber is this system's warning colour. A fleet naming the credential it
+    // will ask for is a fact about the fleet, not a fault in the workspace.
+    const source = read(LIBRARY_CARD);
+    expect(source).toContain('const REQUIRES_PREFIX = "requires:"');
+    expect(source).not.toMatch(/variant="amber"/);
+  });
+});
+
 describe("a block does not carry the gap that belongs to its column", () => {
+  it("gives the runner page the same column gap as the blocks inside it", () => {
+    // Measured before: the page root stacked its header row and view row with
+    // no gap at all, so the only separation was the identity line's own margin.
+    const source = read(RUNNER_PAGE);
+    const rootGap = source.split("flex min-h-full flex-1 flex-col")[1]?.split('"')[0] ?? "";
+    expect(rootGap).toContain("gap-3xl");
+    expect(source).toContain("flex min-w-0 flex-1 flex-col gap-3xl");
+  });
+
   it("ends the runner identity line without a margin of its own", () => {
     // Measured before: mb-2xl made the runner header-to-content gap 24px where
     // every other gap on that page is 32.
