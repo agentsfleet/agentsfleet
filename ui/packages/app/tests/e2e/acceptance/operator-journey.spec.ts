@@ -206,7 +206,7 @@ test.describe("operator journey", () => {
 
     await clickSidebarLink(page, workspaceHref(wsId, "events"), workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
-    await expect(page.getByLabel("Workspace events")).toBeVisible();
+    await expect(page.getByLabel("Workspace events", { exact: true })).toBeVisible();
 
     await clickSidebarLink(page, workspaceHref(wsId, "approvals"), workspaceUrlPattern("approvals"));
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();

@@ -97,6 +97,14 @@ it("records a detached original main without mistaking the replacement for recov
   expect(() => readBlankFrames()).toThrow(/main region was replaced/);
 });
 
+it("refuses to install while the route's own fallback is still the only content", () => {
+  // A pending Suspense boundary renders a text-free skeleton inside main.
+  // Installing over it would count every frame until the data lands.
+  document.body.innerHTML = '<main><div class="animate-pulse"></div></main>';
+  expect(() => installPaintBoundaryAudit()).toThrow(/no content yet/);
+  expect((window as AuditedWindow).__shellBlankAudit).toBeUndefined();
+});
+
 it("refuses diagnostics when the page never installed the audit", () => {
   expect(() => readBlankFrameEvidence()).toThrow(/audit is missing/);
 });
