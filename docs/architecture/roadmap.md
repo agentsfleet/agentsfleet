@@ -21,7 +21,7 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
 | Payload offload + charge breakdown | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
 | Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §"Dashboard Backend-for-Frontend" |
-| Datastore scaling and Redis parity | specced, not started | [Datastore scaling and Redis parity](#datastore-scaling-and-redis-parity) |
+| Datastore scaling and Redis parity | in progress (M192_001) | [Datastore scaling and Redis parity](#datastore-scaling-and-redis-parity) |
 
 ## Datastore scaling and Redis parity
 

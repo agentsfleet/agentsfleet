@@ -10,311 +10,279 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M192_001: Add Dragonfly scaling with measured Redis parity
+# M192_001: Build the sharded Dragonfly datastore with proven Redis parity
 
 **Prototype:** v2.0.0
 **Milestone:** M192
 **Workstream:** 001
-**Date:** Sep 06, 2026
+**Date:** Sep 12, 2026
 **Status:** IN_PROGRESS
-**Priority:** P0, required before claiming Dragonfly readiness or million-fleet capacity.
+**Priority:** P0
 **Categories:** API, INFRA, OBS
-**Batch:** B2, consumes the shared benchmark drivers from M188_001.
+**Batch:** B2
 **Branch:** feat/m192-dragonfly-cluster
 **Baseline revision:** 995566da8118cbb88b0b32bb5b44a19d2e704f5e
 **Test Baseline:** pending — measured before the Pull Request.
-**Depends on:** M188_001 for measurement drivers and result files. Streaming acceptance uses the merged runtime; the parked SSE follow-up is not a prerequisite.
-**Provenance:** LLM-drafted (Codex, Sep 06, 2026), from the user's Dragonfly and same-deployment requirements.
-**Canonical architecture:** `docs/architecture/datastore_scaling.md`; existing flows in `data_flow.md` and `runner_fleet.md`.
+**Depends on:** M188_001 drivers (merged). The historical Redis baseline is closed PR #681 (`agentsfleet/agentsfleet#681`, unmerged); its twelve samples are reference data and are not recaptured here.
+**Provenance:** Second revision. Redesigned after the closed baseline PR, from a live probe of a four-node Dragonfly v1.40.2 cluster (Discovery below).
+**Canonical architecture:** `docs/architecture/datastore_scaling.md` (target sharding, evidence rules); runtime context in `data_flow.md` and `runner_fleet.md`.
 
 ## Overview
 
-**Goal (testable):** Redis and Dragonfly Cloud Swarm pass the same application and recovery scenarios, with measured limits and no unexplained Redis regression.
-**Problem:** endpoint replacement alone cannot prove queue recovery, bounded memory, fair discovery, or cluster correctness.
-**Solution summary:** measure first, then improve durability, retention, coordination, and cluster support through the existing operation-specific Rust boundaries.
-
-Dragonfly Cloud Swarm is mandatory, with no single-shard migration stage. Redis remains supported and remains the deployment default throughout implementation.
-Replacing Swarm or removing Redis support requires an explicit user decision. A new benchmark-only environment cannot replace same-deployment evidence.
+**Goal (testable):** the daemon runs its fleet workflow against a real multi-node Dragonfly cluster with the same outcomes it produces on standalone Redis, and every accepted event survives loss of the in-memory datastore.
+**Problem:** the live probe shows the current design cannot run on a cluster at all — the at-most-once append is a two-key Lua script that answers `CROSSSLOT`, readiness and outbound delivery are single hot keys, the hub uses global pub/sub which a cluster broadcasts to every node, and acceptance is queue-only so a lost queue is lost work.
+**Solution summary:** move acceptance into PostgreSQL so the queue carries only single-key appends; route every command, script, subscription and scan by slot through one topology-aware `afd_redis` boundary; shard readiness by fleet hash; prove each change on standalone Redis and on the local cluster in the same integration lane. Redis stays the deployment default; Cloud Swarm proof and live cutover belong to a follow-up spec once the local matrix is green.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat: add Dragonfly scaling with measured Redis parity
-- **Intent:** retain users' existing fleet behavior while adding tested Dragonfly capacity and recovery.
-- **Handshake:** implement on a dedicated feature branch after baseline measurement, preserve Redis behavior, and compare each deployed increment with an identified baseline.
-- **ASSUMPTIONS I'M MAKING:** the million-fleet target needs explicit traffic and concurrency assumptions; this authoring task authorizes no deployment or account changes.
+- **PR title:** feat: build the sharded Dragonfly datastore with proven Redis parity
+- **Intent:** keep users' fleets behaving identically while the datastore layer becomes cluster-correct and crash-durable.
+- **Handshake:** prototype the four cluster risks first, integrate only proven shapes, land Redis parity evidence with every section, never claim a deploy or a cutover.
+- **ASSUMPTIONS I'M MAKING:** (1) no live deployment, secret, Cloud account, or workflow file changes without a concrete ask; (2) the historical baseline numbers are sufficient and are not re-run; (3) sharded pub/sub is used on standalone Redis too, so the product has one publish semantics rather than two.
 
 ## Implementing agent — read these first
 
-1. `docs/architecture/datastore_scaling.md`, the required destination and Redis preservation rules.
-2. `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md`, shared drivers, profiles, and attribution.
-3. `rustd/crates/afd_ingress/src/deliver.rs`, provider deduplication and accepted ingress behavior.
-4. `rustd/crates/afd_redis/src/streams/once.rs`, atomic multi-key append and replay windows.
-5. https://www.dragonflydb.io/docs/cloud/datastores, managed topology, eviction, replicas, and connection requirements.
+1. `docs/architecture/datastore_scaling.md` — target design, key layout, what each backend must prove.
+2. `rustd/crates/afd_redis/src/client.rs`, `rustd/crates/afd_redis/src/hub/pump.rs`, `rustd/crates/afd_redis/src/ready.rs`, `rustd/crates/afd_redis/src/streams/once.rs` — the boundary being made topology-aware.
+3. `rustd/crates/afd_ingress/src/deliver.rs`, `rustd/crates/afd_events/src/steer.rs`, `rustd/crates/afd_cron/src/fire.rs` — every producer that must accept durably.
+4. `docs/architecture/testing.md` §Rust test naming and §ISO-1..3 — new suites follow the file's convention and isolate by minted prefix.
+5. https://github.com/dragonflydb/dragonfly/blob/main/docs/cluster-mode.md and https://www.dragonflydb.io/docs/command-reference/compatibility, validated against the pinned image.
 
 ## Files Changed (blast radius)
 
-The following table scopes implementation. Existing uncommitted branch work belongs to its current task and must not be staged by this workstream.
-
 | File | Action | Why |
-|------|--------|-----|
-| `AGENTS.md`, `docs/architecture/README.md`, `docs/architecture/datastore_scaling.md` | EDIT / CREATE | Make the target and evidence rules discoverable. |
-| `docs/v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md` | CREATE / MOVE | Author here; lifecycle moves the same spec to active and done. |
-| `docs/architecture/scaling.md`, `docs/architecture/data_flow.md`, `docs/architecture/runner_fleet.md`, `docs/architecture/concurrency.md` | EDIT | Update actual flows and measured limits with their implementation. |
-| `docs/architecture/testing.md`, `docs/architecture/observability.md` | EDIT | Explain backend evidence and recovery signals. |
-| `docs/v2/reviews/datastore-scale-evidence.md` | CREATE | Index immutable result files and their deployment revisions. |
-| `make/bench.mk`, `bench/harness/*.rs`, `bench/steer/main.rs`, `bench/lease/main.rs`, `bench/outbound/main.rs`, `bench/cardinality/main.rs` | EDIT after M188 | Reuse the measurement drivers and add a strict evidence grader. |
-| `bench/harness/datastore.rs`, `bench/profiles/datastore/*.json`, `bench/baselines/datastore/*.json` | CREATE | Backend matrix, workload manifests, and redacted baseline summaries. |
-| `make/test-infra.mk`, `make/test-integration-rustd.mk`, `docker-compose.yml` | EDIT | Select disposable backends without creating another integration lane. |
-| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | Enable required redis-rs capabilities and register test support. |
-| `rustd/crates/afd_redis/src/*.rs`, `rustd/crates/afd_redis/src/streams/*.rs`, `rustd/crates/afd_redis/src/hub/*.rs` | EDIT | Connections, atomic keys, retention, readiness, scanning, and subscriptions. |
-| `rustd/crates/afd_redis/tests/*.rs`, `rustd/crates/afd_redis/tests/support/*.rs` | EDIT / CREATE | Real-backend parity, pressure, topology, and recovery tests. |
-| `rustd/crates/afd_ingress/src/*.rs`, `rustd/crates/afd_ingress/tests/*.rs`, `rustd/crates/afd_events/src/steer.rs`, `rustd/crates/afd_cron/src/fire.rs`, `rustd/crates/afd_gate/src/gate/park.rs`, `rustd/crates/afd_approval/src/inbox/*.rs` | EDIT / CREATE | Durable inbound acceptance and replay through the shared boundary. |
-| `rustd/crates/afd_fleet_lifecycle/src/install.rs`, `rustd/crates/afd_fleet_lifecycle/src/purge.rs` | EDIT | Include lifecycle ingress and cleanup. |
-| `rustd/crates/afd_fleet/src/lease/*.rs`, `rustd/crates/afd_fleet/src/lease/sql/*.rs` | EDIT | Preserve fencing, settlement, and acknowledgment behavior. |
-| `rustd/crates/afd_outbound/src/*.rs`, `rustd/crates/afd_outbound/tests/*.rs` | EDIT / CREATE | Recoverable delivery, bounded concurrency, and destination fairness. |
-| `rustd/crates/afd_runner/src/sweep/*.rs`, `rustd/crates/agentsfleetd/src/sweepers.rs`, `rustd/crates/agentsfleetd/src/outbound.rs` | EDIT | Replay supervision and recovery lifecycle. |
-| `rustd/crates/agentsfleetd/src/preflight.rs`, `rustd/crates/agentsfleetd/src/preflight/config.rs`, `rustd/crates/agentsfleetd/src/serve/*.rs` | EDIT | Explicit backend topology and boot validation. |
-| `schema/*queue*.sql`, `schema/embed.zig`, `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/tests/*.rs` | CREATE / EDIT | Durable acceptance schema and upgrade proof; allocate the migration number at PLAN. |
-| `rustd/crates/afd_sse/src/*.rs`, `rustd/crates/afd_api/tests/integration_*live.rs`, `rustd/crates/afd_api/tests/integration_fleet_streams.rs`, `rustd/crates/afd_api/tests/integration_datastore*.rs`, `rustd/crates/afd_api/tests/*suite.rs` | EDIT / CREATE | Prove real API and streaming behavior on each backend. |
-| `rustd/crates/afd_observability/src/producers/fleet*.rs`, `rustd/crates/afd_observability/src/producers/fleet/*.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs` | EDIT | Bounded recovery, backlog, and scheduling signals. |
-| `playbooks/operations/datastore-scaling.md` | CREATE | Same-deployment probes, trial preparation, and reversible rollout procedure. |
+|---|---|---|
+| `docker-compose.yml`, `scripts/dragonfly-cluster.sh`, `scripts/test-infra-ports.sh`, `make/test-infra.mk`, `make/test-integration-rustd.mk` | EDIT / CREATE | One compose service running a four-node cluster (two primaries, two replicas) announced on `127.0.0.1`, per-worktree ports, `TEST_DRAGONFLY_URL`, owned-cluster reset. |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_redis/Cargo.toml` | EDIT | `cluster-async` feature; RESP3 push delivery. |
+| `rustd/crates/afd_redis/src/{lib,config,client,error,hub,dedicated,kv,ready,session}.rs`, `src/hub/pump.rs`, `src/streams/{tail,once}.rs`, new `src/topology.rs`, `src/hub/sharded.rs`, `src/ready/partition.rs` | EDIT / CREATE | Topology selector, cluster backend behind `Redis`, sharded hub, node-routed dedicated reader, all-primaries scan, partitioned readiness, single-key append. |
+| `rustd/crates/afd_redis/tests/{redis_suite,integration_cluster_*,integration_sharded_hub,integration_partitioned_ready}.rs`, `tests/support/cluster_harness.rs` | EDIT / CREATE | Prototype proofs and parity suites run against both backends. |
+| New `schema/91x_*.sql` (numbers allocated at each Section), `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/tests/*.rs` | CREATE / EDIT | Durable admission ledger with producer identity, replay cursor, retention accounting. |
+| `rustd/crates/{afd_ingress,afd_events,afd_cron,afd_gate,afd_approval,afd_fleet_lifecycle}/src/**` and their tests | EDIT | Every producer accepts through the admission ledger before the queue append; replay dispatcher supervises the gap. |
+| `rustd/crates/afd_fleet/src/lease/**`, `rustd/crates/afd_outbound/src/**`, `rustd/crates/afd_runner/src/sweep/**`, `rustd/crates/agentsfleetd/src/{sweepers,outbound}.rs`, `serve/{runtime,optional}.rs`, `preflight.rs` | EDIT | Partition cursor per runner, destination-fair delivery, replay supervision, topology preflight and readiness. |
+| `rustd/crates/afd_observability/src/producers/fleet*.rs`, `src/metrics/declared/fleet.rs` | EDIT | Replay, backlog, admission-refusal and partition signals. |
+| `rustd/crates/afd_bench/src/**`, `make/bench.mk`, `bench/profiles/datastore/*.json` | EDIT / CREATE | `make bench-datastore CHECK=…` strict grader over archived local evidence. |
+| `docs/architecture/{datastore_scaling,data_flow,runner_fleet,testing,observability}.md`, `docs/v2/reviews/datastore-scale-evidence.md`, `playbooks/operations/datastore_scaling/001_playbook.md` | EDIT / CREATE | Actual topology with each Section; evidence index; operator procedure. |
+| `~/Projects/docs` branch | EDIT if a documented behaviour changes | Retry and stream semantics if they move; never from this worktree. |
 
-Expand module globs into exact files at PLAN. Public behavior documentation needs its matching branch in the separate docs repository.
-Deploy configuration and Continuous Integration (CI) workflow edits need separate authorization; use the existing deployment procedure.
+Workflow and deploy files are out of this blast radius; CI runs the compose stack through `make`, so a new compose service needs no workflow edit.
 
 ## Applicable Rules
 
-- `docs/greptile-learnings/RULES.md`: UFS, NDC, NLR, NLG, OWN, ECL, TIM, STR, TCF, CFG, ORP, VLT, NSQ, STS, and TST-NAM.
-- `dispatch/write_rust.md` and `docs/RUST_ERROR_STANDARD.md`: preserve error sources and explicit resource ownership.
-- `dispatch/write_sql.md`: follow existing schema and migration conventions; never weaken fencing or tenant boundaries.
-- `dispatch/write_any.md` and `docs/LOGGING_STANDARD.md`: scoped cleanup, bounded source files, and redacted signals.
-- `dispatch/name_architecture.md` and `docs/DOCUMENTATION_RULES.md`: update flow documentation with code and distinguish targets from observed behavior.
-- `docs/AUTH.md`: preserve single-use sessions, replay windows, and rate limits across backends.
+- `docs/greptile-learnings/RULES.md`: UFS, NDC, NLR, OWN, ECL, TIM, STR, TCF, ORP, TST-NAM, TNM, HLP, GATDL.
+- `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md`: one error per crate, `#[from]`, no stringified causes; Result pipelines.
+- `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md`: schema-qualified, GRANTs, no static strings in schema.
+- `dispatch/write_any.md`: 350-line files, logging events with `error_code`, no milestone ids in source.
+- `dispatch/name_architecture.md`: every new key, channel, partition and table lands in `docs/architecture/` in the same commit.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
-|------|--------|-----------------------|
-| SPEC TEMPLATE | Authoring | Complete required sections, no placeholders, canonical Make commands. |
-| Architecture consult | Authoring and flow edits | Required destination recorded separately; update actual topology with implementation. |
-| LENGTH, UFS, LOGGING, ERROR REGISTRY | Implementation | Split cohesive modules; named limits; typed errors; no credential output. |
-| SCHEMA and AUTH | Implementation | Real upgrade and race tests; no automatic schema removal or weakened auth checks. |
-| VERIFY | Implementation | Canonical repository commands plus the evidence matrix; no package-runner substitute. |
+|---|---|---|
+| SPEC TEMPLATE | Authoring | Complete sections, canonical Make commands, ≤320 lines. |
+| Architecture consult, SCHEMA, AUTH | Implementation | Target layout recorded before code; migration upgrade proofs; single-use tokens keep compare-then-delete. |
+| LENGTH, UFS, LOGGING, ERR-RS | Every source edit | Split modules at the seam; verbs and keys as consts; typed errors with sources. |
+| VERIFY | Section and boundary | Canonical Make targets; `make bench-datastore` grades archived evidence, never a live claim. |
 
 ## Prior-Art / Reference Implementations
 
-- M188_001 owns the four benchmark drivers. Reuse their fixtures and results; do not build a competing load generator.
-- `rustd/crates/afd_redis/tests/integration_streams.rs` and `integration_session.rs` prove real-server replay and atomic state transitions.
-- [redis-rs cluster support](https://docs.rs/redis/latest/redis/cluster_async/index.html) supplies topology routing; do not implement a cluster protocol.
+- `rustd/crates/afd_redis/tests/integration_hub.rs` (refcount and reconnect proofs) and `integration_streams.rs` (real-server replay) — the shapes the cluster suites mirror.
+- redis-rs `cluster_async::ClusterConnection` (`route_command`, `ssubscribe`, RESP3 `push_sender`) — routing is the driver's; this repository never parses a `MOVED`.
+- Dragonfly `docs/cluster-mode.md` §2.2 bootstrap sequence and §4.1 config JSON — reproduced by `scripts/dragonfly-cluster.sh`.
 
 ## Sections (implementation slices)
 
-### §1: Workload and same-deployment Redis baseline
+Execution order: §0 → §5 → §2 → §3 → §4 → §6 → §7. §1 is complete as historical evidence. Every Section lands its Redis parity test and its cluster test in `make test-integration-rustd`.
 
-Reuse M188 drivers. Freeze revision, workload seed, environment identity, and capacity before runtime changes.
-Starting dedicated-rig profile: 1,000,000 active fleet records, 1,000 concurrent runs, 1,000 runner processes, and 16,667 offered events/second.
-Use 1,000-byte payloads for that profile; add 16,000-byte payloads and skewed destinations as separate cases.
-Freeze absolute latency, queue-age, memory, recovery, and cost budgets before collecting acceptance samples; missing budgets fail the grader.
-Credential preflight requires the existing deployment's Redis secret reference and the dedicated Swarm test datastore's Connection URI from Dragonfly Cloud Connection Details.
-Store the Swarm URI through the existing vault/deployment secret mechanism; missing references block Cloud runs without printing credentials.
+### §0: Local cluster and prototype proofs
 
-- **Dimension 1.1**: missing budgets, mismatched manifests, or too few samples refuse comparison → Test `test_incomparable_datastore_runs_are_rejected`.
-- **Dimension 1.2**: fixture caps reject a million-fleet load on a shared deployment before connecting → Test `test_shared_deployment_refuses_saturation_profile`.
-- **Dimension 1.3**: revision-pinned Redis baseline includes accepted and completed rates, p95/p99, backlog, errors, and per-datastore cost → Test `test_redis_baseline_records_complete_evidence`.
+Dependencies: none. The compose service `dragonfly` runs four `dragonfly` processes in one network namespace (`--cluster_mode=yes`, stable `--cluster_node_id`, `--cluster_announce_ip=127.0.0.1`, admin ports, `--proactor_threads=2 --maxmemory=512mb` per node, one data directory per node) and bootstraps `REPLICAOF` plus `DFLYCLUSTER CONFIG` on every start; the healthcheck passes only when `CLUSTER SHARDS` reports two online primaries with replicas. Host ports equal announced ports so redirects resolve from the host and from CI. Slot movement in tests is driven through the same script (`migrate <from> <to> <range>`) against the owned cluster only.
+Prototype tests are integration tests in `afd_redis` that use the raw driver where the boundary does not yet exist, and are replaced by the boundary's own suites as §5 and §4 land.
 
-### §2: Durability and accepted-work recovery
+- **Dimension 0.1**: a sharded subscription made through one seed receives a `SPUBLISH` issued through another seed, and continues after the channel's slot migrates → Test `test_sharded_subscription_survives_slot_movement`.
+- **Dimension 0.2**: a single-key script and a dedicated blocking reader keep answering across a slot migration, and a two-key script across slots is refused with `CROSSSLOT` (the probe result, pinned) → Test `test_cluster_primitives_survive_movement`.
+- **Dimension 0.3**: a ledger-first acceptance replayed after queue loss yields one logical event per identity whatever order physical receipts arrive → Test `test_durable_identity_survives_replay`.
+- **Dimension 0.4**: readiness marks spread over `fleet:ready:{p}` keep every partition's work discoverable inside a bounded poll budget while one partition is hot → Test `test_partitioned_readiness_bounds_hotspots`.
 
-Acceptance means recoverable work exists before the success response, surviving an in-memory datastore outage.
-Default to a PostgreSQL-backed ingress/delivery record and replay dispatcher, reusing existing transactional records where they already provide equivalent guarantees.
-Cover steer, webhook, cron, continuation, install work, and outbound answers; inventory each producer before changing acceptance.
-Replay preserves logical event identity and fencing across new stream IDs.
+### §1: Historical Redis baseline
 
-- **Dimension 2.1**: stop between durable acceptance, queue append, and append receipt; replay leaves no missing accepted work → Test `test_acceptance_recovers_at_each_crash_boundary`.
-- **Dimension 2.2**: destroy the disposable queue and rebuild it without duplicate settlement or billing → Test `test_queue_loss_replays_without_duplicate_settlement`.
-- **Dimension 2.3**: unavailable durable storage returns a retryable failure and records no false acceptance → Test `test_durable_store_failure_refuses_acceptance`.
+Complete. Closed PR #681 captured three samples per M188 lane on a reset rig (medians: steer 10,370.762 accepted/s, p95 1.187 ms; lease 78.609 polls/s; outbound fixture 48.534/s; 10k-fleet candidate query 1.306 ms; Redis growth 46,472,496 bytes). Those are reference points for the local rig only; they prove no Dragonfly improvement and no deployed capacity, and this stream never relabels them.
 
-### §3: Retention, memory budgets, and backpressure
+- **Dimension 1.1**: incomparable evidence is refused by the grader → Test `test_incomparable_datastore_runs_are_rejected` (PR #681). DONE.
+- **Dimension 1.2**: a shared or remote target cannot be saturated from the rig → Test `test_shared_deployment_refuses_saturation_profile` (PR #681). DONE.
+- **Dimension 1.3**: twelve distinct samples with sidecars → Test `test_redis_baseline_records_complete_evidence` (PR #681). DONE.
 
-Never discard the only recoverable copy of unfinished work; acknowledged history has a bounded retention policy and auditable cleanup.
-Admission enforces per-fleet and deployment budgets. Exhaustion produces explicit backpressure before durable storage can grow without limit.
-Dragonfly uses No Eviction for correctness-bearing state. Provider settings must be checked by preflight or a deployment probe.
+### §2: Durable admission and stable logical identity
 
-- **Dimension 3.1**: slow consumers and retention pressure preserve pending work while acknowledged history stays bounded → Test `test_retention_preserves_pending_work_under_pressure`.
-- **Dimension 3.2**: quota exhaustion and out-of-memory replies cause classified backpressure without silent drops → Test `test_full_datastore_applies_explicit_backpressure`.
-- **Dimension 3.3**: million-fleet rig reports measured bytes per key class, pending entries, replicas, and database backlog → Test `test_capacity_report_accounts_for_all_retained_state`.
+Dependencies: §0.3 and §5. Acceptance means a committed PostgreSQL admission row before any success response. The row carries producer identity (steer request, webhook delivery id, schedule fire, gate continuation, install, outbound answer), the fleet, the payload digest, and a status that a replay dispatcher advances; the queue append is a single-key `XADD` recorded back as a physical receipt. Duplicate producer identity is a unique-index conflict, which replaces every Redis dedup claim; `once.rs` and its two-key script are deleted, not kept behind a flag. Numeric event ids and the existing stream entry ids stay as the physical receipt; logical identity is the ledger row.
+Replay re-appends any admitted row without a receipt after a bounded age, under the same fencing the lease path already enforces; settlement and billing key on the ledger row so a replayed receipt cannot debit twice.
 
-### §4: Shared coordination and fair discovery
+- **Dimension 2.1**: a stop injected between commit, append and receipt leaves zero missing admitted events after replay → Test `test_acceptance_recovers_at_each_crash_boundary`.
+- **Dimension 2.2**: destroying the cluster's data and rebuilding it replays every unfinished admission with one settlement and one debit → Test `test_queue_loss_replays_without_duplicate_settlement`.
+- **Dimension 2.3**: an unavailable database refuses every producer with a retryable class and records no acceptance → Test `test_durable_store_failure_refuses_acceptance`.
 
-Measure shared readiness and outbound pressure; partition when recorded load misses frozen budgets, because additional nodes do not divide a hot key.
-Preserve bounded poll work, token-checked readiness clearing, per-fleet fencing, and ordering within each outbound destination.
-Use eligible-runner distributions and slow destinations to measure starvation independently of aggregate throughput.
+### §3: Retention, memory limits, and backpressure
 
-- **Dimension 4.1**: stale marks and concurrent ingress cannot clear newly ready work or exceed the poll budget → Test `test_ready_races_preserve_work_and_bound_poll_cost`.
-- **Dimension 4.2**: skewed runner tags and a slow outbound destination cannot starve eligible unrelated work → Test `test_skewed_workload_preserves_discovery_and_delivery_fairness`.
-- **Dimension 4.3**: shard movement or worker restart preserves ordering and reports recovery within the frozen budget → Test `test_coordination_recovers_during_partition_movement`.
+Dependencies: §2. `MAXLEN ~` trimming is replaced by trimming bounded below by the oldest unreceipted or pending entry; acknowledged history keeps a fixed bound. A consumer group lost on the cluster is recreated from the ledger's replay cursor, never blindly at `$`. Per-fleet and per-deployment admission budgets refuse with an explicit class before durable storage grows without limit; `OOM` and quota replies from either backend are classified and surfaced, never swallowed. Preflight refuses a Dragonfly node running `cache_mode` or eviction.
 
-### §5: Dragonfly topology and operation-specific Rust boundaries
+- **Dimension 3.1**: a slow consumer under trim pressure keeps every pending entry recoverable while acknowledged history stays bounded → Test `test_retention_preserves_pending_work_under_pressure`.
+- **Dimension 3.2**: a full datastore produces classified backpressure and no silent drop → Test `test_full_datastore_applies_explicit_backpressure`.
+- **Dimension 3.3**: the capacity report accounts for streams, partitions, pending entries, replicas and ledger backlog separately → Test `test_capacity_report_accounts_for_all_retained_state`.
 
-Retain redis-rs and the existing Redis-compatible operations. Standalone mode remains the default unless explicitly configured otherwise.
-Add cluster-aware command routing, blocking readers, subscription recovery, and node-aware scans through the shared business layer.
-Test actual atomic keys share a valid hash slot. Correctness-sensitive reads target the primary; failures never silently select another provider.
-Swarm is the first and required Dragonfly target. Local development uses a real multi-shard cluster; no standalone Dragonfly rollout is planned.
+### §4: Sharded readiness and bounded fair scheduling
 
-- **Dimension 5.1**: malformed topology, TLS trust, credentials, and unsafe eviction settings fail before work is accepted → Test `test_datastore_preflight_refuses_invalid_configuration`.
-- **Dimension 5.2**: real multi-shard redirection and resharding preserve atomic deduplication and retry outcomes → Test `test_cluster_resharding_preserves_atomic_append`.
-- **Dimension 5.3**: reconnect restores subscriptions and scans find all scoped keys without using a shared blocking socket → Test `test_cluster_connections_recover_without_missing_scoped_state`.
+Dependencies: §0.4, §2, §3. `fleet:ready` becomes `fleet:ready:{p}` for a fixed partition count chosen from the §0.4 measurement and recorded in `datastore_scaling.md`; each runner poll rotates a partition cursor with a candidate budget, and the token-checked clear stays a single-key script. Outbound delivery keeps one stream and adds per-destination concurrency limits so one slow destination cannot hold unrelated answers; ordering within a destination is preserved. Fairness is measured with skewed runner tags and a slow fixture destination, not inferred from throughput.
 
-### §6: Redis and Dragonfly behavioral evidence
+- **Dimension 4.1**: concurrent ingress and stale clears cannot lose newly ready work across partitions, and a poll never exceeds its candidate budget → Test `test_ready_races_preserve_work_and_bound_poll_cost`.
+- **Dimension 4.2**: skewed eligibility and a slow destination cannot starve unrelated work beyond the frozen queue-age budget → Test `test_skewed_workload_preserves_discovery_and_delivery_fairness`.
+- **Dimension 4.3**: partition slot movement and worker loss preserve ordered recovery → Test `test_coordination_recovers_during_partition_movement`.
 
-Run the same fixtures through real application services against Redis and Dragonfly Swarm.
-Compare sessions, approvals, expiry, readiness, Streams, Lua reload, and delivery; allow only fixture-declared nondeterministic identifier or timing differences.
-Keep integration under `make test-integration-rustd`; use disposable Redis and multi-shard Dragonfly locally, and dedicated Swarm datastores for Cloud proof.
-Extend backend selection without forwarding destructive test resets to a shared deployment or requiring logical databases unsupported by the selected topology.
+### §5: Topology-aware transport, sharded hub, and scans
 
-- **Dimension 6.1**: application golden paths return equivalent outcomes and preserve the merged runtime's streaming behavior → Test `test_backends_preserve_application_outcomes`.
-- **Dimension 6.2**: lost responses, Lua cache loss, session races, and expiry preserve error classes and one-time actions → Test `test_backends_preserve_failure_and_session_semantics`.
-- **Dimension 6.3**: a shared endpoint, incomplete matrix, or fixture cleanup mismatch fails verification → Test `test_backend_matrix_refuses_unsafe_or_incomplete_evidence`.
+Dependencies: §0.1, §0.2. `REDIS_TOPOLOGY=standalone|cluster` (default `standalone`, unknown values refused at preflight) selects the backend behind the unchanged `Redis`, `Dedicated`, `FleetStreams`, `ReadyIndex`, `SessionStore` and `SubscriptionHub` surfaces. The cluster backend is `cluster_async` over RESP3, primaries only, never `read_from_replicas`. The hub subscribes with `SSUBSCRIBE` on both topologies and reconciles after `SUNSUBSCRIBE` pushes and reconnects with no duplicate local frame; `publish_tail` becomes `SPUBLISH`. `scan_keys` fans out over every primary from the live topology. Dedicated readers follow redirects. Preflight fails readiness on cluster or auth errors, TLS trust failures, missing sharded pub/sub, or an eviction-enabled node; `DFLYCLUSTER`/`DFLYMIGRATE` are never issued by the daemon.
 
-### §7: Incremental deployments, trial, and strict comparison
+- **Dimension 5.1**: malformed topology, bad TLS trust, wrong credentials, missing capability or unsafe eviction refuse boot before any work is accepted → Test `test_datastore_preflight_refuses_invalid_configuration`.
+- **Dimension 5.2**: a slot migration during appends preserves one physical entry per logical event and no partial acceptance → Test `test_cluster_resharding_preserves_atomic_append`.
+- **Dimension 5.3**: a node restart restores every subscription, every scan finds all scoped keys, and no blocking read shares a socket → Test `test_cluster_connections_recover_without_missing_scoped_state`.
+- **Dimension 5.4**: session verify, approve and abort keep single-use semantics on both topologies → Test `test_session_transitions_preserve_single_use_on_both_backends`.
 
-Deploy each section to the same services with Redis selected; capture matching samples with constant application and PostgreSQL capacity.
-Separate code and capacity comparisons; record engine, topology, region, memory, replicas, network path, and background traffic.
-Require three matching samples per comparison after warmup. Use identical offered load and reject generator saturation or growing unaccounted backlog.
-Default regression limits: p99 latency at most 1.10 times baseline; completed throughput at least 0.95 times baseline; no correctness failures.
-All runs must satisfy frozen absolute budgets; threshold changes after baseline cannot turn a failed comparison green.
-Prepare local tests before activating the Cloud trial. Cloud proof must exercise TLS, managed failover, restore, resizing, and Swarm resharding.
-An eventual provider switch needs an explicit action and a rehearsed drain/replay procedure. A bare endpoint rollback cannot recover work accepted only by another backend.
+### §6: Application parity and local readiness evidence
 
-- **Dimension 7.1**: a regression, missing Cloud evidence, or incompatible environment fails strict grading → Test `test_datastore_grader_rejects_regression_and_missing_cloud_proof`.
-- **Dimension 7.2**: revision-bound Redis before/after evidence passes on the same deployment and records fixture cleanup → Test `test_deployed_redis_increment_has_comparable_evidence`.
-- **Dimension 7.3**: provider cutover and rollback on the isolated rig preserve accepted work and single settlement → Test `test_provider_switch_and_rollback_preserve_accepted_work`.
+Dependencies: §2–§5. `make test-integration-rustd` runs the API, streaming, lease, report, approval and session suites against standalone Redis and against the local cluster from one selector (`TEST_DATASTORE=redis|dragonfly`, both by default), with prefix isolation and an owned-cluster reset. The evidence grader (`make bench-datastore CHECK=prototype|durability|retention|coordination|cluster`) grades archived result files from this branch's own runs; a shared endpoint, an incomplete matrix, or missing provenance fails it. Cloud Swarm proof (TLS, managed failover, restore, resizing) is required for cutover and is recorded as the follow-up spec's first gate, not claimed here.
+
+- **Dimension 6.1**: real application golden paths return equivalent outcomes on both backends → Test `test_backends_preserve_application_outcomes`.
+- **Dimension 6.2**: lost replies, script cache loss, session races and expiry preserve error classes and one-time actions on both backends → Test `test_backends_preserve_failure_and_session_semantics`.
+- **Dimension 6.3**: a shared target, an absent backend, or leaked fixtures fail verification → Test `test_backend_matrix_refuses_unsafe_or_incomplete_evidence`.
+
+### §7: Migration tooling and rehearsal
+
+Dependencies: §6. An offline operator tool inventories a source Redis by key class with counts and dispositions (unknown classes block), imports unfinished admissions into the ledger, records an import receipt the daemon's preflight requires before it accepts work on a new datastore, and rehearses cancel-before-schema-change followed by forward recovery on the isolated rig. No reverse migration is built.
+
+- **Dimension 7.1**: the rehearsal preserves source state through cancellation, import and forward recovery, with single settlement → Test `test_provider_switch_and_rollback_preserve_accepted_work`.
+- **Dimension 7.2**: a missing or wrong import receipt closes every admission path → Test `test_missing_import_receipt_refuses_admission`.
 
 ## Interfaces
 
-Keep `REDIS_URL_API` and existing TLS/deadline settings; any new topology selector must reject unknown values and default to standalone behavior.
-M188 results gain backend, topology, workload hash, revision, deployment identity, resource manifest, acceptance/completion counts, loss, duplicates, backlog, and recovery fields.
-Add one spec-consumed Make target, `make bench-datastore CHECK=baseline|durability|retention|coordination|cluster|rollout`, in `make/bench.mk`.
-Each CHECK grades saved M188/backend evidence without changing deployments. M188's informational comparator retains its non-failing behavior.
-The target and backend selectors are planned interfaces, not implemented commands.
+Keep `REDIS_URL_API`, `REDIS_TLS_CA_CERT_FILE`, the deadline knobs, channel names `fleet:{id}:activity`, stream keys `fleet:{id}:events`, and numeric event ids. Add `REDIS_TOPOLOGY` as above. The lane gains `TEST_DRAGONFLY_URL` and `TEST_DATASTORE`. Add `make bench-datastore CHECK=prototype|durability|retention|coordination|cluster` in `make/bench.mk`; each mode grades archived files and exits non-zero on a missing or incomparable run. M188's `bench-compare` keeps its non-failing behaviour.
 
 ## Failure Modes
 
 | Mode | Cause | Handling and negative test |
-|------|-------|----------------------------|
-| Lost acknowledgment | Queue applies a write but reply disappears | Replay stable identity; `test_acceptance_recovers_at_each_crash_boundary`. |
-| Queue destruction | Primary and replicas lost | Replay surviving durable records; `test_queue_loss_replays_without_duplicate_settlement`. |
-| Database unavailable | Durable acceptance cannot commit | Retryable refusal; `test_durable_store_failure_refuses_acceptance`. |
-| Retention overflow | Slow consumer or full datastore | Bound admission; retain recoverable work; `test_full_datastore_applies_explicit_backpressure`. |
-| Readiness race | New ingress crosses a clear | Preserve token semantics; `test_ready_races_preserve_work_and_bound_poll_cost`. |
-| Starvation | Uneven tags or destination delays | Bound unrelated queue age; `test_skewed_workload_preserves_discovery_and_delivery_fairness`. |
-| Cross-slot or redirection | Cluster moves atomic keys | Route safely without partial acceptance; `test_cluster_resharding_preserves_atomic_append`. |
-| Auth or transport failure | Invalid credentials, trust, topology | Classified refusal; `test_datastore_preflight_refuses_invalid_configuration`. |
-| Session replay or script loss | Concurrent consume, expiry, restart | Preserve one-time semantics; `test_backends_preserve_failure_and_session_semantics`. |
-| Unsafe test target | Shared deployment passed to reset lane | Refuse before mutation; `test_backend_matrix_refuses_unsafe_or_incomplete_evidence`. |
-| Misleading measurement | Different resources, overload, missing Cloud run | Fail comparison; `test_datastore_grader_rejects_regression_and_missing_cloud_proof`. |
-| Incomplete rollback | Work remains on switched backend | Refuse completion until reconciled; `test_provider_switch_and_rollback_preserve_accepted_work`. |
+|---|---|---|
+| Cross-slot script | Two keys in one Lua on a cluster | Single-key appends only; `CROSSSLOT` pinned; `test_cluster_primitives_survive_movement`. |
+| Lost acknowledgment | Append applied, reply lost | Ledger identity, replay by row; `test_acceptance_recovers_at_each_crash_boundary`. |
+| Queue destruction | Cluster data gone | Replay from ledger, one settlement; `test_queue_loss_replays_without_duplicate_settlement`. |
+| Database unavailable | Admission cannot commit | Retryable refusal, no false success; `test_durable_store_failure_refuses_acceptance`. |
+| Subscriber stranded | Slot moved under a sharded subscription | Reconcile on `SUNSUBSCRIBE`; `test_sharded_subscription_survives_slot_movement`. |
+| Retention overflow | Slow consumer, full store | Bounded trim, classified backpressure; `test_full_datastore_applies_explicit_backpressure`. |
+| Readiness race | Ingress crosses a clear | Token semantics per partition; `test_ready_races_preserve_work_and_bound_poll_cost`. |
+| Starvation | Skewed tags, slow destination | Partition cursor, destination limits; `test_skewed_workload_preserves_discovery_and_delivery_fairness`. |
+| Unsafe topology | Bad TLS, auth, eviction, capability | Refuse at preflight; `test_datastore_preflight_refuses_invalid_configuration`. |
+| Session replay | Script cache loss, races, expiry | Compare-then-delete on both backends; `test_session_transitions_preserve_single_use_on_both_backends`. |
+| Unsafe test target | Shared endpoint in the reset lane | Owned-cluster check before mutation; `test_backend_matrix_refuses_unsafe_or_incomplete_evidence`. |
+| Incomplete migration | Work left on the source | Receipt gate; `test_missing_import_receipt_refuses_admission`. |
 
 ## Invariants
 
-1. Accepted work has a surviving durable record before success; transactional write and crash tests enforce this.
-2. Replay cannot duplicate internal settlement or billing; database uniqueness and fencing enforce this, without promising exactly-once external effects.
-3. No cleanup deletes the only recoverable unfinished event; retention and admission tests enforce this.
-4. A failed backend cannot select another silently; configuration validation and outage tests enforce this.
-5. Supported providers pass identical behavior fixtures; an incomplete matrix fails the evidence grader.
-6. Scale claims include workload and capacity manifests; the grader rejects missing or incomparable evidence.
-7. Shared deployments cannot receive destructive tests; endpoint ownership checks and hard fixture caps enforce this.
+1. Admitted work has a committed ledger row before success; crash-boundary tests enforce it.
+2. Replay cannot duplicate settlement or billing; ledger uniqueness and lease fencing enforce it, with no exactly-once promise for external side effects.
+3. No trim or cleanup removes the only recoverable copy of unfinished work.
+4. Every multi-key operation shares a slot by construction or does not exist; the cluster suite refuses a new one.
+5. A failed backend never silently selects another; topology is explicit and refused when unknown.
+6. Both backends pass identical behaviour suites in one lane; an incomplete matrix fails the grader.
+7. Owned local datastores alone receive resets and fault injection; shared endpoints are refused before mutation.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
-|----------------|-------|------------|--------------------|---------------|------------|
-| Durable recovery and replay outcomes | ops | Acceptance, replay, terminal settlement | Backend, outcome, counts, duration | No payload, credentials, or tenant labels | `test_queue_loss_replays_without_duplicate_settlement` |
-| Backlog age, retained bytes, admission refusal | ops | Queue sampling and rejected admission | Key class, reason, bytes, duration | Bounded dimensions; no fleet label | `test_capacity_report_accounts_for_all_retained_state` |
-| Existing lease cost plus fairness measurements | ops | Poll and delivery sampling | Candidate counts, round trips, queue age | Fixture identifiers only in redacted result files | `test_skewed_workload_preserves_discovery_and_delivery_fairness` |
-| Evidence verdict and resource manifest | ops | Comparison completes | Revision, profile hash, backend, verdict | URI and credential fields excluded | `test_datastore_grader_rejects_regression_and_missing_cloud_proof` |
+|---|---|---|---|---|---|
+| Admission and replay outcomes | ops | Commit, append, receipt, replay | backend, outcome, counts, duration_ms | no payload, credential or tenant label | `test_queue_loss_replays_without_duplicate_settlement` |
+| Backlog age, retained bytes, admission refusal | ops | Sampling and refusal | key class, reason, bytes | bounded dimensions, no fleet id | `test_capacity_report_accounts_for_all_retained_state` |
+| Partition cursor, candidates, queue age | ops | Poll and delivery sampling | partition, counts, round trips | fixture ids only in result files | `test_skewed_workload_preserves_discovery_and_delivery_fairness` |
+| Topology and hub reconciliation | ops | Boot, reconnect, `SUNSUBSCRIBE` | topology, node count, channels | URIs and credentials excluded | `test_cluster_connections_recover_without_missing_scoped_state` |
 
-Record exact names in `observability.md` with the typed registry changes; update operational responses without changing product analytics or funnels.
+Exact names land in `observability.md` with the typed registry change in the same commit.
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts |
-|-----------|------|------|---------|
-| 1.1 | unit | `test_incomparable_datastore_runs_are_rejected` | Missing budget, changed seed, or insufficient samples fails grading. |
-| 1.2 | unit | `test_shared_deployment_refuses_saturation_profile` | Oversized fixture request opens no connection. |
-| 1.3 | integration | `test_redis_baseline_records_complete_evidence` | Every required measurement and manifest field is populated. |
-| 2.1 | integration | `test_acceptance_recovers_at_each_crash_boundary` | Each injected stop leaves zero missing accepted events. |
-| 2.2 | integration | `test_queue_loss_replays_without_duplicate_settlement` | Queue rebuild yields zero losses and duplicate debits. |
-| 2.3 | integration | `test_durable_store_failure_refuses_acceptance` | Database failure cannot produce successful acceptance. |
-| 3.1 | integration | `test_retention_preserves_pending_work_under_pressure` | Backlogged events remain recoverable after cleanup. |
-| 3.2 | integration | `test_full_datastore_applies_explicit_backpressure` | Quota and memory errors produce no silent drop. |
-| 3.3 | integration | `test_capacity_report_accounts_for_all_retained_state` | Rig measures populated, pending, completed, and replay state separately. |
+|---|---|---|---|
+| 0.1 | integration | `test_sharded_subscription_survives_slot_movement` | Cross-seed delivery; delivery resumes after migration; no duplicate frame. |
+| 0.2 | integration | `test_cluster_primitives_survive_movement` | Script and blocking read answer across a migration; two-slot script is `CROSSSLOT`. |
+| 0.3 | integration | `test_durable_identity_survives_replay` | One logical event per identity after queue loss and reordered receipts. |
+| 0.4 | integration | `test_partitioned_readiness_bounds_hotspots` | Every partition discovered inside the poll budget under a hot partition. |
+| 1.1 | unit | `test_incomparable_datastore_runs_are_rejected` | Historical (PR #681): missing budget or changed seed fails grading. |
+| 1.2 | unit | `test_shared_deployment_refuses_saturation_profile` | Historical (PR #681): oversized fixture opens no connection. |
+| 1.3 | integration | `test_redis_baseline_records_complete_evidence` | Historical (PR #681): every manifest field populated. |
+| 2.1 | integration | `test_acceptance_recovers_at_each_crash_boundary` | Each injected stop leaves zero missing admitted events. |
+| 2.2 | integration | `test_queue_loss_replays_without_duplicate_settlement` | Rebuild yields zero losses and zero duplicate debits. |
+| 2.3 | integration | `test_durable_store_failure_refuses_acceptance` | Database failure produces a retryable class and no acceptance. |
+| 3.1 | integration | `test_retention_preserves_pending_work_under_pressure` | Pending entries survive trim; acknowledged history bounded. |
+| 3.2 | integration | `test_full_datastore_applies_explicit_backpressure` | OOM and quota replies classified; no silent drop. |
+| 3.3 | integration | `test_capacity_report_accounts_for_all_retained_state` | Streams, partitions, pending, replicas, ledger reported separately. |
 | 4.1 | integration | `test_ready_races_preserve_work_and_bound_poll_cost` | Stale token cannot erase newer readiness; candidate cap holds. |
-| 4.2 | integration | `test_skewed_workload_preserves_discovery_and_delivery_fairness` | Eligible unrelated work stays inside the frozen queue-age budget. |
-| 4.3 | integration | `test_coordination_recovers_during_partition_movement` | Restart and movement preserve ordered delivery within the recovery budget. |
-| 5.1 | integration | `test_datastore_preflight_refuses_invalid_configuration` | Bad topology, TLS, auth, or eviction cannot accept work. |
-| 5.2 | integration | `test_cluster_resharding_preserves_atomic_append` | Actual distinct slots and redirects cannot create duplicate logical events. |
-| 5.3 | integration | `test_cluster_connections_recover_without_missing_scoped_state` | Reconnect and scans restore all expected scoped state. |
-| 6.1 | e2e | `test_backends_preserve_application_outcomes` | Real API login, steer, lease, report, approval, and stream paths agree. |
-| 6.2 | integration | `test_backends_preserve_failure_and_session_semantics` | Script loss, ambiguous replies, expiry, and consume races preserve outcomes. |
-| 6.3 | unit / integration | `test_backend_matrix_refuses_unsafe_or_incomplete_evidence` | Shared targets, absent providers, and leaked fixtures fail verification. |
-| 7.1 | unit | `test_datastore_grader_rejects_regression_and_missing_cloud_proof` | Regression, missing Cloud run, or resource drift cannot grade green. |
-| 7.2 | e2e | `test_deployed_redis_increment_has_comparable_evidence` | Same-deployment revision pair preserves application behavior and budgets. |
-| 7.3 | integration | `test_provider_switch_and_rollback_preserve_accepted_work` | Queued and in-flight work survives both provider transitions. |
+| 4.2 | integration | `test_skewed_workload_preserves_discovery_and_delivery_fairness` | Unrelated work stays inside the queue-age budget. |
+| 4.3 | integration | `test_coordination_recovers_during_partition_movement` | Movement and worker loss preserve ordered recovery. |
+| 5.1 | unit + integration | `test_datastore_preflight_refuses_invalid_configuration` | Each bad input refuses boot; unknown `REDIS_TOPOLOGY` refused. |
+| 5.2 | integration | `test_cluster_resharding_preserves_atomic_append` | One physical entry per logical event across a migration. |
+| 5.3 | integration | `test_cluster_connections_recover_without_missing_scoped_state` | Subscriptions and scans recover; no shared blocking socket. |
+| 5.4 | integration | `test_session_transitions_preserve_single_use_on_both_backends` | Verify, approve, abort are single-use on both topologies. |
+| 6.1 | e2e | `test_backends_preserve_application_outcomes` | Login, steer, lease, report, approval, stream agree on both backends. |
+| 6.2 | integration | `test_backends_preserve_failure_and_session_semantics` | Error classes and one-time actions agree. |
+| 6.3 | unit + integration | `test_backend_matrix_refuses_unsafe_or_incomplete_evidence` | Shared target, missing backend, leaked fixture fail. |
+| 7.1 | integration | `test_provider_switch_and_rollback_preserve_accepted_work` | Source preserved through cancel, import, forward recovery. |
+| 7.2 | integration | `test_missing_import_receipt_refuses_admission` | Missing or wrong receipt closes every admission path. |
 
-Deployed API, dashboard, and CLI acceptance use the existing Make acceptance targets; fixture providers avoid paid model calls and real outbound messages.
+New test functions follow the convention of the file they land in (`docs/architecture/testing.md`); a spec name that a file's convention rejects is amended here in the same commit.
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
-|---|-----------|--------------------|----------|----------|-----------------|
-| R1 | Comparable baseline and frozen budgets | `make bench-datastore CHECK=baseline` | Exit 0; complete manifests and three comparable samples. | P0 | |
-| R2 | Accepted-work recovery | `make bench-datastore CHECK=durability` | Exit 0; lost accepted work = 0; duplicate internal settlement = 0. | P0 | |
-| R3 | Bounded retention and admission | `make bench-datastore CHECK=retention` | Exit 0; all memory and backlog budgets pass. | P0 | |
-| R4 | Fair coordination | `make bench-datastore CHECK=coordination` | Exit 0; all eligible-work queue-age and poll budgets pass. | P0 | |
-| R5 | Redis and Dragonfly topology matrix | `make bench-datastore CHECK=cluster` | Exit 0; Redis, local multi-shard, and Cloud Swarm evidence present. | P0 | |
-| R6 | Same-deployment increments and rollback | `make bench-datastore CHECK=rollout` | Exit 0; no unexplained regression; Cloud recovery and switch rehearsal pass. | P0 | |
+|---|---|---|---|---|---|
+| R1 | Prototype proofs archived | `make bench-datastore CHECK=prototype` | Exit 0; four proofs with revision and image digest. | P0 | |
+| R2 | Accepted-work recovery | `make bench-datastore CHECK=durability` | Exit 0; missing admissions = 0; duplicate settlement = 0. | P0 | |
+| R3 | Bounded retention and admission | `make bench-datastore CHECK=retention` | Exit 0; every budget passes. | P0 | |
+| R4 | Fair coordination | `make bench-datastore CHECK=coordination` | Exit 0; queue-age and poll budgets pass. | P0 | |
+| R5 | Backend matrix | `make bench-datastore CHECK=cluster` | Exit 0; Redis and local-cluster evidence present for every suite. | P0 | |
 | S1 | Repository conformance | `make harness-verify` | Exit 0. | P0 | |
-| S2 | Repository unit verification | `make test-unit-all` | Exit 0; declared coverage gates pass. | P0 | |
-| S3 | Repository integration verification | `make test-integration-rustd` | Exit 0; nonzero passing test count. | P0 | |
+| S2 | Repository unit verification | `make test-unit-all` | Exit 0; coverage gates pass. | P0 | |
+| S3 | Repository integration verification | `make test-integration-rustd` | Exit 0; both backends; nonzero passing count. | P0 | |
 | S4 | Repository lint | `make lint-all` | Exit 0. | P0 | |
-| S5 | Repository version consistency | `make check-version` | Exit 0. | P0 | |
-| S6 | No committed secrets | `gitleaks git --no-banner` | Exit 0; no leaks. | P0 | |
+| S5 | Version consistency | `make check-version` | Exit 0. | P0 | |
+| S6 | No committed secrets | `gitleaks git --no-banner` | Exit 0. | P0 | |
 
-R-rows consume immutable evidence from the backend matrix and deployed probes; S3 alone only proves its selected backend.
-Graded cells remain empty until implementation verification records a verdict and decisive output. Authoring checks cannot satisfy runtime acceptance.
-Missing Swarm evidence blocks completion; report unsupported capacity as a measured ceiling, never rounded up to the target.
+Graded cells stay empty until verification records a verdict with decisive output. Cloud Swarm rows belong to the follow-up spec and are not claimed by this one.
 
 ## Dead Code Sweep
 
-No authoring deletions. Remove replaced helpers and enumerate reference sweeps before renaming symbols or queue formats during implementation.
+`streams/once.rs` and `OnceScope` go with §2; `READY_INDEX_KEY` as a single hash goes with §4; global `PUBLISH` goes with §5. Each removal lists its references (RULE ORP) in the commit that removes it.
 
 ## Out of Scope
 
-- Deploying code, activating a trial, changing billing, or switching the provider during authoring; no intermediate standalone Dragonfly migration.
-- Replacing PostgreSQL, redis-rs, local identity caches, or the runner protocol; inferring simultaneous model runs from fleet-record counts.
-- Database disaster recovery, active-active regions, a general cache framework, and exactly-once external effects without provider idempotency.
+- Deploying, activating a Cloud trial, changing billing, live cutover, or retiring Redis; a standalone Dragonfly stage; a reverse migration.
+- Replacing PostgreSQL, redis-rs, the runner protocol, or local identity caches; a generic cache abstraction.
+- Exactly-once external effects; active-active regions; database disaster recovery.
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment:** the same deployed fleet workflow works after each Redis-backed increment, with a linked comparison report and tested Dragonfly capability.
-2. **Preserved user behaviour:** login, approvals, triggers, ordered fleet processing, visible activity, billing, and connector answers keep their documented meanings.
-3. **Optimal-way check:** measure the real paths first; small deployed probes complement dedicated capacity and fault tests.
-4. **Rebuild-vs-iterate:** refactor the operation-specific boundaries where measurements require it; keep business semantics and redis-rs.
-5. **What we build:** recoverable acceptance, bounded queues, fair coordination, cluster support, backend tests, and strict deployment evidence.
-6. **What we do NOT build:** another runtime, benchmark stack, cache framework, or automatic production migration.
-7. **Fit with existing features:** reuse M188 drivers, merged streaming fixtures, fenced settlement, and the existing integration lane.
-8. **Surface order:** operator Make commands and reports first; application behavior is verified through the existing API, dashboard, and CLI.
-9. **Dashboard restraint:** no new dashboard controls or scale badges before their measured evidence exists.
-10. **Confused-user next step:** the report names the failing budget, missing backend run, or recovery procedure and links its operational playbook.
+1. **Successful user moment:** a fleet keeps answering during a datastore node loss, and nothing accepted is lost.
+2. **Preserved user behaviour:** login, approvals, triggers, ordered fleet processing, live tail, billing and connector answers keep their documented meaning.
+3. **Optimal-way check:** the live probe decided the design; each risk is prototyped before it is integrated.
+4. **Rebuild-vs-iterate:** rebuild the acceptance and coordination boundaries; keep the crate surfaces and business semantics.
+5. **What we build:** durable admission, slot-correct primitives, sharded hub, partitioned readiness, a two-backend lane, a strict grader, a rehearsal tool.
+6. **What we do NOT build:** a second runtime, a benchmark stack, a dual-write, a provider flag inside business code.
+7. **Fit with existing features:** M188 drivers, the existing integration lane, fenced settlement, the merged streaming runtime.
+8. **Surface order:** operator Make targets and reports first; application behaviour verified through the existing API, dashboard and CLI suites.
+9. **Dashboard restraint:** no scale badge before measured evidence exists.
+10. **Confused-user next step:** the grader names the failing budget or missing run and links the playbook.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** seven sections separate baseline, each of the four risks, shared compatibility tests, and deployment evidence.
-- **Alternatives considered:** endpoint-only replacement leaves durability and Swarm gaps; a universal cache abstraction loses operation semantics; an immediate provider switch obscures regressions.
-- **Patch-vs-refactor verdict:** a measured refactor, because durable acceptance and partitioning cross service boundaries. Each increment retains Redis and produces its own evidence.
+- **Chosen shape:** prototype, then transport, then durability, then bounds, then coordination, then the matrix and rehearsal.
+- **Alternatives considered:** hash-tagging the dedup key beside the stream (keeps a Redis claim as the identity and a second write path — rejected); a `REDIS_MODE` runtime switch in business code (two semantics forever — rejected); endpoint-only replacement (fails at the first `CROSSSLOT` — rejected by the probe).
+- **Patch-vs-refactor verdict:** refactor at the boundaries the probe proved wrong; every Section keeps Redis green.
 
 ## Discovery (consult log)
 
-- **Scope decision (2026-09-06):** the user said "park entire sse" and requested that the DragonflyDB commits be pushed.
-  This documentation branch excludes the uncommitted SSE implementation. M192 remains PENDING; no Dragonfly runtime acceptance is claimed.
-- **Consults / Metrics review / Skill-chain outcomes / Deferrals:** recorded during implementation.
+- **Probe (2026-09-12, Dragonfly v1.40.2, four nodes, one container):** `append_once`'s two-key script → `CROSSSLOT`; `{fleet}` co-locates; `SPUBLISH`/`SSUBSCRIBE`/`HELLO 3` supported; `SSUBSCRIBE` on a non-owning node answered `OK` rather than `MOVED` (subscriber placement must be proven under migration); `DFLYCLUSTER CONFIG` migration of 4096 slots finished and moved keys; nodes require 256 MiB per proactor thread.
+- **Scope decision (Indy, 2026-09-12):** start from a new worktree; the closed PR is historical reference; do not re-run the baseline; keep the spec's line cap from stalling the work.
+- **Consults / Metrics review / Skill-chain outcomes / Deferrals:** recorded per Section.
