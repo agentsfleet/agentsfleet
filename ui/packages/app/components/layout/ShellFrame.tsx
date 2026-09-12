@@ -1,5 +1,7 @@
 import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantBilling } from "@/lib/types";
+import { BalanceLink } from "./BalanceLink";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 import {
   DesktopSidebarNavigation,
@@ -15,12 +17,15 @@ type ShellFrameProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
   operatorScopes?: string[];
+  /** Null when the read failed or there is no session: the header says nothing. */
+  billing?: TenantBilling | null;
 };
 
 export function ShellFrame({
   children,
   workspaces = [],
   operatorScopes = [],
+  billing = null,
 }: ShellFrameProps) {
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
@@ -41,6 +46,12 @@ export function ShellFrame({
             sidebarNavId={SIDEBAR_NAV_ID}
           />
           <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
+            {/* What is left to spend, on every page — the billing page owns
+                the meter and the history; the header owns the one figure. A
+                failed read renders nothing rather than a wrong number. */}
+            {billing ? (
+              <BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} />
+            ) : null}
             <WorkspaceSwitcher workspaces={workspaces} />
             <ThemeToggle />
             <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
