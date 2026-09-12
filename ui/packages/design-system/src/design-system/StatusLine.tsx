@@ -21,8 +21,8 @@ const toneClass: Record<StatusLineTone, string> = {
   foreground: "text-foreground",
   pulse: "text-pulse",
   success: "text-success",
-  warning: "text-warn",
-  danger: "text-error",
+  warning: "text-warning",
+  danger: "text-destructive",
 };
 
 export function StatusLine({ className, ref, ...props }: StatusLineProps) {

@@ -44,8 +44,8 @@ describe("StatusLine", () => {
     ["foreground", "text-foreground"],
     ["pulse", "text-pulse"],
     ["success", "text-success"],
-    ["warning", "text-warn"],
-    ["danger", "text-error"],
+    ["warning", "text-warning"],
+    ["danger", "text-destructive"],
   ] as const satisfies ReadonlyArray<readonly [StatusLineTone, string]>)(
     "colours an item by its %s tone",
     (tone, cls) => {

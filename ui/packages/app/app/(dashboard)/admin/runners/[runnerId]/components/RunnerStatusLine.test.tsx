@@ -42,7 +42,7 @@ describe("RunnerStatusLine", () => {
     // Outcome counters carry distinct status colours — the same tokens the
     // row badges use.
     expect(screen.getByText("3,945 ok").className).toContain("text-success");
-    expect(screen.getByText("42 failed").className).toContain("text-error");
+    expect(screen.getByText("42 failed").className).toContain("text-destructive");
     expect(screen.getByText("2 live")).toBeTruthy();
     expect(toneOf("2 live")).toBe("foreground");
     // The lifetime ledger stays off the line.
