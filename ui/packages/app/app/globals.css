@@ -54,15 +54,21 @@ body {
 :root {
   --app-scrollbar: 6px;
   --app-canvas-gutter: 1rem;
+  --app-canvas-block: 1.5rem;
   --app-shell-edge: 1rem;
 }
 @media (min-width: 40rem) { :root { --app-canvas-gutter: 1.5rem; } }
-@media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; --app-shell-edge: 1.375rem; } }
+@media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; --app-canvas-block: 2rem; --app-shell-edge: 1.375rem; } }
 @media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
 
+/* The block padding is a token too, because a page that pins something to
+ * the canvas's foot has to give exactly this much back: a sticky element
+ * stops at the canvas's content box, so the runner page's status line reads
+ * the same variable rather than a second copy of the number. */
 .app-dashboard-canvas {
   background: var(--bg);
   padding-inline: var(--app-canvas-gutter);
+  padding-block: var(--app-canvas-block);
   scrollbar-gutter: stable both-edges;
 }
 
