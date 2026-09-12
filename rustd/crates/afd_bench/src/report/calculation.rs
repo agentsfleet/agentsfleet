@@ -129,6 +129,14 @@ impl Calculation {
         }
     }
 
+    pub(crate) fn rate_value(count: u64, elapsed: Duration) -> f64 {
+        rate(count, nanos(elapsed))
+    }
+
+    pub(crate) fn duration_ratio_value(numerator: Duration, denominator: Duration) -> f64 {
+        ratio(nanos(numerator), nanos(denominator))
+    }
+
     pub(crate) fn flag(value: bool) -> Self {
         Self::Flag { value }
     }
@@ -150,6 +158,11 @@ impl Calculation {
         Self::MedianDuration {
             samples_nanos: samples.iter().copied().map(nanos).collect(),
         }
+    }
+
+    pub(crate) fn median_value(samples: &[Duration]) -> Option<f64> {
+        let samples_nanos = samples.iter().copied().map(nanos).collect::<Vec<_>>();
+        median(&samples_nanos).map(|value| count(value) / NANOS_PER_MILLI)
     }
 }
 

@@ -44,9 +44,6 @@ pub(super) const PLANNING_TIME: &str = "Planning Time: ";
 /// The status the candidate query filters on, as the lease path binds it.
 const ACTIVE: &str = "active";
 
-/// Milliseconds in a second, for reporting a sampled duration.
-const MILLIS_PER_SECOND: f64 = 1_000.0;
-
 /// `core.fleets` and every index on it, in bytes.
 const TABLE_SIZE_QUERY: &str = "SELECT pg_total_relation_size('core.fleets')";
 
@@ -181,9 +178,6 @@ fn non_negative(value: i64, field: &'static str) -> Result<u64> {
 }
 
 /// The middle sample in milliseconds, or nothing for no samples.
-pub(crate) fn median_ms(mut samples: Vec<Duration>) -> Option<f64> {
-    samples.sort();
-    samples
-        .get(samples.len() / 2)
-        .map(|sample| sample.as_secs_f64() * MILLIS_PER_SECOND)
+pub(crate) fn median_ms(samples: &[Duration]) -> Option<f64> {
+    crate::report::Calculation::median_value(samples)
 }

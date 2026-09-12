@@ -61,16 +61,12 @@ fn test_the_median_is_the_middle_sample_and_nothing_has_none() {
         Duration::from_millis(1),
         Duration::from_millis(2),
     ];
-    assert_eq!(median_ms(odd), Some(2.0));
+    assert_eq!(median_ms(&odd), Some(2.0));
     let even = vec![Duration::from_millis(1), Duration::from_millis(4)];
     assert_eq!(
-        median_ms(even),
+        median_ms(&even),
         Some(4.0),
         "the upper middle, so a tail is never rounded away"
     );
-    assert_eq!(
-        median_ms(Vec::new()),
-        None,
-        "no samples is not a latency of zero"
-    );
+    assert_eq!(median_ms(&[]), None, "no samples is not a latency of zero");
 }

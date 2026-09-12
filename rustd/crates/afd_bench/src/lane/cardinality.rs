@@ -215,7 +215,7 @@ async fn climb(
         push(
             report,
             PEEK_MS,
-            median_ms(peek.clone()).ok_or(crate::Error::CounterUnreadable {
+            median_ms(&peek).ok_or(crate::Error::CounterUnreadable {
                 datastore: REDIS,
                 field: PEEK_SAMPLE_FIELD,
             })?,
@@ -225,7 +225,7 @@ async fn climb(
         push(
             report,
             STREAM_READ_MS,
-            median_ms(stream.clone()).ok_or(crate::Error::CounterUnreadable {
+            median_ms(&stream).ok_or(crate::Error::CounterUnreadable {
                 datastore: REDIS,
                 field: "stream read samples",
             })?,
@@ -255,7 +255,7 @@ async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
     push(
         report,
         PEEK_MS,
-        median_ms(peek.clone()).ok_or(crate::Error::CounterUnreadable {
+        median_ms(&peek).ok_or(crate::Error::CounterUnreadable {
             datastore: REDIS,
             field: PEEK_SAMPLE_FIELD,
         })?,

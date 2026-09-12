@@ -3,8 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::{
-    Calculation, Latency, MAX_MS, P95_MS, P99_MS, RATE_PER_SECOND, Report, count, latency,
-    per_second, ratio,
+    Calculation, Latency, MAX_MS, P95_MS, P99_MS, RATE_PER_SECOND, Report, count, latency, ratio,
 };
 use crate::error::{Error, Result};
 
@@ -55,7 +54,7 @@ impl Report {
         if !elapsed.is_zero() {
             self.calculated(
                 RATE_PER_SECOND,
-                per_second(latency.count(), elapsed.as_secs_f64()),
+                Calculation::rate_value(latency.count(), elapsed),
                 Calculation::rate(latency.count(), elapsed),
             );
         }

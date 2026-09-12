@@ -19,7 +19,7 @@ use crate::datastores::{Datastores, redis_calls};
 use crate::error::{Error, Result};
 use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::outcomes::Outcomes;
-use crate::report::{DatastoreCost, DatastoreCosts, Report, per_second};
+use crate::report::{Calculation, DatastoreCost, DatastoreCosts, Report};
 
 /// One window: every runner polling at once, with the cost either side of it.
 pub(super) struct Window {
@@ -88,12 +88,11 @@ pub(super) async fn measure(
 impl Window {
     /// Write the contended window's numbers into the report.
     pub(super) fn record(&self, report: &mut Report) {
-        let seconds = self.length.as_secs_f64();
         report.latency(self.length, &self.outcomes.latency);
         report.calculated(
             POLLS_PER_SECOND,
-            per_second(self.outcomes.attempts(), seconds),
-            crate::report::Calculation::rate(self.outcomes.attempts(), self.length),
+            Calculation::rate_value(self.outcomes.attempts(), self.length),
+            Calculation::rate(self.outcomes.attempts(), self.length),
         );
         report.count(LEASES, self.outcomes.successes);
         report.count(FAILURES, self.outcomes.failures);

@@ -90,10 +90,6 @@ pub(super) fn record(
             ladder += later.at.saturating_duration_since(earlier.at);
         }
     }
-    let seconds = drained
-        .ended
-        .saturating_duration_since(drained.started)
-        .as_secs_f64();
     let elapsed = drained.ended.saturating_duration_since(drained.started);
     report.latency(elapsed, &all);
     report.count(DELIVERED, drained.settled);
@@ -115,11 +111,7 @@ pub(super) fn record(
     }
     report.calculated(
         RETRY_OCCUPANCY,
-        if seconds > 0.0 {
-            ladder.as_secs_f64() / seconds
-        } else {
-            0.0
-        },
+        crate::report::Calculation::duration_ratio_value(ladder, elapsed),
         crate::report::Calculation::Ratio {
             numerator: u64::try_from(ladder.as_nanos()).unwrap_or(u64::MAX),
             denominator: u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
