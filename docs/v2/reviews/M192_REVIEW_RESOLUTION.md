@@ -281,7 +281,11 @@ Source `afd_fleet/src/lease/pull.rs:170,244` observes receipt before money gates
 
 ### Evidence trust boundary
 
-Hashes detect altered bytes, and the historical archive is pinned to evidence commit `5eb0c2044ac15e6fa8f2204541fe3ebaf8aaa08f`; capture `f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886` already contained the clean-tree and exact Compose-bind guards. Authenticated CI provenance identifies future Cloud collector runs.
+Hashes detect altered bytes, and the historical archive is pinned to evidence commit `84016ca667511c7e5e0758721a8c787d46d01f94`; capture `a4b38b6a7fca0ecc17d3ac516cfe62f036fb0bc3` contains the clean-tree and exact Compose-bind guards, a hash-pinned
+production-default outbound ownership seam, exclusive local rig checks, and
+raw-observation replay for every reported statistic. Known fixture payload
+lengths (18 request bytes and 12 response bytes) are recorded, rather than
+marked unavailable. Authenticated CI provenance identifies future Cloud collector runs.
 The canonical [workload evidence](../../architecture/datastore_scaling.md#workload-and-evidence) names the Cloud GET mechanism and secret-redaction boundary.
 Official source proves the request shape exists, not that an available key can access the intended datastore or that the account has passed the probe.
 

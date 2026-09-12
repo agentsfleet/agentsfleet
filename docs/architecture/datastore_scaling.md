@@ -256,7 +256,7 @@ Missing consumer groups recover against durable dispatch and settlement state; r
 ### Workload and evidence
 
 Bench-only capture and safety changes may precede historical baseline revision B.
-Verify production source, schema, build configuration, and workspace manifests at B match comparison revision B0 except proven bench-only changes.
+Verify production source, schema, build configuration, and workspace manifests at B match comparison revision B0 except proven bench-only changes and the exact SHA-256-pinned outbound pre-dispatch ownership seam. Its default production behavior must remain unchanged and have a test; no other production-source delta is admissible for this historical archive.
 Include `rustd/Cargo.lock`: each changed package/version/source/checksum/dependency edge must be outside the production build dependency closure at both revisions.
 Compare resolved production features and dependencies for every shipped binary/target, including build dependencies; shared-package changes fail baseline grading.
 Record the graph comparison and lockfile diff with the baseline. A bench-only path does not prove a bench-only dependency change.

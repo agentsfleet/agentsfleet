@@ -13,7 +13,8 @@ The capture plan binds the campaign to baseline revision
 `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`. The capture command refuses any
 production source, schema, build-input, normalized lockfile, or resolved
 production dependency change between that revision and the committed capture
-revision.
+revision, except the exact hash-pinned outbound ownership seam, which defaults
+to accepting all entries and is tested against production behavior.
 
 Run from a clean committed worktree with Docker available:
 
@@ -26,6 +27,8 @@ each sample. It captures three samples for each of `steer`, `lease`, `outbound`,
 and `cardinality`, immediately copying the fixed result path into a unique
 campaign path. Rig URLs use literal loopback addresses whose family and port
 match the Compose binding; every server-advertised node must also be loopback.
+Each benchmark process holds an exclusive rig lock, and each lane/archive
+checks that no external clients are connected to either datastore.
 
 Grade the checked-in archive without changing either datastore:
 
@@ -34,8 +37,9 @@ make bench-datastore CHECK=baseline
 ```
 
 The grade fails on missing or extra sidecars, changed bytes, mismatched
-digests, inconsistent resources or topology, incomplete fixture cleanup, or
-incomparable revisions.
+digests, inconsistent resources or topology, incomplete fixture cleanup,
+incomparable revisions, or a reported statistic that cannot be replayed from
+its raw observations within four floating-point ULPs.
 
 ## Interrupted-run recovery
 
