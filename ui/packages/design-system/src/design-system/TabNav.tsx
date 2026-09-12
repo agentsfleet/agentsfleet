@@ -1,4 +1,4 @@
-import { type ElementType, type ReactNode } from "react";
+import { type ElementType } from "react";
 import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_LINK } from "./tab-styles";
 
 /*
@@ -18,11 +18,10 @@ import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_LINK } from "./tab-styles";
  *     onNavigate={(href) => track(href)}
  *   />
  *
- * An item may carry an `icon` node, rendered ahead of its label and hidden
- * from assistive technology by the caller — a set of five or six destinations
- * scans faster with one, and a set of two or three reads fine without.
+ * Labels only, everywhere: the tab style is one style, and a glyph on some
+ * tab bars and not others is the same split in miniature.
  */
-export type TabNavItem = { label: string; href: string; icon?: ReactNode };
+export type TabNavItem = { label: string; href: string };
 
 export type TabNavProps = {
   items: TabNavItem[];
@@ -51,10 +50,9 @@ export function TabNav({ items, activeHref, label, linkComponent, onNavigate }: 
             href={item.href}
             aria-current={active ? "page" : undefined}
             data-active={active ? "true" : undefined}
-            className={`${TAB_TRIGGER_CLASS_LINK} gap-sm`}
+            className={TAB_TRIGGER_CLASS_LINK}
             onClick={onNavigate ? () => onNavigate(item.href) : undefined}
           >
-            {item.icon}
             {item.label}
           </LinkEl>
         );

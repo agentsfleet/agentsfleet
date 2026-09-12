@@ -18,8 +18,13 @@ const TOKENS_LABEL = "tokens";
 const TOKENS_IN = "in";
 const TOKENS_OUT = "out";
 const TOKEN_SPLIT_SEPARATOR = " · ";
-const MIN_VISIBLE_DEBIT_NANOS = 50_000;
-const SUBVISIBLE_DEBIT_LABEL = "<$0.0001";
+/**
+ * Below this the formatter above returns "$0.00" — the one figure that reads
+ * as nothing. Exported because the header's balance has the same floor for
+ * the same reason, and two copies of it would drift.
+ */
+export const MIN_VISIBLE_NANOS = 50_000;
+export const SUBVISIBLE_AMOUNT_LABEL = "<$0.0001";
 
 /** Format a nanos amount as a USD string. */
 export function formatDollars(nanos: number): string {
@@ -29,7 +34,7 @@ export function formatDollars(nanos: number): string {
 /** Human-readable debit: never render a misleading negative zero. */
 export function formatChargeAmount(nanos: number): string {
   if (nanos === 0) return formatDollars(0);
-  if (nanos < MIN_VISIBLE_DEBIT_NANOS) return SUBVISIBLE_DEBIT_LABEL;
+  if (nanos < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
   return `−${formatDollars(nanos)}`;
 }
 
