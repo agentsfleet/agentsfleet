@@ -16,12 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M192
 **Workstream:** 001
 **Date:** Sep 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0, required before claiming Dragonfly readiness or million-fleet capacity.
 **Categories:** API, INFRA, OBS
 **Batch:** B2, consumes the shared benchmark drivers from M188_001.
-**Branch:** docs/m192-dragonfly-scale-redis-parity, documentation only; implementation has not started.
-**Test Baseline:** not run during authoring; record canonical unit and integration counts at CHORE(open).
+**Branch:** feat/m192-dragonfly-cluster
+**Baseline revision:** 995566da8118cbb88b0b32bb5b44a19d2e704f5e
+**Test Baseline:** pending — measured before the Pull Request.
 **Depends on:** M188_001 for measurement drivers and result files. Streaming acceptance uses the merged runtime; the parked SSE follow-up is not a prerequisite.
 **Provenance:** LLM-drafted (Codex, Sep 06, 2026), from the user's Dragonfly and same-deployment requirements.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; existing flows in `data_flow.md` and `runner_fleet.md`.
@@ -45,7 +46,7 @@ Replacing Swarm or removing Redis support requires an explicit user decision. A 
 ## Implementing agent — read these first
 
 1. `docs/architecture/datastore_scaling.md`, the required destination and Redis preservation rules.
-2. `docs/v2/pending/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md`, shared drivers, profiles, and attribution.
+2. `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md`, shared drivers, profiles, and attribution.
 3. `rustd/crates/afd_ingress/src/deliver.rs`, provider deduplication and accepted ingress behavior.
 4. `rustd/crates/afd_redis/src/streams/once.rs`, atomic multi-key append and replay windows.
 5. https://www.dragonflydb.io/docs/cloud/datastores, managed topology, eviction, replicas, and connection requirements.
@@ -316,7 +317,4 @@ No authoring deletions. Remove replaced helpers and enumerate reference sweeps b
 
 - **Scope decision (2026-09-06):** the user said "park entire sse" and requested that the DragonflyDB commits be pushed.
   This documentation branch excludes the uncommitted SSE implementation. M192 remains PENDING; no Dragonfly runtime acceptance is claimed.
-- **Consults**
-- **Metrics review**
-- **Skill-chain outcomes**
-- **Deferrals**
+- **Consults / Metrics review / Skill-chain outcomes / Deferrals:** recorded during implementation.
