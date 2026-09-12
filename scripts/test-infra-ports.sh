@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# test-infra-ports.sh — print the three host ports this checkout's test infra
-# should publish on, as "<postgres> <redis> <qstash>".
+# test-infra-ports.sh — print the host ports this checkout's test infra should
+# publish on, as "<postgres> <redis> <qstash> <dragonfly-base>".
 #
-#     bash scripts/test-infra-ports.sh     # e.g. "26933 26934 26935"
+#     bash scripts/test-infra-ports.sh     # e.g. "26400 26401 26402 26403"
+#
+# The fourth number is the FIRST of eight consecutive ports the Dragonfly
+# cluster publishes: four data ports, then four admin ports (offset 4). Eight
+# and not one because every node announces its own address and a redirect
+# names it, so the cluster needs its published numbers to equal the numbers
+# the nodes bind — see scripts/dragonfly-cluster.sh.
 #
 # Prints only. It deliberately writes no file: an earlier version wrote `.env`,
 # which Compose reads automatically — convenient locally, but in CI the make
@@ -46,7 +52,7 @@
 # inside it, so a pinned port up there could collide with an unrelated transient
 # socket and fail to bind for reasons no one could reproduce.
 #
-# Two worktrees hashing to the same slot is possible (~0.2% at four worktrees).
+# Two worktrees hashing to the same slot is possible (~0.8% at four worktrees).
 # That surfaces as a loud "port is already allocated" from `docker compose up` —
 # a failure to bind, never a silent share of one database. Rename the worktree
 # directory to move it to a different slot.
@@ -55,13 +61,17 @@ set -euo pipefail
 DEFAULT_PG=5432
 DEFAULT_REDIS=6379
 DEFAULT_QSTASH=8080
+DEFAULT_DRAGONFLY=7001
 
-SLOT_COUNT=3000
+# Twelve ports per slot: three services plus the cluster's eight, and one
+# spare. 750 slots keep the whole range inside 20000-28999.
+SLOT_STRIDE=12
+SLOT_COUNT=750
 RANGE_START=20000
 
 # Not a git checkout at all -> nothing to isolate from; use the conventional ports.
 if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
@@ -71,7 +81,7 @@ git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null || echo "")"
 common_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .)" && pwd)"
 
 if [ -z "$git_dir" ] || [ "$git_dir" = "$common_dir" ]; then
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
@@ -85,13 +95,13 @@ elif command -v sha256sum >/dev/null 2>&1; then
 else
   # No hasher is not a reason to fail the build; the conventional ports are a
   # correct answer for a single checkout, which is the only case this can be.
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
 # Last 6 hex digits is plenty of spread for 3000 slots, and stays well inside
 # the 64-bit arithmetic bash 3.2 (macOS) can do.
 slot=$(( 16#${digest: -6} % SLOT_COUNT ))
-pg_port=$(( RANGE_START + slot * 3 ))
+pg_port=$(( RANGE_START + slot * SLOT_STRIDE ))
 
-printf '%s %s %s\n' "$pg_port" "$(( pg_port + 1 ))" "$(( pg_port + 2 ))"
+printf '%s %s %s %s\n' "$pg_port" "$(( pg_port + 1 ))" "$(( pg_port + 2 ))" "$(( pg_port + 3 ))"
