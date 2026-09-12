@@ -20,6 +20,8 @@ mod counters_statement;
 #[path = "fleet_event_writers.rs"]
 mod fleet_event_writers;
 
+#[path = "integration_admission_prototype.rs"]
+mod integration_admission_prototype;
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
 #[path = "integration_steer.rs"]
