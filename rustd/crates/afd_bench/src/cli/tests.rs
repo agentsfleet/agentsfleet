@@ -119,6 +119,28 @@ async fn test_cancellation_is_returned_to_the_caller_that_owns_the_sweep() {
 }
 
 #[tokio::test]
+async fn test_signal_registration_failure_settles_the_lane_before_sweep() {
+    let cancellation = CancellationToken::new();
+    let wait = cancellation.clone();
+    let cleaned = Arc::new(AtomicBool::new(false));
+    let lane_cleaned = Arc::clone(&cleaned);
+    let lane = async move {
+        wait.cancelled().await;
+        lane_cleaned.store(true, Ordering::SeqCst);
+        Ok(())
+    };
+    let interrupted = std::future::ready(Err(std::io::Error::other("signal unavailable")));
+
+    let refusal = cancellable_on(cancellation.clone(), lane, interrupted)
+        .await
+        .expect_err("registration failure cannot abandon the in-flight lane");
+
+    assert!(matches!(refusal, Error::InterruptUnavailable { .. }));
+    assert!(cancellation.is_cancelled());
+    assert!(cleaned.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
 async fn test_a_completed_lane_wins_without_waiting_for_an_interrupt() {
     let lane = std::future::ready(Ok::<_, Error>(42));
     let interrupted = std::future::pending::<std::io::Result<()>>();

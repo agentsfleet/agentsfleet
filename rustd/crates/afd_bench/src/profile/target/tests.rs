@@ -8,7 +8,8 @@
 use std::net::SocketAddr;
 
 use super::{
-    Profile, Target, binding_covers, endpoint_socket, published_sockets, redis_clients_are_local,
+    DATABASE_ENDPOINT, Profile, Target, binding_covers, endpoint_socket, published_sockets,
+    redis_clients_are_local,
 };
 
 #[test]
@@ -64,6 +65,32 @@ fn test_rig_endpoints_require_literal_loopback_addresses() {
     );
     endpoint_socket("database endpoint", "postgres://localhost:20735/database")
         .expect_err("a hostname does not bind one published address family");
+}
+
+#[test]
+fn test_postgres_query_cannot_redirect_the_checked_rig_socket() {
+    for override_query in [
+        "hostaddr=10.0.0.5",
+        "host=db.example.invalid",
+        "port=5432",
+        "%68ostaddr=10.0.0.5",
+        "sslmode=disable&hostaddr=10.0.0.5",
+    ] {
+        let url = format!("postgres://bench:secret@127.0.0.1:20735/db?{override_query}");
+        for refusal in [
+            Profile::Rig.check_endpoints(&Target::Rig, &url, "redis://127.0.0.1:21736"),
+            endpoint_socket(DATABASE_ENDPOINT, &url).map(|_socket| ()),
+        ] {
+            let error = refusal.expect_err("SQLx must not override the checked address");
+            assert!(error.is_pre_flight());
+            assert!(!error.to_string().contains("secret"));
+        }
+    }
+    endpoint_socket(
+        DATABASE_ENDPOINT,
+        "postgres://bench@127.0.0.1:20735/db?sslmode=disable",
+    )
+    .expect("the rig's one supported SQLx option is safe");
 }
 
 #[test]

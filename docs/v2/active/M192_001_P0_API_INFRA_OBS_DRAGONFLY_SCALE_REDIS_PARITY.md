@@ -22,9 +22,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2
 **Branch:** feat/m192-dragonfly-migration
 **Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
-**Test Baseline:** harness/lint/version, 459 integration tests, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
-**Baseline evidence:** §1 Redis history captured at `bench/baselines/datastore/m192-redis-historical` and anchored at `84016ca667511c7e5e0758721a8c787d46d01f94`; later Dragonfly sections remain pending.
-**Depends on:** M188_001 drivers exist; its address/fixture safety deferral is pulled into §1 before any remote workload.
+**Test Baseline:** unit=2540 integration=459; harness/lint/version, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
+**Baseline evidence:** docs/v2/reviews/datastore-scale-evidence.md
+**Depends on:** M188_001 drivers exist; its address/fixture safety gap is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`; runtime context in `docs/architecture/data_flow.md`.
 
@@ -44,7 +44,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Implementing agent — read these first
 
 1. `docs/architecture/datastore_scaling.md` and `docs/v2/reviews/M192_REVIEW_RESOLUTION.md`, target design and risk ledger.
-2. `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md`, including deferred address/fixture hardening.
+2. `docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md`, including its address/fixture hardening gap.
 3. `rustd/crates/afd_redis/src/hub/pump.rs`, `rustd/crates/afd_redis/src/streams/once.rs`, and `rustd/crates/afd_sse/src/channel.rs`.
 4. `rustd/crates/afd_fleet/src/lease/report.rs`, `rustd/crates/afd_ingress/src/deliver.rs`, and `docs/AUTH_DEVICE_LOGIN.md`.
 5. https://github.com/dragonflydb/dragonfly/blob/1e5f9944834b6ed999a2baf137e929e6de3e3009/docs/pub-sub.md and its adjacent `cluster-mode.md`; validate against the pinned release.
@@ -105,8 +105,8 @@ The hub handles SUnsubscribe by reconciling viewers and reissuing SSUBSCRIBE; te
 - **Dimension 0.4**: sharded readiness and destination scheduling preserve bounded fair progress → Test `test_sharded_coordination_prototype_bounds_hotspots`.
 
 ### §1: Safe historical baseline and trustworthy capture
-
-**Status: DONE.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `a4b38b6a7fca0ecc17d3ac516cfe62f036fb0bc3`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples. The evidence index is `docs/v2/reviews/datastore-scale-evidence.md`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
+**Baseline state: CAPTURED.** Baseline B0 is `521ca4037ebbd23056f8b3b63dcf9c2fa34f650d`; capture B is `a4b38b6a7fca0ecc17d3ac516cfe62f036fb0bc3`; evidence E is `84016ca667511c7e5e0758721a8c787d46d01f94`. `make bench-datastore CHECK=baseline` validates four lanes and twelve samples at `bench/baselines/datastore/m192-redis-historical`. Dependencies: none; address hardening and capture come first. No production source/schema change before B; bench-only plumbing is allowed.
+> Indy (2026-09-12): "dev we could do later?" The local baseline can merge first; the remaining dimensions stay open here. No Dragonfly parity or cutover readiness is claimed.
 Prove B/B0 production source/schema/build and dependency-closure equality, including Cargo.lock; allow proven bench-exclusive deltas and only the exact hash-pinned, default-accept outbound pre-dispatch ownership seam with a production behavior test. Capture three samples per existing `make bench-steer`, `bench-lease`, `bench-outbound`, and `bench-cardinality`.
 Archive each fixed-path result immediately under a unique campaign/lane/sample path with sidecars containing B, parameters, payload bytes, window, resources, raw server/topology output, and SHA-256 digests. Historical drivers have no seed or offered-rate guarantee; preserve their actual measurements and mark unavailable fields explicitly.
 Fix the M188 rig-label/address gap before capture or remote use: verify both datastores and every discovered node, reject shared targets, scope leases and consumers.

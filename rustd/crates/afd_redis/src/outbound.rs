@@ -137,10 +137,16 @@ const CONSUMER_FALLBACK_HOST: &str = "localhost";
 /// collide.
 #[must_use]
 pub fn outbound_consumer() -> String {
-    let host = hostname::get()
-        .ok()
-        .and_then(|name| name.into_string().ok())
-        .filter(|name| !name.trim().is_empty())
+    let host = hostname_or_fallback(
+        hostname::get()
+            .ok()
+            .and_then(|name| name.into_string().ok()),
+    );
+    format!("{CONSUMER_PREFIX}-{host}")
+}
+
+fn hostname_or_fallback(host: Option<String>) -> String {
+    host.filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| {
             // Loud, because recovery attribution blurs: every instance that
             // cannot name itself shares one pending list. Correctness survives
@@ -152,8 +158,7 @@ pub fn outbound_consumer() -> String {
                 event = "consumer_id_hostname_fallback"
             );
             CONSUMER_FALLBACK_HOST.to_owned()
-        });
-    format!("{CONSUMER_PREFIX}-{host}")
+        })
 }
 
 /// One answer waiting to be delivered.
@@ -195,13 +200,30 @@ pub struct OutboundDelivery {
 #[derive(Debug, Clone)]
 pub struct OutboundQueue {
     redis: Redis,
+    group: std::borrow::Cow<'static, str>,
+    group_start: &'static str,
 }
 
 impl OutboundQueue {
     /// Binds the queue to a connection.
     #[must_use]
     pub const fn new(redis: Redis) -> Self {
-        Self { redis }
+        Self {
+            redis,
+            group: std::borrow::Cow::Borrowed(OUTBOUND_CONSUMER_GROUP),
+            group_start: GROUP_START_BEGIN,
+        }
+    }
+
+    /// A benchmark consumer group starting after existing entries. Its PEL is
+    /// separate from the daemon's, so a foreign delivery cannot strand work.
+    #[must_use]
+    pub fn isolated_group(redis: Redis, group: String) -> Self {
+        Self {
+            redis,
+            group: std::borrow::Cow::Owned(group),
+            group_start: "$",
+        }
     }
 
     /// Creates the consumer group, delivering from the stream's beginning.
@@ -217,8 +239,8 @@ impl OutboundQueue {
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg(XGROUP_CREATE)
             .arg(OUTBOUND_STREAM_KEY)
-            .arg(OUTBOUND_CONSUMER_GROUP)
-            .arg(GROUP_START_BEGIN)
+            .arg(self.group.as_ref())
+            .arg(self.group_start)
             .arg(XGROUP_MKSTREAM);
 
         match self
@@ -285,7 +307,7 @@ impl OutboundQueue {
     pub async fn ack(&self, id: &EventId) -> Result<bool> {
         let mut cmd = redis::cmd(CMD_XACK);
         cmd.arg(OUTBOUND_STREAM_KEY)
-            .arg(OUTBOUND_CONSUMER_GROUP)
+            .arg(self.group.as_ref())
             .arg(id.as_str());
         let acknowledged: i64 = self
             .redis
@@ -300,6 +322,7 @@ impl OutboundQueue {
 pub struct OutboundReader {
     connection: Dedicated,
     consumer: String,
+    group: std::borrow::Cow<'static, str>,
 }
 
 impl OutboundReader {
@@ -312,6 +335,17 @@ impl OutboundReader {
         Self {
             connection,
             consumer,
+            group: std::borrow::Cow::Borrowed(OUTBOUND_CONSUMER_GROUP),
+        }
+    }
+
+    /// Read a benchmark group without changing the daemon's pending list.
+    #[must_use]
+    pub fn isolated_group(connection: Dedicated, consumer: String, group: String) -> Self {
+        Self {
+            connection,
+            consumer,
+            group: std::borrow::Cow::Owned(group),
         }
     }
 
@@ -365,7 +399,7 @@ impl OutboundReader {
         block_ms: Option<usize>,
     ) -> Result<Option<OutboundDelivery>> {
         let mut options = StreamReadOptions::default()
-            .group(OUTBOUND_CONSUMER_GROUP, &self.consumer)
+            .group(self.group.as_ref(), &self.consumer)
             .count(1);
         if let Some(millis) = block_ms {
             options = options.block(millis);
@@ -412,7 +446,7 @@ impl OutboundReader {
     async fn drop_undeliverable(&mut self, id: &str) {
         let mut cmd = redis::cmd(CMD_XACK);
         cmd.arg(OUTBOUND_STREAM_KEY)
-            .arg(OUTBOUND_CONSUMER_GROUP)
+            .arg(self.group.as_ref())
             .arg(id);
         let acknowledged: Result<i64> = self
             .connection
@@ -561,5 +595,15 @@ mod tests {
             "two calls in one process must agree, which a clock or a counter \
              in the name would break first"
         );
+    }
+
+    #[test]
+    fn test_missing_hostname_keeps_a_stable_recoverable_consumer() {
+        assert_eq!(hostname_or_fallback(None), CONSUMER_FALLBACK_HOST);
+        assert_eq!(
+            hostname_or_fallback(Some("  ".to_owned())),
+            CONSUMER_FALLBACK_HOST
+        );
+        assert_eq!(hostname_or_fallback(Some("rig".to_owned())), "rig");
     }
 }

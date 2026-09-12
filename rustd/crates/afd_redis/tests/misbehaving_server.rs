@@ -18,11 +18,11 @@
 use std::error::Error as _;
 use std::time::Duration;
 
-use afd_redis::OutboundQueue;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_redis::session::{AbortReason, Approval, SessionStore};
 use afd_redis::streams::{FleetStreams, OnceScope};
+use afd_redis::{OutboundJob, OutboundQueue};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 use crate::recorder::Recorder;
@@ -328,6 +328,37 @@ async fn test_an_empty_once_append_id_is_refused_rather_than_handed_out() {
     assert!(
         error.is_command(),
         "an empty id is a reply shape, not an outage: {error}"
+    );
+}
+
+/// A wrong XADD reply cannot mint a usable outbound entry id.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_an_empty_outbound_append_id_is_refused() {
+    install_subscriber();
+    let server = FakeRedis::spawn(&[
+        ("PING", Reply::Raw("+PONG\r\n")),
+        ("XADD", Reply::Raw("$0\r\n\r\n")),
+    ])
+    .await;
+    let redis = Redis::connect(&config_for(&server))
+        .await
+        .expect("the fake answers PONG");
+    let error = tokio::time::timeout(
+        BUDGET,
+        OutboundQueue::new(redis).enqueue(OutboundJob {
+            provider: "slack",
+            workspace_id: "workspace",
+            fleet_id: "fleet",
+            event_id: "event",
+            answer: "answer",
+        }),
+    )
+    .await
+    .expect("the fake answers XADD")
+    .expect_err("an empty stream id cannot be acknowledged");
+    assert!(
+        error.is_command(),
+        "malformed reply is a command error: {error}"
     );
 }
 

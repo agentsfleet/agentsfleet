@@ -34,7 +34,7 @@ equal. Each sample carries the result, raw lane log, raw datastore identity and
 topology responses, resource identity, fixture counts, and SHA-256 digests.
 The grader replays every scalar and series value from the recorded raw
 operands, histograms, duration samples, and original datastore timing lines,
-allowing only four floating-point ULPs of serialization noise. It compares
+allowing only four machine-epsilon units of relative serialization noise. It compares
 every archived byte with evidence revision E, so a coordinated result and
 sidecar rewrite cannot create a new accepted history. The local rig holds an
 exclusive process lock and checks for external Postgres/Redis clients at each

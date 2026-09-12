@@ -18,7 +18,7 @@ use afd_db::Db;
 use afd_redis::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
 use sqlx::Row as _;
 
-use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XLEN, XRANGE};
+use crate::datastores::command::{EXISTS, RANGE_END, RANGE_START, XDEL, XGROUP, XLEN, XRANGE};
 use crate::error::{Error, Result};
 use crate::fixture::RunPrefix;
 
@@ -140,7 +140,25 @@ pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
         })
         .map(|(id, _fields)| id)
         .collect();
-    outbound_entries(queue, &mine).await
+    let removed = outbound_entries(queue, &mine).await?;
+    // Destroy only this run's group. The daemon group and its PEL are never
+    // consulted or modified, even if a foreign entry arrived during the run.
+    let mut exists = redis::cmd(EXISTS);
+    exists.arg(OUTBOUND_STREAM_KEY);
+    if queue
+        .command::<u64>(EXISTS, OUTBOUND_STREAM_KEY, &exists)
+        .await?
+        == 0
+    {
+        return Ok(removed);
+    }
+    let mut destroy = redis::cmd(XGROUP);
+    destroy
+        .arg("DESTROY")
+        .arg(OUTBOUND_STREAM_KEY)
+        .arg(prefix.name("outbound-consumer-group"));
+    let groups: u64 = queue.command(XGROUP, OUTBOUND_STREAM_KEY, &destroy).await?;
+    Ok(removed + groups)
 }
 
 /// The entry field the outbound producer writes the workspace into.

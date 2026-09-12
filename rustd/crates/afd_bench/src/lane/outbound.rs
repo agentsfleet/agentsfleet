@@ -143,7 +143,8 @@ pub async fn run_cancelled(
     cancellation: CancellationToken,
 ) -> Result<Report> {
     parameters.admit(profile)?;
-    let queue = OutboundQueue::new(stores.queue.clone());
+    let group = prefix.name("outbound-consumer-group");
+    let queue = OutboundQueue::isolated_group(stores.queue.clone(), group.clone());
     queue.ensure_group().await?;
 
     let behaviours = script(prefix, parameters);
@@ -157,6 +158,7 @@ pub async fn run_cancelled(
     let destinations: Vec<&String> = behaviours.keys().collect();
 
     let mut ledger = FixtureLedger::new();
+    ledger.created(1); // The isolated consumer group belongs to this run.
     let mut queued_at = HashMap::new();
     for (index, destination) in (0..parameters.jobs).zip(destinations.iter().cycle()) {
         if cancellation.is_cancelled() {
@@ -175,7 +177,15 @@ pub async fn run_cancelled(
         ledger.created(1);
     }
 
-    let drained = drain(stores, queue, poster.clone(), parameters, &cancellation).await?;
+    let drained = drain(
+        stores,
+        queue,
+        poster.clone(),
+        parameters,
+        &cancellation,
+        group,
+    )
+    .await?;
     let ids: Vec<String> = queued_at.keys().cloned().collect();
     ledger.swept(sweep::outbound_entries(&stores.queue, &ids).await?);
 
@@ -246,10 +256,12 @@ async fn drain(
     poster: Scripted,
     parameters: Parameters,
     cancellation: &CancellationToken,
+    group: String,
 ) -> Result<Drained> {
-    let reader = OutboundReader::new(
+    let reader = OutboundReader::isolated_group(
         stores.dedicated(afd_outbound::LONGEST_PARK).await?,
         outbound_consumer(),
+        group,
     );
     let redis_before = redis_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;

@@ -236,6 +236,7 @@ fn verify_service(
 
 fn endpoint_socket(surface: &'static str, raw: &str) -> Result<SocketAddr> {
     let parsed = Url::parse(raw).map_err(|_source| unsafe_address(surface, UNPARSEABLE))?;
+    reject_database_overrides(surface, &parsed)?;
     let ip: IpAddr = parsed
         .host_str()
         .and_then(|host| host.trim_matches(['[', ']']).parse().ok())
@@ -265,6 +266,7 @@ fn local_endpoint(surface: &'static str, raw: &str) -> Result<()> {
         surface,
         address: UNPARSEABLE.to_owned(),
     })?;
+    reject_database_overrides(surface, &parsed)?;
     let host = parsed.host().ok_or_else(|| Error::UnsafeTarget {
         surface,
         address: "hostless".to_owned(),
@@ -279,6 +281,20 @@ fn local_endpoint(surface: &'static str, raw: &str) -> Result<()> {
             surface,
             address: host.to_string(),
         });
+    }
+    Ok(())
+}
+
+/// SQLx can replace the URL authority through PostgreSQL query parameters.
+/// The owned rig uses only `sslmode=disable`; everything else is refused before
+/// either the Docker socket check or the database client opens a connection.
+fn reject_database_overrides(surface: &'static str, parsed: &Url) -> Result<()> {
+    if surface == DATABASE_ENDPOINT
+        && parsed
+            .query_pairs()
+            .any(|(key, value)| key != "sslmode" || value != "disable")
+    {
+        return Err(unsafe_address(surface, "unsupported database URL option"));
     }
     Ok(())
 }

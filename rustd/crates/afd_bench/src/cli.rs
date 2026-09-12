@@ -121,10 +121,13 @@ async fn cancellable_on<T>(
     tokio::select! {
         result = &mut lane => result,
         interrupted = interrupt => {
-            interrupted.map_err(|source| crate::Error::InterruptUnavailable { source })?;
+            let refusal = match interrupted {
+                Ok(()) => crate::Error::Cancelled,
+                Err(source) => crate::Error::InterruptUnavailable { source },
+            };
             cancellation.cancel();
             let _finished = lane.await;
-            Err(crate::Error::Cancelled)
+            Err(refusal)
         }
     }
 }

@@ -55,6 +55,10 @@ pub mod command {
     pub const XRANGE: &str = "XRANGE";
     /// Delete named entries from a stream.
     pub const XDEL: &str = "XDEL";
+    /// Check whether a stream exists before removing its benchmark group.
+    pub const EXISTS: &str = "EXISTS";
+    /// Remove a run-scoped benchmark consumer group.
+    pub const XGROUP: &str = "XGROUP";
     /// The smallest stream id, so a range reads from the beginning.
     pub const RANGE_START: &str = "-";
     /// The largest stream id, so a range reads to the end.
