@@ -62,16 +62,23 @@ describe("fleet template API client", () => {
     }
   });
 
-  // The ordering the fix rests on, held by a pin rather than an import: the
-  // dashboard's budget must outlast what the backend spends before it can
-  // answer. `rustd/crates/afd_library/src/github.rs` gives the tarball fetch
-  // CONNECT_TIMEOUT 5s plus REQUEST_TIMEOUT 60s; extraction, the object-store
-  // write and the catalog upsert all land after that.
-  it("test_onboard_budget_outlasts_the_backend_fetch_ceiling", async () => {
+  // The ordering the fix rests on, held by a pin rather than an import so no
+  // module depends on another for it.
+  //
+  // Below the route segment's maxDuration: both pages hosting an onboard action
+  // declare `export const maxDuration = 60`, and if the platform killed the
+  // function first the operator would get an opaque 504 instead of our own
+  // message. Above a warm import: one measured under 6s against api-dev, so a
+  // budget at or beneath that would fail imports that were about to succeed.
+  it("test_onboard_budget_sits_between_a_warm_import_and_the_segment_ceiling", async () => {
     const { ONBOARD_BUNDLE_TIMEOUT_MS } = await import("./fleet-library");
-    // pin test: literal is the contract
-    const BACKEND_FETCH_CEILING_MS = (5 + 60) * 1_000;
-    expect(ONBOARD_BUNDLE_TIMEOUT_MS).toBeGreaterThan(BACKEND_FETCH_CEILING_MS);
+    // pin test: literal is the contract — `maxDuration = 60` on
+    // admin/fleet-libraries/page.tsx and w/[workspaceId]/fleets/new/page.tsx
+    const SEGMENT_MAX_DURATION_MS = 60 * 1_000;
+    // pin test: literal is the contract — measured warm import, api-dev
+    const WARM_IMPORT_MS = 6_000;
+    expect(ONBOARD_BUNDLE_TIMEOUT_MS).toBeLessThan(SEGMENT_MAX_DURATION_MS);
+    expect(ONBOARD_BUNDLE_TIMEOUT_MS).toBeGreaterThan(WARM_IMPORT_MS);
   });
 
   it("test_onboard_action_maps_apierror_to_errorcode: throws ApiError on 403", async () => {
