@@ -67,25 +67,28 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 }
 
 const trigger = () => screen.getByRole("button", { name: /checks/i });
+// The pill inside the trigger carries the verdict's colour; the button is
+// only the hit area.
+const pill = () => trigger().querySelector("span") as HTMLElement;
 
 describe("RunnerChecksBadge", () => {
   it("compresses a passing verdict to one green word with its age", () => {
     renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: Date.now() - 5 * 3_600_000 })} />);
     expect(trigger().textContent).toMatch(/checks passed/i);
-    expect(trigger().className).toContain("text-success");
+    expect(pill().className).toContain("text-success");
     expect(trigger().querySelector("time")?.textContent).toMatch(/hours ago/);
   });
 
   it("paints a failure red and counts it, so it is seen without a click", () => {
     renderBadge(<RunnerChecksBadge runner={detail({ selftest: FAILING, selftest_completed_at: 1 })} />);
     expect(trigger().textContent).toMatch(/2 checks failed/i);
-    expect(trigger().className).toContain("text-destructive");
+    expect(pill().className).toContain("text-destructive");
   });
 
   it("says never rather than showing an empty verdict", () => {
     renderBadge(<RunnerChecksBadge runner={detail()} />);
     expect(trigger().textContent).toMatch(/checks never run/i);
-    expect(trigger().className).toContain("text-muted-foreground");
+    expect(pill().className).toContain("text-muted-foreground");
     expect(trigger().querySelector("time")).toBeNull();
   });
 
@@ -117,7 +120,7 @@ describe("RunnerChecksBadge", () => {
       />,
     );
     expect(trigger().textContent).toMatch(/checks stale/i);
-    expect(trigger().className).toContain("text-warning");
+    expect(pill().className).toContain("text-warning");
   });
 
   it("opens the full report — every check by name and the mounts — on click", () => {
