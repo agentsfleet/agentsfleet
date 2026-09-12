@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::{
-    Calculation, Latency, MAX_MS, P95_MS, P99_MS, RATE_PER_SECOND, Report, count, latency, ratio,
+    Calculation, Latency, MAX_MS, P95_MS, P99_MS, RATE_PER_SECOND, Report, count, latency,
 };
 use crate::error::{Error, Result};
 
@@ -17,7 +17,7 @@ impl Report {
     pub fn ratio(&mut self, name: &str, numerator: u64, denominator: u64) {
         self.calculated(
             name,
-            ratio(numerator, denominator),
+            Calculation::ratio_value(numerator, denominator),
             Calculation::ratio(numerator, denominator),
         );
     }

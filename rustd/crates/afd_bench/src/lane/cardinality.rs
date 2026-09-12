@@ -37,7 +37,7 @@ use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Calculation, Fixture, Lane, Report, count, ratio};
+use crate::report::{Calculation, Fixture, Lane, Report, count};
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
@@ -208,7 +208,7 @@ async fn climb(
         push(
             report,
             BYTES_PER_FLEET,
-            ratio(added, fleets_added),
+            Calculation::ratio_value(added, fleets_added),
             Calculation::ratio(added, fleets_added),
         );
         let peek = peek_samples(&stores.queue).await?;

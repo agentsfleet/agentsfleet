@@ -122,6 +122,10 @@ impl Calculation {
         }
     }
 
+    pub(crate) fn ratio_value(numerator: u64, denominator: u64) -> f64 {
+        ratio(numerator, denominator)
+    }
+
     pub(crate) fn rate(count: u64, elapsed: Duration) -> Self {
         Self::Rate {
             count,
