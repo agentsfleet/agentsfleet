@@ -109,7 +109,10 @@ export default function FleetStatusLine({
       <Figure Icon={TimerIcon} label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} />
       {pendingApprovals > 0 ? (
         <StatusLineItem tone="warning">
-          <Link href={approvalsHref} className="underline-offset-2 hover:underline">
+          <Link
+            href={approvalsHref}
+            className="underline-offset-2 hover:underline focus-visible:underline"
+          >
             {pendingApprovals}{" "}
             {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} {APPROVALS_ARROW}
           </Link>
