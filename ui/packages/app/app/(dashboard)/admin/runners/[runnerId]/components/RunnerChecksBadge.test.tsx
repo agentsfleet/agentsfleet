@@ -129,7 +129,9 @@ describe("RunnerChecksBadge", () => {
     const button = trigger();
     expect(button.getAttribute("aria-haspopup")).toBe("dialog");
     fireEvent.click(button);
-    const dialog = screen.getByRole("dialog", { name: "Checks" });
+    // Titled after the host: the report's own first heading is "Checks".
+    const dialog = screen.getByRole("dialog", { name: "runner-prod-ams-01.internal" });
+    expect(dialog.querySelectorAll("h2, h3")[0]?.textContent).toBe("runner-prod-ams-01.internal");
     expect(dialog.textContent).toContain("resolver file resolves inside the sandbox");
     expect(dialog.textContent).toContain("all checks passed");
     expect(dialog.textContent).toContain("Baseline only");
