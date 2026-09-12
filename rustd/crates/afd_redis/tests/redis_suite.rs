@@ -71,6 +71,14 @@ mod recorder;
 )]
 mod support;
 
+#[path = "support/cluster_harness.rs"]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod cluster;
+
 #[path = "connect_refusals.rs"]
 mod connect_refusals;
 #[path = "dedicated_faults.rs"]
@@ -79,6 +87,10 @@ mod dedicated_faults;
 mod error_surface;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
+#[path = "integration_cluster_prototypes.rs"]
+mod integration_cluster_prototypes;
+#[path = "integration_cluster_readiness.rs"]
+mod integration_cluster_readiness;
 #[path = "integration_diagnose_connect.rs"]
 mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
