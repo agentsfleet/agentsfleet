@@ -168,10 +168,12 @@ impl LibraryImports {
 
     fn github_source(&self, revision: &str) -> Result<GithubSource> {
         let source = GithubSource::new(revision)?;
-        // Read unconditionally though only a `test-util` builder can set it:
-        // the field is not gated, so gating the READ is what made `self`
-        // unused in a build without the feature — a warning about the gate
-        // rather than about the code.
+        // Both the field and `pointed_at` are `test-util`, so the READ is gated
+        // with them. Ungating it does not compile without the feature, and the
+        // `unused_self` a featureless clippy run reports here is the lint
+        // describing that build rather than a defect: the production shape of
+        // this function genuinely has nothing to read.
+        #[cfg(feature = "test-util")]
         if let Some(api_base) = &self.github_api_base {
             return Ok(source.pointed_at(api_base.to_string()));
         }

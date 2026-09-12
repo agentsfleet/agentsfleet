@@ -5,8 +5,6 @@
 //! the ways to produce one. A reader asking "what can go wrong here" and a
 //! reader asking "where does this get raised" are looking for different things.
 
-use afd_core::error_code;
-
 use super::{Error, ErrorKind};
 
 // Every lift is a `From`, so `?` does the conversion at the call site and no
@@ -96,7 +94,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .1;
     let answered = answered
         .into_iter()
-        .find(|(_label, error)| error.code() == error_code::INTERNAL_OPERATION_FAILED)
+        .find(|(_label, error)| error.code() == afd_core::error_code::INTERNAL_OPERATION_FAILED)
         .expect("afd_admission declares a kind that is opaque rather than an outage")
         .1;
 
