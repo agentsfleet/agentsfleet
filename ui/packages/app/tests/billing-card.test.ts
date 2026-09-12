@@ -37,9 +37,9 @@ describe("BillingBalanceCard", () => {
     expect(screen.getByText("USD")).toBeTruthy();
   });
 
-  // test_billing_balance_layout — amount + full-width meter + caption + header
-  // CTA all present; the meter fills the row so the CTA is not stranded.
-  it("test_billing_balance_layout: amount, full-width meter, caption, and header CTA all render", () => {
+  // test_billing_balance_layout — amount + full-width meter + header CTA all
+  // present; the meter fills the row so the CTA is not stranded.
+  it("test_billing_balance_layout: amount, full-width meter, and header CTA all render", () => {
     renderCard(HEALTHY);
     // amount
     expect(screen.getByTestId("balance-headline").textContent).toMatch(/\$4\.71/);
@@ -47,17 +47,19 @@ describe("BillingBalanceCard", () => {
     const meter = screen.getByTestId("balance-meter");
     const fill = meter.querySelector("span") as HTMLSpanElement;
     expect(fill.style.width).toBe("6%");
-    // caption: spent + events ride the meter's end
-    expect(screen.getByTestId("balance-usage").textContent).toMatch(/spent\s*\$0\.29\s*·\s*4\s*events/);
     // header CTA present (in the head row, not a stranded control)
     expect(screen.getByTestId("buy-credits-trigger")).toBeTruthy();
   });
 
-  it("singularizes the event caption when exactly one event", () => {
-    renderCard(HEALTHY, { spentNanos: 30_000_000, eventCount: 1, meterPct: 1 });
-    const usage = screen.getByTestId("balance-usage").textContent ?? "";
-    expect(usage).toMatch(/·\s*1\s*event$/);
-    expect(usage).not.toMatch(/events/);
+  it("states no spend figure beside the meter, because it would be the loaded page's", () => {
+    // The caption read "spent $X · N events" as though it were a lifetime
+    // total; summarizeCharges sums only the rows the page loaded, so page two
+    // gave a different figure for the same account. The balance is the number
+    // an operator can act on, and it is the only one stated.
+    renderCard(HEALTHY);
+    expect(screen.queryByTestId("balance-usage")).toBeNull();
+    expect(screen.queryByText(/spent/i)).toBeNull();
+    expect(screen.queryByText(/\b\d+\s*events?\b/i)).toBeNull();
   });
 
   it("renders Buy credits as a live mailto link, not a disabled button", () => {
