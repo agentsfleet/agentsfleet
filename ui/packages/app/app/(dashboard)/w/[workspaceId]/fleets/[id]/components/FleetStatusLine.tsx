@@ -70,8 +70,10 @@ export default function FleetStatusLine({
 }) {
   const outcome = outcomeCell(latest, summaryAvailable);
   const OutcomeIcon = outcome.Icon;
+  // No rule of its own: the card above already draws the edge, and a second
+  // hairline 16px under it read as a doubled border.
   return (
-    <StatusLine aria-label={METRICS_STRIP_LABEL} className="border-t border-border pt-md">
+    <StatusLine aria-label={METRICS_STRIP_LABEL}>
       <StatusLineItem
         tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"}
         className="uppercase"
