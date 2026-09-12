@@ -30,7 +30,8 @@ fn comparable() -> Provenance {
         baseline_revision: "baseline".to_owned(),
         capture_revision: "capture".to_owned(),
         production_source: pair(true),
-        outbound_ownership_seam_sha256: "sha256:PENDING".to_owned(),
+        outbound_ownership_seam_sha256:
+            "sha256:ef5db6a6bdda1eadb3725d450daee09eb047624efb656994f05549c82a3c0aa9".to_owned(),
         schema_files: pair(true),
         production_build: pair(true),
         cargo_lock: pair(false),

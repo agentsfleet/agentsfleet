@@ -14,7 +14,8 @@ use crate::report::{Lane, Report};
 const PROVENANCE_FILE: &str = "provenance.json";
 const SIDECAR_FILE: &str = "sidecar.json";
 const HEAD_REVISION: &str = "HEAD";
-const EXPECTED_OUTBOUND_OWNERSHIP_SEAM: &str = "sha256:PENDING";
+const EXPECTED_OUTBOUND_OWNERSHIP_SEAM: &str =
+    "sha256:ef5db6a6bdda1eadb3725d450daee09eb047624efb656994f05549c82a3c0aa9";
 
 /// Load and validate the checked-in historical capture plan.
 pub(super) fn plan(path: impl AsRef<Path>) -> Result<BaselinePlan> {
