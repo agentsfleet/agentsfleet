@@ -25,7 +25,7 @@ export default function PrebuiltFleets() {
       <section id={LOOP_ANCHOR_ID} aria-label="Meet the fleet">
         <div className="wrap flex flex-col gap-8">
           <div className="flex flex-col gap-3">
-            <SectionLabel className="mb-0">The fleet</SectionLabel>
+            <SectionLabel as="p" className="mb-0">The fleet</SectionLabel>
             <DisplayLG>{FLEETS_SECTION_HEADING}</DisplayLG>
             <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
               {FLEETS_SECTION_LEDE}
