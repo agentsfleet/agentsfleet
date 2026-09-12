@@ -55,18 +55,11 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
           <BuyCreditsButton />
         </div>
 
-        <UsageBar
-          data-testid="balance-meter"
-          pct={summary.meterPct}
-          sublabel={
-            <div className="text-right" data-testid="balance-usage">
-              spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span>{" "}
-              ·{" "}
-              <span className="text-foreground">{summary.eventCount}</span>{" "}
-              {summary.eventCount === 1 ? "event" : "events"}
-            </div>
-          }
-        />
+        {/* No caption: it read "spent $X · N events" as though it were a
+            lifetime total, while it summed only the charge rows the page had
+            loaded — page two gave a different figure for the same account.
+            The balance above is the number an operator can act on. */}
+        <UsageBar data-testid="balance-meter" pct={summary.meterPct} />
 
         {isExhausted ? (
           <Alert variant="destructive" className="text-xs">
