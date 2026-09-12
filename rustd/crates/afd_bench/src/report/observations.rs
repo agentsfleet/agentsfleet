@@ -96,7 +96,12 @@ impl Report {
                 .map(Calculation::evaluate)
                 .collect::<Result<Vec<_>>>()?;
             match self.series.get(name) {
-                Some(stored) if stored == &values => {}
+                Some(stored)
+                    if stored.len() == values.len()
+                        && stored
+                            .iter()
+                            .zip(&values)
+                            .all(|(actual, expected)| equivalent(*actual, *expected)) => {}
                 Some(_) => {
                     return Err(invalid(&format!(
                         "measurement series {name} does not match its raw observations"
@@ -121,7 +126,7 @@ fn verify_map(
     for (name, calculation) in calculations {
         let expected = calculation.evaluate()?;
         match measurements.get(name) {
-            Some(stored) if stored.to_bits() == expected.to_bits() => {}
+            Some(stored) if equivalent(*stored, expected) => {}
             Some(stored) => {
                 return Err(invalid(&format!(
                     "measurement {name} is {stored:?}, raw observations replay as {expected:?}"
@@ -131,6 +136,16 @@ fn verify_map(
         }
     }
     Ok(())
+}
+
+fn equivalent(stored: f64, expected: f64) -> bool {
+    if stored.to_bits() == expected.to_bits() {
+        return true;
+    }
+    let scale = stored.abs().max(expected.abs());
+    stored.is_finite()
+        && expected.is_finite()
+        && (stored - expected).abs() <= scale * f64::EPSILON * 4.0
 }
 
 fn invalid(detail: &str) -> Error {

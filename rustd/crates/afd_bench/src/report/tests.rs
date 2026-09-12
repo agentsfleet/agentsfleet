@@ -192,6 +192,15 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
         .verify_calculations()
         .expect("raw histogram buckets reproduce every reported tail");
 
+    let rate = report.measurements[RATE_PER_SECOND];
+    report.measurements.insert(
+        RATE_PER_SECOND.to_owned(),
+        f64::from_bits(rate.to_bits() + 1),
+    );
+    report
+        .verify_calculations()
+        .expect("one serialization ULP is not contradictory evidence");
+
     report.measurements.insert(P95_MS.to_owned(), 999.0);
     let refusal = report
         .verify_calculations()
