@@ -40,12 +40,14 @@ describe("Hero", () => {
     expect(h1!.className).toContain("font-display");
   });
 
+  // The hero once opened with a kicker carrying a mint dot (FINDING-M05). The
+  // dot never meant anything was live, and the kicker only restated the
+  // headline; both are gone. The guarantee is now structural: the hero shows no
+  // live indicator at all, because it has no element that could imply one.
   it("does not imply live activity in the illustrative hero", () => {
-    renderHero();
-    const eyebrow = screen.getByTestId("hero-eyebrow");
-    expect(eyebrow.textContent).toMatch(/AI incident response/i);
-    const pulse = eyebrow.querySelector("[data-live=\"true\"]");
-    expect(pulse).toBeNull();
+    const { container } = renderHero();
+    expect(screen.queryByTestId("hero-eyebrow")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-live=\"true\"]")).toBeNull();
   });
 
   it("renders the lede paragraph in the warm teammates voice", () => {
@@ -109,14 +111,10 @@ describe("Hero", () => {
     expect(pill.textContent).not.toMatch(/\$\d|starter credit|free/i);
   });
 
-  it("places the promo pill after the eyebrow and before the headline in document order", () => {
+  it("places the promo pill before the headline in document order", () => {
     renderHero();
-    const eyebrow = screen.getByTestId("hero-eyebrow");
     const pill = screen.getByTestId("hero-promo-pill");
     const headline = screen.getByTestId("hero-headline");
-    expect(
-      eyebrow.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
     expect(
       pill.compareDocumentPosition(headline) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

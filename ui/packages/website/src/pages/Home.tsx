@@ -104,12 +104,19 @@ function CapabilityPillars() {
 function RuntimeGuarantees() {
   return (
     <section className="flex flex-col gap-3" aria-labelledby={RUNTIME_GUARANTEES_HEADING_ID}>
-      <h3
+      {/*
+       * FINDING-M03. This was an <h3> at 12px sitting among sibling <h3>s at
+       * 20px — the pillar titles beside it. It is a label for a group, not a
+       * peer of those titles, and rank should follow that. It is a <p> now;
+       * the group keeps its accessible name because `aria-labelledby` above
+       * points at this element, which works whatever tag it carries.
+       */}
+      <p
         id={RUNTIME_GUARANTEES_HEADING_ID}
         className="font-mono text-label uppercase tracking-label text-text-subtle m-0"
       >
         {RUNTIME_GUARANTEES_LABEL}
-      </h3>
+      </p>
       <Card>
         <List variant="plain" divided className="m-0 space-y-0">
           {CAPABILITY_ITEMS.map((item) => (
@@ -132,3 +139,4 @@ function RuntimeGuarantees() {
     </section>
   );
 }
+
