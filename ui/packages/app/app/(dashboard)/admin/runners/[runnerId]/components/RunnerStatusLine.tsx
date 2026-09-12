@@ -21,8 +21,9 @@ const ICON_SIZE = 12;
 // does no arithmetic and renders no percentage, ratio or capacity figure.
 // Outcome counters carry their status colour, the same tokens the Badge
 // primitive and the row badges use — `text-success` and `text-destructive`,
-// never the `text-error` alias that names the same colour by another word. The full lifetime ledger (acquired, expired) lives on the Activity
-// view; this line carries only what an operator glances at.
+// never the `text-error` alias that names the same colour by another word.
+// The full lifetime ledger (acquired, expired) lives on the Activity view;
+// this line carries only what an operator glances at.
 export default function RunnerStatusLine({
   runner,
   className,

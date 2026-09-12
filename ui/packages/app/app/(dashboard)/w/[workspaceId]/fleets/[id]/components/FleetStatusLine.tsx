@@ -109,9 +109,12 @@ export default function FleetStatusLine({
       <Figure Icon={TimerIcon} label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} />
       {pendingApprovals > 0 ? (
         <StatusLineItem tone="warning">
+          {/* The vertical padding is cancelled by the matching negative
+              margin: the hit area grows to a finger's height, the line's
+              own height does not. */}
           <Link
             href={approvalsHref}
-            className="underline-offset-2 hover:underline focus-visible:underline"
+            className="-my-md py-md underline-offset-2 hover:underline focus-visible:underline"
           >
             {pendingApprovals}{" "}
             {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} {APPROVALS_ARROW}
