@@ -54,6 +54,12 @@ const IMPORT_TIMEOUT = 45_000;
 // failure is reported in about the time it took to fail, long enough that the
 // poll is not itself load on a remote environment.
 const IMPORT_POLL_INTERVAL_MS = 250;
+// What the backend answers when the bundle could not be fetched from its
+// source: `Error::code()` in `rustd/crates/afd_library/src/error.rs` maps every
+// `Source`, `Github`, `Archive` and `Redirect` failure to it. The dialog prints
+// the code, which is what lets this suite tell a third party's bad day from a
+// defect of ours.
+const UPSTREAM_FETCH_FAILED_CODE = "UZ-BUNDLE-004";
 const CLERK_TOKEN_EXPIRY_PROOF_MS = 70_000;
 // The longest walk in the suite: a GitHub import plus four identity switches
 // plus publish/unpublish round-trips, every leg a remote round-trip. Five
@@ -116,7 +122,7 @@ async function submitCreate(page: Page) {
   await page.getByRole("dialog").getByRole("button", { name: /^create$/i }).click();
 }
 
-// Waits for the import dialog to close, and fails the moment it instead shows
+// Waits for the import dialog to close, and reacts the moment it instead shows
 // its error — with that error's own words.
 //
 // Waiting only for the dialog to disappear is a blind wait: the dialog stays
@@ -125,8 +131,14 @@ async function submitCreate(page: Page) {
 // 64s to say that, when the dialog had been showing "The request timed out /
 // The backend took too long to answer" since second ten.
 //
-// Racing the two states reports the real cause in about as long as the import
-// takes to fail, and a genuinely slow success still gets the full budget.
+// The two failures are not the same kind of news, so they do not get the same
+// verdict. GitHub is a third party this suite does not control: it rate-limits,
+// it 5xxs, it goes down, and none of that is a defect in the dashboard. The
+// backend already draws that line — `Error::code()` in afd_library answers
+// UZ-BUNDLE-004 for every `Source`, `Github`, `Archive` and `Redirect` failure —
+// and the dialog prints the code, so the suite can read it rather than guess
+// from prose. That case SKIPS: the run moves on and says why. Everything else,
+// our own transport timeout above all, is ours and fails.
 async function expectImportSucceeded(page: Page) {
   const dialog = page.getByRole("dialog");
   // Scoped to the dialog: the page has its own toast `alert` region, and the
@@ -137,6 +149,10 @@ async function expectImportSucceeded(page: Page) {
     if ((await dialog.count()) === 0) return;
     if (await failure.isVisible().catch(() => false)) {
       const reason = (await failure.innerText()).replace(/\s+/g, " ").trim();
+      test.skip(
+        reason.includes(UPSTREAM_FETCH_FAILED_CODE),
+        `GitHub could not serve the bundle (${UPSTREAM_FETCH_FAILED_CODE}); not a dashboard defect: ${reason}`,
+      );
       throw new Error(`the import dialog reported a failure instead of closing: ${reason}`);
     }
     await page.waitForTimeout(IMPORT_POLL_INTERVAL_MS);
