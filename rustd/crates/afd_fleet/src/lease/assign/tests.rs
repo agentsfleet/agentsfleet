@@ -30,7 +30,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
 fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str> {
     let runner = runner_id()?;
 
-    for (label, error) in afd_redis::error::one_of_each_kind() {
+    for (label, error) in afd_datastore::error::one_of_each_kind() {
         assert!(
             !error.to_string().is_empty(),
             "{label} renders to something a reader can act on"

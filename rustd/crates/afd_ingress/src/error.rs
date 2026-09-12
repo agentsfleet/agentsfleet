@@ -67,7 +67,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue would not take the delivery")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 
     #[error("the stored fleet document no longer parses")]

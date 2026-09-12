@@ -30,8 +30,8 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_datastore::EventId;
 use afd_events::Closed;
-use afd_redis::EventId;
 
 use crate::error::Result;
 use crate::lease::affinity::Fence;

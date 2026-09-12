@@ -33,7 +33,7 @@ afd_credential.workspace = true
 # walk resumes from.
 # The retry LOOP around the install's stream setup — the counter and the
 # terminal rule, which is where the Zig shipped its bug. The delays stay
-# `afd_redis::Backoff`.
+# `afd_datastore::Backoff`.
 backon.workspace = true
 afd_core.workspace = true
 # Entropy for the fleet identifiers the install mints.
@@ -46,7 +46,7 @@ afd_vault.workspace = true
 # The per-fleet event stream and its consumer group. The install's whole
 # guarantee is that both exist before the 201, so this is not an optional edge:
 # it is the reason this crate is not a pure Postgres store.
-afd_redis.workspace = true
+afd_datastore.workspace = true
 # `SKILL.md` and `TRIGGER.md` are parsed at the write boundary — an install and
 # a config PATCH both store the JSON this produces, and neither may store a
 # document the lease path could not read back.
@@ -67,7 +67,7 @@ tracing.workspace = true
 test-util = [
   "afd_core/test-util",
   "afd_db/test-util",
-  "afd_redis/test-util",
+  "afd_datastore/test-util",
 ]
 
 [dev-dependencies]

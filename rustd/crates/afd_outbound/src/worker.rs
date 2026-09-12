@@ -12,7 +12,7 @@
 //! Then a blocking read, raced against the supervisor's token. `BLOCK` is what
 //! makes an answer leave the instant it is queued instead of up to a
 //! quarter-second later, and it is why this worker owns an
-//! [`afd_redis::Dedicated`] connection: parking the shared one would park every
+//! [`afd_datastore::Dedicated`] connection: parking the shared one would park every
 //! other caller in the process behind it.
 //!
 //! # Cancellation stops the READ, never a delivery
@@ -36,13 +36,13 @@
 //! Redis may assign an entry to this consumer after this process has stopped
 //! caring. The entry is not lost — it is pending, under a consumer name the
 //! next process comes back to, and the pending-first read above is what finds
-//! it. This is exactly why [`afd_redis::outbound_consumer`] must not carry a
+//! it. This is exactly why [`afd_datastore::outbound_consumer`] must not carry a
 //! process id.
 
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-use afd_redis::{OutboundDelivery, OutboundQueue, OutboundReader};
+use afd_datastore::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::{Deliver, Posters, Verdict, deliver_with_retry};
@@ -62,7 +62,7 @@ pub const BLOCK_INTERVAL: usize = 5_000;
 /// The longest a read parks, as a [`Duration`].
 ///
 /// What the reader's connection is opened with, so its reply deadline outlives
-/// every `BLOCK` this worker passes — see [`afd_redis::Dedicated::connect`] for
+/// every `BLOCK` this worker passes — see [`afd_datastore::Dedicated::connect`] for
 /// what happens when it does not.
 pub const LONGEST_PARK: Duration = Duration::from_millis(5_000);
 
@@ -105,7 +105,7 @@ impl<S: Deliver> Worker<S> {
     /// Binds the worker to its own reader, the shared queue, and its posters.
     ///
     /// The reader is taken by value because it owns a connection this worker
-    /// will park on — see [`afd_redis::Dedicated`].
+    /// will park on — see [`afd_datastore::Dedicated`].
     #[must_use]
     pub const fn new(reader: OutboundReader, queue: OutboundQueue, posters: Posters<S>) -> Self {
         Self {
@@ -224,7 +224,7 @@ impl<S: Deliver> Worker<S> {
     }
 
     /// Reports a failed read, so both read paths answer a failure the same way.
-    fn read_failed(event: &'static str, failure: afd_redis::Error) -> Turn {
+    fn read_failed(event: &'static str, failure: afd_datastore::Error) -> Turn {
         report(event, &failure.into());
         Turn::Failed
     }

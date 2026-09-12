@@ -223,7 +223,7 @@ fn test_preflight_resolves_a_complete_environment() {
     );
     assert_eq!(
         config.redis().role(),
-        afd_redis::config::RedisRole::Api,
+        afd_datastore::config::RedisRole::Api,
         "preflight resolves the API Redis role"
     );
     // The KEK is redacted by construction, so the assertion is that it EXISTS

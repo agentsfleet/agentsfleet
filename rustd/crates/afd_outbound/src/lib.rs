@@ -18,7 +18,7 @@
 //!
 //! # Invariant 9 lives at this crate's boundary
 //!
-//! `afd_redis::outbound` carries `provider` as a string and knows nothing about
+//! `afd_datastore::outbound` carries `provider` as a string and knows nothing about
 //! what one is, so the report path enqueues an answer without a connector
 //! anywhere in its graph. THIS crate is the only one that turns that string
 //! into a [`afd_connector::Provider`] and picks a poster for it. Adding a
@@ -32,7 +32,7 @@
 //! non-blocking claims, and says why: its pooled connections are borrowed
 //! per-command and cannot be parked on a stream. That is a fact about a
 //! blocking client, not about the queue — so here the worker owns an
-//! [`afd_redis::Dedicated`] connection and `XREADGROUP … BLOCK` holds until an
+//! [`afd_datastore::Dedicated`] connection and `XREADGROUP … BLOCK` holds until an
 //! entry lands. An answer is delivered the instant it is queued rather than up
 //! to a quarter-second later, and an idle deployment issues one command per
 //! block interval instead of four per second forever.

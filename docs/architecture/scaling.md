@@ -120,7 +120,7 @@ At normal boot, each `agentsfleetd` replica opens these Redis connections:
 
 | Owner | Connection | Count per replica |
 |---|---|---|
-| `afd_redis::Redis` | shared multiplexed command connection | 1 |
+| `afd_datastore::Redis` | shared multiplexed command connection | 1 |
 | `SubscriptionHub` | dedicated pub/sub connection for all viewers | 1 |
 | `connector:outbound` | dedicated command connection for blocking reads | 1 |
 
@@ -133,7 +133,7 @@ A failed optional hub or outbound startup leaves fewer connections and reduced s
 Viewer count adds response buffers and fan-out work, while runners open no Redis connections.
 
 Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
-[`Redis handle`](../../rustd/crates/afd_redis/src/client.rs), and
+[`Redis handle`](../../rustd/crates/afd_datastore/src/client.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
 ### Per-request volume (the Upstash bill)
@@ -255,7 +255,7 @@ See [Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-su
 
 Source: [`stream ceiling`](../../rustd/crates/afd_sse/src/ceiling.rs),
 [`tail`](../../rustd/crates/afd_sse/src/tail.rs), and
-[`hub`](../../rustd/crates/afd_redis/src/hub.rs).
+[`hub`](../../rustd/crates/afd_datastore/src/hub.rs).
 
 ### 3. Upstash plan ceiling (now rarely first)
 

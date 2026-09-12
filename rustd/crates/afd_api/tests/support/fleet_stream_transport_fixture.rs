@@ -6,8 +6,8 @@ use afd_wire::report::Outcome;
 use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_redis::streams::{FleetStreams, fleet_activity_channel};
-use afd_redis::{Redis, SubscriptionHub};
+use afd_datastore::streams::{FleetStreams, fleet_activity_channel};
+use afd_datastore::{Redis, SubscriptionHub};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};

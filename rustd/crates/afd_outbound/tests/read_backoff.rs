@@ -19,9 +19,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_datastore::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
 use afd_outbound::{Deliver, LONGEST_PARK, Posters, Verdict, Worker};
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
 use tokio_util::sync::CancellationToken;
 
 #[path = "support/hanging_queue.rs"]

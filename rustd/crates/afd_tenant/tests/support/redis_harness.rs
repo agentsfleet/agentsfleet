@@ -1,6 +1,6 @@
 //! A connection to the lane's Redis.
 //!
-//! No key namespacing, unlike the copy in `afd_redis`: every suite here works
+//! No key namespacing, unlike the copy in `afd_datastore`: every suite here works
 //! through a service that MINTS its own identifiers, so two tests running in
 //! parallel cannot collide on a key without one of them having minted the
 //! other's version 7 identifier. Nothing is flushed between tests either — the
@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 
 const URL_KNOB: &str = "TEST_REDIS_URL";
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
@@ -26,7 +26,7 @@ impl RedisHarness {
     pub(crate) async fn connect() -> Self {
         install_subscriber();
         let config = Self::config();
-        let redis = afd_redis::test_util::connect_live(&config)
+        let redis = afd_datastore::test_util::connect_live(&config)
             .await
             .expect("the lane's Redis must be reachable");
         Self { redis }

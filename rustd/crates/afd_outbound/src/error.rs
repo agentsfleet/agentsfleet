@@ -39,7 +39,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue holding the outbound answers would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 }
 
@@ -63,5 +63,5 @@ impl Error {
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
-    afd_redis::Error => Queue,
+    afd_datastore::Error => Queue,
 );

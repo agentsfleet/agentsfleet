@@ -9,7 +9,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome};
+use afd_datastore::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome};
 
 use crate::support::RedisHarness;
 
@@ -219,7 +219,7 @@ async fn test_session_blob_round_trips() {
 
     // The key carries a time-to-live, so an abandoned session cannot sit in
     // Redis forever holding a public key someone pasted.
-    let key = afd_redis::session::session_key(&session_id);
+    let key = afd_datastore::session::session_key(&session_id);
     let mut cmd = redis::cmd("TTL");
     cmd.arg(&key);
     let ttl: i64 = harness.redis.command("TTL", &key, &cmd).await.expect("TTL");
@@ -232,7 +232,7 @@ async fn test_session_blob_round_trips() {
 }
 
 async fn cleanup(harness: &RedisHarness, session_id: &str) {
-    let key = afd_redis::session::session_key(session_id);
+    let key = afd_datastore::session::session_key(session_id);
     let mut cmd = redis::cmd("DEL");
     cmd.arg(&key);
     let _: Result<i64, _> = harness.redis.command("DEL", &key, &cmd).await;

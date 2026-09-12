@@ -16,8 +16,8 @@
 
 use std::time::Duration;
 
-use afd_redis::Subscription;
-use afd_redis::hub::Received;
+use afd_datastore::Subscription;
+use afd_datastore::hub::Received;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;

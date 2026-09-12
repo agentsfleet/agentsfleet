@@ -24,7 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::config::{RedisConfig, RedisRole};
 
 /// The TLS endpoint, which is NOT the one the rest of the lane uses.
 const TLS_URL_KNOB: &str = "TEST_REDIS_TLS_URL";
@@ -50,7 +50,7 @@ fn tls_config() -> RedisConfig {
 async fn test_the_lanes_authority_verifies_the_lanes_redis() {
     let config = tls_config().with_ca_cert_file(Some(lane(CA_KNOB).into()));
 
-    let redis = afd_redis::test_util::connect_live(&config)
+    let redis = afd_datastore::test_util::connect_live(&config)
         .await
         .expect("the lane's own certificate authority must verify its own Redis");
 
@@ -73,7 +73,7 @@ async fn test_the_lanes_authority_verifies_the_lanes_redis() {
 async fn test_a_foreign_authority_is_refused_by_the_lanes_redis() {
     let config = tls_config().with_ca_cert_file(Some(lane(FOREIGN_CA_KNOB).into()));
 
-    let failure = afd_redis::test_util::connect_live(&config)
+    let failure = afd_datastore::test_util::connect_live(&config)
         .await
         .expect_err("an authority that did not sign this server must be refused");
 

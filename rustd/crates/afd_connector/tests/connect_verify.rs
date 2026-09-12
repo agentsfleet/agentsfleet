@@ -34,10 +34,10 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 use afd_vault::Vault;
 
 use afd_connector::state::{self, Rejected};

@@ -33,8 +33,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_db::Db;
-use afd_redis::{FleetStreams, ReadyIndex, Redis};
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 

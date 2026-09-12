@@ -12,7 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::session::{VerifyOutcome, VerifyPayload, outcome_from_reply};
+use afd_datastore::session::{VerifyOutcome, VerifyPayload, outcome_from_reply};
 
 fn reply(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()

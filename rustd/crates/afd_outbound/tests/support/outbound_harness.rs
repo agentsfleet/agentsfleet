@@ -3,7 +3,7 @@
 //! # Why this harness resets a key instead of namespacing one
 //!
 //! Every other integration suite in this workspace mints a per-test key prefix
-//! (`afd_redis/tests/support/redis_harness.rs`) so parallel targets never
+//! (`afd_datastore/tests/support/redis_harness.rs`) so parallel targets never
 //! collide. That is not available here: `OUTBOUND_STREAM_KEY` and
 //! `OUTBOUND_CONSUMER_GROUP` are constants shared with the Zig daemon — both
 //! binaries read the same stream by name — and a test that pointed the worker
@@ -16,7 +16,7 @@
 //!
 //! # The consumer name is the real one, deliberately
 //!
-//! [`afd_redis::outbound_consumer`] is host-derived and constant for the life
+//! [`afd_datastore::outbound_consumer`] is host-derived and constant for the life
 //! of a process, which is exactly the property Dimension 5.2 depends on: a
 //! restarted worker has to come back to the same pending list. A test that
 //! invented its own name would prove the pending-first read works for a name
@@ -24,8 +24,8 @@
 
 use std::time::Duration;
 
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{
+use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_datastore::{
     Dedicated, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundQueue, OutboundReader, Redis,
     outbound_consumer,
 };
@@ -111,7 +111,7 @@ impl OutboundHarness {
     /// Points the stream key at a plain string, so commands answer WRONGTYPE.
     ///
     /// The one way to get a Redis error that is NOT an outage without taking
-    /// the server down. `afd_redis` builds its error kinds crate-privately, so
+    /// the server down. `afd_datastore` builds its error kinds crate-privately, so
     /// a "the queue answered and refused" case cannot be constructed by hand
     /// from here — it has to be provoked, and a key holding the wrong type is
     /// the cheapest real provocation there is.
@@ -207,7 +207,7 @@ impl OutboundHarness {
 /// arguments never run. The worker's failure paths are mostly diagnostics, so
 /// without this a test proves the branch is reached and never proves the line
 /// reporting it works. Output goes to a sink; the point is evaluation, not
-/// readership. `afd_redis/tests/support/redis_harness.rs` learned this first.
+/// readership. `afd_datastore/tests/support/redis_harness.rs` learned this first.
 pub(crate) fn install_subscriber() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {

@@ -8,8 +8,8 @@ use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
 use afd_core::id::Uuid7;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -34,7 +34,7 @@ pub(crate) fn redis_config() -> RedisConfig {
 
 /// A proven live connection using [`redis_config`].
 pub(crate) async fn connect_redis() -> Redis {
-    afd_redis::test_util::connect_live(&redis_config())
+    afd_datastore::test_util::connect_live(&redis_config())
         .await
         .expect("the lane's Redis must be reachable")
 }

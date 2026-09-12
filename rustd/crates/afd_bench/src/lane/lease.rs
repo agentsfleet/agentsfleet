@@ -35,8 +35,8 @@ use std::time::Instant;
 
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_datastore::ReadyIndex;
 use afd_fleet::lease::Leases;
-use afd_redis::ReadyIndex;
 
 use self::drive::Shared;
 use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
@@ -227,7 +227,7 @@ async fn populate(
 
 /// Clear this run's readiness marks, answering how many the index still
 /// holds afterwards — the depth the idle window will actually poll against.
-async fn quiesce(queue: &afd_redis::Redis, seeded: &[SeededFleet]) -> Result<u64> {
+async fn quiesce(queue: &afd_datastore::Redis, seeded: &[SeededFleet]) -> Result<u64> {
     let ready = ReadyIndex::new(queue.clone());
     for fleet in seeded {
         ready.force_clear(&fleet.fleet).await?;

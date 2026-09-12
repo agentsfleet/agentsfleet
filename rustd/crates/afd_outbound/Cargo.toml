@@ -21,7 +21,7 @@ afd_db.workspace = true
 # builds, so it zeroes on drop rather than becoming an ordinary `String`.
 afd_crypto.workspace = true
 # The queue itself: the stream, the dedicated reader, the consumer name.
-afd_redis.workspace = true
+afd_datastore.workspace = true
 # THE dependency that makes this crate the boundary it is: `Provider` is
 # resolved here and nowhere else on the delivery path (Invariant 9).
 afd_connector.workspace = true
@@ -55,7 +55,7 @@ afd_db = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
 afd_core.workspace = true
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
-# spells a Redis command itself — `afd_redis` owns every one it issues — but the
+# spells a Redis command itself — `afd_datastore` owns every one it issues — but the
 # integration suite has to ask Redis what the worker LEFT BEHIND, and an
 # unacknowledged entry is a question only the server can answer.
 redis.workspace = true

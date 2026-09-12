@@ -16,7 +16,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use afd_core::env::MapEnv;
-use afd_redis::production_backoff;
+use afd_datastore::production_backoff;
 use backon::BackoffBuilder as _;
 
 /// The ceiling the reconnect schedule must never exceed.
@@ -26,10 +26,10 @@ use backon::BackoffBuilder as _;
 /// change this line too and be seen: how long an outage takes to recover from
 /// is an operational number, not an implementation detail.
 const BACKOFF_CAP: Duration = Duration::from_secs(5);
-use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
-use afd_redis::ready::READY_INDEX_KEY;
-use afd_redis::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
-use afd_redis::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
+use afd_datastore::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
+use afd_datastore::ready::READY_INDEX_KEY;
+use afd_datastore::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
+use afd_datastore::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
 
 const URL: &str = "rediss://:secret@localhost:6379";
 
@@ -303,7 +303,7 @@ fn test_every_role_tags_itself_distinctly() {
 /// field that looks absent rather than surprising.
 #[test]
 fn test_every_stream_field_reply_shape_renders() {
-    let samples = afd_redis::streams::rendered_field_samples();
+    let samples = afd_datastore::streams::rendered_field_samples();
     assert_eq!(samples.len(), 5, "a reply shape was added without a sample");
 
     for (label, rendered) in &samples {
@@ -340,7 +340,7 @@ fn test_every_stream_field_reply_shape_renders() {
 /// why somebody's run was stopped.
 #[test]
 fn every_abort_reason_carries_its_stored_spelling() {
-    use afd_redis::session::AbortReason;
+    use afd_datastore::session::AbortReason;
 
     assert_eq!(AbortReason::ExplicitCancel.as_str(), "explicit_cancel");
     assert_eq!(

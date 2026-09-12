@@ -23,8 +23,8 @@
 
 use std::time::Duration;
 
-use afd_redis::SubscriptionHub;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::SubscriptionHub;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use backon::ExponentialBuilder;
 
 use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};

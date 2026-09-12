@@ -29,12 +29,12 @@ use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
+use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_datastore::{Redis, fleet_stream_key};
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, PoolConfig};
 use afd_fleet_lifecycle::Fleets;
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{Redis, fleet_stream_key};
 use sqlx::Row as _;
 
 /// The environment knob naming the lane's Redis.
@@ -147,7 +147,7 @@ impl Lane {
     pub(crate) async fn create() -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_redis::test_util::connect_live(&redis_config())
+        let queue = afd_datastore::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
         let fleets = Fleets::new(

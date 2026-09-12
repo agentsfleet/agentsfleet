@@ -21,8 +21,8 @@
 //! between "check" and "write" for them to both pass through.
 
 use afd_core::id::Uuid7;
-use afd_redis::Redis;
-use afd_redis::streams::{Appended, FleetStreams, OnceScope};
+use afd_datastore::Redis;
+use afd_datastore::streams::{Appended, FleetStreams, OnceScope};
 use afd_wire::event::{Entry, EventType};
 
 use crate::error::Result;

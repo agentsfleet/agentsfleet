@@ -1,4 +1,4 @@
-//! Every `afd_redis` test file, in one test binary.
+//! Every `afd_datastore` test file, in one test binary.
 //!
 //! Eleven binaries became one, for the reason the other suites record: cargo
 //! runs test binaries serially and the tests inside one in parallel.

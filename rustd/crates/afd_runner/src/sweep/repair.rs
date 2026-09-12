@@ -36,11 +36,11 @@ use std::time::Duration;
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
+use afd_datastore::Redis;
+use afd_datastore::streams::{FleetStreams, OnceScope};
 use afd_db::Db;
 use afd_observability::metrics::label::fleet::{SyntheticEvent, VerifierRun};
 use afd_observability::producers;
-use afd_redis::Redis;
-use afd_redis::streams::{FleetStreams, OnceScope};
 use afd_wire::event::{Entry, EventType};
 use sqlx::Row as _;
 

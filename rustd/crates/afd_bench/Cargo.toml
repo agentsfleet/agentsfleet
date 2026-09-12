@@ -28,9 +28,9 @@ tokio-util.workspace = true
 # The pool the lease path reads through, opened the way the daemon opens it.
 afd_db.workspace = true
 # The readiness index and the fleet streams a poll peeks and reads.
-afd_redis.workspace = true
+afd_datastore.workspace = true
 # `INFO commandstats`, for the Redis half of the attribution. The library never
-# spells a Redis command itself -- `afd_redis` owns every one the product
+# spells a Redis command itself -- `afd_datastore` owns every one the product
 # issues -- but asking the SERVER what it served is a question only the server
 # answers, and the same reason `afd_outbound`'s suite reaches for this crate.
 redis.workspace = true
@@ -67,7 +67,7 @@ thiserror.workspace = true
 # `Db::unreachable` and `Redis::unreachable`: handles that open no socket, so
 # the abort rail can be proven wired into a lane without a datastore to kill.
 afd_db = { workspace = true, features = ["test-util"] }
-afd_redis = { workspace = true, features = ["test-util"] }
+afd_datastore = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

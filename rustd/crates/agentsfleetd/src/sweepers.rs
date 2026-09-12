@@ -21,8 +21,8 @@
 //! again, which is the exact failure it exists to repair.
 
 use afd_crypto::entropy::Entropy;
+use afd_datastore::Redis;
 use afd_db::Db;
-use afd_redis::Redis;
 use afd_runner::sweep::{
     self, liveness::Liveness, reclaim::Reclaim, repair::Repairs, retention::Retention,
 };

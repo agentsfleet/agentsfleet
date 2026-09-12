@@ -34,9 +34,9 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::streams::OnceScope;
+use afd_datastore::{FleetStreams, Redis};
 use afd_db::Db;
-use afd_redis::streams::OnceScope;
-use afd_redis::{FleetStreams, Redis};
 use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
 use afd_wire::tail::TailFrame;

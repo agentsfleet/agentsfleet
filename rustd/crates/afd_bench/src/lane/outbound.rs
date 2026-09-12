@@ -37,8 +37,8 @@ use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
+use afd_datastore::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
 use afd_outbound::{Posters, Worker};
-use afd_redis::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
 use tokio_util::sync::CancellationToken;
 
 use self::poster::{Behaviour, Scripted};

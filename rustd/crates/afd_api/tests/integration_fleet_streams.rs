@@ -16,11 +16,11 @@ use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
+use afd_datastore::SubscriptionHub;
+use afd_datastore::streams::{FleetStreams, fleet_activity_channel};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::{FleetStreams, fleet_activity_channel};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
@@ -198,7 +198,7 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut body = open_stream(&router, &fixture).await;
 
     let publisher = FleetStreams::new(
-        afd_redis::Redis::connect(&harness::redis_config())
+        afd_datastore::Redis::connect(&harness::redis_config())
             .await
             .expect("the lane's Redis accepts a publisher"),
     );

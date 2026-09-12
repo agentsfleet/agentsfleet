@@ -14,6 +14,8 @@ use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -21,8 +23,6 @@ use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Mode;
 use afd_fleet_runtime::provider::StaticRegistry;
 use afd_gate::gate::Check;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Acquire as _;
 
 pub(crate) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
@@ -60,7 +60,7 @@ pub(crate) fn redis_config() -> RedisConfig {
 }
 
 pub(crate) async fn connect_redis() -> Redis {
-    afd_redis::test_util::connect_live(&redis_config())
+    afd_datastore::test_util::connect_live(&redis_config())
         .await
         .expect("the lane's Redis must be reachable")
 }

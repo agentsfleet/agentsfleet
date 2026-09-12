@@ -14,8 +14,8 @@
 //! rows still exist. After that the order is forced by the foreign keys:
 //! fleets reference workspaces, workspaces reference tenants.
 
+use afd_datastore::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
 use afd_db::Db;
-use afd_redis::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
 use sqlx::Row as _;
 
 use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};

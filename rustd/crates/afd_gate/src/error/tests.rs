@@ -42,7 +42,7 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // no cause. Taking the first entry made this case's `source()` assertion a
     // hostage to that vector's ordering; "unreachable" is the kind this test
     // actually means, because it is the one that wraps a driver failure.
-    let queue = afd_redis::error::one_of_each_kind()
+    let queue = afd_datastore::error::one_of_each_kind()
         .into_iter()
         .find(|(kind, _error)| *kind == "unreachable")
         .map(|(_kind, error)| error)
@@ -61,7 +61,7 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // The third column is whether the gate is a NEW causal link. Every variant
     // here wraps a failure that happened in another crate, and every one adds
     // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
-    // `afd_redis`, `afd_credential`, `afd_billing`, `afd_crypto` and
+    // `afd_datastore`, `afd_credential`, `afd_billing`, `afd_crypto` and
     // `afd_core` are each shared by many planes, so "entropy pool exhausted"
     // alone leaves an operator without the one thing they need to act on.
     //

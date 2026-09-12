@@ -14,9 +14,9 @@ use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_crypto::secret::{Kek, SecretBytes, SecretString};
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::config::{DbRole, PoolConfig};
 use afd_observability::Analytics;
-use afd_redis::config::{RedisConfig, RedisRole};
 use afd_sse::{Ceiling, Live};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
@@ -32,7 +32,7 @@ fn plane() -> ServingPlane {
     )
     .expect("the unreachable database URL is valid");
     let database = afd_db::Db::unreachable(&database_config);
-    let queue = afd_redis::Redis::unreachable(&RedisConfig::from_url(
+    let queue = afd_datastore::Redis::unreachable(&RedisConfig::from_url(
         RedisRole::Api,
         "redis://127.0.0.1:1".to_owned(),
     ))

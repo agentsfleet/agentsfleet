@@ -63,8 +63,8 @@ pub mod error;
 pub mod sql;
 
 use afd_core::id::Uuid7;
+use afd_datastore::Redis;
 use afd_db::Db;
-use afd_redis::Redis;
 use afd_vault::Vault;
 use sqlx::Row as _;
 
@@ -74,10 +74,10 @@ pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};
 
 // Re-exported because it is part of [`Ingress::deliver`]'s answer, and a caller
-// that has to name `afd_redis` to read this crate's return type would be a
+// that has to name `afd_datastore` to read this crate's return type would be a
 // caller depending on a queue it never opens. `afd_api` states in its own
 // manifest that nothing in it opens a pool, and that stays true through here.
-pub use afd_redis::streams::Appended;
+pub use afd_datastore::streams::Appended;
 
 /// The context a failed fleet read reports under.
 const CONTEXT_BINDING: &str = "resolve a webhook binding";

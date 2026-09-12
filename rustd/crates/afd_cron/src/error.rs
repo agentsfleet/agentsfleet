@@ -81,7 +81,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue would not take the fire")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 
     /// The external scheduler could not be reached at all.

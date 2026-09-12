@@ -36,8 +36,8 @@
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
+use afd_datastore::OutboundDelivery;
 use afd_db::Db;
-use afd_redis::OutboundDelivery;
 use serde::{Deserialize, Serialize};
 
 use crate::poster::{Deliver, Verdict};

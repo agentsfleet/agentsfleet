@@ -21,7 +21,7 @@
 //! retry that appends it twice.
 
 use afd_core::error_code;
-use afd_redis::{FleetStreams, ReadyIndex, Redis};
+use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_wire::event::{Entry, EventType};
 
 use crate::error::Result;

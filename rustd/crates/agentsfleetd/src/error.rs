@@ -147,7 +147,7 @@ pub enum BootFailure {
     Database(#[from] afd_db::Error),
     /// Redis would not answer.
     #[error("agentsfleetd cannot boot: the API queue would not answer")]
-    Queue(#[from] afd_redis::Error),
+    Queue(#[from] afd_datastore::Error),
     /// The port could not be bound.
     #[error("agentsfleetd cannot listen")]
     Listen(#[from] std::io::Error),

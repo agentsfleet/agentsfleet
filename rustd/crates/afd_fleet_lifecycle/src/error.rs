@@ -60,7 +60,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the fleet lifecycle would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 
     #[error("statement failed during {context}")]

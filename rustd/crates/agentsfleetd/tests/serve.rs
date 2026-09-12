@@ -151,7 +151,7 @@ fn test_every_boot_failure_renders_a_reason() {
         "an io error lifts to the listen variant on its own"
     );
 
-    let (_kind, queue_source) = afd_redis::error::one_of_each_kind()
+    let (_kind, queue_source) = afd_datastore::error::one_of_each_kind()
         .into_iter()
         .next()
         .expect("the Redis error fixture is exhaustive");

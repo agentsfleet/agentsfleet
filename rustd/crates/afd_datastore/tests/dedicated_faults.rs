@@ -14,8 +14,8 @@
 
 use std::time::{Duration, Instant};
 
-use afd_redis::Dedicated;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Dedicated;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use redis::Value;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};

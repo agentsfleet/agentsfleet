@@ -45,9 +45,9 @@ use std::collections::BTreeSet;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::SubscriptionHub;
+use afd_datastore::streams::FleetStreams;
 use afd_events::{Filter, History, MAX_LIMIT};
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::FleetStreams;
 use afd_sse::{channel, tail};
 use futures_util::StreamExt as _;
 
@@ -204,7 +204,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
             .await
             .expect("the publish reaches Redis");
         match tokio::time::timeout(std::time::Duration::from_millis(100), primer.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == marker => {
+            Ok(Ok(afd_datastore::hub::Received::Message(message))) if message.payload == marker => {
                 break;
             }
             Ok(Ok(_other)) => {}

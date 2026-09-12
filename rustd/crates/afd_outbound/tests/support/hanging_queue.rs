@@ -4,7 +4,7 @@
 //! the worker does when its READ keeps failing, so this server needs to do
 //! exactly three things — let a connection open, satisfy the client's own
 //! setup, and refuse the read while counting how often it was asked. It is not
-//! a Redis: `afd_redis`'s own suites own the protocol-shaped fake, and a second
+//! a Redis: `afd_datastore`'s own suites own the protocol-shaped fake, and a second
 //! general one here would be a second thing to keep true.
 //!
 //! It does parse RESP arrays, because it has to. The client pipelines its

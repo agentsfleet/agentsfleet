@@ -31,7 +31,7 @@ afd_db.workspace = true
 afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
-afd_redis.workspace = true
+afd_datastore.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_wire.workspace = true
@@ -45,7 +45,7 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_datastore/test-util"]
 
 [dev-dependencies]
 # The race the resolve exists to decide is worthless single-threaded: the

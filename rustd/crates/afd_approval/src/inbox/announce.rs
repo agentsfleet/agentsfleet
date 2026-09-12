@@ -18,7 +18,7 @@
 
 use std::borrow::Cow;
 
-use afd_redis::FleetStreams;
+use afd_datastore::FleetStreams;
 use afd_wire::tail::{FleetCounters, TailFrame};
 
 use super::Inbox;

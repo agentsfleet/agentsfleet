@@ -74,7 +74,7 @@ pub(crate) enum ErrorKind {
     #[error("the store holding the connect nonce would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 
     /// The entropy source would not answer, or produced no usable value.

@@ -27,11 +27,11 @@
 
 use std::time::Duration;
 
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Row as _;
 
 /// The knob `make test-integration-rustd` exports the lane's Redis under.
@@ -59,7 +59,7 @@ impl EventsLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_redis::test_util::connect_live(&redis_config())
+        let queue = afd_datastore::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

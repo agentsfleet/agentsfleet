@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_datastore", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.30.0"
@@ -98,7 +98,7 @@ afd_ingress = { path = "crates/afd_ingress" }
 afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
 afd_outbound = { path = "crates/afd_outbound" }
-afd_redis = { path = "crates/afd_redis" }
+afd_datastore = { path = "crates/afd_datastore" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
@@ -494,7 +494,7 @@ axum = { version = "0.8.9", default-features = false, features = [
     "http2",
     "tokio",
 ] }
-# The retry LOOP, rather than the schedule. `afd_redis::Backoff` computes the
+# The retry LOOP, rather than the schedule. `afd_datastore::Backoff` computes the
 # delays and is proven on the subscription hub's reconnect; what was hand-rolled
 # beside it was the counter and the terminal rule — and the loop guard is
 # precisely where the Zig install shipped its bug, leaving the last delay
@@ -716,7 +716,7 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # NOTE, and it is a measurement note rather than a style one: `tracing`'s `log`
 # feature is NOT requested here, but sqlx-core and sqlx-postgres request it and
 # Cargo unifies features across the workspace, so it is on for every crate —
-# afd_redis included, which never asked for it. With `log` enabled the event
+# afd_datastore included, which never asked for it. With `log` enabled the event
 # macros compile each field expression TWICE, once for the event and once for a
 # `log` record that never runs when a subscriber is installed, and llvm-cov maps
 # both copies to the same source line and reports the DEAD one. The consequence
