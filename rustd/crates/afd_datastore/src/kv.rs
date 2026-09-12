@@ -14,6 +14,8 @@
 //! shapes belong beside the sweeper and the resolver that also read them. What
 //! this module knows is that a string went in and a string came out.
 
+use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
+
 use crate::client::Redis;
 use crate::error::Result;
 
@@ -169,6 +171,23 @@ impl Redis {
     /// Returns a command error when a page fails, and a timeout error when one
     /// page passes the deadline.
     pub async fn scan_keys(&self, glob: &str, page_hint: usize) -> Result<Vec<String>> {
+        // `SCAN` is a walk of one node, not a keyed command, so it is asked of
+        // every primary the cluster currently names — concurrently, because
+        // the nodes are independent and a key lives on exactly one of them.
+        let primaries = crate::topology::primaries(self).await?;
+        let walks = primaries
+            .into_iter()
+            .map(|node| self.scan_node(node, glob, page_hint));
+        let per_node = futures_util::future::try_join_all(walks).await?;
+        Ok(per_node.into_iter().flatten().collect())
+    }
+
+    async fn scan_node(
+        &self,
+        node: crate::topology::NodeAddress,
+        glob: &str,
+        page_hint: usize,
+    ) -> Result<Vec<String>> {
         let mut found = Vec::new();
         let mut cursor = SCAN_CURSOR_START.to_owned();
         loop {
@@ -178,10 +197,14 @@ impl Redis {
                 .arg(glob)
                 .arg(ARG_COUNT)
                 .arg(page_hint);
+            let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::ByAddress {
+                host: node.host.clone(),
+                port: node.port,
+            });
             // `redis` decodes the two-element reply into the tuple directly, so
-            // there is no reply-shape parser here to get wrong — the Zig one is
-            // forty lines and can refuse a page larger than its fixed buffer.
-            let (next, keys): (String, Vec<String>) = self.command(CMD_SCAN, glob, &cmd).await?;
+            // there is no reply-shape parser here to get wrong.
+            let (next, keys): (String, Vec<String>) =
+                self.route(CMD_SCAN, glob, &cmd, routing).await?;
             found.extend(keys);
             if next == SCAN_CURSOR_START {
                 return Ok(found);

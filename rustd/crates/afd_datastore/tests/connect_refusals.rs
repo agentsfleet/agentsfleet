@@ -67,7 +67,7 @@ async fn test_a_url_the_client_cannot_be_built_from_is_refused_by_role() {
 ///
 /// # The URL has to be `rediss://` or this proves nothing
 ///
-/// `build_client` takes the TLS branch only when a CA is configured AND the URL
+/// the transport takes the TLS branch only when a CA is configured AND the URL
 /// is a TLS one — a plain URL with a CA beside it falls through to
 /// `Client::open`, which is the branch the test above already covers. A version
 /// of this test on a `redis://` URL passed for that reason while

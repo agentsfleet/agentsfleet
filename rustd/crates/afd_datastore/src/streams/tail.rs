@@ -10,7 +10,9 @@ use serde::Serialize;
 use super::{FleetStreams, fleet_activity_channel};
 use crate::error::Result;
 
-const CMD_PUBLISH: &str = "PUBLISH";
+/// Sharded: the channel routes by its own slot, so a publish reaches the one
+/// node serving it rather than being broadcast to every node in the cluster.
+const CMD_PUBLISH: &str = "SPUBLISH";
 
 /// A daemon-authored frame could not be published; the tail loses it and the
 /// row it announces does not care.

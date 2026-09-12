@@ -3,17 +3,19 @@
 //! # What "dedicated" buys, and why [`Redis`] cannot be it
 //!
 //! [`Redis`] is shared by everything in the process: cloning it shares one
-//! socket, which is the property that makes a pool unnecessary. The cost is
-//! that a blocking command on it is not a slow command, it is a STOPPED
-//! process — Redis executes commands on a connection in order, so an
-//! `XREADGROUP … BLOCK 5000` parked at the head of the queue holds every other
-//! caller's command behind it for five seconds. `client.rs` says as much, and
-//! `streams/consume.rs` never passes `BLOCK` because of it.
+//! cluster connection, which holds exactly one socket per node. The driver
+//! executes commands on a socket in order and applies one reply deadline to
+//! every command on a connection, so an `XREADGROUP … BLOCK 5000` parked on
+//! the shared handle holds the owning node's only socket for five seconds and
+//! every other caller's command behind it — and raising the shared deadline
+//! to cover the park would make every request-path hang wait that long too.
+//! `streams/consume.rs` never passes `BLOCK` on the shared handle for exactly
+//! that reason.
 //!
-//! A consumer that wants to park has to bring its own socket. That is the
-//! whole of this type: a connection with no other holder, opened by the one
-//! component that will block on it. [`crate::hub`] is the precedent — pub/sub
-//! takes a connection over, so the hub owns one and multiplexes locally.
+//! A consumer that wants to park has to bring its own connection. That is the
+//! whole of this type: a cluster connection with no other holder, opened by
+//! the one component that will block on it, with a reply deadline sized to
+//! its park. [`crate::hub`] is the precedent — pub/sub owns one too.
 //!
 //! # Not cloneable, deliberately
 //!
@@ -26,57 +28,54 @@
 //!
 //! # The deadline covers the park, and the caller declares the park
 //!
-//! Every command through [`Redis::command`] carries `request_timeout`, because
-//! a request-path command that hangs is an outage. A blocking read is
-//! different: parking IS the behaviour, so its deadline has to be LONGER than
-//! the longest park a caller will ask for, or the driver gives up on a read
-//! the server is still honouring. That is not hypothetical — the driver's own
-//! default reply deadline is half a second, and a connection opened without
-//! naming a longer one fails every `BLOCK 5000` at 500 ms while the server
-//! keeps the socket parked for the remaining four and a half. Every command
-//! queued behind it then times out too, and the reader never sees an entry.
+//! A blocking read is different from a request-path command: parking IS the
+//! behaviour, so its deadline has to be LONGER than the longest park a caller
+//! will ask for, or the driver gives up on a read the server is still
+//! honouring. The driver's own default reply deadline is half a second, and a
+//! connection opened without naming a longer one fails every `BLOCK 5000` at
+//! 500 ms while the server keeps the socket parked for the remaining four and
+//! a half. So [`Dedicated::connect`] takes the longest park the owner will
+//! request, and the reply deadline is that park plus the role's
+//! `request_timeout`: the server's bound, then the ordinary allowance for the
+//! answer to travel. Still a bound — a peer that vanishes without closing the
+//! socket is noticed, and `BLOCK 0` (wait forever) is refused by construction
+//! because no park is declared for it.
 //!
-//! So [`Dedicated::connect`] takes the longest park the owner will request,
-//! and the reply deadline is that park plus the role's `request_timeout`: the
-//! server's bound, then the ordinary allowance for the answer to travel. Still
-//! a bound — a peer that vanishes without closing the socket is noticed, and
-//! `BLOCK 0` (wait forever) is refused by construction because no park is
-//! declared for it.
-//!
-//! The DIAL is not governed by this allowance, which is worth stating because
-//! it looks as though it should be. The driver wraps the whole setup — socket,
-//! handshake and all — in its own `connection_timeout`, and the retry policy
-//! still bounds each attempt at `CONNECT_ATTEMPT_TIMEOUT`. So `client.rs`'s
-//! ladder arithmetic holds here too: the driver's own error is still the first
-//! to fire on a peer that accepts a socket and then says nothing, and it keeps
-//! its source chain. Raising the REPLY deadline buys the park without spending
-//! the dial's diagnostics.
+//! The DIAL is not governed by this allowance: [`crate::transport`] bounds
+//! every attempt, so a peer that accepts a socket and then says nothing is
+//! reported by the driver's own error, with its source chain intact.
 //!
 //! # A dropped socket heals, as the shared handle's does
 //!
-//! The socket is held through the driver's [`ConnectionManager`], the same way
-//! [`Redis`] holds its own: a command that meets a dead socket fails, the
-//! manager redials in the background, and the next command goes down the new
-//! socket. The ownership rule above is unchanged — the manager is `Clone`, and
-//! this type does not hand it out.
+//! The driver redials a node whose socket died and re-reads the slot map on a
+//! redirect; a command that meets a dead socket fails, and the next one goes
+//! down the new socket. The ownership rule above is unchanged.
+
 use std::time::Duration;
 
-use redis::aio::ConnectionManager;
+use redis::cluster_async::ClusterConnection;
 use redis::{Cmd, FromRedisValue, Value};
 
-use crate::client::{build_client, connect_retry_policy};
 use crate::config::{RedisConfig, RedisRole};
-use crate::error::{self, Error, ErrorKind, Result};
+use crate::error::{self, Result};
+use crate::transport;
 
-/// A Redis connection with exactly one owner.
+/// A cluster connection with exactly one owner.
 ///
 /// See the module note: this exists so a component may issue a command that
 /// parks — and it is the type system, not a comment, that keeps a second
 /// caller off the socket.
-#[derive(Debug)]
 pub struct Dedicated {
     role: RedisRole,
-    manager: ConnectionManager,
+    connection: ClusterConnection,
+}
+
+impl std::fmt::Debug for Dedicated {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Dedicated")
+            .field("role", &self.role)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Dedicated {
@@ -89,40 +88,24 @@ impl Dedicated {
     ///
     /// Unlike [`crate::Redis::connect`] there is no ping: the caller is a
     /// background consumer rather than boot, and a consumer that cannot reach
-    /// Redis retries rather than failing a process that is otherwise healthy.
-    /// Boot's promise that Redis SERVES is made once, by the shared handle.
+    /// the cluster retries rather than failing a process that is otherwise
+    /// healthy. Boot's promise that the cluster SERVES is made once, by the
+    /// shared handle.
     ///
     /// # Errors
-    /// Returns an unavailable error when Redis cannot be reached within the
-    /// role's `connect_timeout`, and a config error when a certificate
+    /// Returns an unavailable error when the cluster cannot be reached within
+    /// the role's `connect_timeout`, and a config error when a certificate
     /// authority file was named but not readable.
     pub async fn connect(config: &RedisConfig, longest_park: Duration) -> Result<Self> {
         let role = config.role().tag();
-        let client = build_client(config)?;
-        let policy = connect_retry_policy()
-            .set_response_timeout(Some(longest_park + config.request_timeout()));
-        let dial = ConnectionManager::new_with_config(client, policy);
-        let manager = match tokio::time::timeout(config.connect_timeout(), dial).await {
-            Ok(dialed) => dialed.map_err(|source| {
-                Error::new(ErrorKind::Unreachable {
-                    role,
-                    source: Box::new(source),
-                })
-            })?,
-            Err(_elapsed) => {
-                return Err(error::connect_timed_out(
-                    role,
-                    config.connect_timeout().as_millis(),
-                ));
-            }
-        };
-
+        let connection =
+            transport::connect(config, longest_park + config.request_timeout()).await?;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let park_ms = longest_park.as_millis();
         tracing::debug!(role, park_ms, event = "redis_dedicated_connected");
         Ok(Self {
             role: config.role(),
-            manager,
+            connection,
         })
     }
 
@@ -141,8 +124,8 @@ impl Dedicated {
     /// # Errors
     /// Returns a group-missing error for `NOGROUP`, an unavailable error when
     /// the connection dropped or the deadline passed, a command error
-    /// otherwise, and an unexpected-reply error when Redis answers a shape `T`
-    /// cannot read.
+    /// otherwise, and an unexpected-reply error when the server answers a
+    /// shape `T` cannot read.
     pub async fn command<T: FromRedisValue>(
         &mut self,
         name: &'static str,
@@ -150,11 +133,11 @@ impl Dedicated {
         cmd: &Cmd,
     ) -> Result<T> {
         let value = cmd
-            .query_async::<Value>(&mut self.manager)
+            .query_async::<Value>(&mut self.connection)
             .await
+            .and_then(Value::extract_error)
             .map_err(|source| error::classify(name, context, source))?;
-
-        // A parse failure is not a Redis failure — see [`crate::Redis::command`].
+        // A parse failure is not a datastore failure — see [`crate::Redis::command`].
         T::from_redis_value(value).map_err(|_parse| error::unexpected_reply(name))
     }
 }

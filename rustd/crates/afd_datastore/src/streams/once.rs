@@ -138,8 +138,15 @@ impl OnceScope {
     /// [`FleetStreams::forget_once`] deletes it, and a pair that drifted would
     /// leave the write remembered forever while the delete removed nothing — an
     /// intent that could never run again.
-    fn key(self, once_id: &str) -> String {
-        format!("{}{once_id}", self.prefix())
+    /// The marker key, tagged with the stream it guards.
+    ///
+    /// The braces make the whole stream key the hash tag, so the marker and
+    /// the stream land in one slot and the two-key script below is legal on a
+    /// cluster — Invariant 4 by construction rather than by luck. The stream
+    /// key itself is unchanged, so every reader of `fleet:<id>:events` is
+    /// untouched; only these markers moved, and they are the crate's own.
+    fn key(self, stream_key: &str, once_id: &str) -> String {
+        format!("{{{stream_key}}}:{}{once_id}", self.prefix())
     }
 }
 
@@ -211,7 +218,7 @@ impl FleetStreams {
         let key = fleet_stream_key(fleet_id);
         let mut invocation = APPEND_ONCE.prepare_invoke();
         invocation
-            .key(scope.key(once_id))
+            .key(scope.key(&key, once_id))
             .key(&key)
             .arg(STREAM_MAXLEN)
             .arg(scope.ttl_seconds());
@@ -239,8 +246,8 @@ impl FleetStreams {
     ///
     /// # Errors
     /// Returns a command error when the delete fails.
-    pub async fn forget_once(&self, scope: OnceScope, once_id: &str) -> Result<()> {
-        let key = scope.key(once_id);
+    pub async fn forget_once(&self, scope: OnceScope, once_id: &str, fleet_id: &str) -> Result<()> {
+        let key = scope.key(&fleet_stream_key(fleet_id), once_id);
         let mut cmd = redis::cmd(CMD_DEL);
         cmd.arg(&key);
         let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;

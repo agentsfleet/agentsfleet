@@ -85,7 +85,7 @@ impl RedisConfig {
         // the hand-written check passed them to `Client::open` and the operator
         // met a typo as an UNREACHABLE at connect time — a message pointing at
         // the network for a fault in the environment. `parse_redis_url` is what
-        // `build_client` will run on this string anyway, so validating with
+        // the transport builder will run on this string anyway, so validating with
         // anything else is a second, disagreeing opinion about the same value.
         //
         // It also accepts what the client accepts — `valkey://`, `unix://`,

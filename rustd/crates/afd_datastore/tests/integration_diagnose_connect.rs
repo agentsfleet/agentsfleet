@@ -63,7 +63,7 @@ fn report(label: &str, mut micros: Vec<u128>) {
 async fn diagnose_where_connect_spends_its_time() {
     let config = config();
 
-    // Phase 1: the synchronous half. `build_client` reads the CA off disk and
+    // Phase 1: the synchronous half. the transport reads the CA off disk and
     // builds the TLS client inline on this worker -- no `spawn_blocking`.
     let mut build = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -71,7 +71,7 @@ async fn diagnose_where_connect_spends_its_time() {
         let _client = afd_datastore::test_util::build_client_for_diagnosis(&config);
         build.push(started.elapsed().as_micros());
     }
-    report("build_client (sync half)", build);
+    report("transport::client (sync half)", build);
 
     // Phase 2: the whole thing, sequentially, on an otherwise quiet runtime.
     let mut whole = Vec::with_capacity(SAMPLES);
