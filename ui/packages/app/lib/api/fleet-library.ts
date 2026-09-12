@@ -38,22 +38,28 @@ const GALLERY_PAGE_LIMIT = 100;
 // What an onboard POST is allowed to take, and why it is not the transport's
 // default. Onboarding is the one write on this surface that waits on a third
 // party: the backend fetches the repository tarball from GitHub before it
-// validates, stores or upserts anything. `rustd/crates/afd_library/src/github.rs`
-// gives that fetch `CONNECT_TIMEOUT` 5s plus `REQUEST_TIMEOUT` 60s, so 65s is
-// the backend's own ceiling on the fetch alone; the tar extraction, the
-// object-store write, the catalog upsert and the round trip come after it.
+// validates, stores or upserts anything.
 //
-// `DEFAULT_REQUEST_TIMEOUT_MS` is 10s, and a POST gets `maxAttempts: 1`. Without
-// a signal of its own the dialog therefore abandoned the import at 10 seconds —
-// reporting "the backend took too long to answer" while the daemon was still
-// legitimately fetching — for any repository GitHub served slower than that.
-// An explicit `init.signal` wins over the default in `client.ts`, and with one
-// attempt the retry deadline never cuts it short.
-// Exported for the pin in `fleet-library.test.ts`, which holds it above the
-// backend's fetch ceiling the way `client.defaults.test.ts` holds the transport
-// default equal to the stream backfill's — a pin, not an import, so neither
-// module depends on the other.
-export const ONBOARD_BUNDLE_TIMEOUT_MS = 90_000;
+// `DEFAULT_REQUEST_TIMEOUT_MS` is 10s and a POST gets `maxAttempts: 1`, which
+// is what failed: the acceptance trace for the operator-catalog spec records
+// `POST /admin/fleet-libraries` returning 200 at 10,102.9ms — our own abort at
+// the 10s default, reported to the operator as "the backend took too long to
+// answer" while the daemon was still legitimately fetching.
+//
+// 30s, not more. A warm import of the acceptance sample measured under 6s
+// end-to-end against api-dev, so this is roughly five times the observed cost:
+// enough for a cold Fly machine, a cold function and the two TLS handshakes the
+// daemon makes to api.github.com and codeload.github.com, without asking an
+// operator to watch a spinner for a minute. It deliberately does NOT cover
+// `github.rs`'s own 60s `REQUEST_TIMEOUT`, which is a capacity bound sized for
+// a worst-case 8 MiB bundle over a bad link, not an expected latency — a fetch
+// genuinely running that long should surface as a failure, not a longer wait.
+//
+// It must also stay UNDER the route segment's `maxDuration` (60s, declared on
+// the two pages that host these actions) so our own message wins the race
+// against a platform kill, which would surface as an opaque 504 instead.
+// `fleet-library.test.ts` pins that ordering.
+export const ONBOARD_BUNDLE_TIMEOUT_MS = 30_000;
 
 /** One wire page: `items` is that page alone, `next_cursor` null on the last. */
 type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
