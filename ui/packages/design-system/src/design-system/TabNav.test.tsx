@@ -41,6 +41,24 @@ describe("TabNav", () => {
     expect(onNavigate).toHaveBeenCalledWith("/settings/api-keys");
   });
 
+  it("renders an item's icon ahead of its label, and no slot when there is none", () => {
+    render(
+      <TabNav
+        label="x"
+        activeHref="/settings"
+        items={[
+          { label: "Basic Info", href: "/settings", icon: <svg data-testid="glyph" aria-hidden="true" /> },
+          ...ITEMS.slice(1),
+        ]}
+      />,
+    );
+    const withIcon = screen.getByRole("link", { name: "Basic Info" });
+    expect(withIcon.firstElementChild?.getAttribute("data-testid")).toBe("glyph");
+    // The label is still the whole accessible name: the glyph is decorative.
+    expect(withIcon.textContent).toBe("Basic Info");
+    expect(screen.getByRole("link", { name: "API Keys" }).querySelector("svg")).toBeNull();
+  });
+
   it("falls back to a native <a href> when no linkComponent is injected", () => {
     render(<TabNav label="x" items={ITEMS} activeHref="/settings" />);
     const link = screen.getByRole("link", { name: "Basic Info" });

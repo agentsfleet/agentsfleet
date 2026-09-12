@@ -19,9 +19,12 @@ describe("FleetSubnavigation", () => {
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")?.getAttribute("class"))
       .toContain("lucide-brain");
-    // One strip at every width: no vertical-rail variant from `lg`.
+    // The app's one tab style — an underline over a hairline rail, shared
+    // with Billing — and one strip at every width, no `lg:` rail variant.
     expect(screen.getByRole("navigation").className).toContain("border-b");
     expect(screen.getByRole("navigation").className).not.toMatch(/\blg:/);
+    expect(screen.getByRole("link", { name: "Memory" }).className).toContain("border-b-2");
+    expect(screen.getByRole("link", { name: "Memory" }).className).not.toContain("rounded-md");
   });
 
   it("defaults a missing view to Chat and rejects unknown views", () => {
