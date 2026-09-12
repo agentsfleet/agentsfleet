@@ -106,7 +106,6 @@ export const CHECKS_BADGE_FAILED_SUFFIX = "checks failed";
 export const CHECKS_BADGE_STALE = "checks stale";
 export const CHECKS_BADGE_PENDING = "checks pending";
 export const CHECKS_BADGE_NEVER = "checks never run";
-export const CHECKS_DIALOG_TITLE = "Checks";
 export const CHECKS_DIALOG_DESCRIPTION =
   "What this runner's sandbox is, and whether the host has proven it.";
 

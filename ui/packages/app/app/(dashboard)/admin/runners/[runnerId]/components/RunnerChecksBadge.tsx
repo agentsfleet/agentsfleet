@@ -22,7 +22,6 @@ import {
   CHECKS_BADGE_PENDING,
   CHECKS_BADGE_STALE,
   CHECKS_DIALOG_DESCRIPTION,
-  CHECKS_DIALOG_TITLE,
 } from "./runner-copy";
 
 const ICON_SIZE = 13;
@@ -92,8 +91,11 @@ export function RunnerChecksBadge({ runner }: { runner: RunnerDetail }) {
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
+          {/* Titled after the host, not "Checks": the report's own first
+              heading is "Checks", and a dialog that said it too read the
+              word twice in three lines. */}
           <DialogHeader>
-            <DialogTitle>{CHECKS_DIALOG_TITLE}</DialogTitle>
+            <DialogTitle className="font-mono">{runner.host_id}</DialogTitle>
             <DialogDescription className="font-sans">{CHECKS_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <RunnerChecksReport runner={runner} />
