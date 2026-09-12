@@ -35,8 +35,12 @@ impl Repairs {
         }
 
         let mut forgotten = Vec::with_capacity(page.len());
-        for id in &page {
-            match self.streams.forget_once(OnceScope::FleetIntent, id).await {
+        for (id, fleet_id) in &page {
+            match self
+                .streams
+                .forget_once(OnceScope::FleetIntent, id, fleet_id)
+                .await
+            {
                 Ok(()) => forgotten.push(id.clone()),
                 // Left for the next pass: the row keeps its uncleared marker,
                 // so nothing is lost by not recording this one.
@@ -65,7 +69,9 @@ impl Repairs {
     }
 
     /// The intents whose keys are still in Redis.
-    async fn cleanup_page(&self, now: UnixMillis) -> Result<Vec<String>> {
+    /// Each verification with its fleet: the marker key is tagged with the
+    /// fleet's stream, so forgetting it needs both.
+    async fn cleanup_page(&self, now: UnixMillis) -> Result<Vec<(String, String)>> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::sweep::SELECT_REPAIR_VERIFICATION_CLEANUP)
             .bind(now.as_millis())
@@ -74,7 +80,15 @@ impl Repairs {
             .await
             .map_err(query(CONTEXT_CLEANUP))?;
         rows.iter()
-            .map(|row| row.try_get::<String, _>(0).map_err(query(CONTEXT_CLEANUP)))
+            .map(|row| {
+                let id = row
+                    .try_get::<String, _>(0)
+                    .map_err(query(CONTEXT_CLEANUP))?;
+                let fleet_id = row
+                    .try_get::<String, _>(1)
+                    .map_err(query(CONTEXT_CLEANUP))?;
+                Ok((id, fleet_id))
+            })
             .collect()
     }
 

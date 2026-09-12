@@ -48,8 +48,8 @@ fn impatient() -> ExponentialBuilder {
 fn pubsub_rules() -> Vec<(&'static str, Reply)> {
     vec![
         ("PING", Reply::Raw("+PONG\r\n")),
-        ("SUBSCRIBE", Reply::SubscribeAck),
-        ("UNSUBSCRIBE", Reply::UnsubscribeAck),
+        ("SSUBSCRIBE", Reply::SubscribeAck),
+        ("SUNSUBSCRIBE", Reply::UnsubscribeAck),
     ]
 }
 
@@ -116,7 +116,7 @@ async fn test_a_redial_that_keeps_being_refused_never_counts_a_connection() {
     .expect("the fake serves, so the hub must start");
     let subscription = hub.subscribe("channel");
     until("the first SUBSCRIBE to reach the server", || {
-        server.seen().iter().any(|command| command == "SUBSCRIBE")
+        server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })
     .await;
     assert_eq!(hub.connections_opened(), 1, "the hub opens one connection");
@@ -138,7 +138,7 @@ async fn test_a_redial_that_keeps_being_refused_never_counts_a_connection() {
 }
 
 /// A redial that succeeds onto a server which has stopped honouring
-/// `SUBSCRIBE` re-counts the connection and survives the failed resubscribe.
+/// `SSUBSCRIBE` re-counts the connection and survives the failed resubscribe.
 ///
 /// This is the failover shape: the port is bound and the handshake completes,
 /// so the redial genuinely succeeds, and only the resubscribe finds out that
@@ -162,14 +162,14 @@ async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
     .expect("the fake serves, so the hub must start");
     let subscription = hub.subscribe("channel");
     until("the first SUBSCRIBE to reach the server", || {
-        server.seen().iter().any(|command| command == "SUBSCRIBE")
+        server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })
     .await;
 
-    // From here the server answers everything EXCEPT `SUBSCRIBE`, which it
+    // From here the server answers everything EXCEPT `SSUBSCRIBE`, which it
     // hangs up on. The redial completes its handshake and is counted; the
     // resubscribe that follows it is the thing that fails.
-    server.set_reply("SUBSCRIBE", Reply::Hangup);
+    server.set_reply("SSUBSCRIBE", Reply::Hangup);
     server.cut();
 
     until("the pump to redial onto the half-working server", || {
@@ -217,7 +217,7 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
     .expect("the fake serves, so the hub must start");
     let subscription = hub.subscribe("channel");
     until("the first SUBSCRIBE to reach the server", || {
-        server.seen().iter().any(|command| command == "SUBSCRIBE")
+        server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })
     .await;
     assert_eq!(hub.connections_opened(), 1, "the hub opens one connection");
@@ -225,7 +225,7 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
     // The socket stays up and quiet until the unsubscribe arrives, and dies on
     // that command specifically — so the pump meets the failure through the
     // command it issued rather than through the stream ending under it.
-    server.set_reply("UNSUBSCRIBE", Reply::Hangup);
+    server.set_reply("SUNSUBSCRIBE", Reply::Hangup);
     drop(subscription);
 
     // The redial is the proof: reaching it means the pump treated the failed
@@ -271,7 +271,7 @@ async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
 
     let first = hub.subscribe("channel");
     until("the first SUBSCRIBE to reach the server", || {
-        server.seen().iter().any(|command| command == "SUBSCRIBE")
+        server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })
     .await;
     assert_eq!(hub.connections_opened(), 1, "the hub opens one connection");
@@ -279,7 +279,7 @@ async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
     // The socket stays up and quiet until the NEXT subscribe arrives, and dies
     // on that command — so the pump meets the failure through the command it
     // issued rather than through the stream ending under it.
-    server.set_reply("SUBSCRIBE", Reply::Hangup);
+    server.set_reply("SSUBSCRIBE", Reply::Hangup);
     let second = hub.subscribe("another");
 
     // The redial is the proof: reaching it means the pump treated the failed

@@ -3,8 +3,8 @@
 //! A Rust test binary runs its tests in parallel. Opening one TLS connection
 //! per test makes connection setup the bottleneck and can exhaust a short boot
 //! deadline before Redis has accepted every handshake. Each `#[tokio::test]`
-//! also owns a distinct runtime, so its `ConnectionManager` cannot outlive that
-//! runtime and be shared process-wide. Serializing just the handshake keeps
+//! also owns a distinct runtime, so its connection cannot outlive that runtime
+//! and be shared process-wide. Serializing just the handshake keeps
 //! every manager on its owning runtime without flooding the TLS listener.
 
 use std::time::Duration;
@@ -76,13 +76,13 @@ pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
 
 /// The synchronous half of a connect, for the timing diagnostic.
 ///
-/// `build_client` reads the certificate authority off disk and builds the TLS
+/// The transport reads the certificate authority off disk and builds the TLS
 /// client INLINE — no `spawn_blocking` — so its cost is paid on whichever
-/// worker polls the connect. Whether that cost is material was asserted twice
-/// and never measured; this seam lets a test measure it instead.
+/// worker polls the connect. This seam lets a test measure it.
 ///
 /// # Errors
-/// Returns whatever [`crate::client::build_client`] returns.
-pub fn build_client_for_diagnosis(config: &RedisConfig) -> Result<redis::Client> {
-    crate::client::build_client(config)
+/// Returns a config error when the seed is not a URL or a named authority is
+/// unreadable.
+pub fn build_client_for_diagnosis(config: &RedisConfig) -> Result<redis::cluster::ClusterClient> {
+    crate::transport::client(config, config.request_timeout())
 }

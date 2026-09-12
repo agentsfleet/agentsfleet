@@ -32,6 +32,9 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
+/// The topology question every cluster client asks first.
+const CMD_CLUSTER: &str = "CLUSTER";
+
 pub(crate) use crate::subscriber::install_subscriber;
 
 /// What the fake does when a command arrives.
@@ -44,17 +47,28 @@ pub(crate) enum Reply {
     Hangup,
     /// Keep the socket open and never answer this command.
     Silent,
-    /// The confirmation Redis sends for `SUBSCRIBE`, echoing the channel the
-    /// client asked for. Built here rather than written literally because the
-    /// channel name is the test's, not this file's.
+    /// The confirmation a server sends for `SSUBSCRIBE`: a RESP3 push echoing
+    /// the channel the client asked for. Built here rather than written
+    /// literally because the channel name is the test's, not this file's, and
+    /// a push rather than an array because that is what the driver matches to
+    /// the command it is waiting on.
     SubscribeAck,
-    /// The confirmation for `UNSUBSCRIBE`, same reasoning.
+    /// The confirmation for `SUNSUBSCRIBE`, same reasoning.
     UnsubscribeAck,
+    /// The answer to `CLUSTER SLOTS` a cluster client insists on before it
+    /// sends anything else: this server owns every slot, at its own port. An
+    /// empty hostname tells the driver to keep dialling the address it came
+    /// in on. Installed by default so a test scripting one fault does not
+    /// have to know the handshake.
+    ClusterSlots,
 }
 
 /// Shared state the test drives the server through mid-flight.
 #[derive(Debug)]
 struct Control {
+    /// The port this server listens on, which the cluster topology it
+    /// advertises has to name.
+    port: u16,
     /// The rule table, mutable mid-flight: a test makes the FIRST subscribe
     /// succeed and a later one fail, which is the only way to reach a redial
     /// that connects and then cannot resubscribe.
@@ -89,10 +103,16 @@ impl FakeRedis {
     /// Rule keys are matched upper-case, because the client is free to send
     /// either spelling and does not promise which.
     pub(crate) async fn spawn(rules: &[(&str, Reply)]) -> Self {
-        let table: HashMap<String, Reply> = rules
+        let mut table: HashMap<String, Reply> = rules
             .iter()
             .map(|(name, reply)| ((*name).to_uppercase(), reply.clone()))
             .collect();
+        // The handshake a cluster client performs before its first command:
+        // a test that scripts one fault should not have to know it exists,
+        // and one that wants to break it names `CLUSTER` itself.
+        table
+            .entry(CMD_CLUSTER.to_owned())
+            .or_insert(Reply::ClusterSlots);
 
         // Port 0: the kernel picks, so parallel tests never contend for a
         // number and no test has to reserve one.
@@ -105,6 +125,7 @@ impl FakeRedis {
 
         let (cut, _first) = tokio::sync::broadcast::channel(16);
         let control = Arc::new(Control {
+            port: addr.port(),
             rules: Mutex::new(table),
             seen: Mutex::new(Vec::new()),
             cut,
@@ -231,8 +252,9 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
                 Reply::Raw(raw) => raw.as_bytes().to_vec(),
                 Reply::Hangup => return,
                 Reply::Silent => continue,
-                Reply::SubscribeAck => confirmation("subscribe", request.first_argument()),
-                Reply::UnsubscribeAck => confirmation("unsubscribe", request.first_argument()),
+                Reply::SubscribeAck => confirmation("ssubscribe", request.first_argument()),
+                Reply::UnsubscribeAck => confirmation("sunsubscribe", request.first_argument()),
+                Reply::ClusterSlots => cluster_slots(control.port),
             };
             if socket.write_all(&bytes).await.is_err() {
                 return;
@@ -266,10 +288,17 @@ impl Drop for OpenConnection {
 /// reported as one because nothing in these tests branches on it, and a fixture
 /// that tracked it would be modelling server state this file does not have.
 fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
-    let mut out = format!("*3\r\n${}\r\n{kind}\r\n${}\r\n", kind.len(), channel.len()).into_bytes();
+    // `>` is RESP3's push marker: the driver routes it to the push receiver
+    // AND treats it as the reply to the subscribe it is waiting on.
+    let mut out = format!(">3\r\n${}\r\n{kind}\r\n${}\r\n", kind.len(), channel.len()).into_bytes();
     out.extend_from_slice(channel);
     out.extend_from_slice(b"\r\n:1\r\n");
     out
+}
+
+/// One shard owning slots 0..=16383 at an unnamed host and `port`.
+fn cluster_slots(port: u16) -> Vec<u8> {
+    format!("*1\r\n*3\r\n:0\r\n:16383\r\n*2\r\n$0\r\n\r\n:{port}\r\n").into_bytes()
 }
 
 #[path = "fake_redis/resp.rs"]

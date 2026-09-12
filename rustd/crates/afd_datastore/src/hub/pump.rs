@@ -1,49 +1,49 @@
-//! The task that owns the pub/sub socket.
+//! The task that owns the pub/sub connection.
 //!
 //! Split from `hub.rs` per RULE FLL, along the seam that matters: `hub.rs` is
-//! the refcount and what a reader sees, this is the socket and what happens
-//! when it dies.
+//! the refcount and what a reader sees, this is the connection and what
+//! happens when it dies.
 //!
-//! # Why the sink and the stream are split
+//! # Sharded pub/sub, and the push the cluster sends when a slot moves
 //!
-//! A `PubSub` connection cannot be read and commanded at the same time through
-//! one handle — the message stream borrows it. `split()` gives a sink that
-//! subscribes and a stream that yields, so a reader arriving mid-flight is
-//! subscribed without interrupting delivery to everyone else.
+//! Every subscription is `SSUBSCRIBE`: the channel routes by its own slot, so
+//! a publish reaches one node rather than being broadcast to all of them. The
+//! server answers with RESP3 pushes on the same connection — `smessage` for a
+//! frame, and `sunsubscribe` when the node stops serving the channel. That
+//! last one is the case measured on the local cluster: a slot migration
+//! strands the subscription, the old owner pushes `sunsubscribe`, and the new
+//! owner counts zero subscribers until someone subscribes again. So an
+//! `sunsubscribe` for a channel a reader still holds is re-issued here, and
+//! one for a channel nobody holds is the echo of our own `SUNSUBSCRIBE`.
 //!
 //! # The reconnect schedule is `backon`'s
 //!
-//! This file used to carry its own: a two-field `Backoff` that doubled, capped
-//! and added a spread of at most a quarter, fed by a jitter source derived from
-//! the process id and a monotonic reading. Every part of that is
-//! [`ExponentialBuilder`] — factor, floor, ceiling, and a jitter the library
-//! seeds itself — and the loop around it is `backon`'s `retry`, which is what
-//! the redial has always been: call a fallible thing, sleep, call it again.
-//!
-//! The one behavioural change is the spread. The hand-rolled version added at
-//! most 25% of the current delay; `backon` adds a random offset anywhere inside
-//! it. Wider, which is the direction that breaks lockstep better.
+//! [`ExponentialBuilder`] carries the factor, floor, ceiling and a jitter the
+//! library seeds itself, and the loop around it is `backon`'s `retry`: call a
+//! fallible thing, sleep, call it again, until the cluster answers.
 
 use std::sync::Arc;
 
 use backon::{ExponentialBuilder, Retryable as _};
-use futures_util::StreamExt as _;
-use redis::aio::{PubSubSink, PubSubStream};
+use redis::cluster_async::ClusterConnection;
+use redis::{PushInfo, PushKind, Value};
+use tokio::sync::mpsc;
 
 use super::{Command, HubInner, Message};
 use crate::config::RedisConfig;
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
+use crate::transport;
 
 /// Opens the first connection and leaves a task owning it.
 ///
-/// The FIRST connection is awaited, so a hub that cannot reach Redis at boot
-/// fails boot rather than starting and reconnecting forever behind a `/readyz`
-/// that says nothing is wrong.
+/// The FIRST connection is awaited, so a hub that cannot reach the cluster at
+/// boot fails boot rather than starting and reconnecting forever behind a
+/// `/readyz` that says nothing is wrong.
 pub(super) async fn spawn(
     config: RedisConfig,
     schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
-    commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
+    commands: mpsc::UnboundedReceiver<Command>,
 ) -> Result<()> {
     let connection = connect(&config).await?;
     inner.record_connection();
@@ -51,38 +51,34 @@ pub(super) async fn spawn(
     Ok(())
 }
 
-/// A live pub/sub connection, split into its two halves.
+/// A live pub/sub connection and the pushes the server sends down it.
 struct Connection {
-    sink: PubSubSink,
-    stream: PubSubStream,
+    connection: ClusterConnection,
+    pushes: mpsc::UnboundedReceiver<PushInfo>,
 }
 
 async fn connect(config: &RedisConfig) -> Result<Connection> {
-    let client = crate::client::build_client(config)?;
-    let pubsub = client.get_async_pubsub().await.map_err(|source| {
-        Error::new(ErrorKind::Unreachable {
-            role: config.role().tag(),
-            source: Box::new(source),
-        })
-    })?;
-
-    let (sink, stream) = pubsub.split();
-    Ok(Connection { sink, stream })
+    let pushed = transport::connect_with_pushes(config, config.request_timeout()).await?;
+    Ok(Connection {
+        connection: pushed.connection,
+        pushes: pushed.pushes,
+    })
 }
 
-/// Pumps messages until the process ends, reconnecting whenever the socket does.
+/// Pumps messages until the process ends, reconnecting whenever the
+/// connection does.
 async fn run(
     config: RedisConfig,
     schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
-    mut commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
+    mut commands: mpsc::UnboundedReceiver<Command>,
     mut connection: Connection,
 ) {
     loop {
         // Anything subscribed before this connection existed — the whole map
         // after a reconnect — is subscribed again here. A reader that never
         // noticed the drop must not be left listening to nothing.
-        resubscribe(&mut connection.sink, &inner.live_channels()).await;
+        resubscribe(&mut connection.connection, &inner.live_channels()).await;
 
         let dropped = pump(&inner, &mut commands, &mut connection).await;
         if !dropped {
@@ -100,20 +96,14 @@ async fn run(
     }
 }
 
-/// Redials until Redis answers, on the schedule the hub was started with.
+/// Redials until the cluster answers, on the schedule the hub was started
+/// with.
 ///
 /// Infallible by signature, and that is the pub/sub contract: a reader holds a
 /// receiver rather than a connection, so there is no caller to hand a failure
 /// to and nothing sensible to do with one but try again. `production_backoff`
-/// says so with `without_max_times` — the loop ends when Redis comes back and
-/// at no other point.
-///
-/// `notify` is where the per-attempt line comes from, and it is `FnMut(&E,
-/// Duration)` — `backon` counts attempts to drive its own schedule but does not
-/// hand the number out, so the counter stays. What DID go with the old loop is
-/// the reset: this counter is born at the start of one redial and dies when
-/// Redis answers, where the previous one lived across reconnects and had to be
-/// zeroed by hand afterwards.
+/// says so with `without_max_times` — the loop ends when the cluster comes
+/// back and at no other point.
 async fn redial(config: &RedisConfig, schedule: ExponentialBuilder) -> Connection {
     let mut attempt = 0_u32;
     (|| connect(config))
@@ -144,46 +134,63 @@ fn unreachable_redial() -> ! {
     unreachable!("a redial with no attempt limit returns only on a connection")
 }
 
-/// Serves one connection. Returns true when the socket died, false when the
-/// hub was dropped and there is nothing left to serve.
+/// Serves one connection. Returns true when the connection died, false when
+/// the hub was dropped and there is nothing left to serve.
 async fn pump(
     inner: &Arc<HubInner>,
-    commands: &mut tokio::sync::mpsc::UnboundedReceiver<Command>,
+    commands: &mut mpsc::UnboundedReceiver<Command>,
     connection: &mut Connection,
 ) -> bool {
     loop {
         tokio::select! {
             command = commands.recv() => match command {
                 Some(Command::Subscribe(channel)) => {
-                    if connection.sink.subscribe(&channel).await.is_err() {
+                    if connection.connection.ssubscribe(&channel).await.is_err() {
                         return true;
                     }
                 }
                 Some(Command::Unsubscribe(channel)) => {
-                    if connection.sink.unsubscribe(&channel).await.is_err() {
+                    if connection.connection.sunsubscribe(&channel).await.is_err() {
                         return true;
                     }
                 }
                 None => return false,
             },
-            message = connection.stream.next() => match message {
-                Some(message) => {
-                    let channel = message.get_channel_name().to_owned();
-                    let payload = message.get_payload::<String>().unwrap_or_default();
-                    inner.dispatch(Message { channel, payload });
+            push = connection.pushes.recv() => match push {
+                Some(PushInfo { kind: PushKind::SMessage, data }) => {
+                    if let Some(message) = message_of(data) {
+                        inner.dispatch(message);
+                    }
                 }
-                // The stream ending IS the connection dropping — pub/sub has no
-                // other way to say it.
-                None => return true,
+                // The node stopped serving the channel — a slot moved. A reader
+                // still holding it is re-subscribed, which the new owner needs;
+                // a channel nobody holds is the echo of our own SUNSUBSCRIBE.
+                Some(PushInfo { kind: PushKind::SUnsubscribe, data }) => {
+                    if let Some(channel) = channel_of(&data)
+                        && inner.live_channels().contains(&channel)
+                    {
+                        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                        let channel_name = channel.as_str();
+                        tracing::info!(channel = channel_name, event = "hub_subscription_moved");
+                        if connection.connection.ssubscribe(&channel).await.is_err() {
+                            return true;
+                        }
+                    }
+                }
+                // The driver reports a node's socket dying as a push; the
+                // subscriptions on it are gone with it, and pub/sub has no
+                // replay, so this is a fresh connection's job.
+                Some(PushInfo { kind: PushKind::Disconnection, .. }) | None => return true,
+                Some(_other_push) => {}
             },
         }
     }
 }
 
-/// Re-issues `SUBSCRIBE` for every channel a reader still holds.
-async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
+/// Re-issues `SSUBSCRIBE` for every channel a reader still holds.
+async fn resubscribe(connection: &mut ClusterConnection, channels: &[String]) {
     for channel in channels {
-        if let Err(failure) = sink.subscribe(channel).await {
+        if let Err(failure) = connection.ssubscribe(channel).await {
             let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
             tracing::warn!(
                 channel,
@@ -192,5 +199,26 @@ async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
                 event = "hub_resubscribe_failed"
             );
         }
+    }
+}
+
+/// An `smessage` push carries `[channel, payload]`.
+fn message_of(data: Vec<Value>) -> Option<Message> {
+    let mut fields = data.into_iter();
+    let channel = text(&fields.next()?)?;
+    let payload = text(&fields.next()?).unwrap_or_default();
+    Some(Message { channel, payload })
+}
+
+/// An `sunsubscribe` push carries `[channel, remaining]`.
+fn channel_of(data: &[Value]) -> Option<String> {
+    text(data.first()?)
+}
+
+fn text(value: &Value) -> Option<String> {
+    match value {
+        Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
+        Value::SimpleString(text) => Some(text.clone()),
+        _other => None,
     }
 }

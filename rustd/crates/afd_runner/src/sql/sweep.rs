@@ -295,7 +295,7 @@ WHERE id = $1::uuid AND dispatch_claim_token = $2::uuid
 ///
 /// `$1` the cutoff, `$2` the batch limit.
 pub const SELECT_REPAIR_VERIFICATION_CLEANUP: &str = "\
-SELECT id::text
+SELECT id::text, verifier_fleet_id::text
 FROM core.repair_verifications
 WHERE verifier_event_id IS NOT NULL
   AND redis_once_key_cleared_at IS NULL

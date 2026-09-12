@@ -107,7 +107,7 @@ async fn test_redis_connect_honours_its_deadline() {
 /// A `PING` answered with anything but `PONG` is an unexpected reply, not a
 /// successful connection.
 ///
-/// `ConnectionManager::new` returning is not proof that Redis serves — a TCP
+/// the dial returning is not proof that the datastore serves — a TCP
 /// handshake with a process that is listening proves only that something
 /// accepted the socket. `connect` pings for exactly this reason, and this is
 /// the case where the ping comes back and is still wrong: boot must refuse,

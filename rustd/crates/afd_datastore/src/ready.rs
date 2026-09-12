@@ -141,19 +141,18 @@ impl ReadyIndex {
     pub async fn peek(&self, count: usize) -> Result<Vec<Ready>> {
         let mut cmd = redis::cmd(CMD_HRANDFIELD);
         cmd.arg(READY_INDEX_KEY).arg(count).arg("WITHVALUES");
-        let flat: Vec<String> = self
+        // RESP3 answers `WITHVALUES` as an array of pairs; the driver's pair
+        // decoder also accepts the flat RESP2 framing, so either wire shape
+        // lands here as (field, value).
+        let pairs: Vec<(String, String)> = self
             .redis
             .command(CMD_HRANDFIELD, READY_INDEX_KEY, &cmd)
             .await?;
-        // `HRANDFIELD … WITHVALUES` answers a flat field/value list, so the
-        // pairing is positional. `as_chunks` proves the width to the compiler
-        // rather than leaving a remainder case nobody handles.
-        let (pairs, _remainder) = flat.as_chunks::<2>();
         Ok(pairs
-            .iter()
-            .map(|[fleet_id, token]| Ready {
-                fleet_id: fleet_id.clone(),
-                token: ReadyToken(token.clone()),
+            .into_iter()
+            .map(|(fleet_id, token)| Ready {
+                fleet_id,
+                token: ReadyToken(token),
             })
             .collect())
     }
