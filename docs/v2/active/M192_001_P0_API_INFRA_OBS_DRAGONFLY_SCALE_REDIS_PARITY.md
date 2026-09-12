@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2
 **Branch:** feat/m192-dragonfly-migration
 **Baseline revision:** 521ca4037ebbd23056f8b3b63dcf9c2fa34f650d
-**Test Baseline:** unit=2540 integration=459; harness/lint/version, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
+**Test Baseline:** unit=2540 integration=459 — harness/lint/version, 100% TypeScript coverage, and 97.54% production Rust line coverage pass; `afd_bench` is excluded.
 **Baseline evidence:** docs/v2/reviews/datastore-scale-evidence.md
 **Depends on:** M188_001 drivers exist; its address/fixture safety gap is pulled into §1 before any remote workload.
 **Provenance:** Codex revision following Fable review and Indy's approval to redesign sharding and prototype risks.
