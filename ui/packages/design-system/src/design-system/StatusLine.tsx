@@ -32,9 +32,13 @@ const toneClass: Record<StatusLineTone, string> = {
 };
 
 export function StatusLine({ className, ref, ...props }: StatusLineProps) {
+  // A generic element does not reliably expose an accessible name; a group
+  // does, and a group is what the cells are — one line of related figures.
+  // Not a region: a status line is not a landmark.
   return (
     <div
       ref={ref}
+      role="group"
       className={cn(
         "flex min-w-0 flex-nowrap items-center overflow-x-auto divide-x divide-border",
         "font-mono text-label leading-label tabular-nums text-muted-foreground",

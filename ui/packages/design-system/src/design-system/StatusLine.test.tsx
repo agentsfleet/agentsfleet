@@ -10,7 +10,7 @@ describe("StatusLine", () => {
         <StatusLineItem>$0.03</StatusLineItem>
       </StatusLine>,
     );
-    const line = screen.getByLabelText("Fleet summary");
+    const line = screen.getByRole("group", { name: "Fleet summary" });
     expect(line.nodeName).toBe("DIV");
     for (const cls of ["font-mono", "tabular-nums", "text-label", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
       expect(line.className).toContain(cls);
