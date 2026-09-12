@@ -86,29 +86,51 @@ impl Report {
     ///
     /// Refuses missing, extra, malformed, or contradictory calculations.
     pub fn verify_calculations(&self) -> Result<()> {
-        if evaluate_map(&self.calculations)? != self.measurements {
-            return Err(invalid("scalar measurements do not match raw observations"));
+        verify_map(&self.calculations, &self.measurements)?;
+        if self.series_calculations.len() != self.series.len() {
+            return Err(invalid("measurement series and raw series differ in shape"));
         }
-        let mut series = BTreeMap::new();
         for (name, calculations) in &self.series_calculations {
             let values = calculations
                 .iter()
                 .map(Calculation::evaluate)
                 .collect::<Result<Vec<_>>>()?;
-            series.insert(name.clone(), values);
-        }
-        if series != self.series {
-            return Err(invalid("measurement series do not match raw observations"));
+            match self.series.get(name) {
+                Some(stored) if stored == &values => {}
+                Some(_) => {
+                    return Err(invalid(&format!(
+                        "measurement series {name} does not match its raw observations"
+                    )));
+                }
+                None => return Err(invalid(&format!("measurement series {name} is missing"))),
+            }
         }
         Ok(())
     }
 }
 
-fn evaluate_map(calculations: &BTreeMap<String, Calculation>) -> Result<BTreeMap<String, f64>> {
-    calculations
-        .iter()
-        .map(|(name, calculation)| Ok((name.clone(), calculation.evaluate()?)))
-        .collect()
+fn verify_map(
+    calculations: &BTreeMap<String, Calculation>,
+    measurements: &BTreeMap<String, f64>,
+) -> Result<()> {
+    if calculations.len() != measurements.len() {
+        return Err(invalid(
+            "scalar measurements and calculations differ in shape",
+        ));
+    }
+    for (name, calculation) in calculations {
+        let expected = calculation.evaluate()?;
+        match measurements.get(name) {
+            Some(stored) if stored.to_bits() == expected.to_bits() => {}
+            Some(stored) => {
+                return Err(invalid(&format!(
+                    "measurement {name} is {stored:?}, raw observations replay as {expected:?}"
+                )));
+            }
+            None => return Err(invalid(&format!("measurement {name} is missing"))),
+        }
+    }
+    Ok(())
 }
 
 fn invalid(detail: &str) -> Error {

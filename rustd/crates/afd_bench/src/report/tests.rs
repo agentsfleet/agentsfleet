@@ -193,9 +193,12 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
         .expect("raw histogram buckets reproduce every reported tail");
 
     report.measurements.insert(P95_MS.to_owned(), 999.0);
+    let refusal = report
+        .verify_calculations()
+        .expect_err("a changed generated statistic cannot survive its raw observations");
     assert!(
-        report.verify_calculations().is_err(),
-        "a changed generated statistic cannot survive its raw observations"
+        refusal.to_string().contains(P95_MS),
+        "the contradictory field must be named: {refusal}"
     );
 }
 
