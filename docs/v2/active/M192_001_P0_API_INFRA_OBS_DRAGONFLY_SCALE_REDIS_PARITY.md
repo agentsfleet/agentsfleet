@@ -112,9 +112,9 @@ Archive each fixed-path result immediately under a unique campaign/lane/sample p
 Fix the M188 rig-label/address gap before capture or remote use: verify both datastores and every discovered node, reject shared targets, scope leases and consumers.
 Test cancellation cleanup and orphan recovery. Missing provenance, changed bytes, inconsistent topology, or overwritten samples must fail the grader.
 
-- **Dimension 1.1**: tampered or incomparable evidence fails closed → Test `test_incomparable_datastore_runs_are_rejected`.
-- **Dimension 1.2**: rig labels and credentials cannot authorize a shared or remote target → Test `test_shared_deployment_refuses_saturation_profile`.
-- **Dimension 1.3**: capture retains twelve distinct historical samples and valid sidecars → Test `test_redis_baseline_records_complete_evidence`.
+- **Dimension 1.1**: tampered or incomparable evidence fails closed → Test `test_incomparable_datastore_runs_are_rejected`. DONE.
+- **Dimension 1.2**: rig labels and credentials cannot authorize a shared or remote target → Test `test_shared_deployment_refuses_saturation_profile`. DONE.
+- **Dimension 1.3**: capture retains twelve distinct historical samples and valid sidecars → Test `test_redis_baseline_records_complete_evidence`. DONE.
 
 ### §2: Durable admission and stable logical identity
 
