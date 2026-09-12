@@ -106,6 +106,11 @@ export const AUTH_APPEARANCE = {
       backgroundColor: SURFACE_2,
       color: TEXT,
     },
+    // The trigger's coarse-pointer floor is NOT set here. A nested
+    // `@media` object in `elements` type-checks but Clerk never emits it —
+    // measured in the built app, `min-height` stayed `auto` while the plain
+    // properties on `userButtonAvatarBox` above applied correctly. The rule
+    // lives in `app/globals.css` instead, where it can be verified.
     // UserButton dropdown (account menu). Without these the popover renders in
     // Clerk's stock light palette → invisible dark text on the app's dark
     // surface. Theme the card, the action rows, and the identity preview.

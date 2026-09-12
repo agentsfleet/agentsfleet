@@ -68,7 +68,7 @@ export function StatusCard({
         <dd className={cn("text-xl sm:text-2xl font-semibold tabular-nums", variantAccent[variant])}>
           <span>{count}</span>
           {trend ? (
-            <span className="ml-1 text-base" aria-hidden="true">
+            <span className="ml-1 text-body" aria-hidden="true">
               {trendGlyph[trend]}
             </span>
           ) : null}

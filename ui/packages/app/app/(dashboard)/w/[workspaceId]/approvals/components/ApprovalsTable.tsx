@@ -32,7 +32,7 @@ import {
   STATUS_VARIANT,
 } from "../copy";
 
-const TIME_CELL_CLASS = "font-mono text-xs tabular-nums text-muted-foreground";
+const TIME_CELL_CLASS = "font-mono text-mono leading-mono tabular-nums text-muted-foreground";
 const ICON_SIZE = 14;
 const PAGE_SIZE = 25;
 

@@ -4,6 +4,16 @@ import { SectionLabel } from "./SectionLabel";
 
 export type SectionHeaderProps = ComponentProps<"div"> & {
   actions?: ReactNode;
+  /**
+   * Forwarded to `SectionLabel`. `"h2"` when the eyebrow is the section's only
+   * name; `"p"` when a `PageTitle` above already names it.
+   *
+   * This defaulted to `SectionLabel`'s own `"h2"` and had no way through, so
+   * every page using `SectionHeader` shipped a 12px `<h2>` under its 28px
+   * `<h1>` and could not opt out. `SectionLabel` had carried `as` for exactly
+   * this since it was written; only the forwarding was missing.
+   */
+  as?: "h2" | "p";
 };
 
 export function SectionHeader({
@@ -11,6 +21,7 @@ export function SectionHeader({
   children,
   className,
   ref,
+  as = "h2",
   ...props
 }: SectionHeaderProps) {
   return (
@@ -27,7 +38,7 @@ export function SectionHeader({
       )}
       {...props}
     >
-      <SectionLabel>{children}</SectionLabel>
+      <SectionLabel as={as}>{children}</SectionLabel>
       {actions != null ? <div className="flex-none">{actions}</div> : null}
     </div>
   );

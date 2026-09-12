@@ -55,7 +55,7 @@ const COMPONENTS: Components = {
   ),
   pre: ({ children }) => (
     <Fenced value={true}>
-      <pre className="overflow-x-auto rounded-md bg-muted p-md font-mono text-body-sm">
+      <pre className="overflow-x-auto rounded-md bg-muted p-md font-mono text-mono leading-mono">
         {children}
       </pre>
     </Fenced>
@@ -111,6 +111,6 @@ function Heading({ children }: { children: ReactNode }) {
 function Code({ children }: { children: ReactNode }) {
   if (useContext(Fenced)) return <code>{children}</code>;
   return (
-    <code className="rounded-sm bg-muted px-xs font-mono text-body-sm">{children}</code>
+    <code className="rounded-sm bg-muted px-xs font-mono text-mono leading-mono">{children}</code>
   );
 }

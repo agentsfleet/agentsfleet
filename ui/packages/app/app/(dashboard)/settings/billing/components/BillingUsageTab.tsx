@@ -68,7 +68,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
       <Time
         value={new Date(c.recorded_at)}
         label={formatChargeTimestamp(c.recorded_at)}
-        className="font-mono text-xs"
+        className="font-mono text-mono leading-mono"
       />
     ),
   },

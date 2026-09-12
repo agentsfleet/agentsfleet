@@ -129,8 +129,8 @@ function KeyValueGrid({ gate, workspaceId }: { gate: ApprovalGate; workspaceId: 
           {gate.fleet_name}
         </Link>
       } />
-      <Row label="Tool" value={<code className="font-mono text-xs">{gate.tool_name}</code>} />
-      <Row label="Action" value={<code className="font-mono text-xs">{gate.action_name}</code>} />
+      <Row label="Tool" value={<code className="font-mono text-mono leading-mono">{gate.tool_name}</code>} />
+      <Row label="Action" value={<code className="font-mono text-mono leading-mono">{gate.action_name}</code>} />
       {gate.gate_kind ? <Row label="Kind" value={<Badge variant="default">{gate.gate_kind}</Badge>} /> : null}
       {gate.blast_radius ? <Row label="Blast radius" value={gate.blast_radius} /> : null}
       <Row label="Requested" value={<Time value={new Date(gate.created_at)} tooltip={false} />} />
@@ -142,7 +142,7 @@ function KeyValueGrid({ gate, workspaceId }: { gate: ApprovalGate; workspaceId: 
         label="Action id"
         value={
           <span className="flex items-center gap-1">
-            <code className="font-mono text-xs">{gate.action_id}</code>
+            <code className="font-mono text-mono leading-mono">{gate.action_id}</code>
             <CopyButton value={gate.action_id} label="Copy action id" />
           </span>
         }

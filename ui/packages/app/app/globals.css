@@ -114,3 +114,26 @@ code, pre, kbd { font-family: var(--ff-mono); }
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * The Clerk user-menu trigger's touch floor.
+ *
+ * Clerk ships it at 28x28, which made it the smallest interactive target in
+ * the app shell — smaller than every Button-derived control, all of which
+ * carry `pointer-coarse:min-h-11`, and present on every route.
+ *
+ * It is set here rather than through the `appearance` object because a nested
+ * `@media` key in `elements` type-checks and then silently does not render:
+ * measured in the built app, the trigger's `min-height` stayed `auto`. The
+ * `.cl-*` classes are Clerk's documented styling surface, so this targets the
+ * stable one, never a `cl-internal-*` hash.
+ *
+ * DESIGN_SYSTEM scopes the 44px floor to coarse pointers, so a fine pointer
+ * keeps the compact avatar.
+ */
+@media (pointer: coarse) {
+  .cl-userButtonTrigger {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}

@@ -122,7 +122,7 @@ export default function AddLibraryDialog({
               <Alert variant="destructive">
                 <div>{apiError.title}</div>
                 {apiError.body ? <div>{apiError.body}</div> : null}
-                {apiError.code ? <code className="text-xs">{apiError.code}</code> : null}
+                {apiError.code ? <code className="text-mono leading-mono">{apiError.code}</code> : null}
               </Alert>
             ) : null}
             <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">

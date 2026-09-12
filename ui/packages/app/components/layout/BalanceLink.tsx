@@ -89,6 +89,12 @@ export function BalanceLink({
       </span>
       <span
         className={cn(
+          // Header-sized, deliberately NOT the 13px `text-mono` step the data
+          // surfaces use. This figure is chrome: it sits beside the workspace
+          // switcher and the nav, and its size is set by those neighbours
+          // rather than by the kind of value it holds. Growing or shrinking it
+          // away from 14px made it loud without making it findable, which is
+          // what the bounded chip does instead.
           "font-mono text-body-sm font-medium tabular-nums",
           isExhausted ? "text-destructive" : "text-pulse",
         )}

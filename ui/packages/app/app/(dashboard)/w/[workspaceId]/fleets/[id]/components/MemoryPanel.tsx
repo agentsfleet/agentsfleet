@@ -117,7 +117,7 @@ function MemoryRow({ entry, onForget }: { entry: MemoryEntry; onForget: () => vo
             value={new Date(entry.updated_at)}
             format="relative"
             tooltip={false}
-            className="font-mono text-xs text-muted-foreground tabular-nums"
+            className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
           />
         </div>
       </div>
