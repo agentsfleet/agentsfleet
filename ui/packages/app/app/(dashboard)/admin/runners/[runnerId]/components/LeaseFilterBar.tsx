@@ -104,7 +104,9 @@ export function LeaseFilterBar({ filters }: { filters: LeaseFilterState }) {
       <div className="flex flex-wrap items-center gap-md">
         <Input
           id={FILTER_INPUT_ID}
-          className="min-w-measure flex-1"
+          // Full width, shrinkable: `min-w-measure` is 720px, which a phone
+          // cannot hold, and the fixed shell clipped the overflow.
+          className="w-full min-w-0 flex-1 sm:w-auto"
           value={draft}
           placeholder={LEASE_FILTER_PLACEHOLDER}
           aria-describedby={`${FILTER_INPUT_ID}-hint`}
