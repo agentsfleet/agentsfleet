@@ -22,9 +22,12 @@ import {
  *
  * So it is a chip: its own border and tinted ground in the mint a live fleet
  * wears, which is what credits buy. The bound is what the eye lands on, so
- * the type can stay at the header's own size. Exhausted, the whole chip turns
- * destructive — that is the one state that changes what an operator does
- * next, because new fleet events gate-block until a top-up.
+ * the type can stay at the header's own size. It takes the workspace
+ * switcher's own height, because two bounded controls side by side at
+ * different heights read as a mistake before they read as a hierarchy.
+ * Exhausted, the whole chip turns destructive — that is the one state that
+ * changes what an operator does next, because new fleet events gate-block
+ * until a top-up.
  *
  * Server-rendered from the layout's own read, so it refreshes when a page
  * does. A tab left open overnight shows last night's figure; the billing page
@@ -74,7 +77,7 @@ export function BalanceLink({
       aria-label={isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}
       data-exhausted={isExhausted ? "true" : undefined}
       className={cn(
-        "hidden shrink-0 items-baseline gap-sm rounded-md border px-md py-xs no-underline sm:inline-flex",
+        "hidden h-8 shrink-0 items-center gap-sm rounded-md border px-md no-underline sm:inline-flex",
         "transition-colors duration-snap ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isExhausted
           ? "border-destructive/40 bg-destructive/10 hover:bg-destructive/20"

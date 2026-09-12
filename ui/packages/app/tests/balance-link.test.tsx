@@ -42,6 +42,9 @@ describe("BalanceLink", () => {
     // Header-sized type, not display type.
     expect(figure().className).toContain("text-body-sm");
     expect(figure().className).not.toContain("text-body-lg");
+    // The workspace switcher's own height: two bounded controls side by side
+    // at different heights read as a mistake before they read as a hierarchy.
+    expect(link().className).toContain("h-8");
     // Tabular mono so the figure does not shuffle as it changes.
     expect(figure().className).toContain("font-mono");
     expect(figure().className).toContain("tabular-nums");
