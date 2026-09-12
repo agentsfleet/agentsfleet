@@ -424,7 +424,7 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync"
 # `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
 # following, per-node connections and sharded pub/sub over RESP3, all the
 # driver's. This workspace never parses a redirect itself.
-redis = { version = "1.6.0", default-features = false, features = [
+redis = { version = "1.7.0", default-features = false, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "connection-manager",
