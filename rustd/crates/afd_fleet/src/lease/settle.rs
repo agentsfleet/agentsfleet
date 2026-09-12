@@ -53,8 +53,11 @@ pub struct Reported {
     pub workspace_id: Uuid7,
     /// The tenant whose wallet the settle draws on.
     pub tenant_id: Uuid7,
-    /// The event that was executed.
+    /// The event that was executed — the ledger's logical id.
     pub event_id: String,
+    /// The stream entry it arrived on, which is what the acknowledgement
+    /// addresses.
+    pub receipt: String,
     /// Who or what raised the event.
     pub actor: String,
     /// The billing posture resolved at issue.
@@ -120,6 +123,7 @@ impl Leases {
             workspace_id: id(1, "workspace_id")?,
             tenant_id: id(2, "tenant_id")?,
             event_id: text(3)?,
+            receipt: text(9)?,
             actor: text(4)?,
             posture: text(5)?,
             provider: text(6)?,

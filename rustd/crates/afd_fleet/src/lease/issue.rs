@@ -90,6 +90,7 @@ impl Leases {
             workspace_id: &acquired.workspace_id,
             tenant_id: billed.tenant_id,
             event_id: &acquired.event_id,
+            receipt: acquired.receipt.as_str(),
             actor: &acquired.actor,
             event_type: &acquired.event_type,
             event_created_at: acquired.event_created_at.as_millis(),

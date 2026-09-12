@@ -15,7 +15,7 @@
 
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::{Appended, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// Everything the signed-ingress routes act through.
 pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
@@ -95,16 +95,16 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         event: &str,
     ) -> impl Future<Output = IngressResult<Fanout>> + Send;
 
-    /// Appends one verified delivery, at most once however often it arrives.
+    /// Admits one verified delivery, at most once however often it arrives.
     ///
     /// # Errors
-    /// Reports a queue that would not take the append.
+    /// Reports a database that would not record the acceptance.
     fn deliver(
         &self,
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> impl Future<Output = IngressResult<Appended>> + Send;
+    ) -> impl Future<Output = IngressResult<Admitted>> + Send;
 }
 
 /// The production ingress answers all three directly.
@@ -162,7 +162,7 @@ impl WebhookIngress for Ingress {
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> impl Future<Output = IngressResult<Appended>> + Send {
+    ) -> impl Future<Output = IngressResult<Admitted>> + Send {
         Self::deliver(self, surface, binding, delivery)
     }
 }
@@ -225,7 +225,8 @@ mod tests {
             Arc::new(Kek::from_bytes([7u8; 32])),
             Entropy::new(),
         );
-        Ingress::new(database, vault, queue)
+        let admissions = afd_admission::Admissions::for_tests(database.clone(), queue);
+        Ingress::new(database, vault, admissions)
     }
 
     /// Whether a reader refused.

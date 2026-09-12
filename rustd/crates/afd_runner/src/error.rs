@@ -1,7 +1,11 @@
 //! What this crate refuses, and what it reports.
 //!
-//! One error type with `pub type Result<T, E = Error>` beside it, composed
-//! with `#[from]` so `?` lifts a datastore failure without restating it.
+//! One error type with `pub type Result<T, E = Error>` beside it, under the
+//! `afd_core::error_shell!` hull its sibling crates carry — so the boxed kind
+//! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
+//! the `[CODE]` rendering and the self-skipping `source()` are generated rather
+//! than written here again. `error_lifts!` composes the sources, so `?` lifts a
+//! datastore failure without restating it.
 //! Nothing here maps another crate's error to a string: the `source()` chain
 //! is what an operator follows from "the enrolment did not land" to the
 //! Postgres detail that says why.
@@ -25,10 +29,25 @@ pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked befor
 pub const DETAIL_RUNNER_STILL_LEASED: &str =
     "runner still holds an active lease; retry once it is released";
 
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+pub(crate) use self::raise::{
+    admin_state_malformed, query, rejected, row_malformed, runner_not_found, runner_not_revoked,
+    runner_still_leased, runner_vanished, selftest_refused, stored_json, vault_data_invalid,
+};
+
+afd_core::error_shell!(
+    /// A runner-plane failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
 /// Every way enrolling, proving or sweeping a runner can fail.
+///
+/// Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorKind {
     /// A statement would not run.
     #[error("the runner store could not {context}")]
     Query {
@@ -156,80 +175,97 @@ pub enum Error {
         #[from]
         source: afd_db::Error,
     },
+
+    /// A sweeper's event could not be admitted, or a replay could not run.
+    #[error("the event could not be admitted")]
+    Admission {
+        /// The ledger failure underneath.
+        #[from]
+        source: afd_admission::Error,
+    },
 }
 
 impl Error {
     /// The sentence a caller is told.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
-        match self {
-            Self::Rejected { detail } => detail,
-            Self::RunnerVanished | Self::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
-            Self::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
-            Self::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
-            Self::SelftestRefused => DETAIL_SELFTEST_REFUSED,
+    pub fn detail(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::Rejected { detail } => detail,
+            ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
+            ErrorKind::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
+            ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             // The four datastore-shaped failures — a statement that reached
             // Postgres, and three rows this build cannot read — all answer
             // `INTERNAL_DB_QUERY`, so they share the datastore sentence. The
             // rest keep this plane's generic one: a sentence has to be true of
             // every variant mapped to it, and naming one verb makes it false
             // for the others.
-            Self::Query { .. }
-            | Self::RowMalformed { .. }
-            | Self::StoredJson { .. }
-            | Self::AdminStateMalformed => DETAIL_DATABASE_ERROR,
-            Self::Entropy { .. } | Self::Identifier { .. } | Self::VaultDataInvalid => {
-                DETAIL_OPERATION_FAILED
-            }
-            Self::Datastore { .. } | Self::Queue { .. } => DETAIL_UNAVAILABLE,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
+            | ErrorKind::AdminStateMalformed => DETAIL_DATABASE_ERROR,
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::VaultDataInvalid => DETAIL_OPERATION_FAILED,
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => DETAIL_UNAVAILABLE,
+            // The ledger already decided what a caller is told, and answering
+            // a second sentence for one condition is the drift the shared
+            // constants in `afd_core::error` exist to prevent.
+            ErrorKind::Admission { source } => source.detail(),
         }
     }
 
     /// Whether the datastore behind this crate could not be reached.
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(self, Self::Datastore { .. } | Self::Queue { .. })
+    pub fn is_datastore_unavailable(&self) -> bool {
+        match self.kind() {
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
+            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            _reachable => false,
+        }
     }
 
     /// Whether the caller sent something this plane will not accept.
     #[must_use]
-    pub const fn is_rejected(&self) -> bool {
-        matches!(self, Self::Rejected { .. })
+    pub fn is_rejected(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Rejected { .. })
     }
 
     /// Whether an authenticated runner's row has since disappeared.
     #[must_use]
-    pub const fn is_runner_vanished(&self) -> bool {
-        matches!(self, Self::RunnerVanished)
+    pub fn is_runner_vanished(&self) -> bool {
+        matches!(self.kind(), ErrorKind::RunnerVanished)
     }
 
     /// The registry code a caller is refused with.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
-        match self {
-            Self::Rejected { .. } => error_code::INVALID_REQUEST,
-            Self::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            Self::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
-            Self::RunnerNotRevoked | Self::RunnerStillLeased => {
+    pub fn code(&self) -> ErrorCode {
+        match self.kind() {
+            ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
+            ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
+            ErrorKind::RunnerNotRevoked | ErrorKind::RunnerStillLeased => {
                 error_code::RUNNER_MUST_REVOKE_FIRST
             }
-            Self::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
-            Self::Query { .. }
-            | Self::RowMalformed { .. }
-            | Self::StoredJson { .. }
+            ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
             // A stored `admin_state` outside the wire enum is a ROW this build
             // cannot read, not an operator's request being wrong — same family
             // as a column that will not decode.
-            | Self::AdminStateMalformed => error_code::INTERNAL_DB_QUERY,
+            | ErrorKind::AdminStateMalformed => error_code::INTERNAL_DB_QUERY,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
-            Self::Entropy { .. } | Self::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
             // The body's SHAPE is a fact the operator who stored it can act
             // on, so it answers the vault's own code rather than the internal
             // family — the split `crypto_store.zig` and `vault.zig` draw.
-            Self::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
-            Self::Datastore { .. } | Self::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Admission { source } => source.code(),
         }
     }
 }
@@ -241,7 +277,7 @@ impl Error {
 /// The sentence a failure carries has to be true of every variant mapped to it
 /// — `detail()` maps four here — and a verb-shaped sentence is true of at most
 /// one.
-pub const DETAIL_DATABASE_ERROR: &str = "Database error";
+pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
 /// The sentence this plane's non-statement failures earn.
 ///
@@ -253,64 +289,10 @@ pub const DETAIL_DATABASE_ERROR: &str = "Database error";
 const DETAIL_OPERATION_FAILED: &str = "The runner operation could not be completed";
 
 /// The sentence an unreachable datastore earns.
-const DETAIL_UNAVAILABLE: &str = "Database unavailable";
+use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 /// This crate's result, defaulting to its own error.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-/// Reports a statement that would not run, naming what it was doing.
-pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::Query { context, source }
-}
-
-/// Reports a stored value this build cannot read, naming table and column.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
-    move |source| Error::RowMalformed {
-        table,
-        column,
-        source,
-    }
-}
-
-/// Refuses a caller, naming why in their language.
-pub(crate) const fn rejected(detail: &'static str) -> Error {
-    Error::Rejected { detail }
-}
-
-/// Reports a stored credential whose decrypted body is not a readable shape.
-pub(crate) const fn vault_data_invalid() -> Error {
-    Error::VaultDataInvalid
-}
-
-/// Reports an operator request addressed to no runner row.
-pub(crate) const fn runner_not_found() -> Error {
-    Error::RunnerNotFound
-}
-
-/// Refuses a self-test ask that a revoked runner can never collect.
-pub(crate) const fn selftest_refused() -> Error {
-    Error::SelftestRefused
-}
-
-/// Reports a runner row whose administrative state is outside the wire enum.
-pub(crate) const fn admin_state_malformed() -> Error {
-    Error::AdminStateMalformed
-}
-
-/// Reports JSONB text that did not survive decoding into its wire value.
-pub(crate) fn stored_json(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(serde_json::Error) -> Error {
-    move |source| Error::StoredJson {
-        table,
-        column,
-        source,
-    }
-}
 
 #[cfg(test)]
 #[path = "error/tests.rs"]

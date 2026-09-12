@@ -285,33 +285,3 @@ SET verifier_event_id = $3, dispatch_claim_token = NULL,
     dispatch_claimed_at = NULL, updated_at = $4
 WHERE id = $1::uuid AND dispatch_claim_token = $2::uuid
   AND verifier_event_id IS NULL";
-
-/// The completed intents whose append-once key is still in Redis.
-///
-/// Cleared only after the durable link exists, which is why this reads
-/// `verifier_event_id IS NOT NULL`: forgetting the key any earlier would let a
-/// retry append a second event, which is the duplicate the key exists to
-/// prevent.
-///
-/// `$1` the cutoff, `$2` the batch limit.
-pub const SELECT_REPAIR_VERIFICATION_CLEANUP: &str = "\
-SELECT id::text, verifier_fleet_id::text
-FROM core.repair_verifications
-WHERE verifier_event_id IS NOT NULL
-  AND redis_once_key_cleared_at IS NULL
-  AND updated_at <= $1
-ORDER BY updated_at ASC, id ASC
-LIMIT $2";
-
-/// Marks a batch of append-once keys as forgotten.
-///
-/// One statement for the whole batch, keyed by a JSON array of identifiers, so
-/// a page of cleanups costs one round trip rather than one per row.
-///
-/// `$1` the identifiers, `$2` now.
-pub const COMPLETE_REPAIR_VERIFICATION_CLEANUP: &str = "\
-UPDATE core.repair_verifications
-SET redis_once_key_cleared_at = $2, updated_at = $2
-WHERE id IN (
-  SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb)
-)";

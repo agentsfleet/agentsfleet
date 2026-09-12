@@ -152,6 +152,11 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("880_fleet_activity_counters.sql"),
     migration!("890_fleet_activity_counter_triggers.sql"),
     migration!("900_purge_delete_grants.sql"),
+    // 9xx forward migrations — the datastore is live from 0.30.0, so a change
+    // is a new slot applied forward, never an edit to a shipped one
+    migration!("910_fleet_admissions.sql"),
+    migration!("911_runner_leases_receipt.sql"),
+    migration!("912_repair_verifications_drop_once_cleanup.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

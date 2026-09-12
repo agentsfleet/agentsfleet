@@ -103,6 +103,17 @@ pub const REPAIR_DISPATCH_DUE_BATCH: Declared<GaugeKind> =
 pub const REPAIR_DISPATCH_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
     Declared::new("agentsfleet_repair_dispatch_oldest_age_seconds");
 
+/// Admitted, replayed, deferred and refused acceptances.
+///
+/// Labels: `outcome`.
+pub const ADMISSIONS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_admissions_total");
+
+/// Re-appended and still-unreceipted admissions the replay sweeper handled.
+///
+/// Labels: `outcome`.
+pub const ADMISSION_REPLAYS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_admission_replays_total");
+
 /// Failure rate per reason.
 ///
 /// Labels: `runner_id,reason`.

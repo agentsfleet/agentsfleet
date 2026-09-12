@@ -21,6 +21,9 @@ workspace = true
 # other: telemetry knows nothing about the event log, and a readiness mark this crate
 # could not write is a fact only this crate holds.
 afd_observability.workspace = true
+# Where a steer is accepted before anything is queued. The ledger owns the
+# acceptance and the identity; this crate owns the table a runner then writes.
+afd_admission.workspace = true
 # Identifiers, the clock a row is stamped with, and the registry codes.
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
@@ -46,7 +49,12 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_datastore/test-util"]
+test-util = [
+    "afd_admission/test-util",
+    "afd_core/test-util",
+    "afd_db/test-util",
+    "afd_datastore/test-util",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

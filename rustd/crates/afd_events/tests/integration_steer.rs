@@ -65,7 +65,7 @@ const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
 async fn test_steer_append_event_id() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());
-    let steer = Steer::new(lane.queue.clone());
+    let steer = Steer::new(lane.admissions());
 
     // The group has to exist before the append, because `read_new` delivers
     // through it. A consumer created afterwards with `$` would see nothing and
@@ -88,7 +88,7 @@ async fn test_steer_append_event_id() {
         .expect("the append left an entry to lease");
 
     assert_eq!(
-        leased.id.as_str(),
+        leased.receipt.as_str(),
         answered,
         "the id answered to the client must BE the stream entry id — a client \
          filters its SSE frames by this value and a runner leases the entry \
@@ -162,7 +162,7 @@ async fn test_steer_append_event_id() {
 async fn test_steer_repeats_are_two_messages_not_one() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());
-    let steer = Steer::new(lane.queue.clone());
+    let steer = Steer::new(lane.admissions());
 
     streams
         .ensure_group(&lane.fleet)
@@ -197,8 +197,8 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the read reaches the queue")
         .expect("the second entry is deliverable");
 
-    assert_eq!(leased_first.id.as_str(), first);
-    assert_eq!(leased_second.id.as_str(), second);
+    assert_eq!(leased_first.receipt.as_str(), first);
+    assert_eq!(leased_second.receipt.as_str(), second);
 
     ReadyIndex::new(lane.queue.clone())
         .force_clear(&lane.fleet)

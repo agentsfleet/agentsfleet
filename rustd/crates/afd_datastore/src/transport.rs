@@ -193,6 +193,12 @@ pub(crate) async fn connect_with_pushes(
 /// background and the first command reports the outcome. This is what the
 /// fault suites use to prove the request path against a datastore that is
 /// not there, without taking the lane's datastore away from everyone else.
+///
+/// Gated with its one caller, [`crate::Redis::unreachable`]: the workspace
+/// lints with `--all-features`, so a function reachable only under
+/// `test-util` reads as dead to anyone building this crate the way a
+/// dependent does.
+#[cfg(feature = "test-util")]
 pub(crate) fn pending(
     config: &RedisConfig,
     response_timeout: Duration,

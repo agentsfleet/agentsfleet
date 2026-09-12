@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_datastore", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_datastore", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.30.0"
@@ -40,6 +40,12 @@ percent-encoding = "2.3.2"
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
+# The admission ledger: the Postgres row that IS a producer's acceptance, and
+# the queue entry that is only its receipt. Its own crate for the reason
+# `afd_events` gives for existing — one owner per table — and because every
+# producer crate (`afd_events`, `afd_ingress`, `afd_cron`, `afd_approval`,
+# `afd_runner`) admits through it while none of them may depend on another.
+afd_admission = { path = "crates/afd_admission" }
 afd_api = { path = "crates/afd_api" }
 afd_api_ingress = { path = "crates/afd_api_ingress" }
 afd_api_operator = { path = "crates/afd_api_operator" }

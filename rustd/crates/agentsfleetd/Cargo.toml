@@ -43,6 +43,8 @@ openapi = ["afd_api/openapi"]
 
 [dependencies]
 afd_admin.workspace = true
+# The one admission ledger every producer in this process shares.
+afd_admission.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.

@@ -18,18 +18,18 @@ categories.workspace = true
 # which needs the same seam in the crates whose errors this one wraps — most of
 # these kinds cannot be provoked on demand, and a pool does not exhaust itself
 # politely.
-test-util = ["afd_db/test-util", "afd_datastore/test-util"]
+test-util = ["afd_admission/test-util", "afd_db/test-util"]
 
 [dependencies]
+# Where a verified fire is accepted before anything is queued. Its unique
+# index is the at-most-once guarantee the Lua claim key used to be.
+afd_admission.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # Where a new schedule's identifier comes from — see `store::Schedules::mint`.
 afd_crypto.workspace = true
-# The signed fire's at-most-once claim and its append. `OnceScope::ScheduleFire`
-# carries both the key prefix and the retention, so this crate names neither.
-afd_datastore.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_wire.workspace = true
 # Resolving a zone name against the system timezone database, so a schedule
@@ -63,6 +63,11 @@ tracing.workspace = true
 philiprehberger-cron-parser = "0.3.0"
 
 [dev-dependencies]
+# The lane connects a live queue to build the admission ledger every fire
+# writes through; the crate's own code reaches the queue only through
+# `afd_admission`, so this is a test-side dependency and not a second door.
+afd_datastore = { workspace = true, features = ["test-util"] }
+afd_admission = { workspace = true, features = ["test-util"] }
 # The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
 # string could only ever assert one shape, and every negative case here is a
 # token that differs from a good one in exactly one claim.

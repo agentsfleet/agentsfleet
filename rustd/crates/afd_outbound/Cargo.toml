@@ -52,6 +52,10 @@ tracing.workspace = true
 # it needs the two stores it actually holds — the pool the destination is read
 # from, and the vault the bot token is opened out of.
 afd_db = { workspace = true, features = ["test-util"] }
+# The shared `CLUSTER SLOTS` reply the fake queue answers. The transport is
+# cluster-only, so a fake that does not answer the handshake is never pinged —
+# and respelling the RESP here is how the first fake and this one drifted.
+afd_datastore = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
 afd_core.workspace = true
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never

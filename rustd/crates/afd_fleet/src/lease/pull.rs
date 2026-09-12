@@ -333,7 +333,7 @@ impl Plane {
             self.leases.publish_completion(&closed).await;
         }
         self.leases
-            .acknowledge(&acquired.fleet_id, &acquired.event_id)
+            .acknowledge(&acquired.fleet_id, &acquired.receipt)
             .await?;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();

@@ -62,8 +62,8 @@ mod secret;
 pub mod error;
 pub mod sql;
 
+use afd_admission::Admissions;
 use afd_core::id::Uuid7;
-use afd_datastore::Redis;
 use afd_db::Db;
 use afd_vault::Vault;
 use sqlx::Row as _;
@@ -73,18 +73,18 @@ pub use self::binding::Binding;
 pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};
 
-// Re-exported because it is part of [`Ingress::deliver`]'s answer, and a caller
-// that has to name `afd_datastore` to read this crate's return type would be a
-// caller depending on a queue it never opens. `afd_api` states in its own
-// manifest that nothing in it opens a pool, and that stays true through here.
-pub use afd_datastore::streams::Appended;
+// Re-exported because it is part of [`Ingress::deliver`]'s answer, and a
+// caller that has to name `afd_admission` to read this crate's return type
+// would be a caller depending on a ledger it never opens. `afd_api` states in
+// its own manifest that nothing in it opens a pool, and that stays true here.
+pub use afd_admission::Admitted;
 
 /// The context a failed fleet read reports under.
 const CONTEXT_BINDING: &str = "resolve a webhook binding";
 
 /// The three stores a signed delivery is resolved through.
 ///
-/// Cheap to clone: [`Db`] and [`Redis`] are handles over shared pools and
+/// Cheap to clone: [`Db`] and [`Admissions`] are handles over shared pools and
 /// [`Vault`] holds its key behind an `Arc`, so every clone shares one
 /// connection set and one copy of the key.
 #[derive(Debug, Clone)]
@@ -97,18 +97,18 @@ pub struct Ingress {
     /// the one surface that needs plaintext, because a signature cannot be
     /// checked against a projection.
     vault: Vault,
-    /// Where the verified delivery is claimed and appended.
-    queue: Redis,
+    /// Where the verified delivery is accepted, before anything is queued.
+    pub(crate) admissions: Admissions,
 }
 
 impl Ingress {
-    /// Binds the ingress to an already-connected pool, vault and queue.
+    /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub const fn new(database: Db, vault: Vault, queue: Redis) -> Self {
+    pub const fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
         Self {
             database,
             vault,
-            queue,
+            admissions,
         }
     }
 

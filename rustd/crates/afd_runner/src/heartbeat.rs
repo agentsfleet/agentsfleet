@@ -26,7 +26,7 @@ use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
 use sqlx::{Executor as _, PgConnection, Row as _};
 
 use crate::bounds;
-use crate::error::{Error, Result, query};
+use crate::error::{Error, Result, query, runner_vanished};
 use crate::policy::{AssignmentColumns, StoredVerdict, capability};
 use crate::reconcile::{Verdict, reconcile};
 use crate::spelling::render_list;
@@ -135,7 +135,7 @@ impl Runners {
             .map_err(query(CONTEXT_POLICY_READ))?;
         // Fail closed rather than beat a phantom runner: the token is real and
         // the enrolment is gone, so the host must be re-enrolled.
-        let row = found.ok_or_else(|| Error::RunnerVanished)?;
+        let row = found.ok_or_else(runner_vanished)?;
 
         let column = query(CONTEXT_POLICY_READ);
         Ok(PolicyRow {

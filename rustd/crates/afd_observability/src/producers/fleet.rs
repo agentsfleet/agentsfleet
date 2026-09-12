@@ -5,6 +5,7 @@
 //! is the per-runner table's, and what is left here is the account, lease-poll,
 //! readiness and retention paths — each of which is one or two call sites.
 
+pub mod admission;
 pub mod repair;
 pub mod runner;
 
@@ -69,6 +70,8 @@ pub struct Handles {
     ready_write_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
+    admissions: Counter<u64>,
+    admission_replays: Counter<u64>,
     repair_retries: Counter<u64>,
     repair_events: Counter<u64>,
     repair_runs: Counter<u64>,
@@ -107,6 +110,8 @@ impl Handles {
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
+            admissions: instruments.counter_u64(&declared::ADMISSIONS_TOTAL)?,
+            admission_replays: instruments.counter_u64(&declared::ADMISSION_REPLAYS_TOTAL)?,
             repair_retries: instruments.counter_u64(&declared::REPAIR_DISPATCH_RETRIED_TOTAL)?,
             repair_events: instruments.counter_u64(&declared::REPAIR_SYNTHETIC_EVENTS_TOTAL)?,
             repair_runs: instruments.counter_u64(&declared::REPAIR_VERIFIER_RUNS_TOTAL)?,

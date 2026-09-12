@@ -298,7 +298,7 @@ fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
 
 /// One shard owning slots 0..=16383 at an unnamed host and `port`.
 fn cluster_slots(port: u16) -> Vec<u8> {
-    format!("*1\r\n*3\r\n:0\r\n:16383\r\n*2\r\n$0\r\n\r\n:{port}\r\n").into_bytes()
+    afd_datastore::test_util::cluster_slots_reply(port)
 }
 
 #[path = "fake_redis/resp.rs"]

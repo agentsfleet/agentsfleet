@@ -18,11 +18,12 @@ const NOW: i64 = 1_760_000_000_000;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
-async fn repair_dispatch_records_one_event_and_cleans_its_retry_key() {
+async fn repair_dispatch_records_one_event_under_a_fenced_claim() {
     let fixture = Fixture::create().await;
     fixture.seed_intent().await;
     let queue = connect_redis().await;
-    let repairs = Repairs::new(fixture.database.clone(), queue, Entropy::new());
+    let admissions = afd_admission::Admissions::for_tests(fixture.database.clone(), queue);
+    let repairs = Repairs::new(fixture.database.clone(), admissions, Entropy::new());
 
     let first = repairs.sweep().await.expect("the due intent dispatches");
     assert!(first.scanned >= 1, "the fixture intent is scanned");
@@ -30,7 +31,6 @@ async fn repair_dispatch_records_one_event_and_cleans_its_retry_key() {
     let recorded = fixture.verification().await;
     assert!(recorded.event_id.is_some());
     assert_eq!(recorded.attempts, 1);
-    assert!(recorded.once_key_cleared_at.is_some());
 
     repairs
         .sweep()
@@ -45,7 +45,6 @@ async fn repair_dispatch_records_one_event_and_cleans_its_retry_key() {
 struct Verification {
     event_id: Option<String>,
     attempts: i64,
-    once_key_cleared_at: Option<i64>,
 }
 
 struct Fixture {
@@ -172,7 +171,7 @@ impl Fixture {
 
         let mut connection = self.database.acquire().await.expect("an API connection");
         let row = sqlx::query(
-            "SELECT verifier_event_id, dispatch_attempts, redis_once_key_cleared_at \
+            "SELECT verifier_event_id, dispatch_attempts \
              FROM core.repair_verifications WHERE id = $1::uuid",
         )
         .bind(&self.verification)
@@ -182,7 +181,6 @@ impl Fixture {
         Verification {
             event_id: row.try_get(0).expect("the event id shape is readable"),
             attempts: row.try_get(1).expect("the attempts shape is readable"),
-            once_key_cleared_at: row.try_get(2).expect("the cleanup shape is readable"),
         }
     }
 

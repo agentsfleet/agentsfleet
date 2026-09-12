@@ -40,9 +40,22 @@ use self::hanging_queue::HangingQueue;
 /// that spins has read hundreds of times.
 const SPIN_WINDOW: Duration = Duration::from_millis(1_500);
 
-/// Reads the window may contain: the first, and one more for a turn already in
-/// flight when the window opened.
-const MAX_READS_IN_WINDOW: usize = 2;
+/// Reads the window may contain: one worker turn, plus the driver's own retry
+/// ladder beneath it.
+///
+/// The fake HANGS UP on every read, which is a connection fault — so the
+/// cluster driver redials and retries the command before the failure ever
+/// reaches the worker. `afd_datastore::transport` configures that ladder at
+/// eight retries, making `1 + 8` the most one worker turn can put on the wire.
+/// Measured at five here: eleven `HELLO`s and twenty-two `CLIENT SETINFO`s for
+/// those five reads, which is the redial, not the worker.
+///
+/// This bound still proves what the test is named for. A worker that PARKED
+/// takes one turn in this window; a worker that SPUN takes hundreds of turns
+/// and hundreds of ladders with them, so the two are nowhere near each other.
+/// Counting server-side reads as worker reads was only ever right while the
+/// client had no retries of its own.
+const MAX_READS_IN_WINDOW: usize = 9;
 
 /// How long a cancelled worker may take to stop.
 ///
@@ -120,8 +133,9 @@ async fn test_a_failing_read_is_not_retried_in_a_spin() {
     );
     assert!(
         reads <= MAX_READS_IN_WINDOW,
-        "the worker read {reads} times in {SPIN_WINDOW:?} — a failing read is being \
-         retried in a spin rather than paused for {LONGEST_PARK:?}"
+        "the worker read {reads} times in {SPIN_WINDOW:?} — more than one turn's \
+         worth, so a failing read is being retried in a spin rather than paused \
+         for {LONGEST_PARK:?}"
     );
 }
 

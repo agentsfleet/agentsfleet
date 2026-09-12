@@ -87,17 +87,21 @@ async fn deny(run: &Scenario) {
         1,
         "a connected workspace gets one fleet approval card"
     );
-    Inbox::new(run.booted.database.clone(), run.booted.queue.clone())
-        .resolve(
-            actions.first().expect("card"),
-            Decision::Denied,
-            "fixture",
-            "",
-            Some(&run.fleet),
-            afd_core::clock::now(),
-        )
-        .await
-        .expect("denial");
+    Inbox::new(
+        run.booted.database.clone(),
+        run.booted.queue.clone(),
+        afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone()),
+    )
+    .resolve(
+        actions.first().expect("card"),
+        Decision::Denied,
+        "fixture",
+        "",
+        Some(&run.fleet),
+        afd_core::clock::now(),
+    )
+    .await
+    .expect("denial");
 }
 
 async fn refusal_drains(preended: bool) {

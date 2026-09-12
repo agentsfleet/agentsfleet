@@ -1,16 +1,17 @@
 //! What steer ingress accepts under concurrency, and where a steer costs.
 //!
-//! # A steer is two Redis commands and no Postgres
+//! # A steer is a Postgres row, then two Redis commands
 //!
-//! `afd_events::Steer::append` issues an `XADD` onto the fleet's stream and an
-//! `HSET` marking the fleet ready. That is the whole path — its own module note
-//! says "Nothing is written to Postgres here", and `Steer::new` takes only a
-//! `Redis` handle. A steer becomes a row when a runner LEASES it, and that cost
-//! belongs to the lease lane, which already counts it.
+//! `afd_events::Steer::append` admits the message — an insert-returning and
+//! an update on `core.fleet_admissions` — and then issues an `XADD` onto the
+//! fleet's stream and an `HSET` marking the fleet ready. The narrative row a
+//! reader pages over still appears when a runner LEASES it, and that cost
+//! still belongs to the lease lane.
 //!
-//! So the Postgres number this lane reports is expected to be near zero, and
-//! it is read from `pg_stat_database` rather than assumed: a zero nobody
-//! measured is indistinguishable from a measurement nobody took.
+//! So the Postgres number this lane reports is the ACCEPTANCE cost, which is
+//! the thing M192 traded queue-only acceptance for; it is read from
+//! `pg_stat_database` rather than assumed, because a number nobody measured
+//! is indistinguishable from a measurement nobody took.
 //!
 //! # The readiness index is the interesting part
 //!
@@ -36,6 +37,9 @@ use afd_events::Steer;
 use tokio_util::sync::CancellationToken;
 
 use crate::abort::Abort;
+use afd_admission::Admissions;
+use afd_crypto::entropy::Entropy;
+
 use crate::datastores::{Datastores, postgres_transactions, redis_calls};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
@@ -174,7 +178,11 @@ async fn submit(
 
     let mut tasks = Vec::with_capacity(slices.len());
     for mine in slices {
-        let steer = Steer::new(stores.queue.clone());
+        let steer = Steer::new(Admissions::new(
+            stores.database.clone(),
+            stores.queue.clone(),
+            Entropy::new(),
+        ));
         let abort = Arc::clone(abort);
         tasks.push(tokio::spawn(async move {
             append_until(&steer, &mine, deadline, &abort).await

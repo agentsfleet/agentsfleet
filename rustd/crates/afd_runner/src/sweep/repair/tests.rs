@@ -21,7 +21,6 @@ fn pass(due: usize, completed: usize, failed: usize) -> Dispatched {
         due,
         completed,
         failed,
-        cleanup_pending: false,
     }
 }
 
@@ -61,15 +60,4 @@ fn a_full_batch_that_mostly_worked_still_comes_straight_back() {
     // picked up by whichever pass finds its claim lapsed.
     let mostly = pass(full(), full() - 1, 1);
     assert_eq!(mostly.pacing(), Duration::ZERO);
-}
-
-#[test]
-fn a_full_cleanup_page_outranks_every_other_pacing() {
-    // Keys left in Redis are the one thing that costs money elsewhere, and a
-    // full page means more are waiting.
-    let pending = Dispatched {
-        cleanup_pending: true,
-        ..pass(0, 0, 1)
-    };
-    assert_eq!(pending.pacing(), Duration::ZERO);
 }

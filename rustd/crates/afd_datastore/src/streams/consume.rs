@@ -84,7 +84,7 @@ impl FleetStreams {
             .flat_map(|stream| stream.ids)
             .next()
             .map(|entry| FleetEvent {
-                id: EventId(entry.id),
+                receipt: EventId(entry.id),
                 fields: entry
                     .map
                     .into_iter()
@@ -137,7 +137,7 @@ impl FleetStreams {
         let reply: redis::streams::StreamAutoClaimReply =
             self.redis.command(CMD_XAUTOCLAIM, &key, &cmd).await?;
         Ok(reply.claimed.into_iter().next().map(|entry| FleetEvent {
-            id: EventId(entry.id),
+            receipt: EventId(entry.id),
             fields: entry
                 .map
                 .into_iter()

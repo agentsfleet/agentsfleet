@@ -176,6 +176,14 @@ impl CronLane {
     /// Not held on the struct: only the fire suite needs a queue, and opening
     /// one for every store and fence case would make a datastore lane out of a
     /// Postgres lane for no gain.
+    /// The admission ledger every fire in this suite writes through.
+    ///
+    /// Built from the lane's own pool and a live queue, so a test names what it
+    /// is exercising rather than restating how a ledger is assembled.
+    pub(crate) async fn admissions(&self) -> afd_admission::Admissions {
+        afd_admission::Admissions::for_tests(self.database.clone(), Self::queue().await)
+    }
+
     pub(crate) async fn queue() -> Redis {
         afd_datastore::test_util::connect_live(&Self::redis())
             .await

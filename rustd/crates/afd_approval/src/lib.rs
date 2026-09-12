@@ -34,7 +34,7 @@
 //! they won and both tell their person so.
 
 mod decision;
-mod error;
+pub mod error;
 mod gate_status;
 mod grant;
 mod inbox;
