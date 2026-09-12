@@ -35,10 +35,13 @@ describe("BalanceLink", () => {
   it("lights the figure in the accent, so it reads as live rather than as chrome", () => {
     render(<BalanceLink balanceNanos={4_806_600_000} isExhausted={false} />);
     expect(figure().className).toContain("text-pulse");
-    // A step up in size and weight from its label: a tint on small text reads
-    // as chrome, which is what this figure must not read as.
-    expect(figure().className).toContain("text-body");
+    // Two steps up in size from its label, and the header's largest type: a
+    // tint on small text reads as chrome, which is what this figure must not
+    // read as, and --pulse is already the brightest mint in the palette.
+    expect(figure().className).toContain("text-body-lg");
     expect(figure().className).toContain("font-semibold");
+    // The tighter leading keeps the taller figure from growing the header row.
+    expect(figure().className).toContain("leading-body-sm");
     // Tabular mono so the figure does not shuffle as it changes.
     expect(figure().className).toContain("font-mono");
     expect(figure().className).toContain("tabular-nums");
