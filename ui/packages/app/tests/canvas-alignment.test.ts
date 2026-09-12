@@ -25,6 +25,16 @@ const FLEET_TILE = "app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.
 
 // The canvas gutter at each breakpoint, in the rem the stylesheet states.
 const GUTTER_STEPS = ["1rem", "1.5rem", "2rem", "3rem"];
+// The header's own edge: the mobile row's 16px, then from `md` the sidebar
+// column's `px-3` plus the wordmark's `ml-2.5`, which is where the brand sits.
+const SHELL_EDGE_STEPS = ["1rem", "1.375rem"];
+const FLEET_PAGE = "app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx";
+const FLEET_SUBNAV = "app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetSubnavigation.tsx";
+const FLEET_LOADING = "app/(dashboard)/w/[workspaceId]/fleets/[id]/loading.tsx";
+const RUNNER_SUBNAV = "app/(dashboard)/admin/runners/[runnerId]/components/RunnerSubnavigation.tsx";
+const RUNNER_LOADING = "app/(dashboard)/admin/runners/[runnerId]/loading.tsx";
+// The vertical-rail variant and the spacer that lined the header up with it.
+const RAIL_UTILITY = /\blg:(?:flex-col|w-56|w-48|border-r|min-h-full)\b/;
 // Anything that would re-introduce a per-element horizontal inset on the two
 // elements that must share the gutter.
 const HORIZONTAL_PADDING_UTILITY = /\b(?:px|pr|pl)-(?:\d|\[)/;
@@ -35,11 +45,13 @@ const RAW_SPACING_UTILITY =
   /\b(?:gap|gap-x|gap-y|space-x|space-y|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-(?:\[|[1-9]\d*(?:\.\d+)?|0\.\d+)/g;
 
 describe("the canvas gutter is stated once", () => {
-  it("declares the gutter and the scrollbar width as tokens the shell can share", () => {
+  it("declares the gutter and the shell edge as tokens the shell can share", () => {
     const css = read(GLOBALS);
-    expect(css).toMatch(/--app-scrollbar:\s*6px/);
     for (const step of GUTTER_STEPS) {
       expect(css).toContain(`--app-canvas-gutter: ${step}`);
+    }
+    for (const step of SHELL_EDGE_STEPS) {
+      expect(css).toContain(`--app-shell-edge: ${step}`);
     }
   });
 
@@ -58,14 +70,18 @@ describe("the canvas gutter is stated once", () => {
     expect(canvas).toMatch(/scrollbar-gutter:\s*stable both-edges/);
   });
 
-  it("lands the header's trailing cluster on the canvas's content edge", () => {
-    // Measured before: the avatar sat 24px outboard of the content below it at
-    // 1920px, because the header ran pr-4/md:pr-6 against the canvas's
-    // px-4/sm:px-6/md:px-8/2xl:px-12.
+  it("gives the header's trailing cluster the edge its leading cluster has", () => {
+    // Measured before: the brand dot sat 22px in from the left while the
+    // avatar sat 48px in from the right at 1920px, because the trailing
+    // cluster was pinned to the canvas's content edge (gutter plus whatever
+    // scrollbar the platform reserved) instead of mirroring the sidebar's
+    // own inset. The header keeps one edge of its own, stated once, and no
+    // longer needs a probe to measure the canvas's scrollbar for it.
     const trailing = read(GLOBALS).split(".app-shell-trailing {")[1]?.split("}")[0] ?? "";
-    expect(trailing).toMatch(
-      /padding-right:\s*calc\(var\(--app-canvas-gutter\)\s*\+\s*var\(--app-scrollbar\)\)/,
-    );
+    expect(trailing).toMatch(/padding-right:\s*var\(--app-shell-edge\)/);
+    expect(trailing).not.toContain("--app-canvas-gutter");
+    expect(trailing).not.toContain("--app-scrollbar");
+    expect(read(SHELL_FRAME)).not.toContain("CanvasScrollbarProbe");
   });
 
   it("leaves neither shell element a horizontal inset of its own", () => {
@@ -76,6 +92,32 @@ describe("the canvas gutter is stated once", () => {
     expect(trailingLine).not.toBe("");
     expect(canvasLine).not.toMatch(HORIZONTAL_PADDING_UTILITY);
     expect(trailingLine).not.toMatch(HORIZONTAL_PADDING_UTILITY);
+  });
+});
+
+describe("a page's section nav is a strip, not a second sidebar", () => {
+  it.each([
+    ["the fleet sections", FLEET_SUBNAV],
+    ["the runner sections", RUNNER_SUBNAV],
+    ["the fleet loading silhouette", FLEET_LOADING],
+    ["the runner loading silhouette", RUNNER_LOADING],
+  ])("renders %s as one strip at every width", (_name, path) => {
+    // Measured before: from `lg` the nav became a 224px column beside the main
+    // sidebar, with a 224px spacer above it so the title started to its right.
+    // That read as two sidebars and a blank block top-left, and cost the
+    // transcript 224px. The strip the page already rendered below `lg` is the
+    // shape at every width now.
+    expect(read(path)).not.toMatch(RAIL_UTILITY);
+  });
+
+  it.each([
+    ["the fleet page", FLEET_PAGE, "fleet-header-alignment-spacer"],
+    ["the runner page", RUNNER_PAGE, "runner-header-alignment-spacer"],
+  ])("lets %s's header span the full content width", (_name, path, spacer) => {
+    const source = read(path);
+    expect(source).not.toContain(spacer);
+    expect(source).not.toMatch(RAIL_UTILITY);
+    expect(source).not.toContain("lg:flex-row");
   });
 });
 

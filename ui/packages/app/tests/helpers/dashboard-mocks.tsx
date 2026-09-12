@@ -84,6 +84,9 @@ const LUCIDE_ICONS = [
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ChevronsUpDown",
   // The fleet lifecycle controls, which carry a glyph the way runner actions do.
   "CircleStopIcon", "PlayIcon", "PowerOffIcon",
+  // The status lines' glyphs and the runner checks badge.
+  "CircleAlertIcon", "CoinsIcon", "HourglassIcon", "LoaderCircleIcon", "TimerIcon", "HeartPulseIcon",
+  "ShieldCheckIcon", "ShieldAlertIcon",
 ] as const;
 
 export function lucideMock() {

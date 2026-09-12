@@ -1,16 +1,19 @@
-import { Badge, Card, Section, Time } from "@agentsfleet/design-system";
+import { Badge, Section, Time } from "@agentsfleet/design-system";
 import { isSelftestStale, type RunnerDetail } from "@/lib/api/runners";
 import { type ExtraBind } from "@/lib/api/runners-types";
 import { BIND_MODE } from "@/lib/api/runners-types";
 
 // What this runner's sandbox actually IS, and whether it has been proven.
-// Both halves live in one panel deliberately: an operator reading a passing
+// Both halves live in one report deliberately: an operator reading a passing
 // self-test needs to see the bind set it ran against, and a bind list with no
-// verdict beside it is an assignment nobody has tested.
+// verdict beside it is an assignment nobody has tested. The report is the body
+// of the dialog the header's checks badge opens; nothing on the page shows it
+// unasked, because eight passing lines earn no space of their own. The dialog
+// is the landmark, so the report carries none of its own.
 
-const PANEL_LABEL = "Sandbox";
+const REPORT_TEST_ID = "runner-checks-report";
 // Renders uppercased by the heading's own class — the header button says "Run
-// checks", so the panel carrying the verdict answers to the same word.
+// checks", so the half carrying the verdict answers to the same word.
 const CHECKS_HEADING = "Checks";
 const BINDS_HEADING = "Extra mounts";
 
@@ -30,7 +33,7 @@ const BIND_MODE_SHORT: Record<string, string> = {
   read_write: "read-write",
 };
 
-export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
+export function RunnerChecksReport({ runner }: { runner: RunnerDetail }) {
   // `?? null` throughout: a row written before these columns existed omits the
   // keys, so they arrive undefined and a strict null check would render an
   // Invalid Date or fall through to a missing verdict.
@@ -41,7 +44,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
   const failed = report ? report.checks.filter((c) => !c.ok).length : 0;
 
   return (
-    <Card className="flex flex-col gap-2xl p-lg" aria-label={PANEL_LABEL}>
+    <Section data-testid={REPORT_TEST_ID} className="flex flex-col gap-2xl">
       <Section className="flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-md">
           <h2 className="font-sans text-body-sm uppercase text-muted-foreground">{CHECKS_HEADING}</h2>
@@ -84,7 +87,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
         <h2 className="font-sans text-body-sm uppercase text-muted-foreground">{BINDS_HEADING}</h2>
         <BindList binds={runner.assigned_policy?.extra_binds ?? []} />
       </Section>
-    </Card>
+    </Section>
   );
 }
 
