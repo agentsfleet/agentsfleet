@@ -83,7 +83,7 @@ describe("admin/runners/[runnerId] page — guards and failure handling", () => 
       "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy"
     );
     expect(html).toContain(LEASES_UNAVAILABLE);
-    expect(html).toContain('data-runner-strip="1"');
+    expect(html).toContain('data-runner-status-line="1"');
   });
 
   it("a view read that fails while the runner read fails leaves no unhandled rejection", async () => {
@@ -106,10 +106,10 @@ describe("admin/runners/[runnerId] page — guards and failure handling", () => 
     const Page = await loadPage();
     const html = renderToStaticMarkup(await Page(pageProps()));
     // An empty table would read as "this host has never held a lease", which is
-    // the opposite of what happened. The shell and the strip still render.
+    // the opposite of what happened. The shell and the status line still render.
     expect(html).toContain("Lease history is temporarily unavailable");
     expect(html).not.toContain("data-lease-table");
-    expect(html).toContain('data-runner-strip="1"');
+    expect(html).toContain('data-runner-status-line="1"');
 
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
@@ -142,7 +142,7 @@ describe("admin/runners/[runnerId] page — guards and failure handling", () => 
     // Not the transient copy: that one says to refresh, which cannot work here.
     expect(html).not.toContain("Lease history is temporarily unavailable");
     expect(html).not.toContain("data-lease-table");
-    expect(html).toContain('data-runner-strip="1"');
+    expect(html).toContain('data-runner-status-line="1"');
   });
 
   it("keeps the try-refreshing copy for a genuinely transient failure", async () => {

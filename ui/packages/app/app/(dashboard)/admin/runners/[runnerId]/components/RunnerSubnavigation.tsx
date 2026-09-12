@@ -5,8 +5,8 @@ import { Nav, NavItem } from "@agentsfleet/design-system";
 import { runnerPath, RUNNER_VIEW, type RunnerView } from "@/lib/runner-routes";
 import { RAIL_ACTIVITY_LABEL, RAIL_LABEL, RAIL_LEASES_LABEL } from "./runner-copy";
 
-// The two-item rail mirroring FleetSubnavigation's geometry: the runner's main
-// object is the lease, so Leases leads and is the default landing view.
+// The two-item strip mirroring FleetSubnavigation's geometry: the runner's
+// main object is the lease, so Leases leads and is the default landing view.
 
 type RunnerNavItem = {
   view: RunnerView;
@@ -29,7 +29,7 @@ export function RunnerSubnavigation({
   return (
     <Nav
       aria-label={RAIL_LABEL}
-      className="flex gap-xs overflow-x-auto border-b border-border pb-md lg:min-h-full lg:w-56 lg:shrink-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-xl"
+      className="flex gap-xs overflow-x-auto border-b border-border pb-md"
     >
       {RUNNER_NAV_ITEMS.map((item) => {
         const Icon = item.icon;

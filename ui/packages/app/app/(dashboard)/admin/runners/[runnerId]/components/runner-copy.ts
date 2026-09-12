@@ -93,15 +93,22 @@ export const OUTCOME_LABELS: Record<LeaseOutcome, string> = {
 
 export const STRIP_LABEL = "Runner metrics";
 export const STRIP_HEARTBEAT_LABEL = "Heartbeat";
+export const STRIP_OUTCOMES_LABEL = "Lease outcomes";
+export const STRIP_OUTCOMES_SEPARATOR = "/";
+export const STRIP_OK_UNIT = "ok";
+export const STRIP_FAILED_UNIT = "failed";
 export const STRIP_LEASES_NOW_LABEL = "Leases now";
-export const STRIP_ACQUIRED_LABEL = "Acquired";
-export const STRIP_SUCCEEDED_LABEL = "Succeeded";
-export const STRIP_FAILED_LABEL = "Failed";
-export const STRIP_EXPIRED_LABEL = "Expired";
-export const STRIP_LIFETIME_DETAIL = "lifetime";
-export const STRIP_FAILED_DETAIL = "ran, errored";
-export const STRIP_EXPIRED_DETAIL = "not renewed";
+export const STRIP_LIVE_UNIT = "live";
 export const STRIP_VALUE_UNKNOWN = "—";
+
+export const CHECKS_BADGE_PASSED = "checks passed";
+export const CHECKS_BADGE_FAILED_SUFFIX = "checks failed";
+export const CHECKS_BADGE_STALE = "checks stale";
+export const CHECKS_BADGE_PENDING = "checks pending";
+export const CHECKS_BADGE_NEVER = "checks never run";
+export const CHECKS_DIALOG_TITLE = "Checks";
+export const CHECKS_DIALOG_DESCRIPTION =
+  "What this runner's sandbox is, and whether the host has proven it.";
 
 export const REVIEW_LEASE_TITLE = "Review lease";
 export const REVIEW_OUTCOME_LABEL = "Outcome";

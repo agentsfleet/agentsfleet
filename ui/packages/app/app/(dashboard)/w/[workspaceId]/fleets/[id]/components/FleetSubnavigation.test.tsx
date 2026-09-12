@@ -19,7 +19,9 @@ describe("FleetSubnavigation", () => {
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")?.getAttribute("class"))
       .toContain("lucide-brain");
-    expect(screen.getByRole("navigation").className).toContain("lg:min-h-full");
+    // One strip at every width: no vertical-rail variant from `lg`.
+    expect(screen.getByRole("navigation").className).toContain("border-b");
+    expect(screen.getByRole("navigation").className).not.toMatch(/\blg:/);
   });
 
   it("defaults a missing view to Chat and rejects unknown views", () => {

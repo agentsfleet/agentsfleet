@@ -19,8 +19,7 @@ import {
 } from "@/lib/pagination/cursor-trail";
 import { RunnerHeader } from "./components/RunnerHeader";
 import { RunnerSubnavigation } from "./components/RunnerSubnavigation";
-import RunnerMetricsStrip from "./components/RunnerMetricsStrip";
-import { RunnerSandboxPanel } from "./components/RunnerSandboxPanel";
+import RunnerStatusLine from "./components/RunnerStatusLine";
 import { LeaseTable } from "./components/LeaseTable";
 import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
@@ -95,27 +94,32 @@ export default async function RunnerDetailPage({
     // view row are two blocks in the same column as the cards below them, and
     // the page owns one rhythm for all of it. The identity line's own mb-2xl
     // made this one gap 24 where every other gap on the page is 32.
-    <div className="flex min-h-full flex-1 flex-col gap-3xl">
+    //
+    // The negative bottom margin is the canvas's own bottom padding (py-6 /
+    // md:py-8) given back: a sticky element cannot leave its containing
+    // block's content box, so without it the status line stops 32px short of
+    // the canvas edge and the table's next row shows through beneath it.
+    <div className="-mb-2xl flex min-h-full flex-1 flex-col gap-3xl md:-mb-3xl">
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}
         adminState={runner.admin_state}
       />
-      <div className="flex min-w-0 flex-col gap-3xl lg:flex-row">
-        <div
-          aria-hidden="true"
-          data-testid="runner-header-alignment-spacer"
-          className="hidden lg:block lg:w-56 lg:shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
-        </div>
-      </div>
+      <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3xl lg:flex-row lg:items-stretch">
+      <div className="flex min-w-0 flex-1 flex-col gap-3xl">
         <RunnerSubnavigation runnerId={runner.id} activeView={view} />
         <div className="flex min-w-0 flex-1 flex-col">{content}</div>
       </div>
+      {/* Sticky to the foot of the scrolling canvas: on a long lease table it
+          stays in view; on a short page it sits at the end. The sticky edge
+          is the canvas's content box, so the offset is the canvas padding
+          negated, and the line's own bottom padding — the same padding the
+          root gave back — is what covers that band with its background. */}
+      <RunnerStatusLine
+        runner={runner}
+        className="sticky -bottom-2xl mt-auto pb-2xl md:-bottom-3xl md:pb-3xl"
+      />
     </div>
   );
 }
@@ -147,8 +151,8 @@ type RunnerViewRead =
   | { view: typeof RUNNER_VIEW.leases; pageSize: number; initial: Promise<LeasesInitial> };
 
 // The view switch whose default arm is the page's main object: there is no
-// Overview — the runner lands on Leases (the strip riding above the table),
-// and Activity is the second rail item, lifecycle records only.
+// Overview — the runner lands on Leases, and Activity is the second strip
+// item, lifecycle records only.
 //
 // A failed read resolves to null, never to an empty page: the tables' empty
 // states mean "this host has no history", and showing that for a database or
@@ -184,8 +188,8 @@ function startRunnerViewRead(
   };
 }
 
-// The strip still renders on the Leases view — it reads the runner, which
-// succeeded — whatever the lease read did.
+// The Leases view is the table and its filter bar; the runner's own figures
+// ride the page's status line, whatever the lease read did.
 async function renderRunnerView(runner: RunnerDetail, read: RunnerViewRead): Promise<ReactNode> {
   if (read.view === RUNNER_VIEW.activity) {
     const initial = await read.initial;
@@ -195,8 +199,6 @@ async function renderRunnerView(runner: RunnerDetail, read: RunnerViewRead): Pro
   const initial = await read.initial;
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">
-      <RunnerSandboxPanel runner={runner} />
-      <RunnerMetricsStrip runner={runner} />
       {initial === REFUSED ? (
         <Alert variant="warning">
           {LEASES_LINK_STALE}{" "}

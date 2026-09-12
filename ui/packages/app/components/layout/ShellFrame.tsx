@@ -1,6 +1,5 @@
 import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import CanvasScrollbarProbe from "./CanvasScrollbarProbe";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 import {
   DesktopSidebarNavigation,
@@ -57,8 +56,6 @@ export function ShellFrame({
             operatorScopes={operatorScopes}
           />
         </aside>
-
-        <CanvasScrollbarProbe />
 
         <main className="app-dashboard-canvas min-h-0 overflow-y-auto py-6 md:py-8 has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 has-[[data-page-layout]]:h-full has-[[data-page-layout]]:min-h-0">

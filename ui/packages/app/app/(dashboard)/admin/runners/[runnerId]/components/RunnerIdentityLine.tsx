@@ -3,11 +3,13 @@ import { Badge } from "@agentsfleet/design-system";
 import { type CapabilityReport, type RunnerDetail } from "@/lib/api/runners";
 import { SANDBOX_TIER_LABELS, type RunnerAdminState } from "@/lib/api/runners-types";
 import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
+import { RunnerChecksBadge } from "./RunnerChecksBadge";
 import { RUNNER_STATES_DOC_URL } from "./runner-copy";
 
 // The line under the header row: administrative state and liveness, the
-// isolation tier, labels, and — when a real verdict contradicts a real
-// assignment — the mismatch, side by side with what the host reported.
+// isolation tier, labels, the checks verdict (the full report opens from it),
+// and — when a real verdict contradicts a real assignment — the mismatch,
+// side by side with what the host reported.
 // `adminState` arrives separately from the runner because the header paints an
 // action's target state before the server confirms it.
 
@@ -60,6 +62,7 @@ export function RunnerIdentityLine({
             <Badge key={label}>{label}</Badge>
           ))}
         </span>
+        <RunnerChecksBadge runner={runner} />
       </div>
       {/* The mismatch line renders ONLY when a real verdict contradicts a real
           assignment: the reason names the specific missing mechanism, and the
