@@ -82,7 +82,7 @@ test_should_attach_the_migration_to_the_source_shard_only() {
   fixture
   local doc
   doc="$(render_config 2 0 8192 12287)"
-  local mig='"migrations":[{"node_id":"dfly-a","ip":"127.0.0.1","port":7005,"slot_ranges":[{"start":8192,"end":12287}]}]'
+  local mig='"migrations":[{"node_id":"dfly-a","ip":"127.0.0.1","port":7006,"slot_ranges":[{"start":8192,"end":12287}]}]'
   if [ "$(printf '%s' "$doc" | command grep -o '"migrations"' | wc -l | tr -d ' ')" != "1" ]; then
     bad "$name" "expected exactly one migrations entry: $doc"
   elif [[ "$doc" != *"$mig"* ]]; then
@@ -98,10 +98,23 @@ test_should_attach_the_migration_to_the_source_shard_only() {
 test_should_derive_admin_ports_beside_the_data_ports() {
   local name="test_should_derive_admin_ports_beside_the_data_ports"
   fixture
-  if [ "$(data_port 3)" = "7004" ] && [ "$(admin_port 0)" = "7005" ] && [ "$(admin_port 3)" = "7008" ]; then
+  if [ "$(data_port 3)" = "7004" ] && [ "$(admin_port 0)" = "7006" ] && [ "$(admin_port 3)" = "7009" ]; then
     ok "$name"
   else
     bad "$name" "data 3=$(data_port 3) admin 0=$(admin_port 0) admin 3=$(admin_port 3)"
+  fi
+  teardown
+}
+
+# The TLS node's data port follows the cluster's four, inside the published
+# range, and its admin port follows theirs — nothing overlaps.
+test_should_place_the_tls_node_after_the_cluster_ports() {
+  local name="test_should_place_the_tls_node_after_the_cluster_ports"
+  fixture
+  if [ "$(data_port "$TLS_NODE")" = "7005" ] && [ "$(admin_port "$TLS_NODE")" = "7010" ] && [ "$(admin_port 0)" -gt "$(data_port "$TLS_NODE")" ]; then
+    ok "$name"
+  else
+    bad "$name" "tls data=$(data_port "$TLS_NODE") tls admin=$(admin_port "$TLS_NODE") admin 0=$(admin_port 0)"
   fi
   teardown
 }
@@ -111,6 +124,7 @@ test_should_refuse_a_move_the_source_does_not_own
 test_should_render_the_config_every_node_is_pushed
 test_should_attach_the_migration_to_the_source_shard_only
 test_should_derive_admin_ports_beside_the_data_ports
+test_should_place_the_tls_node_after_the_cluster_ports
 
 if [ "$FAILURES" -ne 0 ]; then
   printf '%s failure(s)\n' "$FAILURES"

@@ -54,7 +54,7 @@ use crate::support::EventsLane;
 
 /// The knob `make test-integration-rustd` exports the cluster's seed under —
 /// the same name `afd_datastore`'s cluster harness reads.
-const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const URL_KNOB: &str = "TEST_REDIS_URL";
 
 /// How long one reply may take, and how long a dial may.
 const RESPONSE_BUDGET: Duration = Duration::from_secs(5);
