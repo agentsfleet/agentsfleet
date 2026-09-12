@@ -61,7 +61,7 @@ export default function FAQ() {
     <section className="site-section" data-testid="faq">
       <div className="wrap flex flex-col gap-8">
         <div className="flex flex-col gap-3">
-          <SectionLabel className="mb-0">FAQ</SectionLabel>
+          <SectionLabel as="p" className="mb-0">FAQ</SectionLabel>
           <DisplayLG>Common questions</DisplayLG>
         </div>
         <Accordion type="single" collapsible className="max-w-measure">
