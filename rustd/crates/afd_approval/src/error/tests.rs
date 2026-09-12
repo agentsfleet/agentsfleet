@@ -2,7 +2,7 @@ use std::error::Error as _;
 
 use afd_core::error_code;
 
-use super::{query, row_malformed};
+use super::raise::{query, row_malformed};
 
 #[test]
 fn statement_and_row_failures_keep_context_and_the_postgres_cause() {

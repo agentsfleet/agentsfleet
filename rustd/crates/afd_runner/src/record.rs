@@ -16,7 +16,7 @@
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
-use crate::error::{Error, Result, query, row_malformed};
+use crate::error::{Result, query, row_malformed, runner_vanished};
 use crate::policy::{AssignmentColumns, StoredVerdict};
 use crate::sql;
 use crate::store::Runners;
@@ -77,7 +77,7 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_SELF_READ))?;
         // Fail closed rather than answer 200 for a phantom runner.
-        let row = found.ok_or_else(|| Error::RunnerVanished)?;
+        let row = found.ok_or_else(runner_vanished)?;
 
         let column = query(CONTEXT_SELF_READ);
         let id: String = row.try_get(0).map_err(&column)?;

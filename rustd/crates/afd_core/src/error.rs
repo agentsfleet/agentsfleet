@@ -82,3 +82,20 @@ impl Error {
 /// reaching a client as two different sentences depending on which plane the
 /// request happened to hit.
 pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";
+
+/// The sentence a caller is told when a statement reached the datastore and
+/// would not run.
+///
+/// `problem_response.zig`'s `internalDbError`, byte for byte, and declared
+/// here for the reason [`DETAIL_DATABASE_UNAVAILABLE`] is: ten planes answer
+/// it, and a copy per plane is ten places one sentence can drift.
+pub const DETAIL_DATABASE_ERROR: &str = "Database error";
+
+/// The sentence a caller is told for an internal failure.
+///
+/// Deliberately says no more than that: naming WHICH internal step failed
+/// tells whoever provoked it something about this deployment's stored state,
+/// and on a public endpoint that is exactly who must not learn it.
+///
+/// `problem_response.zig`'s `internalOperationError`, byte for byte.
+pub const DETAIL_OPERATION_FAILED: &str = "Failed to complete the operation";

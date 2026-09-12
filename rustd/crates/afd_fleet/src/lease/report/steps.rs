@@ -7,6 +7,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::EventId;
 use afd_wire::report::ReportRequest;
 
 use crate::error::Result;
@@ -68,7 +69,9 @@ impl Plane {
             "acknowledge",
             lease,
             lease_id,
-            self.leases.acknowledge(&lease.fleet_id, event_id).await,
+            self.leases
+                .acknowledge(&lease.fleet_id, &EventId::of(&lease.receipt))
+                .await,
         );
         step(
             "release_slot",

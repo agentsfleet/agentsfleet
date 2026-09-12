@@ -22,7 +22,7 @@ use afd_datastore::OutboundQueue;
 use afd_datastore::Redis;
 use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_datastore::session::{AbortReason, Approval, SessionStore};
-use afd_datastore::streams::{FleetStreams, OnceScope};
+use afd_datastore::streams::FleetStreams;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 use crate::recorder::Recorder;
@@ -287,47 +287,6 @@ async fn test_an_abort_reply_this_build_cannot_read_is_refused() {
     assert!(
         error.is_command(),
         "an unreadable reply is Redis being wrong, not Redis being gone: {error}"
-    );
-}
-
-/// A once-append answering an empty id is refused rather than handed out.
-///
-/// The same claim `XADD` already carries, on the path that matters more: this
-/// is the deduplicated append, and its answer is what a caller reports as the
-/// event a fire or a delivery produced. An empty id there is an event nobody
-/// can acknowledge, traced to nothing.
-#[tokio::test(flavor = "multi_thread")]
-async fn test_an_empty_once_append_id_is_refused_rather_than_handed_out() {
-    install_subscriber();
-    let server = FakeRedis::spawn(&[
-        ("PING", Reply::Raw("+PONG\r\n")),
-        // The pair the script answers, with an empty id beside a real outcome.
-        ("EVALSHA", Reply::Raw("*2\r\n$0\r\n\r\n$8\r\nappended\r\n")),
-        ("EVAL", Reply::Raw("*2\r\n$0\r\n\r\n$8\r\nappended\r\n")),
-    ])
-    .await;
-
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
-        .await
-        .expect("the fake answers PING, so connect must not hang")
-        .expect("a fake that answers PONG must be accepted");
-
-    let error = tokio::time::timeout(
-        BUDGET,
-        FleetStreams::new(redis).append_once(
-            OnceScope::FleetIntent,
-            "once-1",
-            "fleet-1",
-            &[("kind", "created")],
-        ),
-    )
-    .await
-    .expect("the fake answers, so the append must not hang")
-    .expect_err("an empty id must be refused");
-
-    assert!(
-        error.is_command(),
-        "an empty id is a reply shape, not an outage: {error}"
     );
 }
 

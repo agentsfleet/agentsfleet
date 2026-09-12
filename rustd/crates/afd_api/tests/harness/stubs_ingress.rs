@@ -36,7 +36,7 @@ use afd_api::services::WebhookIngress;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_datastore::streams::EventId;
-use afd_ingress::{Appended, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// The shape Redis renders an entry id in, which a stub id has to share.
 ///
@@ -263,7 +263,7 @@ impl WebhookIngress for HarnessIngress {
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> IngressResult<Appended> {
+    ) -> IngressResult<Admitted> {
         match self {
             Self::Unreachable(ingress) => ingress.deliver(surface, binding, delivery).await,
             Self::Scripted(scripted) => Ok(scripted.append(surface, binding, delivery)),
@@ -293,7 +293,7 @@ impl Scripted {
     /// inside `deliver` and never crosses a seam. That duplication is the
     /// reason this cannot stand in for the script: the two could drift, and
     /// only the integration lane would notice.
-    fn append(&self, surface: Surface, binding: &Binding, delivery: &Delivery<'_>) -> Appended {
+    fn append(&self, surface: Surface, binding: &Binding, delivery: &Delivery<'_>) -> Admitted {
         let fleet = binding.fleet().as_str().to_owned();
         let key = format!("{fleet}:{}", delivery.event_id);
 
@@ -318,9 +318,8 @@ impl Scripted {
         let replayed = claimed.contains_key(&key);
         let id = claimed.entry(key).or_insert(next).clone();
 
-        Appended {
-            id: EventId::of(&id),
-            replayed,
-        }
+        // The ledger answers a LOGICAL id, so the stub does too: a receipt is
+        // what the append returns and is not what a route renders back.
+        Admitted { id, replayed }
     }
 }

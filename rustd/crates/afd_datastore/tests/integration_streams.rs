@@ -48,7 +48,7 @@ async fn test_stream_xadd_readgroup_ack() {
         .expect("the appended event must be delivered");
 
     assert_eq!(
-        event.id, appended,
+        event.receipt, appended,
         "the entry id IS the event id — there is no second identifier"
     );
     // The id renders as itself. `Display` is what puts an event id into a log
@@ -74,7 +74,7 @@ async fn test_stream_xadd_readgroup_ack() {
         .await
         .expect("pending read")
         .expect("an unacknowledged event is pending");
-    assert_eq!(pending.id, appended);
+    assert_eq!(pending.receipt, appended);
 
     assert!(streams.ack(&fleet, &appended).await.expect("ack"));
     assert!(
@@ -122,7 +122,7 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
         .await
         .expect("read")
         .expect("delivered");
-    assert_eq!(delivered.id, historical);
+    assert_eq!(delivered.receipt, historical);
     streams.ack(&fleet, &historical).await.expect("ack");
 
     // The group goes away — a restart without persistence, a failover, or an
@@ -159,7 +159,7 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
         .await
         .expect("read")
         .expect("the repaired group must deliver new events");
-    assert_eq!(event.id, fresh);
+    assert_eq!(event.receipt, fresh);
 
     cleanup(&harness, &[key]).await;
 }
@@ -246,7 +246,7 @@ async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
         .await
         .expect("read")
         .expect("the appended entry is delivered");
-    assert_eq!(held.id, appended);
+    assert_eq!(held.receipt, appended);
 
     // Nothing to claim yet: the entry is pending but freshly delivered, and
     // claiming it here would be the sweep racing a consumer still working.
@@ -282,7 +282,7 @@ async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
         .expect("an entry idle past the threshold is claimable");
 
     assert_eq!(
-        reclaimed.id, appended,
+        reclaimed.receipt, appended,
         "the claim moves the SAME entry rather than minting a second identity \
          for work already on the stream"
     );

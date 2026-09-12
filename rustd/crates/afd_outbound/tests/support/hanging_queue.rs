@@ -23,6 +23,9 @@ use tokio::net::{TcpListener, TcpStream};
 /// The read this server refuses.
 const CMD_XREADGROUP: &str = "XREADGROUP";
 
+/// The topology command a cluster client sends before anything else.
+const CMD_CLUSTER: &str = "CLUSTER";
+
 /// The RESP terminator, and the two type bytes this parser reads.
 const CRLF: &[u8] = b"\r\n";
 const ARRAY: u8 = b'*';
@@ -76,9 +79,10 @@ impl HangingQueue {
         let reads = Arc::new(AtomicUsize::new(0));
 
         let counting = Arc::clone(&reads);
+        let port = addr.port();
         tokio::spawn(async move {
             while let Ok((socket, _peer)) = listener.accept().await {
-                tokio::spawn(serve(socket, Arc::clone(&counting), on_read));
+                tokio::spawn(serve(socket, Arc::clone(&counting), on_read, port));
             }
         });
         Self { addr, reads }
@@ -95,9 +99,12 @@ impl HangingQueue {
     }
 }
 
-/// Answers one connection: `+PONG` to a ping, `+OK` to anything else, and a
-/// hangup on the read.
-async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead) {
+/// Answers one connection: the cluster handshake, `+PONG` to a ping, `+OK` to
+/// anything else, and a hangup on the read.
+///
+/// `port` is this server's own, because the topology it advertises has to name
+/// the address the client is already talking to.
+async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead, port: u16) {
     let mut buffer = Vec::new();
     let mut scratch = [0_u8; 4096];
     loop {
@@ -116,7 +123,14 @@ async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead) 
                     OnRead::Stall => std::future::pending::<()>().await,
                 }
             }
-            let reply: &[u8] = if request.name == "PING" {
+            // The transport is cluster-only, so the driver asks for the
+            // topology BEFORE it will ping. Answered from the shared builder
+            // rather than respelled here — see `cluster_slots_reply`.
+            let owned;
+            let reply: &[u8] = if request.name == CMD_CLUSTER {
+                owned = afd_datastore::test_util::cluster_slots_reply(port);
+                &owned
+            } else if request.name == "PING" {
                 b"+PONG\r\n"
             } else {
                 b"+OK\r\n"

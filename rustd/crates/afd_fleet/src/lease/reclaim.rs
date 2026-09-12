@@ -43,8 +43,11 @@ pub struct Reused {
 pub struct Reclaimed {
     /// The lease that was expired to release this work.
     pub lease_id: String,
-    /// The event to re-run.
+    /// The event to re-run — the ledger's logical id.
     pub event_id: String,
+    /// The stream entry the dead holder was handed, carried forward so the
+    /// re-leased run acknowledges the entry that is actually pending.
+    pub receipt: String,
     /// Who raised it.
     pub actor: String,
     /// Its type.
@@ -99,6 +102,7 @@ impl Leases {
         Ok(Some(Reclaimed {
             lease_id: column(0)?,
             event_id: column(1)?,
+            receipt: column(10)?,
             actor: column(2)?,
             event_type: column(3)?,
             request_json: column(4)?,

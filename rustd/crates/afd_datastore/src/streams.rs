@@ -1,12 +1,14 @@
 //! Per-fleet event streams: append, read as a group, acknowledge.
 //!
-//! # The entry id IS the event id
+//! # The entry id is a RECEIPT, not the event id
 //!
-//! `XADD … *` makes Redis mint the id, and that id is the canonical
-//! `event_id` the API returns and the runner correlates on — there is no second
-//! identifier anywhere. [`EventId`] exists to say so in the type system: it is
-//! produced by an append and consumed by an acknowledgement, so an id from
-//! somewhere else cannot be passed to `XACK` by accident.
+//! `XADD … *` makes Redis mint the id, and that id addresses the ENTRY: it is
+//! what `XACK` and a claim take. The event's identity is the admission
+//! ledger's logical id, which the producer writes into the entry's `event_id`
+//! field — and after a replay one logical event can have had two entries, so
+//! the two are not interchangeable. [`EventId`] says the receipt half in the
+//! type system: it is produced by an append and consumed by an
+//! acknowledgement, so a logical id cannot be passed to `XACK` by accident.
 //!
 //! # A missing group repairs itself, once, at the stream's end
 //!
@@ -96,24 +98,25 @@ pub fn fleet_activity_channel(fleet_id: &str) -> String {
     format!("fleet:{fleet_id}:activity")
 }
 
-/// A Redis stream entry id, which is also the canonical event id.
+/// A Redis stream entry id: the receipt an append answers with, and the only
+/// thing `XACK` and a claim accept.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(String);
 
 impl EventId {
-    /// The id as Redis spelled it, `{millis}-{sequence}`.
+    /// The receipt as Redis spelled it, `{millis}-{sequence}`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// An id read back out of a column rather than minted by an append.
+    /// A receipt read back out of a column rather than minted by an append.
     ///
     /// The report path needs this: the entry was acknowledged long after the
     /// poll that read it, by a different request, and what survives in between
-    /// is the `fleet.runner_leases.event_id` text. Deliberately not a `From`
-    /// impl — an id is a thing Redis produced, and a blanket conversion from
-    /// `&str` would let any string in the program become one silently.
+    /// is the `fleet.runner_leases.receipt` text. Deliberately not a `From`
+    /// impl — a receipt is a thing Redis produced, and a blanket conversion
+    /// from `&str` would let any string in the program become one silently.
     #[must_use]
     pub fn of(stored: &str) -> Self {
         Self(stored.to_owned())
@@ -129,8 +132,13 @@ impl std::fmt::Display for EventId {
 /// One event read off a fleet stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FleetEvent {
-    /// The entry id, which is the event id.
-    pub id: EventId,
+    /// The entry id — the receipt this delivery is acknowledged by.
+    ///
+    /// Named `receipt` and not `id` on purpose: the event's identity is the
+    /// `event_id` FIELD the admission ledger wrote, and after a replay the
+    /// two differ. A reader reaching for `.id` and getting the entry would
+    /// key billing on a value a replay can change.
+    pub receipt: EventId,
     /// The entry's fields, in the order Redis returned them.
     pub fields: Vec<(String, String)>,
 }
@@ -153,9 +161,6 @@ pub struct FleetStreams {
 }
 
 mod consume;
-mod once;
-
-pub use self::once::{Appended, OnceScope};
 
 impl FleetStreams {
     /// Binds stream operations to a connection.
@@ -218,7 +223,7 @@ impl FleetStreams {
         if id.is_empty() {
             return Err(error::unexpected_reply(CMD_XADD));
         }
-        tracing::debug!(fleet_id, event_id = %id, event = "xadd_fleet_event");
+        tracing::debug!(fleet_id, receipt = %id, event = "xadd_fleet_event");
         Ok(EventId(id))
     }
 

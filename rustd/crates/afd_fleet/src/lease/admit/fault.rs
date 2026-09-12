@@ -122,10 +122,14 @@ mod tests {
     use crate::lease::admit::{Admission, Transient};
     use std::collections::BTreeSet;
 
-    /// A billing failure to absorb. Which variant is immaterial — `absorb`
-    /// reads the posture beside the gate's name, never the fault.
+    /// A billing failure to absorb.
+    ///
+    /// Which kind is immaterial — `absorb` reads the posture beside the gate's
+    /// name, never the fault. Built by LIFTING a datastore refusal, which is
+    /// total: the billing kinds are private to their crate, and a sample picked
+    /// out of a list would need an arm for the list being empty.
     fn fault() -> afd_billing::Error {
-        afd_billing::Error::WalletMissing
+        afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into()
     }
 
     #[test]

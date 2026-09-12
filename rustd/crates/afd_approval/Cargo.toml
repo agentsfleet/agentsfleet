@@ -18,6 +18,10 @@ workspace = true
 
 [dependencies]
 # Identifiers, the clock a decision is stamped with, and the registry codes.
+# Where an approved gate's continuation is accepted before anything is
+# queued. Its unique index on the gate's action is what makes a retried
+# resolve continue the run exactly once.
+afd_admission.workspace = true
 afd_core.workspace = true
 # Entropy for the identifiers a grant request mints — the grant row, its gate,
 # and the action a person answers about.
@@ -45,7 +49,12 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_datastore/test-util"]
+test-util = [
+    "afd_admission/test-util",
+    "afd_core/test-util",
+    "afd_db/test-util",
+    "afd_datastore/test-util",
+]
 
 [dev-dependencies]
 # The race the resolve exists to decide is worthless single-threaded: the

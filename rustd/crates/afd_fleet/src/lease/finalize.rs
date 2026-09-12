@@ -153,18 +153,21 @@ impl Leases {
 
     /// Acknowledge the stream entry this lease executed.
     ///
+    /// Takes the RECEIPT, never the logical event id: `XACK` addresses the
+    /// entry, and a replayed admission puts one logical event on two of them.
+    /// Passing the logical id would acknowledge nothing and leave the entry
+    /// pending forever.
+    ///
     /// # Errors
     /// Reports a queue that would not answer.
-    pub async fn acknowledge(&self, fleet_id: &Uuid7, event_id: &str) -> Result<()> {
-        let acknowledged = self
-            .streams()
-            .ack(fleet_id.as_str(), &EventId::of(event_id))
-            .await?;
+    pub async fn acknowledge(&self, fleet_id: &Uuid7, receipt: &EventId) -> Result<()> {
+        let acknowledged = self.streams().ack(fleet_id.as_str(), receipt).await?;
         if !acknowledged {
             let fleet = fleet_id.as_str();
+            let entry = receipt.as_str();
             tracing::warn!(
                 fleet_id = fleet,
-                agentsfleet_event_id = event_id,
+                receipt = entry,
                 event = "xack_no_entry",
                 "the stream entry was already acknowledged or trimmed"
             );

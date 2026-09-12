@@ -142,7 +142,11 @@ impl Lane {
             .expect("the lane's Redis must be reachable");
 
         let lane = Self {
-            inbox: Inbox::new(pool.clone(), queue),
+            inbox: Inbox::new(
+                pool.clone(),
+                queue.clone(),
+                afd_admission::Admissions::for_tests(pool.clone(), queue),
+            ),
             _database: database,
             pool,
             fleet: Uuid7::parse(&fleet).expect("a fixture fleet id is well formed"),

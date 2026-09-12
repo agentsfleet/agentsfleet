@@ -55,7 +55,7 @@ impl Error {
     /// same device `afd_auth::Error::code` uses, applied to the pairing the Zig
     /// handlers restate at every `hx.fail` call site.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             // Delegated, not restated: the billing crate already decides which
@@ -196,7 +196,7 @@ impl Error {
     /// `None` would push the choice of what to say into each handler — which is
     /// how two call sites end up describing one failure differently.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
+    pub fn detail(&self) -> &'static str {
         match self.inner.kind {
             // The two kinds whose sentence the CALL SITE chose, and the only
             // two: a rejection names the field it refused, and four operations

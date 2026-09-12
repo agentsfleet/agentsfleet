@@ -30,6 +30,7 @@
 pub mod liveness;
 pub mod reclaim;
 pub mod repair;
+pub mod replay;
 pub mod retention;
 
 use std::time::Duration;

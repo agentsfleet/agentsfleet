@@ -11,6 +11,15 @@ use super::*;
 /// A helper rather than four lines inside each constructor: the install opens a
 /// declared credential's handle to classify it, so the store took a key — and
 /// spelled inline it pushed both constructors past clippy's line cap.
+/// The admission ledger every producer seam in this harness writes through.
+///
+/// Borrowed rather than moved, because one harness builds four producers from
+/// the same pool and queue and each wants its own cheap handle — two pool
+/// clones and an entropy source, as `Admissions` documents.
+pub(crate) fn admissions(database: &Db, queue: &Redis) -> afd_admission::Admissions {
+    afd_admission::Admissions::for_tests(database.clone(), queue.clone())
+}
+
 fn fleet_store(database: &Db, queue: &Redis, kek: &Arc<Kek>) -> Fleets {
     Fleets::new(
         database.clone(),
@@ -44,6 +53,10 @@ impl Fleet {
         let database = Db::unreachable(&unreachable_pool());
         let queue = Redis::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        // One ledger for the whole harness: four producer seams share it, and
+        // `Admissions` is two pool handles and an entropy source, so a clone per
+        // seam costs nothing while four constructions would repeat the wiring.
+        let ledger = admissions(&database, &queue);
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         // Bound here rather than in the literal below: the fixture key is
         // MOVED into the last vault this constructor builds, and a store
@@ -118,7 +131,7 @@ impl Fleet {
             ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
                 database.clone(),
                 SecretVault::new(database.clone(), kek, Entropy::new()),
-                queue.clone(),
+                ledger.clone(),
             ))),
             // The production schedules plane, over stores that are not there
             // and a scheduler nothing resolves. Same rule as every other seam:
@@ -133,7 +146,7 @@ impl Fleet {
                         SCHEDULE_API_BASE.to_owned(),
                     ),
                 ),
-                Fire::new(queue.clone()),
+                Fire::new(ledger.clone()),
                 Entropy::new(),
             ),
             // Fail-closed by default — a suite that proves a verified fire
@@ -147,7 +160,7 @@ impl Fleet {
             // with no CLERK_WEBHOOK_SECRET gives.
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
+            approvals: Inbox::new(database.clone(), queue.clone(), ledger.clone()),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             // Detached, not connected: a hub opens a pub/sub SOCKET, which is
@@ -158,7 +171,7 @@ impl Fleet {
             // Silent: a suite must not open a socket to a product-analytics
             // vendor, and every reporting call is infallible either way.
             analytics: Analytics::silent(),
-            steering: Steer::new(queue.clone()),
+            steering: Steer::new(ledger.clone()),
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             providers,
@@ -182,6 +195,10 @@ impl Fleet {
         let directory = Directory::Live(Credentials::new(database.clone()));
         let queue = Redis::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        // One ledger for the whole harness: four producer seams share it, and
+        // `Admissions` is two pool handles and an entropy source, so a clone per
+        // seam costs nothing while four constructions would repeat the wiring.
+        let ledger = admissions(&database, &queue);
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         // Bound here rather than in the literal below: the fixture key is
         // MOVED into the last vault this constructor builds, and a store
@@ -247,7 +264,7 @@ impl Fleet {
             ingress: HarnessIngress::Unreachable(Box::new(Ingress::new(
                 database.clone(),
                 SecretVault::new(database.clone(), kek, Entropy::new()),
-                queue.clone(),
+                ledger.clone(),
             ))),
             // The production schedules plane, over stores that are not there
             // and a scheduler nothing resolves. Same rule as every other seam:
@@ -262,7 +279,7 @@ impl Fleet {
                         SCHEDULE_API_BASE.to_owned(),
                     ),
                 ),
-                Fire::new(queue.clone()),
+                Fire::new(ledger.clone()),
                 Entropy::new(),
             ),
             // Fail-closed by default — a suite that proves a verified fire
@@ -276,12 +293,12 @@ impl Fleet {
             // with no CLERK_WEBHOOK_SECRET gives.
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
+            approvals: Inbox::new(database.clone(), queue.clone(), ledger.clone()),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
             analytics: Analytics::silent(),
-            steering: Steer::new(queue),
+            steering: Steer::new(ledger.clone()),
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             providers,

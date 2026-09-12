@@ -52,7 +52,7 @@ fn target(lane: &CronLane) -> FireTarget {
 #[ignore = "needs the lane's Redis"]
 async fn a_verified_fire_reaches_the_stream_once() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let fired = fire
@@ -75,7 +75,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
 #[ignore = "needs the lane's Redis"]
 async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let first = fire
@@ -105,8 +105,8 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
     let schedule = CronLane::token();
 
     // Two independent connections, as two processes would have.
-    let left = Fire::new(CronLane::queue().await);
-    let right = Fire::new(CronLane::queue().await);
+    let left = Fire::new(lane.admissions().await);
+    let right = Fire::new(lane.admissions().await);
 
     let (one, two) = tokio::join!(
         left.deliver(&schedule, &target, MESSAGE_ID),
@@ -137,7 +137,7 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
 #[ignore = "needs the lane's Redis"]
 async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let target = target(&lane);
     let nightly = CronLane::token();
     let hourly = CronLane::token();
@@ -167,7 +167,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
 #[ignore = "needs the lane's Redis"]
 async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let target = target(&lane);
     let schedule = CronLane::token();
 
@@ -194,7 +194,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
 async fn one_fleets_fire_does_not_claim_anothers() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let mine = fire

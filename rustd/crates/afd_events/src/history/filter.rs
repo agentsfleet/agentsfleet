@@ -8,7 +8,7 @@
 use afd_core::clock::UnixMillis;
 use jiff::Timestamp;
 
-use crate::error::Error;
+use crate::error::{Result, cursor_malformed};
 
 /// Milliseconds in each unit a `since=` duration may name.
 const MS_PER_SECOND: i64 = 1_000;
@@ -62,9 +62,9 @@ pub struct Filter {
 /// caller's check,
 /// because only the caller knows whether a cursor also arrived. Everything this
 /// function refuses is an unreadable window value.
-pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis, Error> {
+pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis> {
     let Some(last) = input.chars().last() else {
-        return Err(Error::CursorMalformed);
+        return Err(cursor_malformed());
     };
     let unit_ms = match last {
         's' => Some(MS_PER_SECOND),
@@ -84,10 +84,10 @@ pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis, Error> {
 /// Saturating rather than wrapping: a caller naming a duration wider than the
 /// epoch gets the beginning of time, which is what they asked for, instead of
 /// an arithmetic wrap that would silently become a window in the future.
-fn parse_duration(digits: &str, unit_ms: i64, now: UnixMillis) -> Result<UnixMillis, Error> {
-    let count: i64 = digits.parse().map_err(|_digits| Error::CursorMalformed)?;
+fn parse_duration(digits: &str, unit_ms: i64, now: UnixMillis) -> Result<UnixMillis> {
+    let count: i64 = digits.parse().map_err(|_digits| cursor_malformed())?;
     if count < 0 {
-        return Err(Error::CursorMalformed);
+        return Err(cursor_malformed());
     }
     Ok(UnixMillis::from_millis(
         now.as_millis()
@@ -105,11 +105,11 @@ fn parse_duration(digits: &str, unit_ms: i64, now: UnixMillis) -> Result<UnixMil
 /// date is not a client contract and rolling it over answers a question nobody
 /// asked. Recorded in the spec's Discovery rather than left for a reader to
 /// discover from a diff.
-fn parse_rfc3339_z(input: &str) -> Result<UnixMillis, Error> {
+fn parse_rfc3339_z(input: &str) -> Result<UnixMillis> {
     if input.len() != RFC3339_Z_LEN || !input.ends_with('Z') {
-        return Err(Error::CursorMalformed);
+        return Err(cursor_malformed());
     }
-    let at: Timestamp = input.parse().map_err(|_shape| Error::CursorMalformed)?;
+    let at: Timestamp = input.parse().map_err(|_shape| cursor_malformed())?;
     Ok(UnixMillis::from_millis(at.as_millisecond()))
 }
 

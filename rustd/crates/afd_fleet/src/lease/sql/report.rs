@@ -41,7 +41,7 @@ use afd_runner::sql::runner::Bound;
 /// `$1` lease, `$2` runner.
 pub const SELECT_LEASE_FOR_REPORT: &str = "\
 SELECT fleet_id::text, workspace_id::text, tenant_id::text,
-       event_id, actor, posture, provider, model, fencing_token
+       event_id, actor, posture, provider, model, fencing_token, receipt
 FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
 
 /// Claim the report and settle the final slice, atomically.

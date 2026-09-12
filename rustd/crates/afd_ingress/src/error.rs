@@ -64,10 +64,17 @@ pub(crate) enum ErrorKind {
         source: afd_vault::Error,
     },
 
-    #[error("the queue would not take the delivery")]
-    Queue {
+    /// The delivery's acceptance could not be recorded.
+    ///
+    /// Replaces the queue variant this crate used to carry: a queue that will
+    /// not take the entry no longer fails a delivery, because the ledger row
+    /// is already durable and the replay sweeper owes it an entry. What is
+    /// left here is the database refusing the row, which IS a delivery this
+    /// daemon did not accept — and a sender told so will send it again.
+    #[error("the delivery could not be admitted")]
+    Admission {
         #[source]
-        source: afd_datastore::Error,
+        source: afd_admission::Error,
     },
 
     #[error("the stored fleet document no longer parses")]
@@ -106,14 +113,11 @@ impl Error {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
-            // A queue that is GONE is the same outage a caller retries against,
-            // so it answers the unavailable code rather than a generic 500 —
-            // the distinction the dashboard's retry turns on. A queue that
-            // answered and refused is this process's problem.
-            ErrorKind::Queue { source } if source.is_unavailable() => (
-                error_code::INTERNAL_DB_UNAVAILABLE,
-                detail::DATABASE_UNAVAILABLE,
-            ),
+            // The ledger already decided what a caller is told, and answering
+            // a second sentence for one condition is the drift the shared
+            // constants in `afd_core::error` exist to prevent. It carries the
+            // 503-versus-500 distinction the dashboard's retry turns on.
+            ErrorKind::Admission { source } => (source.code(), source.detail()),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
@@ -121,9 +125,7 @@ impl Error {
             // it was would tell whoever provoked it something about this
             // deployment's stored state, and a webhook sender is exactly the
             // caller who must not learn it.
-            ErrorKind::Vault { .. }
-            | ErrorKind::Queue { .. }
-            | ErrorKind::ConfigUnreadable { .. } => (
+            ErrorKind::Vault { .. } | ErrorKind::ConfigUnreadable { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
@@ -146,13 +148,13 @@ impl Error {
     ///
     /// The question the HTTP edge turns on: an outage is this instance's to
     /// report as a 503, where every other failure here is a 500 (RULE ECL).
-    /// Both stores count — a fleet row this daemon cannot read and a stream it
-    /// cannot append to are the same incident to a sender that will retry.
+    /// Both stores count — a fleet row this daemon cannot read and a ledger
+    /// it cannot commit to are the same incident to a sender that will retry.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
-            ErrorKind::Queue { source } => source.is_unavailable(),
+            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
             _reachable => false,
         }
     }

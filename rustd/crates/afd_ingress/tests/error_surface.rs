@@ -39,7 +39,13 @@ use afd_ingress::error::{detail, one_of_each_kind};
 /// the type which kinds are outages and then asserted the answer would agree
 /// with any answer. This is the list a person maintains, so a variant that
 /// changes sides has to be moved by hand.
-const OUTAGES: &[&str] = &["datastore", "queue unreachable"];
+/// The kinds a sender should retry against.
+///
+/// `admission unreachable` is one of them: the acceptance could not be written
+/// because the ledger's datastore was gone, which is the same incident as this
+/// crate's own pool being gone and earns the same answer. It replaced
+/// `queue unreachable` when the append stopped being this crate's to make.
+const OUTAGES: &[&str] = &["datastore", "admission unreachable"];
 
 #[test]
 fn every_kind_renders_leading_with_its_code() {
@@ -129,7 +135,9 @@ fn no_sentence_names_which_internal_failure_it_was() {
     // signature passes.
     let opaque: Vec<&'static str> = one_of_each_kind()
         .into_iter()
-        .filter(|(label, _error)| ["vault", "queue answered", "config unreadable"].contains(label))
+        .filter(|(label, _error)| {
+            ["vault", "admission answered", "config unreadable"].contains(label)
+        })
         .map(|(_label, error)| error.detail())
         .collect();
 

@@ -76,6 +76,14 @@ impl EventsLane {
     }
 
     /// The lane's Redis configuration, for a caller that opens its own handle.
+    /// The admission ledger every producer in this suite writes through.
+    ///
+    /// Built from the lane's own pool and queue, so a test names what it is
+    /// exercising rather than restating how a ledger is assembled.
+    pub(crate) fn admissions(&self) -> afd_admission::Admissions {
+        afd_admission::Admissions::for_tests(self.database.clone(), self.queue.clone())
+    }
+
     pub(crate) fn redis() -> RedisConfig {
         redis_config()
     }

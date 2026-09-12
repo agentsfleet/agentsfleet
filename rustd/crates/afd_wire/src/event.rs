@@ -98,6 +98,14 @@ pub mod field {
     /// a tenant is charged for, and Redis assigning a second opinion at append
     /// time would make the charge depend on queue latency.
     pub const CREATED_AT: &str = "created_at";
+    /// The logical event id the admission ledger assigned.
+    ///
+    /// The entry id Redis mints is a RECEIPT, not an identity: after a
+    /// replay one logical event can have had two entries, and it is this
+    /// field — not the entry id — that `core.fleet_events`, the usage ledger
+    /// and every read address. Written by the ledger's append alone; a
+    /// producer never spells it.
+    pub const EVENT_ID: &str = "event_id";
 }
 
 /// Every field a fleet-stream entry carries, assembled in one place.
@@ -131,6 +139,9 @@ pub struct Entry<'a> {
 /// a producer writing them cannot disagree.
 pub const ENTRY_FIELD_COUNT: usize = 5;
 
+/// How many fields a QUEUED entry carries: the five, plus the ledger's id.
+pub const QUEUED_FIELD_COUNT: usize = ENTRY_FIELD_COUNT + 1;
+
 impl<'a> Entry<'a> {
     /// The field pairs an append writes, in wire order.
     #[must_use]
@@ -141,6 +152,28 @@ impl<'a> Entry<'a> {
             (field::WORKSPACE_ID, self.workspace_id),
             (field::REQUEST_JSON, self.request_json),
             (field::CREATED_AT, self.created_at),
+        ]
+    }
+
+    /// The field pairs the ledger's append writes: [`Self::pairs`] plus the
+    /// logical id, last.
+    ///
+    /// Only the ledger calls this. A producer holds no id of its own — the id
+    /// is the ledger row's — so an entry appended by anything else would be
+    /// one the reader refuses for want of this field, which is the intended
+    /// outcome: nothing reaches a runner without being admitted first.
+    #[must_use]
+    pub const fn queued_pairs(
+        &self,
+        event_id: &'a str,
+    ) -> [(&'static str, &'a str); QUEUED_FIELD_COUNT] {
+        [
+            (field::ACTOR, self.actor),
+            (field::EVENT_TYPE, self.event_type),
+            (field::WORKSPACE_ID, self.workspace_id),
+            (field::REQUEST_JSON, self.request_json),
+            (field::CREATED_AT, self.created_at),
+            (field::EVENT_ID, event_id),
         ]
     }
 }

@@ -56,10 +56,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_admission"
+version = "0.30.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_datastore",
+ "afd_db",
+ "afd_observability",
+ "afd_wire",
+ "hex",
+ "redis",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "afd_api"
 version = "0.30.0"
 dependencies = [
  "afd_admin",
+ "afd_admission",
  "afd_api_ingress",
  "afd_api_operator",
  "afd_api_runner",
@@ -220,6 +241,7 @@ dependencies = [
 name = "afd_approval"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_core",
  "afd_crypto",
  "afd_datastore",
@@ -250,6 +272,7 @@ dependencies = [
 name = "afd_bench"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_core",
  "afd_crypto",
  "afd_datastore",
@@ -352,6 +375,7 @@ dependencies = [
 name = "afd_cron"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_core",
  "afd_crypto",
  "afd_datastore",
@@ -425,6 +449,7 @@ dependencies = [
 name = "afd_events"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_core",
  "afd_datastore",
  "afd_db",
@@ -516,6 +541,7 @@ dependencies = [
 name = "afd_fleet_runtime"
 version = "0.30.0"
 dependencies = [
+ "afd_core",
  "afd_webhook",
  "garde",
  "semver",
@@ -555,6 +581,7 @@ name = "afd_http"
 version = "0.30.0"
 dependencies = [
  "afd_admin",
+ "afd_admission",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -613,9 +640,9 @@ dependencies = [
 name = "afd_ingress"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_core",
  "afd_crypto",
- "afd_datastore",
  "afd_db",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
@@ -665,6 +692,7 @@ dependencies = [
 name = "afd_observability"
 version = "0.30.0"
 dependencies = [
+ "afd_core",
  "afd_wire",
  "csv",
  "hex",
@@ -707,6 +735,7 @@ dependencies = [
 name = "afd_runner"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_auth",
  "afd_core",
  "afd_crypto",
@@ -819,6 +848,7 @@ name = "agentsfleetd"
 version = "0.30.0"
 dependencies = [
  "afd_admin",
+ "afd_admission",
  "afd_api",
  "afd_approval",
  "afd_auth",

@@ -252,11 +252,11 @@ impl Leases {
             .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
         let event = match pending {
             Some(event) => {
-                let id = event.id.as_str();
+                let id = event.receipt.as_str();
                 tracing::debug!(
                     event = EVENT_PEL_REDELIVERED,
                     fleet_id = fleet,
-                    agentsfleet_event_id = id,
+                    receipt = id,
                     "an entry this consumer already held is being re-delivered"
                 );
                 Some(event)
@@ -277,7 +277,7 @@ impl Leases {
         match from_fresh(fleet_id, claimed, &event) {
             Ok(acquired) => Ok(Some(acquired)),
             Err(undecodable) => {
-                drop_undecodable(&streams, fleet, &event.id, &undecodable).await;
+                drop_undecodable(&streams, fleet, &event.receipt, &undecodable).await;
                 // Freed for the reason the empty arm frees it: this fleet holds
                 // nothing this poll can lease. Holding the claim would cost a
                 // full TTL of silence on a fleet whose next event may be fine.
@@ -310,12 +310,12 @@ impl Leases {
 async fn drop_undecodable(
     streams: &afd_datastore::FleetStreams,
     fleet_id: &str,
-    event_id: &afd_datastore::EventId,
+    receipt: &afd_datastore::EventId,
     error: &crate::error::Error,
 ) {
-    let id = event_id.as_str();
+    let id = receipt.as_str();
     let reason = error.to_string();
-    let event = if streams.ack(fleet_id, event_id).await.is_ok() {
+    let event = if streams.ack(fleet_id, receipt).await.is_ok() {
         EVENT_ENTRY_UNDECODABLE_DROPPED
     } else {
         EVENT_ENTRY_UNDECODABLE_DROP_FAILED
@@ -324,7 +324,7 @@ async fn drop_undecodable(
         error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
         event,
         fleet_id,
-        agentsfleet_event_id = id,
+        receipt = id,
         reason,
         "a stream entry no reader can decode was discarded so the fleet stays leasable"
     );

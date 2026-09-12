@@ -56,7 +56,8 @@ impl Fleet {
 
     /// Runs approval decisions over the live queue paired with `database`.
     pub(crate) fn with_approval_queue(mut self, database: Db, queue: Redis) -> Self {
-        self.approvals = Inbox::new(database, queue);
+        let ledger = super::fleet::admissions(&database, &queue);
+        self.approvals = Inbox::new(database, queue, ledger);
         self
     }
 
@@ -116,10 +117,11 @@ impl Fleet {
     /// HANDLER decided; this one proves the store underneath it answers.
     pub(crate) fn with_live_ingress(mut self, database: Db, queue: Redis) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
         self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
             database.clone(),
             SecretVault::new(database, kek, Entropy::new()),
-            queue,
+            ledger,
         )));
         self
     }
@@ -133,6 +135,7 @@ impl Fleet {
     /// renders a queued event's own identifier back to the scheduler, and the
     /// only one a suite cannot reach without a queue that takes the write.
     pub(crate) fn with_live_fire(mut self, database: Db, queue: Redis) -> Self {
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
@@ -143,15 +146,19 @@ impl Fleet {
                     SCHEDULE_API_BASE.to_owned(),
                 ),
             ),
-            Fire::new(queue),
+            Fire::new(ledger),
             Entropy::new(),
         );
         self
     }
 
     /// Runs the fleet message ingress over a live queue.
-    pub(crate) fn with_steering_queue(mut self, queue: Redis) -> Self {
-        self.steering = Steer::new(queue);
+    ///
+    /// Takes the pool as well as the queue, because a steer's acceptance is a
+    /// LEDGER row now and the append that follows is its receipt — a seam
+    /// handed only a queue could no longer build the producer.
+    pub(crate) fn with_steering_queue(mut self, database: Db, queue: Redis) -> Self {
+        self.steering = Steer::new(afd_admission::Admissions::for_tests(database, queue));
         self
     }
 

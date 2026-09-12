@@ -86,3 +86,20 @@ pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
 pub fn build_client_for_diagnosis(config: &RedisConfig) -> Result<redis::cluster::ClusterClient> {
     crate::transport::client(config, config.request_timeout())
 }
+
+/// The `CLUSTER SLOTS` reply a fake server must answer before a cluster client
+/// will send it anything else.
+///
+/// One shard owning all 16384 slots at `port`, with an EMPTY hostname — which
+/// is what tells the driver to keep dialling the address the connection came in
+/// on rather than resolving a name the fake does not have.
+///
+/// Shared rather than respelled per fake. There are two in this workspace and
+/// the handshake was added to only one of them when the transport became
+/// cluster-only, which left the other answering `+PONG` to a client that never
+/// got far enough to ping — a failure whose message (`ClusterConnectionNotFound`)
+/// names nothing a reader would connect to a missing handshake.
+#[must_use]
+pub fn cluster_slots_reply(port: u16) -> Vec<u8> {
+    format!("*1\r\n*3\r\n:0\r\n:16383\r\n*2\r\n$0\r\n\r\n:{port}\r\n").into_bytes()
+}

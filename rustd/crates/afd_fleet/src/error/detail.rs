@@ -23,10 +23,10 @@ pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
 
 /// `problem_response.zig`'s `internalDbUnavailable` detail.
-pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";
+pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
 /// `problem_response.zig`'s `internalDbError` detail.
-pub const DETAIL_DATABASE_ERROR: &str = "Database error";
+pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
 /// An event on the stream this daemon cannot execute.
 ///

@@ -5,6 +5,8 @@
 //! the ways to produce one. A reader asking "what can go wrong here" and a
 //! reader asking "where does this get raised" are looking for different things.
 
+use afd_core::error_code;
+
 use super::{Error, ErrorKind};
 
 // Every lift is a `From`, so `?` does the conversion at the call site and no
@@ -15,7 +17,7 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Vault,
-    afd_datastore::Error => Queue,
+    afd_admission::Error => Admission,
     afd_fleet_runtime::Error => ConfigUnreadable,
 );
 
@@ -52,9 +54,10 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
 /// documents as refusable, so no failure is fabricated and none needs a
 /// datastore.
 ///
-/// [`ErrorKind::Queue`] appears twice on purpose. Its answer branches on
-/// `afd_datastore::Error::is_unavailable`, so one sample would leave half of that
-/// decision — and the 503-versus-500 the HTTP edge turns on — unread.
+/// [`ErrorKind::Admission`] appears twice on purpose. Its answer branches on
+/// `afd_admission::Error::is_datastore_unavailable`, so one sample would
+/// leave half of that decision — and the 503-versus-500 the HTTP edge turns
+/// on — unread.
 ///
 /// # Panics
 /// When a sibling crate stops refusing an input this builder relies on being
@@ -75,19 +78,26 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let config =
         afd_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
 
-    // Partitioned in one pass rather than searched twice: `afd_datastore::Error`
+    // Partitioned in one pass rather than searched twice: `afd_admission::Error`
     // is not `Clone`, so a second search over the same vector would have to
     // rebuild it and the two halves could come from different samples.
-    let (mut outages, mut answered): (Vec<_>, Vec<_>) = afd_datastore::error::one_of_each_kind()
+    //
+    // Chosen by what each side ANSWERS, never by position: the two ledger
+    // failures this crate samples stand for "retry me" and "do not retry, and
+    // do not learn why", and a `pop()` would have bound whichever kind the
+    // ledger happens to list last — so a reordering there would silently move
+    // this crate's opaque sample onto the database-error sentence.
+    let (mut outages, answered): (Vec<_>, Vec<_>) = afd_admission::error::one_of_each_kind()
         .into_iter()
-        .partition(|(_label, error)| error.is_unavailable());
+        .partition(|(_label, error)| error.is_datastore_unavailable());
     let unreachable = outages
         .pop()
-        .expect("afd_datastore declares an unavailable kind")
+        .expect("afd_admission declares an unavailable kind")
         .1;
     let answered = answered
-        .pop()
-        .expect("afd_datastore declares a kind that is not an outage")
+        .into_iter()
+        .find(|(_label, error)| error.code() == error_code::INTERNAL_OPERATION_FAILED)
+        .expect("afd_admission declares a kind that is opaque rather than an outage")
         .1;
 
     vec![
@@ -101,15 +111,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("vault", ErrorKind::Vault { source: vault }.into()),
         (
-            "queue unreachable",
-            ErrorKind::Queue {
+            "admission unreachable",
+            ErrorKind::Admission {
                 source: unreachable,
             }
             .into(),
         ),
         (
-            "queue answered",
-            ErrorKind::Queue { source: answered }.into(),
+            "admission answered",
+            ErrorKind::Admission { source: answered }.into(),
         ),
         (
             "config unreadable",

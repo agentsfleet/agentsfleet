@@ -38,6 +38,9 @@ redis.workspace = true
 # daemon's own pool config resolves through.
 afd_core.workspace = true
 # The entropy surface a lease mints its identifiers from.
+# The ledger a steer is admitted through. The lane builds one so its
+# measured cost is the production path's, not a shortcut around it.
+afd_admission.workspace = true
 afd_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
 afd_wire.workspace = true

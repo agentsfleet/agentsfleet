@@ -304,7 +304,11 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox
@@ -328,7 +332,11 @@ async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
 async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox

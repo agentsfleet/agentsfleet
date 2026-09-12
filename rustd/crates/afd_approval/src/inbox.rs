@@ -32,9 +32,9 @@ mod sweep;
 
 use std::borrow::Cow;
 
+use afd_admission::Admissions;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::streams::OnceScope;
 use afd_datastore::{FleetStreams, Redis};
 use afd_db::Db;
 use afd_wire::approval::status;
@@ -99,13 +99,22 @@ const CONTINUATION_BODY: &str = "{}";
 pub struct Inbox {
     database: Db,
     queue: Redis,
+    /// Where an approved gate's continuation is accepted, before anything is
+    /// queued. Distinct from [`Self::queue`], which still publishes the
+    /// answer frame a watcher sees.
+    admissions: Admissions,
 }
 
 impl Inbox {
-    /// A queue over `database`, continuing approved runs on `queue`.
+    /// A queue over `database`, continuing approved runs through
+    /// `admissions` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis) -> Self {
-        Self { database, queue }
+    pub const fn new(database: Db, queue: Redis, admissions: Admissions) -> Self {
+        Self {
+            database,
+            queue,
+            admissions,
+        }
     }
 
     /// One page of `workspace`'s gates, newest first.
@@ -292,9 +301,9 @@ impl Inbox {
     /// and the run that followed from the answer — reopening the first would
     /// erase the fact that a person was ever asked.
     ///
-    /// Idempotent on the gate's ACTION: the stream append is `append_once`
-    /// keyed by it, and the row insert carries the `(fleet_id, event_id)`
-    /// conflict arm, so a retried resolve continues the run exactly once.
+    /// Idempotent on the gate's ACTION: the admission is keyed by it, and
+    /// the row insert carries the `(fleet_id, event_id)` conflict arm, so a
+    /// retried resolve continues the run exactly once.
     ///
     /// The row is announced on the fleet's tail as `event_received` when it
     /// lands here, and only here: the lease verb announces the rows it
@@ -308,28 +317,27 @@ impl Inbox {
     ) -> Result<Option<String>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
         let kind = afd_wire::event::EventType::Continuation.as_str();
-        let created_at = now.as_millis().to_string();
-        let appended = FleetStreams::new(self.queue.clone())
-            .append_once(
-                OnceScope::FleetIntent,
-                &resolved.action_id,
-                &resolved.fleet_id,
-                &afd_wire::event::Entry {
-                    actor: actor.as_str(),
-                    event_type: kind,
-                    workspace_id: resolved.workspace_id.as_str(),
-                    request_json: CONTINUATION_BODY,
-                    created_at: &created_at,
-                }
-                .pairs(),
-            )
+        let admitted = self
+            .admissions
+            .admit(afd_admission::Admission {
+                producer: afd_admission::Producer::GateContinuation,
+                // The gate's ACTION, which a retried resolve repeats: two
+                // people answering one gate, or one person's retry, continue
+                // the run exactly once.
+                key: afd_admission::Key::Repeated(&resolved.action_id),
+                fleet: &resolved.fleet_id,
+                workspace: &resolved.workspace_id,
+                actor: actor.as_str(),
+                event_type: afd_wire::event::EventType::Continuation,
+                request_json: CONTINUATION_BODY,
+            })
             .await?;
 
         let (landed, counters) = {
             let mut connection = self.database.acquire().await?;
             let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
                 .bind(&resolved.fleet_id)
-                .bind(appended.id.as_str())
+                .bind(admitted.id.as_str())
                 .bind(&resolved.workspace_id)
                 .bind(&actor)
                 .bind(kind)
@@ -355,7 +363,7 @@ impl Inbox {
         // verb keeps for a redelivery.
         if landed.rows_affected() > 0 {
             let frame = TailFrame::EventReceived {
-                event_id: Cow::Borrowed(appended.id.as_str()),
+                event_id: Cow::Borrowed(admitted.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
                 created_at: now.as_millis(),
@@ -366,6 +374,6 @@ impl Inbox {
                 .await;
         }
 
-        Ok(Some(appended.id.as_str().to_owned()))
+        Ok(Some(admitted.id))
     }
 }
