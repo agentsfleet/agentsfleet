@@ -71,6 +71,15 @@ describe("DashboardLayout edge branches", () => {
     vi.doMock("@/lib/workspace", () => ({
       listTenantWorkspacesCached: vi.fn().mockRejectedValue(new Error("api-down")),
     }));
+    vi.doMock("@/lib/api/tenant_billing", () => ({
+      getTenantBillingCached: vi.fn().mockResolvedValue({
+        // pin test: literal is the contract
+        balance_nanos: 1_000_000_000,
+        is_exhausted: false,
+        exhausted_at: null,
+        updated_at: 1,
+      }),
+    }));
     vi.doMock("@/components/layout/ShellFrame", () => ({
       ShellFrame: ({ workspaces, children }: {
         workspaces: unknown[]; children: React.ReactNode;
@@ -83,6 +92,28 @@ describe("DashboardLayout edge branches", () => {
       await DashboardLayout({ children: React.createElement("span", null, "ok") }),
     );
     expect(markup).toContain('data-ws-count="0"');
+    expect(markup).toContain("ok");
+  });
+
+  it("renders the shell without a balance when the billing read fails", async () => {
+    // The header's credits figure must never take the whole dashboard down
+    // with it: a billing outage costs the figure, not the shell.
+    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
+    vi.doMock("@/lib/workspace", () => ({
+      listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    }));
+    vi.doMock("@/lib/api/tenant_billing", () => ({
+      getTenantBillingCached: vi.fn().mockRejectedValue(new Error("billing-down")),
+    }));
+    vi.doMock("@/components/layout/ShellFrame", () => ({
+      ShellFrame: ({ billing, children }: { billing: unknown; children: React.ReactNode }) =>
+        React.createElement("div", { "data-billing": billing === null ? "null" : "present" }, children),
+    }));
+    const { default: DashboardLayout } = await import("../app/(dashboard)/layout");
+    const markup = renderToStaticMarkup(
+      await DashboardLayout({ children: React.createElement("span", null, "ok") }),
+    );
+    expect(markup).toContain('data-billing="null"');
     expect(markup).toContain("ok");
   });
 });

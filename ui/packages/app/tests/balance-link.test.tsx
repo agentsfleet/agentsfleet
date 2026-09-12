@@ -32,16 +32,16 @@ describe("BalanceLink", () => {
     expect(link().getAttribute("aria-label")).toBe(BALANCE_ARIA_LABEL);
   });
 
-  it("lights the figure in the accent, so it reads as live rather than as chrome", () => {
+  it("bounds itself as a chip, so the eye lands on it without the type growing", () => {
     render(<BalanceLink balanceNanos={4_806_600_000} isExhausted={false} />);
+    // The bound is what makes it findable: growing the type made the figure
+    // loud without making it findable, since nothing around it is a chip.
+    expect(link().className).toContain("border-pulse/40");
+    expect(link().className).toContain("bg-pulse/10");
     expect(figure().className).toContain("text-pulse");
-    // Two steps up in size from its label, and the header's largest type: a
-    // tint on small text reads as chrome, which is what this figure must not
-    // read as, and --pulse is already the brightest mint in the palette.
-    expect(figure().className).toContain("text-body-lg");
-    expect(figure().className).toContain("font-semibold");
-    // The tighter leading keeps the taller figure from growing the header row.
-    expect(figure().className).toContain("leading-body-sm");
+    // Header-sized type, not display type.
+    expect(figure().className).toContain("text-body-sm");
+    expect(figure().className).not.toContain("text-body-lg");
     // Tabular mono so the figure does not shuffle as it changes.
     expect(figure().className).toContain("font-mono");
     expect(figure().className).toContain("tabular-nums");
@@ -55,6 +55,10 @@ describe("BalanceLink", () => {
     render(<BalanceLink balanceNanos={0} isExhausted />);
     expect(figure().className).toContain("text-destructive");
     expect(figure().className).not.toContain("text-pulse");
+    // The whole chip turns, not just the figure inside it.
+    expect(link().className).toContain("border-destructive/40");
+    expect(link().className).toContain("bg-destructive/10");
+    expect(link().className).not.toContain("border-pulse/40");
     expect(link().dataset.exhausted).toBe("true");
     expect(link().getAttribute("aria-label")).toBe(BALANCE_EXHAUSTED_ARIA_LABEL);
   });

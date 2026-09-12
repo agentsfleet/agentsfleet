@@ -15,13 +15,16 @@ import {
  * meter or a card: the fraction consumed is a billing-page question, the
  * number left is an everywhere question.
  *
- * Labelled and lit, not a muted glyph and a number. A quiet coin icon read as
- * header chrome — the operator scanning for "how much is left" skipped it.
- * The word says which figure this is; the accent says it is a live one, and
- * the accent is the same mint a live fleet wears, which is the currency this
- * balance buys. Exhausted, it turns destructive: that is the one state that
- * changes what an operator does next, because new fleet events gate-block
- * until a top-up.
+ * Labelled and bounded, not a muted glyph and a number. A quiet coin icon
+ * read as header chrome — the operator scanning for "how much is left"
+ * skipped it — and simply growing the type made the figure loud without
+ * making it findable, since nothing around it agreed to be a row of chips.
+ *
+ * So it is a chip: its own border and tinted ground in the mint a live fleet
+ * wears, which is what credits buy. The bound is what the eye lands on, so
+ * the type can stay at the header's own size. Exhausted, the whole chip turns
+ * destructive — that is the one state that changes what an operator does
+ * next, because new fleet events gate-block until a top-up.
  *
  * Server-rendered from the layout's own read, so it refreshes when a page
  * does. A tab left open overnight shows last night's figure; the billing page
@@ -71,19 +74,19 @@ export function BalanceLink({
       aria-label={isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}
       data-exhausted={isExhausted ? "true" : undefined}
       className={cn(
-        "hidden shrink-0 items-baseline gap-sm rounded-md px-md py-xs no-underline sm:inline-flex",
-        "transition-colors duration-snap ease-snap hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "hidden shrink-0 items-baseline gap-sm rounded-md border px-md py-xs no-underline sm:inline-flex",
+        "transition-colors duration-snap ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isExhausted
+          ? "border-destructive/40 bg-destructive/10 hover:bg-destructive/20"
+          : "border-pulse/40 bg-pulse/10 hover:bg-pulse/20",
       )}
     >
-      <span className="font-sans text-label text-muted-foreground">{BALANCE_LABEL}</span>
-      {/* Two steps up in size from the label beside it, and the header's
-          largest type: at body size the mint still read as a tint on small
-          text rather than as the figure the header exists to carry. --pulse
-          is already the brightest mint in the palette, so the brightness has
-          to come from the size and the weight. */}
+      <span className="font-sans text-label uppercase tracking-label text-muted-foreground">
+        {BALANCE_LABEL}
+      </span>
       <span
         className={cn(
-          "font-mono text-body-lg font-semibold leading-body-sm tabular-nums",
+          "font-mono text-body-sm font-medium tabular-nums",
           isExhausted ? "text-destructive" : "text-pulse",
         )}
       >
