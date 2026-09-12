@@ -2,7 +2,7 @@
 //!
 //! These paths are what a person reads at three in the morning, and they are
 //! the easiest to leave untested because the happy path never touches them.
-//! `afd_connector`, `afd_cron`, `afd_db` and `afd_redis` each carry the same
+//! `afd_connector`, `afd_cron`, `afd_db` and `afd_datastore` each carry the same
 //! suite over the same sample seam; this crate had neither.
 //!
 //! # The distinction this crate must not lose

@@ -15,7 +15,7 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Vault,
-    afd_redis::Error => Queue,
+    afd_datastore::Error => Queue,
     afd_fleet_runtime::Error => ConfigUnreadable,
 );
 
@@ -41,7 +41,7 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_redis`, `afd_connector` and `afd_cron` already
+/// The seam `afd_db`, `afd_datastore`, `afd_connector` and `afd_cron` already
 /// carry, and for their argument: the accessors on an error type — its code,
 /// its sentence, its rendering, whether a retry could help — are what a person
 /// reads at three in the morning and are exactly what the happy path never
@@ -53,7 +53,7 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
 /// datastore.
 ///
 /// [`ErrorKind::Queue`] appears twice on purpose. Its answer branches on
-/// `afd_redis::Error::is_unavailable`, so one sample would leave half of that
+/// `afd_datastore::Error::is_unavailable`, so one sample would leave half of that
 /// decision — and the 503-versus-500 the HTTP edge turns on — unread.
 ///
 /// # Panics
@@ -75,19 +75,19 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let config =
         afd_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
 
-    // Partitioned in one pass rather than searched twice: `afd_redis::Error`
+    // Partitioned in one pass rather than searched twice: `afd_datastore::Error`
     // is not `Clone`, so a second search over the same vector would have to
     // rebuild it and the two halves could come from different samples.
-    let (mut outages, mut answered): (Vec<_>, Vec<_>) = afd_redis::error::one_of_each_kind()
+    let (mut outages, mut answered): (Vec<_>, Vec<_>) = afd_datastore::error::one_of_each_kind()
         .into_iter()
         .partition(|(_label, error)| error.is_unavailable());
     let unreachable = outages
         .pop()
-        .expect("afd_redis declares an unavailable kind")
+        .expect("afd_datastore declares an unavailable kind")
         .1;
     let answered = answered
         .pop()
-        .expect("afd_redis declares a kind that is not an outage")
+        .expect("afd_datastore declares a kind that is not an outage")
         .1;
 
     vec![

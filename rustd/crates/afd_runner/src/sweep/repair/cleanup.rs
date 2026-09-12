@@ -6,7 +6,7 @@
 //! does not share.
 
 use afd_core::clock::UnixMillis;
-use afd_redis::streams::OnceScope;
+use afd_datastore::streams::OnceScope;
 use sqlx::Row as _;
 
 use super::{CLEANUP_BATCH_LIMIT, CONTEXT_CLEANUP, Repairs};

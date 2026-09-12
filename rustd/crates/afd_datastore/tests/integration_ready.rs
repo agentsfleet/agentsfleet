@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use afd_redis::ready::ReadyIndex;
+use afd_datastore::ready::ReadyIndex;
 
 use crate::support::RedisHarness;
 
@@ -144,7 +144,7 @@ async fn test_ready_index_read_surface() {
 #[ignore = "needs live Redis: make test-integration-rustd"]
 async fn test_client_reports_its_own_configuration() {
     let harness = RedisHarness::connect().await;
-    assert_eq!(harness.redis.role(), afd_redis::RedisRole::Default);
+    assert_eq!(harness.redis.role(), afd_datastore::RedisRole::Default);
     assert_eq!(
         harness.redis.request_timeout(),
         std::time::Duration::from_secs(5)
@@ -160,7 +160,7 @@ async fn test_client_reports_its_own_configuration() {
     // would connect happily and assert nothing.
     let missing_ca =
         RedisHarness::tls_config().with_ca_cert_file(Some("/nonexistent/ca.crt".into()));
-    let error = afd_redis::Redis::connect(&missing_ca)
+    let error = afd_datastore::Redis::connect(&missing_ca)
         .await
         .expect_err("a certificate authority that is not there must refuse");
     assert!(
@@ -189,7 +189,7 @@ async fn test_client_reports_its_own_configuration() {
 async fn test_a_command_past_its_deadline_is_a_timeout() {
     let harness = RedisHarness::connect().await;
     let impatient_config = RedisHarness::config().with_request_timeout(Duration::from_millis(50));
-    let impatient = afd_redis::Redis::connect(&impatient_config)
+    let impatient = afd_datastore::Redis::connect(&impatient_config)
         .await
         .expect("connecting is not the part under test");
 
@@ -224,10 +224,10 @@ async fn test_a_command_past_its_deadline_is_a_timeout() {
 /// appear in another's sample.
 async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
     let mut cmd = redis::cmd("HDEL");
-    cmd.arg(afd_redis::ready::READY_INDEX_KEY).arg(fleet);
+    cmd.arg(afd_datastore::ready::READY_INDEX_KEY).arg(fleet);
     let _: Result<i64, _> = harness
         .redis
-        .command("HDEL", afd_redis::ready::READY_INDEX_KEY, &cmd)
+        .command("HDEL", afd_datastore::ready::READY_INDEX_KEY, &cmd)
         .await;
 }
 
@@ -241,11 +241,11 @@ async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Redis: make test-integration-rustd"]
 async fn test_connection_failures_name_their_cause() {
-    use afd_redis::config::{RedisConfig, RedisRole};
+    use afd_datastore::config::{RedisConfig, RedisRole};
 
     // Our scheme check passes; the driver's own parser refuses the rest.
     let malformed = RedisConfig::from_url(RedisRole::Default, "redis://%%%invalid%%%".to_owned());
-    let error = afd_redis::Redis::connect(&malformed)
+    let error = afd_datastore::Redis::connect(&malformed)
         .await
         .expect_err("a URL the driver cannot parse must refuse");
     assert!(!error.is_command(), "nothing was ever sent: {error}");
@@ -255,7 +255,7 @@ async fn test_connection_failures_name_their_cause() {
     std::fs::write(&junk, b"this is not a certificate\n").expect("write the junk file");
     // TLS, for the reason the missing-authority case above records.
     let bad_pem = RedisHarness::tls_config().with_ca_cert_file(Some(junk.clone()));
-    let error = afd_redis::Redis::connect(&bad_pem)
+    let error = afd_datastore::Redis::connect(&bad_pem)
         .await
         .expect_err("a file that is not a certificate must refuse");
     assert!(!error.is_command(), "got {error}");
@@ -264,7 +264,7 @@ async fn test_connection_failures_name_their_cause() {
     // Nothing listening.
     let dead = RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:1".to_owned())
         .with_request_timeout(Duration::from_millis(500));
-    let error = afd_redis::Redis::connect(&dead)
+    let error = afd_datastore::Redis::connect(&dead)
         .await
         .expect_err("nothing is listening on port 1");
     assert!(

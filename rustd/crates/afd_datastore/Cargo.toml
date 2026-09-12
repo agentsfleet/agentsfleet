@@ -1,6 +1,6 @@
 [package]
-name = "afd_redis"
-# One aggregated test binary; see tests/redis_suite.rs for why.
+name = "afd_datastore"
+# One aggregated test binary; see tests/datastore_suite.rs for why.
 autotests = false
 description = "Fleet event streams, the subscription hub, and the CLI session store, on one Redis connection per process."
 version.workspace = true
@@ -58,5 +58,5 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 workspace = true
 
 [[test]]
-name = "redis_suite"
-path = "tests/redis_suite.rs"
+name = "datastore_suite"
+path = "tests/datastore_suite.rs"

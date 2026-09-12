@@ -33,11 +33,11 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_crypto::entropy::Entropy;
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 
 /// The instant the seeded rows are stamped with.
 const SEED_MS: i64 = 1_760_000_000_000;
@@ -177,7 +177,7 @@ impl CronLane {
     /// one for every store and fence case would make a datastore lane out of a
     /// Postgres lane for no gain.
     pub(crate) async fn queue() -> Redis {
-        afd_redis::test_util::connect_live(&Self::redis())
+        afd_datastore::test_util::connect_live(&Self::redis())
             .await
             .expect("the lane's Redis must be reachable")
     }

@@ -65,7 +65,7 @@ utoipa = { workspace = true, optional = true }
 # delegating impl in `services::ingress` is reached by nothing else. Grading it
 # needs the three handles it is built from, in their refusing form.
 afd_db = { workspace = true, features = ["test-util"] }
-afd_redis = { workspace = true, features = ["test-util"] }
+afd_datastore = { workspace = true, features = ["test-util"] }
 afd_core.workspace = true
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }

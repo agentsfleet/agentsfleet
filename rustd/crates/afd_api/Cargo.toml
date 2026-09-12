@@ -135,7 +135,7 @@ afd_db = { workspace = true, features = ["test-util"] }
 # For the same reason, and it arrived with the same change: the login surface
 # and the fleet install reach a queue, so the harness needs `Redis::unreachable`
 # to build the real stores over one that answers nothing.
-afd_redis = { workspace = true, features = ["test-util"] }
+afd_datastore = { workspace = true, features = ["test-util"] }
 # A library dependency too, but named again here for its feature: the thread
 # handler's page arithmetic is decided over `EventDetailRow`, which is
 # `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.

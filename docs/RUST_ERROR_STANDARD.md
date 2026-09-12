@@ -98,8 +98,8 @@ One deliberate exception, and it is security not style: `afd_crypto`'s
 | `map_err` elsewhere | 54 | 54 — all context-adding, correct |
 | Crates whose `source()` returned themselves | 4 | 0 |
 
-`afd_core`, `afd_crypto`, `afd_db`, `afd_redis`, `afd_auth` gained the alias.
-`afd_core`, `afd_crypto`, `afd_db`, `afd_redis` had `source()` corrected.
+`afd_core`, `afd_crypto`, `afd_db`, `afd_datastore`, `afd_auth` gained the alias.
+`afd_core`, `afd_crypto`, `afd_db`, `afd_datastore` had `source()` corrected.
 
 The corrected chain, from a real boot against a stopped Postgres:
 
@@ -148,7 +148,7 @@ to list as open are closed.
 | `afd_core` | ✅ | ✅ | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS |
 | `afd_crypto` | ✅ | ✅ | same shape |
 | `afd_db` | ✅ | ✅ | same shape |
-| `afd_redis` | ✅ | ✅ | same shape |
+| `afd_datastore` | ✅ | ✅ | same shape |
 | `afd_auth` | ✅ | ✅ | was `AuthError`; renamed to `Error`, so `afd_auth::Error` no longer stutters. `VerifyError` and `Unavailable` live beside it and stay distinct — see below |
 | `afd_identity` | ✅ | ✅ | `BlankSecret` folded into `Error`; `ClaimUnavailable` kept and composed by `#[from]` |
 | `afd_state` | ✅ | ❌ by design | implements `afd_auth`'s `CredentialDirectory` and `CapabilitySource`, whose signatures mandate `Unavailable`. A crate implementing a foreign trait does not choose the trait's error type. The alias defaults to it and the file says why |

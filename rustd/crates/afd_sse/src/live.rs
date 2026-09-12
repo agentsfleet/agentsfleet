@@ -12,7 +12,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_redis::SubscriptionHub;
+use afd_datastore::SubscriptionHub;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 

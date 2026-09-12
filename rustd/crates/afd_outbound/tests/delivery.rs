@@ -24,10 +24,10 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use afd_datastore::OutboundDelivery;
+use afd_datastore::streams::EventId;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, dispatch};
-use afd_redis::OutboundDelivery;
-use afd_redis::streams::EventId;
 
 /// A poster that answers from a script and counts what it was asked.
 #[derive(Debug)]

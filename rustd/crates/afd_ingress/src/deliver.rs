@@ -20,7 +20,7 @@
 //! minted here would make every retry a new event, which is the duplicate run
 //! the claim exists to prevent.
 //!
-//! [`afd_redis::streams::OnceScope`] owns both the key prefix and the retention
+//! [`afd_datastore::streams::OnceScope`] owns both the key prefix and the retention
 //! window. This module composes the id and names neither, which is the split
 //! that module's own header asks for: *which field of which envelope is the
 //! sender's idempotency key is the envelope's contract*.
@@ -29,8 +29,8 @@
 //! and three for the App ingress, because an operator may press Redeliver in a
 //! provider's own delivery log for three days after the event.
 
-use afd_redis::FleetStreams;
-use afd_redis::streams::{Appended, OnceScope};
+use afd_datastore::FleetStreams;
+use afd_datastore::streams::{Appended, OnceScope};
 use afd_wire::event::{Entry, EventType};
 
 use crate::Ingress;
@@ -42,7 +42,7 @@ use crate::error::Result;
 /// Carried as an argument rather than a field of [`Delivery`] because it is not
 /// part of what the stream records — it decides only how long the at-most-once
 /// claim outlives the delivery, and the two surfaces answer that differently.
-/// See [`afd_redis::streams::OnceScope`] for the two windows and why they
+/// See [`afd_datastore::streams::OnceScope`] for the two windows and why they
 /// differ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Surface {
@@ -89,7 +89,7 @@ impl Ingress {
     /// redelivering a delivery this daemon already ran has nothing to fix, and
     /// a non-2xx would only earn another retry.
     ///
-    /// The readiness mark is [`afd_redis::ReadyIndex`]'s and rides on the
+    /// The readiness mark is [`afd_datastore::ReadyIndex`]'s and rides on the
     /// steer path rather than here: a delivery that has been claimed is already
     /// durable, and a mark that failed would be a 500 inviting the retry that
     /// the claim would then suppress.

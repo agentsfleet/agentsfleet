@@ -14,9 +14,9 @@ use std::sync::Arc;
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
+use afd_datastore::Redis;
 use afd_db::Db;
 use afd_observability::Analytics;
-use afd_redis::Redis;
 use afd_sse::Live;
 
 use crate::bundles::Stores;

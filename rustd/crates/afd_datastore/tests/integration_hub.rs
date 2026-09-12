@@ -15,9 +15,9 @@
 
 use std::time::Duration;
 
-use afd_redis::SubscriptionHub;
-use afd_redis::hub::Received;
-use afd_redis::streams::FleetStreams;
+use afd_datastore::SubscriptionHub;
+use afd_datastore::hub::Received;
+use afd_datastore::streams::FleetStreams;
 use backon::ExponentialBuilder;
 use tokio::sync::Mutex;
 
@@ -160,7 +160,7 @@ async fn publish_until_delivered(
     publisher: &FleetStreams,
     channel: &str,
     payload: &str,
-    reader: &mut afd_redis::Subscription,
+    reader: &mut afd_datastore::Subscription,
 ) {
     let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
     loop {

@@ -17,7 +17,7 @@ categories.workspace = true
 # demand — a vendor does not become unreachable politely — and `Display`,
 # `code()` and `source()` are exactly what a human reads while something is
 # already going wrong.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_datastore/test-util"]
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
@@ -29,7 +29,7 @@ afd_db.workspace = true
 # operator-supplied string rather than a fixed-width key.
 afd_crypto.workspace = true
 # Where the single-use nonce lives for as long as a connect round-trip does.
-afd_redis.workspace = true
+afd_datastore.workspace = true
 # Where a grant is sealed. The KEY-holding half: the platform app credentials
 # have to be opened to spend them at the vendor.
 afd_vault.workspace = true

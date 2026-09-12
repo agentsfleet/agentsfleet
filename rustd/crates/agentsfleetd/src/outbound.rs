@@ -12,7 +12,7 @@
 //! worker blocks on `XREADGROUP … BLOCK`, and a blocking command on a shared
 //! connection is not a slow command — it is a stopped process, since Redis
 //! executes a connection's commands in order. So it dials its own, exactly as
-//! the pub/sub hub does, and [`afd_redis::Dedicated`] is not `Clone` so nobody
+//! the pub/sub hub does, and [`afd_datastore::Dedicated`] is not `Clone` so nobody
 //! can join it there.
 //!
 //! # A worker that cannot dial does not stop the boot
@@ -25,9 +25,11 @@
 //! that starts delivers them.
 
 use afd_connector::Grants;
+use afd_datastore::{
+    Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer,
+};
 use afd_db::Db;
 use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
-use afd_redis::{Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer};
 
 use crate::supervisor::Supervisor;
 

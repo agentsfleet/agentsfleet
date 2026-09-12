@@ -9,8 +9,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::Dedicated;
-use afd_redis::streams::{FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
+use afd_datastore::Dedicated;
+use afd_datastore::streams::{FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
 
 use crate::support::RedisHarness;
 
@@ -131,7 +131,7 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
     destroy
         .arg("DESTROY")
         .arg(&key)
-        .arg(afd_redis::streams::FLEET_CONSUMER_GROUP);
+        .arg(afd_datastore::streams::FLEET_CONSUMER_GROUP);
     let _: i64 = harness
         .redis
         .command("XGROUP", &key, &destroy)

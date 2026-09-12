@@ -34,8 +34,8 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::FleetStreams;
+use afd_datastore::SubscriptionHub;
+use afd_datastore::streams::FleetStreams;
 use afd_sse::FanIn;
 use afd_sse::channel;
 use afd_sse::frame::Frame;
@@ -132,7 +132,7 @@ async fn assert_reconnect_starts_over(
     publisher: &FleetStreams,
     hub: &SubscriptionHub,
     activity: &str,
-    primer: &mut afd_redis::Subscription,
+    primer: &mut afd_datastore::Subscription,
 ) {
     let missed = r#"{"kind":"run_output","n":"during-the-gap"}"#;
     publisher
@@ -254,11 +254,13 @@ where
 /// The point is the pump's progress, not the payload: once this returns, every
 /// message published before `payload` has been broadcast, so a receiver created
 /// afterwards is guaranteed not to see any of them.
-async fn drain_until(reader: &mut afd_redis::Subscription, payload: &str) {
+async fn drain_until(reader: &mut afd_datastore::Subscription, payload: &str) {
     let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
     loop {
         match tokio::time::timeout(DELIVERY_BUDGET, reader.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == payload => {
+            Ok(Ok(afd_datastore::hub::Received::Message(message)))
+                if message.payload == payload =>
+            {
                 return;
             }
             Ok(Ok(_other)) => {}
@@ -279,7 +281,7 @@ async fn drain_until(reader: &mut afd_redis::Subscription, payload: &str) {
 /// Republishing rather than sleeping: the wait is on a registration happening
 /// on a server and in another task, with no handshake to await, and a fixed
 /// sleep is either too short on a loaded runner or wasted on an idle one.
-async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_redis::Subscription) {
+async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_datastore::Subscription) {
     let marker = r#"{"kind":"primer"}"#;
     let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
     loop {
@@ -289,7 +291,7 @@ async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_redis:
             .expect("the publish reaches Redis");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == marker => {
+            Ok(Ok(afd_datastore::hub::Received::Message(message))) if message.payload == marker => {
                 return;
             }
             Ok(Ok(_other)) => {}

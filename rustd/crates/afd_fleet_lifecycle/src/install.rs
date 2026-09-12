@@ -278,8 +278,8 @@ impl Fleets {
     async fn ensure_stream(&self, fleet: &str) -> Result<()> {
         (|| async { self.streams.ensure_group(fleet).await })
             .retry(stream_backoff())
-            .when(afd_redis::Error::is_unavailable)
-            .notify(|failure: &afd_redis::Error, delay: Duration| {
+            .when(afd_datastore::Error::is_unavailable)
+            .notify(|failure: &afd_datastore::Error, delay: Duration| {
                 let sleep_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
                 let reason = failure.to_string();
                 tracing::warn!(

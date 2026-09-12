@@ -31,7 +31,7 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_redis::SubscriptionHub;
+use afd_datastore::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 

@@ -12,7 +12,7 @@
 use std::backtrace::BacktraceStatus;
 use std::error::Error as _;
 
-use afd_redis::error::one_of_each_kind;
+use afd_datastore::error::one_of_each_kind;
 
 /// Every kind renders, carries its code, and says what went wrong.
 #[test]

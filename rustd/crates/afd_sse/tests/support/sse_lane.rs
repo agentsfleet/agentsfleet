@@ -3,7 +3,7 @@
 //! Keys are namespaced per harness rather than the database being flushed
 //! between tests: the lane's Redis is one server, cargo runs these targets in
 //! parallel, and a flush would delete another suite's stream mid-read. Same
-//! contract `afd_redis/tests/support/redis_harness.rs` states; this is the
+//! contract `afd_datastore/tests/support/redis_harness.rs` states; this is the
 //! copy that lives where `afd_sse`'s own suites can reach it, because a
 //! `#[path]` reaching into a sibling crate's test tree would make one crate's
 //! test layout another crate's build dependency.
@@ -11,8 +11,8 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 
 /// The knob `make test-integration-rustd` exports the lane's Redis under.
 const URL_KNOB: &str = "TEST_REDIS_URL";
@@ -41,7 +41,7 @@ impl SseLane {
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
         install_subscriber();
-        let redis = afd_redis::test_util::connect_live(&Self::config())
+        let redis = afd_datastore::test_util::connect_live(&Self::config())
             .await
             .expect("the lane's Redis must be reachable");
         Self {

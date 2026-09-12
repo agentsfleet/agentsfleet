@@ -10,8 +10,8 @@
 
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_core::env::MapEnv;
+use afd_datastore::{RedisConfig, RedisRole};
 use afd_db::{DbRole, PoolConfig};
-use afd_redis::{RedisConfig, RedisRole};
 
 use super::Fleet;
 

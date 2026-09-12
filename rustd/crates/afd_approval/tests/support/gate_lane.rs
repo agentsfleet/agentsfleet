@@ -56,11 +56,11 @@ use std::time::Duration;
 use afd_approval::Inbox;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 
 #[path = "gate_lane_read.rs"]
 mod read;
@@ -137,7 +137,7 @@ impl Lane {
     async fn open(workspace: String, fleet: String) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_redis::test_util::connect_live(&redis_config())
+        let queue = afd_datastore::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

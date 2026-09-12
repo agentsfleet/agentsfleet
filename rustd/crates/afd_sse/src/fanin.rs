@@ -28,8 +28,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use afd_redis::hub::Received;
-use afd_redis::{Subscription, SubscriptionHub};
+use afd_datastore::hub::Received;
+use afd_datastore::{Subscription, SubscriptionHub};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream, SelectAll};
 use tokio_util::sync::CancellationToken;

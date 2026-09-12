@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_redis::Error => Queue,
+    afd_datastore::Error => Queue,
     afd_crypto::error::Error => Identifier,
     afd_core::error::Error => IdentifierShape,
     reqwest::Error => UpstreamUnreachable,
@@ -81,7 +81,7 @@ pub(crate) fn upstream_refused(status: u16) -> Error {
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     // By label, not by position — see `redis_sample`. Taking `.next()` here
-    // tied this sample set to the order `afd_redis` lists its kinds in, and
+    // tied this sample set to the order `afd_datastore` lists its kinds in, and
     // that order leads with a configuration error, so no sample reached the
     // arm that answers the outage code for a queue that is gone.
     let queue = redis_sample("command");
@@ -132,7 +132,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     ]
 }
 
-/// One `afd_redis` sample, by the label that crate gives it.
+/// One `afd_datastore` sample, by the label that crate gives it.
 ///
 /// By label because the two this builder needs sit on opposite sides of
 /// `is_unavailable`, and picking either by index makes this sample set depend
@@ -142,10 +142,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn redis_sample(label: &str) -> afd_redis::Error {
-    afd_redis::error::one_of_each_kind()
+fn redis_sample(label: &str) -> afd_datastore::Error {
+    afd_datastore::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)
         .map(|(_, error)| error)
-        .expect("afd_redis declares this kind")
+        .expect("afd_datastore declares this kind")
 }

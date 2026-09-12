@@ -30,7 +30,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
-use afd_redis::Redis;
+use afd_datastore::Redis;
 
 use crate::app::PlatformApp;
 use crate::error::Result;

@@ -8,8 +8,8 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 
 use crate::subscriber::install_subscriber;
 
@@ -44,7 +44,7 @@ impl RedisHarness {
     pub(crate) async fn connect() -> Self {
         install_subscriber();
         let config = Self::config();
-        let redis = afd_redis::test_util::connect_live(&config)
+        let redis = afd_datastore::test_util::connect_live(&config)
             .await
             .expect("the lane's Redis must be reachable");
         Self {

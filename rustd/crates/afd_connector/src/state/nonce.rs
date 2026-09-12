@@ -16,7 +16,7 @@
 //! module is reached.
 
 use afd_crypto::entropy::Entropy;
-use afd_redis::Redis;
+use afd_datastore::Redis;
 
 use crate::error::Result;
 use crate::registry::{STATE_TTL_SECONDS, StateBinding};

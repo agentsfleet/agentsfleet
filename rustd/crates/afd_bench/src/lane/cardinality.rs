@@ -25,7 +25,7 @@
 
 mod probe;
 
-use afd_redis::ReadyIndex;
+use afd_datastore::ReadyIndex;
 
 use self::probe::{
     FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,

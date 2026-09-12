@@ -186,7 +186,7 @@ async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Res
     Ok(())
 }
 
-fn report(fleet: &str, failure: &afd_redis::Error, event: &'static str) {
+fn report(fleet: &str, failure: &afd_datastore::Error, event: &'static str) {
     let reason = failure.to_string();
     tracing::warn!(
         error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
@@ -210,7 +210,7 @@ mod tests {
     /// code, which is why every kind is walked rather than one representative.
     #[test]
     fn the_orphan_report_renders_every_redis_failure() {
-        for (label, failure) in afd_redis::error::one_of_each_kind() {
+        for (label, failure) in afd_datastore::error::one_of_each_kind() {
             assert!(
                 !failure.to_string().is_empty(),
                 "{label} renders to something an operator can act on"

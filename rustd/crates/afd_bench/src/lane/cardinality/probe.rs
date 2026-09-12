@@ -7,9 +7,9 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use afd_datastore::{ReadyIndex, Redis, fleet_stream_key};
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
-use afd_redis::{ReadyIndex, Redis, fleet_stream_key};
 use sqlx::Row as _;
 
 use crate::datastores::Datastores;

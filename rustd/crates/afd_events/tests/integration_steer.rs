@@ -40,10 +40,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_datastore::ReadyIndex;
+use afd_datastore::ready::READY_INDEX_KEY;
+use afd_datastore::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
-use afd_redis::ReadyIndex;
-use afd_redis::ready::READY_INDEX_KEY;
-use afd_redis::streams::FleetStreams;
 use afd_wire::event::{EventType, field};
 
 use crate::support::EventsLane;
@@ -213,7 +213,7 @@ async fn test_steer_repeats_are_two_messages_not_one() {
 
 /// The readiness mark held for one fleet, or `None` when it carries none.
 ///
-/// Straight `HGET` against the index key `afd_redis` publishes, because the
+/// Straight `HGET` against the index key `afd_datastore` publishes, because the
 /// crate's own reader samples at random by design and this assertion needs the
 /// one field.
 async fn ready_mark(lane: &EventsLane, fleet: &str) -> Option<String> {

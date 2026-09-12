@@ -18,10 +18,10 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_datastore::Redis;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 

@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
+use afd_datastore::Redis;
 use afd_db::Db;
 use afd_observability::Analytics;
-use afd_redis::Redis;
 
 use super::optional::{announce_identity, open_live};
 use crate::error::BootFailure;
@@ -45,7 +45,7 @@ pub(super) struct Runtime {
     /// with.
     pub(super) live: afd_sse::Live,
     pub(super) plane: Shared,
-    pub(super) hub: Option<afd_redis::SubscriptionHub>,
+    pub(super) hub: Option<afd_datastore::SubscriptionHub>,
     /// The same key the plane seals with. The outbound worker opens its own
     /// grant store over it, so boot hands one key to both rather than reading
     /// the knob twice.
@@ -135,7 +135,7 @@ pub(super) async fn spawn_background(
     database: &Db,
     queue: &Redis,
     kek: &Arc<Kek>,
-    hub: Option<afd_redis::SubscriptionHub>,
+    hub: Option<afd_datastore::SubscriptionHub>,
 ) {
     if let Some(hub) = hub {
         supervisor.spawn(crate::HUB_PUMP, move |token| async move {

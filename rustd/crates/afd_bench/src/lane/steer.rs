@@ -31,8 +31,8 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
+use afd_datastore::{ReadyIndex, Redis};
 use afd_events::Steer;
-use afd_redis::{ReadyIndex, Redis};
 use tokio_util::sync::CancellationToken;
 
 use crate::abort::Abort;

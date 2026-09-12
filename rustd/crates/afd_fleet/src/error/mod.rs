@@ -127,7 +127,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the runner plane would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 
     #[error("the billing store could not answer for the runner plane")]

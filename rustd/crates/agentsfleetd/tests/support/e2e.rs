@@ -45,7 +45,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_redis::{FleetStreams, ReadyIndex};
+use afd_datastore::{FleetStreams, ReadyIndex};
 use afd_runner::Runners;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
@@ -164,8 +164,8 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
 /// so the knobs are read again here rather than reached back through the
 /// daemon. Same three values `daemon_environment` passes it, which is what
 /// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn redis_config() -> afd_redis::RedisConfig {
-    afd_redis::RedisConfig::from_url(afd_redis::RedisRole::Default, lane(REDIS_LANE_KNOB))
+pub(crate) fn redis_config() -> afd_datastore::RedisConfig {
+    afd_datastore::RedisConfig::from_url(afd_datastore::RedisRole::Default, lane(REDIS_LANE_KNOB))
         .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
 }
 

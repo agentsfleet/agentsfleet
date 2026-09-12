@@ -14,8 +14,8 @@
 
 use std::time::Instant;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
 
 /// The knob the LANE exports, which is not `REDIS_TLS_CA_CERT_FILE` — that one
 /// is the daemon's. Reading the wrong one hands rustls no trust anchor and the
@@ -68,7 +68,7 @@ async fn diagnose_where_connect_spends_its_time() {
     let mut build = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _client = afd_redis::test_util::build_client_for_diagnosis(&config);
+        let _client = afd_datastore::test_util::build_client_for_diagnosis(&config);
         build.push(started.elapsed().as_micros());
     }
     report("build_client (sync half)", build);
@@ -132,7 +132,7 @@ async fn diagnose_where_connect_spends_its_time() {
         let config = config.clone();
         tasks.push(tokio::spawn(async move {
             let started = Instant::now();
-            let outcome = afd_redis::test_util::connect_live(&config).await;
+            let outcome = afd_datastore::test_util::connect_live(&config).await;
             (started.elapsed().as_micros(), outcome.is_ok())
         }));
     }

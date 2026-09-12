@@ -72,6 +72,7 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet",
@@ -82,7 +83,6 @@ dependencies = [
  "afd_ingress",
  "afd_library",
  "afd_observability",
- "afd_redis",
  "afd_runner",
  "afd_sse",
  "afd_state",
@@ -222,9 +222,9 @@ version = "0.30.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
- "afd_redis",
  "afd_wire",
  "serde_json",
  "sqlx",
@@ -252,12 +252,12 @@ version = "0.30.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet",
  "afd_observability",
  "afd_outbound",
- "afd_redis",
  "afd_runner",
  "afd_wire",
  "hdrhistogram",
@@ -294,8 +294,8 @@ version = "0.30.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
- "afd_redis",
  "afd_vault",
  "base64 0.23.1",
  "reqwest",
@@ -354,8 +354,8 @@ version = "0.30.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
- "afd_redis",
  "afd_wire",
  "base64 0.23.1",
  "jiff",
@@ -391,6 +391,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_datastore"
+version = "0.30.0"
+dependencies = [
+ "afd_core",
+ "afd_observability",
+ "backon",
+ "futures-util",
+ "hostname",
+ "redis",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "afd_db"
 version = "0.30.0"
 dependencies = [
@@ -408,9 +426,9 @@ name = "afd_events"
 version = "0.30.0"
 dependencies = [
  "afd_core",
+ "afd_datastore",
  "afd_db",
  "afd_observability",
- "afd_redis",
  "afd_sse",
  "afd_wire",
  "base64 0.23.1",
@@ -435,12 +453,12 @@ dependencies = [
  "afd_core",
  "afd_credential",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet_runtime",
  "afd_gate",
  "afd_observability",
- "afd_redis",
  "afd_runner",
  "afd_state",
  "afd_wire",
@@ -466,10 +484,10 @@ dependencies = [
  "afd_core",
  "afd_credential",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_fleet_runtime",
  "afd_observability",
- "afd_redis",
  "afd_vault",
  "afd_wire",
  "backon",
@@ -515,11 +533,11 @@ dependencies = [
  "afd_core",
  "afd_credential",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet_runtime",
  "afd_observability",
- "afd_redis",
  "afd_runner",
  "afd_wire",
  "base64 0.23.1",
@@ -545,6 +563,7 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet",
@@ -554,7 +573,6 @@ dependencies = [
  "afd_ingress",
  "afd_library",
  "afd_observability",
- "afd_redis",
  "afd_runner",
  "afd_sse",
  "afd_tenant",
@@ -597,10 +615,10 @@ version = "0.30.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
- "afd_redis",
  "afd_vault",
  "afd_webhook",
  "afd_wire",
@@ -668,8 +686,8 @@ dependencies = [
  "afd_connector",
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
- "afd_redis",
  "afd_vault",
  "backon",
  "http",
@@ -686,33 +704,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "afd_redis"
-version = "0.30.0"
-dependencies = [
- "afd_core",
- "afd_observability",
- "backon",
- "futures-util",
- "hostname",
- "redis",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "afd_runner"
 version = "0.30.0"
 dependencies = [
  "afd_auth",
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_observability",
- "afd_redis",
  "afd_state",
  "afd_wire",
  "garde",
@@ -730,8 +730,8 @@ name = "afd_sse"
 version = "0.30.0"
 dependencies = [
  "afd_core",
+ "afd_datastore",
  "afd_observability",
- "afd_redis",
  "afd_wire",
  "futures-util",
  "serde_json",
@@ -763,9 +763,9 @@ dependencies = [
  "afd_auth",
  "afd_core",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_observability",
- "afd_redis",
  "base64 0.23.1",
  "futures-util",
  "hex",
@@ -828,6 +828,7 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_crypto",
+ "afd_datastore",
  "afd_db",
  "afd_events",
  "afd_fleet",
@@ -839,7 +840,6 @@ dependencies = [
  "afd_library",
  "afd_observability",
  "afd_outbound",
- "afd_redis",
  "afd_runner",
  "afd_sse",
  "afd_state",

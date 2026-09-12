@@ -8,8 +8,8 @@
 use core::time::Duration;
 use std::collections::BTreeMap;
 
+use afd_datastore::{EventId, OutboundDelivery};
 use afd_outbound::Deliver as _;
-use afd_redis::{EventId, OutboundDelivery};
 
 use super::poster::{Behaviour, Scripted};
 use super::record::window_end;

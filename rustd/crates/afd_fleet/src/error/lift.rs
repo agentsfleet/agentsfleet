@@ -28,8 +28,8 @@ impl From<afd_db::Error> for Error {
 /// independently and a runner reads them the same way — back off and re-poll —
 /// only when the code says which one went down. Folding Redis into the Postgres
 /// variant would page whoever owns the wrong datastore.
-impl From<afd_redis::Error> for Error {
-    fn from(source: afd_redis::Error) -> Self {
+impl From<afd_datastore::Error> for Error {
+    fn from(source: afd_datastore::Error) -> Self {
         Self::new(ErrorKind::Queue { source })
     }
 }

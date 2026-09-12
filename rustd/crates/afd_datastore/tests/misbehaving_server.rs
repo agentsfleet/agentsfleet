@@ -18,11 +18,11 @@
 use std::error::Error as _;
 use std::time::Duration;
 
-use afd_redis::OutboundQueue;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::session::{AbortReason, Approval, SessionStore};
-use afd_redis::streams::{FleetStreams, OnceScope};
+use afd_datastore::OutboundQueue;
+use afd_datastore::Redis;
+use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_datastore::session::{AbortReason, Approval, SessionStore};
+use afd_datastore::streams::{FleetStreams, OnceScope};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 use crate::recorder::Recorder;
@@ -137,7 +137,7 @@ async fn test_a_ping_that_is_not_pong_refuses_the_connection() {
 ///
 /// The id is the caller's handle to the event it just wrote. An empty one
 /// parses as a perfectly good `String`, so nothing upstream would reject it —
-/// it would travel as an [`afd_redis::streams::EventId`] and fail later, at an
+/// it would travel as an [`afd_datastore::streams::EventId`] and fail later, at an
 /// `XACK` that cannot say what it is acknowledging. Refusing it here is what
 /// keeps that from becoming a debugging session.
 #[tokio::test(flavor = "multi_thread")]

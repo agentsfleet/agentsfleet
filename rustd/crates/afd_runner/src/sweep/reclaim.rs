@@ -28,10 +28,10 @@
 
 use std::time::Duration;
 
+use afd_datastore::Redis;
+use afd_datastore::streams::FleetStreams;
 use afd_db::Db;
 use afd_observability::producers;
-use afd_redis::Redis;
-use afd_redis::streams::FleetStreams;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
@@ -99,7 +99,7 @@ pub struct Reclaim {
     /// The streams entries are claimed on.
     streams: FleetStreams,
     /// The readiness index a deliverable fleet is re-marked in.
-    ready: afd_redis::ready::ReadyIndex,
+    ready: afd_datastore::ready::ReadyIndex,
     /// This instance's stable consumer name, which claimed entries land in.
     consumer: Box<str>,
     /// Where the last pass stopped.
@@ -117,7 +117,7 @@ impl Reclaim {
         Self {
             database,
             streams: FleetStreams::new(queue.clone()),
-            ready: afd_redis::ready::ReadyIndex::new(queue),
+            ready: afd_datastore::ready::ReadyIndex::new(queue),
             consumer: consumer.into(),
             cursor: std::sync::Arc::new(tokio::sync::Mutex::new(Cursor::default())),
         }

@@ -131,7 +131,7 @@ async fn a_refused_command_fails_fast_rather_than_spending_the_retry_budget() {
     lane.occupy_stream_key(&first.id).await;
 
     let started = Instant::now();
-    let refused = afd_redis::FleetStreams::new(lane.queue.clone())
+    let refused = afd_datastore::FleetStreams::new(lane.queue.clone())
         .ensure_group(first.id.as_str())
         .await
         .expect_err("a key holding a string is not a stream");

@@ -3,7 +3,7 @@
 //! # The whole schedule is `backon`'s, not this crate's
 //!
 //! `afd_fleet_lifecycle::install` writes a `Schedule` iterator adapter so
-//! `backon` drives its loop from `afd_redis::Backoff`'s delays, and that is
+//! `backon` drives its loop from `afd_datastore::Backoff`'s delays, and that is
 //! right THERE: those delays are shared with the subscription hub's reconnect,
 //! so the install and the pump recover from one Redis outage on one proven
 //! curve. Nothing shares this curve. A vendor POST retry has no sibling to

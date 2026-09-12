@@ -20,7 +20,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
+use afd_datastore::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
 
 /// The lane's Redis URL.
 const URL_KNOB: &str = "TEST_REDIS_URL";
@@ -64,7 +64,7 @@ pub(crate) fn unreachable() -> Redis {
 
 /// Connects to the lane's Redis.
 pub(crate) async fn connect() -> Redis {
-    afd_redis::test_util::connect_live(&config())
+    afd_datastore::test_util::connect_live(&config())
         .await
         .expect("the lane's Redis must be reachable")
 }

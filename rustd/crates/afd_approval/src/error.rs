@@ -70,7 +70,7 @@ pub enum Error {
     Queue {
         /// The queue failure underneath.
         #[from]
-        source: afd_redis::Error,
+        source: afd_datastore::Error,
     },
 }
 

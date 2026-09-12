@@ -24,7 +24,7 @@ impl Fleet {
     /// Keeps real pub/sub while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(
         mut self,
-        hub: afd_redis::SubscriptionHub,
+        hub: afd_datastore::SubscriptionHub,
         capacity: usize,
     ) -> Self {
         self.live = Live::new(hub, Ceiling::new(capacity));
@@ -83,7 +83,7 @@ impl Fleet {
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
+                afd_datastore::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
                 Entropy::new(),
                 FIXTURE_APP_URL,
@@ -212,7 +212,7 @@ impl Fleet {
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
+                afd_datastore::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
                 Entropy::new(),
                 FIXTURE_APP_URL,

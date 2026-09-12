@@ -138,7 +138,7 @@ impl ClusterHarness {
 
     /// A connection one caller owns alone, allowed to park for `longest_park`
     /// before a reply is given up on — the cluster shape of
-    /// `afd_redis::Dedicated`.
+    /// `afd_datastore::Dedicated`.
     pub(crate) async fn connect_parked(&self, longest_park: Duration) -> ClusterConnection {
         self.builder()
             .response_timeout(longest_park + RESPONSE_BUDGET)

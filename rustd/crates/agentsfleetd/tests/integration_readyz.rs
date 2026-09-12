@@ -38,10 +38,10 @@
 
 use afd_api::router::Dependencies as _;
 use afd_core::env::MapEnv;
+use afd_datastore::Redis;
+use afd_datastore::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_redis::Redis;
-use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use agentsfleetd::probes::LiveDependencies;
 
 use crate::support::install_subscriber;
@@ -81,7 +81,7 @@ async fn connected() -> (Db, Redis) {
         .expect("the lane publishes a usable Redis URL");
     // Through the admission gate, like every other lane harness: the handshake
     // is the expensive part and it queues behind the rest of the suite.
-    let queue = afd_redis::test_util::connect_live(&redis_config)
+    let queue = afd_datastore::test_util::connect_live(&redis_config)
         .await
         .expect("the lane's Redis is up");
 

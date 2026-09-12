@@ -13,8 +13,8 @@
 
 use std::time::Duration;
 
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{Dedicated, Redis};
+use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_datastore::{Dedicated, Redis};
 
 /// Long enough that a real connection attempt would finish, short enough that a
 /// URL which somehow DID open a socket fails the test rather than hanging it.
@@ -75,7 +75,7 @@ async fn test_a_url_the_client_cannot_be_built_from_is_refused_by_role() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_the_tls_client_carries_the_same_refusal() {
     let ca_path = std::env::temp_dir().join(format!(
-        "afd_redis_connect_refusals_{}.pem",
+        "afd_datastore_connect_refusals_{}.pem",
         std::process::id()
     ));
     // Readable, so the certificate-unreadable branch is NOT what this reaches,
