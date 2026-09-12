@@ -6,6 +6,7 @@ import {
   useIntentModule,
 } from "./intent-module-loader";
 import { IntentDialogStatus } from "./IntentDialogStatus";
+import type { PlatformCatalogEntry } from "@/lib/types";
 
 const addFleetDialogLoader = createIntentModuleLoader(
   () =>
@@ -24,12 +25,14 @@ export default function AddFleetDialogDynamic({
   prefillRepo,
   prefillRef,
   restoreFocus,
+  entries,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefillRepo?: string;
   prefillRef?: string;
   restoreFocus?: () => void;
+  entries: readonly PlatformCatalogEntry[];
 }) {
   const dialog = useIntentModule(addFleetDialogLoader);
 
@@ -46,6 +49,7 @@ export default function AddFleetDialogDynamic({
         prefillRepo={prefillRepo}
         prefillRef={prefillRef}
         restoreFocus={restoreFocus}
+        entries={entries}
       />
     );
   }
