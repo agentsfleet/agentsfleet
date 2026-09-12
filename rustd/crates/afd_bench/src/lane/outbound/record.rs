@@ -94,38 +94,46 @@ pub(super) fn record(
         .ended
         .saturating_duration_since(drained.started)
         .as_secs_f64();
-    report.latency(seconds, &all);
-    report.measurement(DELIVERED, count(drained.settled));
-    report.measurement(UNSETTLED, count(jobs.saturating_sub(drained.settled)));
-    report.measurement(FOREIGN, count(seen.foreign()));
+    let elapsed = drained.ended.saturating_duration_since(drained.started);
+    report.latency(elapsed, &all);
+    report.count(DELIVERED, drained.settled);
+    report.count(UNSETTLED, jobs.saturating_sub(drained.settled));
+    report.count(FOREIGN, seen.foreign());
     if !others.is_empty() {
-        report.measurement(
+        report.calculated(
             OTHERS_P95_MS,
             others.quantile_ms(crate::report::latency::P95),
+            crate::report::Calculation::quantile(&others, 950_000),
         );
     }
     if !slow.is_empty() {
-        report.measurement(SLOW_P95_MS, slow.quantile_ms(crate::report::latency::P95));
+        report.calculated(
+            SLOW_P95_MS,
+            slow.quantile_ms(crate::report::latency::P95),
+            crate::report::Calculation::quantile(&slow, 950_000),
+        );
     }
-    report.measurement(
+    report.calculated(
         RETRY_OCCUPANCY,
         if seconds > 0.0 {
             ladder.as_secs_f64() / seconds
         } else {
             0.0
         },
+        crate::report::Calculation::Ratio {
+            numerator: u64::try_from(ladder.as_nanos()).unwrap_or(u64::MAX),
+            denominator: u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
+        },
     );
-    report.measurement(
+    report.count(
         SLOW_DESTINATIONS,
-        count(
-            u64::try_from(
-                behaviours
-                    .values()
-                    .filter(|b| **b == Behaviour::Slow)
-                    .count(),
-            )
-            .unwrap_or(u64::MAX),
-        ),
+        u64::try_from(
+            behaviours
+                .values()
+                .filter(|b| **b == Behaviour::Slow)
+                .count(),
+        )
+        .unwrap_or(u64::MAX),
     );
     // Rate is delivered-per-second over the window that delivered them; a
     // drain that ran out of window is recorded as an abort with the fraction

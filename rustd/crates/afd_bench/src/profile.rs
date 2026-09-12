@@ -24,6 +24,7 @@ use crate::error::{Error, Result};
 
 mod target;
 
+pub(crate) use target::RigLock;
 pub use target::Target;
 
 /// Variable every lane reads its profile from; absent means the rig.

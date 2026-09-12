@@ -29,14 +29,15 @@ use afd_redis::ReadyIndex;
 use tokio_util::sync::CancellationToken;
 
 use self::probe::{
-    FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
+    FLEETS_TABLE_BYTES, median_ms, peek_samples, postgres_at_population, stream_read_samples,
+    table_sizes,
 };
 use crate::datastores::{Datastores, redis_used_memory};
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Fixture, Lane, Report, count, ratio};
+use crate::report::{Calculation, Fixture, Lane, Report, count, ratio};
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
@@ -56,6 +57,8 @@ const REDIS_BYTES_TOTAL: &str = "redis_bytes_total";
 /// Measurement key: how many fleets the readiness index holds on a deployed
 /// target. Its own name, because it is not the population.
 const READY_DEPTH: &str = "ready_depth";
+const REDIS: &str = "redis";
+const PEEK_SAMPLE_FIELD: &str = "readiness peek samples";
 
 /// How many rungs the ladder has below its ceiling, each ten times the last.
 ///
@@ -201,50 +204,70 @@ async fn climb(
         let bytes = redis_used_memory(&stores.queue).await?;
         let added = bytes.saturating_sub(previous_bytes);
         let fleets_added = rung.saturating_sub(previous_rung);
-        push(report, LADDER, count(rung));
-        push(report, BYTES_PER_FLEET, ratio(added, fleets_added));
-        push(report, PEEK_MS, peek_ms(&stores.queue).await?);
+        push(report, LADDER, count(rung), Calculation::count(rung));
+        push(
+            report,
+            BYTES_PER_FLEET,
+            ratio(added, fleets_added),
+            Calculation::ratio(added, fleets_added),
+        );
+        let peek = peek_samples(&stores.queue).await?;
+        push(
+            report,
+            PEEK_MS,
+            median_ms(peek.clone()).ok_or(crate::Error::CounterUnreadable {
+                datastore: REDIS,
+                field: PEEK_SAMPLE_FIELD,
+            })?,
+            Calculation::median(&peek),
+        );
+        let stream = stream_read_samples(&stores.queue, &last_fleet).await?;
         push(
             report,
             STREAM_READ_MS,
-            stream_read_ms(&stores.queue, &last_fleet).await?,
+            median_ms(stream.clone()).ok_or(crate::Error::CounterUnreadable {
+                datastore: REDIS,
+                field: "stream read samples",
+            })?,
+            Calculation::median(&stream),
         );
         previous_bytes = bytes;
         previous_rung = rung;
     }
-    report.measurement(
-        REDIS_BYTES_TOTAL,
-        count(previous_bytes.saturating_sub(baseline)),
-    );
+    report.difference(REDIS_BYTES_TOTAL, baseline, previous_bytes);
     postgres_at_population(stores, &runner.to_string(), report).await
 }
 
 /// Read the population that is already there, creating nothing.
 async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
+    let population = probe::fleet_population(&stores.database).await?;
     push(
         report,
         LADDER,
-        count(probe::fleet_population(&stores.database).await?),
+        count(population),
+        Calculation::count(population),
     );
-    report.measurement(
+    report.count(
         READY_DEPTH,
-        count(ReadyIndex::new(stores.queue.clone()).len().await?),
+        ReadyIndex::new(stores.queue.clone()).len().await?,
     );
-    push(report, PEEK_MS, peek_ms(&stores.queue).await?);
-    report.measurement(
-        FLEETS_TABLE_BYTES,
-        count(table_sizes(&stores.database).await?),
+    let peek = peek_samples(&stores.queue).await?;
+    push(
+        report,
+        PEEK_MS,
+        median_ms(peek.clone()).ok_or(crate::Error::CounterUnreadable {
+            datastore: REDIS,
+            field: PEEK_SAMPLE_FIELD,
+        })?,
+        Calculation::median(&peek),
     );
+    report.count(FLEETS_TABLE_BYTES, table_sizes(&stores.database).await?);
     Ok(())
 }
 
 /// Append one sample to a series.
-fn push(report: &mut Report, series: &str, value: f64) {
-    report
-        .series
-        .entry(series.to_owned())
-        .or_default()
-        .push(value);
+fn push(report: &mut Report, series: &str, value: f64, calculation: Calculation) {
+    report.series_value(series, value, calculation);
 }
 
 #[cfg(test)]

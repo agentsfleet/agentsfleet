@@ -67,7 +67,7 @@ const DESTINATIONS: u64 = 16;
 const PROVIDER: &str = "slack";
 
 /// A generated answer; never a tenant's text (RULE PRI).
-const ANSWER: &str = "bench answer";
+pub(crate) const ANSWER: &str = "bench answer";
 
 /// What the lost-task refusal calls the worker.
 const WORKER_ROLE: &str = "delivery worker";

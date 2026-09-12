@@ -14,7 +14,9 @@ const GIT_COMMAND: &str = "git";
 const LOCK_PATH: &str = "rustd/Cargo.lock";
 const CRATES_PATH: &str = "rustd/crates/";
 const BENCH_CRATE_PATH: &str = "rustd/crates/afd_bench/";
+const OUTBOUND_OWNERSHIP_SEAM_PATH: &str = "rustd/crates/afd_outbound/src/poster.rs";
 const PACKAGE_STANZA: &str = "[[package]]";
+const DIFF: &str = "diff";
 
 /// SHA-256 of bytes, rendered in the form every sidecar uses.
 pub(crate) fn digest(bytes: &[u8]) -> String {
@@ -61,6 +63,20 @@ pub(crate) fn provenance(baseline: &str, capture: &str) -> Result<Provenance> {
     let baseline = revision(baseline)?;
     let capture = revision(capture)?;
     let production_source = surface(&baseline, &capture, Surface::Source)?;
+    let outbound_ownership_seam_sha256 = digest(
+        git(
+            &[
+                DIFF,
+                "--binary",
+                &baseline,
+                &capture,
+                "--",
+                OUTBOUND_OWNERSHIP_SEAM_PATH,
+            ],
+            "outbound ownership seam diff",
+        )?
+        .as_bytes(),
+    );
     let schema_files = surface(&baseline, &capture, Surface::Schema)?;
     let production_build = surface(&baseline, &capture, Surface::Build)?;
     let baseline_lock = file_at(&baseline, LOCK_PATH)?;
@@ -74,7 +90,7 @@ pub(crate) fn provenance(baseline: &str, capture: &str) -> Result<Provenance> {
         digest(&dependency_closure(&baseline)?),
         digest(&dependency_closure(&capture)?),
     );
-    let changed_paths = git(&["diff", "--name-only", &baseline, &capture], "git diff")?
+    let changed_paths = git(&[DIFF, "--name-only", &baseline, &capture], "git diff")?
         .lines()
         // Milestone filenames are documentation labels, not runtime inputs,
         // and the repository's production-source audit forbids those labels
@@ -87,6 +103,7 @@ pub(crate) fn provenance(baseline: &str, capture: &str) -> Result<Provenance> {
         baseline_revision: baseline,
         capture_revision: capture,
         production_source,
+        outbound_ownership_seam_sha256,
         schema_files,
         production_build,
         cargo_lock,
@@ -130,6 +147,7 @@ fn selected(path: &str, surface: Surface) -> bool {
             path.starts_with(CRATES_PATH)
                 && path.contains("/src/")
                 && !path.starts_with(BENCH_CRATE_PATH)
+                && path != OUTBOUND_OWNERSHIP_SEAM_PATH
         }
         Surface::Schema => path.starts_with("schema/"),
         Surface::Build => {

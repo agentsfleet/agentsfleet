@@ -7,7 +7,21 @@
 
 use std::net::SocketAddr;
 
-use super::{Profile, Target, binding_covers, endpoint_socket, published_sockets};
+use super::{
+    Profile, Target, binding_covers, endpoint_socket, published_sockets, redis_clients_are_local,
+};
+
+#[test]
+fn test_only_container_local_redis_clients_are_quiescent() {
+    assert!(redis_clients_are_local(
+        "id=1 addr=127.0.0.1:50000 cmd=client|list\n"
+    ));
+    assert!(!redis_clients_are_local(
+        "id=1 addr=127.0.0.1:50000 cmd=client|list\n\
+         id=2 addr=172.18.0.1:50001 cmd=xreadgroup\n"
+    ));
+    assert!(!redis_clients_are_local(""));
+}
 
 #[test]
 fn test_compose_bindings_cover_only_their_address_family_and_port() {

@@ -153,6 +153,7 @@ pub(super) fn allowed_delta(path: &str) -> bool {
         || path == "make/bench.mk"
         || path == "playbooks/README.md"
         || path == "rustd/Cargo.lock"
+        || path == "rustd/crates/afd_outbound/src/poster.rs"
         || path.starts_with("bench/")
         || path.starts_with("docs/")
         || path.starts_with("playbooks/operations/datastore_scaling/")
@@ -185,6 +186,7 @@ fn validate_sample(
     validate_probe(&sidecar)?;
 
     let report: Report = parse_json(&result_path, &result_raw)?;
+    report.verify_calculations()?;
     if report.lane != lane
         || report.profile != plan.profile
         || report.parameters != sidecar.parameters

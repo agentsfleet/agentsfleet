@@ -183,11 +183,20 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
     }
     let mut report = Report::new(Lane::Outbound, Profile::Rig);
 
-    report.latency(2.0, &latency);
+    report.latency(Duration::from_secs(2), &latency);
 
     assert!((report.measurements[RATE_PER_SECOND] - 50.0).abs() < f64::EPSILON);
     assert!(report.measurements.contains_key(P95_MS));
     assert!(report.measurements.contains_key(P99_MS));
+    report
+        .verify_calculations()
+        .expect("raw histogram buckets reproduce every reported tail");
+
+    report.measurements.insert(P95_MS.to_owned(), 999.0);
+    assert!(
+        report.verify_calculations().is_err(),
+        "a changed generated statistic cannot survive its raw observations"
+    );
 }
 
 #[test]
@@ -195,7 +204,7 @@ fn test_a_run_with_no_elapsed_time_reports_no_rate() {
     let latency = Latency::new().expect("buildable");
     let mut report = Report::new(Lane::Steer, Profile::Rig);
 
-    report.latency(0.0, &latency);
+    report.latency(Duration::ZERO, &latency);
 
     assert!(
         !report.measurements.contains_key(RATE_PER_SECOND),
@@ -230,7 +239,7 @@ fn test_an_empty_distribution_reports_no_tail() {
     let latency = Latency::new().expect("buildable");
     let mut report = Report::new(Lane::Steer, Profile::Rig);
 
-    report.latency(2.0, &latency);
+    report.latency(Duration::from_secs(2), &latency);
 
     for key in [P95_MS, P99_MS, super::MAX_MS] {
         assert!(

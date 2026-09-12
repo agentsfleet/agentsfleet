@@ -27,6 +27,9 @@ impl Error {
             | Self::UnsafeTarget { .. }
             | Self::RigIdentityUnavailable { .. }
             | Self::RigIdentityUnverified { .. }
+            | Self::RigLockUnavailable { .. }
+            | Self::RigAlreadyClaimed
+            | Self::RigNotExclusive { .. }
             | Self::SharedTargetState { .. }
             | Self::VariableUnset { .. }
             | Self::VariableUnreadable { .. }

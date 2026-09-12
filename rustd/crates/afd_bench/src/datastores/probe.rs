@@ -42,7 +42,9 @@ impl Datastores {
         redis_url: &str,
         ca_cert: Option<String>,
     ) -> Result<Self> {
-        let opened = Self::open(database_url, redis_url, ca_cert).await?;
+        let rig_lock = target.claim_exclusive_rig()?;
+        let mut opened = Self::open(database_url, redis_url, ca_cert).await?;
+        opened.rig_lock = Some(rig_lock);
         let _ = opened.probe(target).await?;
         Ok(opened)
     }

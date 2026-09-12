@@ -13,7 +13,7 @@ pub const DEFAULT_PLAN_PATH: &str = "bench/profiles/datastore/redis-historical.j
 pub const CAMPAIGN_ROOT: &str = "bench/baselines/datastore";
 
 /// Capture format version.
-pub(super) const EVIDENCE_SCHEMA: u32 = 1;
+pub(super) const EVIDENCE_SCHEMA: u32 = 2;
 
 /// One historical baseline campaign's required shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,8 +67,11 @@ pub(super) struct Provenance {
     pub baseline_revision: String,
     /// Committed revision whose binaries produced the samples.
     pub capture_revision: String,
-    /// Production Rust source, excluding `afd_bench`.
+    /// Production Rust source, excluding `afd_bench` and the separately pinned
+    /// default-accept outbound ownership seam.
     pub production_source: ProofPair,
+    /// Exact diff of the behavior-neutral ownership seam used by the harness.
+    pub outbound_ownership_seam_sha256: String,
     /// Shipped schema files.
     pub schema_files: ProofPair,
     /// Production manifests and build inputs.

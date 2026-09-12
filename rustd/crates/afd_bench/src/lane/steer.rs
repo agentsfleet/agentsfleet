@@ -44,7 +44,7 @@ use crate::lane::lease::seed::{
 };
 use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
-use crate::report::{DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, ratio};
+use crate::report::{DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count};
 
 /// Measurement key: how many steers the window appended in total.
 const ACCEPTED: &str = "accepted";
@@ -176,7 +176,7 @@ struct Submitted {
     length: Duration,
     redis_calls: u64,
     transactions: u64,
-    depth: Vec<f64>,
+    depth: Vec<u64>,
 }
 
 /// Each submitter's slice of the population: fleet id and the workspace that
@@ -293,12 +293,12 @@ async fn append_until(
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<f64> {
+async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<u64> {
     let index = ReadyIndex::new(queue);
     let mut series = Vec::new();
     while !stop.is_cancelled() {
         if let Ok(depth) = index.len().await {
-            series.push(count(depth));
+            series.push(depth);
         }
         tokio::select! {
             () = stop.cancelled() => break,
@@ -311,21 +311,31 @@ async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<f64> {
 impl Submitted {
     /// Write this window's numbers into the report.
     fn record(&self, report: &mut Report) {
-        report.latency(self.length.as_secs_f64(), &self.outcomes.latency);
-        report.measurement(ACCEPTED, count(self.outcomes.successes));
-        report.measurement(FAILURES, count(self.outcomes.failures));
-        report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
-        report.measurement(
+        report.latency(self.length, &self.outcomes.latency);
+        report.count(ACCEPTED, self.outcomes.successes);
+        report.count(FAILURES, self.outcomes.failures);
+        report.ratio(
+            ERROR_RATE,
+            self.outcomes.failures,
+            self.outcomes.attempts() + self.outcomes.failures,
+        );
+        report.ratio(
             REDIS_CALLS_PER_STEER,
-            ratio(self.redis_calls, self.outcomes.successes),
+            self.redis_calls,
+            self.outcomes.successes,
         );
-        report.measurement(
+        report.ratio(
             POSTGRES_TRANSACTIONS_PER_STEER,
-            ratio(self.transactions, self.outcomes.successes),
+            self.transactions,
+            self.outcomes.successes,
         );
-        report
-            .series
-            .insert(READY_DEPTH.to_owned(), self.depth.clone());
+        for depth in &self.depth {
+            report.series_value(
+                READY_DEPTH,
+                count(*depth),
+                crate::report::Calculation::count(*depth),
+            );
+        }
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
                 operations: self.redis_calls,

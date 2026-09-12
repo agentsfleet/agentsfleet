@@ -34,9 +34,12 @@ use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::profile::Profile;
 
+mod calculation;
 pub mod compare;
 pub mod latency;
+mod observations;
 
+pub use calculation::Calculation;
 pub use latency::Latency;
 
 /// Directory a lane writes its result into.
@@ -199,9 +202,15 @@ pub struct Report {
     pub parameters: BTreeMap<String, u64>,
     /// What the lane measured.
     pub measurements: BTreeMap<String, f64>,
+    /// Raw observations and formulas for every scalar measurement.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub calculations: BTreeMap<String, Calculation>,
     /// Samples over the run, for anything whose shape over time is the answer.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub series: BTreeMap<String, Vec<f64>>,
+    /// Raw observations and formulas for every series point.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub series_calculations: BTreeMap<String, Vec<Calculation>>,
     /// Where the cost landed.
     pub datastores: DatastoreCosts,
     /// What was created and what was swept.
@@ -221,7 +230,9 @@ impl Report {
             created: false,
             parameters: BTreeMap::new(),
             measurements: BTreeMap::new(),
+            calculations: BTreeMap::new(),
             series: BTreeMap::new(),
+            series_calculations: BTreeMap::new(),
             datastores: DatastoreCosts::default(),
             fixture: Fixture::default(),
             abort: None,
@@ -236,30 +247,6 @@ impl Report {
     /// Record a measurement the lane took.
     pub fn measurement(&mut self, name: &str, value: f64) {
         self.measurements.insert(name.to_owned(), value);
-    }
-
-    /// Record the rate and the whole tail of a distribution at once.
-    ///
-    /// Every lane reports these four, so spelling them once here is what stops
-    /// one lane calling its tail `p95` and another `p95_millis`.
-    pub fn latency(&mut self, elapsed_seconds: f64, latency: &Latency) {
-        // No rate over no window: dividing by zero seconds is not a
-        // measurement, and a zero written in its place would be read as one.
-        if elapsed_seconds > 0.0 {
-            self.measurement(
-                RATE_PER_SECOND,
-                per_second(latency.count(), elapsed_seconds),
-            );
-        }
-        // A distribution nothing landed in has no tail. HdrHistogram answers
-        // zero for every quantile of nothing, and a zero tail in the file is
-        // the unmeasured zero RULE ECL forbids.
-        if latency.is_empty() {
-            return;
-        }
-        self.measurement(P95_MS, latency.quantile_ms(latency::P95));
-        self.measurement(P99_MS, latency.quantile_ms(latency::P99));
-        self.measurement(MAX_MS, latency.max_ms());
     }
 
     /// Write this report to its lane-and-profile path, atomically.

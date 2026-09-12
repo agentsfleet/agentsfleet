@@ -22,6 +22,7 @@ use afd_redis::{Dedicated, Redis, RedisConfig, RedisRole};
 use sqlx::Row as _;
 
 use crate::error::Result;
+use crate::profile::RigLock;
 
 mod probe;
 
@@ -116,7 +117,7 @@ impl EnvSource for LaneEnv<'_> {
 }
 
 /// The two handles every lane holds, and what they were opened from.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Datastores {
     /// The pool the candidate query runs on.
     pub database: Db,
@@ -128,6 +129,8 @@ pub struct Datastores {
     /// The Redis configuration the queue was opened from, kept so a lane
     /// needing its own parked connection opens one from the same resolution.
     redis: RedisConfig,
+    /// Held for the lifetime of a checked rig measurement.
+    rig_lock: Option<RigLock>,
 }
 
 impl Datastores {
@@ -153,6 +156,7 @@ impl Datastores {
             queue,
             pool_size: pool.max_connections(),
             redis,
+            rig_lock: None,
         })
     }
 
@@ -163,6 +167,12 @@ impl Datastores {
     /// [`crate::Error::QueueUnavailable`] when it will not open.
     pub async fn dedicated(&self, longest_park: Duration) -> Result<Dedicated> {
         Ok(Dedicated::connect(&self.redis, longest_park).await?)
+    }
+}
+
+impl Drop for Datastores {
+    fn drop(&mut self) {
+        drop(self.rig_lock.take());
     }
 }
 

@@ -1,20 +1,13 @@
-//! The one error type this crate returns.
-//!
-//! Every variant refuses to write a
-//! partial or misleading measurement. This developer-only harness uses plain
-//! `thiserror`; no failure reaches a tenant or needs an operator registry code.
-
-use std::path::PathBuf;
+//! One error type; every variant refuses a partial or misleading measurement.
 
 use crate::profile::Profile;
-
+use std::path::PathBuf;
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader
 /// never has to check WHICH error a signature returns to know it is this one
 /// (`docs/RUST_ERROR_STANDARD.md` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
-
 /// A refusal to run a measurement.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -29,7 +22,6 @@ pub enum Error {
         /// The profiles that do exist, comma-separated.
         expected: &'static str,
     },
-
     /// A parameter above the active profile's ceiling.
     #[error(
         "{parameter} of {requested} exceeds the {profile} cap of {cap}: \
@@ -310,18 +302,31 @@ pub enum Error {
         /// Compose service that must own it.
         service: &'static str,
     },
-
+    /// The local rig lock could not be opened or acquired.
+    #[error("the benchmark rig lock could not be acquired")]
+    RigLockUnavailable {
+        /// What the filesystem or operating system reported.
+        #[source]
+        source: std::io::Error,
+    },
+    /// Another benchmark process currently holds the rig.
+    #[error("the benchmark rig is already claimed by another process")]
+    RigAlreadyClaimed,
+    /// An external client would contaminate deployment-wide counters.
+    #[error("the benchmark rig is not exclusive: {service} has another client")]
+    RigNotExclusive {
+        /// Service whose active clients violated isolation.
+        service: &'static str,
+    },
     /// The deployment-wide outbound stream already contains another workload.
     #[error("the shared outbound stream contains {entries} existing entries")]
     SharedTargetState {
         /// Entries the lane did not create and cannot safely consume.
         entries: u64,
     },
-
     /// The operator interrupted a measurement before it completed.
     #[error("the benchmark was cancelled; its prefix sweep still ran")]
     Cancelled,
-
     /// The process could not install its cancellation listener.
     #[error("the benchmark cancellation listener failed")]
     InterruptUnavailable {
@@ -329,11 +334,9 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
-
     /// Archived evidence is incomplete, inconsistent, or changed.
     #[error("datastore evidence is invalid: {0}")]
     EvidenceInvalid(String),
-
     /// A source-control or metadata command could not start.
     #[error("the {operation} evidence command would not start")]
     EvidenceCommand {
@@ -344,5 +347,4 @@ pub enum Error {
         source: std::io::Error,
     },
 }
-
 mod pre_flight;

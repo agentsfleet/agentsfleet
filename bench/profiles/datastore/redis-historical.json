@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "campaign": "m192-redis-historical",
   "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
   "evidence_revision": "5eb0c2044ac15e6fa8f2204541fe3ebaf8aaa08f",

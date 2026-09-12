@@ -56,12 +56,9 @@ const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
 /// The datastore named when a Postgres reading will not parse.
 const POSTGRES: &str = "postgres";
 
-/// The datastore named when a Redis sample set is empty.
-const REDIS: &str = "redis";
-
 /// Median readiness-peek latency over [`SAMPLES`] calls, asking for the same
 /// number of candidates the lease path asks for.
-pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
+pub(super) async fn peek_samples(queue: &Redis) -> Result<Vec<Duration>> {
     let index = ReadyIndex::new(queue.clone());
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -69,14 +66,11 @@ pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
         index.peek(MAX_READY_CANDIDATES_PER_POLL).await?;
         samples.push(started.elapsed());
     }
-    median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: REDIS,
-        field: "readiness peek samples",
-    })
+    Ok(samples)
 }
 
 /// Median single-stream read latency over [`SAMPLES`] calls.
-pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
+pub(super) async fn stream_read_samples(queue: &Redis, fleet: &str) -> Result<Vec<Duration>> {
     let key = fleet_stream_key(fleet);
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -91,10 +85,7 @@ pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
         let _entries: Vec<(String, Vec<String>)> = queue.command(XRANGE, &key, &command).await?;
         samples.push(started.elapsed());
     }
-    median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: REDIS,
-        field: "stream read samples",
-    })
+    Ok(samples)
 }
 
 /// Table sizes and the candidate query's plan at population.
@@ -103,10 +94,7 @@ pub(super) async fn postgres_at_population(
     runner: &str,
     report: &mut Report,
 ) -> Result<()> {
-    report.measurement(
-        FLEETS_TABLE_BYTES,
-        crate::report::count(table_sizes(&stores.database).await?),
-    );
+    report.count(FLEETS_TABLE_BYTES, table_sizes(&stores.database).await?);
     let mut connection = stores.database.acquire().await?;
     let ready: Vec<String> = ReadyIndex::new(stores.queue.clone())
         .peek(MAX_READY_CANDIDATES_PER_POLL)
@@ -129,10 +117,24 @@ pub(super) async fn postgres_at_population(
     .filter_map(|row| row.try_get::<String, _>(0).ok())
     .collect();
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
-        report.measurement(CANDIDATE_QUERY_MS, execution);
+        report.calculated(
+            CANDIDATE_QUERY_MS,
+            execution,
+            crate::report::Calculation::ParsedMillis {
+                label: EXECUTION_TIME.to_owned(),
+                lines: lines.clone(),
+            },
+        );
     }
     if let Some(planning) = plan_time(&lines, PLANNING_TIME) {
-        report.measurement(CANDIDATE_PLAN_MS, planning);
+        report.calculated(
+            CANDIDATE_PLAN_MS,
+            planning,
+            crate::report::Calculation::ParsedMillis {
+                label: PLANNING_TIME.to_owned(),
+                lines,
+            },
+        );
     }
     Ok(())
 }

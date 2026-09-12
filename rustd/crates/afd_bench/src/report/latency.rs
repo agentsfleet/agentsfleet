@@ -16,6 +16,7 @@
 use core::time::Duration;
 
 use hdrhistogram::Histogram;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
@@ -39,6 +40,15 @@ pub const P99: f64 = 0.99;
 #[derive(Debug, Clone)]
 pub struct Latency {
     histogram: Histogram<u64>,
+}
+
+/// One non-empty histogram bucket retained as raw evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistogramBucket {
+    /// Highest equivalent microsecond value represented by the bucket.
+    pub value_micros: u64,
+    /// Observations landing in this bucket.
+    pub count: u64,
 }
 
 impl Latency {
@@ -122,6 +132,34 @@ impl Latency {
         {
             self.histogram.max() as f64 / MICROS_PER_MILLI
         }
+    }
+
+    /// Every non-empty bucket needed to reconstruct this distribution.
+    #[must_use]
+    pub fn buckets(&self) -> Vec<HistogramBucket> {
+        self.histogram
+            .iter_recorded()
+            .map(|entry| HistogramBucket {
+                value_micros: entry.value_iterated_to(),
+                count: entry.count_since_last_iteration(),
+            })
+            .collect()
+    }
+
+    /// Rebuild a distribution from archived buckets.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an invalid histogram shape or a bucket outside its range.
+    pub fn from_buckets(buckets: &[HistogramBucket]) -> Result<Self> {
+        let mut latency = Self::new()?;
+        for bucket in buckets {
+            latency
+                .histogram
+                .record_n(bucket.value_micros, bucket.count)
+                .map_err(|source| Error::LatencyUnrecordable { source })?;
+        }
+        Ok(latency)
     }
 }
 

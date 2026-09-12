@@ -19,7 +19,7 @@ use crate::datastores::{Datastores, redis_calls};
 use crate::error::{Error, Result};
 use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::outcomes::Outcomes;
-use crate::report::{DatastoreCost, DatastoreCosts, Report, count, per_second, ratio};
+use crate::report::{DatastoreCost, DatastoreCosts, Report, per_second};
 
 /// One window: every runner polling at once, with the cost either side of it.
 pub(super) struct Window {
@@ -89,19 +89,29 @@ impl Window {
     /// Write the contended window's numbers into the report.
     pub(super) fn record(&self, report: &mut Report) {
         let seconds = self.length.as_secs_f64();
-        report.latency(seconds, &self.outcomes.latency);
-        report.measurement(
+        report.latency(self.length, &self.outcomes.latency);
+        report.calculated(
             POLLS_PER_SECOND,
             per_second(self.outcomes.attempts(), seconds),
+            crate::report::Calculation::rate(self.outcomes.attempts(), self.length),
         );
-        report.measurement(LEASES, count(self.outcomes.successes));
-        report.measurement(FAILURES, count(self.outcomes.failures));
-        report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
-        report.measurement(EXHAUSTED, if self.exhausted { 1.0 } else { 0.0 });
-        report.measurement(WASTED_CLAIM_RATE, self.outcomes.wasted_fraction());
-        report.measurement(
+        report.count(LEASES, self.outcomes.successes);
+        report.count(FAILURES, self.outcomes.failures);
+        report.ratio(
+            ERROR_RATE,
+            self.outcomes.failures,
+            self.outcomes.attempts() + self.outcomes.failures,
+        );
+        report.flag(EXHAUSTED, self.exhausted);
+        report.ratio(
+            WASTED_CLAIM_RATE,
+            self.outcomes.misses,
+            self.outcomes.attempts(),
+        );
+        report.ratio(
             ROUNDTRIPS_PER_LEASE,
-            ratio(self.counters.roundtrips, self.outcomes.successes),
+            self.counters.roundtrips,
+            self.outcomes.successes,
         );
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
@@ -118,15 +128,12 @@ impl Window {
     /// Write the idle window's numbers, which are per-poll rather than a rate.
     pub(super) fn record_idle(&self, report: &mut Report, index_depth: u64) {
         let polls = self.outcomes.attempts();
-        report.measurement(IDLE_INDEX_DEPTH, count(index_depth));
-        report.measurement(IDLE_POLLS, count(polls));
+        report.count(IDLE_INDEX_DEPTH, index_depth);
+        report.count(IDLE_POLLS, polls);
         if polls == 0 {
             return;
         }
-        report.measurement(
-            IDLE_ROUNDTRIPS_PER_POLL,
-            self.counters.roundtrips_per_poll(),
-        );
-        report.measurement(IDLE_REDIS_CALLS_PER_POLL, ratio(self.redis_calls, polls));
+        report.ratio(IDLE_ROUNDTRIPS_PER_POLL, self.counters.roundtrips, polls);
+        report.ratio(IDLE_REDIS_CALLS_PER_POLL, self.redis_calls, polls);
     }
 }

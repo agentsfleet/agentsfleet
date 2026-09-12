@@ -52,7 +52,7 @@ pub(super) fn sidecar(input: Inputs<'_>) -> Sidecar {
             .unwrap_or_default()
             .as_millis(),
         parameters: report.parameters.clone(),
-        payload_bytes: unavailable("historical driver did not record payload bytes"),
+        payload_bytes: available(payload_bytes(lane)),
         window_seconds: report
             .parameters
             .get("BENCH_WINDOW_SECONDS")
@@ -79,6 +79,16 @@ pub(super) fn sidecar(input: Inputs<'_>) -> Sidecar {
         redis_replication_raw_sha256: digest(probe.redis_replication_raw.as_bytes()),
         redis_topology_raw_sha256: digest(probe.redis_topology_raw.as_bytes()),
     }
+}
+
+fn payload_bytes(lane: Lane) -> u64 {
+    let bytes = match lane {
+        Lane::Outbound => crate::lane::outbound::ANSWER.len(),
+        Lane::Steer | Lane::Lease | Lane::Cardinality => {
+            crate::lane::lease::seed::BENCH_REQUEST_JSON.len()
+        }
+    };
+    u64::try_from(bytes).unwrap_or(u64::MAX)
 }
 
 fn resources() -> Resources {

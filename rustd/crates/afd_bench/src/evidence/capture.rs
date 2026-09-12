@@ -14,6 +14,7 @@ use crate::report::{Lane, Report};
 const PROVENANCE_FILE: &str = "provenance.json";
 const SIDECAR_FILE: &str = "sidecar.json";
 const HEAD_REVISION: &str = "HEAD";
+const EXPECTED_OUTBOUND_OWNERSHIP_SEAM: &str = "sha256:PENDING";
 
 /// Load and validate the checked-in historical capture plan.
 pub(super) fn plan(path: impl AsRef<Path>) -> Result<BaselinePlan> {
@@ -185,6 +186,7 @@ pub(crate) fn require_comparable(proof: &Provenance) -> Result<()> {
         || !proof.production_build.equal
         || !proof.production_lock.equal
         || !proof.production_dependency_closure.equal
+        || proof.outbound_ownership_seam_sha256 != EXPECTED_OUTBOUND_OWNERSHIP_SEAM
     {
         return Err(invalid(
             "baseline and capture revisions differ outside the benchmark harness",
@@ -204,6 +206,7 @@ fn validate_report(plan: &BaselinePlan, lane: Lane, report: &Report) -> Result<(
             "sample did not finish with a complete fixture sweep",
         ));
     }
+    report.verify_calculations()?;
     Ok(())
 }
 
