@@ -186,7 +186,11 @@ fn without_bench_lock(raw: &[u8]) -> Vec<u8> {
 }
 
 fn git(args: &[&str], operation: &'static str) -> Result<String> {
-    let result = output(Command::new(GIT_COMMAND).args(args), operation)?;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let result = output(
+        Command::new(GIT_COMMAND).current_dir(root).args(args),
+        operation,
+    )?;
     Ok(String::from_utf8_lossy(&result.stdout).into_owned())
 }
 
