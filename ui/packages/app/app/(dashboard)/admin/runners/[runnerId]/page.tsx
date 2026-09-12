@@ -95,11 +95,12 @@ export default async function RunnerDetailPage({
     // the page owns one rhythm for all of it. The identity line's own mb-2xl
     // made this one gap 24 where every other gap on the page is 32.
     //
-    // The negative bottom margin is the canvas's own bottom padding (py-6 /
-    // md:py-8) given back: a sticky element cannot leave its containing
-    // block's content box, so without it the status line stops 32px short of
-    // the canvas edge and the table's next row shows through beneath it.
-    <div className="-mb-2xl flex min-h-full flex-1 flex-col gap-3xl md:-mb-3xl">
+    // The negative bottom margin is the canvas's own block padding given
+    // back, read from the token the canvas states it with: a sticky element
+    // cannot leave its containing block's content box, so without it the
+    // status line stops short of the canvas edge and the table's next row
+    // shows through beneath it.
+    <div className="-mb-[var(--app-canvas-block)] flex min-h-full flex-1 flex-col gap-3xl">
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}
@@ -113,12 +114,13 @@ export default async function RunnerDetailPage({
       </div>
       {/* Sticky to the foot of the scrolling canvas: on a long lease table it
           stays in view; on a short page it sits at the end. The sticky edge
-          is the canvas's content box, so the offset is the canvas padding
-          negated, and the line's own bottom padding — the same padding the
-          root gave back — is what covers that band with its background. */}
+          is the canvas's content box, so the offset is the canvas's block
+          padding negated, and the line's own bottom padding — the same
+          padding the root gave back — covers that band with its background.
+          All three read the one token the canvas states. */}
       <RunnerStatusLine
         runner={runner}
-        className="sticky -bottom-2xl mt-auto pb-2xl md:-bottom-3xl md:pb-3xl"
+        className="sticky -bottom-[var(--app-canvas-block)] mt-auto pb-[var(--app-canvas-block)]"
       />
     </div>
   );
