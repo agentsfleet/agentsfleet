@@ -29,7 +29,7 @@ use tokio::sync::{Mutex, mpsc};
 use crate::subscriber::install_subscriber;
 
 /// The knob `make test-integration-rustd` exports the cluster's seed under.
-const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const URL_KNOB: &str = "TEST_REDIS_URL";
 
 /// The knob carrying the command line that moves slots and resets the
 /// cluster, run inside the cluster's own container.

@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
-# dragonfly-cluster.sh — a real four-node Dragonfly cluster in one container.
+# dragonfly-cluster.sh — a real four-node Dragonfly cluster in one container,
+# plus one TLS node beside it.
 #
 #     serve                          entrypoint: start the nodes, bootstrap, wait
 #     healthy                        compose healthcheck: every node online
 #     migrate <from> <to> <lo> <hi>  move a slot range between primaries
-#     reset                          flush both primaries, restore the layout
+#     reset                          flush every node, restore the layout
+#
+# The fifth process is not a cluster member. It runs `--cluster_mode=emulated`
+# (one node answering as a whole cluster) over TLS, and exists for exactly one
+# suite: the trust proof, which asserts the lane's own authority verifies AND
+# a foreign one is refused. Every other suite takes the plaintext cluster,
+# because a TLS handshake against an RSA-2048 leaf costs ~230 ms and a lane
+# opens hundreds of connections — that cost, queued in front of a connect
+# budget, is what turns a healthy datastore into ConnectTimeout. The
+# certificates are minted once into the data volume: a CA and a LEAF (a trust
+# anchor must carry CA:TRUE, an end-entity must not — one self-signed file
+# cannot be both, and rustls refuses the shortcut), plus a second, well-formed
+# authority that signs nothing here, for the refusal half.
 #
 # Two primaries and one replica each, all in this container's network
 # namespace, every node announcing 127.0.0.1 and the port it listens on. The
@@ -30,11 +43,16 @@
 set -euo pipefail
 
 BASE_PORT="${DRAGONFLY_BASE_PORT:-7001}"
-ADMIN_OFFSET="${DRAGONFLY_ADMIN_OFFSET:-4}"
+# Data ports are BASE..BASE+4 (four cluster nodes, then the TLS node); admin
+# ports sit beyond them.
+ADMIN_OFFSET="${DRAGONFLY_ADMIN_OFFSET:-5}"
 PASSWORD="${DRAGONFLY_PASSWORD:-agentsfleet}"
 DATA="${DRAGONFLY_DATA:-/data}"
 HOST=127.0.0.1
 NODE_COUNT=4
+# The TLS node's index: one past the cluster, so its ports follow theirs.
+TLS_NODE=4
+TLS_DIR="$DATA/tls"
 # Node i is a primary when i is even; node i+1 is its replica. The ids are
 # stable across restarts because they are named here, not minted — a cluster
 # config names nodes by id, and a re-minted id would orphan every replica.
@@ -51,6 +69,7 @@ MIGRATION_POLL_LIMIT=300
 data_port() { echo $((BASE_PORT + $1)); }
 admin_port() { echo $((BASE_PORT + $1 + ADMIN_OFFSET)); }
 cli() { local port=$1; shift; redis-cli -h "$HOST" -p "$port" -a "$PASSWORD" --no-auth-warning "$@"; }
+tls_cli() { redis-cli -h "$HOST" -p "$(data_port "$TLS_NODE")" --tls --cacert "$TLS_DIR/ca.crt" -a "$PASSWORD" --no-auth-warning "$@"; }
 # The admin port answers without a password (see the header), so no `-a`.
 admin() { local port=$1; shift; redis-cli -h "$HOST" -p "$port" "$@"; }
 replica_of() { echo $(( $1 + 1 )); }
@@ -72,9 +91,39 @@ start_nodes() {
   done
 }
 
+# Mints the trust material once. Certificates are public and readable by
+# any uid (the daemon image runs as 65532); keys stay 0600.
+mint_certificates() {
+  mkdir -p "$TLS_DIR"
+  if [ ! -s "$TLS_DIR/ca.crt" ] || [ ! -s "$TLS_DIR/server.crt" ] || [ ! -s "$TLS_DIR/server.key" ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/ca.key" -out "$TLS_DIR/ca.crt" -days 3650       -subj "/CN=agentsfleet-local-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+    openssl req -newkey rsa:2048 -nodes -keyout "$TLS_DIR/server.key" -out "$TLS_DIR/server.csr" -subj "/CN=localhost" 2>/dev/null
+    printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' >"$TLS_DIR/server.ext"
+    openssl x509 -req -in "$TLS_DIR/server.csr" -CA "$TLS_DIR/ca.crt" -CAkey "$TLS_DIR/ca.key" -CAcreateserial       -out "$TLS_DIR/server.crt" -days 3650 -extfile "$TLS_DIR/server.ext" 2>/dev/null
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/foreign-ca.key" -out "$TLS_DIR/foreign-ca.crt" -days 3650       -subj "/CN=agentsfleet-foreign-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+  fi
+  chmod 0644 "$TLS_DIR/ca.crt" "$TLS_DIR/server.crt" "$TLS_DIR/foreign-ca.crt"
+}
+
+start_tls_node() {
+  mint_certificates
+  mkdir -p "$DATA/n$TLS_NODE"
+  # One proactor thread at the 256 MiB floor: this node serves one suite.
+  # The admin port stays plaintext (loopback only) so the readiness and
+  # reset paths need no certificate to reach it.
+  dragonfly --logtostderr --version_check=false \
+    --cluster_mode=emulated \
+    --tls --tls_cert_file="$TLS_DIR/server.crt" --tls_key_file="$TLS_DIR/server.key" \
+    --port="$(data_port "$TLS_NODE")" --admin_port="$(admin_port "$TLS_NODE")" \
+    --admin_bind="$HOST" --admin_nopass --no_tls_on_admin_port \
+    --requirepass="$PASSWORD" --dir="$DATA/n$TLS_NODE" \
+    --maxmemory=256mb --proactor_threads=1 \
+    >/dev/null 2>"$DATA/n$TLS_NODE/dragonfly.log" &
+}
+
 wait_for_nodes() {
   local i
-  for i in $(seq 0 $((NODE_COUNT - 1))); do
+  for i in $(seq 0 "$TLS_NODE"); do
     until [ "$(admin "$(admin_port "$i")" ping 2>/dev/null)" = "PONG" ]; do sleep 0.2; done
   done
 }
@@ -173,6 +222,8 @@ healthy() {
     [ "$(cli "$(data_port "$i")" ping 2>/dev/null)" = "PONG" ] || exit 1
   done
   [ "$(cli "$(data_port 0)" cluster shards | grep -c '^online$')" -eq "$NODE_COUNT" ] || exit 1
+  # Over TLS, with the lane's own authority: the handshake is the check.
+  [ "$(tls_cli ping 2>/dev/null)" = "PONG" ] || exit 1
 }
 
 reset() {
@@ -183,6 +234,7 @@ reset() {
   push_config "$(render_config)"
   local p
   for p in "${PRIMARIES[@]}"; do cli "$(data_port "$p")" flushall >/dev/null; done
+  admin "$(admin_port "$TLS_NODE")" flushall >/dev/null
   echo "✓ dragonfly cluster flushed and restored to the canonical layout"
 }
 
@@ -190,9 +242,10 @@ main() {
 case "${1:-serve}" in
   serve)
     start_nodes
+    start_tls_node
     wait_for_nodes
     bootstrap
-    echo "✓ dragonfly cluster ready on $HOST:$(data_port 0)-$(data_port $((NODE_COUNT - 1)))"
+    echo "✓ dragonfly cluster ready on $HOST:$(data_port 0)-$(data_port $((NODE_COUNT - 1))), TLS node on $(data_port "$TLS_NODE")"
     # A node that dies takes the cluster with it: exit so compose reports it
     # rather than serving a partial cluster as healthy.
     wait -n
