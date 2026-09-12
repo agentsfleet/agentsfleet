@@ -95,7 +95,11 @@ export function RunnerChecksBadge({ runner }: { runner: RunnerDetail }) {
               heading is "Checks", and a dialog that said it too read the
               word twice in three lines. */}
           <DialogHeader>
-            <DialogTitle className="font-mono">{runner.host_id}</DialogTitle>
+            <DialogTitle>
+              {/* The host id is a technical value, so the mono face rides the
+                  value itself — the title primitive keeps its own type. */}
+              <code className="font-mono">{runner.host_id}</code>
+            </DialogTitle>
             <DialogDescription className="font-sans">{CHECKS_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <RunnerChecksReport runner={runner} />
