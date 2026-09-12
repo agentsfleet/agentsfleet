@@ -1,24 +1,49 @@
-//! What this crate refuses, and what it reports.
+//! The one error type this crate returns, and what each failure tells a caller.
 //!
-//! One error type with `pub type Result<T, E = Error>` beside it, composed with
-//! `#[from]` so `?` lifts a datastore failure without restating it. Nothing
-//! here maps another crate's error to a string: the `source()` chain is what an
-//! operator follows from "the charge did not land" to the Postgres detail that
-//! says why.
+//! Same shape as [`afd_events::Error`] and `afd_admission::Error`: a struct
+//! carrying a captured backtrace over a private kind, with the code and the
+//! sentence decided together in one table rather than spelled at each raise
+//! site. The hull is `afd_core::error_shell!`, so nothing here repeats what its
+//! sibling crates already share, and the boxed kind keeps `Result` pointer-sized
+//! on the `Ok` path — the shape every statement in this crate returns through.
+//!
+//! # A cursor this daemon did not mint is not a failure of this daemon
+//!
+//! [`ErrorKind::ChargesCursorInvalid`] and [`ErrorKind::WalletMissing`] carry no
+//! source: nothing failed underneath either one. The bytes were simply not a
+//! cursor, and a tenant with no wallet row is an invariant that was already
+//! broken before this crate looked (`RUST_ERROR_STANDARD` rule 4's second half).
 
 use afd_core::error_code::{self, ErrorCode};
 
-/// Every way reading a balance, deciding a budget or recording a charge can
-/// fail.
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+pub(crate) use self::raise::{
+    billing_wallet_missing, charges_cursor_invalid, query, row_malformed,
+};
+
+/// The result every fallible function in this crate returns.
+///
+/// One alias per crate, defaulted to this crate's own [`Error`], so a reader
+/// never has to check WHICH error a signature returns to know it is this one
+/// (`RUST_ERROR_STANDARD` rule 1). Hand-written on purpose: an alias that only
+/// appeared after macro expansion is one a reader cannot see.
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+afd_core::error_shell!(
+    /// A billing failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
+/// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorKind {
     /// A statement would not run.
     #[error("the billing store could not {context}")]
     Query {
-        /// What was being attempted, for the operator's log line.
         context: &'static str,
-        /// The Postgres failure underneath.
         #[source]
         source: sqlx::Error,
     },
@@ -30,39 +55,27 @@ pub enum Error {
     /// not a `UUIDv7`" is not an actionable sentence without the table.
     #[error("{table}.{column} holds a value this build cannot read")]
     RowMalformed {
-        /// Which table the column belongs to.
         table: &'static str,
-        /// Which column refused.
         column: &'static str,
-        /// The parse failure underneath.
         #[source]
         source: afd_core::error::Error,
     },
 
     /// An identifier this crate had to mint or read could not be formed.
     ///
-    /// `#[from]`, so `?` lifts it — the identifier layer already says what was
-    /// wrong with the value, and restating that here would add nothing and cost
-    /// the `source()` chain.
+    /// Transparent, and lifted by `error_lifts!`: the identifier layer already
+    /// says what was wrong with the value, and restating it here would add
+    /// nothing and cost the `source()` chain.
     #[error(transparent)]
-    Identifier {
-        /// The identifier failure underneath.
-        #[from]
-        source: afd_core::error::Error,
-    },
+    Identifier { source: afd_core::error::Error },
 
     /// The entropy source a ledger row's identifier is drawn from failed.
     ///
-    /// `#[from]` for the same reason [`Error::Identifier`] is: the crypto layer
-    /// already says what went wrong, and a charge that cannot mint a row id is
-    /// a charge that did not land — which is what the caller needs, not a
-    /// second sentence about randomness.
+    /// Transparent for the same reason [`ErrorKind::Identifier`] is: a charge
+    /// that cannot mint a row id is a charge that did not land, which is what
+    /// the caller needs rather than a second sentence about randomness.
     #[error(transparent)]
-    Entropy {
-        /// The entropy failure underneath.
-        #[from]
-        source: afd_crypto::error::Error,
-    },
+    Entropy { source: afd_crypto::error::Error },
 
     /// A tenant reached billing with no wallet row behind it.
     ///
@@ -72,35 +85,53 @@ pub enum Error {
     WalletMissing,
 
     /// A charges cursor this daemon never issued.
-    ///
-    /// Carries no source: nothing failed underneath, the bytes were simply not
-    /// a cursor. The tenant plane raised this while the paged charge ledger
-    /// lived there; it moved with the reader.
     #[error("a charges cursor this daemon never issued")]
     ChargesCursorInvalid,
 
     /// The pool would not give a connection.
     #[error("the billing store's datastore is unavailable")]
     Datastore {
-        /// The pool failure underneath.
-        #[from]
+        #[source]
         source: afd_db::Error,
     },
 }
 
 impl Error {
-    /// The sentence a caller is told.
-    #[must_use]
-    pub const fn detail(&self) -> &'static str {
-        match self {
-            Self::ChargesCursorInvalid => DETAIL_CURSOR_INVALID,
-            Self::WalletMissing => DETAIL_WALLET_MISSING,
-            Self::Query { .. }
-            | Self::RowMalformed { .. }
-            | Self::Identifier { .. }
-            | Self::Entropy { .. } => DETAIL_OPERATION_FAILED,
-            Self::Datastore { .. } => DETAIL_UNAVAILABLE,
+    /// The code and the sentence, decided together — see the module note.
+    fn answer(&self) -> (ErrorCode, &'static str) {
+        match self.kind() {
+            // The caller's to correct, unlike everything else here.
+            ErrorKind::ChargesCursorInvalid => (error_code::INVALID_REQUEST, DETAIL_CURSOR_INVALID),
+            ErrorKind::WalletMissing => {
+                (error_code::INTERNAL_OPERATION_FAILED, DETAIL_WALLET_MISSING)
+            }
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. } => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                DETAIL_OPERATION_FAILED,
+            ),
+            ErrorKind::Datastore { .. } => {
+                (error_code::INTERNAL_DB_UNAVAILABLE, DETAIL_UNAVAILABLE)
+            }
         }
+    }
+
+    /// The registry code a caller is refused with.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        self.answer().0
+    }
+
+    /// The sentence a caller is told.
+    ///
+    /// Static, and never the `source()` chain: an operator reads the chain in
+    /// the log, and a caller who could read it would learn which statement this
+    /// daemon runs.
+    #[must_use]
+    pub fn detail(&self) -> &'static str {
+        self.answer().1
     }
 
     /// Whether the datastore behind this crate could not be reached.
@@ -110,23 +141,8 @@ impl Error {
     /// fail-closed belong beside the gate's name rather than beside the
     /// connection — the separation this crate is built around.
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(self, Self::Datastore { .. })
-    }
-
-    /// The registry code a caller is refused with.
-    #[must_use]
-    pub const fn code(&self) -> ErrorCode {
-        match self {
-            // The caller's to correct, unlike everything else here.
-            Self::ChargesCursorInvalid => error_code::INVALID_REQUEST,
-            Self::WalletMissing
-            | Self::Query { .. }
-            | Self::RowMalformed { .. }
-            | Self::Identifier { .. }
-            | Self::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            Self::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-        }
+    pub fn is_datastore_unavailable(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Datastore { .. })
     }
 }
 
@@ -150,37 +166,7 @@ const DETAIL_WALLET_MISSING: &str = "Tenant billing row missing — bootstrap in
 const DETAIL_CURSOR_INVALID: &str = "invalid cursor";
 
 /// The sentence an unreachable datastore earns.
-const DETAIL_UNAVAILABLE: &str = "Database unavailable";
-
-/// This crate's result, defaulting to its own error.
-pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-/// Reports a statement that would not run, naming what it was doing.
-pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::Query { context, source }
-}
-
-/// Reports a tenant with no wallet row behind it.
-pub(crate) fn billing_wallet_missing() -> Error {
-    Error::WalletMissing
-}
-
-/// Refuses a charges cursor this daemon never issued.
-pub(crate) fn charges_cursor_invalid() -> Error {
-    Error::ChargesCursorInvalid
-}
-
-/// Reports a stored value this build cannot read, naming table and column.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
-    move |source| Error::RowMalformed {
-        table,
-        column,
-        source,
-    }
-}
+use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 #[cfg(test)]
 #[path = "error/tests.rs"]

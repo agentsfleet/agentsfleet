@@ -8,10 +8,10 @@
 //! than prose this crate is free to improve.
 
 /// `problem_response.zig`'s `internalDbUnavailable` detail.
-pub const DATABASE_UNAVAILABLE: &str = "Database unavailable";
+pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// `problem_response.zig`'s `internalDbError` detail.
-pub const DATABASE_ERROR: &str = "Database error";
+pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// A queue outage, shaped like its database counterpart above.
 pub const QUEUE_UNAVAILABLE: &str = "Queue unavailable";

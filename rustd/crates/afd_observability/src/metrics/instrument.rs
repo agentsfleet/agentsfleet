@@ -34,7 +34,7 @@ use std::sync::{Mutex, PoisonError};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter, ObservableGauge};
 
-use crate::error::{Error, Result};
+use crate::error::{Result, number_mismatch};
 use crate::metrics::family::{
     Counter as CounterFamily, Gauge as GaugeFamily, Histogram as HistogramFamily,
 };
@@ -268,9 +268,9 @@ fn check_number(declared: &Family, claimed: Number) -> Result<()> {
     if declared.number == claimed {
         return Ok(());
     }
-    Err(Error::NumberMismatch {
-        family: declared.name.clone(),
-        declared: declared.number.spelling(),
-        claimed: claimed.spelling(),
-    })
+    Err(number_mismatch(
+        &declared.name,
+        declared.number.spelling(),
+        claimed.spelling(),
+    ))
 }

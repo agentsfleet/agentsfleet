@@ -19,7 +19,7 @@
 use serde::Serialize;
 
 use crate::config::raw;
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 
 /// Why a binding was refused.
 const REASON_HALF_DECLARED: &str =
@@ -127,9 +127,10 @@ impl RepositoryBinding {
                 base_branch: base_branch(access, base, mode)?,
                 access,
             })),
-            _ => Err(Error::InvalidRepositoryBinding {
+            _ => Err(ErrorKind::InvalidRepositoryBinding {
                 reason: REASON_HALF_DECLARED,
-            }),
+            }
+            .into()),
         }
     }
 }
@@ -188,7 +189,7 @@ impl RepositoryBinding {
 
 /// Resolves the base branch for `access` under `mode`.
 fn base_branch(access: Access, authored: Option<String>, mode: Mode) -> Result<Option<Box<str>>> {
-    let refuse = |reason| Error::InvalidRepositoryBinding { reason };
+    let refuse = |reason| ErrorKind::InvalidRepositoryBinding { reason }.into();
 
     match (access, authored, mode) {
         // Two ways to legitimately carry no base: a read binding never has
@@ -213,6 +214,7 @@ mod tests {
     use super::{Access, Mode, RepositoryBinding};
     use crate::config::raw;
     use crate::error::Error;
+    use crate::error::ErrorKind;
     use garde::Validate as _;
 
     /// Deserializes AND validates, so a schema-declared rule is in force here
@@ -239,7 +241,7 @@ mod tests {
             .expect_err("a list alone does not know how far to reach");
 
         assert!(
-            matches!(failure, Error::InvalidRepositoryBinding { .. }),
+            matches!(failure.kind(), ErrorKind::InvalidRepositoryBinding { .. }),
             "{failure:?}"
         );
     }

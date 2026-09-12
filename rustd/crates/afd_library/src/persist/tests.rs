@@ -44,7 +44,7 @@ impl BundleCatalog for FailingCatalog {
         _body: &ImportBody,
         _bundle: &PreparedBundle,
     ) -> impl std::future::Future<Output = crate::Result<String>> + Send {
-        std::future::ready(Err(crate::Error::StorageUnavailable))
+        std::future::ready(Err(crate::error::storage_unavailable()))
     }
 }
 

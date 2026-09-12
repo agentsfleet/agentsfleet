@@ -124,10 +124,30 @@ message`, and the `source()` that skips the kind. None of it depends on what
 went wrong, so `afd_core::error_shell!` generates it and
 `afd_core::error_lifts!` generates the per-source `From` impls rule 2 asks for.
 
-**Applies to a crate whose error is a boxed struct over a private kind.** A
-crate whose `Error` is a plain `thiserror` enum (`afd_auth`, `afd_sse`,
-`afd_identity`, and nine others) has no hull to share and calls neither macro —
-that is conformance, not a gap.
+**Applies wherever a crate's error COMPOSES a source or CARRIES data.** That is
+the test, and it is a property of the error rather than a list of crate names —
+the previous wording named crates, which let a crate keep a plain enum by having
+been on the list rather than by earning it. If any kind holds a `#[source]`, a
+`#[from]`, or a bound field, the crate calls both macros. The hull exists to stop
+nine crates hand-writing the same boxed struct, captured backtrace, `[CODE]`
+`Display` and self-skipping `source()`, and an error with a cause or a payload
+has all four to share.
+
+**A fieldless refusal vocabulary keeps its plain enum**, and this is a
+performance rule, not an exemption. `afd_auth::Error` is seven fieldless
+variants — `Copy`, `const fn code()`, `const fn detail()`, `pub const ALL` — and
+`afd_http`'s guard returns it on every request that fails to authenticate. It has
+no source to skip and no backtrace to box, so the hull would add a heap
+allocation and a `Backtrace::capture()` to the hottest refusal path in the
+product, buy nothing, and cost the exhaustive `ALL` walk that pins each detail
+string byte-for-byte against its Zig constant. `afd_sse::Error` is the same shape
+for the same reason. A crate on THIS side of the line must say which property put
+it there, in its own module note — being a plain enum today is not the argument.
+
+**`afd_state` inherits rather than declares.** It implements `afd_auth`'s
+`CredentialDirectory` and `CapabilitySource`, whose signatures mandate
+`Unavailable`, so it owns no error to give a hull to. A crate implementing a
+foreign trait does not choose the trait's error type.
 
 **The `Result` alias stays hand-written**, in every crate, including those
 calling the macro. An alias that only appears after macro expansion is one a
@@ -140,24 +160,21 @@ caller that only propagates keeps writing `Result<T>`.
 
 ## Conformance, crate by crate
 
-Every crate under `rustd/` is accounted for. The three items this section used
-to list as open are closed.
+Every crate under `rustd/` is accounted for, and the `Hull` column is the
+property test above applied crate by crate rather than a second list to keep in
+sync. One row is open: `agentsfleetd` composes and has no hull yet.
 
-| Crate | `src/error.rs` | Owns an `Error` | Notes |
+| Crate | Owns an `Error` | Hull | Notes |
 |---|---|---|---|
-| `afd_core` | ✅ | ✅ | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS |
-| `afd_crypto` | ✅ | ✅ | same shape |
-| `afd_db` | ✅ | ✅ | same shape |
-| `afd_datastore` | ✅ | ✅ | same shape |
-| `afd_auth` | ✅ | ✅ | was `AuthError`; renamed to `Error`, so `afd_auth::Error` no longer stutters. `VerifyError` and `Unavailable` live beside it and stay distinct — see below |
-| `afd_identity` | ✅ | ✅ | `BlankSecret` folded into `Error`; `ClaimUnavailable` kept and composed by `#[from]` |
-| `afd_state` | ✅ | ❌ by design | implements `afd_auth`'s `CredentialDirectory` and `CapabilitySource`, whose signatures mandate `Unavailable`. A crate implementing a foreign trait does not choose the trait's error type. The alias defaults to it and the file says why |
-| `agentsfleetd` | ✅ | two, by necessity | `BootFailure` and `MigrateFailure` — see below |
-| `afd_api` | n/a | n/a | no fallible function |
-| `afd_observability` | n/a | n/a | no fallible function |
-| `afd_wire` | n/a | n/a | no fallible function. `FailureClass` is a serde field on the wire `Failure` payload, not a Rust error |
-| `afd_webhook` | n/a | n/a | no fallible function |
-| `afd_api_tenant`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner` | n/a | n/a | no fallible function. The plane crates the fleet decomposition split out of `afd_api`; each answers with `Refusal`, which is an HTTP response and not an error type |
+| `afd_core` | ✅ | `error_shell!` + `error_lifts!` | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS. Also DECLARES both macros |
+| `afd_crypto`, `afd_db`, `afd_datastore`, `afd_bench`, `afd_fleet`, `afd_tenant` | ✅ | `error_shell!` | same shape; each composes through hand-written `From`s rather than the lift macro |
+| `afd_admin`, `afd_admission`, `afd_approval`, `afd_billing`, `afd_connector`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_gate`, `afd_identity`, `afd_ingress`, `afd_library`, `afd_observability`, `afd_outbound`, `afd_runner`, `afd_vault` | ✅ | `error_shell!` + `error_lifts!` | the full shape: private `ErrorKind`, one `answer()` table pairing each kind with its code and sentence, raisers in `error/raise.rs`, and a `one_of_each_kind()` sample behind `test-util` |
+| `afd_auth` | ✅ | none, by design | seven FIELDLESS variants — `Copy`, `const fn code()`, `const fn detail()`, `pub const ALL` — returned per request by `afd_http`'s guard. Nothing to box and no `source()` to skip; see the hull section above |
+| `afd_sse` | ✅ | none, by design | one fieldless variant, same reasoning |
+| `afd_state` | ❌ by design | n/a | implements `afd_auth`'s `CredentialDirectory` and `CapabilitySource`, whose signatures mandate `Unavailable`. A crate implementing a foreign trait does not choose the trait's error type. The alias defaults to it and the file says why |
+| `agentsfleetd` | two, by necessity | **not yet** | `BootFailure` and `MigrateFailure` — see below for why they cannot merge. Both COMPOSE `afd_db::Error`, so both qualify for the hull by the property test above; this is the one remaining gap. Its `Display` bytes are what an operator reads on a failed boot, and `tests/serve.rs` asserts them by `contains`, not equality, so the `[CODE]` prefix the hull adds would survive |
+| `afd_identity` (second type) | ✅ | via the crate hull | `BlankSecret` folded into `Error`; `ClaimUnavailable` and `MetadataUnwritten` kept as their own `Copy` types because callers DISCRIMINATE on them, and composed by `error_lifts!` |
+| `afd_api`, `afd_wire`, `afd_webhook`, `afd_api_tenant`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner` | n/a | n/a | no fallible function. `afd_wire`'s `FailureClass` is a serde field on the wire `Failure` payload, not a Rust error; the plane crates answer with `Refusal`, which is an HTTP response |
 
 ### Where rule 1 is deliberately not met, and why
 

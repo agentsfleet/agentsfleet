@@ -56,7 +56,7 @@ pub mod name;
 pub mod provider;
 
 pub use self::config::FleetConfig;
-pub use self::error::{Error, Result};
+pub use self::error::{Class, Error, Result};
 pub use self::frontmatter::{ParsedTrigger, SkillMetadata, parse_skill, parse_trigger};
 pub use self::instructions::instructions;
 pub use self::name::{CredentialName, FleetName, Version};

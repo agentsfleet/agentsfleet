@@ -4,7 +4,8 @@ use serde_json::Value;
 use sqlx::Row as _;
 
 use super::{Libraries, VISIBILITY_PUBLIC};
-use crate::{Error, Result};
+use crate::Result;
+use crate::error::database;
 
 const CONTEXT_LIST: &str = "list published Fleet Bundles";
 
@@ -75,7 +76,7 @@ impl Libraries {
             .bind(VISIBILITY_PUBLIC)
             .fetch_all(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_LIST))?
+            .map_err(database(CONTEXT_LIST))?
             .iter()
             .map(decode)
             .collect()
@@ -83,8 +84,7 @@ impl Libraries {
 }
 
 fn decode(row: &sqlx::postgres::PgRow) -> Result<PublicLibraryItem> {
-    let text =
-        |index| -> Result<String> { row.try_get(index).map_err(Error::database(CONTEXT_LIST)) };
+    let text = |index| -> Result<String> { row.try_get(index).map_err(database(CONTEXT_LIST)) };
     Ok(PublicLibraryItem {
         id: text(0)?,
         name: text(1)?,

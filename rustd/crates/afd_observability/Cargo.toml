@@ -16,7 +16,15 @@ categories.workspace = true
 
 # Dependencies are added by the module that uses them. The vocabulary is
 # `&'static str` constants and needs nothing.
+[features]
+# M-TEST-UTIL. Unlocks the labelled sample of every refusal, so a caller's suite
+# can grade this crate's error surface without a census on disk.
+test-util = []
+
 [dependencies]
+# The shared error hull (`error_shell!`/`error_lifts!`) and the registry codes a
+# census defect is read under. Referenced, never re-declared.
+afd_core.workspace = true
 # The runner-reported vocabulary the per-runner counters are keyed by. Consumed,
 # never authored here: an outcome this crate spelled for itself would be a
 # second vocabulary the wire does not know about.

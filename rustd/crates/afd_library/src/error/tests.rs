@@ -8,7 +8,7 @@ use afd_core::error_code::{
 };
 use afd_fleet_runtime::{CredentialName, Version};
 
-use super::{Error, InvalidBundle};
+use super::{Error, InvalidBundle, catalog_id_collision, database, storage_unavailable};
 use crate::SourceFailure;
 
 #[test]
@@ -123,9 +123,8 @@ fn contextual_failures_keep_sources_and_safe_client_details() -> Result<(), &'st
     );
     assert!(snapshot.source().is_some());
 
-    let database = Error::database("loading catalogue")(sqlx::Error::Protocol(
-        "fixture catalogue query".into(),
-    ));
+    let database =
+        database("loading catalogue")(sqlx::Error::Protocol("fixture catalogue query".into()));
     assert_classification(&database, INTERNAL_DB_QUERY, "Database error", true);
     assert!(database.source().is_some());
 
@@ -141,7 +140,7 @@ fn contextual_failures_keep_sources_and_safe_client_details() -> Result<(), &'st
 
 #[test]
 fn data_only_storage_and_collision_failures_expose_remediation() {
-    let unavailable = Error::storage_unavailable();
+    let unavailable = storage_unavailable();
     assert_classification(
         &unavailable,
         FLEET_BUNDLE_STORAGE_UNAVAILABLE,
@@ -150,7 +149,7 @@ fn data_only_storage_and_collision_failures_expose_remediation() {
     );
     assert!(unavailable.source().is_none());
 
-    let collision = Error::catalog_id_collision("github:owner/incumbent".to_owned());
+    let collision = catalog_id_collision("github:owner/incumbent".to_owned());
     assert_classification(
         &collision,
         CATALOG_ID_COLLISION,
@@ -178,7 +177,7 @@ fn a_misnamed_credential_answers_the_code_whose_remedy_is_renaming_it() -> Resul
     let refusal = CredentialName::parse("my-credential")
         .err()
         .ok_or("a hyphen is not a storable vault key byte")?;
-    let misnamed = Error::TriggerConfig(refusal);
+    let misnamed = Error::from(refusal);
 
     assert_eq!(misnamed.code(), FLEET_BUNDLE_CREDENTIAL_NAME_INVALID);
 
@@ -192,7 +191,7 @@ fn a_misnamed_credential_answers_the_code_whose_remedy_is_renaming_it() -> Resul
 
     // The ordering pin: a sibling trigger-config failure still answers the
     // family code, because re-packaging IS its remedy.
-    let malformed = Error::TriggerConfig(
+    let malformed = Error::from(
         Version::parse("not-a-version")
             .err()
             .ok_or("a semver parse must reject this")?,

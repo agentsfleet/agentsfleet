@@ -16,8 +16,18 @@
 //! the whole chain and leaves this type spelling only what `csv` cannot know —
 //! the meaning of a row once it has parsed.
 
+use afd_core::error_code::{self, ErrorCode};
+
 #[cfg(test)]
 mod tests;
+
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+pub(crate) use self::raise::{
+    bounds_mismatch, duplicate, kind_mismatch, number_mismatch, stream_rejected, unknown_family,
+};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -26,10 +36,15 @@ mod tests;
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// A metric contract this crate declined to build a registry from.
+afd_core::error_shell!(
+    /// A metric contract this crate declined to build a registry from, with the
+    /// backtrace of where it was refused.
+    pub struct Error(ErrorKind);
+);
+
+/// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorKind {
     /// The census would not read as the tab-separated table it declares itself.
     ///
     /// Transparent because the reader's own sentence is already the better one:
@@ -41,7 +56,7 @@ pub enum Error {
     /// and carries its position in `Display` instead. A walker that stops here
     /// has not lost anything — there was never a further link.
     #[error(transparent)]
-    Census(#[from] csv::Error),
+    Census { source: csv::Error },
 
     /// Two rows declare the same family name.
     ///
@@ -95,7 +110,7 @@ pub enum Error {
 
     /// A family's Rust type and the census disagree about what it counts IN.
     ///
-    /// A different edit from [`Error::KindMismatch`], which is why it is a
+    /// A different edit from [`ErrorKind::KindMismatch`], which is why it is a
     /// different variant: there the trait and the contract disagree about what
     /// the family IS, and here they agree about that and disagree about the
     /// number. Left unreported it exports whole counts as a floating-point
@@ -142,4 +157,32 @@ pub enum Error {
         /// The name the caller asked for.
         family: Box<str>,
     },
+}
+
+impl Error {
+    /// The registry code an operator reads this under.
+    ///
+    /// A census defect stops the daemon BOOTING — the registry is built once,
+    /// before anything serves — so it answers the family every other boot-time
+    /// configuration refusal already uses. A family asked for by a name the
+    /// contract does not declare is different: the census is fine and the
+    /// daemon code is wrong, which is internal rather than configuration.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        match self.kind() {
+            ErrorKind::UnknownFamily { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            _contract => error_code::STARTUP_ENV_CHECK,
+        }
+    }
+
+    /// Whether the census itself would not read, as opposed to reading and
+    /// contradicting something.
+    ///
+    /// The distinction an operator acts on: a file that will not parse is fixed
+    /// in the file, where a contradiction is fixed in whichever of the file and
+    /// the code is wrong.
+    #[must_use]
+    pub fn is_unreadable(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Census { .. })
+    }
 }
