@@ -285,7 +285,7 @@ fn local_endpoint(surface: &'static str, raw: &str) -> Result<()> {
     Ok(())
 }
 
-/// SQLx can replace the URL authority through PostgreSQL query parameters.
+/// `SQLx` can replace the URL authority through PostgreSQL query parameters.
 /// The owned rig uses only `sslmode=disable`; everything else is refused before
 /// either the Docker socket check or the database client opens a connection.
 fn reject_database_overrides(surface: &'static str, parsed: &Url) -> Result<()> {
