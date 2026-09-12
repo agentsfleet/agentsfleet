@@ -12,9 +12,14 @@ describe("StatusLine", () => {
     );
     const line = screen.getByLabelText("Fleet summary");
     expect(line.nodeName).toBe("DIV");
-    for (const cls of ["font-mono", "tabular-nums", "text-label", "divide-x", "flex-wrap"]) {
+    for (const cls of ["font-mono", "tabular-nums", "text-label", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
       expect(line.className).toContain(cls);
     }
+    // Never a wrapped row: `divide-x` draws on every cell but the last, so a
+    // second row would open with an inset and the first would end on a rule.
+    expect(line.className).not.toContain("flex-wrap");
+    expect(screen.getByText("3,255 tok").className).toContain("shrink-0");
+    expect(screen.getByText("3,255 tok").className).toContain("whitespace-nowrap");
     expect(screen.getByText("3,255 tok")).toBeInTheDocument();
     expect(screen.getByText("$0.03")).toBeInTheDocument();
   });

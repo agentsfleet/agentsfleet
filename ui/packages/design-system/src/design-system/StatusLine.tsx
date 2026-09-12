@@ -8,6 +8,12 @@ import { cn } from "../utils";
  * of its figure, so a screen reader hears "Tokens 3,255" where a sighted
  * reader sees a glyph. Owns typography, colour and the rules between cells;
  * the caller places the line. RSC-safe.
+ *
+ * One row, always: the rules between cells are `divide-x`, which draws on
+ * every cell but the last, so a wrapped second row would open with an inset
+ * and the first row would end on an orphaned rule. Narrower than its cells,
+ * the line scrolls sideways instead — the same answer the section strip
+ * gives, and the one a terminal gives.
  */
 
 export type StatusLineTone = "neutral" | "foreground" | "pulse" | "success" | "warning" | "danger";
@@ -30,7 +36,7 @@ export function StatusLine({ className, ref, ...props }: StatusLineProps) {
     <div
       ref={ref}
       className={cn(
-        "flex min-w-0 flex-wrap items-center divide-x divide-border",
+        "flex min-w-0 flex-nowrap items-center overflow-x-auto divide-x divide-border",
         "font-mono text-label leading-label tabular-nums text-muted-foreground",
         className,
       )}
@@ -45,7 +51,7 @@ export function StatusLineItem({ tone = "neutral", className, ref, ...props }: S
       ref={ref}
       data-tone={tone}
       className={cn(
-        "inline-flex min-w-0 items-center gap-sm px-md first:pl-0 last:pr-0",
+        "inline-flex shrink-0 items-center gap-sm whitespace-nowrap px-md first:pl-0 last:pr-0",
         toneClass[tone],
         className,
       )}
