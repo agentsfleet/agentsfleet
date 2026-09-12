@@ -19,6 +19,7 @@ export const REFRESH_RUNNER_LABEL = "Refresh";
 
 // The states chip's learn-more target: the published section defining the
 // exact admin-state and liveness vocabulary the chip renders.
+export const RUNNER_STATES_HELP_LABEL = "What the runner states mean (opens in a new tab)";
 export const RUNNER_STATES_DOC_URL =
   "https://docs.agentsfleet.net/runners#the-states-a-runner-shows";
 
