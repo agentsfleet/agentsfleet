@@ -420,10 +420,15 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync"
 # `tokio-rustls-comp` for the same no-C posture as everything else here. The
 # local compose Redis serves a self-signed certificate, so the CA arrives by
 # path (`REDIS_TLS_CA_CERT_FILE`) rather than from a trust store.
+#
+# `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
+# following, per-node connections and sharded pub/sub over RESP3, all the
+# driver's. This workspace never parses a redirect itself.
 redis = { version = "1.6.0", default-features = false, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "connection-manager",
+    "cluster-async",
     "streams",
     "script",
 ] }

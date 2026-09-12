@@ -2,7 +2,7 @@
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
 #
-# The three test-infra services (postgres, redis, qstash) carry NO
+# The four test-infra services (postgres, redis, dragonfly, qstash) carry NO
 # `container_name`, so several git worktrees can run `make test-integration` at
 # once. Compose namespaces containers and volumes by project, and the project
 # name defaults to the directory basename — already unique per worktree. Pinning
@@ -131,6 +131,41 @@ services:
       timeout: 5s
       retries: 20
 
+  dragonfly:
+    # A real cluster, not `--cluster_mode=emulated`: two primaries and one
+    # replica each, four processes in this one container, bootstrapped and
+    # health-checked by scripts/dragonfly-cluster.sh. The nodes announce
+    # 127.0.0.1 and the port they bind, and the eight published host ports
+    # carry the same numbers, so a MOVED reply resolves from the host, from
+    # inside the container and from CI. A multi-container cluster cannot do
+    # that: a node announcing its bridge address is unreachable from macOS.
+    #
+    # Pinned to the release the probe and the prototype proofs ran against.
+    # Bumping it is a deliberate act that re-runs `make test-integration-rustd`
+    # on both backends, not a drive-by.
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.2
+    entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
+    command: ["serve"]
+    environment:
+      # The first of the eight ports; the script derives the other seven. The
+      # value must equal the published range below for redirects to resolve.
+      DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
+    ports:
+      # Per-worktree but fixed -- see the postgres service above. The four DATA
+      # ports as one range; the admin ports (base + 4 .. base + 7) stay inside
+      # the container on loopback, unauthenticated, reached only through
+      # `docker compose exec`. Both ends come from make/test-infra.mk because
+      # compose cannot add 3 to a variable.
+      - "${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7004}:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7004}"
+    volumes:
+      - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
+      - dragonfly-data:/data
+    healthcheck:
+      test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   qstash:
     # Upstash's official QStash local dev server, run via Bun. Ships deterministic
     # credentials (fixed token + signing keys), so integration tests point at it
@@ -216,3 +251,4 @@ volumes:
   postgres-data:
   redis-data:
   redis-tls:
+  dragonfly-data:
