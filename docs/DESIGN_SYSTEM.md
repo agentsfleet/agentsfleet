@@ -183,7 +183,7 @@ Use solid color regions and crisp edges. Avoid gradients, glossy shading, and am
 
 The shared vector is `ui/packages/website/src/components/AgentIllustration.tsx`.
 The large workshop raster is removed. Incident Response and Slack Teammate are the first two showcased workflows.
-The website JavaScript budget is 120 kB gzip; the CSS budget remains 20 kB.
+The website JavaScript budget is 128 kB gzip; the CSS budget remains 20 kB.
 
 ## Product copy and pricing
 
