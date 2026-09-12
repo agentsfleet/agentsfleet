@@ -1,5 +1,5 @@
-import type { ComponentType } from "react";
 import Link from "next/link";
+import type { ComponentType } from "react";
 import {
   ActivityIcon,
   BrainIcon,
@@ -7,8 +7,13 @@ import {
   MessageSquareIcon,
   ZapIcon,
 } from "lucide-react";
-import { Nav, NavItem } from "@agentsfleet/design-system";
+import { TabNav, type TabNavItem } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
+
+// The fleet's sections, as the app's one tab style: an underline over a
+// hairline rail, the same visual Billing and the settings tabs use. They are
+// destinations, not panels, so each is a real link with its own address —
+// which is what TabNav is for.
 
 export const FLEET_VIEW = {
   chat: "chat",
@@ -20,19 +25,17 @@ export const FLEET_VIEW = {
 
 export type FleetView = (typeof FLEET_VIEW)[keyof typeof FLEET_VIEW];
 
-type FleetNavItem = {
-  view: FleetView;
-  label: string;
-  icon: ComponentType<{ size?: number }>;
-};
+const ICON_SIZE = 15;
 
-const FLEET_NAV_ITEMS: FleetNavItem[] = [
+const FLEET_NAV_ITEMS: { view: FleetView; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { view: FLEET_VIEW.chat, label: "Chat", icon: MessageSquareIcon },
   { view: FLEET_VIEW.events, label: "Events", icon: ActivityIcon },
   { view: FLEET_VIEW.memory, label: "Memory", icon: BrainIcon },
   { view: FLEET_VIEW.skill, label: "Skill", icon: Code2Icon },
   { view: FLEET_VIEW.trigger, label: "Trigger", icon: ZapIcon },
 ];
+
+const NAV_LABEL = "Fleet sections";
 
 export function resolveFleetView(value: string | undefined): FleetView | null {
   switch (value) {
@@ -49,6 +52,11 @@ export function resolveFleetView(value: string | undefined): FleetView | null {
   }
 }
 
+/** Chat is the fleet's own address; every other view rides a query. */
+function hrefFor(baseHref: string, view: FleetView): string {
+  return view === FLEET_VIEW.chat ? baseHref : `${baseHref}?view=${view}`;
+}
+
 export function FleetSubnavigation({
   workspaceId,
   fleetId,
@@ -59,26 +67,17 @@ export function FleetSubnavigation({
   activeView: FleetView;
 }) {
   const baseHref = workspacePath(workspaceId, `fleets/${fleetId}`);
+  const items: TabNavItem[] = FLEET_NAV_ITEMS.map(({ view, label, icon: Icon }) => ({
+    label,
+    href: hrefFor(baseHref, view),
+    icon: <Icon size={ICON_SIZE} aria-hidden="true" />,
+  }));
   return (
-    <Nav
-      aria-label="Fleet sections"
-      className="flex gap-xs overflow-x-auto border-b border-border pb-md"
-    >
-      {FLEET_NAV_ITEMS.map((item) => {
-        const Icon = item.icon;
-        const active = item.view === activeView;
-        const href = item.view === FLEET_VIEW.chat
-          ? baseHref
-          : `${baseHref}?view=${item.view}`;
-        return (
-          <NavItem asChild active={active} key={item.view}>
-            <Link href={href}>
-              <Icon size={15} />
-              {item.label}
-            </Link>
-          </NavItem>
-        );
-      })}
-    </Nav>
+    <TabNav
+      label={NAV_LABEL}
+      items={items}
+      activeHref={hrefFor(baseHref, activeView)}
+      linkComponent={Link}
+    />
   );
 }
