@@ -21,12 +21,12 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
 | Payload offload + charge breakdown | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
 | Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §"Dashboard Backend-for-Frontend" |
-| Datastore scaling and Redis parity | in progress (M192_001) | [Datastore scaling and Redis parity](#datastore-scaling-and-redis-parity) |
+| Datastore scaling | in progress (M192_001), Dragonfly cluster-only | [Datastore scaling](#datastore-scaling) |
 
-## Datastore scaling and Redis parity
+## Datastore scaling
 
 [M188_001](../v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md) defines the shared throughput benchmark drivers.
-[M192_001](../v2/pending/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) defines the pending Dragonfly Cloud Swarm implementation and Redis parity evidence.
+[M192_001](../v2/active/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) defines the in-progress cluster-only Dragonfly datastore; Redis is retired as a backend.
 The [datastore scaling requirements](./datastore_scaling.md) record the required target, recovery behavior, and rollout limits.
 
 Both plans remain pending. Redis remains the deployment default, and no Dragonfly capacity or recovery result is claimed.

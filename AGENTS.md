@@ -10,10 +10,13 @@ facts.
 
 - Write the product as `agentsfleet`; binaries are `agentsfleetd` and
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
-- Datastore scaling must follow [the Dragonfly Cloud requirements](docs/architecture/datastore_scaling.md).
-  Preserve Redis behavior and prove each increment on the same deployment.
-  Dragonfly Cloud Swarm is the required target, with no single-shard migration stage.
-  Redis remains the default until an explicit cutover.
+- The datastore is Dragonfly, cluster-only, per [the datastore requirements](docs/architecture/datastore_scaling.md).
+  `agentsfleetd` speaks one transport — redis-rs `cluster_async` over RESP3 — with no standalone
+  path and no topology selector; a seed that is not a cluster refuses boot. Dragonfly Cloud Swarm
+  is the deployment target and the local lane is a real four-node cluster. Redis is not a supported
+  backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
+  "Redis remains the default" rule. The crate is `afd_datastore`; the `REDIS_*` environment
+  variable names are unchanged, because they are a deployment contract renamed only by its own change.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`,
