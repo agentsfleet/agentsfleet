@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { CoinsIcon } from "lucide-react";
 import { cn } from "@agentsfleet/design-system";
-import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
+import {
+  formatDollars,
+  MIN_VISIBLE_NANOS,
+  SUBVISIBLE_AMOUNT_LABEL,
+} from "@/app/(dashboard)/settings/billing/lib/charges";
 
 /*
  * What is left to spend, in the header, on every page.
@@ -12,8 +15,13 @@ import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
  * meter or a card: the fraction consumed is a billing-page question, the
  * number left is an everywhere question.
  *
- * Exhausted, it turns destructive — that is the one state that changes what
- * an operator does next, because new fleet events gate-block until a top-up.
+ * Labelled and lit, not a muted glyph and a number. A quiet coin icon read as
+ * header chrome — the operator scanning for "how much is left" skipped it.
+ * The word says which figure this is; the accent says it is a live one, and
+ * the accent is the same mint a live fleet wears, which is the currency this
+ * balance buys. Exhausted, it turns destructive: that is the one state that
+ * changes what an operator does next, because new fleet events gate-block
+ * until a top-up.
  *
  * Server-rendered from the layout's own read, so it refreshes when a page
  * does. A tab left open overnight shows last night's figure; the billing page
@@ -21,9 +29,34 @@ import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
  */
 
 export const BALANCE_HREF = "/settings/billing";
-export const BALANCE_LABEL = "Credit balance";
-export const BALANCE_EXHAUSTED_LABEL = "Credit balance exhausted";
-const ICON_SIZE = 13;
+export const BALANCE_LABEL = "Credits";
+export const BALANCE_ARIA_LABEL = "Credit balance";
+export const BALANCE_EXHAUSTED_ARIA_LABEL = "Credit balance exhausted";
+
+const NANOS_PER_CENT = 10_000_000;
+const NANOS_PER_USD = NANOS_PER_CENT * 100;
+const CENTS_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Cents in the header, because $4.8066 is a figure to parse and $4.81 is one
+ * to read.
+ *
+ * Two floors below that, and they are the charges table's own floors, for the
+ * same reason: a live balance must never render as $0.00, which is the one
+ * figure that says "spent". Under a cent it keeps the billing page's
+ * four-decimal precision; under what four decimals can show, it says so,
+ * exactly as a sub-visible debit does.
+ */
+export function formatHeaderBalance(nanos: number): string {
+  if (nanos > 0 && nanos < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
+  if (nanos > 0 && nanos < NANOS_PER_CENT) return formatDollars(nanos);
+  return CENTS_FORMATTER.format(nanos / NANOS_PER_USD);
+}
 
 export function BalanceLink({
   balanceNanos,
@@ -35,17 +68,25 @@ export function BalanceLink({
   return (
     <Link
       href={BALANCE_HREF}
-      aria-label={isExhausted ? BALANCE_EXHAUSTED_LABEL : BALANCE_LABEL}
-      title={isExhausted ? BALANCE_EXHAUSTED_LABEL : BALANCE_LABEL}
+      aria-label={isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}
       data-exhausted={isExhausted ? "true" : undefined}
       className={cn(
-        "hidden shrink-0 items-center gap-sm rounded-md px-sm py-xs font-mono text-label tabular-nums no-underline sm:inline-flex",
+        "hidden shrink-0 items-baseline gap-sm rounded-md px-md py-xs no-underline sm:inline-flex",
         "transition-colors duration-snap ease-snap hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isExhausted ? "text-destructive" : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <CoinsIcon size={ICON_SIZE} aria-hidden="true" />
-      {formatDollars(balanceNanos)}
+      <span className="font-sans text-label text-muted-foreground">{BALANCE_LABEL}</span>
+      {/* A step up in size and weight from the label beside it: at the label's
+          own scale the mint read as a tint on small text rather than as the
+          figure the header exists to carry. */}
+      <span
+        className={cn(
+          "font-mono text-body font-semibold tabular-nums",
+          isExhausted ? "text-destructive" : "text-pulse",
+        )}
+      >
+        {formatHeaderBalance(balanceNanos)}
+      </span>
     </Link>
   );
 }

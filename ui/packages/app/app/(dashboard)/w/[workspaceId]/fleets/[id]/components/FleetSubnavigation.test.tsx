@@ -17,8 +17,8 @@ describe("FleetSubnavigation", () => {
     expect(screen.getByRole("link", { name: "Memory" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("link", { name: "Chat" }).getAttribute("href")).toBe("/w/ws_1/fleets/fleet_1");
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")?.getAttribute("class"))
-      .toContain("lucide-brain");
+    // Labels only: the glyphs were a rail affordance and the rail is gone.
+    expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")).toBeNull();
     // The app's one tab style — an underline over a hairline rail, shared
     // with Billing — and one strip at every width, no `lg:` rail variant.
     expect(screen.getByRole("navigation").className).toContain("border-b");

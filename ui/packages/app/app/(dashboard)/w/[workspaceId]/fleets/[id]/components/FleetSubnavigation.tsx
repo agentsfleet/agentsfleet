@@ -1,12 +1,4 @@
 import Link from "next/link";
-import type { ComponentType } from "react";
-import {
-  ActivityIcon,
-  BrainIcon,
-  Code2Icon,
-  MessageSquareIcon,
-  ZapIcon,
-} from "lucide-react";
 import { TabNav, type TabNavItem } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 
@@ -14,6 +6,10 @@ import { workspacePath } from "@/lib/workspace-routes";
 // hairline rail, the same visual Billing and the settings tabs use. They are
 // destinations, not panels, so each is a real link with its own address —
 // which is what TabNav is for.
+//
+// Labels only. The glyphs were a rail affordance, where icons line up in a
+// column and carry the eye down; in a horizontal strip they are decoration,
+// and Billing's three tabs read fine without them.
 
 export const FLEET_VIEW = {
   chat: "chat",
@@ -25,14 +21,12 @@ export const FLEET_VIEW = {
 
 export type FleetView = (typeof FLEET_VIEW)[keyof typeof FLEET_VIEW];
 
-const ICON_SIZE = 15;
-
-const FLEET_NAV_ITEMS: { view: FleetView; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { view: FLEET_VIEW.chat, label: "Chat", icon: MessageSquareIcon },
-  { view: FLEET_VIEW.events, label: "Events", icon: ActivityIcon },
-  { view: FLEET_VIEW.memory, label: "Memory", icon: BrainIcon },
-  { view: FLEET_VIEW.skill, label: "Skill", icon: Code2Icon },
-  { view: FLEET_VIEW.trigger, label: "Trigger", icon: ZapIcon },
+const FLEET_NAV_ITEMS: { view: FleetView; label: string }[] = [
+  { view: FLEET_VIEW.chat, label: "Chat" },
+  { view: FLEET_VIEW.events, label: "Events" },
+  { view: FLEET_VIEW.memory, label: "Memory" },
+  { view: FLEET_VIEW.skill, label: "Skill" },
+  { view: FLEET_VIEW.trigger, label: "Trigger" },
 ];
 
 const NAV_LABEL = "Fleet sections";
@@ -67,10 +61,9 @@ export function FleetSubnavigation({
   activeView: FleetView;
 }) {
   const baseHref = workspacePath(workspaceId, `fleets/${fleetId}`);
-  const items: TabNavItem[] = FLEET_NAV_ITEMS.map(({ view, label, icon: Icon }) => ({
+  const items: TabNavItem[] = FLEET_NAV_ITEMS.map(({ view, label }) => ({
     label,
     href: hrefFor(baseHref, view),
-    icon: <Icon size={ICON_SIZE} aria-hidden="true" />,
   }));
   return (
     <TabNav
