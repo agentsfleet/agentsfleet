@@ -178,23 +178,12 @@ mod tests {
     #[derive(Debug, Default)]
     struct Counting {
         calls: AtomicUsize,
+        reject: bool,
     }
 
     impl Deliver for Counting {
-        fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            std::future::ready(Verdict::Delivered)
-        }
-    }
-
-    #[derive(Debug, Default)]
-    struct Rejecting {
-        calls: AtomicUsize,
-    }
-
-    impl Deliver for Rejecting {
         fn permits(&self, _job: &OutboundDelivery) -> bool {
-            false
+            !self.reject
         }
 
         fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
@@ -247,7 +236,10 @@ mod tests {
     #[tokio::test]
     async fn test_an_ownership_refusal_happens_before_provider_dispatch() {
         let posters = Posters {
-            slack: Rejecting::default(),
+            slack: Counting {
+                reject: true,
+                ..Counting::default()
+            },
         };
 
         let verdict = dispatch(&posters, &job("github")).await;
