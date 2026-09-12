@@ -11,26 +11,3283 @@
   "measurements": {
     "delivered": 200.0,
     "foreign_entries": 0.0,
-    "max_ms": 4132.863,
-    "others_p95_ms": 3837.951,
-    "p95_ms": 3837.951,
-    "p99_ms": 4122.623,
-    "rate_per_second": 48.39719920945953,
+    "max_ms": 4120.575,
+    "others_p95_ms": 3825.663,
+    "p95_ms": 3825.663,
+    "p99_ms": 4112.383,
+    "rate_per_second": 48.5342877694209,
     "retry_occupancy": 0.0,
     "slow_destinations": 1.0,
-    "slow_p95_ms": 3852.287,
+    "slow_p95_ms": 3839.999,
     "unsettled": 0.0
+  },
+  "calculations": {
+    "delivered": {
+      "kind": "count",
+      "value": 200
+    },
+    "foreign_entries": {
+      "kind": "count",
+      "value": 0
+    },
+    "max_ms": {
+      "kind": "histogram_maximum",
+      "buckets": [
+        {
+          "value_micros": 613,
+          "count": 1
+        },
+        {
+          "value_micros": 255871,
+          "count": 1
+        },
+        {
+          "value_micros": 259839,
+          "count": 1
+        },
+        {
+          "value_micros": 264703,
+          "count": 1
+        },
+        {
+          "value_micros": 268287,
+          "count": 1
+        },
+        {
+          "value_micros": 272383,
+          "count": 1
+        },
+        {
+          "value_micros": 278527,
+          "count": 1
+        },
+        {
+          "value_micros": 282367,
+          "count": 1
+        },
+        {
+          "value_micros": 286207,
+          "count": 1
+        },
+        {
+          "value_micros": 292351,
+          "count": 1
+        },
+        {
+          "value_micros": 295935,
+          "count": 1
+        },
+        {
+          "value_micros": 299775,
+          "count": 1
+        },
+        {
+          "value_micros": 305151,
+          "count": 1
+        },
+        {
+          "value_micros": 308479,
+          "count": 1
+        },
+        {
+          "value_micros": 312319,
+          "count": 1
+        },
+        {
+          "value_micros": 317695,
+          "count": 1
+        },
+        {
+          "value_micros": 321279,
+          "count": 1
+        },
+        {
+          "value_micros": 574975,
+          "count": 1
+        },
+        {
+          "value_micros": 579071,
+          "count": 1
+        },
+        {
+          "value_micros": 586751,
+          "count": 1
+        },
+        {
+          "value_micros": 590847,
+          "count": 1
+        },
+        {
+          "value_micros": 596479,
+          "count": 1
+        },
+        {
+          "value_micros": 600575,
+          "count": 1
+        },
+        {
+          "value_micros": 604159,
+          "count": 1
+        },
+        {
+          "value_micros": 611327,
+          "count": 1
+        },
+        {
+          "value_micros": 614911,
+          "count": 1
+        },
+        {
+          "value_micros": 619007,
+          "count": 1
+        },
+        {
+          "value_micros": 623615,
+          "count": 1
+        },
+        {
+          "value_micros": 628735,
+          "count": 1
+        },
+        {
+          "value_micros": 632319,
+          "count": 1
+        },
+        {
+          "value_micros": 638975,
+          "count": 1
+        },
+        {
+          "value_micros": 642559,
+          "count": 1
+        },
+        {
+          "value_micros": 646655,
+          "count": 1
+        },
+        {
+          "value_micros": 900095,
+          "count": 1
+        },
+        {
+          "value_micros": 905727,
+          "count": 1
+        },
+        {
+          "value_micros": 909823,
+          "count": 1
+        },
+        {
+          "value_micros": 913919,
+          "count": 1
+        },
+        {
+          "value_micros": 919039,
+          "count": 1
+        },
+        {
+          "value_micros": 923135,
+          "count": 1
+        },
+        {
+          "value_micros": 927231,
+          "count": 1
+        },
+        {
+          "value_micros": 931839,
+          "count": 1
+        },
+        {
+          "value_micros": 935423,
+          "count": 1
+        },
+        {
+          "value_micros": 940031,
+          "count": 1
+        },
+        {
+          "value_micros": 946175,
+          "count": 1
+        },
+        {
+          "value_micros": 950783,
+          "count": 1
+        },
+        {
+          "value_micros": 956927,
+          "count": 1
+        },
+        {
+          "value_micros": 961023,
+          "count": 1
+        },
+        {
+          "value_micros": 964607,
+          "count": 1
+        },
+        {
+          "value_micros": 969215,
+          "count": 1
+        },
+        {
+          "value_micros": 1227775,
+          "count": 1
+        },
+        {
+          "value_micros": 1232895,
+          "count": 1
+        },
+        {
+          "value_micros": 1236991,
+          "count": 1
+        },
+        {
+          "value_micros": 1240063,
+          "count": 1
+        },
+        {
+          "value_micros": 1243135,
+          "count": 1
+        },
+        {
+          "value_micros": 1246207,
+          "count": 1
+        },
+        {
+          "value_micros": 1252351,
+          "count": 1
+        },
+        {
+          "value_micros": 1256447,
+          "count": 1
+        },
+        {
+          "value_micros": 1260543,
+          "count": 1
+        },
+        {
+          "value_micros": 1263615,
+          "count": 1
+        },
+        {
+          "value_micros": 1267711,
+          "count": 1
+        },
+        {
+          "value_micros": 1270783,
+          "count": 1
+        },
+        {
+          "value_micros": 1273855,
+          "count": 1
+        },
+        {
+          "value_micros": 1276927,
+          "count": 1
+        },
+        {
+          "value_micros": 1279999,
+          "count": 1
+        },
+        {
+          "value_micros": 1284095,
+          "count": 1
+        },
+        {
+          "value_micros": 1537023,
+          "count": 1
+        },
+        {
+          "value_micros": 1541119,
+          "count": 1
+        },
+        {
+          "value_micros": 1545215,
+          "count": 1
+        },
+        {
+          "value_micros": 1549311,
+          "count": 1
+        },
+        {
+          "value_micros": 1553407,
+          "count": 1
+        },
+        {
+          "value_micros": 1558527,
+          "count": 1
+        },
+        {
+          "value_micros": 1561599,
+          "count": 1
+        },
+        {
+          "value_micros": 1565695,
+          "count": 1
+        },
+        {
+          "value_micros": 1571839,
+          "count": 1
+        },
+        {
+          "value_micros": 1574911,
+          "count": 1
+        },
+        {
+          "value_micros": 1579007,
+          "count": 1
+        },
+        {
+          "value_micros": 1585151,
+          "count": 1
+        },
+        {
+          "value_micros": 1589247,
+          "count": 1
+        },
+        {
+          "value_micros": 1593343,
+          "count": 1
+        },
+        {
+          "value_micros": 1598463,
+          "count": 1
+        },
+        {
+          "value_micros": 1602559,
+          "count": 1
+        },
+        {
+          "value_micros": 1857535,
+          "count": 1
+        },
+        {
+          "value_micros": 1860607,
+          "count": 1
+        },
+        {
+          "value_micros": 1865727,
+          "count": 1
+        },
+        {
+          "value_micros": 1869823,
+          "count": 1
+        },
+        {
+          "value_micros": 1873919,
+          "count": 1
+        },
+        {
+          "value_micros": 1881087,
+          "count": 1
+        },
+        {
+          "value_micros": 1885183,
+          "count": 1
+        },
+        {
+          "value_micros": 1891327,
+          "count": 1
+        },
+        {
+          "value_micros": 1895423,
+          "count": 1
+        },
+        {
+          "value_micros": 1898495,
+          "count": 1
+        },
+        {
+          "value_micros": 1904639,
+          "count": 1
+        },
+        {
+          "value_micros": 1908735,
+          "count": 1
+        },
+        {
+          "value_micros": 1912831,
+          "count": 1
+        },
+        {
+          "value_micros": 1918975,
+          "count": 1
+        },
+        {
+          "value_micros": 1922047,
+          "count": 1
+        },
+        {
+          "value_micros": 1926143,
+          "count": 1
+        },
+        {
+          "value_micros": 2181119,
+          "count": 1
+        },
+        {
+          "value_micros": 2185215,
+          "count": 1
+        },
+        {
+          "value_micros": 2189311,
+          "count": 1
+        },
+        {
+          "value_micros": 2193407,
+          "count": 1
+        },
+        {
+          "value_micros": 2197503,
+          "count": 1
+        },
+        {
+          "value_micros": 2203647,
+          "count": 1
+        },
+        {
+          "value_micros": 2207743,
+          "count": 1
+        },
+        {
+          "value_micros": 2211839,
+          "count": 1
+        },
+        {
+          "value_micros": 2215935,
+          "count": 1
+        },
+        {
+          "value_micros": 2220031,
+          "count": 1
+        },
+        {
+          "value_micros": 2226175,
+          "count": 1
+        },
+        {
+          "value_micros": 2230271,
+          "count": 1
+        },
+        {
+          "value_micros": 2234367,
+          "count": 1
+        },
+        {
+          "value_micros": 2240511,
+          "count": 1
+        },
+        {
+          "value_micros": 2242559,
+          "count": 1
+        },
+        {
+          "value_micros": 2246655,
+          "count": 1
+        },
+        {
+          "value_micros": 2500607,
+          "count": 1
+        },
+        {
+          "value_micros": 2506751,
+          "count": 1
+        },
+        {
+          "value_micros": 2510847,
+          "count": 1
+        },
+        {
+          "value_micros": 2514943,
+          "count": 1
+        },
+        {
+          "value_micros": 2519039,
+          "count": 1
+        },
+        {
+          "value_micros": 2523135,
+          "count": 1
+        },
+        {
+          "value_micros": 2527231,
+          "count": 1
+        },
+        {
+          "value_micros": 2533375,
+          "count": 1
+        },
+        {
+          "value_micros": 2537471,
+          "count": 1
+        },
+        {
+          "value_micros": 2541567,
+          "count": 1
+        },
+        {
+          "value_micros": 2547711,
+          "count": 1
+        },
+        {
+          "value_micros": 2551807,
+          "count": 1
+        },
+        {
+          "value_micros": 2555903,
+          "count": 1
+        },
+        {
+          "value_micros": 2559999,
+          "count": 1
+        },
+        {
+          "value_micros": 2564095,
+          "count": 1
+        },
+        {
+          "value_micros": 2568191,
+          "count": 1
+        },
+        {
+          "value_micros": 2822143,
+          "count": 1
+        },
+        {
+          "value_micros": 2826239,
+          "count": 1
+        },
+        {
+          "value_micros": 2830335,
+          "count": 1
+        },
+        {
+          "value_micros": 2834431,
+          "count": 1
+        },
+        {
+          "value_micros": 2840575,
+          "count": 1
+        },
+        {
+          "value_micros": 2844671,
+          "count": 1
+        },
+        {
+          "value_micros": 2848767,
+          "count": 1
+        },
+        {
+          "value_micros": 2854911,
+          "count": 1
+        },
+        {
+          "value_micros": 2859007,
+          "count": 1
+        },
+        {
+          "value_micros": 2861055,
+          "count": 1
+        },
+        {
+          "value_micros": 2867199,
+          "count": 1
+        },
+        {
+          "value_micros": 2871295,
+          "count": 1
+        },
+        {
+          "value_micros": 2875391,
+          "count": 1
+        },
+        {
+          "value_micros": 2881535,
+          "count": 1
+        },
+        {
+          "value_micros": 2885631,
+          "count": 1
+        },
+        {
+          "value_micros": 2891775,
+          "count": 1
+        },
+        {
+          "value_micros": 3147775,
+          "count": 1
+        },
+        {
+          "value_micros": 3151871,
+          "count": 1
+        },
+        {
+          "value_micros": 3155967,
+          "count": 1
+        },
+        {
+          "value_micros": 3160063,
+          "count": 1
+        },
+        {
+          "value_micros": 3164159,
+          "count": 1
+        },
+        {
+          "value_micros": 3168255,
+          "count": 1
+        },
+        {
+          "value_micros": 3174399,
+          "count": 1
+        },
+        {
+          "value_micros": 3178495,
+          "count": 1
+        },
+        {
+          "value_micros": 3182591,
+          "count": 1
+        },
+        {
+          "value_micros": 3188735,
+          "count": 1
+        },
+        {
+          "value_micros": 3192831,
+          "count": 1
+        },
+        {
+          "value_micros": 3196927,
+          "count": 1
+        },
+        {
+          "value_micros": 3201023,
+          "count": 1
+        },
+        {
+          "value_micros": 3205119,
+          "count": 1
+        },
+        {
+          "value_micros": 3209215,
+          "count": 1
+        },
+        {
+          "value_micros": 3215359,
+          "count": 1
+        },
+        {
+          "value_micros": 3467263,
+          "count": 1
+        },
+        {
+          "value_micros": 3469311,
+          "count": 1
+        },
+        {
+          "value_micros": 3473407,
+          "count": 1
+        },
+        {
+          "value_micros": 3475455,
+          "count": 1
+        },
+        {
+          "value_micros": 3479551,
+          "count": 1
+        },
+        {
+          "value_micros": 3483647,
+          "count": 1
+        },
+        {
+          "value_micros": 3485695,
+          "count": 1
+        },
+        {
+          "value_micros": 3489791,
+          "count": 1
+        },
+        {
+          "value_micros": 3491839,
+          "count": 1
+        },
+        {
+          "value_micros": 3495935,
+          "count": 1
+        },
+        {
+          "value_micros": 3500031,
+          "count": 1
+        },
+        {
+          "value_micros": 3502079,
+          "count": 1
+        },
+        {
+          "value_micros": 3506175,
+          "count": 1
+        },
+        {
+          "value_micros": 3510271,
+          "count": 1
+        },
+        {
+          "value_micros": 3514367,
+          "count": 1
+        },
+        {
+          "value_micros": 3518463,
+          "count": 1
+        },
+        {
+          "value_micros": 3774463,
+          "count": 1
+        },
+        {
+          "value_micros": 3776511,
+          "count": 1
+        },
+        {
+          "value_micros": 3780607,
+          "count": 1
+        },
+        {
+          "value_micros": 3786751,
+          "count": 1
+        },
+        {
+          "value_micros": 3790847,
+          "count": 1
+        },
+        {
+          "value_micros": 3794943,
+          "count": 1
+        },
+        {
+          "value_micros": 3801087,
+          "count": 1
+        },
+        {
+          "value_micros": 3805183,
+          "count": 1
+        },
+        {
+          "value_micros": 3809279,
+          "count": 1
+        },
+        {
+          "value_micros": 3813375,
+          "count": 1
+        },
+        {
+          "value_micros": 3817471,
+          "count": 1
+        },
+        {
+          "value_micros": 3821567,
+          "count": 1
+        },
+        {
+          "value_micros": 3825663,
+          "count": 1
+        },
+        {
+          "value_micros": 3829759,
+          "count": 1
+        },
+        {
+          "value_micros": 3833855,
+          "count": 1
+        },
+        {
+          "value_micros": 3839999,
+          "count": 1
+        },
+        {
+          "value_micros": 4095999,
+          "count": 1
+        },
+        {
+          "value_micros": 4098047,
+          "count": 1
+        },
+        {
+          "value_micros": 4102143,
+          "count": 1
+        },
+        {
+          "value_micros": 4108287,
+          "count": 1
+        },
+        {
+          "value_micros": 4112383,
+          "count": 1
+        },
+        {
+          "value_micros": 4116479,
+          "count": 1
+        },
+        {
+          "value_micros": 4120575,
+          "count": 1
+        }
+      ]
+    },
+    "others_p95_ms": {
+      "kind": "histogram_quantile",
+      "quantile_millionths": 950000,
+      "buckets": [
+        {
+          "value_micros": 255871,
+          "count": 1
+        },
+        {
+          "value_micros": 259839,
+          "count": 1
+        },
+        {
+          "value_micros": 264703,
+          "count": 1
+        },
+        {
+          "value_micros": 268287,
+          "count": 1
+        },
+        {
+          "value_micros": 272383,
+          "count": 1
+        },
+        {
+          "value_micros": 278527,
+          "count": 1
+        },
+        {
+          "value_micros": 282367,
+          "count": 1
+        },
+        {
+          "value_micros": 286207,
+          "count": 1
+        },
+        {
+          "value_micros": 292351,
+          "count": 1
+        },
+        {
+          "value_micros": 295935,
+          "count": 1
+        },
+        {
+          "value_micros": 299775,
+          "count": 1
+        },
+        {
+          "value_micros": 305151,
+          "count": 1
+        },
+        {
+          "value_micros": 308479,
+          "count": 1
+        },
+        {
+          "value_micros": 312319,
+          "count": 1
+        },
+        {
+          "value_micros": 317695,
+          "count": 1
+        },
+        {
+          "value_micros": 574975,
+          "count": 1
+        },
+        {
+          "value_micros": 579071,
+          "count": 1
+        },
+        {
+          "value_micros": 586751,
+          "count": 1
+        },
+        {
+          "value_micros": 590847,
+          "count": 1
+        },
+        {
+          "value_micros": 596479,
+          "count": 1
+        },
+        {
+          "value_micros": 600575,
+          "count": 1
+        },
+        {
+          "value_micros": 604159,
+          "count": 1
+        },
+        {
+          "value_micros": 611327,
+          "count": 1
+        },
+        {
+          "value_micros": 614911,
+          "count": 1
+        },
+        {
+          "value_micros": 619007,
+          "count": 1
+        },
+        {
+          "value_micros": 623615,
+          "count": 1
+        },
+        {
+          "value_micros": 628735,
+          "count": 1
+        },
+        {
+          "value_micros": 632319,
+          "count": 1
+        },
+        {
+          "value_micros": 638975,
+          "count": 1
+        },
+        {
+          "value_micros": 642559,
+          "count": 1
+        },
+        {
+          "value_micros": 900095,
+          "count": 1
+        },
+        {
+          "value_micros": 905727,
+          "count": 1
+        },
+        {
+          "value_micros": 909823,
+          "count": 1
+        },
+        {
+          "value_micros": 913919,
+          "count": 1
+        },
+        {
+          "value_micros": 919039,
+          "count": 1
+        },
+        {
+          "value_micros": 923135,
+          "count": 1
+        },
+        {
+          "value_micros": 927231,
+          "count": 1
+        },
+        {
+          "value_micros": 931839,
+          "count": 1
+        },
+        {
+          "value_micros": 935423,
+          "count": 1
+        },
+        {
+          "value_micros": 940031,
+          "count": 1
+        },
+        {
+          "value_micros": 946175,
+          "count": 1
+        },
+        {
+          "value_micros": 950783,
+          "count": 1
+        },
+        {
+          "value_micros": 956927,
+          "count": 1
+        },
+        {
+          "value_micros": 961023,
+          "count": 1
+        },
+        {
+          "value_micros": 964607,
+          "count": 1
+        },
+        {
+          "value_micros": 1227775,
+          "count": 1
+        },
+        {
+          "value_micros": 1232895,
+          "count": 1
+        },
+        {
+          "value_micros": 1236991,
+          "count": 1
+        },
+        {
+          "value_micros": 1240063,
+          "count": 1
+        },
+        {
+          "value_micros": 1243135,
+          "count": 1
+        },
+        {
+          "value_micros": 1246207,
+          "count": 1
+        },
+        {
+          "value_micros": 1252351,
+          "count": 1
+        },
+        {
+          "value_micros": 1256447,
+          "count": 1
+        },
+        {
+          "value_micros": 1260543,
+          "count": 1
+        },
+        {
+          "value_micros": 1263615,
+          "count": 1
+        },
+        {
+          "value_micros": 1267711,
+          "count": 1
+        },
+        {
+          "value_micros": 1270783,
+          "count": 1
+        },
+        {
+          "value_micros": 1273855,
+          "count": 1
+        },
+        {
+          "value_micros": 1276927,
+          "count": 1
+        },
+        {
+          "value_micros": 1279999,
+          "count": 1
+        },
+        {
+          "value_micros": 1537023,
+          "count": 1
+        },
+        {
+          "value_micros": 1541119,
+          "count": 1
+        },
+        {
+          "value_micros": 1545215,
+          "count": 1
+        },
+        {
+          "value_micros": 1549311,
+          "count": 1
+        },
+        {
+          "value_micros": 1553407,
+          "count": 1
+        },
+        {
+          "value_micros": 1558527,
+          "count": 1
+        },
+        {
+          "value_micros": 1561599,
+          "count": 1
+        },
+        {
+          "value_micros": 1565695,
+          "count": 1
+        },
+        {
+          "value_micros": 1571839,
+          "count": 1
+        },
+        {
+          "value_micros": 1574911,
+          "count": 1
+        },
+        {
+          "value_micros": 1579007,
+          "count": 1
+        },
+        {
+          "value_micros": 1585151,
+          "count": 1
+        },
+        {
+          "value_micros": 1589247,
+          "count": 1
+        },
+        {
+          "value_micros": 1593343,
+          "count": 1
+        },
+        {
+          "value_micros": 1598463,
+          "count": 1
+        },
+        {
+          "value_micros": 1857535,
+          "count": 1
+        },
+        {
+          "value_micros": 1860607,
+          "count": 1
+        },
+        {
+          "value_micros": 1865727,
+          "count": 1
+        },
+        {
+          "value_micros": 1869823,
+          "count": 1
+        },
+        {
+          "value_micros": 1873919,
+          "count": 1
+        },
+        {
+          "value_micros": 1881087,
+          "count": 1
+        },
+        {
+          "value_micros": 1885183,
+          "count": 1
+        },
+        {
+          "value_micros": 1891327,
+          "count": 1
+        },
+        {
+          "value_micros": 1895423,
+          "count": 1
+        },
+        {
+          "value_micros": 1898495,
+          "count": 1
+        },
+        {
+          "value_micros": 1904639,
+          "count": 1
+        },
+        {
+          "value_micros": 1908735,
+          "count": 1
+        },
+        {
+          "value_micros": 1912831,
+          "count": 1
+        },
+        {
+          "value_micros": 1918975,
+          "count": 1
+        },
+        {
+          "value_micros": 1922047,
+          "count": 1
+        },
+        {
+          "value_micros": 2181119,
+          "count": 1
+        },
+        {
+          "value_micros": 2185215,
+          "count": 1
+        },
+        {
+          "value_micros": 2189311,
+          "count": 1
+        },
+        {
+          "value_micros": 2193407,
+          "count": 1
+        },
+        {
+          "value_micros": 2197503,
+          "count": 1
+        },
+        {
+          "value_micros": 2203647,
+          "count": 1
+        },
+        {
+          "value_micros": 2207743,
+          "count": 1
+        },
+        {
+          "value_micros": 2211839,
+          "count": 1
+        },
+        {
+          "value_micros": 2215935,
+          "count": 1
+        },
+        {
+          "value_micros": 2220031,
+          "count": 1
+        },
+        {
+          "value_micros": 2226175,
+          "count": 1
+        },
+        {
+          "value_micros": 2230271,
+          "count": 1
+        },
+        {
+          "value_micros": 2234367,
+          "count": 1
+        },
+        {
+          "value_micros": 2240511,
+          "count": 1
+        },
+        {
+          "value_micros": 2242559,
+          "count": 1
+        },
+        {
+          "value_micros": 2500607,
+          "count": 1
+        },
+        {
+          "value_micros": 2506751,
+          "count": 1
+        },
+        {
+          "value_micros": 2510847,
+          "count": 1
+        },
+        {
+          "value_micros": 2514943,
+          "count": 1
+        },
+        {
+          "value_micros": 2519039,
+          "count": 1
+        },
+        {
+          "value_micros": 2523135,
+          "count": 1
+        },
+        {
+          "value_micros": 2527231,
+          "count": 1
+        },
+        {
+          "value_micros": 2533375,
+          "count": 1
+        },
+        {
+          "value_micros": 2537471,
+          "count": 1
+        },
+        {
+          "value_micros": 2541567,
+          "count": 1
+        },
+        {
+          "value_micros": 2547711,
+          "count": 1
+        },
+        {
+          "value_micros": 2551807,
+          "count": 1
+        },
+        {
+          "value_micros": 2555903,
+          "count": 1
+        },
+        {
+          "value_micros": 2559999,
+          "count": 1
+        },
+        {
+          "value_micros": 2564095,
+          "count": 1
+        },
+        {
+          "value_micros": 2822143,
+          "count": 1
+        },
+        {
+          "value_micros": 2826239,
+          "count": 1
+        },
+        {
+          "value_micros": 2830335,
+          "count": 1
+        },
+        {
+          "value_micros": 2834431,
+          "count": 1
+        },
+        {
+          "value_micros": 2840575,
+          "count": 1
+        },
+        {
+          "value_micros": 2844671,
+          "count": 1
+        },
+        {
+          "value_micros": 2848767,
+          "count": 1
+        },
+        {
+          "value_micros": 2854911,
+          "count": 1
+        },
+        {
+          "value_micros": 2859007,
+          "count": 1
+        },
+        {
+          "value_micros": 2861055,
+          "count": 1
+        },
+        {
+          "value_micros": 2867199,
+          "count": 1
+        },
+        {
+          "value_micros": 2871295,
+          "count": 1
+        },
+        {
+          "value_micros": 2875391,
+          "count": 1
+        },
+        {
+          "value_micros": 2881535,
+          "count": 1
+        },
+        {
+          "value_micros": 2885631,
+          "count": 1
+        },
+        {
+          "value_micros": 3147775,
+          "count": 1
+        },
+        {
+          "value_micros": 3151871,
+          "count": 1
+        },
+        {
+          "value_micros": 3155967,
+          "count": 1
+        },
+        {
+          "value_micros": 3160063,
+          "count": 1
+        },
+        {
+          "value_micros": 3164159,
+          "count": 1
+        },
+        {
+          "value_micros": 3168255,
+          "count": 1
+        },
+        {
+          "value_micros": 3174399,
+          "count": 1
+        },
+        {
+          "value_micros": 3178495,
+          "count": 1
+        },
+        {
+          "value_micros": 3182591,
+          "count": 1
+        },
+        {
+          "value_micros": 3188735,
+          "count": 1
+        },
+        {
+          "value_micros": 3192831,
+          "count": 1
+        },
+        {
+          "value_micros": 3196927,
+          "count": 1
+        },
+        {
+          "value_micros": 3201023,
+          "count": 1
+        },
+        {
+          "value_micros": 3205119,
+          "count": 1
+        },
+        {
+          "value_micros": 3209215,
+          "count": 1
+        },
+        {
+          "value_micros": 3467263,
+          "count": 1
+        },
+        {
+          "value_micros": 3469311,
+          "count": 1
+        },
+        {
+          "value_micros": 3473407,
+          "count": 1
+        },
+        {
+          "value_micros": 3475455,
+          "count": 1
+        },
+        {
+          "value_micros": 3479551,
+          "count": 1
+        },
+        {
+          "value_micros": 3483647,
+          "count": 1
+        },
+        {
+          "value_micros": 3485695,
+          "count": 1
+        },
+        {
+          "value_micros": 3489791,
+          "count": 1
+        },
+        {
+          "value_micros": 3491839,
+          "count": 1
+        },
+        {
+          "value_micros": 3495935,
+          "count": 1
+        },
+        {
+          "value_micros": 3500031,
+          "count": 1
+        },
+        {
+          "value_micros": 3502079,
+          "count": 1
+        },
+        {
+          "value_micros": 3506175,
+          "count": 1
+        },
+        {
+          "value_micros": 3510271,
+          "count": 1
+        },
+        {
+          "value_micros": 3514367,
+          "count": 1
+        },
+        {
+          "value_micros": 3774463,
+          "count": 1
+        },
+        {
+          "value_micros": 3776511,
+          "count": 1
+        },
+        {
+          "value_micros": 3780607,
+          "count": 1
+        },
+        {
+          "value_micros": 3786751,
+          "count": 1
+        },
+        {
+          "value_micros": 3790847,
+          "count": 1
+        },
+        {
+          "value_micros": 3794943,
+          "count": 1
+        },
+        {
+          "value_micros": 3801087,
+          "count": 1
+        },
+        {
+          "value_micros": 3805183,
+          "count": 1
+        },
+        {
+          "value_micros": 3809279,
+          "count": 1
+        },
+        {
+          "value_micros": 3813375,
+          "count": 1
+        },
+        {
+          "value_micros": 3817471,
+          "count": 1
+        },
+        {
+          "value_micros": 3821567,
+          "count": 1
+        },
+        {
+          "value_micros": 3825663,
+          "count": 1
+        },
+        {
+          "value_micros": 3829759,
+          "count": 1
+        },
+        {
+          "value_micros": 3833855,
+          "count": 1
+        },
+        {
+          "value_micros": 4095999,
+          "count": 1
+        },
+        {
+          "value_micros": 4098047,
+          "count": 1
+        },
+        {
+          "value_micros": 4102143,
+          "count": 1
+        },
+        {
+          "value_micros": 4108287,
+          "count": 1
+        },
+        {
+          "value_micros": 4112383,
+          "count": 1
+        },
+        {
+          "value_micros": 4116479,
+          "count": 1
+        },
+        {
+          "value_micros": 4120575,
+          "count": 1
+        }
+      ]
+    },
+    "p95_ms": {
+      "kind": "histogram_quantile",
+      "quantile_millionths": 950000,
+      "buckets": [
+        {
+          "value_micros": 613,
+          "count": 1
+        },
+        {
+          "value_micros": 255871,
+          "count": 1
+        },
+        {
+          "value_micros": 259839,
+          "count": 1
+        },
+        {
+          "value_micros": 264703,
+          "count": 1
+        },
+        {
+          "value_micros": 268287,
+          "count": 1
+        },
+        {
+          "value_micros": 272383,
+          "count": 1
+        },
+        {
+          "value_micros": 278527,
+          "count": 1
+        },
+        {
+          "value_micros": 282367,
+          "count": 1
+        },
+        {
+          "value_micros": 286207,
+          "count": 1
+        },
+        {
+          "value_micros": 292351,
+          "count": 1
+        },
+        {
+          "value_micros": 295935,
+          "count": 1
+        },
+        {
+          "value_micros": 299775,
+          "count": 1
+        },
+        {
+          "value_micros": 305151,
+          "count": 1
+        },
+        {
+          "value_micros": 308479,
+          "count": 1
+        },
+        {
+          "value_micros": 312319,
+          "count": 1
+        },
+        {
+          "value_micros": 317695,
+          "count": 1
+        },
+        {
+          "value_micros": 321279,
+          "count": 1
+        },
+        {
+          "value_micros": 574975,
+          "count": 1
+        },
+        {
+          "value_micros": 579071,
+          "count": 1
+        },
+        {
+          "value_micros": 586751,
+          "count": 1
+        },
+        {
+          "value_micros": 590847,
+          "count": 1
+        },
+        {
+          "value_micros": 596479,
+          "count": 1
+        },
+        {
+          "value_micros": 600575,
+          "count": 1
+        },
+        {
+          "value_micros": 604159,
+          "count": 1
+        },
+        {
+          "value_micros": 611327,
+          "count": 1
+        },
+        {
+          "value_micros": 614911,
+          "count": 1
+        },
+        {
+          "value_micros": 619007,
+          "count": 1
+        },
+        {
+          "value_micros": 623615,
+          "count": 1
+        },
+        {
+          "value_micros": 628735,
+          "count": 1
+        },
+        {
+          "value_micros": 632319,
+          "count": 1
+        },
+        {
+          "value_micros": 638975,
+          "count": 1
+        },
+        {
+          "value_micros": 642559,
+          "count": 1
+        },
+        {
+          "value_micros": 646655,
+          "count": 1
+        },
+        {
+          "value_micros": 900095,
+          "count": 1
+        },
+        {
+          "value_micros": 905727,
+          "count": 1
+        },
+        {
+          "value_micros": 909823,
+          "count": 1
+        },
+        {
+          "value_micros": 913919,
+          "count": 1
+        },
+        {
+          "value_micros": 919039,
+          "count": 1
+        },
+        {
+          "value_micros": 923135,
+          "count": 1
+        },
+        {
+          "value_micros": 927231,
+          "count": 1
+        },
+        {
+          "value_micros": 931839,
+          "count": 1
+        },
+        {
+          "value_micros": 935423,
+          "count": 1
+        },
+        {
+          "value_micros": 940031,
+          "count": 1
+        },
+        {
+          "value_micros": 946175,
+          "count": 1
+        },
+        {
+          "value_micros": 950783,
+          "count": 1
+        },
+        {
+          "value_micros": 956927,
+          "count": 1
+        },
+        {
+          "value_micros": 961023,
+          "count": 1
+        },
+        {
+          "value_micros": 964607,
+          "count": 1
+        },
+        {
+          "value_micros": 969215,
+          "count": 1
+        },
+        {
+          "value_micros": 1227775,
+          "count": 1
+        },
+        {
+          "value_micros": 1232895,
+          "count": 1
+        },
+        {
+          "value_micros": 1236991,
+          "count": 1
+        },
+        {
+          "value_micros": 1240063,
+          "count": 1
+        },
+        {
+          "value_micros": 1243135,
+          "count": 1
+        },
+        {
+          "value_micros": 1246207,
+          "count": 1
+        },
+        {
+          "value_micros": 1252351,
+          "count": 1
+        },
+        {
+          "value_micros": 1256447,
+          "count": 1
+        },
+        {
+          "value_micros": 1260543,
+          "count": 1
+        },
+        {
+          "value_micros": 1263615,
+          "count": 1
+        },
+        {
+          "value_micros": 1267711,
+          "count": 1
+        },
+        {
+          "value_micros": 1270783,
+          "count": 1
+        },
+        {
+          "value_micros": 1273855,
+          "count": 1
+        },
+        {
+          "value_micros": 1276927,
+          "count": 1
+        },
+        {
+          "value_micros": 1279999,
+          "count": 1
+        },
+        {
+          "value_micros": 1284095,
+          "count": 1
+        },
+        {
+          "value_micros": 1537023,
+          "count": 1
+        },
+        {
+          "value_micros": 1541119,
+          "count": 1
+        },
+        {
+          "value_micros": 1545215,
+          "count": 1
+        },
+        {
+          "value_micros": 1549311,
+          "count": 1
+        },
+        {
+          "value_micros": 1553407,
+          "count": 1
+        },
+        {
+          "value_micros": 1558527,
+          "count": 1
+        },
+        {
+          "value_micros": 1561599,
+          "count": 1
+        },
+        {
+          "value_micros": 1565695,
+          "count": 1
+        },
+        {
+          "value_micros": 1571839,
+          "count": 1
+        },
+        {
+          "value_micros": 1574911,
+          "count": 1
+        },
+        {
+          "value_micros": 1579007,
+          "count": 1
+        },
+        {
+          "value_micros": 1585151,
+          "count": 1
+        },
+        {
+          "value_micros": 1589247,
+          "count": 1
+        },
+        {
+          "value_micros": 1593343,
+          "count": 1
+        },
+        {
+          "value_micros": 1598463,
+          "count": 1
+        },
+        {
+          "value_micros": 1602559,
+          "count": 1
+        },
+        {
+          "value_micros": 1857535,
+          "count": 1
+        },
+        {
+          "value_micros": 1860607,
+          "count": 1
+        },
+        {
+          "value_micros": 1865727,
+          "count": 1
+        },
+        {
+          "value_micros": 1869823,
+          "count": 1
+        },
+        {
+          "value_micros": 1873919,
+          "count": 1
+        },
+        {
+          "value_micros": 1881087,
+          "count": 1
+        },
+        {
+          "value_micros": 1885183,
+          "count": 1
+        },
+        {
+          "value_micros": 1891327,
+          "count": 1
+        },
+        {
+          "value_micros": 1895423,
+          "count": 1
+        },
+        {
+          "value_micros": 1898495,
+          "count": 1
+        },
+        {
+          "value_micros": 1904639,
+          "count": 1
+        },
+        {
+          "value_micros": 1908735,
+          "count": 1
+        },
+        {
+          "value_micros": 1912831,
+          "count": 1
+        },
+        {
+          "value_micros": 1918975,
+          "count": 1
+        },
+        {
+          "value_micros": 1922047,
+          "count": 1
+        },
+        {
+          "value_micros": 1926143,
+          "count": 1
+        },
+        {
+          "value_micros": 2181119,
+          "count": 1
+        },
+        {
+          "value_micros": 2185215,
+          "count": 1
+        },
+        {
+          "value_micros": 2189311,
+          "count": 1
+        },
+        {
+          "value_micros": 2193407,
+          "count": 1
+        },
+        {
+          "value_micros": 2197503,
+          "count": 1
+        },
+        {
+          "value_micros": 2203647,
+          "count": 1
+        },
+        {
+          "value_micros": 2207743,
+          "count": 1
+        },
+        {
+          "value_micros": 2211839,
+          "count": 1
+        },
+        {
+          "value_micros": 2215935,
+          "count": 1
+        },
+        {
+          "value_micros": 2220031,
+          "count": 1
+        },
+        {
+          "value_micros": 2226175,
+          "count": 1
+        },
+        {
+          "value_micros": 2230271,
+          "count": 1
+        },
+        {
+          "value_micros": 2234367,
+          "count": 1
+        },
+        {
+          "value_micros": 2240511,
+          "count": 1
+        },
+        {
+          "value_micros": 2242559,
+          "count": 1
+        },
+        {
+          "value_micros": 2246655,
+          "count": 1
+        },
+        {
+          "value_micros": 2500607,
+          "count": 1
+        },
+        {
+          "value_micros": 2506751,
+          "count": 1
+        },
+        {
+          "value_micros": 2510847,
+          "count": 1
+        },
+        {
+          "value_micros": 2514943,
+          "count": 1
+        },
+        {
+          "value_micros": 2519039,
+          "count": 1
+        },
+        {
+          "value_micros": 2523135,
+          "count": 1
+        },
+        {
+          "value_micros": 2527231,
+          "count": 1
+        },
+        {
+          "value_micros": 2533375,
+          "count": 1
+        },
+        {
+          "value_micros": 2537471,
+          "count": 1
+        },
+        {
+          "value_micros": 2541567,
+          "count": 1
+        },
+        {
+          "value_micros": 2547711,
+          "count": 1
+        },
+        {
+          "value_micros": 2551807,
+          "count": 1
+        },
+        {
+          "value_micros": 2555903,
+          "count": 1
+        },
+        {
+          "value_micros": 2559999,
+          "count": 1
+        },
+        {
+          "value_micros": 2564095,
+          "count": 1
+        },
+        {
+          "value_micros": 2568191,
+          "count": 1
+        },
+        {
+          "value_micros": 2822143,
+          "count": 1
+        },
+        {
+          "value_micros": 2826239,
+          "count": 1
+        },
+        {
+          "value_micros": 2830335,
+          "count": 1
+        },
+        {
+          "value_micros": 2834431,
+          "count": 1
+        },
+        {
+          "value_micros": 2840575,
+          "count": 1
+        },
+        {
+          "value_micros": 2844671,
+          "count": 1
+        },
+        {
+          "value_micros": 2848767,
+          "count": 1
+        },
+        {
+          "value_micros": 2854911,
+          "count": 1
+        },
+        {
+          "value_micros": 2859007,
+          "count": 1
+        },
+        {
+          "value_micros": 2861055,
+          "count": 1
+        },
+        {
+          "value_micros": 2867199,
+          "count": 1
+        },
+        {
+          "value_micros": 2871295,
+          "count": 1
+        },
+        {
+          "value_micros": 2875391,
+          "count": 1
+        },
+        {
+          "value_micros": 2881535,
+          "count": 1
+        },
+        {
+          "value_micros": 2885631,
+          "count": 1
+        },
+        {
+          "value_micros": 2891775,
+          "count": 1
+        },
+        {
+          "value_micros": 3147775,
+          "count": 1
+        },
+        {
+          "value_micros": 3151871,
+          "count": 1
+        },
+        {
+          "value_micros": 3155967,
+          "count": 1
+        },
+        {
+          "value_micros": 3160063,
+          "count": 1
+        },
+        {
+          "value_micros": 3164159,
+          "count": 1
+        },
+        {
+          "value_micros": 3168255,
+          "count": 1
+        },
+        {
+          "value_micros": 3174399,
+          "count": 1
+        },
+        {
+          "value_micros": 3178495,
+          "count": 1
+        },
+        {
+          "value_micros": 3182591,
+          "count": 1
+        },
+        {
+          "value_micros": 3188735,
+          "count": 1
+        },
+        {
+          "value_micros": 3192831,
+          "count": 1
+        },
+        {
+          "value_micros": 3196927,
+          "count": 1
+        },
+        {
+          "value_micros": 3201023,
+          "count": 1
+        },
+        {
+          "value_micros": 3205119,
+          "count": 1
+        },
+        {
+          "value_micros": 3209215,
+          "count": 1
+        },
+        {
+          "value_micros": 3215359,
+          "count": 1
+        },
+        {
+          "value_micros": 3467263,
+          "count": 1
+        },
+        {
+          "value_micros": 3469311,
+          "count": 1
+        },
+        {
+          "value_micros": 3473407,
+          "count": 1
+        },
+        {
+          "value_micros": 3475455,
+          "count": 1
+        },
+        {
+          "value_micros": 3479551,
+          "count": 1
+        },
+        {
+          "value_micros": 3483647,
+          "count": 1
+        },
+        {
+          "value_micros": 3485695,
+          "count": 1
+        },
+        {
+          "value_micros": 3489791,
+          "count": 1
+        },
+        {
+          "value_micros": 3491839,
+          "count": 1
+        },
+        {
+          "value_micros": 3495935,
+          "count": 1
+        },
+        {
+          "value_micros": 3500031,
+          "count": 1
+        },
+        {
+          "value_micros": 3502079,
+          "count": 1
+        },
+        {
+          "value_micros": 3506175,
+          "count": 1
+        },
+        {
+          "value_micros": 3510271,
+          "count": 1
+        },
+        {
+          "value_micros": 3514367,
+          "count": 1
+        },
+        {
+          "value_micros": 3518463,
+          "count": 1
+        },
+        {
+          "value_micros": 3774463,
+          "count": 1
+        },
+        {
+          "value_micros": 3776511,
+          "count": 1
+        },
+        {
+          "value_micros": 3780607,
+          "count": 1
+        },
+        {
+          "value_micros": 3786751,
+          "count": 1
+        },
+        {
+          "value_micros": 3790847,
+          "count": 1
+        },
+        {
+          "value_micros": 3794943,
+          "count": 1
+        },
+        {
+          "value_micros": 3801087,
+          "count": 1
+        },
+        {
+          "value_micros": 3805183,
+          "count": 1
+        },
+        {
+          "value_micros": 3809279,
+          "count": 1
+        },
+        {
+          "value_micros": 3813375,
+          "count": 1
+        },
+        {
+          "value_micros": 3817471,
+          "count": 1
+        },
+        {
+          "value_micros": 3821567,
+          "count": 1
+        },
+        {
+          "value_micros": 3825663,
+          "count": 1
+        },
+        {
+          "value_micros": 3829759,
+          "count": 1
+        },
+        {
+          "value_micros": 3833855,
+          "count": 1
+        },
+        {
+          "value_micros": 3839999,
+          "count": 1
+        },
+        {
+          "value_micros": 4095999,
+          "count": 1
+        },
+        {
+          "value_micros": 4098047,
+          "count": 1
+        },
+        {
+          "value_micros": 4102143,
+          "count": 1
+        },
+        {
+          "value_micros": 4108287,
+          "count": 1
+        },
+        {
+          "value_micros": 4112383,
+          "count": 1
+        },
+        {
+          "value_micros": 4116479,
+          "count": 1
+        },
+        {
+          "value_micros": 4120575,
+          "count": 1
+        }
+      ]
+    },
+    "p99_ms": {
+      "kind": "histogram_quantile",
+      "quantile_millionths": 990000,
+      "buckets": [
+        {
+          "value_micros": 613,
+          "count": 1
+        },
+        {
+          "value_micros": 255871,
+          "count": 1
+        },
+        {
+          "value_micros": 259839,
+          "count": 1
+        },
+        {
+          "value_micros": 264703,
+          "count": 1
+        },
+        {
+          "value_micros": 268287,
+          "count": 1
+        },
+        {
+          "value_micros": 272383,
+          "count": 1
+        },
+        {
+          "value_micros": 278527,
+          "count": 1
+        },
+        {
+          "value_micros": 282367,
+          "count": 1
+        },
+        {
+          "value_micros": 286207,
+          "count": 1
+        },
+        {
+          "value_micros": 292351,
+          "count": 1
+        },
+        {
+          "value_micros": 295935,
+          "count": 1
+        },
+        {
+          "value_micros": 299775,
+          "count": 1
+        },
+        {
+          "value_micros": 305151,
+          "count": 1
+        },
+        {
+          "value_micros": 308479,
+          "count": 1
+        },
+        {
+          "value_micros": 312319,
+          "count": 1
+        },
+        {
+          "value_micros": 317695,
+          "count": 1
+        },
+        {
+          "value_micros": 321279,
+          "count": 1
+        },
+        {
+          "value_micros": 574975,
+          "count": 1
+        },
+        {
+          "value_micros": 579071,
+          "count": 1
+        },
+        {
+          "value_micros": 586751,
+          "count": 1
+        },
+        {
+          "value_micros": 590847,
+          "count": 1
+        },
+        {
+          "value_micros": 596479,
+          "count": 1
+        },
+        {
+          "value_micros": 600575,
+          "count": 1
+        },
+        {
+          "value_micros": 604159,
+          "count": 1
+        },
+        {
+          "value_micros": 611327,
+          "count": 1
+        },
+        {
+          "value_micros": 614911,
+          "count": 1
+        },
+        {
+          "value_micros": 619007,
+          "count": 1
+        },
+        {
+          "value_micros": 623615,
+          "count": 1
+        },
+        {
+          "value_micros": 628735,
+          "count": 1
+        },
+        {
+          "value_micros": 632319,
+          "count": 1
+        },
+        {
+          "value_micros": 638975,
+          "count": 1
+        },
+        {
+          "value_micros": 642559,
+          "count": 1
+        },
+        {
+          "value_micros": 646655,
+          "count": 1
+        },
+        {
+          "value_micros": 900095,
+          "count": 1
+        },
+        {
+          "value_micros": 905727,
+          "count": 1
+        },
+        {
+          "value_micros": 909823,
+          "count": 1
+        },
+        {
+          "value_micros": 913919,
+          "count": 1
+        },
+        {
+          "value_micros": 919039,
+          "count": 1
+        },
+        {
+          "value_micros": 923135,
+          "count": 1
+        },
+        {
+          "value_micros": 927231,
+          "count": 1
+        },
+        {
+          "value_micros": 931839,
+          "count": 1
+        },
+        {
+          "value_micros": 935423,
+          "count": 1
+        },
+        {
+          "value_micros": 940031,
+          "count": 1
+        },
+        {
+          "value_micros": 946175,
+          "count": 1
+        },
+        {
+          "value_micros": 950783,
+          "count": 1
+        },
+        {
+          "value_micros": 956927,
+          "count": 1
+        },
+        {
+          "value_micros": 961023,
+          "count": 1
+        },
+        {
+          "value_micros": 964607,
+          "count": 1
+        },
+        {
+          "value_micros": 969215,
+          "count": 1
+        },
+        {
+          "value_micros": 1227775,
+          "count": 1
+        },
+        {
+          "value_micros": 1232895,
+          "count": 1
+        },
+        {
+          "value_micros": 1236991,
+          "count": 1
+        },
+        {
+          "value_micros": 1240063,
+          "count": 1
+        },
+        {
+          "value_micros": 1243135,
+          "count": 1
+        },
+        {
+          "value_micros": 1246207,
+          "count": 1
+        },
+        {
+          "value_micros": 1252351,
+          "count": 1
+        },
+        {
+          "value_micros": 1256447,
+          "count": 1
+        },
+        {
+          "value_micros": 1260543,
+          "count": 1
+        },
+        {
+          "value_micros": 1263615,
+          "count": 1
+        },
+        {
+          "value_micros": 1267711,
+          "count": 1
+        },
+        {
+          "value_micros": 1270783,
+          "count": 1
+        },
+        {
+          "value_micros": 1273855,
+          "count": 1
+        },
+        {
+          "value_micros": 1276927,
+          "count": 1
+        },
+        {
+          "value_micros": 1279999,
+          "count": 1
+        },
+        {
+          "value_micros": 1284095,
+          "count": 1
+        },
+        {
+          "value_micros": 1537023,
+          "count": 1
+        },
+        {
+          "value_micros": 1541119,
+          "count": 1
+        },
+        {
+          "value_micros": 1545215,
+          "count": 1
+        },
+        {
+          "value_micros": 1549311,
+          "count": 1
+        },
+        {
+          "value_micros": 1553407,
+          "count": 1
+        },
+        {
+          "value_micros": 1558527,
+          "count": 1
+        },
+        {
+          "value_micros": 1561599,
+          "count": 1
+        },
+        {
+          "value_micros": 1565695,
+          "count": 1
+        },
+        {
+          "value_micros": 1571839,
+          "count": 1
+        },
+        {
+          "value_micros": 1574911,
+          "count": 1
+        },
+        {
+          "value_micros": 1579007,
+          "count": 1
+        },
+        {
+          "value_micros": 1585151,
+          "count": 1
+        },
+        {
+          "value_micros": 1589247,
+          "count": 1
+        },
+        {
+          "value_micros": 1593343,
+          "count": 1
+        },
+        {
+          "value_micros": 1598463,
+          "count": 1
+        },
+        {
+          "value_micros": 1602559,
+          "count": 1
+        },
+        {
+          "value_micros": 1857535,
+          "count": 1
+        },
+        {
+          "value_micros": 1860607,
+          "count": 1
+        },
+        {
+          "value_micros": 1865727,
+          "count": 1
+        },
+        {
+          "value_micros": 1869823,
+          "count": 1
+        },
+        {
+          "value_micros": 1873919,
+          "count": 1
+        },
+        {
+          "value_micros": 1881087,
+          "count": 1
+        },
+        {
+          "value_micros": 1885183,
+          "count": 1
+        },
+        {
+          "value_micros": 1891327,
+          "count": 1
+        },
+        {
+          "value_micros": 1895423,
+          "count": 1
+        },
+        {
+          "value_micros": 1898495,
+          "count": 1
+        },
+        {
+          "value_micros": 1904639,
+          "count": 1
+        },
+        {
+          "value_micros": 1908735,
+          "count": 1
+        },
+        {
+          "value_micros": 1912831,
+          "count": 1
+        },
+        {
+          "value_micros": 1918975,
+          "count": 1
+        },
+        {
+          "value_micros": 1922047,
+          "count": 1
+        },
+        {
+          "value_micros": 1926143,
+          "count": 1
+        },
+        {
+          "value_micros": 2181119,
+          "count": 1
+        },
+        {
+          "value_micros": 2185215,
+          "count": 1
+        },
+        {
+          "value_micros": 2189311,
+          "count": 1
+        },
+        {
+          "value_micros": 2193407,
+          "count": 1
+        },
+        {
+          "value_micros": 2197503,
+          "count": 1
+        },
+        {
+          "value_micros": 2203647,
+          "count": 1
+        },
+        {
+          "value_micros": 2207743,
+          "count": 1
+        },
+        {
+          "value_micros": 2211839,
+          "count": 1
+        },
+        {
+          "value_micros": 2215935,
+          "count": 1
+        },
+        {
+          "value_micros": 2220031,
+          "count": 1
+        },
+        {
+          "value_micros": 2226175,
+          "count": 1
+        },
+        {
+          "value_micros": 2230271,
+          "count": 1
+        },
+        {
+          "value_micros": 2234367,
+          "count": 1
+        },
+        {
+          "value_micros": 2240511,
+          "count": 1
+        },
+        {
+          "value_micros": 2242559,
+          "count": 1
+        },
+        {
+          "value_micros": 2246655,
+          "count": 1
+        },
+        {
+          "value_micros": 2500607,
+          "count": 1
+        },
+        {
+          "value_micros": 2506751,
+          "count": 1
+        },
+        {
+          "value_micros": 2510847,
+          "count": 1
+        },
+        {
+          "value_micros": 2514943,
+          "count": 1
+        },
+        {
+          "value_micros": 2519039,
+          "count": 1
+        },
+        {
+          "value_micros": 2523135,
+          "count": 1
+        },
+        {
+          "value_micros": 2527231,
+          "count": 1
+        },
+        {
+          "value_micros": 2533375,
+          "count": 1
+        },
+        {
+          "value_micros": 2537471,
+          "count": 1
+        },
+        {
+          "value_micros": 2541567,
+          "count": 1
+        },
+        {
+          "value_micros": 2547711,
+          "count": 1
+        },
+        {
+          "value_micros": 2551807,
+          "count": 1
+        },
+        {
+          "value_micros": 2555903,
+          "count": 1
+        },
+        {
+          "value_micros": 2559999,
+          "count": 1
+        },
+        {
+          "value_micros": 2564095,
+          "count": 1
+        },
+        {
+          "value_micros": 2568191,
+          "count": 1
+        },
+        {
+          "value_micros": 2822143,
+          "count": 1
+        },
+        {
+          "value_micros": 2826239,
+          "count": 1
+        },
+        {
+          "value_micros": 2830335,
+          "count": 1
+        },
+        {
+          "value_micros": 2834431,
+          "count": 1
+        },
+        {
+          "value_micros": 2840575,
+          "count": 1
+        },
+        {
+          "value_micros": 2844671,
+          "count": 1
+        },
+        {
+          "value_micros": 2848767,
+          "count": 1
+        },
+        {
+          "value_micros": 2854911,
+          "count": 1
+        },
+        {
+          "value_micros": 2859007,
+          "count": 1
+        },
+        {
+          "value_micros": 2861055,
+          "count": 1
+        },
+        {
+          "value_micros": 2867199,
+          "count": 1
+        },
+        {
+          "value_micros": 2871295,
+          "count": 1
+        },
+        {
+          "value_micros": 2875391,
+          "count": 1
+        },
+        {
+          "value_micros": 2881535,
+          "count": 1
+        },
+        {
+          "value_micros": 2885631,
+          "count": 1
+        },
+        {
+          "value_micros": 2891775,
+          "count": 1
+        },
+        {
+          "value_micros": 3147775,
+          "count": 1
+        },
+        {
+          "value_micros": 3151871,
+          "count": 1
+        },
+        {
+          "value_micros": 3155967,
+          "count": 1
+        },
+        {
+          "value_micros": 3160063,
+          "count": 1
+        },
+        {
+          "value_micros": 3164159,
+          "count": 1
+        },
+        {
+          "value_micros": 3168255,
+          "count": 1
+        },
+        {
+          "value_micros": 3174399,
+          "count": 1
+        },
+        {
+          "value_micros": 3178495,
+          "count": 1
+        },
+        {
+          "value_micros": 3182591,
+          "count": 1
+        },
+        {
+          "value_micros": 3188735,
+          "count": 1
+        },
+        {
+          "value_micros": 3192831,
+          "count": 1
+        },
+        {
+          "value_micros": 3196927,
+          "count": 1
+        },
+        {
+          "value_micros": 3201023,
+          "count": 1
+        },
+        {
+          "value_micros": 3205119,
+          "count": 1
+        },
+        {
+          "value_micros": 3209215,
+          "count": 1
+        },
+        {
+          "value_micros": 3215359,
+          "count": 1
+        },
+        {
+          "value_micros": 3467263,
+          "count": 1
+        },
+        {
+          "value_micros": 3469311,
+          "count": 1
+        },
+        {
+          "value_micros": 3473407,
+          "count": 1
+        },
+        {
+          "value_micros": 3475455,
+          "count": 1
+        },
+        {
+          "value_micros": 3479551,
+          "count": 1
+        },
+        {
+          "value_micros": 3483647,
+          "count": 1
+        },
+        {
+          "value_micros": 3485695,
+          "count": 1
+        },
+        {
+          "value_micros": 3489791,
+          "count": 1
+        },
+        {
+          "value_micros": 3491839,
+          "count": 1
+        },
+        {
+          "value_micros": 3495935,
+          "count": 1
+        },
+        {
+          "value_micros": 3500031,
+          "count": 1
+        },
+        {
+          "value_micros": 3502079,
+          "count": 1
+        },
+        {
+          "value_micros": 3506175,
+          "count": 1
+        },
+        {
+          "value_micros": 3510271,
+          "count": 1
+        },
+        {
+          "value_micros": 3514367,
+          "count": 1
+        },
+        {
+          "value_micros": 3518463,
+          "count": 1
+        },
+        {
+          "value_micros": 3774463,
+          "count": 1
+        },
+        {
+          "value_micros": 3776511,
+          "count": 1
+        },
+        {
+          "value_micros": 3780607,
+          "count": 1
+        },
+        {
+          "value_micros": 3786751,
+          "count": 1
+        },
+        {
+          "value_micros": 3790847,
+          "count": 1
+        },
+        {
+          "value_micros": 3794943,
+          "count": 1
+        },
+        {
+          "value_micros": 3801087,
+          "count": 1
+        },
+        {
+          "value_micros": 3805183,
+          "count": 1
+        },
+        {
+          "value_micros": 3809279,
+          "count": 1
+        },
+        {
+          "value_micros": 3813375,
+          "count": 1
+        },
+        {
+          "value_micros": 3817471,
+          "count": 1
+        },
+        {
+          "value_micros": 3821567,
+          "count": 1
+        },
+        {
+          "value_micros": 3825663,
+          "count": 1
+        },
+        {
+          "value_micros": 3829759,
+          "count": 1
+        },
+        {
+          "value_micros": 3833855,
+          "count": 1
+        },
+        {
+          "value_micros": 3839999,
+          "count": 1
+        },
+        {
+          "value_micros": 4095999,
+          "count": 1
+        },
+        {
+          "value_micros": 4098047,
+          "count": 1
+        },
+        {
+          "value_micros": 4102143,
+          "count": 1
+        },
+        {
+          "value_micros": 4108287,
+          "count": 1
+        },
+        {
+          "value_micros": 4112383,
+          "count": 1
+        },
+        {
+          "value_micros": 4116479,
+          "count": 1
+        },
+        {
+          "value_micros": 4120575,
+          "count": 1
+        }
+      ]
+    },
+    "rate_per_second": {
+      "kind": "rate",
+      "count": 200,
+      "elapsed_nanos": 4120798083
+    },
+    "retry_occupancy": {
+      "kind": "ratio",
+      "numerator": 0,
+      "denominator": 4120798083
+    },
+    "slow_destinations": {
+      "kind": "count",
+      "value": 1
+    },
+    "slow_p95_ms": {
+      "kind": "histogram_quantile",
+      "quantile_millionths": 950000,
+      "buckets": [
+        {
+          "value_micros": 613,
+          "count": 1
+        },
+        {
+          "value_micros": 321279,
+          "count": 1
+        },
+        {
+          "value_micros": 646655,
+          "count": 1
+        },
+        {
+          "value_micros": 969215,
+          "count": 1
+        },
+        {
+          "value_micros": 1284095,
+          "count": 1
+        },
+        {
+          "value_micros": 1602559,
+          "count": 1
+        },
+        {
+          "value_micros": 1926143,
+          "count": 1
+        },
+        {
+          "value_micros": 2246655,
+          "count": 1
+        },
+        {
+          "value_micros": 2568191,
+          "count": 1
+        },
+        {
+          "value_micros": 2891775,
+          "count": 1
+        },
+        {
+          "value_micros": 3215359,
+          "count": 1
+        },
+        {
+          "value_micros": 3518463,
+          "count": 1
+        },
+        {
+          "value_micros": 3839999,
+          "count": 1
+        }
+      ]
+    },
+    "unsettled": {
+      "kind": "count",
+      "value": 0
+    }
   },
   "datastores": {
     "redis": {
       "operations": 604
     },
     "postgres": {
-      "operations": 0
+      "operations": 1
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789170030038-56203",
+    "run_prefix": "bench-1789173792395-16770",
     "created": 200,
     "swept": 200
   }

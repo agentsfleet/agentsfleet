@@ -6,10 +6,115 @@
     "BENCH_FLEETS": 10000
   },
   "measurements": {
-    "candidate_plan_ms": 1.445,
-    "candidate_query_ms": 0.544,
-    "postgres_fleets_table_bytes": 6414336.0,
+    "candidate_plan_ms": 1.841,
+    "candidate_query_ms": 1.623,
+    "postgres_fleets_table_bytes": 6225920.0,
     "redis_bytes_total": 46472496.0
+  },
+  "calculations": {
+    "candidate_plan_ms": {
+      "kind": "parsed_millis",
+      "label": "Planning Time: ",
+      "lines": [
+        "Limit  (cost=227.94..227.94 rows=1 width=41) (actual time=1.474..1.486 rows=64.00 loops=1)",
+        "  Buffers: shared hit=300",
+        "  InitPlan 2",
+        "    ->  Aggregate  (cost=9.42..9.43 rows=1 width=32) (actual time=0.042..0.042 rows=1.00 loops=1)",
+        "          Buffers: shared hit=2",
+        "          InitPlan 1",
+        "            ->  Index Scan using runners_pkey on runners  (cost=0.14..8.17 rows=1 width=32) (actual time=0.016..0.017 rows=1.00 loops=1)",
+        "                  Index Cond: (id = '019b76da-a800-7648-ba4e-483458faa06d'::uuid)",
+        "                  Index Searches: 1",
+        "                  Buffers: shared hit=2",
+        "          ->  Function Scan on jsonb_array_elements_text e  (cost=0.00..1.00 rows=100 width=32) (actual time=0.036..0.037 rows=1.00 loops=1)",
+        "                Buffers: shared hit=2",
+        "  ->  Sort  (cost=218.50..218.51 rows=1 width=41) (actual time=1.473..1.477 rows=64.00 loops=1)",
+        "        Sort Key: ((a.last_runner_id = '019b76da-a800-7648-ba4e-483458faa06d'::uuid)) DESC NULLS LAST, z.created_at",
+        "        Sort Method: quicksort  Memory: 29kB",
+        "        Buffers: shared hit=300",
+        "        ->  Nested Loop Left Join  (cost=206.42..218.49 rows=1 width=41) (actual time=1.227..1.406 rows=64.00 loops=1)",
+        "              Buffers: shared hit=292",
+        "              ->  Bitmap Heap Scan on fleets z  (cost=206.27..210.29 rows=1 width=24) (actual time=1.217..1.346 rows=64.00 loops=1)",
+        "                    Recheck Cond: ((id = ANY ('{019b76da-a800-7530-babb-4768dec4a5f0,019b76da-a800-73b9-ae15-a76ae743bb3c,019b76da-a800-74e9-9676-31a95f3c79e9,019b76da-a800-7c1c-bc54-8681b19791b2,019b76da-a800-7adc-b050-cb3f620ed8b2,019b76da-a800-7164-80c1-c05b01ebabf3,019b76da-a800-7452-b0eb-f79061a3ccea,019b76da-a800-7c07-bfe8-8c6ea60803ec,019b76da-a800-7e7f-abc3-fab35a8ae128,019b76da-a800-78f2-b961-278476ec733a,019b76da-a800-7a00-96d8-1f81e1b6233d,019b76da-a800-7f8f-985f-b482bd680028,019b76da-a800-7b96-bbe9-b462ca83f7a9,019b76da-a800-7b36-881c-96045ea69327,019b76da-a800-7ce4-852b-3ae2d70bbf97,019b76da-a800-7158-87f0-a177e61c737d,019b76da-a800-7d49-850f-206ea57090da,019b76da-a800-76a9-bda3-dd009a9ab25a,019b76da-a800-736c-8b83-aea4ea20ae29,019b76da-a800-77dd-a020-a38371cd2018,019b76da-a800-7306-86c0-ca1cf693c22e,019b76da-a800-7379-b22d-1af3ba82e815,019b76da-a800-7c6e-85dc-d35f98074700,019b76da-a800-786c-af70-b97fcd6f5c3d,019b76da-a800-71af-9c1d-2ff010503fb1,019b76da-a800-79b5-9da7-f675513167e1,019b76da-a800-7310-81f5-d87db1aeaa1d,019b76da-a800-7603-ae72-97d692886f0f,019b76da-a800-7421-b6fa-4213805ad194,019b76da-a800-77c5-a34e-72d64f3e7888,019b76da-a800-788d-a1b1-8f8137974a91,019b76da-a800-7c68-a417-4479e364d46d,019b76da-a800-75a8-8dc4-4061d9c0e7ca,019b76da-a800-7e92-82e8-ff10315810d2,019b76da-a800-770c-9019-a044e3b70558,019b76da-a800-74ce-a8bb-4a4cd3b8108a,019b76da-a800-7f75-83e7-0924363627c9,019b76da-a800-77e5-bdc2-7c4f80384cf1,019b76da-a800-7daf-b36f-b901ebe49ec8,019b76da-a800-76fd-b941-d8e5bb8ea68f,019b76da-a800-74de-a007-c8160bdf7344,019b76da-a800-72d6-b37d-b4024e579de1,019b76da-a800-74ec-abd6-7cbf8084f165,019b76da-a800-7c16-a5b4-7b5ca1f78b2a,019b76da-a800-7860-8e39-b58dcd2d7da7,019b76da-a800-7547-821e-49b33ce5f017,019b76da-a800-7639-aa74-e0e6fb77fd32,019b76da-a800-7feb-a6be-5cc77170777f,019b76da-a800-7e58-a706-f4afd5ced3d7,019b76da-a800-7cb0-9147-1826bfa568b5,019b76da-a800-7d4e-aa66-8376e7abc463,019b76da-a800-7d8a-84d7-2a062d3f84d8,019b76da-a800-754a-b461-e16ab9efbd87,019b76da-a800-763e-8339-daa844b6a57a,019b76da-a800-7819-a67e-96bebc7eea46,019b76da-a800-7756-b471-8286e954b80a,019b76da-a800-72d2-b2e9-765ec4e11d27,019b76da-a800-7ea6-893e-69995bee5c80,019b76da-a800-73d9-8139-03740241c545,019b76da-a800-7812-947a-314a87a0c1f4,019b76da-a800-7da9-b72f-0cdbb883b93f,019b76da-a800-7b89-a087-18436e52c6c0,019b76da-a800-792a-909c-ed26d20112aa,019b76da-a800-76db-9d1c-787db0e265e0}'::uuid[])) AND (required_tags <@ (InitPlan 2).col1))",
+        "                    Filter: (status = 'active'::text)",
+        "                    Heap Blocks: exact=56",
+        "                    Buffers: shared hit=164",
+        "                    ->  BitmapAnd  (cost=206.11..206.11 rows=1 width=0) (actual time=1.191..1.192 rows=0.00 loops=1)",
+        "                          Buffers: shared hit=108",
+        "                          ->  Bitmap Index Scan on fleets_pkey  (cost=0.00..65.35 rows=64 width=0) (actual time=0.131..0.131 rows=64.00 loops=1)",
+        "                                Index Cond: (id = ANY ('{019b76da-a800-7530-babb-4768dec4a5f0,019b76da-a800-73b9-ae15-a76ae743bb3c,019b76da-a800-74e9-9676-31a95f3c79e9,019b76da-a800-7c1c-bc54-8681b19791b2,019b76da-a800-7adc-b050-cb3f620ed8b2,019b76da-a800-7164-80c1-c05b01ebabf3,019b76da-a800-7452-b0eb-f79061a3ccea,019b76da-a800-7c07-bfe8-8c6ea60803ec,019b76da-a800-7e7f-abc3-fab35a8ae128,019b76da-a800-78f2-b961-278476ec733a,019b76da-a800-7a00-96d8-1f81e1b6233d,019b76da-a800-7f8f-985f-b482bd680028,019b76da-a800-7b96-bbe9-b462ca83f7a9,019b76da-a800-7b36-881c-96045ea69327,019b76da-a800-7ce4-852b-3ae2d70bbf97,019b76da-a800-7158-87f0-a177e61c737d,019b76da-a800-7d49-850f-206ea57090da,019b76da-a800-76a9-bda3-dd009a9ab25a,019b76da-a800-736c-8b83-aea4ea20ae29,019b76da-a800-77dd-a020-a38371cd2018,019b76da-a800-7306-86c0-ca1cf693c22e,019b76da-a800-7379-b22d-1af3ba82e815,019b76da-a800-7c6e-85dc-d35f98074700,019b76da-a800-786c-af70-b97fcd6f5c3d,019b76da-a800-71af-9c1d-2ff010503fb1,019b76da-a800-79b5-9da7-f675513167e1,019b76da-a800-7310-81f5-d87db1aeaa1d,019b76da-a800-7603-ae72-97d692886f0f,019b76da-a800-7421-b6fa-4213805ad194,019b76da-a800-77c5-a34e-72d64f3e7888,019b76da-a800-788d-a1b1-8f8137974a91,019b76da-a800-7c68-a417-4479e364d46d,019b76da-a800-75a8-8dc4-4061d9c0e7ca,019b76da-a800-7e92-82e8-ff10315810d2,019b76da-a800-770c-9019-a044e3b70558,019b76da-a800-74ce-a8bb-4a4cd3b8108a,019b76da-a800-7f75-83e7-0924363627c9,019b76da-a800-77e5-bdc2-7c4f80384cf1,019b76da-a800-7daf-b36f-b901ebe49ec8,019b76da-a800-76fd-b941-d8e5bb8ea68f,019b76da-a800-74de-a007-c8160bdf7344,019b76da-a800-72d6-b37d-b4024e579de1,019b76da-a800-74ec-abd6-7cbf8084f165,019b76da-a800-7c16-a5b4-7b5ca1f78b2a,019b76da-a800-7860-8e39-b58dcd2d7da7,019b76da-a800-7547-821e-49b33ce5f017,019b76da-a800-7639-aa74-e0e6fb77fd32,019b76da-a800-7feb-a6be-5cc77170777f,019b76da-a800-7e58-a706-f4afd5ced3d7,019b76da-a800-7cb0-9147-1826bfa568b5,019b76da-a800-7d4e-aa66-8376e7abc463,019b76da-a800-7d8a-84d7-2a062d3f84d8,019b76da-a800-754a-b461-e16ab9efbd87,019b76da-a800-763e-8339-daa844b6a57a,019b76da-a800-7819-a67e-96bebc7eea46,019b76da-a800-7756-b471-8286e954b80a,019b76da-a800-72d2-b2e9-765ec4e11d27,019b76da-a800-7ea6-893e-69995bee5c80,019b76da-a800-73d9-8139-03740241c545,019b76da-a800-7812-947a-314a87a0c1f4,019b76da-a800-7da9-b72f-0cdbb883b93f,019b76da-a800-7b89-a087-18436e52c6c0,019b76da-a800-792a-909c-ed26d20112aa,019b76da-a800-76db-9d1c-787db0e265e0}'::uuid[]))",
+        "                                Index Searches: 35",
+        "                                Buffers: shared hit=70",
+        "                          ->  Bitmap Index Scan on idx_fleets_required_tags_gin  (cost=0.00..140.51 rows=50 width=0) (actual time=1.054..1.054 rows=10000.00 loops=1)",
+        "                                Index Cond: (required_tags <@ (InitPlan 2).col1)",
+        "                                Index Searches: 1",
+        "                                Buffers: shared hit=38",
+        "              ->  Index Scan using runner_affinity_pkey on runner_affinity a  (cost=0.15..8.17 rows=1 width=32) (actual time=0.001..0.001 rows=0.00 loops=64)",
+        "                    Index Cond: (fleet_id = z.id)",
+        "                    Index Searches: 64",
+        "                    Buffers: shared hit=128",
+        "Planning:",
+        "  Buffers: shared hit=289 read=2",
+        "Planning Time: 1.841 ms",
+        "Execution Time: 1.623 ms"
+      ]
+    },
+    "candidate_query_ms": {
+      "kind": "parsed_millis",
+      "label": "Execution Time: ",
+      "lines": [
+        "Limit  (cost=227.94..227.94 rows=1 width=41) (actual time=1.474..1.486 rows=64.00 loops=1)",
+        "  Buffers: shared hit=300",
+        "  InitPlan 2",
+        "    ->  Aggregate  (cost=9.42..9.43 rows=1 width=32) (actual time=0.042..0.042 rows=1.00 loops=1)",
+        "          Buffers: shared hit=2",
+        "          InitPlan 1",
+        "            ->  Index Scan using runners_pkey on runners  (cost=0.14..8.17 rows=1 width=32) (actual time=0.016..0.017 rows=1.00 loops=1)",
+        "                  Index Cond: (id = '019b76da-a800-7648-ba4e-483458faa06d'::uuid)",
+        "                  Index Searches: 1",
+        "                  Buffers: shared hit=2",
+        "          ->  Function Scan on jsonb_array_elements_text e  (cost=0.00..1.00 rows=100 width=32) (actual time=0.036..0.037 rows=1.00 loops=1)",
+        "                Buffers: shared hit=2",
+        "  ->  Sort  (cost=218.50..218.51 rows=1 width=41) (actual time=1.473..1.477 rows=64.00 loops=1)",
+        "        Sort Key: ((a.last_runner_id = '019b76da-a800-7648-ba4e-483458faa06d'::uuid)) DESC NULLS LAST, z.created_at",
+        "        Sort Method: quicksort  Memory: 29kB",
+        "        Buffers: shared hit=300",
+        "        ->  Nested Loop Left Join  (cost=206.42..218.49 rows=1 width=41) (actual time=1.227..1.406 rows=64.00 loops=1)",
+        "              Buffers: shared hit=292",
+        "              ->  Bitmap Heap Scan on fleets z  (cost=206.27..210.29 rows=1 width=24) (actual time=1.217..1.346 rows=64.00 loops=1)",
+        "                    Recheck Cond: ((id = ANY ('{019b76da-a800-7530-babb-4768dec4a5f0,019b76da-a800-73b9-ae15-a76ae743bb3c,019b76da-a800-74e9-9676-31a95f3c79e9,019b76da-a800-7c1c-bc54-8681b19791b2,019b76da-a800-7adc-b050-cb3f620ed8b2,019b76da-a800-7164-80c1-c05b01ebabf3,019b76da-a800-7452-b0eb-f79061a3ccea,019b76da-a800-7c07-bfe8-8c6ea60803ec,019b76da-a800-7e7f-abc3-fab35a8ae128,019b76da-a800-78f2-b961-278476ec733a,019b76da-a800-7a00-96d8-1f81e1b6233d,019b76da-a800-7f8f-985f-b482bd680028,019b76da-a800-7b96-bbe9-b462ca83f7a9,019b76da-a800-7b36-881c-96045ea69327,019b76da-a800-7ce4-852b-3ae2d70bbf97,019b76da-a800-7158-87f0-a177e61c737d,019b76da-a800-7d49-850f-206ea57090da,019b76da-a800-76a9-bda3-dd009a9ab25a,019b76da-a800-736c-8b83-aea4ea20ae29,019b76da-a800-77dd-a020-a38371cd2018,019b76da-a800-7306-86c0-ca1cf693c22e,019b76da-a800-7379-b22d-1af3ba82e815,019b76da-a800-7c6e-85dc-d35f98074700,019b76da-a800-786c-af70-b97fcd6f5c3d,019b76da-a800-71af-9c1d-2ff010503fb1,019b76da-a800-79b5-9da7-f675513167e1,019b76da-a800-7310-81f5-d87db1aeaa1d,019b76da-a800-7603-ae72-97d692886f0f,019b76da-a800-7421-b6fa-4213805ad194,019b76da-a800-77c5-a34e-72d64f3e7888,019b76da-a800-788d-a1b1-8f8137974a91,019b76da-a800-7c68-a417-4479e364d46d,019b76da-a800-75a8-8dc4-4061d9c0e7ca,019b76da-a800-7e92-82e8-ff10315810d2,019b76da-a800-770c-9019-a044e3b70558,019b76da-a800-74ce-a8bb-4a4cd3b8108a,019b76da-a800-7f75-83e7-0924363627c9,019b76da-a800-77e5-bdc2-7c4f80384cf1,019b76da-a800-7daf-b36f-b901ebe49ec8,019b76da-a800-76fd-b941-d8e5bb8ea68f,019b76da-a800-74de-a007-c8160bdf7344,019b76da-a800-72d6-b37d-b4024e579de1,019b76da-a800-74ec-abd6-7cbf8084f165,019b76da-a800-7c16-a5b4-7b5ca1f78b2a,019b76da-a800-7860-8e39-b58dcd2d7da7,019b76da-a800-7547-821e-49b33ce5f017,019b76da-a800-7639-aa74-e0e6fb77fd32,019b76da-a800-7feb-a6be-5cc77170777f,019b76da-a800-7e58-a706-f4afd5ced3d7,019b76da-a800-7cb0-9147-1826bfa568b5,019b76da-a800-7d4e-aa66-8376e7abc463,019b76da-a800-7d8a-84d7-2a062d3f84d8,019b76da-a800-754a-b461-e16ab9efbd87,019b76da-a800-763e-8339-daa844b6a57a,019b76da-a800-7819-a67e-96bebc7eea46,019b76da-a800-7756-b471-8286e954b80a,019b76da-a800-72d2-b2e9-765ec4e11d27,019b76da-a800-7ea6-893e-69995bee5c80,019b76da-a800-73d9-8139-03740241c545,019b76da-a800-7812-947a-314a87a0c1f4,019b76da-a800-7da9-b72f-0cdbb883b93f,019b76da-a800-7b89-a087-18436e52c6c0,019b76da-a800-792a-909c-ed26d20112aa,019b76da-a800-76db-9d1c-787db0e265e0}'::uuid[])) AND (required_tags <@ (InitPlan 2).col1))",
+        "                    Filter: (status = 'active'::text)",
+        "                    Heap Blocks: exact=56",
+        "                    Buffers: shared hit=164",
+        "                    ->  BitmapAnd  (cost=206.11..206.11 rows=1 width=0) (actual time=1.191..1.192 rows=0.00 loops=1)",
+        "                          Buffers: shared hit=108",
+        "                          ->  Bitmap Index Scan on fleets_pkey  (cost=0.00..65.35 rows=64 width=0) (actual time=0.131..0.131 rows=64.00 loops=1)",
+        "                                Index Cond: (id = ANY ('{019b76da-a800-7530-babb-4768dec4a5f0,019b76da-a800-73b9-ae15-a76ae743bb3c,019b76da-a800-74e9-9676-31a95f3c79e9,019b76da-a800-7c1c-bc54-8681b19791b2,019b76da-a800-7adc-b050-cb3f620ed8b2,019b76da-a800-7164-80c1-c05b01ebabf3,019b76da-a800-7452-b0eb-f79061a3ccea,019b76da-a800-7c07-bfe8-8c6ea60803ec,019b76da-a800-7e7f-abc3-fab35a8ae128,019b76da-a800-78f2-b961-278476ec733a,019b76da-a800-7a00-96d8-1f81e1b6233d,019b76da-a800-7f8f-985f-b482bd680028,019b76da-a800-7b96-bbe9-b462ca83f7a9,019b76da-a800-7b36-881c-96045ea69327,019b76da-a800-7ce4-852b-3ae2d70bbf97,019b76da-a800-7158-87f0-a177e61c737d,019b76da-a800-7d49-850f-206ea57090da,019b76da-a800-76a9-bda3-dd009a9ab25a,019b76da-a800-736c-8b83-aea4ea20ae29,019b76da-a800-77dd-a020-a38371cd2018,019b76da-a800-7306-86c0-ca1cf693c22e,019b76da-a800-7379-b22d-1af3ba82e815,019b76da-a800-7c6e-85dc-d35f98074700,019b76da-a800-786c-af70-b97fcd6f5c3d,019b76da-a800-71af-9c1d-2ff010503fb1,019b76da-a800-79b5-9da7-f675513167e1,019b76da-a800-7310-81f5-d87db1aeaa1d,019b76da-a800-7603-ae72-97d692886f0f,019b76da-a800-7421-b6fa-4213805ad194,019b76da-a800-77c5-a34e-72d64f3e7888,019b76da-a800-788d-a1b1-8f8137974a91,019b76da-a800-7c68-a417-4479e364d46d,019b76da-a800-75a8-8dc4-4061d9c0e7ca,019b76da-a800-7e92-82e8-ff10315810d2,019b76da-a800-770c-9019-a044e3b70558,019b76da-a800-74ce-a8bb-4a4cd3b8108a,019b76da-a800-7f75-83e7-0924363627c9,019b76da-a800-77e5-bdc2-7c4f80384cf1,019b76da-a800-7daf-b36f-b901ebe49ec8,019b76da-a800-76fd-b941-d8e5bb8ea68f,019b76da-a800-74de-a007-c8160bdf7344,019b76da-a800-72d6-b37d-b4024e579de1,019b76da-a800-74ec-abd6-7cbf8084f165,019b76da-a800-7c16-a5b4-7b5ca1f78b2a,019b76da-a800-7860-8e39-b58dcd2d7da7,019b76da-a800-7547-821e-49b33ce5f017,019b76da-a800-7639-aa74-e0e6fb77fd32,019b76da-a800-7feb-a6be-5cc77170777f,019b76da-a800-7e58-a706-f4afd5ced3d7,019b76da-a800-7cb0-9147-1826bfa568b5,019b76da-a800-7d4e-aa66-8376e7abc463,019b76da-a800-7d8a-84d7-2a062d3f84d8,019b76da-a800-754a-b461-e16ab9efbd87,019b76da-a800-763e-8339-daa844b6a57a,019b76da-a800-7819-a67e-96bebc7eea46,019b76da-a800-7756-b471-8286e954b80a,019b76da-a800-72d2-b2e9-765ec4e11d27,019b76da-a800-7ea6-893e-69995bee5c80,019b76da-a800-73d9-8139-03740241c545,019b76da-a800-7812-947a-314a87a0c1f4,019b76da-a800-7da9-b72f-0cdbb883b93f,019b76da-a800-7b89-a087-18436e52c6c0,019b76da-a800-792a-909c-ed26d20112aa,019b76da-a800-76db-9d1c-787db0e265e0}'::uuid[]))",
+        "                                Index Searches: 35",
+        "                                Buffers: shared hit=70",
+        "                          ->  Bitmap Index Scan on idx_fleets_required_tags_gin  (cost=0.00..140.51 rows=50 width=0) (actual time=1.054..1.054 rows=10000.00 loops=1)",
+        "                                Index Cond: (required_tags <@ (InitPlan 2).col1)",
+        "                                Index Searches: 1",
+        "                                Buffers: shared hit=38",
+        "              ->  Index Scan using runner_affinity_pkey on runner_affinity a  (cost=0.15..8.17 rows=1 width=32) (actual time=0.001..0.001 rows=0.00 loops=64)",
+        "                    Index Cond: (fleet_id = z.id)",
+        "                    Index Searches: 64",
+        "                    Buffers: shared hit=128",
+        "Planning:",
+        "  Buffers: shared hit=289 read=2",
+        "Planning Time: 1.841 ms",
+        "Execution Time: 1.623 ms"
+      ]
+    },
+    "postgres_fleets_table_bytes": {
+      "kind": "count",
+      "value": 6225920
+    },
+    "redis_bytes_total": {
+      "kind": "difference",
+      "before": 2041168,
+      "after": 48513664
+    }
   },
   "series": {
     "ladder_fleets": [
@@ -19,22 +124,268 @@
       10000.0
     ],
     "peek_ms": [
-      0.201083,
-      0.269459,
-      0.3185,
-      0.398542
+      0.192584,
+      0.27075,
+      0.315,
+      0.34825
     ],
     "redis_bytes_per_fleet": [
       4613.6,
-      4433.777777777777,
-      4636.72,
-      4650.474666666667
+      4439.466666666666,
+      4637.288888888889,
+      4650.360888888888
     ],
     "stream_read_ms": [
-      0.199875,
-      0.191542,
-      0.20637499999999998,
-      0.208417
+      0.19375,
+      0.194375,
+      0.225958,
+      0.2075
+    ]
+  },
+  "series_calculations": {
+    "ladder_fleets": [
+      {
+        "kind": "count",
+        "value": 10
+      },
+      {
+        "kind": "count",
+        "value": 100
+      },
+      {
+        "kind": "count",
+        "value": 1000
+      },
+      {
+        "kind": "count",
+        "value": 10000
+      }
+    ],
+    "peek_ms": [
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          207791,
+          190167,
+          175375,
+          192416,
+          207042,
+          192584,
+          192250,
+          195166,
+          193958,
+          192375,
+          209208,
+          179000,
+          214417,
+          193000,
+          187750,
+          204917,
+          205500,
+          184875,
+          173167,
+          180959
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          344000,
+          292708,
+          279416,
+          274458,
+          264792,
+          266834,
+          259417,
+          252458,
+          248791,
+          297834,
+          270750,
+          260292,
+          301167,
+          235541,
+          278375,
+          253541,
+          287083,
+          250542,
+          264709,
+          292500
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          355875,
+          313709,
+          511584,
+          425084,
+          594333,
+          428917,
+          372750,
+          325000,
+          306875,
+          276000,
+          293167,
+          291666,
+          305042,
+          299500,
+          301708,
+          428875,
+          309250,
+          328750,
+          301459,
+          315000
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          596917,
+          540291,
+          553500,
+          578208,
+          497125,
+          483917,
+          343250,
+          318250,
+          364791,
+          424042,
+          348250,
+          347458,
+          327083,
+          326875,
+          349541,
+          301875,
+          315208,
+          308375,
+          303167,
+          291875
+        ]
+      }
+    ],
+    "redis_bytes_per_fleet": [
+      {
+        "kind": "ratio",
+        "numerator": 46136,
+        "denominator": 10
+      },
+      {
+        "kind": "ratio",
+        "numerator": 399552,
+        "denominator": 90
+      },
+      {
+        "kind": "ratio",
+        "numerator": 4173560,
+        "denominator": 900
+      },
+      {
+        "kind": "ratio",
+        "numerator": 41853248,
+        "denominator": 9000
+      }
+    ],
+    "stream_read_ms": [
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          218750,
+          195416,
+          205000,
+          200708,
+          206292,
+          219916,
+          211875,
+          178292,
+          171750,
+          187792,
+          216917,
+          189917,
+          193417,
+          189542,
+          185333,
+          195083,
+          191500,
+          183958,
+          193750,
+          186833
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          209542,
+          259458,
+          175833,
+          195833,
+          563958,
+          208375,
+          198417,
+          195625,
+          185500,
+          177084,
+          193792,
+          181708,
+          189250,
+          196333,
+          197250,
+          194375,
+          193625,
+          187500,
+          183583,
+          186375
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          245916,
+          229875,
+          236208,
+          228833,
+          236250,
+          210791,
+          219500,
+          222458,
+          250625,
+          212042,
+          213500,
+          211667,
+          238583,
+          215958,
+          236125,
+          225958,
+          234167,
+          204125,
+          225250,
+          197917
+        ]
+      },
+      {
+        "kind": "median_duration",
+        "samples_nanos": [
+          203959,
+          191292,
+          187708,
+          253500,
+          252833,
+          227041,
+          195208,
+          187542,
+          182250,
+          201834,
+          197625,
+          219042,
+          225667,
+          222708,
+          192666,
+          207500,
+          226583,
+          250583,
+          200250,
+          229333
+        ]
+      }
     ]
   },
   "datastores": {
@@ -46,7 +397,7 @@
     }
   },
   "fixture": {
-    "run_prefix": "bench-1789170089338-58522",
+    "run_prefix": "bench-1789173854693-19894",
     "created": 30001,
     "swept": 30001
   }

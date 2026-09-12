@@ -1,12 +1,13 @@
 {
-  "schema": 1,
+  "schema": 2,
   "baseline_revision": "521ca4037ebbd23056f8b3b63dcf9c2fa34f650d",
-  "capture_revision": "f75e10d4e0ffe1e73fccbd9e3aac99681c9c7886",
+  "capture_revision": "a4b38b6a7fca0ecc17d3ac516cfe62f036fb0bc3",
   "production_source": {
-    "baseline_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
-    "capture_sha256": "sha256:82ce2584a8f391229e10c9fdaa14f6e4509f47c16c57afc7460c891610cffb76",
+    "baseline_sha256": "sha256:77e2e64dbe19b4dba8c1f52d5af7e5c57dd5c9fe306343d1322041fb70781c98",
+    "capture_sha256": "sha256:77e2e64dbe19b4dba8c1f52d5af7e5c57dd5c9fe306343d1322041fb70781c98",
     "equal": true
   },
+  "outbound_ownership_seam_sha256": "sha256:ef5db6a6bdda1eadb3725d450daee09eb047624efb656994f05549c82a3c0aa9",
   "schema_files": {
     "baseline_sha256": "sha256:05e696520bb4a739fc4057e62199d3b164250aedb97991ad5f038e7d90c56b6c",
     "capture_sha256": "sha256:05e696520bb4a739fc4057e62199d3b164250aedb97991ad5f038e7d90c56b6c",
@@ -116,6 +117,8 @@
     "rustd/crates/afd_bench/src/fixture.rs",
     "rustd/crates/afd_bench/src/fixture/tests.rs",
     "rustd/crates/afd_bench/src/lane/cardinality.rs",
+    "rustd/crates/afd_bench/src/lane/cardinality/probe.rs",
+    "rustd/crates/afd_bench/src/lane/cardinality/tests.rs",
     "rustd/crates/afd_bench/src/lane/lease.rs",
     "rustd/crates/afd_bench/src/lane/lease/seed.rs",
     "rustd/crates/afd_bench/src/lane/lease/seed/tests.rs",
@@ -123,11 +126,18 @@
     "rustd/crates/afd_bench/src/lane/outbound.rs",
     "rustd/crates/afd_bench/src/lane/outbound/poster.rs",
     "rustd/crates/afd_bench/src/lane/outbound/poster/tests.rs",
+    "rustd/crates/afd_bench/src/lane/outbound/record.rs",
     "rustd/crates/afd_bench/src/lane/steer.rs",
     "rustd/crates/afd_bench/src/lane/sweep.rs",
     "rustd/crates/afd_bench/src/lib.rs",
     "rustd/crates/afd_bench/src/profile.rs",
     "rustd/crates/afd_bench/src/profile/target.rs",
-    "rustd/crates/afd_bench/src/profile/target/tests.rs"
+    "rustd/crates/afd_bench/src/profile/target/tests.rs",
+    "rustd/crates/afd_bench/src/report.rs",
+    "rustd/crates/afd_bench/src/report/calculation.rs",
+    "rustd/crates/afd_bench/src/report/latency.rs",
+    "rustd/crates/afd_bench/src/report/observations.rs",
+    "rustd/crates/afd_bench/src/report/tests.rs",
+    "rustd/crates/afd_outbound/src/poster.rs"
   ]
 }
