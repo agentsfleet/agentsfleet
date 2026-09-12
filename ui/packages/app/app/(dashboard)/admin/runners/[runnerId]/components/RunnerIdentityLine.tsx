@@ -3,14 +3,22 @@ import { Badge } from "@agentsfleet/design-system";
 import { type CapabilityReport, type RunnerDetail } from "@/lib/api/runners";
 import { SANDBOX_TIER_LABELS, type RunnerAdminState } from "@/lib/api/runners-types";
 import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
-import { RUNNER_STATES_DOC_URL } from "./runner-copy";
+import { RunnerChecksBadge } from "./RunnerChecksBadge";
+import { RUNNER_STATES_DOC_URL, RUNNER_STATES_HELP_LABEL } from "./runner-copy";
 
 // The line under the header row: administrative state and liveness, the
-// isolation tier, labels, and — when a real verdict contradicts a real
-// assignment — the mismatch, side by side with what the host reported.
+// isolation tier, labels, the checks verdict (the full report opens from it),
+// and — when a real verdict contradicts a real assignment — the mismatch,
+// side by side with what the host reported.
+//
+// The help for the state words rides the words: a "Learn more" link sat
+// between the status and the tier pills and split the row into text, link,
+// pills, pill. As a question mark on the status itself the row reads status,
+// then pills, and the help is attached to what it explains.
 // `adminState` arrives separately from the runner because the header paints an
 // action's target state before the server confirms it.
 
+const HELP_ICON_SIZE = 14;
 const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
 const ACHIEVABLE_PREFIX = "host reports";
 const MECHANISM_YES = "✓";
@@ -41,16 +49,17 @@ export function RunnerIdentityLine({
   return (
     <div className="flex flex-col gap-md">
       <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
-        <span className="inline-flex items-center gap-md">
+        <span className="inline-flex items-center gap-sm">
           <RunnerStatus adminState={adminState} liveness={runner.liveness} />
           <a
             href={RUNNER_STATES_DOC_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
+            aria-label={RUNNER_STATES_HELP_LABEL}
+            title={RUNNER_STATES_HELP_LABEL}
+            className="-m-sm inline-flex items-center p-sm text-muted-foreground transition-colors duration-snap ease-snap hover:text-pulse focus-visible:text-pulse"
           >
-            <CircleHelpIcon size={13} aria-hidden="true" />
-            Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
+            <CircleHelpIcon size={HELP_ICON_SIZE} aria-hidden="true" />
           </a>
         </span>
         <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
@@ -60,6 +69,7 @@ export function RunnerIdentityLine({
             <Badge key={label}>{label}</Badge>
           ))}
         </span>
+        <RunnerChecksBadge runner={runner} />
       </div>
       {/* The mismatch line renders ONLY when a real verdict contradicts a real
           assignment: the reason names the specific missing mechanism, and the

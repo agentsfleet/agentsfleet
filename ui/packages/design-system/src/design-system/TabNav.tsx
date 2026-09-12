@@ -17,6 +17,9 @@ import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_LINK } from "./tab-styles";
  *     linkComponent={NextLink}
  *     onNavigate={(href) => track(href)}
  *   />
+ *
+ * Labels only, everywhere: the tab style is one style, and a glyph on some
+ * tab bars and not others is the same split in miniature.
  */
 export type TabNavItem = { label: string; href: string };
 

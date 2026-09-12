@@ -3,6 +3,10 @@
 // spelling.
 
 export const FLEET_LIBRARY_TITLE = "Fleet library";
+// The section label names the TABLE. It used to render FLEET_LIBRARY_TITLE, so
+// the page announced "heading level 1, Fleet library. Heading level 2, Fleet
+// library." — the same constant twice, 72px apart.
+export const FLEET_CATALOG_SECTION = "Catalog entries";
 
 export const FLEET_LIBRARIES_DESCRIPTION =
   "Add a fleet from its GitHub repository or a bundle on your machine, write what its install gate says, then publish it. Only a published fleet reaches a workspace.";

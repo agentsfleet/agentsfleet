@@ -146,7 +146,7 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
             <DialogTitle>{EVENT_DETAILS_TITLE}</DialogTitle>
             <div className="flex min-w-0 max-w-full items-center gap-sm rounded-sm border border-border bg-muted/30 px-md py-sm">
               <span className="text-label uppercase tracking-label text-muted-foreground">ID</span>
-              <span className="min-w-0 max-w-xs truncate font-mono text-xs text-foreground" title={row.event_id}>
+              <span className="min-w-0 max-w-xs truncate font-mono text-mono leading-mono text-foreground" title={row.event_id}>
                 {row.event_id}
               </span>
               <CopyButton value={row.event_id} label={COPY_EVENT_ID_LABEL} />
@@ -229,7 +229,7 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
           <dt className="shrink-0 text-label capitalize text-muted-foreground sm:w-40">
             {presentRequestLabel(key, githubSource)}
           </dt>
-          <dd className="min-w-0 break-words font-mono text-xs leading-mono text-foreground">
+          <dd className="min-w-0 break-words font-mono text-mono leading-mono text-foreground">
             {formatRequestValue(value)}
           </dd>
         </div>
@@ -246,7 +246,7 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
 
 function RequestContextFallback({ children }: { children: string }) {
   return (
-    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-lg font-mono text-xs leading-mono text-foreground">
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-lg font-mono text-mono leading-mono text-foreground">
       {children}
     </pre>
   );

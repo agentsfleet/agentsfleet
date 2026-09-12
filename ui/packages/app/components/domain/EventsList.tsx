@@ -314,7 +314,7 @@ function EventTimeCell({ row }: { row: EventRow }) {
     <Time
       value={created}
       format="relative"
-      className="font-mono text-xs text-muted-foreground tabular-nums"
+      className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
     />
   );
 }

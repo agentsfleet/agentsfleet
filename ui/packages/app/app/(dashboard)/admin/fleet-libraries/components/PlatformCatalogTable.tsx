@@ -227,13 +227,13 @@ export default function PlatformCatalogTable({
       cell: (row) =>
         row.content_hash ? (
           <span className="flex items-center gap-1">
-            <code className="text-xs text-muted-foreground">
+            <code className="text-mono leading-mono text-muted-foreground">
               {row.content_hash.slice(0, HASH_PREVIEW_LENGTH)}
             </code>
             <CopyButton value={row.content_hash} label={COPY_HASH_LABEL} />
           </span>
         ) : (
-          <code className="text-xs text-muted-foreground">{NO_HASH}</code>
+          <code className="text-mono leading-mono text-muted-foreground">{NO_HASH}</code>
         ),
     },
     {

@@ -11,6 +11,14 @@ import { cn } from "../utils";
  *                  via [data-section=gap]+[data-section=gap] variant
  *   asChild=true : render as whatever element the child provides
  *                  (<main>, <article>, <section>, etc.)
+ *
+ * A LABELLED section renders <section>, not <div>, without being asked.
+ *
+ * ARIA gives a plain <div> no role, so `aria-label` on one is dropped and the
+ * name never reaches a reader. Two call sites passed a label without `asChild`
+ * and lost their names that way, while nine others remembered the wrapper — a
+ * component whose accessibility depends on the caller remembering is a
+ * component that will keep losing names. The tag now follows the label.
  */
 type Props = ComponentProps<"div"> & {
   gap?: boolean;
@@ -18,7 +26,8 @@ type Props = ComponentProps<"div"> & {
 };
 
 export default function Section({ gap, asChild, className, ref, ...rest }: Props) {
-  const Comp = asChild ? Slot : "div";
+  const labelled = rest["aria-label"] != null || rest["aria-labelledby"] != null;
+  const Comp = asChild ? Slot : labelled ? "section" : "div";
   return (
     <Comp
       ref={ref}

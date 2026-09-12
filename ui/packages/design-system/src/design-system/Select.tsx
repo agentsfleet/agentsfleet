@@ -68,7 +68,14 @@ export function SelectTrigger({
       ref={ref}
       className={cn(
         "flex w-full items-center justify-between rounded-md border border-border bg-background",
-        "px-3 py-2 text-sm shadow-sm transition-colors duration-200 ease-out",
+        // No resting shadow: borders define panels, and shadows belong to
+        // dialogs and menus. This was the only box-shadow inside <main> on
+        // every route that renders it.
+        "px-3 py-2 text-sm transition-colors duration-snap ease-snap",
+        // The coarse-pointer floor every Button-derived control already carries
+        // (Button.tsx:11). Without it the "Rows per page" combobox was the one
+        // interactive element in <main> under the 44px touch minimum.
+        "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
         "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[placeholder]:text-muted-foreground",

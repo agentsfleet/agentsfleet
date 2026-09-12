@@ -103,7 +103,7 @@ export default function EditSecretDialog({
               spellCheck={false}
               autoComplete="off"
               placeholder='{"api_key": "sk-..."}'
-              className="font-mono text-sm"
+              className="font-mono text-mono leading-mono"
               value={dataJson}
               onChange={(e) => setDataJson(e.target.value)}
             />

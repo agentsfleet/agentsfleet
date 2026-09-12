@@ -101,7 +101,10 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
         <div className="flex items-start gap-xl">
           <ServerGlyph awake={awake} />
           <div className="min-w-0 flex-1">
-            <div className="truncate font-mono text-body-sm font-medium">{runner.host_id}</div>
+            {/* The host id is the tile's name, so it carries the rank. The wall was a
+                page title, a 12px section label, and then an unstructured pile of
+                divs: nothing for assistive technology to jump between. */}
+            <h3 className="truncate font-mono text-mono leading-mono font-medium">{runner.host_id}</h3>
             <div className="mt-sm flex flex-wrap items-center gap-md">
               <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
               {/* A host that cannot deliver its assignment is visually distinct

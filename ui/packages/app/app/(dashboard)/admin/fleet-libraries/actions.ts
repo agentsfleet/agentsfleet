@@ -6,6 +6,7 @@ import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import {
   deletePlatformFleetLibraryEntry,
+  listPlatformFleetLibrary,
   onboardPlatformFleetLibrary,
   patchPlatformFleetLibraryEntry,
 } from "@/lib/api/fleet-library";
@@ -14,6 +15,7 @@ import type {
   OnboardedPlatformLibraryEntry,
   PlatformCatalogEntry,
   PlatformCatalogPatch,
+  PlatformCatalogResponse,
 } from "@/lib/types";
 import { ADMIN_FLEET_LIBRARIES_PATH } from "./library-copy";
 
@@ -35,6 +37,17 @@ export async function onboardPlatformLibraryAction(
     if (result.ok) revalidatePath(ADMIN_FLEET_LIBRARIES_PATH);
     return result;
   });
+}
+
+// Re-reads the catalog so a timed-out import can be settled by the row rather
+// than by our own patience. Read-only and deliberately without `revalidatePath`:
+// this runs while the dialog is still deciding what happened, and the caller
+// revalidates once it knows. It carries the same write scope as its neighbours
+// because this surface has no read rung — see `PLATFORM_FLEET_LIBRARIES_PATH`.
+export async function readPlatformLibraryAction(): Promise<ActionResult<PlatformCatalogResponse>> {
+  return requireScope(SCOPE.PLATFORM_LIBRARY_WRITE, async () =>
+    withToken((t) => listPlatformFleetLibrary(t)),
+  );
 }
 
 // Curates the description and the per-credential install-gate copy — the two

@@ -3,6 +3,7 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 import { credential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readSessionScopes } from "@/lib/auth/platform";
+import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 
 export default async function DashboardLayout({
   children,
@@ -10,7 +11,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  const [listResult, scopes] = token
+  const [listResult, scopes, billing] = token
     ? await Promise.all([
         // The switcher needs the complete workspace list; this
         // is the one place that walks the complete cursor-paginated list off
@@ -23,8 +24,13 @@ export default async function DashboardLayout({
         // Operator scopes gate the platform navigation. Empty set
         // for an anonymous/no-token session.
         readSessionScopes(),
+        // The header's balance. Cached per request, so a page that reads
+        // billing for itself shares this one round-trip. A failure resolves to
+        // null and the header omits the figure — a shell that cannot render
+        // because billing is down would be the worse trade.
+        getTenantBillingCached(token).catch(() => null),
       ])
-    : [{ items: [], total: 0 }, new Set<string>()];
+    : [{ items: [], total: 0 }, new Set<string>(), null];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no
   // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
@@ -43,7 +49,7 @@ export default async function DashboardLayout({
   // is covered too.
   return (
     <TooltipProvider>
-      <ShellFrame workspaces={listResult.items} operatorScopes={[...scopes]}>
+      <ShellFrame workspaces={listResult.items} operatorScopes={[...scopes]} billing={billing}>
         {children}
       </ShellFrame>
     </TooltipProvider>

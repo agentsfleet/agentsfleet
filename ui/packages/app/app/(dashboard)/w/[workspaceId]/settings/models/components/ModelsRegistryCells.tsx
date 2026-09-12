@@ -26,7 +26,7 @@ const RATE_IN = "in";
 const RATE_CACHED = "cached";
 const RATE_OUT = "out";
 const RATE_SEPARATOR = " · ";
-const NUMERIC_CELL_CLASS = "font-mono text-xs tabular-nums text-muted-foreground";
+const NUMERIC_CELL_CLASS = "font-mono text-mono leading-mono tabular-nums text-muted-foreground";
 // Self-managed rows are billed by the tenant's own provider account — token
 // rates apply only under platform-managed posture (schema/003_model_library.sql).
 // "Rates unavailable" reads as "we tried and failed"; the truth is "this does not
@@ -108,7 +108,7 @@ export function ModelCell({
             the same thing twice and pushed the model id out of view. */}
         <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
         {platformDefault ? (
-          <span className="truncate font-mono text-sm text-muted-foreground">{platformDefault.model}</span>
+          <span className="truncate font-mono text-mono leading-mono text-muted-foreground">{platformDefault.model}</span>
         ) : null}
       </span>
     );
@@ -118,7 +118,7 @@ export function ModelCell({
   // out whole.
   return (
     <span className="flex min-w-0 items-center gap-1">
-      <span className="truncate font-mono text-sm">{row.entry.model_id}</span>
+      <span className="truncate font-mono text-mono leading-mono">{row.entry.model_id}</span>
       <CopyButton value={row.entry.model_id} label={`Copy model id: ${row.entry.model_id}`} />
     </span>
   );
@@ -144,7 +144,7 @@ export function ProviderCell({
       <div className="text-sm">{entry.provider ? providerLabel(entry.provider) : "Unknown"}</div>
       {entry.base_url ? (
         <div className="flex min-w-0 items-center gap-1">
-          <div className="truncate font-mono text-xs text-muted-foreground">{entry.base_url}</div>
+          <div className="truncate font-mono text-mono leading-mono text-muted-foreground">{entry.base_url}</div>
           <CopyButton value={entry.base_url} label={`Copy base URL: ${entry.base_url}`} />
         </div>
       ) : null}

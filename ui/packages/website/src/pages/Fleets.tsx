@@ -126,7 +126,7 @@ export default function Fleets() {
     <div data-testid="fleets-page">
       <section className="site-section">
         <div className="wrap flex flex-col gap-6">
-          <SectionLabel className="mb-0">Agent resources</SectionLabel>
+          <SectionLabel as="p" className="mb-0">Agent resources</SectionLabel>
           <DisplayXL>This page is for agents.</DisplayXL>
           <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
             Use <code className="font-mono">/openapi.json</code> as canonical surface. Docs are

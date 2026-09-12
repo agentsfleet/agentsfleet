@@ -194,6 +194,34 @@ describe("catalog write actions", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/fleet-libraries");
   });
 
+  // The read that settles a timed-out import. It deliberately does NOT
+  // revalidate: it runs while the dialog is still deciding what happened, and
+  // the caller revalidates once it knows.
+  it("read: re-reads the catalog without revalidating the page", async () => {
+    const entries = [{ id: "platform-ops", content_hash: "sha256:abc" }];
+    withTokenMock.mockImplementationOnce(async (fn: (t: string) => Promise<unknown>) => ({
+      ok: true,
+      data: await fn("tok"),
+    }));
+    listPlatformFleetLibraryMock.mockResolvedValueOnce({ entries });
+
+    const { readPlatformLibraryAction } = await loadActions();
+    const result = await readPlatformLibraryAction();
+
+    expect(result).toEqual({ ok: true, data: { entries } });
+    expect(listPlatformFleetLibraryMock).toHaveBeenCalledWith("tok");
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("read: refuses before any round-trip when the session lacks the scope", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    const { readPlatformLibraryAction } = await loadActions();
+    const result = await readPlatformLibraryAction();
+
+    expect(result.ok).toBe(false);
+    expect(listPlatformFleetLibraryMock).not.toHaveBeenCalled();
+  });
+
   it("patch: refuses before any round-trip when the session lacks the scope", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
     const { patchPlatformLibraryAction } = await loadActions();

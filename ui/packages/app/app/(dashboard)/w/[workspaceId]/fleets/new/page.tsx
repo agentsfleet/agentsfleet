@@ -17,6 +17,14 @@ import { hasLibraryWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
+// The tenant-tier counterpart of the operator catalog's ceiling: this page
+// hosts `onboardLibraryEntryAction`, which waits on the same daemon-side GitHub
+// fetch. Held equal to admin/fleet-libraries/page.tsx deliberately — one import
+// path, one ceiling — and above `ONBOARD_BUNDLE_TIMEOUT_MS` so the client's own
+// timeout wins over a platform kill.
+// A literal, because route segment config must be statically analysable.
+export const maxDuration = 60;
+
 type SearchParams = {
   library_visibility?: string | string[];
   library_id?: string | string[];

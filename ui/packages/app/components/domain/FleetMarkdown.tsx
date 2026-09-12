@@ -23,10 +23,10 @@ import remarkGfm from "remark-gfm";
 const Fenced = createContext(false);
 
 const COMPONENTS: Components = {
-  p: ({ children }) => <p className="leading-prose">{children}</p>,
+  p: ({ children }) => <p className="leading-body-lg">{children}</p>,
   ul: ({ children }) => <ul className="list-disc space-y-xs pl-lg">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-xs pl-lg">{children}</ol>,
-  li: ({ children }) => <li className="leading-prose">{children}</li>,
+  li: ({ children }) => <li className="leading-body-lg">{children}</li>,
   strong: ({ children }) => <strong className="font-medium text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   h1: ({ children }) => <Heading>{children}</Heading>,
@@ -55,7 +55,7 @@ const COMPONENTS: Components = {
   ),
   pre: ({ children }) => (
     <Fenced value={true}>
-      <pre className="overflow-x-auto rounded-md bg-muted p-md font-mono text-body-sm">
+      <pre className="overflow-x-auto rounded-md bg-muted p-md font-mono text-mono leading-mono">
         {children}
       </pre>
     </Fenced>
@@ -75,9 +75,25 @@ const COMPONENTS: Components = {
   td: ({ children }) => <td className="border border-border px-sm py-xs">{children}</td>,
 };
 
+/*
+ * The transcript reads at `body-lg`, not `body`.
+ *
+ * `body` (15px) is the app's default for reading AND controls, and everywhere
+ * else that dual duty is right: labels, table cells, form text, supporting
+ * copy, where compact is a virtue. The transcript is the one surface that is
+ * sustained prose — the fleet's actual output, read end to end — and it was
+ * set at the same size as a dropdown label.
+ *
+ * The tell was the line-height. This carried `leading-prose` (1.7) where the
+ * rest of the app runs 1.5-1.55: the size was being compensated for with air
+ * rather than fixed. At 18px the type carries itself, so the leading returns
+ * to the scale's own `body-lg` (1.5). The measure was already a reading
+ * measure — 65 characters, against a 68ch container — so the column did not
+ * need to move; only the type in it did.
+ */
 export function FleetMarkdown({ children }: { children: string }) {
   return (
-    <div className="space-y-md text-body leading-prose">
+    <div className="space-y-md text-body-lg leading-body-lg">
       <Markdown components={COMPONENTS} remarkPlugins={[remarkGfm]}>
         {children}
       </Markdown>
@@ -95,6 +111,6 @@ function Heading({ children }: { children: ReactNode }) {
 function Code({ children }: { children: ReactNode }) {
   if (useContext(Fenced)) return <code>{children}</code>;
   return (
-    <code className="rounded-sm bg-muted px-xs font-mono text-body-sm">{children}</code>
+    <code className="rounded-sm bg-muted px-xs font-mono text-mono leading-mono">{children}</code>
   );
 }

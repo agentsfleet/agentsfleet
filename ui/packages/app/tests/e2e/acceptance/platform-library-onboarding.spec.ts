@@ -41,12 +41,34 @@ const MISSING_REPO = "agentsfleet/definitely-not-a-fleet-bundle";
 // Owned by this suite so a leftover from an interrupted run can be swept.
 const UPLOADED_ENTRY_ID = "acceptance-uploaded-bundle";
 
-const IMPORT_TIMEOUT = 60_000;
+// How long this suite waits on an import, and why it is longer than the budget
+// the dashboard itself gives one. `ONBOARD_BUNDLE_TIMEOUT_MS` in
+// `lib/api/fleet-library.ts` is 30s; waiting past that means a real timeout
+// reaches the operator as the dialog's own message, which is what this suite
+// reads, rather than as this expectation expiring first and reporting a dialog
+// that never closed. At 60s the wait was longer than the budget in wall-clock
+// terms but the dialog stays open on error forever, so the run still burned the
+// full minute before saying anything useful — see `expectImportSucceeded`.
+const IMPORT_TIMEOUT = 45_000;
+// How often `expectImportSucceeded` re-reads the dialog. Short enough that a
+// failure is reported in about the time it took to fail, long enough that the
+// poll is not itself load on a remote environment.
+const IMPORT_POLL_INTERVAL_MS = 250;
+// What the backend answers when the bundle could not be fetched from its
+// source: `Error::code()` in `rustd/crates/afd_library/src/error.rs` maps every
+// `Source`, `Github`, `Archive` and `Redirect` failure to it. The dialog prints
+// the code, which is what lets this suite tell a third party's bad day from a
+// defect of ours.
+const UPSTREAM_FETCH_FAILED_CODE = "UZ-BUNDLE-004";
 const CLERK_TOKEN_EXPIRY_PROOF_MS = 70_000;
 // The longest walk in the suite: a GitHub import plus four identity switches
-// plus publish/unpublish round-trips, every leg a remote round-trip. Sized
-// off the import budget with room for those legs rather than a bare 2x.
-const PLATFORM_JOURNEY_TIMEOUT = IMPORT_TIMEOUT * 5;
+// plus publish/unpublish round-trips, every leg a remote round-trip. Five
+// minutes, the ceiling it has always carried, now stated rather than multiplied
+// off the import budget: the job itself stops at 13 minutes
+// (`.github/workflows/deploy-dev-acceptance.yml`), so a walk that tracked a
+// raised import budget as a multiple would outlive the job that runs it and
+// lose the per-test report in a job-level kill.
+const PLATFORM_JOURNEY_TIMEOUT = 300_000;
 
 async function gotoRejectedAdminPath(page: Page): Promise<void> {
   await page.goto(ADMIN_PATH).catch((error: unknown) => {
@@ -89,7 +111,7 @@ async function addSampleFleet(page: Page) {
   await page.getByRole("button", { name: /create fleet library/i }).click();
   await page.getByLabel(/repository/i).fill(SAMPLE_LIBRARY_REPO);
   await submitCreate(page);
-  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: IMPORT_TIMEOUT });
+  await expectImportSucceeded(page);
   await expect(sampleRow(page)).toBeVisible({ timeout: IMPORT_TIMEOUT });
   await expect(sampleRow(page).getByText("Draft")).toBeVisible();
 }
@@ -98,6 +120,44 @@ async function addSampleFleet(page: Page) {
 // the modal overlay and is not it.
 async function submitCreate(page: Page) {
   await page.getByRole("dialog").getByRole("button", { name: /^create$/i }).click();
+}
+
+// Waits for the import dialog to close, and reacts the moment it instead shows
+// its error — with that error's own words.
+//
+// Waiting only for the dialog to disappear is a blind wait: the dialog stays
+// open on failure, so a failed import burned the whole IMPORT_TIMEOUT and then
+// reported "expected 0, got 1", naming nothing. The run that sent us here spent
+// 64s to say that, when the dialog had been showing "The request timed out /
+// The backend took too long to answer" since second ten.
+//
+// The two failures are not the same kind of news, so they do not get the same
+// verdict. GitHub is a third party this suite does not control: it rate-limits,
+// it 5xxs, it goes down, and none of that is a defect in the dashboard. The
+// backend already draws that line — `Error::code()` in afd_library answers
+// UZ-BUNDLE-004 for every `Source`, `Github`, `Archive` and `Redirect` failure —
+// and the dialog prints the code, so the suite can read it rather than guess
+// from prose. That case SKIPS: the run moves on and says why. Everything else,
+// our own transport timeout above all, is ours and fails.
+async function expectImportSucceeded(page: Page) {
+  const dialog = page.getByRole("dialog");
+  // Scoped to the dialog: the page has its own toast `alert` region, and the
+  // one that means "this import failed" is the one inside the modal.
+  const failure = dialog.getByRole("alert");
+  const deadline = Date.now() + IMPORT_TIMEOUT;
+  while (Date.now() < deadline) {
+    if ((await dialog.count()) === 0) return;
+    if (await failure.isVisible().catch(() => false)) {
+      const reason = (await failure.innerText()).replace(/\s+/g, " ").trim();
+      test.skip(
+        reason.includes(UPSTREAM_FETCH_FAILED_CODE),
+        `GitHub could not serve the bundle (${UPSTREAM_FETCH_FAILED_CODE}); not a dashboard defect: ${reason}`,
+      );
+      throw new Error(`the import dialog reported a failure instead of closing: ${reason}`);
+    }
+    await page.waitForTimeout(IMPORT_POLL_INTERVAL_MS);
+  }
+  throw new Error(`the import dialog neither closed nor reported a failure within ${IMPORT_TIMEOUT}ms`);
 }
 
 // Removes the uploaded entry if it is there. Used both to self-heal an
@@ -202,7 +262,7 @@ test.describe("platform fleet catalog", () => {
     await page.getByLabel("TRIGGER.md").fill(triggerMd(UPLOADED_ENTRY_ID));
     await submitCreate(page);
 
-    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: IMPORT_TIMEOUT });
+    await expectImportSucceeded(page);
     const row = uploadedRow(page);
     await expect(row).toBeVisible({ timeout: IMPORT_TIMEOUT });
     // Same publish gate as every other source: an upload is not a shortcut into
