@@ -17,7 +17,7 @@
 
 use std::fmt;
 
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 
 /// Longest fleet name that fits the URL segments, log scopes and datastore keys
 /// it is used as.
@@ -45,9 +45,12 @@ impl FleetName {
     /// # Errors
     /// [`Error::InvalidName`] naming which rule was broken.
     pub fn parse(authored: &str) -> Result<Self> {
-        let refuse = |reason| Error::InvalidName {
-            name: authored.into(),
-            reason,
+        let refuse = |reason| {
+            ErrorKind::InvalidName {
+                name: authored.into(),
+                reason,
+            }
+            .into()
         };
 
         match authored.len() {
@@ -84,9 +87,12 @@ impl CredentialName {
     /// # Errors
     /// [`Error::InvalidCredentialRef`] naming which rule was broken.
     pub fn parse(authored: &str) -> Result<Self> {
-        let refuse = |reason| Error::InvalidCredentialRef {
-            name: authored.into(),
-            reason,
+        let refuse = |reason| {
+            ErrorKind::InvalidCredentialRef {
+                name: authored.into(),
+                reason,
+            }
+            .into()
         };
 
         match authored.len() {
@@ -126,9 +132,12 @@ impl Version {
     /// # Errors
     /// [`Error::InvalidVersion`] naming which rule was broken.
     pub fn parse(authored: &str) -> Result<Self> {
-        let refuse = |reason| Error::InvalidVersion {
-            version: authored.into(),
-            reason,
+        let refuse = |reason| {
+            ErrorKind::InvalidVersion {
+                version: authored.into(),
+                reason,
+            }
+            .into()
         };
 
         let parsed = semver::Version::parse(authored).map_err(|_invalid| {

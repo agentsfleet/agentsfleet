@@ -83,7 +83,7 @@ pub(crate) enum ErrorKind {
 impl Error {
     /// The registry code this failure answers with.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
@@ -107,7 +107,7 @@ impl Error {
 
     /// The sentence the caller is told.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
+    pub fn detail(&self) -> &'static str {
         match self.kind() {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Datastore { .. } => DETAIL_UNAVAILABLE,
@@ -122,7 +122,7 @@ impl Error {
 
     /// Whether the datastore or queue behind this crate could not be reached.
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
+    pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Credential { source } => source.is_datastore_unavailable(),
@@ -152,7 +152,7 @@ impl Error {
 }
 
 /// The sentence an unreachable datastore or queue earns.
-const DETAIL_UNAVAILABLE: &str = "Database unavailable";
+use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";

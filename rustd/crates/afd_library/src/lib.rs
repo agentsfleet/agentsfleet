@@ -10,7 +10,7 @@
 use {bytes as _, object_store as _, serde_json as _, tokio as _};
 
 mod catalogue;
-mod error;
+pub mod error;
 mod frontmatter;
 mod github;
 mod model;

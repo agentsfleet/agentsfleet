@@ -11,6 +11,9 @@
 use core::error::Error as _;
 
 use super::Error;
+use crate::error::{
+    ErrorKind, bounds_mismatch, duplicate, number_mismatch, stream_rejected, unknown_family,
+};
 use crate::metrics::registry::{CENSUS, Registry};
 
 /// The family the data-only fixtures are built around. One name, so a reader
@@ -41,28 +44,14 @@ fn census_failure() -> Error {
 fn every_variant() -> Vec<Error> {
     vec![
         census_failure(),
-        Error::Duplicate {
-            family: FAMILY.into(),
-            first: 17,
-            second: 42,
-        },
-        Error::BoundsMismatch {
-            family: FAMILY.into(),
-            kind: "counter",
-            bounds: 13,
-        },
-        Error::StreamRejected {
-            family: "agentsfleet.api.request.duration".into(),
-            reason: "Cardinality limit must be greater than 0".into(),
-        },
-        Error::UnknownFamily {
-            family: "agentsfleet.nothing.declares.this".into(),
-        },
-        Error::NumberMismatch {
-            family: FAMILY.into(),
-            declared: "u64",
-            claimed: "f64",
-        },
+        duplicate(FAMILY, 17, 42),
+        bounds_mismatch(FAMILY, "counter", 13),
+        stream_rejected(
+            "agentsfleet.api.request.duration",
+            "Cardinality limit must be greater than 0",
+        ),
+        unknown_family("agentsfleet.nothing.declares.this"),
+        number_mismatch(FAMILY, "u64", "f64"),
     ]
 }
 
@@ -99,7 +88,7 @@ fn test_observability_error_chain_shape() {
 #[test]
 fn test_data_only_variants_invent_no_cause() {
     for error in every_variant() {
-        if matches!(error, Error::Census(_)) {
+        if matches!(error.kind(), ErrorKind::Census { .. }) {
             continue;
         }
         assert!(
@@ -139,10 +128,8 @@ fn test_reader_failures_lift_through_the_question_mark() {
         let registry = Registry::read(census)?;
         Ok(registry.len())
     }
-    assert!(matches!(
-        lifting(&malformed_census()),
-        Err(Error::Census(_))
-    ));
+    let lifted = lifting(&malformed_census());
+    assert!(lifted.is_err_and(|refusal| refusal.is_unreadable()));
 }
 
 /// The composed variant forwards the reader's own sentence rather than wrapping
@@ -151,10 +138,13 @@ fn test_reader_failures_lift_through_the_question_mark() {
 #[test]
 fn test_the_composed_variant_forwards_its_readers_sentence() {
     let error = census_failure();
-    let Error::Census(ref inner) = error else {
+    let ErrorKind::Census { source: inner } = error.kind() else {
         unreachable!("a malformed census fails through the reader");
     };
-    assert_eq!(error.to_string(), inner.to_string());
+    assert_eq!(
+        error.to_string(),
+        format!("[{}] {inner}", error.code().as_str())
+    );
 }
 
 /// The alias defaults to this crate's own error, which is what lets a signature
@@ -162,9 +152,10 @@ fn test_the_composed_variant_forwards_its_readers_sentence() {
 #[test]
 fn test_result_alias_defaults_to_this_crates_error() {
     fn fallible() -> super::Result<u8> {
-        Err(Error::UnknownFamily {
-            family: "unasked".into(),
-        })
+        Err(unknown_family("unasked"))
     }
-    assert!(matches!(fallible(), Err(Error::UnknownFamily { .. })));
+    let refused = fallible();
+    assert!(
+        refused.is_err_and(|refusal| matches!(refusal.kind(), ErrorKind::UnknownFamily { .. }))
+    );
 }

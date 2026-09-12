@@ -10,7 +10,7 @@
 )]
 
 use super::{Counter, Gauge, Histogram, Metric};
-use crate::error::Error;
+use crate::error::ErrorKind;
 use crate::metrics::registry::{Kind, Registry};
 
 /// A counter the census really declares. One binding, because the same name is
@@ -70,16 +70,19 @@ fn test_a_family_whose_type_matches_the_census_resolves() {
 /// the consequence would be an instrument built with the wrong aggregation.
 #[test]
 fn test_a_type_contradicting_the_census_is_refused() {
-    let Err(Error::KindMismatch {
+    let Err(refusal) = declared().histogram(&BackpressureRejectionsMisdeclared) else {
+        unreachable!("a type claiming a kind the census contradicts must not resolve");
+    };
+    let ErrorKind::KindMismatch {
         declared: on_disk,
         claimed,
         ..
-    }) = declared().histogram(&BackpressureRejectionsMisdeclared)
+    } = refusal.kind()
     else {
-        unreachable!("a type claiming a kind the census contradicts must not resolve");
+        unreachable!("the contradiction is a kind mismatch");
     };
-    assert_eq!(on_disk, "counter");
-    assert_eq!(claimed, "histogram");
+    assert_eq!(*on_disk, "counter");
+    assert_eq!(*claimed, "histogram");
 }
 
 /// A type naming a family nothing declares is refused before any kind check —
@@ -87,10 +90,11 @@ fn test_a_type_contradicting_the_census_is_refused() {
 /// one.
 #[test]
 fn test_a_type_naming_an_undeclared_family_is_refused() {
-    assert!(matches!(
-        declared().counter(&Invented),
-        Err(Error::UnknownFamily { .. })
-    ));
+    let registry = declared();
+    let refused = registry.counter(&Invented);
+    assert!(
+        refused.is_err_and(|refusal| matches!(refusal.kind(), ErrorKind::UnknownFamily { .. }))
+    );
 }
 
 /// The kind check DISCRIMINATES — it is not a rubber stamp.
@@ -112,13 +116,16 @@ fn test_the_kind_check_refuses_the_two_kinds_a_family_is_not() {
         registry.counter(&InFlightRequests).err(),
         registry.histogram(&InFlightRequests).err(),
     ] {
-        let Some(Error::KindMismatch {
-            declared: on_disk, ..
-        }) = wrong
-        else {
+        let Some(refusal) = wrong else {
             unreachable!("a gauge resolved as a counter or histogram must be refused");
         };
-        assert_eq!(on_disk, "gauge");
+        let ErrorKind::KindMismatch {
+            declared: on_disk, ..
+        } = refusal.kind()
+        else {
+            unreachable!("the refusal names the kind the census declares");
+        };
+        assert_eq!(*on_disk, "gauge");
     }
 }
 

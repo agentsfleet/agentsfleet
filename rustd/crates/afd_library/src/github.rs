@@ -6,6 +6,7 @@ use std::time::Duration;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt as _;
 
+use crate::error::ErrorKind;
 use crate::{BundleSource, Error, ImportBody, Result, SourceFailure, SourceKind, SupportFile};
 
 const API_HOST: &str = "api.github.com";
@@ -92,7 +93,7 @@ impl GithubSource {
             .timeout(REQUEST_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(Error::Github)?;
+            .map_err(|source| Error::from(ErrorKind::Github { source }))?;
         Ok(Self {
             client,
             api_base: format!("https://{API_HOST}"),
@@ -143,7 +144,7 @@ impl GithubSource {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .send()
             .await
-            .map_err(Error::Github)
+            .map_err(|source| Error::from(ErrorKind::Github { source }))
     }
 }
 
@@ -155,7 +156,7 @@ impl BundleSource for GithubSource {
         let revision = self.revision.clone();
         tokio::task::spawn_blocking(move || extract(&compressed, &reference, &revision))
             .await
-            .map_err(Error::ArchiveTask)?
+            .map_err(|source| Error::from(ErrorKind::ArchiveTask { source }))?
     }
 }
 
@@ -169,11 +170,11 @@ async fn response_bytes(response: reqwest::Response) -> Result<Vec<u8>> {
         .map_or(0, |length| length.min(MAX_COMPRESSED_BYTES));
     let mut response = response
         .error_for_status()
-        .map_err(Error::Github)?
+        .map_err(|source| Error::from(ErrorKind::Github { source }))?
         .bytes_stream();
     let mut bytes = Vec::with_capacity(capacity);
     while let Some(chunk) = response.next().await {
-        let chunk = chunk.map_err(Error::Github)?;
+        let chunk = chunk.map_err(|source| Error::from(ErrorKind::Github { source }))?;
         if bytes.len().saturating_add(chunk.len()) > MAX_COMPRESSED_BYTES {
             return Err(SourceFailure::ArchiveTooLarge.into());
         }
@@ -191,7 +192,8 @@ fn classify_status(status: u16) -> Option<SourceFailure> {
 }
 
 fn validate_redirect(location: &str) -> Result<()> {
-    let url = reqwest::Url::parse(location).map_err(Error::Redirect)?;
+    let url = reqwest::Url::parse(location)
+        .map_err(|source| Error::from(ErrorKind::Redirect { source }))?;
     let allowed_host = matches!(url.host_str(), Some(API_HOST | CODELOAD_HOST));
     if url.scheme() == "https" && allowed_host {
         Ok(())
@@ -216,7 +218,9 @@ fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportB
     }
     let mut decoder = GzDecoder::new(compressed).take(MAX_EXPANDED_BYTES + 1);
     let mut expanded = Vec::with_capacity(compressed.len());
-    decoder.read_to_end(&mut expanded).map_err(Error::Archive)?;
+    decoder
+        .read_to_end(&mut expanded)
+        .map_err(|source| Error::from(ErrorKind::Archive { source }))?;
     if u64::try_from(expanded.len()).is_err() || expanded.len() as u64 > MAX_EXPANDED_BYTES {
         return Err(SourceFailure::ArchiveTooLarge.into());
     }
@@ -228,12 +232,14 @@ fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBo
     let mut trigger = None;
     let mut support_files = Vec::with_capacity(crate::validate::MAX_SUPPORT_FILES);
     let mut archive = tar::Archive::new(bytes);
-    let entries = archive.entries().map_err(Error::Archive)?;
+    let entries = archive
+        .entries()
+        .map_err(|source| Error::from(ErrorKind::Archive { source }))?;
     for (index, entry) in entries.enumerate() {
         if index >= MAX_TAR_ENTRIES {
             return Err(SourceFailure::TooManyFiles.into());
         }
-        let mut entry = entry.map_err(Error::Archive)?;
+        let mut entry = entry.map_err(|source| Error::from(ErrorKind::Archive { source }))?;
         if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
             return Err(SourceFailure::UnsafeArchive.into());
         }
@@ -248,7 +254,9 @@ fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBo
         let capacity =
             usize::try_from(entry.size()).map_err(|_overflow| SourceFailure::ArchiveTooLarge)?;
         let mut content = Vec::with_capacity(capacity);
-        entry.read_to_end(&mut content).map_err(Error::Archive)?;
+        entry
+            .read_to_end(&mut content)
+            .map_err(|source| Error::from(ErrorKind::Archive { source }))?;
         match path.as_str() {
             SKILL_PATH if skill.is_none() => skill = Some(content),
             TRIGGER_PATH if trigger.is_none() => trigger = Some(content),
@@ -267,7 +275,8 @@ fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBo
 }
 
 fn safe_relative(raw: &[u8]) -> Result<Option<String>> {
-    let path = core::str::from_utf8(raw).map_err(Error::ArchivePath)?;
+    let path = core::str::from_utf8(raw)
+        .map_err(|source| Error::from(ErrorKind::ArchivePath { source }))?;
     if path.starts_with('/') || path.contains('\\') || path.contains('\0') {
         return Err(SourceFailure::UnsafeArchive.into());
     }

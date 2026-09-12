@@ -9,7 +9,7 @@
 use std::num::NonZeroU32;
 
 use crate::config::raw;
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result, missing};
 
 /// The key naming a rule's repeat count.
 const THRESHOLD_COUNT: &str = "threshold_count";
@@ -47,7 +47,7 @@ impl TryFrom<raw::AnomalyRule> for AnomalyRule {
 
     fn try_from(authored: raw::AnomalyRule) -> Result<Self> {
         Ok(Self {
-            pattern: authored.pattern.ok_or_else(|| Error::missing(PATTERN))?,
+            pattern: authored.pattern.ok_or_else(|| missing(PATTERN))?,
             repeats: threshold(
                 THRESHOLD_COUNT,
                 authored.threshold_count,
@@ -72,17 +72,21 @@ impl TryFrom<raw::AnomalyRule> for AnomalyRule {
 /// [`Error::MissingRequiredField`] when absent, [`Error::InvalidThreshold`]
 /// when zero or above `cap`.
 fn threshold(field: &'static str, authored: Option<u32>, cap: u32) -> Result<NonZeroU32> {
-    let value = authored.ok_or_else(|| Error::missing(field))?;
+    let value = authored.ok_or_else(|| missing(field))?;
 
     if value > cap {
-        return Err(Error::InvalidThreshold {
+        return Err(ErrorKind::InvalidThreshold {
             field,
             reason: REASON_ABOVE_CAP,
-        });
+        }
+        .into());
     }
 
-    NonZeroU32::new(value).ok_or(Error::InvalidThreshold {
-        field,
-        reason: REASON_ZERO,
-    })
+    NonZeroU32::new(value).ok_or(
+        ErrorKind::InvalidThreshold {
+            field,
+            reason: REASON_ZERO,
+        }
+        .into(),
+    )
 }

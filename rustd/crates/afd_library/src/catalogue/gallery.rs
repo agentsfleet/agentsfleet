@@ -33,7 +33,8 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use super::{Libraries, LibraryRequirements, VISIBILITY_PUBLIC};
-use crate::{Error, Result};
+use crate::Result;
+use crate::error::database;
 
 /// The context a failed gallery read reports under.
 const CONTEXT_GALLERY: &str = "list a workspace's fleet libraries";
@@ -186,7 +187,7 @@ impl Libraries {
         let rows = statement
             .fetch_all(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_GALLERY))?;
+            .map_err(database(CONTEXT_GALLERY))?;
 
         let has_more = rows.len() > limit as usize;
         let items: Vec<SummaryEntry> = rows
@@ -217,7 +218,7 @@ fn position_of(entry: &SummaryEntry) -> Position {
 /// projection and this function are one contract, and reading by name would
 /// hide a projection that had drifted out of order.
 fn decode(row: &PgRow) -> Result<SummaryEntry> {
-    let unreadable = Error::database(CONTEXT_GALLERY);
+    let unreadable = database(CONTEXT_GALLERY);
     let id: String = row.try_get(0).map_err(&unreadable)?;
     let name: String = row.try_get(1).map_err(&unreadable)?;
     let description: String = row.try_get(2).map_err(&unreadable)?;
@@ -236,8 +237,7 @@ fn decode(row: &PgRow) -> Result<SummaryEntry> {
         description,
         // The rank is mapped back to its tier HERE, so a rank this build cannot
         // name is a loud failure rather than a bare number in a response body.
-        tier: Tier::from_rank(rank)
-            .ok_or_else(|| Error::database(CONTEXT_GALLERY)(unknown(rank)))?,
+        tier: Tier::from_rank(rank).ok_or_else(|| database(CONTEXT_GALLERY)(unknown(rank)))?,
         source_ref,
         created_at_ms,
         requirements: LibraryRequirements::new(

@@ -4,7 +4,8 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 
 use super::super::{MAX_ENTRY_BYTES, MAX_TAR_ENTRIES, extract};
-use crate::{Error, SourceFailure};
+use crate::SourceFailure;
+use crate::error::ErrorKind;
 
 fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
@@ -27,13 +28,11 @@ fn archives_enforce_entry_count_and_entry_size_ceilings() {
     let compressed = gzip(&tar.into_inner().expect("fixture tar finishes"));
     assert!(matches!(
         extract(&compressed, "agentsfleet/reviewer", "main"),
-        Err(Error::Source(SourceFailure::TooManyFiles))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::TooManyFiles))));
 
     let content = vec![0_u8; usize::try_from(MAX_ENTRY_BYTES + 1).expect("limit fits")];
     let compressed = super::archive(&[("wrapper/SKILL.md", &content)]);
     assert!(matches!(
         extract(&compressed, "agentsfleet/reviewer", "main"),
-        Err(Error::Source(SourceFailure::ArchiveTooLarge))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::ArchiveTooLarge))));
 }

@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use garde::Validate as _;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result, missing};
 use crate::name::{CredentialName, FleetName};
 use crate::provider::{ProviderRegistry, StaticRegistry};
 
@@ -163,17 +163,19 @@ impl FleetConfig {
             .keys()
             .find(|key| RUNTIME_KEYS.contains(&key.as_str()))
         {
-            return Err(Error::RuntimeKeyOutsideBlock {
+            return Err(Error::from(ErrorKind::RuntimeKeyOutsideBlock {
                 field: misplaced.as_str().into(),
-            });
+            }));
         }
 
-        let mut runtime = parsed.runtime.ok_or(Error::RuntimeBlockRequired)?;
+        let mut runtime = parsed
+            .runtime
+            .ok_or(Error::from(ErrorKind::RuntimeBlockRequired))?;
 
         if let Some(unknown) = runtime.extra.keys().next() {
-            return Err(Error::UnknownRuntimeKey {
+            return Err(Error::from(ErrorKind::UnknownRuntimeKey {
                 field: unknown.as_str().into(),
-            });
+            }));
         }
 
         // Taken before the struct is consumed field-by-field: the binding
@@ -184,16 +186,16 @@ impl FleetConfig {
         Ok(Self {
             name: parsed
                 .name
-                .ok_or_else(|| Error::missing(NAME))
+                .ok_or_else(|| missing(NAME))
                 .and_then(|authored| FleetName::parse(&authored))?,
             triggers: trigger::parse_set(
-                runtime.triggers.ok_or_else(|| Error::missing(TRIGGERS))?,
+                runtime.triggers.ok_or_else(|| missing(TRIGGERS))?,
                 providers,
             )?,
             // Already bounded by the schema, so this is ownership only.
             tools: runtime
                 .tools
-                .ok_or_else(|| Error::missing(TOOLS))?
+                .ok_or_else(|| missing(TOOLS))?
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -209,7 +211,7 @@ impl FleetConfig {
             network: runtime.network.map(Network::try_from).transpose()?,
             budget: runtime
                 .budget
-                .ok_or_else(|| Error::missing(BUDGET))
+                .ok_or_else(|| missing(BUDGET))
                 .and_then(Budget::try_from)?,
             gates: runtime.gates.map(GatePolicy::try_from).transpose()?,
             repository_binding,

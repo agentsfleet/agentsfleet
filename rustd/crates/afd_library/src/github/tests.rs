@@ -11,7 +11,8 @@ use super::{
     GithubSource, Repository, classify_status, extract, safe_relative, valid_revision,
     validate_redirect,
 };
-use crate::{BundleSource, Error, SourceFailure};
+use crate::error::ErrorKind;
+use crate::{BundleSource, SourceFailure};
 
 const LENGTH_FITS: &str = "fixture length fits";
 const TAR_FINISHES: &str = "fixture tar finishes";
@@ -95,8 +96,7 @@ fn repository_parser_owns_url_segment_safety() {
     ] {
         assert!(matches!(
             Repository::parse(invalid),
-            Err(Error::Source(SourceFailure::InvalidReference))
-        ));
+            Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::InvalidReference))));
     }
 }
 
@@ -116,8 +116,7 @@ fn github_archive_strips_wrapper_and_rejects_traversal() {
     let hostile = traversal_archive();
     assert!(matches!(
         extract(&hostile, "agentsfleet/reviewer", "main"),
-        Err(Error::Source(SourceFailure::UnsafeArchive))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::UnsafeArchive))));
 }
 
 #[test]
@@ -126,8 +125,7 @@ fn github_archive_classifies_truncation() {
     bytes.truncate(bytes.len() / 2);
     assert!(matches!(
         extract(&bytes, "agentsfleet/reviewer", "main"),
-        Err(Error::Archive(_) | Error::Source(SourceFailure::Truncated))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Archive { .. } | ErrorKind::Source(SourceFailure::Truncated))));
 }
 
 #[test]
@@ -149,8 +147,7 @@ fn revisions_and_redirects_accept_only_safe_github_segments() {
         assert!(!valid_revision(invalid), "{invalid}");
         assert!(matches!(
             GithubSource::new(invalid),
-            Err(Error::Source(SourceFailure::InvalidReference))
-        ));
+            Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::InvalidReference))));
     }
 
     for allowed in [
@@ -191,11 +188,11 @@ fn archive_requires_one_skill_and_preserves_optional_content() {
         ]),
     ] {
         assert!(matches!(
-            extract(&malformed, "agentsfleet/reviewer", "main"),
-            Err(Error::Source(
-                SourceFailure::Truncated | SourceFailure::UnsafeArchive
-            ))
-        ));
+        extract(&malformed, "agentsfleet/reviewer", "main"),
+        Err(refusal) if matches!(
+            refusal.kind(),
+            ErrorKind::Source(SourceFailure::Truncated | SourceFailure::UnsafeArchive)
+        )));
     }
 }
 
@@ -203,12 +200,10 @@ fn archive_requires_one_skill_and_preserves_optional_content() {
 fn archive_and_relative_path_bounds_fail_closed() {
     assert!(matches!(
         extract(&[], "agentsfleet/reviewer", "main"),
-        Err(Error::Source(SourceFailure::Truncated))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::Truncated))));
     assert!(matches!(
         extract(b"not gzip", "agentsfleet/reviewer", "main"),
-        Err(Error::Archive(_))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Archive { .. })));
 
     for unsafe_path in [
         b"/wrapper/SKILL.md".as_slice(),
@@ -263,8 +258,7 @@ async fn github_fetch_preserves_actionable_status_classes() {
             .pointed_at(serve(status, Vec::new()));
         assert!(matches!(
             source.fetch("agentsfleet/reviewer").await,
-            Err(Error::Source(actual)) if actual == expected
-        ));
+            Err(actual) if matches!(actual.kind(), ErrorKind::Source(class) if *class == expected)));
     }
 
     let source = GithubSource::new("main")
@@ -272,8 +266,7 @@ async fn github_fetch_preserves_actionable_status_classes() {
         .pointed_at(serve("500 Internal Server Error", Vec::new()));
     assert!(matches!(
         source.fetch("agentsfleet/reviewer").await,
-        Err(Error::Github(_))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Github { .. })));
 }
 
 mod limits;
