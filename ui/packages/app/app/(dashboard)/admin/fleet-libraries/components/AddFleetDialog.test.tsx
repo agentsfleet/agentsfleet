@@ -13,6 +13,7 @@ const captureProductEventMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({
   onboardPlatformLibraryAction: (...args: unknown[]) => onboardPlatformLibraryActionMock(...args),
+  readPlatformLibraryAction: () => Promise.resolve({ ok: true, data: { entries: [] } }),
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: (...args: unknown[]) => captureProductEventMock(...args),
@@ -44,7 +45,7 @@ function Harness({ prefillRepo, prefillRef }: { prefillRepo?: string; prefillRef
       <Button type="button" onClick={() => setOpen(true)}>
         open
       </Button>
-      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} prefillRef={prefillRef} />
+      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} prefillRef={prefillRef} entries={[]} />
     </TooltipProvider>
   );
 }
