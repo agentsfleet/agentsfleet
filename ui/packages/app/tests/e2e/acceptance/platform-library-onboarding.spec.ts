@@ -41,12 +41,23 @@ const MISSING_REPO = "agentsfleet/definitely-not-a-fleet-bundle";
 // Owned by this suite so a leftover from an interrupted run can be swept.
 const UPLOADED_ENTRY_ID = "acceptance-uploaded-bundle";
 
-const IMPORT_TIMEOUT = 60_000;
+// How long this suite waits on an import, and why it is longer than the budget
+// the dashboard itself gives one. `ONBOARD_BUNDLE_TIMEOUT_MS` in
+// `lib/api/fleet-library.ts` is 90s, sized above the backend's GitHub fetch
+// ceiling; waiting past that means a real timeout reaches the operator as the
+// dialog's own message, which is what this suite reads, rather than as this
+// expectation expiring first and reporting a dialog that never closed.
+// At 60s — below the dashboard's own budget — it did exactly that.
+const IMPORT_TIMEOUT = 105_000;
 const CLERK_TOKEN_EXPIRY_PROOF_MS = 70_000;
 // The longest walk in the suite: a GitHub import plus four identity switches
-// plus publish/unpublish round-trips, every leg a remote round-trip. Sized
-// off the import budget with room for those legs rather than a bare 2x.
-const PLATFORM_JOURNEY_TIMEOUT = IMPORT_TIMEOUT * 5;
+// plus publish/unpublish round-trips, every leg a remote round-trip. Five
+// minutes, the ceiling it has always carried, now stated rather than multiplied
+// off the import budget: the job itself stops at 13 minutes
+// (`.github/workflows/deploy-dev-acceptance.yml`), so a walk that tracked a
+// raised import budget as a multiple would outlive the job that runs it and
+// lose the per-test report in a job-level kill.
+const PLATFORM_JOURNEY_TIMEOUT = 300_000;
 
 async function gotoRejectedAdminPath(page: Page): Promise<void> {
   await page.goto(ADMIN_PATH).catch((error: unknown) => {

@@ -35,6 +35,26 @@ const platformEntryPath = (id: string) =>
 // round-trip can buy.
 const GALLERY_PAGE_LIMIT = 100;
 
+// What an onboard POST is allowed to take, and why it is not the transport's
+// default. Onboarding is the one write on this surface that waits on a third
+// party: the backend fetches the repository tarball from GitHub before it
+// validates, stores or upserts anything. `rustd/crates/afd_library/src/github.rs`
+// gives that fetch `CONNECT_TIMEOUT` 5s plus `REQUEST_TIMEOUT` 60s, so 65s is
+// the backend's own ceiling on the fetch alone; the tar extraction, the
+// object-store write, the catalog upsert and the round trip come after it.
+//
+// `DEFAULT_REQUEST_TIMEOUT_MS` is 10s, and a POST gets `maxAttempts: 1`. Without
+// a signal of its own the dialog therefore abandoned the import at 10 seconds —
+// reporting "the backend took too long to answer" while the daemon was still
+// legitimately fetching — for any repository GitHub served slower than that.
+// An explicit `init.signal` wins over the default in `client.ts`, and with one
+// attempt the retry deadline never cuts it short.
+// Exported for the pin in `fleet-library.test.ts`, which holds it above the
+// backend's fetch ceiling the way `client.defaults.test.ts` holds the transport
+// default equal to the stream backfill's — a pin, not an import, so neither
+// module depends on the other.
+export const ONBOARD_BUNDLE_TIMEOUT_MS = 90_000;
+
 /** One wire page: `items` is that page alone, `next_cursor` null on the last. */
 type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
   total: number | null;
@@ -80,7 +100,11 @@ export async function onboardWorkspaceFleetLibrary(
 ): Promise<OnboardedLibraryEntry> {
   return request<OnboardedLibraryEntry>(
     workspaceFleetLibrariesPath(workspaceId),
-    { method: "POST", body: JSON.stringify(body) },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
+    },
     token,
   );
 }
@@ -100,7 +124,11 @@ export async function onboardPlatformFleetLibrary(
 ): Promise<OnboardedPlatformLibraryEntry> {
   return request<OnboardedPlatformLibraryEntry>(
     PLATFORM_FLEET_LIBRARIES_PATH,
-    { method: "POST", body: JSON.stringify(body) },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
+    },
     token,
   );
 }
