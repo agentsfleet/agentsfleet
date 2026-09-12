@@ -14,7 +14,7 @@ export default function ExhaustionBanner({ billing }: Props) {
         <AlertTitle>Your credit balance is exhausted.</AlertTitle>
         <AlertDescription className="text-destructive/80">
           New Fleet runs follow the server{"'"}s{" "}
-          <code className="font-mono text-xs">BALANCE_EXHAUSTED_POLICY</code>{" "}
+          <code className="font-mono text-mono leading-mono">BALANCE_EXHAUSTED_POLICY</code>{" "}
           (continue, warn, or stop).{" "}
           {billing.exhausted_at ? (
             <>

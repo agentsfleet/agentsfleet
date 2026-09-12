@@ -101,7 +101,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
           <Time
             value={new Date(lease.created_at)}
             format="relative"
-            className="font-mono text-xs text-muted-foreground tabular-nums"
+            className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
           />
         ),
       },
@@ -111,7 +111,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         numeric: true,
         hideOnMobile: true,
         cell: (lease) => (
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          <span className="font-mono text-mono leading-mono text-muted-foreground tabular-nums">
             {lease.wall_ms === null ? VALUE_UNKNOWN : formatMs(lease.wall_ms)}
           </span>
         ),
@@ -168,7 +168,7 @@ function WorkspaceCell({ lease }: { lease: RunnerLease }) {
   return (
     <span className="flex min-w-0 items-center gap-md">
       <Link
-        className="truncate font-mono text-sm text-pulse no-underline"
+        className="truncate font-mono text-mono leading-mono text-pulse no-underline"
         href={workspacePath(lease.workspace_id, DEFAULT_WORKSPACE_SUBPATH)}
         title={lease.workspace_id}
         onClick={(event) => event.stopPropagation()}

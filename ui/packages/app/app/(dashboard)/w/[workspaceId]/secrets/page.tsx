@@ -36,7 +36,7 @@ export default async function SecretsPage({
 
       <Section asChild>
         <section aria-label="Secrets">
-          <SectionHeader actions={<AddSecretDialog workspaceId={workspaceId} />}>
+          <SectionHeader as="p" actions={<AddSecretDialog workspaceId={workspaceId} />}>
             Manage secrets
           </SectionHeader>
 

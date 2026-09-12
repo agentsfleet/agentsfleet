@@ -54,7 +54,7 @@ export function RetryCountdownRing({ progress, label }: { progress: number; labe
           data-testid="retry-ring-progress"
         />
       </svg>
-      <span className="absolute font-mono text-body-sm tabular-nums text-foreground">{label}</span>
+      <span className="absolute font-mono text-mono leading-mono tabular-nums text-foreground">{label}</span>
     </div>
   );
 }

@@ -98,7 +98,7 @@ function BindList({ binds }: { binds: ExtraBind[] }) {
       {binds.map((bind) => {
         const mode = bind.mode ?? BIND_MODE.read_only;
         return (
-          <li key={bind.path} className="flex flex-wrap items-baseline gap-sm font-mono text-body-sm">
+          <li key={bind.path} className="flex flex-wrap items-baseline gap-sm font-mono text-mono leading-mono">
             <span className="text-foreground">{bind.path}</span>
             {/* A writable mount is never reported quietly — tenant agent code
                 can modify host state outside its workspace through it. */}

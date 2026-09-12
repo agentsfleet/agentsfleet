@@ -38,12 +38,19 @@ Do not redefine a font family in a consumer stylesheet.
 | body | 15px | Default reading and controls |
 | body-sm | 14px | Supporting copy and navigation |
 | eyebrow / label | 12px | Short metadata and section labels |
-| mono | 13px | Technical content |
+| mono | 13px | Technical content, and the density step for table cells |
 
 Use sentence case for controls and navigation.
 Uppercase is reserved for short eyebrows and compact status labels.
 Use tabular numerals for changing values and aligned numeric columns.
 Do not use mono for an entire table when its rows contain names and descriptions.
+
+13px is the one step that carries two families. In Commit Mono it is technical
+content, which is what the token is named for. In Instrument Sans it is the
+density step for table cells, and only there — a table trades a little reading
+size for the rows it can show at once, and every `DataTable` has read at 13px
+since the primitive shipped. Outside a table the smallest sans step is
+`body-sm` at 14px.
 
 ## Color
 
@@ -255,5 +262,6 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-07-22 | Give each Fleet a deterministic robot sigil and agent callsign | The Fleet wall needed persistent identity without adopting friendly mascots or obscuring functional names. The immutable fleet id seeds mirrored geometry and a stable callsign; live Fleets alone use the existing pulse colour and wake ring. The tile also states that a Fleet is an AI agent and exposes a visible Manage fleet affordance. |
 | 2026-07-23 | Fleet detail supports an operational conversation | Operators can steer a fleet in a centered transcript alongside evidence from GitHub, Slack, Zoho, Grafana, logs, and other sources. Human turns are distinct from source-context cards; fleet replies remain evidence-first and never use generic consumer-chat styling. |
 | 2026-09-05 | Clear Signal: sans interface, expressive display, flat surfaces | User approved brighter clarity, retained mint, and removal of gradients across app and website. |
+| 2026-09-13 | 13px carries a sans role as well as a mono one | An audit measured every `DataTable` cell at 13px sans (`DataTableView.tsx:279` sets `font-sans text-mono`) while the scale gave 13px only to mono, making the smallest documented sans step 14px. Code and doc disagreed; the code was right. Table density was a deliberate choice — `Pagination.tsx` reasons about it — so the step is documented rather than removed, and no rendered size changed. |
 
 The flat-fill rule is enforced by `audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.
