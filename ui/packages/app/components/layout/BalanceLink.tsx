@@ -76,12 +76,14 @@ export function BalanceLink({
       )}
     >
       <span className="font-sans text-label text-muted-foreground">{BALANCE_LABEL}</span>
-      {/* A step up in size and weight from the label beside it: at the label's
-          own scale the mint read as a tint on small text rather than as the
-          figure the header exists to carry. */}
+      {/* Two steps up in size from the label beside it, and the header's
+          largest type: at body size the mint still read as a tint on small
+          text rather than as the figure the header exists to carry. --pulse
+          is already the brightest mint in the palette, so the brightness has
+          to come from the size and the weight. */}
       <span
         className={cn(
-          "font-mono text-body font-semibold tabular-nums",
+          "font-mono text-body-lg font-semibold leading-body-sm tabular-nums",
           isExhausted ? "text-destructive" : "text-pulse",
         )}
       >
