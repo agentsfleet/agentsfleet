@@ -108,12 +108,16 @@ describe("Home", () => {
     renderHome();
     const capabilities = screen.getByTestId("core-capabilities");
     expect(within(capabilities).getByText(/core capabilities/i)).toBeInTheDocument();
+    // The runtime-guarantees label names its group without claiming heading
+    // rank: it sat at 12px among 20px sibling <h3>s (FINDING-M03). The group is
+    // a <section aria-labelledby> pointing at it, so the accessible name holds.
+    const guarantees = within(capabilities).getByRole("region", {
+      name: RUNTIME_GUARANTEES_LABEL,
+    });
+    expect(guarantees).toBeInTheDocument();
     expect(
-      within(capabilities).getByRole("heading", {
-        level: 3,
-        name: RUNTIME_GUARANTEES_LABEL,
-      }),
-    ).toBeInTheDocument();
+      within(capabilities).queryByRole("heading", { name: RUNTIME_GUARANTEES_LABEL }),
+    ).not.toBeInTheDocument();
     for (const pillar of FLEET_PILLARS) {
       expect(screen.getByTestId(`capability-pillar-${pillar.id}`)).toHaveTextContent(
         pillar.title,

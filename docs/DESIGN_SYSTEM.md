@@ -34,7 +34,7 @@ Do not redefine a font family in a consumer stylesheet.
 | display-lg | 40px maximum | Website sections |
 | display-md | 28px | App titles and major values |
 | heading | 20px | Working sections and card headings |
-| body-lg | 18px | Website introductions |
+| body-lg | 18px | Website introductions, and the fleet chat transcript |
 | body | 15px | Default reading and controls |
 | body-sm | 14px | Supporting copy and navigation |
 | eyebrow / label | 12px | Short metadata and section labels |
