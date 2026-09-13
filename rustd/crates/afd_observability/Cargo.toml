@@ -29,6 +29,9 @@ afd_core.workspace = true
 # never authored here: an outcome this crate spelled for itself would be a
 # second vocabulary the wire does not know about.
 afd_wire.workspace = true
+# The per-runner series table: a lookup on every record, from every request
+# task in the process at once — see `runner`.
+dashmap.workspace = true
 # The span pipeline. The SDK builds and exports; the API crate beside it is
 # what the delivery span is CONSTRUCTED through — a synthesized span sets its
 # own start and end, which is a `SpanBuilder` and not a scope, so this crate

@@ -30,6 +30,9 @@ afd_core.workspace = true
 backon.workspace = true
 # The readiness partition of a fleet — see `ready::partition`.
 crc16.workspace = true
+# The hub's channel table, keyed by channel: one shard per subscribe,
+# release or dispatch rather than the whole map — see `hub`.
+dashmap.workspace = true
 futures-util.workspace = true
 # The outbound consumer name, which has to survive a restart — see
 # `outbound::outbound_consumer`.

@@ -167,7 +167,7 @@ async fn pump(
                 // a channel nobody holds is the echo of our own SUNSUBSCRIBE.
                 Some(PushInfo { kind: PushKind::SUnsubscribe, data }) => {
                     if let Some(channel) = channel_of(&data)
-                        && inner.live_channels().contains(&channel)
+                        && inner.holds_channel(&channel)
                     {
                         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
                         let channel_name = channel.as_str();
