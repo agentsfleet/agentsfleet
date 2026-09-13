@@ -1,8 +1,14 @@
 //! `core.fleet_admissions` — every statement that touches the table.
 //!
-//! Private to the crate: only the ledger binds these, so nothing outside it
-//! can run one with the parameters in another order. The `$n` order is
-//! written once, here, beside the text it orders.
+//! Private to the crate with one exception, so nothing outside it can run a
+//! statement with the parameters in another order. The `$n` order is written
+//! once, here, beside the text it orders.
+//!
+//! [`MARK_DELIVERED`] is public because the lease path runs it on the
+//! connection that just opened the narrative log, and a method here would take
+//! a second connection from the pool to write one column. That is the shape
+//! `afd_events::sql` already uses for the same reason: the table's owner keeps
+//! the text, the writer keeps its `bind` chain.
 
 /// Commit an admission, or find the one an earlier call committed.
 ///
@@ -113,3 +119,92 @@ WHERE a.fleet_id = $1::uuid AND a.receipt IS NOT NULL
 ORDER BY split_part(a.receipt, '-', 1)::bigint DESC,
          split_part(a.receipt, '-', 2)::bigint DESC
 LIMIT 1";
+
+/// Stamp the instant a runner was handed this event.
+///
+/// Run by the lease path on the same connection as its
+/// `afd_events::sql::INSERT_FLEET_EVENT`, and only on that insert's first
+/// arm — a redelivery's row was stamped by the delivery that wrote it.
+///
+/// Keyed on the fleet and the logical event id's two integers, NOT on the
+/// receipt. A replayed admission put one logical event on two stream entries
+/// while this table recorded only the first receipt, so a receipt-keyed stamp
+/// would miss the delivery of the second entry, leave the row unstamped
+/// forever, and have [`SELECT_UNDELIVERED_FLEETS`] offer it up for recovery
+/// every pass. `core.fleet_events` dedups on the logical id for the same
+/// reason, so the two agree by construction.
+///
+/// Guarded on the stamp still being absent, which keeps the write off the
+/// index for a row already stamped and makes a double delivery idempotent.
+///
+/// `$1` fleet, `$2` the logical id's `created_at`, `$3` its `seq`, `$4` now.
+pub const MARK_DELIVERED: &str = "\
+UPDATE core.fleet_admissions
+SET delivered_at = $4, updated_at = $4
+WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3
+  AND delivered_at IS NULL";
+
+/// One fleet per row, with its oldest admission that is receipted and not
+/// delivered — the probe the reconciliation pass starts from.
+///
+/// The steady state is what this shape is for. A fleet with undelivered work is
+/// ordinarily just a fleet whose runner has not got to it yet, and asking the
+/// stream about every such row every pass would be round trips spent proving
+/// nothing. One question per fleet answers it: if the stream still holds that
+/// fleet's OLDEST undelivered receipt, its data is there and the pass moves on.
+/// Only a fleet that answers no pays for a row-by-row walk.
+///
+/// `DISTINCT ON` rides `idx_fleet_admissions_undelivered` — the index's leading
+/// column is `fleet_id` and its order is the `ORDER BY` — so an idle
+/// deployment reads an empty index and a busy one reads one entry per fleet.
+///
+/// No `FOR UPDATE`: this statement decides only which streams to ASK about, and
+/// locking a row here would make the probe hold a transaction open across a
+/// network round trip to the datastore. [`SELECT_UNDELIVERED_ON_FLEET`] takes
+/// the locks, on the fleet that needs them.
+///
+/// `$1` how many fleets one pass may examine.
+pub(crate) const SELECT_UNDELIVERED_FLEETS: &str = "\
+SELECT DISTINCT ON (fleet_id) fleet_id::text, receipt
+FROM core.fleet_admissions
+WHERE receipt IS NOT NULL AND delivered_at IS NULL
+ORDER BY fleet_id, created_at, seq
+LIMIT $1";
+
+/// Every admission on one fleet that is receipted and not delivered, locked
+/// for this pass.
+///
+/// Read only for a fleet whose oldest receipt the stream could not produce —
+/// its data is gone, and each of these rows has to be asked about in turn
+/// because a rebuilt stream may already hold NEW entries that are perfectly
+/// alive.
+///
+/// `FOR UPDATE SKIP LOCKED` for the reason the replay scan takes it: every
+/// replica runs the sweeper, and two passes must take disjoint rows rather
+/// than both voiding one.
+///
+/// `$1` fleet, `$2` the batch limit.
+pub(crate) const SELECT_UNDELIVERED_ON_FLEET: &str = "\
+SELECT id::text, receipt
+FROM core.fleet_admissions
+WHERE fleet_id = $1::uuid AND receipt IS NOT NULL AND delivered_at IS NULL
+ORDER BY created_at, seq
+LIMIT $2
+FOR UPDATE SKIP LOCKED";
+
+/// Forget a receipt whose entry the datastore no longer holds.
+///
+/// The whole of the repair: the row goes back to `receipt IS NULL`, which is
+/// the state [`SELECT_UNRECEIPTED`] already scans, so the replay sweeper
+/// re-appends it and marks the fleet ready with no second append path to keep
+/// correct. It also re-enters the deployment's replay backlog, which is honest
+/// — the work IS owed again.
+///
+/// Guarded on the row still being receipted and still undelivered, so a
+/// delivery that landed between the probe and this write keeps its receipt.
+///
+/// `$1` id, `$2` now.
+pub(crate) const VOID_LOST_RECEIPT: &str = "\
+UPDATE core.fleet_admissions
+SET receipt = NULL, updated_at = $2
+WHERE id = $1::uuid AND receipt IS NOT NULL AND delivered_at IS NULL";
