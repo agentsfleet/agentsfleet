@@ -1,11 +1,9 @@
 /**
  * fleet-count.spec.ts — `/fleets` live counter tracks row additions.
  *
- * `FleetWall` renders an `aria-label="{N} live"` badge on the page
- * header. This spec seeds fleets one at a time and asserts the counter
- * follows. Catches regressions in `fleetRowState` (status → "live"|"parked"|
- * "failed" mapping), the pulse-cap consolidation, and the
- * `revalidatePath` plumbing that backs the wall.
+ * `FleetWall` renders a status region containing "{N} live" in the page
+ * header once the workspace stream is connected. This spec seeds fleets one
+ * at a time and asserts the counter follows their active status.
  *
  * Uses API-side `seedFleet` instead of `installViaUI` — install through
  * the form is already covered end-to-end by login-install-lifecycle and
@@ -34,7 +32,7 @@ test.describe("live counter increments on install", () => {
       // The badge counts ACTIVE fleets; a fleet still installing is not live.
       await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
       await page.goto(workspaceHref(ws, "fleets"));
-      await expect(page.getByLabel(`${i} live`)).toBeVisible({ timeout: COUNTER_TIMEOUT_MS });
+      await expect(page.getByRole("status").filter({ hasText: new RegExp(`^${i} live$`) })).toBeVisible({ timeout: COUNTER_TIMEOUT_MS });
     }
   });
 

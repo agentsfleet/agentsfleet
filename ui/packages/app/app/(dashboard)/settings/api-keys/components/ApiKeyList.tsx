@@ -1,7 +1,7 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
+import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
 import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
@@ -171,13 +171,13 @@ function KeyActionsCell({
   // Icon actions matching the catalogue/registry rows — the aria-label
   // carries the verb + key name, the glyph carries the affordance.
   return k.active ? (
-    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
+    <IconAction type="button" variant="destructive" disabled={pending} onClick={onRevoke} label={`Revoke API key ${k.key_name}`}>
       <BanIcon size={14} />
-    </Button>
+    </IconAction>
   ) : (
-    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
+    <IconAction type="button" variant="destructive" disabled={pending} onClick={onDelete} label={`Delete API key ${k.key_name}`}>
       <Trash2Icon size={14} />
-    </Button>
+    </IconAction>
   );
 }
 

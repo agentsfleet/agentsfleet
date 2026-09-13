@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-09-13
+**Direction:** Clear Signal · **Updated:** 2026-09-14
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -138,7 +138,9 @@ The separate Time column returns at the small-screen breakpoint.
 Event and runner activity feeds keep their primary Time column first, followed by Tokens, Duration, Cost, Status and Details; the Runs repeat count closes the row.
 A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
+Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
 Every row action names its variant: ghost for the neutral ones, destructive for Delete and Deny. IconAction's own default is outline, which draws a box per icon and belongs to standalone buttons, never to a cluster in a table row.
+Use the same IconAction size for icon-only section controls such as Refresh. Keep loading and completion cues inside that fixed square.
 Do not add creation dates to catalog tables whose records have no useful creation-date field.
 
 Column labels and cells share horizontal padding and alignment.
