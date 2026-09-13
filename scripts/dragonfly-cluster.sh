@@ -43,11 +43,9 @@
 set -euo pipefail
 
 BASE_PORT="${DRAGONFLY_BASE_PORT:-7001}"
-# Data ports are BASE..BASE+6 — four cluster nodes, the TLS node, then the two
-# source-cluster nodes; admin ports sit beyond them. The offset is the count of
-# data ports, so adding a node moves the admin block rather than colliding with
-# it, which is what `dragonfly_cluster_test.sh` pins.
-ADMIN_OFFSET="${DRAGONFLY_ADMIN_OFFSET:-7}"
+# Data ports are BASE..BASE+4 (four cluster nodes, then the TLS node); admin
+# ports sit beyond them.
+ADMIN_OFFSET="${DRAGONFLY_ADMIN_OFFSET:-5}"
 PASSWORD="${DRAGONFLY_PASSWORD:-agentsfleet}"
 DATA="${DRAGONFLY_DATA:-/data}"
 HOST=127.0.0.1
@@ -65,26 +63,6 @@ PRIMARIES=(0 2)
 CANONICAL_SLOTS="0 0 8191
 2 8192 16383"
 SLOTS_FILE="$DATA/slots"
-
-# The migration source: a SECOND cluster, the one an operator is switching
-# away from. Separate from the target in the only way that matters — its nodes
-# are given a cluster config naming only each other, so neither cluster can see
-# the other's slots — and reachable on its own data ports.
-#
-# A cluster and not the emulated TLS node, because the inventory tool walks key
-# classes with SCAN, and a scan on a cluster must fan out over every primary
-# from the live topology. A single-node source would never exercise that, which
-# is the half of the tool most likely to be wrong.
-#
-# Two primaries and no replicas. Two is the least that makes a scan fan out and
-# gives keys more than one slot owner; replicas would prove failover, which the
-# rehearsal does not test and which would cost another gigabyte in the rig.
-SOURCE_NODES=(5 6)
-SOURCE_IDS=(dfly-src-a dfly-src-b)
-SOURCE_LOW=(0 8192)
-SOURCE_HIGH=(8191 16383)
-# One past every data node, for the loops that must cover all of them.
-LAST_NODE=6
 MIGRATION_POLL_SECONDS=0.2
 MIGRATION_POLL_LIMIT=300
 
@@ -110,46 +88,6 @@ start_nodes() {
       --requirepass="$PASSWORD" --dir="$DATA/n$i" \
       --maxmemory=512mb --proactor_threads=2 --lock_on_hashtags \
       >/dev/null 2>"$DATA/n$i/dragonfly.log" &
-  done
-}
-
-start_source_nodes() {
-  local pos=0 idx
-  for idx in "${SOURCE_NODES[@]}"; do
-    mkdir -p "$DATA/n$idx"
-    dragonfly --logtostderr --version_check=false \
-      --cluster_mode=yes --cluster_node_id="${SOURCE_IDS[$pos]}" \
-      --port="$(data_port "$idx")" --admin_port="$(admin_port "$idx")" \
-      --admin_bind="$HOST" --admin_nopass \
-      --cluster_announce_ip="$HOST" --announce_port="$(data_port "$idx")" \
-      --requirepass="$PASSWORD" --dir="$DATA/n$idx" \
-      --maxmemory=512mb --proactor_threads=2 --lock_on_hashtags \
-      >/dev/null 2>"$DATA/n$idx/dragonfly.log" &
-    pos=$((pos + 1))
-  done
-}
-
-# The source cluster's whole layout, fixed: no migration is ever driven here,
-# because what the rehearsal moves is DATA to another deployment, not slots
-# within this one.
-render_source_config() {
-  local out="[" first=1 pos=0 idx
-  for idx in "${SOURCE_NODES[@]}"; do
-    [ $first -eq 1 ] || out="$out,"
-    first=0
-    out="$out{\"slot_ranges\":[{\"start\":${SOURCE_LOW[$pos]},\"end\":${SOURCE_HIGH[$pos]}}]"
-    out="$out,\"master\":{\"id\":\"${SOURCE_IDS[$pos]}\",\"ip\":\"$HOST\",\"port\":$(data_port "$idx")}"
-    out="$out,\"replicas\":[]}"
-    pos=$((pos + 1))
-  done
-  echo "$out]"
-}
-
-bootstrap_source() {
-  local config idx
-  config="$(render_source_config)"
-  for idx in "${SOURCE_NODES[@]}"; do
-    admin "$(admin_port "$idx")" dflycluster config "$config" >/dev/null
   done
 }
 
@@ -185,7 +123,7 @@ start_tls_node() {
 
 wait_for_nodes() {
   local i
-  for i in $(seq 0 "$LAST_NODE"); do
+  for i in $(seq 0 "$TLS_NODE"); do
     until [ "$(admin "$(admin_port "$i")" ping 2>/dev/null)" = "PONG" ]; do sleep 0.2; done
   done
 }
@@ -286,14 +224,6 @@ healthy() {
   [ "$(cli "$(data_port 0)" cluster shards | grep -c '^online$')" -eq "$NODE_COUNT" ] || exit 1
   # Over TLS, with the lane's own authority: the handshake is the check.
   [ "$(tls_cli ping 2>/dev/null)" = "PONG" ] || exit 1
-  # The source cluster, and that it is its OWN cluster: a config naming both
-  # its nodes and neither of the target's is what makes the rehearsal a switch
-  # between deployments rather than a copy within one.
-  local idx
-  for idx in "${SOURCE_NODES[@]}"; do
-    [ "$(cli "$(data_port "$idx")" ping 2>/dev/null)" = "PONG" ] || exit 1
-  done
-  [ "$(cli "$(data_port "${SOURCE_NODES[0]}")" cluster shards | grep -c '^online$')" -eq "${#SOURCE_NODES[@]}" ] || exit 1
 }
 
 reset() {
@@ -305,10 +235,6 @@ reset() {
   local p
   for p in "${PRIMARIES[@]}"; do cli "$(data_port "$p")" flushall >/dev/null; done
   admin "$(admin_port "$TLS_NODE")" flushall >/dev/null
-  # The source too. A rehearsal that found the previous run's keys still there
-  # would import them again and call the extra work a migration.
-  local idx
-  for idx in "${SOURCE_NODES[@]}"; do cli "$(data_port "$idx")" flushall >/dev/null; done
   echo "✓ dragonfly cluster flushed and restored to the canonical layout"
 }
 
@@ -317,11 +243,9 @@ case "${1:-serve}" in
   serve)
     start_nodes
     start_tls_node
-    start_source_nodes
     wait_for_nodes
     bootstrap
-    bootstrap_source
-    echo "✓ dragonfly cluster ready on $HOST:$(data_port 0)-$(data_port $((NODE_COUNT - 1))), TLS node on $(data_port "$TLS_NODE"), migration source on $(data_port "${SOURCE_NODES[0]}")-$(data_port "${SOURCE_NODES[1]}")"
+    echo "✓ dragonfly cluster ready on $HOST:$(data_port 0)-$(data_port $((NODE_COUNT - 1))), TLS node on $(data_port "$TLS_NODE")"
     # A node that dies takes the cluster with it: exit so compose reports it
     # rather than serving a partial cluster as healthy.
     wait -n
