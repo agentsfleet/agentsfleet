@@ -34,7 +34,15 @@ async fn test_cardinality_bench_reports_memory_per_fleet_across_the_ladder() {
     let report = swept(
         &stores,
         &prefix,
-        cardinality::run(Profile::Rig, &Target::Rig, parameters, &stores, &prefix).await,
+        cardinality::run(
+            Profile::Rig,
+            support::provenance(),
+            &Target::Rig,
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -56,7 +64,15 @@ async fn test_cardinality_bench_reports_hot_path_latency_under_cardinality() {
     let report = swept(
         &stores,
         &prefix,
-        cardinality::run(Profile::Rig, &Target::Rig, parameters, &stores, &prefix).await,
+        cardinality::run(
+            Profile::Rig,
+            support::provenance(),
+            &Target::Rig,
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -78,7 +94,15 @@ async fn test_cardinality_bench_reports_postgres_cost_at_population() {
     let report = swept(
         &stores,
         &prefix,
-        cardinality::run(Profile::Rig, &Target::Rig, parameters, &stores, &prefix).await,
+        cardinality::run(
+            Profile::Rig,
+            support::provenance(),
+            &Target::Rig,
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -101,6 +125,7 @@ async fn test_a_deployed_cardinality_run_creates_nothing() {
 
     let report = cardinality::run(
         Profile::Dev,
+        support::provenance(),
         &deployed,
         cardinality::Parameters { fleets: 100 },
         &stores,
@@ -126,7 +151,15 @@ async fn test_the_capacity_report_accounts_for_every_class_of_retained_state() {
     let report = swept(
         &stores,
         &prefix,
-        cardinality::run(Profile::Rig, &Target::Rig, parameters, &stores, &prefix).await,
+        cardinality::run(
+            Profile::Rig,
+            support::provenance(),
+            &Target::Rig,
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 

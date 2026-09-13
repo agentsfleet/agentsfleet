@@ -48,7 +48,9 @@ use crate::lane::lease::seed::{
 };
 use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
-use crate::report::{DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, ratio};
+use crate::report::{
+    DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, ratio,
+};
 
 /// Measurement key: how many steers the window appended in total.
 const ACCEPTED: &str = "accepted";
@@ -108,6 +110,7 @@ impl Parameters {
 /// A cap refusal, a datastore that would not answer, or a lost task.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -135,7 +138,7 @@ pub async fn run(
 
     let measured = submit(stores, &fleets, parameters, &abort).await?;
 
-    let mut report = Report::new(Lane::Steer, profile);
+    let mut report = Report::new(Lane::Steer, profile, provenance);
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Concurrency.name(), parameters.concurrency);

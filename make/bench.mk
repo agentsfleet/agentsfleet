@@ -131,12 +131,40 @@ bench-cutover-self-test:  ## Run scripts/bench_cutover_test.sh — the cutover b
 # REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
 PROFILE ?= rig
 
+# The datastore build every lane run is graded against, read from the one file
+# that pins it. Extracted rather than restated: a second spelling of the tag is
+# a second thing to keep true, and provenance naming a stale image describes a
+# run that did not happen. Dragonfly publishes one image per version — there is
+# no alpine or slim variant to choose between (probed, 2026-09-13).
+DATASTORE_IMAGE := $(shell awk '/dragonflydb\/dragonfly:/ { print $$2; exit }' docker-compose.yml)
+
+# The rig is owned by construction: compose brings it up under a project name
+# derived from this worktree's directory, and the lane resets it. A deployed
+# target overrides this, and only the exact word claims ownership — ownership is
+# what entitles a run to reset and to inject faults.
+BENCH_TARGET_OWNED ?= owned
+
 # The one environment every lane binary reads, and the one place a deployed
 # target would be substituted for the compose stack.
-BENCH_LANE_ENV := BENCH_PROFILE="$(PROFILE)" \
+#
+# The three provenance variables have no default inside the lane, and the lane
+# refuses to run without them. A result file nobody can date, attribute to a
+# server build, or tell apart from a run on somebody else's endpoint grades
+# nothing — and a lane that grades nothing must never look like one that grades
+# green. `GIT_COMMIT` is `make/build.mk`'s, so a result's revision and an
+# image's tag come from one variable rather than two that can disagree.
+#
+# Deferred (`=`, not `:=`) for exactly that reason: `make/test.mk` includes this
+# file before `make/build.mk` defines `GIT_COMMIT`, so an immediate expansion
+# would bake in an EMPTY revision — and an empty revision is the one value a
+# lane must never be handed, since it would refuse every run.
+BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 	BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
 	BENCH_REDIS_URL="$(TEST_REDIS_URL)" \
-	BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)"
+	BENCH_REDIS_CA_CERT="$(TEST_REDIS_CA_CERT)" \
+	BENCH_REVISION="$(GIT_COMMIT)" \
+	BENCH_DATASTORE_IMAGE="$(DATASTORE_IMAGE)" \
+	BENCH_TARGET_OWNED="$(BENCH_TARGET_OWNED)"
 
 # `--release` is not a detail. A debug build measures rustc's unoptimised
 # output, which is the wrong system: the number would be a property of the

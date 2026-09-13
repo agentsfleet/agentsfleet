@@ -38,7 +38,7 @@ use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Fixture, Lane, Report, count, ratio};
+use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
@@ -91,13 +91,14 @@ impl Parameters {
 /// A cap refusal, or a datastore that would not answer.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     target: &Target,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
-    let mut report = Report::new(Lane::Cardinality, profile);
+    let mut report = Report::new(Lane::Cardinality, profile, provenance);
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     let mut ledger = FixtureLedger::new();
 

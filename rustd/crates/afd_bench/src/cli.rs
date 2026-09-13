@@ -21,25 +21,32 @@ use crate::datastores::{
 use crate::error::Result;
 use crate::knobs::{required, variable};
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
-use crate::report::{Lane, Report};
+use crate::report::{Lane, Provenance, Report};
 
 /// The environment as a lookup over the real process, for every reader.
 pub fn process_env() -> impl Fn(&str) -> Option<String> {
     |key: &str| std::env::var(key).ok()
 }
 
-/// The profile a lane runs under, with its target admitted.
+/// The profile a lane runs under, its target admitted, and what the run will
+/// say about itself.
+///
+/// Provenance is resolved HERE, in the preamble every binary runs before it
+/// opens a datastore, so an environment that cannot describe the run costs no
+/// run at all.
 ///
 /// # Errors
 ///
-/// An unknown profile name, a production run without its acknowledgement,
-/// or a deployed profile with nowhere to point.
-pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target)> {
+/// An unknown profile name, a production run without its acknowledgement, a
+/// deployed profile with nowhere to point, or a provenance variable that is
+/// unset.
+pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target, Provenance)> {
     let profile: Profile = variable(env, PROFILE_VARIABLE)
         .unwrap_or_else(|| Profile::Rig.to_string())
         .parse()?;
     let target = profile.admit(env)?;
-    Ok((profile, target))
+    let provenance = Provenance::read(env)?;
+    Ok((profile, target, provenance))
 }
 
 /// Both datastores, from the lane's three variables.
