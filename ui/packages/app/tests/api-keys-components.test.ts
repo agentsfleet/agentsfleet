@@ -101,7 +101,7 @@ describe("ApiKeyList component", () => {
     expect(screen.getByText("old-zapier")).toBeTruthy();
     expect(screen.getByText("active")).toBeTruthy();
     expect(screen.getByText("revoked")).toBeTruthy();
-    expect(screen.getByText(/never used/i)).toBeTruthy();
+    expect(screen.getAllByText(/never used/i)).toHaveLength(2);
   });
 
   it("active rows expose Revoke; revoked rows expose Delete", async () => {

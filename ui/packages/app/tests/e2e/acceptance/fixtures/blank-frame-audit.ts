@@ -39,7 +39,7 @@ export function installPaintBoundaryAudit(): void {
   // blank shell frames — every frame until the data lands is "blank" by this
   // audit's definition. Refuse the install: the caller gates on content only
   // the loaded route carries, and a shell that never blanks stays provable.
-  if (!main.textContent?.trim()) {
+  if (!main.innerText.trim()) {
     throw new Error(
       "dashboard main region has no content yet — wait for the loaded route before installing the audit",
     );
@@ -53,7 +53,7 @@ export function installPaintBoundaryAudit(): void {
     if (
       !main.isConnected ||
       document.querySelector("main") !== main ||
-      !main.textContent?.trim()
+      !main.innerText.trim()
     ) {
       audit.blankFrames += 1;
       if (audit.samples.length < MAX_SAMPLES) {
@@ -63,7 +63,7 @@ export function installPaintBoundaryAudit(): void {
           pathname: location.pathname,
           connected: main.isConnected,
           sameMain: document.querySelector("main") === main,
-          textLength: main.textContent?.trim().length ?? 0,
+          textLength: main.innerText.trim().length,
           childTags: Array.from(main.children).slice(0, MAX_CHILD_TAGS).map(child => child.tagName),
         });
       }

@@ -62,7 +62,7 @@ export function StatusCard({
       {...rest}
     >
       <dl className="flex min-w-0 flex-col gap-1">
-        <dt className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <dt className="text-body-sm font-medium leading-body-sm text-muted-foreground">
           {label}
         </dt>
         <dd className={cn("text-xl sm:text-2xl font-semibold tabular-nums", variantAccent[variant])}>
@@ -74,7 +74,7 @@ export function StatusCard({
           ) : null}
         </dd>
         {sublabel ? (
-          <dd className="truncate text-xs text-muted-foreground">{sublabel}</dd>
+          <dd className="text-label leading-label text-muted-foreground">{sublabel}</dd>
         ) : null}
       </dl>
     </div>

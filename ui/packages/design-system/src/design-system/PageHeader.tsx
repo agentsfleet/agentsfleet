@@ -32,18 +32,18 @@ export function PageHeader({
   // Back-compat: no description and no actions → the original bare flex row.
   if (description == null && actions == null) {
     return (
-      <div ref={ref} className={cn("flex items-center justify-between", className)} {...props}>
+      <div ref={ref} className={cn("flex flex-wrap items-center justify-between gap-4", className)} {...props}>
         {children}
       </div>
     );
   }
   return (
-    <div ref={ref} className={cn("flex items-start justify-between gap-6", className)} {...props}>
+    <div ref={ref} className={cn("flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6", className)} {...props}>
       <div className="min-w-0">
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}
       </div>
-      {actions != null ? <div className="flex-none">{actions}</div> : null}
+      {actions != null ? <div className="flex max-w-full flex-none flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }

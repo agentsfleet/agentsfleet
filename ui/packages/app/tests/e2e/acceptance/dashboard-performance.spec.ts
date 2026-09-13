@@ -37,7 +37,34 @@ async function expectFleetsRouteLoaded(page: Page): Promise<void> {
 
 async function installBlankFrameAudit(page: Page): Promise<void> {
   await expectFleetsRouteLoaded(page);
+  await expectShellLoadingFallback(page);
   await page.evaluate(installPaintBoundaryAudit);
+}
+
+async function expectShellLoadingFallback(page: Page): Promise<void> {
+  const fallback = page.getByTestId("shell-route-loading");
+  await expect(fallback).toBeHidden();
+  // Reproduce the empty route slot captured in the failed CI trace. Keep
+  // the original nodes so React retains ownership when they are restored.
+  const detached = await fallback.evaluateHandle((element) => {
+    const container = element.parentElement;
+    if (!container) throw new Error("shell route container is missing");
+    const nodes = Array.from(container.childNodes).filter((node) => node !== element);
+    for (const node of nodes) container.removeChild(node);
+    return { container, nodes, element };
+  });
+  try {
+    await expect(fallback.getByRole("status")).toBeVisible();
+    await expect(fallback).toHaveText("Loading page…");
+    expect(await page.locator("main").innerText()).toContain("Loading page…");
+  } finally {
+    await detached.evaluate(({ container, nodes, element }) => {
+      for (const node of nodes) container.insertBefore(node, element);
+    });
+    await detached.dispose();
+  }
+  await expect(fallback).toBeHidden();
+  await expectFleetsRouteLoaded(page);
 }
 
 async function blankFrameCount(page: Page): Promise<number> {
