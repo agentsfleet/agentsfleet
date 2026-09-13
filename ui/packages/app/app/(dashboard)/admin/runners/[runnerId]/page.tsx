@@ -100,7 +100,10 @@ export default async function RunnerDetailPage({
     // cannot leave its containing block's content box, so without it the
     // status line stops short of the canvas edge and the table's next row
     // shows through beneath it.
-    <div className="-mb-[var(--app-canvas-block)] flex min-h-full flex-1 flex-col gap-3xl">
+    <div
+      data-page-layout="full-height"
+      className="-mb-[var(--app-canvas-block)] flex min-h-0 flex-1 flex-col gap-3xl overflow-hidden"
+    >
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}
@@ -108,19 +111,19 @@ export default async function RunnerDetailPage({
       />
       <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3xl">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3xl">
         <RunnerSubnavigation runnerId={runner.id} activeView={view} />
-        <div className="flex min-w-0 flex-1 flex-col">{content}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">{content}</div>
       </div>
-      {/* Sticky to the foot of the scrolling canvas: on a long lease table it
-          stays in view; on a short page it sits at the end. The sticky edge
-          is the canvas's content box, so the offset is the canvas's block
-          padding negated, and the line's own bottom padding — the same
-          padding the root gave back — covers that band with its background.
-          All three read the one token the canvas states. */}
+      {/* The foot of a bounded column, not a sticky element chasing a
+          scrolling canvas. The page no longer scrolls — the table inside it
+          does — so the line ends the column rather than following it, and
+          `shrink-0` keeps it off the table's scroll budget. Its bottom padding
+          still covers the band the root's negative margin gives back, both
+          reading the one token the canvas states. */}
       <RunnerStatusLine
         runner={runner}
-        className="sticky -bottom-[var(--app-canvas-block)] mt-auto pb-[var(--app-canvas-block)]"
+        className="shrink-0 pb-[var(--app-canvas-block)]"
       />
     </div>
   );
@@ -200,7 +203,7 @@ async function renderRunnerView(runner: RunnerDetail, read: RunnerViewRead): Pro
   }
   const initial = await read.initial;
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3xl">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3xl">
       {initial === REFUSED ? (
         <Alert variant="warning">
           {LEASES_LINK_STALE}{" "}

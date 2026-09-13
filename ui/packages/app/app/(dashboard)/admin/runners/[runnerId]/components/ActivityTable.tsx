@@ -155,6 +155,7 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
   // The relative `Time` cells below need tooltip context. It comes from the
   // root layout's single provider, not from here — see `app/layout.tsx`.
   return (
+    <div className="flex min-h-0 flex-1 flex-col">
     <DataTable
       caption={ACTIVITY_TABLE_LABEL}
       columns={columns}
@@ -180,5 +181,6 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
         />
       }
     />
+    </div>
   );
 }

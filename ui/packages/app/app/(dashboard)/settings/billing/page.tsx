@@ -69,14 +69,19 @@ export default async function BillingSettingsPage({
 
       <BillingBalanceCard billing={billing} summary={summary} />
 
-      <Tabs defaultValue="usage">
+      {/* The usage ledger scrolls inside its tab, so every wrapper between the
+          page and the table passes the height down: the tabs root here, the
+          active panel below, and BillingUsageTab's own column. A wrapper that
+          does not leaves the table sized by its rows, and the page scrolls
+          instead of the table. */}
+      <Tabs defaultValue="usage" className="flex min-h-0 flex-1 flex-col">
         <TabsList>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="payment">Payment method</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="usage" className="mt-4 space-y-6">
+        <TabsContent value="usage" className="mt-4 flex min-h-0 flex-1 flex-col">
           <BillingUsageTab
             initialCharges={charges}
             initialCursor={chargesResp.next_cursor}
