@@ -64,11 +64,13 @@ pub(super) async fn open_runtime(
     // both. `warm` reports its shortfall through `pool_warm_incomplete`.
     database.warm(POOL_WARM_DEADLINE).await;
     let queue = Redis::connect(config.redis()).await?;
-    // Before the first write, and refused in the queue's own class: a primary
-    // that evicts keys would discard accepted work on purpose, and a daemon
-    // that served on through it would look exactly like one whose fleets had
-    // simply gone quiet.
-    afd_datastore::preflight::refuse_eviction(&queue).await?;
+    // Before the first write, and refused in the queue's own class. A seed
+    // that is not a cluster cannot place the keys this daemon routes by slot;
+    // a server without sharded pub/sub cannot carry the live tail; a primary
+    // that evicts keys would discard accepted work on purpose. A daemon that
+    // served on through any of them would look exactly like one whose fleets
+    // had simply gone quiet.
+    afd_datastore::preflight::refuse_unsuitable_datastore(&queue).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());

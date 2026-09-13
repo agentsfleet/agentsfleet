@@ -93,6 +93,21 @@ pub(crate) enum ErrorKind {
     #[error("primary {node} evicts keys ({setting}); the datastore must retain every key")]
     UnsafeEviction { node: usize, setting: String },
 
+    /// The seed answers as a single server rather than a cluster.
+    ///
+    /// Every key this crate writes is placed by slot and every script it
+    /// runs is single-slot by construction. A deployment with no slots to
+    /// route by is not one this daemon can serve, and the only honest
+    /// moment to say so is before the first write.
+    #[error(
+        "the datastore is not a cluster (cluster_enabled:{reported}); this daemon routes every key by slot"
+    )]
+    NotACluster { reported: String },
+
+    /// The server does not know a command this daemon's design requires.
+    #[error("the datastore does not support {command}, which this daemon requires")]
+    MissingCapability { command: &'static str },
+
     #[error("a {what} reply was not the shape this client expects")]
     UnexpectedReply { what: &'static str },
 
@@ -182,6 +197,22 @@ impl Error {
     #[must_use]
     pub fn is_unsafe_eviction(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::UnsafeEviction { .. })
+    }
+
+    /// Whether boot refused the datastore for what it IS: a single server
+    /// where a cluster is required, or a server missing a command this
+    /// daemon needs.
+    ///
+    /// Apart from [`Self::is_unsafe_eviction`] on purpose, which names a
+    /// datastore this daemon COULD serve, configured so that it must not.
+    /// One is answered by pointing at a different datastore or upgrading
+    /// this one; the other by changing a setting on it.
+    #[must_use]
+    pub fn is_unsuitable_datastore(&self) -> bool {
+        matches!(
+            self.inner.kind,
+            ErrorKind::NotACluster { .. } | ErrorKind::MissingCapability { .. }
+        )
     }
 
     /// The registry code a handler would surface for this failure.
@@ -328,6 +359,18 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             Error::new(ErrorKind::UnsafeEviction {
                 node: 0,
                 setting: "maxmemory_policy=allkeys-lru".to_owned(),
+            }),
+        ),
+        (
+            "not a cluster",
+            Error::new(ErrorKind::NotACluster {
+                reported: "0".to_owned(),
+            }),
+        ),
+        (
+            "missing capability",
+            Error::new(ErrorKind::MissingCapability {
+                command: "SSUBSCRIBE",
             }),
         ),
         ("unexpected reply", unexpected_reply("PING")),

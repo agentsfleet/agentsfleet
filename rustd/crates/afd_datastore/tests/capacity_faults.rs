@@ -28,9 +28,8 @@ const OOM_REPLY: &str = "-OOM command not allowed when used memory > 'maxmemory'
 
 /// `INFO memory` from a node that keeps every key, and from one that does
 /// not — as bulk strings, which is how `INFO` answers.
-const INFO_NO_EVICTION: &str =
-    "$52\r\n# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noeviction\r\n\r\n";
-const INFO_CACHE_MODE: &str = "$41\r\n# Memory\r\nused_memory:1024\r\ncache_mode:true\r\n\r\n";
+const INFO_NO_EVICTION: &str = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noeviction\r\n";
+const INFO_CACHE_MODE: &str = "# Memory\r\nused_memory:1024\r\ncache_mode:true\r\n";
 
 fn config_for(server: &FakeRedis) -> RedisConfig {
     RedisConfig::from_url(RedisRole::Default, server.url())
@@ -88,7 +87,7 @@ async fn a_full_datastore_is_its_own_class_and_invites_a_retry() {
 async fn preflight_refuses_an_evicting_primary_and_passes_one_that_retains() {
     let server = FakeRedis::spawn(&[
         ("PING", Reply::Raw("+PONG\r\n")),
-        ("INFO", Reply::Raw(INFO_NO_EVICTION)),
+        ("INFO", Reply::Bulk(INFO_NO_EVICTION)),
     ])
     .await;
     let redis = connect(&server).await;
@@ -97,7 +96,7 @@ async fn preflight_refuses_an_evicting_primary_and_passes_one_that_retains() {
         .expect("the fake answers INFO")
         .expect("a primary under noeviction keeps every key");
 
-    server.set_reply("INFO", Reply::Raw(INFO_CACHE_MODE));
+    server.set_reply("INFO", Reply::Bulk(INFO_CACHE_MODE));
     let refused = tokio::time::timeout(BUDGET, preflight::refuse_eviction(&redis))
         .await
         .expect("the fake answers INFO")
