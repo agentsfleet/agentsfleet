@@ -11,10 +11,15 @@ test.describe("Home page", () => {
   });
 
   test("hero states the incident-response outcome without duplicating the workflow", async ({ page }) => {
-    const eyebrow = page.getByTestId("hero-eyebrow");
-    await expect(eyebrow).toContainText("AI incident response");
-    await expect(eyebrow.locator('[data-live="true"]')).toHaveCount(0);
-    await expect(page.getByTestId("hero")).toContainText("A diagnosis you can review.");
+    // FINDING-M05 removed the kicker: it read "AI incident response for
+    // engineering teams" directly above a headline reading "AI teammates for
+    // incident response." — the same words twice, and the second of two
+    // pre-headline elements. Its decorative pulse dot went with it, so the
+    // hero now has no element that could imply anything is live.
+    await expect(page.getByTestId("hero-eyebrow")).toHaveCount(0);
+    const hero = page.getByTestId("hero");
+    await expect(hero.locator('[data-live="true"]')).toHaveCount(0);
+    await expect(hero).toContainText("A diagnosis you can review.");
     await page.getByTestId("hero-cta-secondary").click();
     await expect(page).toHaveURL(/#how-it-works$/);
     await expect(page.getByTestId("how-it-works")).toBeInViewport();

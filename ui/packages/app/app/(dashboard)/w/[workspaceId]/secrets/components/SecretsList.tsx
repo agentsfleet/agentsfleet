@@ -91,7 +91,7 @@ function SecretNameCell({
             ${secrets.<name>.<field>}. Copying it removes a whole class of silent
             typo — a mistyped key resolves to nothing, and the fleet just fails. */}
         <div className="flex min-w-0 items-center gap-1">
-          <div className="truncate font-mono text-sm">{secret.name}</div>
+          <div className="truncate font-mono text-mono leading-mono">{secret.name}</div>
           <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
         </div>
         <div className="text-xs text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
@@ -115,7 +115,7 @@ function SecretCreatedCell({ secret }: { secret: Secret }) {
     <Time
       value={new Date(secret.created_at)}
       format="relative"
-      className="font-mono text-xs tabular-nums text-muted-foreground"
+      className="font-mono text-mono leading-mono tabular-nums text-muted-foreground"
     />
   );
 }
@@ -142,7 +142,7 @@ function buildColumns({
     },
     {
       key: "created_at",
-      header: "Created",
+      header: "Time",
       sortValue: (c) => c.created_at,
       cell: (c) => <SecretCreatedCell secret={c} />,
     },
@@ -234,12 +234,16 @@ function SecretTable({
 }) {
   const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
-    <DataTable
-      columns={columns}
-      rows={secrets}
-      rowKey={(c) => c.name}
-      caption="Stored secrets"
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DataTable
+        className="flex min-h-0 flex-1 flex-col"
+        columns={columns}
+        rows={secrets}
+        rowKey={(c) => c.name}
+        caption="Stored secrets"
+        viewportClassName="min-h-0 flex-1 max-h-none"
+      />
+    </div>
   );
 }
 
@@ -300,7 +304,7 @@ export default function SecretsList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* "No secrets" is the server's claim to make: the optimistic hide of the
           last row keeps the table shell until the delete is answered, so the
           status region never announces an emptiness the server may retract. */}

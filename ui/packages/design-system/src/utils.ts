@@ -18,6 +18,7 @@ const twMerge = extendTailwindMerge({
         "text-display-md",
         "text-heading",
         "text-eyebrow",
+        "text-reading",
         "text-body-lg",
         "text-body",
         "text-body-sm",

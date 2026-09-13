@@ -121,6 +121,7 @@
    * the bridge here the utilities don't compile and consumers fall
    * back to inherited body colour. */
   --color-text: var(--text);
+  --color-text-chat: var(--text-chat);
   --color-text-muted: var(--text-muted);
   --color-text-subtle: var(--text-subtle);
 
@@ -131,6 +132,7 @@
   --text-display-md: var(--fs-display-md);
   --text-heading: var(--fs-heading);
   --text-eyebrow: var(--fs-eyebrow);
+  --text-reading: var(--fs-reading);
   --text-body-lg: var(--fs-body-lg);
   --text-body: var(--fs-body);
   --text-body-sm: var(--fs-body-sm);
@@ -160,6 +162,7 @@
   --leading-display-md: var(--lh-display-md);
   --leading-heading: var(--lh-heading);
   --leading-eyebrow: var(--lh-eyebrow);
+  --leading-reading: var(--lh-reading);
   --leading-body-lg: var(--lh-body-lg);
   --leading-body: var(--lh-body);
   --leading-body-sm: var(--lh-body-sm);
@@ -207,6 +210,7 @@
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);
+  --font-serif: var(--ff-serif);
   --font-display: var(--ff-display);
   --font-mono: var(--ff-mono);
 

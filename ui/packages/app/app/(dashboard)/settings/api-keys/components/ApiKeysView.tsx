@@ -43,7 +43,7 @@ export default function ApiKeysView({ initial, operatorOnly }: ApiKeysViewProps)
       ) : (
         <Section asChild>
           <section aria-label="API keys">
-            <SectionHeader actions={<CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />}>
+            <SectionHeader as="p" actions={<CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />}>
               Manage API keys
             </SectionHeader>
             <ApiKeyList ref={listRef} initial={initial} />

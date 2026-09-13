@@ -38,7 +38,7 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
     <span className="flex items-center gap-2">
-      <span className="font-mono text-sm">{model.model_id}</span>
+      <span className="font-mono text-mono leading-mono">{model.model_id}</span>
       {isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     </span>
   );
@@ -125,7 +125,7 @@ function buildColumns({
       numeric: true,
       sortValue: (m) => m.context_cap_tokens,
       cell: (m) => (
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
           {/* Pin the locale — a bare toLocaleString() groups digits per the
               viewer's locale (en-IN "1,28,000" vs en-US "128,000"), so SSR and
               client disagree and React throws a hydration mismatch. */}
@@ -139,7 +139,7 @@ function buildColumns({
       numeric: true,
       sortValue: (m) => m.input_nanos_per_mtok,
       cell: (m) => (
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
           {usd(m.input_nanos_per_mtok)} / {usd(m.cached_input_nanos_per_mtok)} / {usd(m.output_nanos_per_mtok)}
         </span>
       ),

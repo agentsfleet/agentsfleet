@@ -25,7 +25,7 @@ function SourceComparisonPane({ label, value }: { label: string; value: string }
   return (
     <div data-testid={`source-comparison-${label.toLowerCase().replaceAll(" ", "-")}`} className="min-w-0">
       <p className="mb-xs font-sans text-xs text-muted-foreground">{label}</p>
-      <Textarea readOnly value={value} aria-label={label} rows={8} className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-xs leading-mono text-foreground" />
+      <Textarea readOnly value={value} aria-label={label} rows={8} className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-mono leading-mono text-foreground" />
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function DocumentPane({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className={cn(
-          "min-h-64 w-full resize-y font-mono text-xs leading-mono",
+          "min-h-64 w-full resize-y font-mono text-mono leading-mono",
           fillAvailableSpace && "min-h-96 flex-1",
         )}
       />
@@ -89,7 +89,7 @@ function SourcePreview({ label, value, fillAvailableSpace }: {
         rows={16}
         aria-label={label}
         className={cn(
-          "max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono text-foreground",
+          "max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-mono leading-mono text-foreground",
           fillAvailableSpace && "max-h-none min-h-96 flex-1",
         )}
       />

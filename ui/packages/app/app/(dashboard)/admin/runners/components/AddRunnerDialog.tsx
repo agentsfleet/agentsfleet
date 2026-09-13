@@ -168,7 +168,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   readOnly
                   value={created.runner_token}
                   aria-label="Runner token"
-                  className="font-mono text-sm"
+                  className="font-mono text-mono leading-mono"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <CopyButton value={created.runner_token} label="Copy runner token" />

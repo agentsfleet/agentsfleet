@@ -23,10 +23,16 @@ export default function Hero() {
 function HeroHeading() {
   return (
     <>
-      <p className="inline-flex items-center gap-2 font-mono text-eyebrow uppercase tracking-eyebrow text-pulse" data-testid="hero-eyebrow">
-        <span className="size-2 rounded-full bg-pulse" aria-hidden="true" />
-        AI incident response for engineering teams
-      </p>
+      {/*
+       * FINDING-M05. A kicker read "AI incident response for engineering
+       * teams" directly above a headline reading "AI teammates for incident
+       * response." — the same words rearranged, and the second of two
+       * pre-headline elements. The hero budget is brand, one headline, one
+       * supporting sentence, one CTA group, one image; the promo pill stays
+       * because it says something the headline does not (early access, and an
+       * invitation), while the kicker only said it again. Its decorative pulse
+       * dot went with it.
+       */}
       <a href="/#pricing"
         onClick={() => trackNavigationClicked({ source: "hero_promo_pill", surface: "hero", target: "pricing" })}
         className="inline-flex min-h-11 w-fit items-center gap-2 rounded-md bg-card border border-border px-3 py-1 text-body-sm font-sans text-text transition-colors hover:border-border-strong"

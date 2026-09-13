@@ -157,6 +157,13 @@ export {
   type ConfirmDialogProps,
 } from "./ConfirmDialog";
 export { Nav, type NavProps } from "./Nav";
+export {
+  StatusLine,
+  StatusLineItem,
+  type StatusLineProps,
+  type StatusLineItemProps,
+  type StatusLineTone,
+} from "./StatusLine";
 export { PageHeader, PageDescription, type PageHeaderProps } from "./PageHeader";
 export { PageLayout, type PageLayoutProps } from "./PageLayout";
 export { DashboardShellHeader, type DashboardShellHeaderProps } from "./DashboardShellHeader";
@@ -164,6 +171,7 @@ export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionHeader, type SectionHeaderProps } from "./SectionHeader";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
 export { EYEBROW_CLASS } from "./eyebrow";
+export { MONO_CLASS } from "./mono";
 export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";
 export {
   DataTable,
