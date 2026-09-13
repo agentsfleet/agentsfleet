@@ -50,6 +50,20 @@ describe("dashboard primitives", () => {
     expect(screen.getByText("Ready")).toBeTruthy();
   });
 
+  it("stacks a row action below its content on narrow viewports when requested", () => {
+    render(
+      <DashboardRow
+        title="GitHub"
+        action="Configure"
+        stackActionOnMobile
+      />,
+    );
+
+    const row = screen.getByRole("heading", { level: 3, name: "GitHub" }).parentElement?.parentElement;
+    expect(row?.className).toContain("max-sm:flex-wrap");
+    expect(screen.getByText("Configure").className).toContain("max-sm:w-full");
+  });
+
   it("renders a meta grid with tokenized labels", () => {
     render(<MetaGrid items={[{ label: "Credential", value: "GITHUB_TOKEN" }]} />);
     expect(screen.getByText("Credential").className).toContain("font-sans");

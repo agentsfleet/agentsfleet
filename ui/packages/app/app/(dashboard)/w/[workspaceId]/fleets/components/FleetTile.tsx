@@ -21,6 +21,7 @@ import {
 } from "@/components/domain/useWorkspaceStream";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import { deriveFleetIdentity, type FleetIdentity } from "@/lib/fleets/identity";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import {
   deriveTileLiveness,
   fleetRowState,
@@ -205,7 +206,7 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }
               className={cn(EYEBROW_CLASS, "text-muted-foreground")}
               data-agent-name={identity.callsign}
             >
-              Agent {identity.callsign} · {fleet.status}
+              {agentDisplayName(fleet.id)} · {fleet.status}
             </div>
           </div>
           <div className="flex items-center gap-md">
@@ -230,7 +231,7 @@ function TileMetrics({ fleet, counters }: { fleet: Fleet; counters?: TileCounter
     <div className="flex items-center justify-between font-sans text-xs text-muted-foreground tabular-nums">
       <span><span className="font-mono">{formatTileSpend(spent)}</span> {TILE_SPEND_SUFFIX}</span>
       <span><span className="font-mono">{formatTileEvents(processed)}</span> {TILE_EVENTS_SUFFIX}</span>
-      <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} className="font-mono" />
+      <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} className="tabular-nums" />
     </div>
   );
 }
@@ -250,7 +251,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
       <Link
         href={workspacePath(workspaceId, `fleets/${fleet.id}`)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — Agent ${identity.callsign} — ${fleet.status}`}
+        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — ${agentDisplayName(fleet.id)} — ${fleet.status}`}
         data-state={fleetRowState(fleet.status)}
       />
       <div className="pointer-events-none flex h-full flex-col gap-lg">
@@ -263,12 +264,12 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
         >
           {children}
         </TileIdentity>
-        <div className="min-h-5 font-sans text-xs text-muted-foreground truncate">
+        <div className="min-h-5 font-sans text-label leading-label text-muted-foreground truncate">
           {feed ?? emptyActivity}
         </div>
         <TileMetrics fleet={fleet} counters={counters} />
         <div className="mt-auto flex justify-end border-t border-border pt-lg">
-          <span className="font-sans text-xs font-medium text-pulse">
+          <span className="font-sans text-label font-medium text-pulse">
             {MANAGE_FLEET_LABEL} →
           </span>
         </div>

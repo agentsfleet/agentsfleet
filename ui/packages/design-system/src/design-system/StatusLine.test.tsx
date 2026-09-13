@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { StatusLine, StatusLineItem, type StatusLineTone } from "./StatusLine";
 
 describe("StatusLine", () => {
-  it("renders a named, monospace, tabular line with a hairline between cells", () => {
+  it("renders a named, readable, tabular line with a hairline between cells", () => {
     render(
       <StatusLine aria-label="Fleet summary">
         <StatusLineItem>3,255 tok</StatusLineItem>
@@ -12,7 +12,7 @@ describe("StatusLine", () => {
     );
     const line = screen.getByRole("group", { name: "Fleet summary" });
     expect(line.nodeName).toBe("DIV");
-    for (const cls of ["font-mono", "tabular-nums", "text-label", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
+    for (const cls of ["font-sans", "tabular-nums", "text-body-sm", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
       expect(line.className).toContain(cls);
     }
     // Never a wrapped row: `divide-x` draws on every cell but the last, so a

@@ -48,7 +48,7 @@ export function gatesTable(page: Page): Locator {
 export function rowForAgent(page: Page, callsign: string): Locator {
   return gatesTable(page)
     .getByRole("row")
-    .filter({ hasText: `${AGENT_PREFIX} ${callsign}` });
+    .filter({ hasText: `${AGENT_PREFIX} ${callsign.toUpperCase()}` });
 }
 
 /** Assert the row reads Pending — the state that still asks for something. */

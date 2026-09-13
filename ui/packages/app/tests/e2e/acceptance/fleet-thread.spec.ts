@@ -15,7 +15,6 @@ import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const PANEL_LABEL = /^Chat$/;
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
 
@@ -70,11 +69,11 @@ test.describe("fleet thread surface", () => {
     const threadCard = page.getByLabel(CHAT_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
-    // The chat heading and connection status share one baseline. The removed
-    // Steer tab cannot suggest a second view that does not exist.
-    await expect(threadCard.getByRole("heading", { name: PANEL_LABEL })).toBeVisible();
+    // The selected Chat tab names this view; the transcript needs no second title.
+    await expect(
+      page.getByRole("navigation", { name: "Fleet sections" }).getByRole("link", { name: "Chat" }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(threadCard.getByRole("link", { name: "Steer" })).toHaveCount(0);
-    await expect(threadCard.getByLabel(/Connection status:/i)).toBeVisible();
 
     // The conversation carries role="log" + aria-live=polite.
     const log = threadCard.getByRole("log", { name: /chat/i });

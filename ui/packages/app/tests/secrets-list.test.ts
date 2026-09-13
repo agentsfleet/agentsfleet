@@ -128,10 +128,10 @@ describe("SecretsList component", () => {
     expect(screen.getByText("slack")).toBeTruthy();
     expect(screen.getAllByText(SECRET_ROW_DESCRIPTION)).toHaveLength(2);
     // Created now renders a relative <Time> ("… ago"); the absolute Apr 26 2026
-    // string moved into the hover tooltip. Two rows → two <time> elements, each
-    // carrying the ISO instant as its datetime and a relative visible label.
+    // string moved into the hover tooltip. Each row carries a desktop and a
+    // mobile timestamp; CSS selects one at each width.
     const times = container.querySelectorAll("time");
-    expect(times).toHaveLength(2);
+    expect(times).toHaveLength(4);
     for (const t of times) {
       expect(t.getAttribute("datetime")).toMatch(/^2026-04-26T/);
       expect(t.textContent).toMatch(/ago$/);

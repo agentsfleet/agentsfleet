@@ -208,7 +208,7 @@ test.describe("install-fleet-cli", () => {
       await expect(row).toBeVisible();
       await expect(row).toHaveAttribute("data-state", LIVE_STATE);
       await expect(row).toHaveAccessibleName(
-        new RegExp(`^Manage fleet: ${name} — Agent .+ — active$`),
+        new RegExp(`^Manage fleet: ${name} — AGENT .+ — active$`),
       );
     } finally {
       await revokeCliCredential(apiUrl, minted);

@@ -4,121 +4,24 @@ import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
-  CopyButton,
   DataTable,
   EmptyState,
-  IconAction,
-  Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon } from "lucide-react";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
 import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
-import { SECRET_ROW_DESCRIPTION } from "../copy";
+import { SecretActions, SecretCreatedCell, SecretNameCell } from "./secret-row-cells";
 
 type Props = {
   workspaceId: string;
   secrets: Secret[];
   protectedSecretName?: string | null;
 };
-
-type SecretActionProps = {
-  secret: Secret;
-  pending: boolean;
-  protectedFromDelete: boolean;
-  onEdit: (name: string) => void;
-  onDelete: (name: string) => void;
-};
-
-function SecretActions({
-  secret,
-  pending,
-  protectedFromDelete,
-  onEdit,
-  onDelete,
-}: SecretActionProps) {
-  const deleteDisabled = pending || protectedFromDelete;
-  return (
-    <div className="flex justify-end gap-1">
-      <IconAction
-        type="button"
-        variant="ghost"
-        onClick={() => onEdit(secret.name)}
-        disabled={pending}
-        label={`Edit secret ${secret.name}`}
-      >
-        <PencilIcon size={14} />
-      </IconAction>
-      <IconAction
-        type="button"
-        variant="destructive"
-        onClick={() => onDelete(secret.name)}
-        disabled={deleteDisabled}
-        label={
-          protectedFromDelete
-            ? `Secret ${secret.name} is in model setup`
-            : `Delete secret ${secret.name}`
-        }
-        title={
-          protectedFromDelete
-            ? "Switch model setup to platform defaults or another secret before deleting this one."
-            : undefined
-        }
-      >
-        <Trash2Icon size={14} />
-      </IconAction>
-    </div>
-  );
-}
-
-function SecretNameCell({
-  secret,
-  pending,
-  onRename,
-}: {
-  secret: Secret;
-  pending: boolean;
-  onRename: (name: string) => void;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-1">
-      <div className="min-w-0">
-        {/* The name is the interpolation key a user retypes into fleet config as
-            ${secrets.<name>.<field>}. Copying it removes a whole class of silent
-            typo — a mistyped key resolves to nothing, and the fleet just fails. */}
-        <div className="flex min-w-0 items-center gap-1">
-          <div className="truncate font-mono text-mono leading-mono">{secret.name}</div>
-          <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
-        </div>
-        <div className="text-xs text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
-      </div>
-      <IconAction
-        type="button"
-        variant="ghost"
-        onClick={() => onRename(secret.name)}
-        disabled={pending}
-        label={`Rename secret ${secret.name}`}
-        title="Rename"
-      >
-        <PencilLineIcon size={14} />
-      </IconAction>
-    </div>
-  );
-}
-
-function SecretCreatedCell({ secret }: { secret: Secret }) {
-  return (
-    <Time
-      value={new Date(secret.created_at)}
-      format="relative"
-      className="font-mono text-mono leading-mono tabular-nums text-muted-foreground"
-    />
-  );
-}
 
 function buildColumns({
   pending,
@@ -143,6 +46,7 @@ function buildColumns({
     {
       key: "created_at",
       header: "Time",
+      hideOnMobile: true,
       sortValue: (c) => c.created_at,
       cell: (c) => <SecretCreatedCell secret={c} />,
     },

@@ -204,7 +204,7 @@ describe("LeaseTable", () => {
         pageSize={25}
       />, { wrapper: TooltipProvider });
     const cell = screen.getByText(agentDisplayName("fleet-1"));
-    expect(cell.textContent).toMatch(/^Agent [A-Za-z]+-[0-9A-F]{4}$/);
+    expect(cell.textContent).toMatch(/^AGENT [A-Z]+-[0-9A-F]{4}$/);
     expect(cell.getAttribute("title")).toBe("fleet-1");
     expect(screen.queryByText("Search Services")).toBeNull();
   });

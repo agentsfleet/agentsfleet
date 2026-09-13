@@ -56,7 +56,7 @@ const toneOf = (text: string | RegExp) => screen.getByText(text).closest("[data-
 describe("FleetStatusLine", () => {
   it("shows status, durable outcome, tokens, spend, and duration on one line", () => {
     renderLine(event());
-    expect(line().className).toContain("font-mono");
+    expect(line().className).toContain("font-sans");
     expect(screen.getByText("active")).toBeTruthy();
     // The line names the outcome rather than quoting the answer: the list read
     // carries no reply text, so a completed run with nothing else to say reads
