@@ -20,10 +20,12 @@
 //! answers from opening a connection per workspace at once.
 //!
 //! A lane exists only while it holds work. It retires the moment its queue
-//! is empty, under the same lock a dispatch takes to find it, so a job never
-//! lands in a lane that is leaving: the send fails and the dispatch spawns a
-//! fresh lane, and since the old one drained everything before it left, the
-//! order within the destination holds across the hand-over.
+//! is empty, holding the same map entry a dispatch takes to find it — the
+//! map is sharded, so that is one shard's lock rather than the whole map's —
+//! so a job never lands in a lane that is leaving: the send fails and the
+//! dispatch spawns a fresh lane, and since the old one drained everything
+//! before it left, the order within the destination holds across the
+//! hand-over.
 //!
 //! # How far a slow destination can reach
 //!
@@ -42,10 +44,11 @@
 //! entries stay pending under this consumer's name, and the next process's
 //! pending-first read is what delivers them.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 
 use afd_datastore::{OutboundDelivery, OutboundQueue};
+use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -106,7 +109,7 @@ struct Inner<S> {
     posters: Posters<S>,
     queue: OutboundQueue,
     permits: Semaphore,
-    lanes: Mutex<HashMap<Destination, mpsc::Sender<Job>>>,
+    lanes: DashMap<Destination, mpsc::Sender<Job>>,
     tasks: TaskTracker,
     token: CancellationToken,
 }
@@ -121,7 +124,7 @@ impl<S: Deliver + 'static> Lanes<S> {
                 posters,
                 queue,
                 permits: Semaphore::new(IN_FLIGHT_DELIVERIES),
-                lanes: Mutex::new(HashMap::new()),
+                lanes: DashMap::new(),
                 tasks: TaskTracker::new(),
                 token,
             }),
@@ -150,7 +153,7 @@ impl<S: Deliver + 'static> Lanes<S> {
     /// How many lanes currently hold work.
     #[must_use]
     pub fn active(&self) -> usize {
-        self.inner.lock_lanes().len()
+        self.inner.lanes.len()
     }
 
     /// Waits for every lane to finish the job in hand and stop.
@@ -164,24 +167,21 @@ impl<S: Deliver + 'static> Lanes<S> {
 }
 
 impl<S: Deliver + 'static> Inner<S> {
-    /// The lane map. Poisoning cannot happen — nothing that runs under this
-    /// lock can panic — and recovering the guard is the honest answer if it
-    /// somehow did, rather than propagating a panic into every later dispatch.
-    fn lock_lanes(&self) -> MutexGuard<'_, HashMap<Destination, mpsc::Sender<Job>>> {
-        self.lanes.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
     /// The sender for `destination`'s lane, spawning the lane if it has none.
+    ///
+    /// The entry holds its shard across the look and the insert, so two
+    /// dispatches to one new destination spawn one lane rather than two —
+    /// the check-then-act a `get` followed by an `insert` would not give.
     fn lane_for(self: &Arc<Self>, destination: &Destination) -> mpsc::Sender<Job> {
-        let mut lanes = self.lock_lanes();
-        if let Some(lane) = lanes.get(destination) {
-            return lane.clone();
+        match self.lanes.entry(destination.clone()) {
+            Entry::Occupied(lane) => lane.get().clone(),
+            Entry::Vacant(slot) => {
+                let (sender, receiver) = mpsc::channel(LANE_DEPTH);
+                self.tasks
+                    .spawn(Arc::clone(self).run_lane(destination.clone(), receiver));
+                slot.insert(sender).clone()
+            }
         }
-        let (sender, receiver) = mpsc::channel(LANE_DEPTH);
-        lanes.insert(destination.clone(), sender.clone());
-        self.tasks
-            .spawn(Arc::clone(self).run_lane(destination.clone(), receiver));
-        sender
     }
 
     /// One lane: deliver what is queued for `destination`, in order, then
@@ -209,10 +209,10 @@ impl<S: Deliver + 'static> Inner<S> {
 
     /// The next queued job, or `None` after retiring the lane.
     ///
-    /// The second look happens under the lane lock, which is the same lock a
-    /// dispatch takes to find this lane: either the dispatch already queued
-    /// its job and this sees it, or this has removed the lane and the
-    /// dispatch will spawn a fresh one. There is no third interleaving.
+    /// The second look happens holding this lane's map entry, which is what
+    /// a dispatch takes to find it: either the dispatch already queued its
+    /// job and this sees it, or this has removed the lane and the dispatch
+    /// will spawn a fresh one. There is no third interleaving.
     fn take_or_retire(
         &self,
         destination: &Destination,
@@ -221,13 +221,15 @@ impl<S: Deliver + 'static> Inner<S> {
         match jobs.try_recv() {
             Ok(job) => Some(job),
             Err(TryRecvError::Disconnected) => None,
-            Err(TryRecvError::Empty) => {
-                let mut lanes = self.lock_lanes();
-                jobs.try_recv().ok().or_else(|| {
-                    lanes.remove(destination);
+            Err(TryRecvError::Empty) => match self.lanes.entry(destination.clone()) {
+                Entry::Occupied(lane) => jobs.try_recv().ok().or_else(|| {
+                    lane.remove();
                     None
-                })
-            }
+                }),
+                // Already gone: this lane retired on an earlier pass, or a
+                // dispatch respawned the destination and a fresh lane owns it.
+                Entry::Vacant(_no_lane) => None,
+            },
         }
     }
 

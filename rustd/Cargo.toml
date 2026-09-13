@@ -577,6 +577,11 @@ bytes = { version = "1.12.1", default-features = false, features = ["std"] }
 # fleet — the driver already compiles it in; naming it here is what lets
 # `afd_datastore` compute the same number the cluster would.
 crc16 = { version = "0.4.0", default-features = false }
+# A sharded concurrent map: a lookup or a retire locks one shard, not the
+# whole map, and the entry API holds that shard for exactly the check-then-
+# act a per-key race needs. Where a map is keyed by something many tasks
+# touch at once, this is the shape, not `Mutex<HashMap>`.
+dashmap = { version = "6.1.0", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
