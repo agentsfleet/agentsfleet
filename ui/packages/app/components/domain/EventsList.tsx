@@ -14,7 +14,7 @@ import {
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
-import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
+import { senderLabelFor } from "@/lib/events/event-summary";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { AgentLabel } from "./AgentLabel";
 import {
@@ -136,6 +136,11 @@ function createEventColumns(
       ),
     },
     {
+      // Inspect is the only place a failure is explained, deliberately. A
+      // Failure column here printed one sentence from `failure_label` and
+      // "No failure recorded" on every healthy row, while Status already
+      // flagged the failure and this dialog already showed that same sentence
+      // plus its recorded cause, the fix hint and the copyable diagnostic.
       key: "details",
       header: "Details",
       cell: (row) => (
@@ -164,12 +169,6 @@ function createEventColumns(
       hideOnMobile: true,
       sortValue: (row) => row.event_type,
       cell: (row) => row.event_type,
-    },
-    {
-      key: "result",
-      header: "Result",
-      sortValue: eventSummaryText,
-      cell: (row) => <EventSummaryCell row={row} />,
     },
     {
       // Trailing column: how many consecutive identical deliveries this row
@@ -321,23 +320,3 @@ function EventTimeCell({ row }: { row: EventRow }) {
   );
 }
 
-// The one prose cell. The reply itself is NOT here: the list read is kept off
-// oversized-attribute storage, so a page of 200 rows carries no bodies. What
-// survives is the actionable half — a failed run still names its reason in
-// plain language, and anything else says so plainly and sends the operator to
-// the row's own view for the text.
-function EventSummaryCell({ row }: { row: EventRow }) {
-  if (row.failure_label) {
-    return (
-      <span className="text-warning">
-        {failureSentenceFor(row.failure_label)}
-      </span>
-    );
-  }
-  return <span className="text-muted-foreground">No result recorded</span>;
-}
-
-function eventSummaryText(row: EventRow): string {
-  if (row.failure_label) return failureSentenceFor(row.failure_label);
-  return "No result recorded";
-}
