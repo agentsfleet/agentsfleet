@@ -2,7 +2,7 @@
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
 #
-# The four test-infra services (postgres, redis, dragonfly, qstash) carry NO
+# The three test-infra services (postgres, dragonfly, qstash) carry NO
 # `container_name`, so several git worktrees can run `make test-integration` at
 # once. Compose namespaces containers and volumes by project, and the project
 # name defaults to the directory basename — already unique per worktree. Pinning
@@ -60,7 +60,9 @@ services:
   dragonfly:
     # A real cluster, not `--cluster_mode=emulated`: two primaries and one
     # replica each, four processes in this one container, bootstrapped and
-    # health-checked by scripts/dragonfly-cluster.sh. The nodes announce
+    # health-checked by scripts/dragonfly-cluster.sh. A second, separate
+    # cluster of two primaries rides alongside as the migration source; neither
+    # appears in the other's cluster config. The nodes announce
     # 127.0.0.1 and the port they bind, and the eight published host ports
     # carry the same numbers, so a MOVED reply resolves from the host, from
     # inside the container and from CI. A multi-container cluster cannot do
@@ -77,15 +79,20 @@ services:
       # value must equal the published range below for redirects to resolve.
       DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
     ports:
-      # Per-worktree but fixed -- see the postgres service above. The four DATA
-      # ports as one range; the admin ports (base + 4 .. base + 7) stay inside
-      # the container on loopback, unauthenticated, reached only through
+      # Per-worktree but fixed -- see the postgres service above. Every DATA
+      # port as one range; the admin ports (base + 7 and up) stay inside the
+      # container on loopback, unauthenticated, reached only through
       # `docker compose exec`. Both ends come from make/test-infra.mk because
-      # compose cannot add 3 to a variable.
-      # Five processes: four cluster nodes and, last, the TLS node the trust
-      # suite dials (see scripts/dragonfly-cluster.sh). The daemon service
-      # below shares this network namespace, so its API port is published here.
-      - "${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}"
+      # compose cannot add 6 to a variable.
+      # Seven processes in three groups (see scripts/dragonfly-cluster.sh):
+      # the four-node target cluster; the emulated TLS node the trust suite
+      # dials; and the two-primary source cluster the migration rehearsal
+      # imports FROM and must leave intact. The source is a cluster and not a
+      # single node because the inventory tool scans by key class, and a scan
+      # fans out over every primary -- a single-node source would never
+      # exercise that. The daemon service below shares this network namespace,
+      # so its API port is published here.
+      - "${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7007}:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7007}"
       - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
     volumes:
       - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
