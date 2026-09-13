@@ -6,8 +6,8 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 export const WORKSPACE_ID = "ws_approvals_001";
 export const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 export const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
-export const AGENT_A_DISPLAY_NAME = "Agent Finch-D648";
-export const AGENT_B_DISPLAY_NAME = "Agent Finch-DB01";
+export const AGENT_A_DISPLAY_NAME = "AGENT FINCH-D648";
+export const AGENT_B_DISPLAY_NAME = "AGENT FINCH-DB01";
 export const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 
 // vi.hoisted because vi.mock factories run before module body. The mocks
