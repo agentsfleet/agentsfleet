@@ -46,10 +46,8 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let held = leases
-        .select(&first, now)
+    let held = crate::seed::select_within_one_rotation(&leases, &first, now)
         .await
-        .expect("the first pass must not fault")
         .expect("the fleet is leasable");
     // Hot-path write ONE, which the gate pass will own and which does not
     // exist yet. Reclaim's INNER JOIN reads this row to recover the event body
@@ -91,10 +89,8 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     // The holder dies. Past its expiry another runner claims, and finds that
     // still-active row rather than an empty slot.
     let lapsed = held.leased_until.saturating_add_millis(1);
-    let reclaimed = leases
-        .select(&second, lapsed)
+    let reclaimed = crate::seed::select_within_one_rotation(&leases, &second, lapsed)
         .await
-        .expect("the reclaim pass must not fault")
         .expect("a lapsed claim is winnable");
 
     assert_eq!(

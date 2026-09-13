@@ -117,10 +117,8 @@ pub(crate) async fn held() -> Held {
     let now = UnixMillis::from_millis(ENROLLED_AT);
     fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
 
-    let acquired = leases
-        .select(&runner, now)
+    let acquired = crate::seed::select_within_one_rotation(&leases, &runner, now)
         .await
-        .expect("the assignment pass must not fault")
         .expect("the seeded fleet is leasable");
     assert_eq!(
         leases

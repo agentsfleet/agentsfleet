@@ -47,11 +47,8 @@ async fn test_select_assigns_a_ready_fleets_event() {
     } = seeded::<1>(&fixtures).await;
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let acquired = fixtures
-        .leases()
-        .select(&runner, now)
+    let acquired = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now)
         .await
-        .expect("the assignment pass must not fault")
         .expect("a ready fleet holding an event is leasable");
 
     assert_eq!(acquired.kind, Kind::Fresh, "a first pull is not a reclaim");
@@ -99,11 +96,10 @@ async fn test_an_unmarked_fleet_is_not_discovered() {
     queue::clear_ready(fixtures.queue(), &fleet).await;
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let acquired = fixtures
-        .leases()
-        .select(&runner, now)
-        .await
-        .expect("an empty index is no-work, never a fault");
+    // A full rotation, because one poll proves nothing: since §4 it samples ONE
+    // of sixteen partitions, so a single `None` is as likely to mean "wrong
+    // partition" as "nothing marked". A rotation visits every partition once.
+    let acquired = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now).await;
 
     assert!(
         acquired.is_none(),
@@ -145,16 +141,13 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let held = leases
-        .select(&first, now)
+    let held = crate::seed::select_within_one_rotation(&leases, &first, now)
         .await
-        .expect("the first pass must not fault")
         .expect("the fleet is leasable");
 
-    let refused = leases
-        .select(&second, now)
-        .await
-        .expect("a taken slot is no-work, never a fault");
+    // A full rotation: one poll could miss the claimed fleet's partition and
+    // answer `None` for a reason that has nothing to do with the claim.
+    let refused = crate::seed::select_within_one_rotation(&leases, &second, now).await;
     assert!(
         refused.is_none(),
         "one fleet, one holder — the second runner polls on"
@@ -163,10 +156,8 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     // Past the holder's expiry the same fleet becomes winnable again, and the
     // SAME event comes back re-fenced rather than being lost with the claim.
     let lapsed = held.leased_until.saturating_add_millis(1);
-    let regained = leases
-        .select(&second, lapsed)
+    let regained = crate::seed::select_within_one_rotation(&leases, &second, lapsed)
         .await
-        .expect("the second pass must not fault")
         .expect("a lapsed claim is winnable");
 
     assert_eq!(
@@ -232,11 +223,9 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     .await;
     assert_ne!(poison, good, "the fixture must append two distinct entries");
 
-    let first = fixtures
-        .leases()
-        .select(&runner, now)
-        .await
-        .expect("an entry this daemon cannot decode must not fault the poll");
+    // One rotation visits this fleet's partition exactly once, so the poison is
+    // met once and dropped, and the rotation ends with nothing leasable.
+    let first = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now).await;
     assert!(
         first.is_none(),
         "the poll meets the undecodable entry first and has nothing to lease yet"
@@ -247,11 +236,8 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     // second poll at the same instant could never re-claim the slot however
     // correct the drop was.
     let later = UnixMillis::from_millis(ENROLLED_AT + 1);
-    let second = fixtures
-        .leases()
-        .select(&runner, later)
+    let second = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, later)
         .await
-        .expect("the second pass must not fault either")
         .expect("the fleet must still be leasable once the undecodable entry is gone");
     assert_eq!(
         second.event_id, good,

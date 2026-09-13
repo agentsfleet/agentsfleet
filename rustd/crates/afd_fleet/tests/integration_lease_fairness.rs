@@ -37,17 +37,25 @@ const COLD_FLEETS: u16 = 3;
 /// The tag every hot fleet requires and the runner does not carry.
 const HOT_TAG: &str = "fixture:nobody-carries-this";
 
-/// A fleet id derived from `base` that lands in `partition`.
+/// The `nth` distinct fleet id derived from `base` that lands in `partition`.
 ///
 /// The ids the fixtures mint are hashed like any other, so a fleet is steered
 /// into a partition by varying the last hextet until the hash agrees. The
 /// shape stays a version-7 identifier the store parses.
-fn fleet_in(base: &str, partition: Partition) -> String {
+///
+/// `nth` is how a caller gets SEVERAL ids in one partition, and it exists
+/// because the obvious alternative silently does not work: appending another
+/// hextet to `base` before calling makes a forty-character string, which
+/// `base[..len - 4]` then trims back to thirty-six and re-extends to forty.
+/// Postgres refuses it as `invalid input syntax for type uuid`, naming a value
+/// no one wrote. The suffix belongs to this function alone.
+fn fleet_in(base: &str, partition: Partition, nth: usize) -> String {
     let stem = &base[..base.len() - 4];
     (0..u16::MAX)
         .map(|n| format!("{stem}{n:04x}"))
-        .find(|candidate| Partition::of(candidate) == partition)
-        .expect("some suffix hashes into every partition")
+        .filter(|candidate| Partition::of(candidate) == partition)
+        .nth(nth)
+        .expect("every partition holds many suffixes")
 }
 
 /// The identifiers one run's fleets are minted from.
@@ -72,7 +80,11 @@ impl Population {
     async fn seed_hot(&self, fixtures: &Fixtures) {
         let hot = Partition::new(0).expect("the first partition exists");
         for n in 0..HOT_FLEETS {
-            let fleet = fleet_in(&format!("{}{n:04x}", self.base), hot);
+            let fleet = fleet_in(
+                &self.base,
+                hot,
+                usize::try_from(n).expect("the hot count fits a usize"),
+            );
             fixtures
                 .seed_fleet(&fleet, &self.workspace, &self.tenant, HOT_TAG, ENROLLED_AT)
                 .await;
@@ -92,7 +104,7 @@ impl Population {
         let mut expected = BTreeSet::new();
         for index in 1..=COLD_FLEETS {
             let partition = Partition::new(index).expect("a low partition exists");
-            let fleet = fleet_in(&format!("{}{:04x}", self.base, 0xf000 + index), partition);
+            let fleet = fleet_in(&self.base, partition, 0);
             let tag = placement_tag(&fleet);
             fixtures
                 .seed_fleet(&fleet, &self.workspace, &self.tenant, &tag, ENROLLED_AT)

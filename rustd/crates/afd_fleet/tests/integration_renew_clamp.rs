@@ -76,10 +76,8 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     let now = UnixMillis::from_millis(ENROLLED_AT);
     fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
 
-    let acquired = leases
-        .select(&runner, now)
+    let acquired = crate::seed::select_within_one_rotation(&leases, &runner, now)
         .await
-        .expect("the assignment pass must not fault")
         .expect("the seeded fleet is leasable");
     leases
         .record_received(&acquired, now)
@@ -191,10 +189,8 @@ async fn test_renew_after_reclaim_is_lost() {
     let now = UnixMillis::from_millis(ENROLLED_AT);
     fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
 
-    let acquired = leases
-        .select(&first, now)
+    let acquired = crate::seed::select_within_one_rotation(&leases, &first, now)
         .await
-        .expect("the assignment pass must not fault")
         .expect("the seeded fleet is leasable");
     assert_eq!(
         leases
@@ -224,10 +220,8 @@ async fn test_renew_after_reclaim_is_lost() {
 
     // The holder stalls past its TTL and the work is taken back.
     let lapsed = now.saturating_add_millis(LEASE_TTL_MS + 1);
-    leases
-        .select(&second, lapsed)
+    crate::seed::select_within_one_rotation(&leases, &second, lapsed)
         .await
-        .expect("the reclaim pass must not fault")
         .expect("a lapsed claim is winnable");
 
     assert_eq!(
@@ -277,10 +271,8 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // refuse and this test asserting the wrong code for the right outcome.
     fixtures.seed_model_rate(PROVIDER, MODEL, ENROLLED_AT).await;
 
-    let acquired = leases
-        .select(&runner, now)
+    let acquired = crate::seed::select_within_one_rotation(&leases, &runner, now)
         .await
-        .expect("the assignment pass must not fault")
         .expect("the seeded fleet is leasable");
     leases
         .record_received(&acquired, now)

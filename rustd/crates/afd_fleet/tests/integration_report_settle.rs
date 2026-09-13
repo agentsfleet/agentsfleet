@@ -129,11 +129,8 @@ async fn test_report_stale_fence_rejected() {
     let lapsed = held
         .now
         .saturating_add_millis(afd_core::timing::LEASE_TTL_MS + 1);
-    let reclaimed = held
-        .leases
-        .select(&held.spare, lapsed)
+    let reclaimed = crate::seed::select_within_one_rotation(&held.leases, &held.spare, lapsed)
         .await
-        .expect("the reclaim pass must not fault")
         .expect("a lapsed claim is winnable");
     assert!(
         reclaimed.fence > held.fence,
