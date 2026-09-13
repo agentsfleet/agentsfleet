@@ -85,7 +85,7 @@ async fn test_datastore_preflight_refuses_invalid_configuration() {
     // A standalone seed. Refused for what the datastore IS, and the refusal
     // carries what the server reported so an operator is not left guessing
     // which half of the check failed.
-    server.set_reply("CLUSTER", Reply::ClusterNotEnabled);
+    server.set_reply("INFO CLUSTER", Reply::NotACluster);
     let not_a_cluster = refuse(&redis).await;
     assert!(
         not_a_cluster.is_unsuitable_datastore(),
@@ -96,7 +96,7 @@ async fn test_datastore_preflight_refuses_invalid_configuration() {
         rendered.contains("cluster_enabled:0"),
         "the refusal quotes what the server reported: {rendered}"
     );
-    server.set_reply("CLUSTER", Reply::ClusterSlots);
+    server.set_reply("INFO CLUSTER", Reply::InCluster);
 
     // A server without sharded pub/sub. The same class, because the remedy
     // is the same shape — a different or newer datastore — and a different
