@@ -13,7 +13,8 @@ import {
   DialogTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { isSelftestStale, type RunnerDetail } from "@/lib/api/runners";
+import type { RunnerDetail } from "@/lib/api/runners";
+import { isSelftestStale } from "@/lib/api/runners-types";
 import { RunnerChecksReport } from "./RunnerChecksReport";
 import {
   CHECKS_BADGE_FAILED_SUFFIX,

@@ -1,7 +1,6 @@
 import { Badge, Section, Time } from "@agentsfleet/design-system";
-import { isSelftestStale, type RunnerDetail } from "@/lib/api/runners";
-import { type ExtraBind } from "@/lib/api/runners-types";
-import { BIND_MODE } from "@/lib/api/runners-types";
+import type { RunnerDetail } from "@/lib/api/runners";
+import { BIND_MODE, isSelftestStale, type ExtraBind } from "@/lib/api/runners-types";
 
 // What this runner's sandbox actually IS, and whether it has been proven.
 // Both halves live in one report deliberately: an operator reading a passing
