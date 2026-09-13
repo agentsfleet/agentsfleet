@@ -255,8 +255,9 @@ describe("EventsList — the standard workspace events table", () => {
       .find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    // Index 7, not 6: the leading Runs column shifted every cell along.
-    const summaryCell = cells[7];
+    // Fleet, Time, Tokens, Duration, Cost, Status, Details, Actor, Type, then
+    // Result at index 9; Runs closes the row.
+    const summaryCell = cells[9];
     expect(summaryCell?.textContent).toBe("No result recorded");
   });
 
@@ -465,16 +466,16 @@ describe("EventsList — the standard workspace events table", () => {
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
     expect(headers).toEqual([
-      "Runs",
       "Time",
-      "Status",
-      "Actor",
-      "Details",
-      "Type",
-      "Result",
-      "Cost",
       "Tokens",
       "Duration",
+      "Cost",
+      "Status",
+      "Details",
+      "Actor",
+      "Type",
+      "Result",
+      "Runs",
     ]);
     expect(screen.getByText("$0.02")).toBeTruthy();
   });

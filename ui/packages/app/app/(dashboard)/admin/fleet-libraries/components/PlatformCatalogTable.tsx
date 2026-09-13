@@ -244,6 +244,17 @@ export default function PlatformCatalogTable({
         const actions = rowActions(row);
         return (
           <div className="flex items-center justify-end gap-1">
+            <IconAction
+              label={EDIT}
+              disabled={busy}
+              onFocus={preloadEditFleetDialog}
+              onPointerEnter={() => {
+                if (maySpeculateOnHover()) preloadEditFleetDialog();
+              }}
+              onClick={() => setEditingId(row.id)}
+            >
+              <PencilIcon size={14} />
+            </IconAction>
             {actions.canPublish ? (
               <IconAction
                 label={PUBLISH}
@@ -278,17 +289,6 @@ export default function PlatformCatalogTable({
                 <DownloadIcon size={14} />
               </IconAction>
             ) : null}
-            <IconAction
-              label={EDIT}
-              disabled={busy}
-              onFocus={preloadEditFleetDialog}
-              onPointerEnter={() => {
-                if (maySpeculateOnHover()) preloadEditFleetDialog();
-              }}
-              onClick={() => setEditingId(row.id)}
-            >
-              <PencilIcon size={14} />
-            </IconAction>
             {/* A published fleet has no Delete at all, rather than a disabled one:
                 a disabled button is a promise. Withdraw it first. */}
             {actions.canDelete ? (

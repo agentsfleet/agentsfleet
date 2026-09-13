@@ -122,13 +122,14 @@ Use shared primitives before adding consumer markup with equivalent behavior.
 
 ### Tables and record dates
 
-Record lists place Created after the record identity and before Actions.
-Secrets and API Keys keep Created visible on narrow screens; the table scrolls when columns need more room.
-Event and runner activity feeds keep their primary Time column first.
+Record lists place Time after the record identity and before Actions; the column is Time everywhere, never Created, so one label reads the same on Secrets, API Keys, and the feeds.
+Secrets and API Keys keep Time visible on narrow screens; the table scrolls when columns need more room.
+Event and runner activity feeds keep their primary Time column first, followed by Tokens, Duration, Cost, Status and Details; the Runs repeat count closes the row.
+Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
 Do not add creation dates to catalog tables whose records have no useful creation-date field.
 
 Column labels and cells share horizontal padding and alignment.
-Left-align dates beneath Created, including secondary usage details in the same cell.
+Left-align dates beneath Time, including secondary usage details in the same cell.
 Right-align numeric columns and row actions. Place a numeric column’s sort icon before its label.
 Use shared DataTable sorting, pagination, and scroll behavior.
 
