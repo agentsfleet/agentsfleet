@@ -29,7 +29,7 @@ const OOM_REPLY: &str = "-OOM command not allowed when used memory > 'maxmemory'
 /// `INFO memory` from a node that keeps every key, and from one that does
 /// not — as bulk strings, which is how `INFO` answers.
 const INFO_NO_EVICTION: &str = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noeviction\r\n";
-const INFO_CACHE_MODE: &str = "# Memory\r\nused_memory:1024\r\ncache_mode:true\r\n";
+const INFO_CACHE_MODE: &str = "# Memory\r\nused_memory:1024\r\ncache_mode:cache\r\n";
 
 fn config_for(server: &FakeRedis) -> RedisConfig {
     RedisConfig::from_url(RedisRole::Default, server.url())
@@ -107,7 +107,7 @@ async fn preflight_refuses_an_evicting_primary_and_passes_one_that_retains() {
     );
     let rendered = refused.to_string();
     assert!(
-        rendered.contains("cache_mode=true"),
+        rendered.contains("cache_mode=cache"),
         "the refusal names the setting an operator changes: {rendered}"
     );
 }

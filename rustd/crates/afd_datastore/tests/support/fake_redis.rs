@@ -72,14 +72,19 @@ pub(crate) enum Reply {
     /// bytes by hand any more.
     Bulk(&'static str),
     ClusterSlots,
-    /// The same topology handshake, but `CLUSTER INFO` reports a server that
-    /// is NOT in cluster mode — a standalone seed, which preflight refuses.
+    /// `INFO cluster` as a server in cluster mode answers it.
     ///
-    /// Its own variant rather than a scripted `CLUSTER` reply, because the
-    /// driver's handshake asks the same command: a rule that answered the
-    /// standalone's `INFO` would answer the handshake's `SLOTS` with it too,
-    /// and the connection under test would never open.
-    ClusterNotEnabled,
+    /// Installed by default on the synthetic `INFO CLUSTER` rule key, so a
+    /// test scripting an `INFO` fault for the memory section does not also
+    /// answer the cluster probe with memory text.
+    InCluster,
+    /// `INFO cluster` as a standalone answers it — the seed preflight refuses.
+    ///
+    /// Keyed on `INFO CLUSTER` and not on `INFO`, because preflight asks two
+    /// sections of the same command and the driver's own handshake asks a
+    /// third thing entirely; one rule for the whole command cannot tell them
+    /// apart.
+    NotACluster,
 }
 
 /// Shared state the test drives the server through mid-flight.
@@ -132,6 +137,12 @@ impl FakeRedis {
         table
             .entry(CMD_CLUSTER.to_owned())
             .or_insert(Reply::ClusterSlots);
+        // `INFO cluster` is how preflight asks what the server IS, and every
+        // fake server in this workspace is a cluster unless a test says
+        // otherwise. Its own key because the memory section shares the command.
+        table
+            .entry(RULE_INFO_CLUSTER.to_owned())
+            .or_insert(Reply::InCluster);
 
         // Port 0: the kernel picks, so parallel tests never contend for a
         // number and no test has to reserve one.
@@ -264,7 +275,7 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
                 .rules
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(&request.name)
+                .get(rule_key(&request).as_str())
                 .cloned()
                 .unwrap_or(Reply::Raw("+OK\r\n"));
             let bytes = match reply {
@@ -274,12 +285,9 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
                 Reply::SubscribeAck => confirmation("ssubscribe", request.first_argument()),
                 Reply::UnsubscribeAck => confirmation("sunsubscribe", request.first_argument()),
                 Reply::Bulk(payload) => bulk(payload),
-                Reply::ClusterSlots => {
-                    cluster_topology(control.port, request.first_argument(), true)
-                }
-                Reply::ClusterNotEnabled => {
-                    cluster_topology(control.port, request.first_argument(), false)
-                }
+                Reply::ClusterSlots => cluster_topology(control.port, request.first_argument()),
+                Reply::InCluster => bulk(INFO_CLUSTER_ENABLED),
+                Reply::NotACluster => bulk(INFO_CLUSTER_DISABLED),
             };
             if socket.write_all(&bytes).await.is_err() {
                 return;
@@ -324,14 +332,38 @@ fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
 /// The subcommand of `CLUSTER` that asks for the shard map.
 const CLUSTER_SHARDS: &[u8] = b"SHARDS";
 
-/// The subcommand of `CLUSTER` that asks what the server IS.
-const CLUSTER_INFO: &[u8] = b"INFO";
+/// The command whose sections preflight reads, the section that says what the
+/// server IS, and the synthetic rule key the two make together.
+const CMD_INFO: &str = "INFO";
+const SECTION_CLUSTER: &[u8] = b"CLUSTER";
+const RULE_INFO_CLUSTER: &str = "INFO CLUSTER";
 
-/// `CLUSTER INFO` as a server in cluster mode answers it, and as one that is
-/// not. Only the field preflight reads is carried: the rest of the section
-/// is a dozen counters no caller in this workspace looks at.
-const CLUSTER_INFO_ENABLED: &str = "cluster_enabled:1\r\ncluster_state:ok\r\n";
-const CLUSTER_INFO_DISABLED: &str = "cluster_enabled:0\r\ncluster_state:ok\r\n";
+/// `INFO cluster` as a server in cluster mode answers it, and as one that is
+/// not. Only the field preflight reads is carried, with the header a real
+/// section leads with: the rest is a dozen counters no caller here looks at.
+///
+/// The section is `INFO cluster` and NOT `CLUSTER INFO` — they are different
+/// replies, and Dragonfly v1.40.2 names `cluster_enabled` in only this one. A
+/// fake that answered the other spelling is what let preflight ship reading a
+/// field the real server never puts there.
+const INFO_CLUSTER_ENABLED: &str = "# Cluster\r\ncluster_enabled:1\r\n";
+const INFO_CLUSTER_DISABLED: &str = "# Cluster\r\ncluster_enabled:0\r\n";
+
+/// The rule table key one request looks up.
+///
+/// Every command is keyed by its name, except `INFO`, whose section decides
+/// which question is being asked: preflight reads `cluster` and `memory` off
+/// the same command and a single rule could not answer both.
+fn rule_key(request: &self::resp::Request) -> String {
+    if request.name == CMD_INFO
+        && request
+            .first_argument()
+            .eq_ignore_ascii_case(SECTION_CLUSTER)
+    {
+        return RULE_INFO_CLUSTER.to_owned();
+    }
+    request.name.clone()
+}
 
 /// Frames `payload` as a RESP bulk string, counting it rather than trusting
 /// a number written beside it.
@@ -341,14 +373,7 @@ fn bulk(payload: &str) -> Vec<u8> {
 
 /// One shard owning slots 0..=16383 at `port` — in the `SLOTS` framing the
 /// driver handshakes with, or the `SHARDS` framing this crate walks nodes by.
-fn cluster_topology(port: u16, subcommand: &[u8], clustered: bool) -> Vec<u8> {
-    if subcommand.eq_ignore_ascii_case(CLUSTER_INFO) {
-        return bulk(if clustered {
-            CLUSTER_INFO_ENABLED
-        } else {
-            CLUSTER_INFO_DISABLED
-        });
-    }
+fn cluster_topology(port: u16, subcommand: &[u8]) -> Vec<u8> {
     if subcommand.eq_ignore_ascii_case(CLUSTER_SHARDS) {
         return afd_datastore::test_util::cluster_shards_reply(port);
     }

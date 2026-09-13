@@ -31,14 +31,25 @@ use redis::Value;
 use crate::client::Redis;
 use crate::error::{ErrorKind, Result};
 
-/// The command that reports what the server is.
-const CMD_CLUSTER: &str = "CLUSTER";
-const ARG_INFO: &str = "INFO";
+/// The `INFO` section that reports what the server IS, and the command that
+/// asks for it.
+///
+/// `INFO cluster` and not `CLUSTER INFO`: the two are different replies, and
+/// only this one carries the field below. Measured against Dragonfly v1.40.2
+/// on the local four-node rig — `CLUSTER INFO` answers sixteen fields
+/// beginning `cluster_state:ok` and names `cluster_enabled` in none of them,
+/// while `INFO cluster` answers `cluster_enabled:1`. Reading the wrong one
+/// refused boot on a healthy cluster.
+const CMD_INFO: &str = "INFO";
+const SECTION_CLUSTER: &str = "cluster";
 
-/// The field `CLUSTER INFO` reports cluster mode under, and the one value
+/// The field `INFO cluster` reports cluster mode under, and the one value
 /// that means it is on.
 const FIELD_CLUSTER_ENABLED: &str = "cluster_enabled";
 const CLUSTER_IS_ENABLED: &str = "1";
+
+/// `COMMAND`'s subcommand.
+const ARG_INFO: &str = "INFO";
 
 /// What a missing `cluster_enabled` field is reported as. A server that
 /// does not say cannot be taken to have said yes.
@@ -61,8 +72,15 @@ const FIELD_MAXMEMORY_POLICY: &str = "maxmemory_policy";
 const POLICY_NO_EVICTION: &str = "noeviction";
 
 /// Dragonfly's own switch for the same behaviour, and how it spells "on".
+///
+/// `cache` and not `true`: the field is not a boolean. Measured on Dragonfly
+/// v1.40.2, a node keeping every key reports `cache_mode:store` and the
+/// `--cache_mode` flag's own help text pairs it with `cache`. A node in cache
+/// mode also flips `maxmemory_policy` to `eviction`, so the policy arm below
+/// refuses it either way — but it refuses it naming the wrong setting, and a
+/// value this field can never hold is a check that is not one.
 const FIELD_CACHE_MODE: &str = "cache_mode";
-const CACHE_MODE_ON: &str = "true";
+const CACHE_MODE_ON: &str = "cache";
 
 /// Refuses a datastore this daemon must not accept work on.
 ///
@@ -84,9 +102,9 @@ pub async fn refuse_unsuitable_datastore(redis: &Redis) -> Result<()> {
 
 /// Refuses a seed that answers as a single server.
 ///
-/// Asked as `CLUSTER INFO` rather than inferred from whether the driver
-/// managed to build a slot map: the driver's behaviour against a standalone
-/// is the driver's business and has changed between releases, where
+/// Asked of the server rather than inferred from whether the driver managed
+/// to build a slot map: the driver's behaviour against a standalone is the
+/// driver's business and has changed between releases, where
 /// `cluster_enabled` is the server's own documented answer to exactly this
 /// question. One node is asked because every node gives the same answer.
 ///
@@ -94,9 +112,9 @@ pub async fn refuse_unsuitable_datastore(redis: &Redis) -> Result<()> {
 /// Returns a not-a-cluster error naming what was reported, and a command
 /// error when the datastore will not answer.
 pub async fn refuse_non_cluster(redis: &Redis) -> Result<()> {
-    let mut cmd = redis::cmd(CMD_CLUSTER);
-    cmd.arg(ARG_INFO);
-    let reply: String = redis.ask_one_node(CMD_CLUSTER, ARG_INFO, &cmd).await?;
+    let mut cmd = redis::cmd(CMD_INFO);
+    cmd.arg(SECTION_CLUSTER);
+    let reply: String = redis.ask_one_node(CMD_INFO, SECTION_CLUSTER, &cmd).await?;
     let reported = field_of(&reply, FIELD_CLUSTER_ENABLED).unwrap_or(CLUSTER_MODE_UNSTATED);
     if reported == CLUSTER_IS_ENABLED {
         return Ok(());
@@ -148,8 +166,9 @@ fn knows_command(reply: &Value) -> bool {
 
 /// The value of one `key:value` field in an `INFO`-shaped reply.
 ///
-/// `INFO` and `CLUSTER INFO` answer the same way: one field per line, name
-/// and value split at the first colon.
+/// Every `INFO` section answers the same way: one field per line, name and
+/// value split at the first colon, section headers (`# Memory`) carrying no
+/// colon and so contributing nothing.
 fn field_of<'reply>(reply: &'reply str, field: &str) -> Option<&'reply str> {
     reply
         .lines()
