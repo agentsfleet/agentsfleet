@@ -234,12 +234,16 @@ function SecretTable({
 }) {
   const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
-    <DataTable
-      columns={columns}
-      rows={secrets}
-      rowKey={(c) => c.name}
-      caption="Stored secrets"
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DataTable
+        className="flex min-h-0 flex-1 flex-col"
+        columns={columns}
+        rows={secrets}
+        rowKey={(c) => c.name}
+        caption="Stored secrets"
+        viewportClassName="min-h-0 flex-1 max-h-none"
+      />
+    </div>
   );
 }
 
@@ -300,7 +304,7 @@ export default function SecretsList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* "No secrets" is the server's claim to make: the optimistic hide of the
           last row keeps the table shell until the delete is answered, so the
           status region never announces an emptiness the server may retract. */}

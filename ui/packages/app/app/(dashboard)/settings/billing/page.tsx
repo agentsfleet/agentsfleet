@@ -62,7 +62,7 @@ export default async function BillingSettingsPage({
   const summary = summarizeCharges(charges, billing.balance_nanos);
 
   return (
-    <PageLayout>
+    <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={BILLING_DESCRIPTION}>
         <PageTitle>Billing</PageTitle>
       </PageHeader>
