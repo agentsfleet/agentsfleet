@@ -245,6 +245,7 @@ export default function PlatformCatalogTable({
         return (
           <div className="flex items-center justify-end gap-1">
             <IconAction
+              variant="ghost"
               label={EDIT}
               disabled={busy}
               onFocus={preloadEditFleetDialog}
@@ -257,6 +258,7 @@ export default function PlatformCatalogTable({
             </IconAction>
             {actions.canPublish ? (
               <IconAction
+                variant="ghost"
                 label={PUBLISH}
                 disabled={busy}
                 onClick={() => void setPublished(row, true)}
@@ -266,6 +268,7 @@ export default function PlatformCatalogTable({
             ) : null}
             {actions.canUnpublish ? (
               <IconAction
+                variant="ghost"
                 label={UNPUBLISH}
                 disabled={busy}
                 onClick={() => void setPublished(row, false)}
@@ -278,6 +281,7 @@ export default function PlatformCatalogTable({
                 Delete on a published row. */}
             {actions.canFetch ? (
               <IconAction
+                variant="ghost"
                 label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
                 disabled={busy}
                 onFocus={preloadAddFleetDialog}
@@ -293,6 +297,7 @@ export default function PlatformCatalogTable({
                 a disabled button is a promise. Withdraw it first. */}
             {actions.canDelete ? (
               <IconAction
+                variant="destructive"
                 label={DELETE}
                 disabled={busy}
                 onClick={() => setDeletingId(row.id)}
