@@ -142,7 +142,7 @@ describe("SecretsList component", () => {
     const user = userEvent.setup();
     await renderList();
 
-    for (const name of ["Name", "Created"]) {
+    for (const name of ["Name", "Time"]) {
       await user.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }

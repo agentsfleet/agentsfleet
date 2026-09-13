@@ -78,81 +78,11 @@ function createEventColumns(
       cell: (row) => <AgentLabel fleetId={row.fleet_id} />,
     },
     {
-      // How many consecutive identical deliveries this row stands for. Blank
-      // for a row that stands only for itself, so the eye catches the repeats
-      // rather than a column of "×1".
-      key: "runs",
-      header: "Runs",
-      sortValue: (row) => runs.countFor(row) ?? 0,
-      cell: (row) => <RunsCell row={row} runs={runs} />,
-    },
-    {
       key: "time",
       header: "Time",
       hideOnMobile: true,
       sortValue: (row) => row.created_at,
       cell: (row) => <EventTimeCell row={row} />,
-    },
-    {
-      key: "status",
-      header: "Status",
-      hideOnMobile: true,
-      sortValue: (row) => row.status,
-      cell: (row) => (
-        <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
-          {row.status}
-        </Badge>
-      ),
-    },
-    {
-      key: "actor",
-      header: "Actor",
-      sortValue: (row) => senderLabelFor(row.actor),
-      cell: (row) => senderLabelFor(row.actor),
-    },
-    {
-      key: "details",
-      header: "Details",
-      cell: (row) => (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="min-h-11 sm:min-h-0"
-          aria-label={`Inspect event ${row.event_id}`}
-          onClick={() => onInspect(row)}
-        >
-          Inspect
-          <ChevronRightIcon size={14} aria-hidden="true" />
-        </Button>
-      ),
-    },
-    {
-      key: "type",
-      header: "Type",
-      hideOnMobile: true,
-      sortValue: (row) => row.event_type,
-      cell: (row) => row.event_type,
-    },
-    {
-      key: "result",
-      header: "Result",
-      sortValue: eventSummaryText,
-      cell: (row) => <EventSummaryCell row={row} />,
-    },
-    {
-      key: "cost",
-      header: "Cost",
-      numeric: true,
-      hideOnMobile: true,
-      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
-      cell: (row) => (
-        <DimmedWhenAbsent row={row} value={row.cost_nanos}>
-          {row.cost_nanos === null
-            ? VALUE_UNKNOWN
-            : formatDollars(row.cost_nanos)}
-        </DimmedWhenAbsent>
-      ),
     },
     {
       key: "tokens",
@@ -179,6 +109,78 @@ function createEventColumns(
           {row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)}
         </DimmedWhenAbsent>
       ),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      numeric: true,
+      hideOnMobile: true,
+      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
+      cell: (row) => (
+        <DimmedWhenAbsent row={row} value={row.cost_nanos}>
+          {row.cost_nanos === null
+            ? VALUE_UNKNOWN
+            : formatDollars(row.cost_nanos)}
+        </DimmedWhenAbsent>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      hideOnMobile: true,
+      sortValue: (row) => row.status,
+      cell: (row) => (
+        <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "details",
+      header: "Details",
+      cell: (row) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="min-h-11 sm:min-h-0"
+          aria-label={`Inspect event ${row.event_id}`}
+          onClick={() => onInspect(row)}
+        >
+          Inspect
+          <ChevronRightIcon size={14} aria-hidden="true" />
+        </Button>
+      ),
+    },
+    {
+      key: "actor",
+      header: "Actor",
+      sortValue: (row) => senderLabelFor(row.actor),
+      cell: (row) => senderLabelFor(row.actor),
+    },
+    {
+      key: "type",
+      header: "Type",
+      hideOnMobile: true,
+      sortValue: (row) => row.event_type,
+      cell: (row) => row.event_type,
+    },
+    {
+      key: "result",
+      header: "Result",
+      sortValue: eventSummaryText,
+      cell: (row) => <EventSummaryCell row={row} />,
+    },
+    {
+      // Trailing column: how many consecutive identical deliveries this row
+      // stands for. Blank for a row that stands only for itself, so the eye
+      // catches the repeats rather than a column of "×1". It closes the row
+      // because the figures an operator scans for — time, tokens, duration,
+      // cost — belong beside the fleet, not behind a repeat count.
+      key: "runs",
+      header: "Runs",
+      sortValue: (row) => runs.countFor(row) ?? 0,
+      cell: (row) => <RunsCell row={row} runs={runs} />,
     },
   ];
 }

@@ -287,6 +287,22 @@ export function ActionsCell({
         type="button"
         variant="ghost"
         disabled={pending}
+        onClick={() => onEdit(entry)}
+        // The Edit dialog's model picker needs the global catalogue. Warming
+        // it on intent means the dialog opens populated instead of opening
+        // empty and filling in underneath the user's cursor. Focus always
+        // qualifies; hover only where it is a real signal — the caller owns
+        // that policy, this just reports the gesture.
+        onFocus={onEditFocusIntent}
+        onPointerEnter={onEditHoverIntent}
+        label={`Edit ${entry.model_id}`}
+      >
+        <PencilIcon size={14} />
+      </IconAction>
+      <IconAction
+        type="button"
+        variant="ghost"
+        disabled={pending}
         onClick={() => onView(entry)}
         label={`View details for ${entry.model_id}`}
       >
@@ -303,22 +319,6 @@ export function ActionsCell({
           <ArrowLeftRightIcon size={14} />
         </IconAction>
       ) : null}
-      <IconAction
-        type="button"
-        variant="ghost"
-        disabled={pending}
-        onClick={() => onEdit(entry)}
-        // The Edit dialog's model picker needs the global catalogue. Warming
-        // it on intent means the dialog opens populated instead of opening
-        // empty and filling in underneath the user's cursor. Focus always
-        // qualifies; hover only where it is a real signal — the caller owns
-        // that policy, this just reports the gesture.
-        onFocus={onEditFocusIntent}
-        onPointerEnter={onEditHoverIntent}
-        label={`Edit ${entry.model_id}`}
-      >
-        <PencilIcon size={14} />
-      </IconAction>
       <IconAction
         type="button"
         variant="destructive"

@@ -142,7 +142,7 @@ function buildColumns({
     },
     {
       key: "created_at",
-      header: "Created",
+      header: "Time",
       sortValue: (c) => c.created_at,
       cell: (c) => <SecretCreatedCell secret={c} />,
     },
