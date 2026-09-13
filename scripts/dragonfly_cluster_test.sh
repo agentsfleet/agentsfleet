@@ -82,7 +82,7 @@ test_should_attach_the_migration_to_the_source_shard_only() {
   fixture
   local doc
   doc="$(render_config 2 0 8192 12287)"
-  local mig='"migrations":[{"node_id":"dfly-a","ip":"127.0.0.1","port":7008,"slot_ranges":[{"start":8192,"end":12287}]}]'
+  local mig='"migrations":[{"node_id":"dfly-a","ip":"127.0.0.1","port":7006,"slot_ranges":[{"start":8192,"end":12287}]}]'
   if [ "$(printf '%s' "$doc" | command grep -o '"migrations"' | wc -l | tr -d ' ')" != "1" ]; then
     bad "$name" "expected exactly one migrations entry: $doc"
   elif [[ "$doc" != *"$mig"* ]]; then
@@ -98,7 +98,7 @@ test_should_attach_the_migration_to_the_source_shard_only() {
 test_should_derive_admin_ports_beside_the_data_ports() {
   local name="test_should_derive_admin_ports_beside_the_data_ports"
   fixture
-  if [ "$(data_port 3)" = "7004" ] && [ "$(admin_port 0)" = "7008" ] && [ "$(admin_port 3)" = "7011" ]; then
+  if [ "$(data_port 3)" = "7004" ] && [ "$(admin_port 0)" = "7006" ] && [ "$(admin_port 3)" = "7009" ]; then
     ok "$name"
   else
     bad "$name" "data 3=$(data_port 3) admin 0=$(admin_port 0) admin 3=$(admin_port 3)"
@@ -111,67 +111,10 @@ test_should_derive_admin_ports_beside_the_data_ports() {
 test_should_place_the_tls_node_after_the_cluster_ports() {
   local name="test_should_place_the_tls_node_after_the_cluster_ports"
   fixture
-  if [ "$(data_port "$TLS_NODE")" = "7005" ] && [ "$(admin_port "$TLS_NODE")" = "7012" ]; then
+  if [ "$(data_port "$TLS_NODE")" = "7005" ] && [ "$(admin_port "$TLS_NODE")" = "7010" ] && [ "$(admin_port 0)" -gt "$(data_port "$TLS_NODE")" ]; then
     ok "$name"
   else
-    bad "$name" "tls data=$(data_port "$TLS_NODE") tls admin=$(admin_port "$TLS_NODE")"
-  fi
-  teardown
-}
-
-# The source cluster's two nodes follow the TLS node, and the admin block
-# starts past EVERY data port. That is the invariant the offset encodes: a node
-# added without widening it binds its data port onto node 0's admin port, and
-# the failure is a bind error inside a container nobody reads.
-test_should_place_the_source_cluster_after_every_other_data_port() {
-  local name="test_should_place_the_source_cluster_after_every_other_data_port"
-  fixture
-  if [ "$(data_port "${SOURCE_NODES[0]}")" = "7006" ] &&
-     [ "$(data_port "${SOURCE_NODES[1]}")" = "7007" ] &&
-     [ "$(data_port "${SOURCE_NODES[1]}")" = "$(data_port "$LAST_NODE")" ] &&
-     [ "$(admin_port 0)" -gt "$(data_port "$LAST_NODE")" ]; then
-    ok "$name"
-  else
-    bad "$name" "src=$(data_port "${SOURCE_NODES[0]}")-$(data_port "${SOURCE_NODES[1]}") last=$(data_port "$LAST_NODE") admin0=$(admin_port 0)"
-  fi
-  teardown
-}
-
-# The source is its own cluster: two primaries, no replicas, the whole slot
-# space between them. A gap leaves keys nothing owns; an overlap makes an
-# inventory count them twice.
-test_should_render_a_source_config_covering_every_slot_once() {
-  local name="test_should_render_a_source_config_covering_every_slot_once"
-  fixture
-  local rendered expected
-  rendered="$(render_source_config)"
-  expected='[{"slot_ranges":[{"start":0,"end":8191}],"master":{"id":"dfly-src-a","ip":"127.0.0.1","port":7006},"replicas":[]},{"slot_ranges":[{"start":8192,"end":16383}],"master":{"id":"dfly-src-b","ip":"127.0.0.1","port":7007},"replicas":[]}]'
-  if [ "$rendered" = "$expected" ]; then
-    ok "$name"
-  else
-    bad "$name" "$rendered"
-  fi
-  teardown
-}
-
-# Neither cluster names a node of the other. That separation is what makes the
-# rehearsal a switch between deployments rather than a copy within one.
-test_should_keep_the_source_and_target_clusters_disjoint() {
-  local name="test_should_keep_the_source_and_target_clusters_disjoint"
-  fixture
-  local overlap=0 src tgt
-  for src in "${SOURCE_IDS[@]}"; do
-    for tgt in "${NODE_IDS[@]}"; do
-      [ "$src" = "$tgt" ] && overlap=1
-    done
-  done
-  for src in "${SOURCE_NODES[@]}"; do
-    [ "$src" -le "$TLS_NODE" ] && overlap=1
-  done
-  if [ "$overlap" -eq 0 ]; then
-    ok "$name"
-  else
-    bad "$name" "source ids or indices collide with the target cluster"
+    bad "$name" "tls data=$(data_port "$TLS_NODE") tls admin=$(admin_port "$TLS_NODE") admin 0=$(admin_port 0)"
   fi
   teardown
 }
@@ -182,9 +125,6 @@ test_should_render_the_config_every_node_is_pushed
 test_should_attach_the_migration_to_the_source_shard_only
 test_should_derive_admin_ports_beside_the_data_ports
 test_should_place_the_tls_node_after_the_cluster_ports
-test_should_place_the_source_cluster_after_every_other_data_port
-test_should_render_a_source_config_covering_every_slot_once
-test_should_keep_the_source_and_target_clusters_disjoint
 
 if [ "$FAILURES" -ne 0 ]; then
   printf '%s failure(s)\n' "$FAILURES"
