@@ -32,6 +32,22 @@ describe("cn", () => {
     expect(cn(false, null, undefined, "", 0)).toBe("");
   });
 
+  // Every size token in the scale, not just one. `text-reading` was added to
+  // theme.css and NOT to the font-size group, so `cn()` silently dropped it and
+  // the chat transcript rendered at the inherited 15px while looking correct in
+  // source. A per-token assertion is what turns that into a failing test rather
+  // than a measurement someone has to take in a browser.
+  it("test_ds_cn_keeps_every_font_size_token_beside_a_colour", () => {
+    const scale = [
+      "text-display-xl", "text-display-lg", "text-display-md", "text-heading",
+      "text-eyebrow", "text-reading", "text-body-lg", "text-body", "text-body-sm",
+      "text-label", "text-mono",
+    ];
+    for (const token of scale) {
+      expect(cn(token, "text-foreground")).toBe(`${token} text-foreground`);
+    }
+  });
+
   it("test_ds_cn_merges_and_keeps_fontsize — resolves a Tailwind conflict last-wins", () => {
     expect(cn("px-2", "px-4")).toBe("px-4");
     expect(cn("text-body", "text-heading")).toBe("text-heading");
