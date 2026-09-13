@@ -8,7 +8,7 @@ fills it; the audit checks structural consistency. None proves design quality.
 
 | Stage | Required content |
 |---|---|
-| Authoring | Goal, scope, existing references, decisions and prerequisites, Dimensions with test mappings, failures, interfaces, and acceptance checks |
+| Authoring | Goal, scope, verified source references, enforcement mechanisms and failure assumptions, decisions and acyclic prerequisites, Dimensions with test mappings, failures, interfaces, and acceptance checks |
 | CHORE(open) | Active status, branch, full comparison revision, baseline measurement pending |
 | PLAN | Implementer's comprehension handshake; resolved scope and decisions needed by the next Section |
 | Before Pull Request | Declared unit/integration baseline counts, comparison revision, and evidence reference |
@@ -46,6 +46,18 @@ Check that required content is meaningful, prerequisites are attainable, failure
 are tested, and the acceptance checks prove the goal. A structural pass does not
 mean the feature is implemented. Use `manual` for a human proof; record its
 procedure, required person, and durable evidence without inventing sign-off.
+
+Apply docs/TEMPLATE.md's Implementation readiness review to the relevant surfaces.
+Pin versions, constraints, privileges and ordering when changing them could
+invalidate a proof; omit routine coding recipes. Verify actual client/server
+behavior and distinguish source inspection from runtime evidence.
+For state replacement, name the authority, commit/release boundary, retry rules,
+expiry/deletion behavior and fresh/populated upgrade path. Read the real migrator
+and deployment release command before calling an image rollback a safe abort.
+Budget the complete request path against an identified comparable reference.
+Record direct user decisions separately from reviewer suggestions; a platform
+risk needs an explicit disposition, not inferred acceptance. Attack the amended
+spec for counterexamples and stale requirements before reporting readiness.
 
 Use `{{fill:description}}` for authoring slots. Delete them and all `tpl:`
 guidance before staging. Runtime parameters such as `/items/{id}` are allowed
