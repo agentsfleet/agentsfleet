@@ -28,7 +28,7 @@ import {
 import { RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
 import { SOURCE_KIND_GITHUB, type PlatformCatalogEntry } from "@/lib/types";
 import { onboardPlatformLibraryAction, readPlatformLibraryAction } from "../actions";
-import { importLanded, repoImportState } from "../import-reconcile";
+import { reconcileImport, repoImportState, type RepoImportState } from "../import-reconcile";
 import {
   ADD_ACTION,
   ADD_TOOLTIP,
@@ -112,6 +112,13 @@ export default function AddFleetDialog({
     setCollision(false);
   }
 
+  // Spacing for the reconcile poll below. Named here rather than inlined so the
+  // dialog holds no timing policy of its own — `import-reconcile` owns both the
+  // attempt count and the interval.
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /*
    * The catalog's verdict on an import we stopped waiting for.
    *
@@ -124,9 +131,11 @@ export default function AddFleetDialog({
     if (values.source_kind !== SOURCE_KIND_GITHUB) return false;
     const repo = values.source_ref;
     const before = repoImportState(entries, repo);
-    const reread = await readPlatformLibraryAction();
-    if (!reread.ok) return false;
-    return importLanded(before, repoImportState(reread.data.entries, repo));
+    async function readState(): Promise<RepoImportState | null> {
+      const reread = await readPlatformLibraryAction();
+      return reread.ok ? repoImportState(reread.data.entries, repo) : null;
+    }
+    return reconcileImport(before, readState, sleep);
   }
 
   async function submit(values: LibrarySourceValues, replace: boolean) {
