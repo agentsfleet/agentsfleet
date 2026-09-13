@@ -191,3 +191,21 @@ bench-cardinality: _ensure-test-infra  ## Cost per idle fleet up a ladder (PROFI
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"
+
+.PHONY: bench-datastore bench-datastore-self-test
+
+# The acceptance rows R1-R5 of the datastore spec, one CHECK each. Grades the archive in
+# `bench/results/`; runs nothing and dials nothing, because the run happened
+# earlier and the file is what survives it.
+#
+# `bench-compare` above stays non-failing by design — it reports a delta a
+# person judges. This one is the opposite and exits non-zero: it is a gate a
+# spec row cites, and a row that cannot go red grades nothing.
+bench-datastore:  ## Grade archived datastore evidence (CHECK=prototype|durability|retention|coordination|cluster [PROFILE=rig])
+	@CHECK="$(CHECK)" PROFILE="$(PROFILE)" python3 scripts/bench_datastore.py
+
+# Its own target as well as riding `lint-scripts`, so the grader can be proven
+# without waiting on the whole lint lane while its table is being edited.
+bench-datastore-self-test:  ## Run scripts/bench_datastore_test.py — the evidence grader's own tests
+	@PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -t scripts -p 'bench_datastore_test.py'
+	@echo "✓ [bench] Evidence grader self-tests passed"
