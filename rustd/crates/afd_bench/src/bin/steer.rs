@@ -36,7 +36,7 @@ async fn main() -> ExitCode {
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
     let env = cli::process_env();
-    let (profile, _target) = cli::admitted(&env)?;
+    let (profile, _target, provenance) = cli::admitted(&env)?;
     let parameters = steer::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
         concurrency: number(&env, Parameter::Concurrency.name(), DEFAULT_CONCURRENCY)?,
@@ -48,7 +48,7 @@ async fn measure() -> Result<String> {
     let prefix = RunPrefix::mint();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = steer::run(profile, parameters, &stores, &prefix).await;
+    let measured = steer::run(profile, provenance, parameters, &stores, &prefix).await;
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
     cli::finish(Lane::Steer, profile, measured, swept)
 }

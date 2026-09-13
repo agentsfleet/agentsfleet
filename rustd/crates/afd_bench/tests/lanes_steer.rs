@@ -34,7 +34,14 @@ async fn test_steer_bench_reports_a_rate_and_a_p95() {
     let report = swept(
         &stores,
         &prefix,
-        steer::run(Profile::Rig, parameters, &stores, &prefix).await,
+        steer::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -57,7 +64,14 @@ async fn test_steer_bench_attributes_cost_between_datastores() {
     let report = swept(
         &stores,
         &prefix,
-        steer::run(Profile::Rig, parameters, &stores, &prefix).await,
+        steer::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -86,7 +100,14 @@ async fn test_steer_bench_reports_readiness_depth_over_time() {
     let report = swept(
         &stores,
         &prefix,
-        steer::run(Profile::Rig, parameters, &stores, &prefix).await,
+        steer::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 

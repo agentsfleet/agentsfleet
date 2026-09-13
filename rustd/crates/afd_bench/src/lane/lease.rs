@@ -48,7 +48,7 @@ use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
 use crate::report::{
-    DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, per_second, ratio,
+    DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, per_second, ratio,
 };
 
 /// Measurement key: polls issued per second, lease or miss.
@@ -129,6 +129,7 @@ impl Parameters {
 /// that would not answer, or a lost task. Never a slow result.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -163,7 +164,7 @@ pub async fn run(
     )
     .await?;
 
-    let mut report = Report::new(Lane::Lease, profile);
+    let mut report = Report::new(Lane::Lease, profile, provenance);
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Runners.name(), parameters.runners);

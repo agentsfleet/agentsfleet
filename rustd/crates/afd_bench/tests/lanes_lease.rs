@@ -43,7 +43,14 @@ async fn test_lease_bench_reports_a_rate_and_a_p95() {
     let report = swept(
         &stores,
         &prefix,
-        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+        lease::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -73,7 +80,14 @@ async fn test_lease_bench_reports_roundtrips_per_lease() {
     let report = swept(
         &stores,
         &prefix,
-        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+        lease::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -103,7 +117,14 @@ async fn test_lease_bench_reports_wasted_claim_rate() {
     let report = swept(
         &stores,
         &prefix,
-        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+        lease::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -125,7 +146,14 @@ async fn test_lease_bench_reports_idle_poll_cost() {
     let report = swept(
         &stores,
         &prefix,
-        lease::run(Profile::Rig, parameters, &stores, &prefix).await,
+        lease::run(
+            Profile::Rig,
+            support::provenance(),
+            parameters,
+            &stores,
+            &prefix,
+        )
+        .await,
     )
     .await;
 
@@ -152,9 +180,15 @@ async fn test_a_deployed_run_sweeps_everything_it_created() {
         window: WINDOW,
     };
 
-    let mut report = lease::run(Profile::Dev, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
+    let mut report = lease::run(
+        Profile::Dev,
+        support::provenance(),
+        parameters,
+        &stores,
+        &prefix,
+    )
+    .await
+    .expect("runs");
     report.fixture.swept = sweep::everything(&stores.database, &stores.queue, &prefix)
         .await
         .expect("sweeps");

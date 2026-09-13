@@ -22,7 +22,7 @@
 use tokio::sync::Mutex;
 
 use afd_bench::datastores::Datastores;
-use afd_bench::report::Report;
+use afd_bench::report::{Provenance, Report};
 
 /// The knobs `make test-integration-rustd` exports; see `make/test-infra.mk`.
 const DATABASE_KNOB: &str = "TEST_DATABASE_URL";
@@ -90,4 +90,19 @@ pub(crate) fn series<'a>(report: &'a Report, key: &str) -> &'a [f64] {
             report.series.keys()
         )
     })
+}
+
+/// What a lane driven from this suite says about itself.
+///
+/// The rig is owned by construction — compose brings it up for this worktree
+/// alone and the lane resets it — so these runs declare ownership. The revision
+/// and image are the suite's own name rather than a real build: a result
+/// written by a test is not evidence, and the grader reads the archive, not
+/// this.
+pub(crate) fn provenance() -> Provenance {
+    Provenance {
+        revision: "integration-suite".to_owned(),
+        datastore_image: "integration-suite".to_owned(),
+        owned: true,
+    }
 }
