@@ -44,7 +44,7 @@ function Harness({ prefillRepo, prefillRef }: { prefillRepo?: string; prefillRef
       <Button type="button" onClick={() => setOpen(true)}>
         open
       </Button>
-      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} prefillRef={prefillRef} entries={[]} />
+      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} prefillRef={prefillRef} />
     </TooltipProvider>
   );
 }

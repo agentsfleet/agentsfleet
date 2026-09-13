@@ -95,7 +95,6 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
           onOpenChange={setAdding}
           prefillRepo={prefillRepo}
           prefillRef={prefillRef}
-          entries={entries}
         />
       </Section>
     </PageLayout>

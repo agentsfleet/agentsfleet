@@ -211,7 +211,7 @@ describe("fleet-library intent dialogs", () => {
         onOpenChange={onOpenChange}
         prefillRepo="agentsfleet/example"
         prefillRef="main"
-        entries={[]}
+
       />,
     );
     expect(view.container.textContent).toBe("");
@@ -224,14 +224,14 @@ describe("fleet-library intent dialogs", () => {
         onOpenChange={onOpenChange}
         prefillRepo="agentsfleet/example"
         prefillRef="main"
-        entries={[]}
+
       />,
     );
     expect(screen.getByText("Loading fleet library form…")).toBeTruthy();
     expect(loader.preload).toHaveBeenCalledTimes(2);
 
     showError(loader);
-    view.rerender(<AddFleetDialog open onOpenChange={onOpenChange} entries={[]} />);
+    view.rerender(<AddFleetDialog open onOpenChange={onOpenChange} />);
     expect(screen.getByRole("alert").textContent).toContain(
       "Could not load the fleet library form.",
     );
@@ -247,7 +247,7 @@ describe("fleet-library intent dialogs", () => {
         onOpenChange={onOpenChange}
         prefillRepo="agentsfleet/example"
         prefillRef="main"
-        entries={[]}
+
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "loaded dialog" }));
