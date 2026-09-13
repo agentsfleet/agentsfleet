@@ -29,6 +29,8 @@ afd_connector.workspace = true
 # hand-rolled beside its schedule, and where its install shipped the bug that
 # left the last delay unreachable.
 backon.workspace = true
+# The lane map: one shard locked per dispatch or retire — see `lanes`.
+dashmap.workspace = true
 # The vendor call. The same client the rest of the workspace dials with.
 reqwest.workspace = true
 # The header name a JSON body is sent under, from the crate that owns the
