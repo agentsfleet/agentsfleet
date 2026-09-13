@@ -28,6 +28,8 @@ afd_core.workspace = true
 # The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
 # hand-rolled `Backoff` beside a jitter source of its own.
 backon.workspace = true
+# The readiness partition of a fleet — see `ready::partition`.
+crc16.workspace = true
 futures-util.workspace = true
 # The outbound consumer name, which has to survive a restart — see
 # `outbound::outbound_consumer`.

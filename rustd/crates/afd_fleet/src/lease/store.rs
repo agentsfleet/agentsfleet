@@ -15,7 +15,7 @@
 
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{FleetStreams, ReadyIndex, Redis};
+use afd_datastore::{FleetStreams, ReadyCursor, ReadyIndex, Redis};
 use afd_db::Db;
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
@@ -33,21 +33,29 @@ use afd_db::Db;
 /// The entropy source is the third: issuing a lease mints two identifiers, and
 /// they are drawn through the workspace's one entropy surface rather than a
 /// second call to the operating system.
+///
+/// The cursor is the fourth, and the reason every clone shares it: the
+/// readiness index is partitioned, a poll reads the partition the cursor
+/// names, and a cursor per handle would let every handle start at the same
+/// partition and leave the rest to luck. One counter per process is what
+/// makes a rotation of polls reach every partition.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
     queue: Redis,
     entropy: Entropy,
+    cursor: ReadyCursor,
 }
 
 impl Leases {
     /// A store reading and writing through `database` and `queue`.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
             entropy,
+            cursor: ReadyCursor::new(),
         }
     }
 
@@ -66,6 +74,11 @@ impl Leases {
     /// same reason [`Leases::pool`] is.
     pub(crate) fn ready(&self) -> ReadyIndex {
         ReadyIndex::new(self.queue.clone())
+    }
+
+    /// The partition cursor every poll through this store turns.
+    pub(crate) const fn cursor(&self) -> &ReadyCursor {
+        &self.cursor
     }
 
     /// The fleet event streams, bound to this store's connection.

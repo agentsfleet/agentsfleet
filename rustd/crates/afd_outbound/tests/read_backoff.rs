@@ -29,6 +29,10 @@ use tokio_util::sync::CancellationToken;
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
+#[allow(
+    dead_code,
+    reason = "shared support: the read suite grades the reads, the lane suite the acks"
+)]
 mod hanging_queue;
 
 use self::hanging_queue::HangingQueue;

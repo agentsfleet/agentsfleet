@@ -27,7 +27,7 @@ use backon::BackoffBuilder as _;
 /// is an operational number, not an implementation detail.
 const BACKOFF_CAP: Duration = Duration::from_secs(5);
 use afd_datastore::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
-use afd_datastore::ready::READY_INDEX_KEY;
+use afd_datastore::ready::{Partition, READY_INDEX_KEY, READY_PARTITIONS};
 use afd_datastore::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
 use afd_datastore::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
 
@@ -62,6 +62,13 @@ fn test_stream_key_and_group_match_the_zig_constants() {
     assert_eq!(
         READY_INDEX_KEY, "fleet:ready",
         "the readiness index moves and every entry already written is orphaned"
+    );
+    // pin test: literal is the contract
+    assert_eq!(READY_PARTITIONS, 16, "a changed count re-homes every mark");
+    assert_eq!(
+        Partition::of("fleet_0123").key(),
+        format!("fleet:ready:{{{}}}", Partition::of("fleet_0123").index()),
+        "the partition key is the index key, a colon, and the number as a hash tag"
     );
 }
 

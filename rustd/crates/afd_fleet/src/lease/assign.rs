@@ -134,9 +134,13 @@ impl Leases {
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
+        // One partition per poll, the next in the rotation: the read stays one
+        // bounded round trip, and the partitions this poll did not visit are
+        // the next polls' — whichever runner makes them.
+        let partition = self.cursor().advance();
         let ready = self
             .ready()
-            .peek(MAX_READY_CANDIDATES_PER_POLL)
+            .peek(partition, MAX_READY_CANDIDATES_PER_POLL)
             .await
             .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
         cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);

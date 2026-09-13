@@ -573,6 +573,10 @@ object_store = { version = "0.14.1", default-features = false, features = ["aws"
 # manifest a statement about what that crate actually names in its own types,
 # and `afd_fleet::bundle::Snapshot` names this one.
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
+# The checksum the cluster keys slots by, for the readiness partition of a
+# fleet — the driver already compiles it in; naming it here is what lets
+# `afd_datastore` compute the same number the cluster would.
+crc16 = { version = "0.4.0", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
