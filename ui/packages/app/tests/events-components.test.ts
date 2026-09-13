@@ -240,12 +240,14 @@ describe("EventsList — the standard workspace events table", () => {
     // 1 header row + 5 event rows.
     expect(screen.getAllByRole("row").length).toBe(6);
     // The reply is NOT on a list row any more: the list read carries no
-    // bodies. A completed run with nothing else to say says exactly that.
+    // bodies, and no column tries to explain a failure either — Status flags
+    // it and Inspect carries the reason.
     expect(screen.queryByText("first event")).toBeNull();
-    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
-    // failure_label fallback for null response_text — "boom" isn't a real
-    // FailureClass tag, so it renders raw (fails soft on unknown tags).
-    expect(screen.getByText("boom")).toBeTruthy();
+    expect(screen.queryByText("No failure recorded")).toBeNull();
+    // No failure text on a list row at all now — not the friendly sentence and
+    // not the raw tag. "boom" is not a real FailureClass, and the list is the
+    // wrong place to find that out; Inspect is.
+    expect(screen.queryByText("boom")).toBeNull();
     // weird status falls through to default badge variant (still rendered)
     expect(screen.getByText("weird-unknown")).toBeTruthy();
     // A row with neither response text nor a failure label says so instead of
@@ -255,10 +257,9 @@ describe("EventsList — the standard workspace events table", () => {
       .find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    // Fleet, Time, Tokens, Duration, Cost, Status, Details, Actor, Type, then
-    // Result at index 9; Runs closes the row.
-    const summaryCell = cells[9];
-    expect(summaryCell?.textContent).toBe("No result recorded");
+    // Fleet, Time, Tokens, Duration, Cost, Status, Details, Actor, then Type
+    // at index 8; Runs closes the row. No cell restates the failure.
+    expect(cells[8]?.textContent).toBe("chat");
   });
 
   it("sorts every event data column from its header arrow", () => {
@@ -290,7 +291,6 @@ describe("EventsList — the standard workspace events table", () => {
       "Fleet",
       "Actor",
       "Type",
-      "Result",
       "Cost",
       "Tokens",
       "Duration",
@@ -334,77 +334,40 @@ describe("EventsList — the standard workspace events table", () => {
     ).not.toBe("none");
   });
 
-  it("sorts results by the normalized operator-facing summary", () => {
-    renderList({
-      items: [
-        row({
-          event_id: "failure",
-          response_text: null,
-          failure_label: "oom_kill",
-        }),
-        row({
-          event_id: "no-reply",
-          response_text: null,
-          failure_label: null,
-        }),
-      ],
-      next_cursor: null,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Result" }));
-    expect(screen.getAllByRole("row")[1]?.textContent).toContain(
-      "No result recorded",
-    );
-  });
-
-  it("renders a known FailureClass tag as a friendly label without its internal tag", () => {
+  it("keeps every failure explanation off the list row, tag and sentence alike", () => {
+    // Status flags the failure and Inspect explains it, with the recorded cause
+    // and the fix hint the list could never fit. `tests/event-details-dialog`
+    // owns the copy itself; this only proves the list stays out of it.
     renderList({
       items: [
         row({
           event_id: "f",
           status: "fleet_error",
-          response_text: null,
+          response_text: "Engine configuration could not be assembled.",
           failure_label: "oom_kill",
         }),
         row({
           event_id: "g",
-          status: "fleet_error",
+          status: "gate_blocked",
           response_text: null,
-          failure_label: "resource_kill",
+          failure_label: "budget_breach",
         }),
       ],
       next_cursor: null,
     });
-    expect(screen.getByText("Ran out of memory")).toBeTruthy();
-    expect(screen.getByText("Hit a resource limit")).toBeTruthy();
-    expect(screen.queryByText("oom_kill")).toBeNull();
-    expect(screen.queryByText("resource_kill")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Inspect event f" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Inspect event f" }).className,
-    ).toContain("min-h-11");
-  });
-
-  it("names a failure in plain language without exposing its internal tag", () => {
-    renderList({
-      items: [
-        row({
-          event_id: "response-failure",
-          status: "fleet_error",
-          response_text: "Engine configuration could not be assembled.",
-          failure_label: "startup_posture",
-        }),
-      ],
-      next_cursor: null,
-    });
-    // The reply text is not on the list row; the actionable sentence is.
-    expect(
-      screen.queryByText("Engine configuration could not be assembled."),
-    ).toBeNull();
-    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
-    expect(screen.queryByText("startup_posture")).toBeNull();
+    for (const leaked of [
+      "Ran out of memory",
+      "Fleet budget limit reached",
+      "oom_kill",
+      "budget_breach",
+      "Engine configuration could not be assembled.",
+    ]) {
+      expect(screen.queryByText(leaked)).toBeNull();
+    }
+    // The route to the reason is the row's own Inspect control.
+    const inspect = screen.getByRole("button", { name: "Inspect event f" });
+    expect(inspect).toBeTruthy();
+    expect(inspect.className).toContain("min-h-11");
   });
 
   it("presents actor identifiers as readable names while retaining details", async () => {
@@ -431,22 +394,6 @@ describe("EventsList — the standard workspace events table", () => {
     ).toBeNull();
   });
 
-  it("renders the fleet budget failure with operator-facing copy", () => {
-    renderList({
-      items: [
-        row({
-          event_id: "budget",
-          status: "gate_blocked",
-          response_text: null,
-          failure_label: "budget_breach",
-        }),
-      ],
-      next_cursor: null,
-    });
-    expect(screen.getByText("Fleet budget limit reached")).toBeTruthy();
-    expect(screen.queryByText("budget_breach")).toBeNull();
-  });
-
   // The column used to print `01a0…7b2a` — the durable id, correct and
   // unreadable. It now carries the same callsign the fleet has on every other
   // surface, through the one component that decides how a fleet is spelled.
@@ -457,7 +404,7 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByText(/zomb…ijkl/)).toBeNull();
   });
 
-  it("fleet scope removes the Fleet column and keeps Result, Cost, Tokens, and Duration", () => {
+  it("fleet scope removes the Fleet column and keeps Cost, Tokens, and Duration", () => {
     renderList(
       { items: [row({ cost_nanos: 20_000_000 })], next_cursor: null },
       "zomb_1234567890ab",
@@ -474,7 +421,6 @@ describe("EventsList — the standard workspace events table", () => {
       "Details",
       "Actor",
       "Type",
-      "Result",
       "Runs",
     ]);
     expect(screen.getByText("$0.02")).toBeTruthy();

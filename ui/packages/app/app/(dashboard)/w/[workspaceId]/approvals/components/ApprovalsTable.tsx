@@ -149,6 +149,7 @@ function ApprovalActions({ gate, actions }: { gate: ApprovalGate; actions: RowAc
     <div className="flex justify-end gap-1">
       <IconAction
         type="button"
+        variant="ghost"
         onClick={() => actions.onApprove(gate.gate_id)}
         label={`${APPROVE_LABEL}: ${name}`}
         title={APPROVE_LABEL}

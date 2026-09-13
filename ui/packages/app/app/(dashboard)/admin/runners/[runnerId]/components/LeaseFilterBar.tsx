@@ -176,7 +176,7 @@ function FilterChip({
       <Badge className="normal-case" title={title}>
         {label} {value}
       </Badge>
-      <IconAction label={clearLabel} onClick={onClear}>
+      <IconAction variant="ghost" label={clearLabel} onClick={onClear}>
         <XIcon />
       </IconAction>
     </span>
