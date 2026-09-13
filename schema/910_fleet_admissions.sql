@@ -35,11 +35,26 @@
 --                           byte-identical to the one the producer was told
 --                           about.
 --   receipt                 the stream entry id the append answered with, or
---                           NULL until it has. This is the ONLY status this
---                           table keeps: "admitted" is `receipt IS NULL` and
---                           "queued" is its negation, so a second `status`
---                           column would be a free-text restatement of a NULL
---                           test with nothing validating it.
+--                           NULL until it has: "admitted" is `receipt IS NULL`
+--                           and "queued" is its negation.
+--   delivered_at            when a runner was handed this event, stamped by the
+--                           same lease write that opens the narrative log in
+--                           `core.fleet_events`, or NULL until one was.
+--
+--                           These two timestamps are the table's whole status
+--                           vocabulary, and both are NULL TESTS rather than a
+--                           `status` text column, which would be a free-text
+--                           restatement of them with nothing validating the
+--                           spelling.
+--
+--                           This one duplicates a fact `core.fleet_events`
+--                           already holds, and that is the point. "Receipted
+--                           but never delivered" is the recovery set after the
+--                           queue loses its data — work a producer was told yes
+--                           about, whose entry is gone, and which the replay
+--                           sweeper's `receipt IS NULL` scan does not see.
+--                           Asking that across two tables is a join no index
+--                           can bound; here it is one partial index, below.
 --   replay_count            how many times the sweeper re-appended this row.
 --                           Read, not just written: the sweeper logs it when a
 --                           row is re-appended more than once, which is how a
@@ -61,6 +76,7 @@ CREATE TABLE IF NOT EXISTS core.fleet_admissions (
     request_json     TEXT   NOT NULL,
     event_created_at BIGINT NOT NULL,
     receipt          TEXT,
+    delivered_at     BIGINT,
     replay_count     BIGINT NOT NULL,
     created_at       BIGINT NOT NULL,
     updated_at       BIGINT NOT NULL,
@@ -74,6 +90,30 @@ CREATE TABLE IF NOT EXISTS core.fleet_admissions (
 CREATE INDEX IF NOT EXISTS idx_fleet_admissions_unreceipted
     ON core.fleet_admissions (created_at, seq)
     WHERE receipt IS NULL;
+
+-- Readers: the lease path's delivery stamp, and the reconciliation pass that
+-- finds accepted work whose queue entry is gone.
+--
+-- Both ask the same question — which admissions are receipted and not yet
+-- delivered — so both ride one partial index, and in a healthy deployment it
+-- holds only the work currently in flight.
+--
+-- The stamp is a point lookup on the logical event id's two integers under one
+-- fleet. It keys on `(created_at, seq)` and NOT on `receipt`, because a
+-- replayed admission put one logical event on two stream entries while the
+-- ledger recorded only the first receipt: a receipt-keyed stamp would miss the
+-- delivery of the second entry, leave the row unstamped forever, and have the
+-- reconciliation pass re-append work that already ran.
+--
+-- The pass walks the same index, and leading on `fleet_id` is what lets it
+-- group a batch by fleet and ask each stream once where its oldest surviving
+-- entry is.
+--
+-- Both predicates are NULL tests, so no application constant is mirrored here
+-- (RULE STS).
+CREATE INDEX IF NOT EXISTS idx_fleet_admissions_undelivered
+    ON core.fleet_admissions (fleet_id, created_at, seq)
+    WHERE receipt IS NOT NULL AND delivered_at IS NULL;
 
 -- Reader: the `ON DELETE CASCADE` from `core.fleets`, which without an index
 -- on the referencing side scans this whole table per deleted fleet.

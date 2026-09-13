@@ -37,7 +37,7 @@
 //! acknowledgement path, and never crosses the oldest pending or undelivered
 //! entry; the admission budget is what bounds a stream that is not draining.
 
-mod render;
+pub(crate) mod render;
 pub(crate) mod retain;
 mod tail;
 
@@ -55,6 +55,10 @@ const CMD_XGROUP: &str = "XGROUP";
 const CMD_XREADGROUP: &str = "XREADGROUP";
 const CMD_XACK: &str = "XACK";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
+const CMD_XRANGE: &str = "XRANGE";
+
+/// The cap argument `XRANGE`, `XREVRANGE` and `XAUTOCLAIM` all take.
+pub(crate) const ARG_COUNT: &str = "COUNT";
 const CMD_DEL: &str = "DEL";
 
 /// Consumer group every fleet stream is read under.

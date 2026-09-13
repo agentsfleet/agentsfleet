@@ -48,8 +48,9 @@ mod admit;
 pub mod budget;
 mod cursor;
 pub mod error;
+mod reconcile;
 mod replay;
-mod sql;
+pub mod sql;
 
 use afd_crypto::entropy::Entropy;
 use afd_datastore::Redis;
@@ -60,6 +61,7 @@ use sha2::{Digest as _, Sha256};
 pub use self::budget::{BudgetScope, Budgets};
 pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
+pub use self::reconcile::Reconciled;
 pub use self::replay::Replayed;
 
 /// Who is asking a fleet to run something.
@@ -240,6 +242,23 @@ impl Admissions {
 #[must_use]
 pub fn logical_id(created_at: i64, seq: i64) -> String {
     format!("{created_at}-{seq}")
+}
+
+/// The two integers a logical event id spells, or `None` when the text is not
+/// one this ledger minted.
+///
+/// The inverse of [`logical_id`], and here beside it so the one crate owns both
+/// directions: the lease path binds these to `sql::MARK_DELIVERED`, and a
+/// second parser elsewhere could drift from the spelling written above.
+///
+/// `None` is an ordinary answer, not a fault. `core.fleet_events` also holds
+/// ids this table never minted — an approval's continuation, and every event
+/// that predates the ledger — and a delivery of one of those simply has no
+/// admission row to stamp.
+#[must_use]
+pub fn logical_parts(id: &str) -> Option<(i64, i64)> {
+    let (created_at, seq) = id.split_once('-')?;
+    Some((created_at.parse().ok()?, seq.parse().ok()?))
 }
 
 #[cfg(test)]

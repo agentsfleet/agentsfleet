@@ -39,7 +39,7 @@ use redis::streams::{
     StreamInfoGroupsReply, StreamInfoStreamReply, StreamPendingReply, StreamRangeReply,
 };
 
-use super::{FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
+use super::{ARG_COUNT, FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
 use crate::client::Redis;
 use crate::error::{self, Result};
 
@@ -57,10 +57,10 @@ const XINFO_GROUPS: &str = "GROUPS";
 /// `XTRIM`'s strategy: remove every entry whose id is below the one given.
 const XTRIM_MINID: &str = "MINID";
 
-/// `XREVRANGE`'s bounds, newest to oldest, and its cap.
+/// `XREVRANGE`'s bounds, newest to oldest. Its cap is the module's
+/// [`ARG_COUNT`], shared with the reads next door.
 const RANGE_NEWEST: &str = "+";
 const RANGE_OLDEST: &str = "-";
-const ARG_COUNT: &str = "COUNT";
 
 /// How many acknowledged entries a stream keeps above its floor.
 ///

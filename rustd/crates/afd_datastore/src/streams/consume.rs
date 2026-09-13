@@ -7,14 +7,17 @@
 //! different costs, different failure modes, and no caller that needs both.
 
 use redis::ToRedisArgs as _;
-use redis::streams::{StreamReadOptions, StreamReadReply};
+use redis::streams::{StreamRangeReply, StreamReadOptions, StreamReadReply};
 
 use super::{
-    AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XREADGROUP, EventId,
-    FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, NEW_ENTRIES, OWN_PENDING, fleet_stream_key,
-    stringify,
+    ARG_COUNT, AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XRANGE,
+    CMD_XREADGROUP, EventId, FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, NEW_ENTRIES,
+    OWN_PENDING, fleet_stream_key, stringify,
 };
 use crate::error::Result;
+
+/// How many entries the existence probe asks for: the one it named.
+const JUST_THE_ONE: usize = 1;
 
 impl FleetStreams {
     /// Reads the next undelivered event, without blocking.
@@ -73,6 +76,37 @@ impl FleetStreams {
             }))
     }
 
+    /// Whether this fleet's stream still holds the entry `receipt` names.
+    ///
+    /// The recovery path's one question. An admission carries the receipt its
+    /// append answered with, and retention never crosses an entry a consumer
+    /// still owes (see [`super::retain`]), so a receipt the stream cannot
+    /// produce names an entry that was DESTROYED — a flush, a restart without
+    /// persistence, a failover to an empty replica. That is accepted work the
+    /// producer was told yes about, and the ledger is the only place it
+    /// survives.
+    ///
+    /// Asked of the server rather than computed from an id comparison: the
+    /// server knows, and an ordering done here would have to beat the text
+    /// ordering under which `999-0` sorts after `1000-0`. `XRANGE` bounds are
+    /// inclusive, so naming the receipt as both ends asks for exactly it.
+    ///
+    /// # Errors
+    /// Returns a command error, or an unavailable error when Redis is gone. A
+    /// caller must read that as "unknown" and leave the row alone: re-appending
+    /// on a stream that would not answer duplicates work it may still hold.
+    pub async fn holds_entry(&self, fleet_id: &str, receipt: &EventId) -> Result<bool> {
+        let key = fleet_stream_key(fleet_id);
+        let mut cmd = redis::cmd(CMD_XRANGE);
+        cmd.arg(&key)
+            .arg(receipt.as_str())
+            .arg(receipt.as_str())
+            .arg(ARG_COUNT)
+            .arg(JUST_THE_ONE);
+        let reply: StreamRangeReply = self.redis.command(CMD_XRANGE, &key, &cmd).await?;
+        Ok(!reply.ids.is_empty())
+    }
+
     /// Acknowledges an event, removing it from the consumer's pending list.
     ///
     /// # Errors
@@ -108,7 +142,7 @@ impl FleetStreams {
             .arg(consumer)
             .arg(AUTOCLAIM_MIN_IDLE_MS)
             .arg(AUTOCLAIM_START)
-            .arg("COUNT")
+            .arg(ARG_COUNT)
             .arg(1);
 
         // The typed reply is the crate's. `redis_fleet_decode.zig` hand-decodes

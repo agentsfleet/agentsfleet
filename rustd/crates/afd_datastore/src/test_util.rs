@@ -14,6 +14,7 @@ use tokio::sync::Semaphore;
 use crate::Redis;
 use crate::config::RedisConfig;
 use crate::error::{ErrorKind, Result};
+use crate::streams::{EventId, FleetEvent};
 
 static CONNECT_SERIAL: Semaphore = Semaphore::const_new(1);
 
@@ -119,3 +120,43 @@ pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
     )
     .into_bytes()
 }
+
+/// Every entry one fleet's stream holds, oldest first.
+///
+/// `XRANGE` over the whole stream, NOT a group read: `XREADGROUP` moves
+/// `last-delivered-id`, which moves the retention floor, so a suite that
+/// inspected its stream that way would change the thing it was about to assert
+/// on. Nothing in production reads a stream this way — history is
+/// `core.fleet_events` — which is why it lives here and not on
+/// [`FleetStreams`](crate::FleetStreams).
+///
+/// Each [`FleetEvent`] carries the receipt and the entry's fields, so a caller
+/// reads the logical id with `event.field(afd_wire::event::field::EVENT_ID)`
+/// rather than spelling the field name here. After a replay one logical id
+/// legitimately appears on two entries, and both are returned.
+///
+/// # Errors
+/// Returns a command error when the stream cannot be read.
+pub async fn fleet_entries(redis: &Redis, fleet_id: &str) -> Result<Vec<FleetEvent>> {
+    let key = crate::streams::fleet_stream_key(fleet_id);
+    let mut cmd = redis::cmd(CMD_XRANGE);
+    cmd.arg(&key).arg(RANGE_OLDEST).arg(RANGE_NEWEST);
+    let reply: redis::streams::StreamRangeReply = redis.command(CMD_XRANGE, &key, &cmd).await?;
+    Ok(reply
+        .ids
+        .iter()
+        .map(|entry| FleetEvent {
+            receipt: EventId::of(&entry.id),
+            fields: entry
+                .map
+                .iter()
+                .map(|(name, value)| (name.clone(), crate::streams::render::stringify(value)))
+                .collect(),
+        })
+        .collect())
+}
+
+/// The command [`fleet_entries`] issues, and its bounds.
+const CMD_XRANGE: &str = "XRANGE";
+const RANGE_OLDEST: &str = "-";
+const RANGE_NEWEST: &str = "+";

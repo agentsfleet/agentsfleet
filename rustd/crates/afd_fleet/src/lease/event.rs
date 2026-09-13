@@ -40,6 +40,9 @@ const CONTEXT_RECEIVED: &str = "fleet event received";
 /// Statement name, for the context a refusal's query failure carries.
 const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
 
+/// Statement name, for the context the delivery stamp's failure carries.
+const CONTEXT_DELIVERED: &str = "admission delivered stamp";
+
 /// Whether this delivery was the first.
 ///
 /// A named type rather than a `bool`, because the answer decides whether the
@@ -101,6 +104,18 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
 
+        // Stamped on BOTH arms, before the arms diverge. A first delivery that
+        // wrote the narrative row and then failed to stamp has committed the
+        // row already — these are separate statements on an autocommit
+        // connection — and its redelivery takes the conflict arm. Stamping only
+        // on the first arm would leave that row unstamped forever: the entry
+        // protects it while it is pending, but once it is acknowledged and
+        // trimmed out of history the reconcile pass reads it as accepted work
+        // whose entry is gone and re-appends an event that already RAN, with
+        // real provider spend. The statement's own `delivered_at IS NULL` guard
+        // is what makes running it twice free.
+        stamp_admission_delivered(&mut connection, acquired, now).await?;
+
         // Zero rows is the `ON CONFLICT DO NOTHING` arm: the row was already
         // there, so somebody has already paid for this event.
         if landed.rows_affected() == 0 {
@@ -117,6 +132,47 @@ impl Leases {
             counters,
         })
     }
+}
+
+/// Stamp this event's admission row as delivered, on the connection that just
+/// opened the narrative log.
+///
+/// The second half of the same fact. `core.fleet_events` records that a runner
+/// was handed this event; `core.fleet_admissions.delivered_at` records it where
+/// the recovery pass can find it under one partial index, instead of behind a
+/// join no index can bound. Attempted on every delivery, first or repeat: see
+/// the call site for the unstamped row that costs.
+///
+/// The logical id is parsed by the ledger's own
+/// [`logical_parts`](afd_admission::logical_parts), and `None` is an ordinary
+/// answer: an id this ledger never minted — an approval's continuation, an
+/// event predating the table — has no row to stamp. A zero row count is
+/// ordinary for the same reason, and so is a row this delivery's predecessor
+/// already stamped, so neither is reported.
+///
+/// # Errors
+/// Reports a database that would not answer. It is raised rather than
+/// swallowed: an unstamped row is one the reconcile pass can later read as
+/// accepted work whose entry is gone, and re-append an event that already ran.
+/// The caller's redelivery runs this again, which is why it is attempted on
+/// every delivery rather than only the first.
+async fn stamp_admission_delivered(
+    connection: &mut sqlx::PgConnection,
+    acquired: &Acquired,
+    now: UnixMillis,
+) -> Result<()> {
+    let Some((created_at, seq)) = afd_admission::logical_parts(&acquired.event_id) else {
+        return Ok(());
+    };
+    sqlx::query(afd_admission::sql::MARK_DELIVERED)
+        .bind(acquired.fleet_id.as_str())
+        .bind(created_at)
+        .bind(seq)
+        .bind(now.as_millis())
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_DELIVERED))?;
+    Ok(())
 }
 
 /// Whether the refusal moved a row, and the row it moved.

@@ -118,8 +118,8 @@ Complete. Closed PR #681 captured three samples per M188 lane on a reset rig (me
 Dependencies: §0.3 and §5. Acceptance means a committed PostgreSQL admission row before any success response. The row carries producer identity (steer request, webhook delivery id, schedule fire, gate continuation, install, outbound answer), the fleet, the payload digest, and a status that a replay dispatcher advances; the queue append is a single-key `XADD` recorded back as a physical receipt. Duplicate producer identity is a unique-index conflict, which replaces every Redis dedup claim; `once.rs` and its two-key script are deleted, not kept behind a flag. Numeric event ids and the existing stream entry ids stay as the physical receipt; logical identity is the ledger row.
 Replay re-appends any admitted row without a receipt after a bounded age, under the same fencing the lease path already enforces; settlement and billing key on the ledger row so a replayed receipt cannot debit twice.
 
-- **Dimension 2.1**: a stop injected between commit, append and receipt leaves zero missing admitted events after replay → Test `test_acceptance_recovers_at_each_crash_boundary`.
-- **Dimension 2.2**: destroying the cluster's data and rebuilding it replays every unfinished admission with one settlement and one debit → Test `test_queue_loss_replays_without_duplicate_settlement`.
+- **Dimension 2.1**: a stop injected between commit, append and receipt leaves zero missing admitted events after replay → Test `acceptance_recovers_at_each_crash_boundary` (`afd_fleet`). DONE.
+- **Dimension 2.2**: destroying the cluster's data and rebuilding it replays every unfinished admission with one settlement and one debit → Test `queue_loss_replays_without_duplicate_settlement` (`afd_fleet`). DONE.
 - **Dimension 2.3**: an unavailable database refuses every producer with a retryable class and records no acceptance → Test `a_well_formed_steer_reaches_the_store_and_reports_the_outage`, with `a_verified_fire_for_a_schedule_no_store_can_answer_for_reports_an_outage` (`afd_api`). DONE.
 
 ### §3: Retention, memory limits, and backpressure
@@ -215,8 +215,8 @@ Exact names land in `observability.md` with the typed registry change in the sam
 | 1.1 | unit | `test_incomparable_datastore_runs_are_rejected` | Historical (PR #681): missing budget or changed seed fails grading. |
 | 1.2 | unit | `test_shared_deployment_refuses_saturation_profile` | Historical (PR #681): oversized fixture opens no connection. |
 | 1.3 | integration | `test_redis_baseline_records_complete_evidence` | Historical (PR #681): every manifest field populated. |
-| 2.1 | integration | `test_acceptance_recovers_at_each_crash_boundary` | Each injected stop leaves zero missing admitted events. |
-| 2.2 | integration | `test_queue_loss_replays_without_duplicate_settlement` | Rebuild yields zero losses and zero duplicate debits. |
+| 2.1 | integration | `acceptance_recovers_at_each_crash_boundary` | Each injected stop leaves zero missing admitted events. |
+| 2.2 | integration | `queue_loss_replays_without_duplicate_settlement` | Rebuild yields zero losses and zero duplicate debits. |
 | 2.3 | integration | `a_well_formed_steer_reaches_the_store_and_reports_the_outage` | Database failure produces a retryable class and no acceptance. |
 | 3.1 | integration | `a_slow_consumer_keeps_every_owed_entry_while_history_stays_bounded` | Pending and undelivered entries survive trim; acknowledged history bounded. |
 | 3.2 | unit + integration | `a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer` | Budgets, `OOM` and class-53 refusals classified; no row, no silent drop. |

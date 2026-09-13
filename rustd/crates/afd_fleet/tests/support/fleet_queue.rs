@@ -20,7 +20,10 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use std::sync::atomic::{AtomicI64, Ordering};
+
 use afd_datastore::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
+use afd_wire::event::Entry;
 
 /// The lane's Redis URL.
 const URL_KNOB: &str = "TEST_REDIS_URL";
@@ -92,21 +95,43 @@ pub(crate) async fn enqueue(
         .await
         .expect("the consumer group must exist before a read");
     let created = created_at.to_string();
-    let id = streams
-        .append(
-            fleet,
-            &[
-                ("type", event_type),
-                ("actor", actor),
-                ("workspace_id", workspace),
-                ("request", request_json),
-                ("created_at", &created),
-            ],
-        )
+    let logical = mint_logical_id(created_at);
+    // `Entry::queued_pairs` and NOT a hand-written field list. The list this
+    // fixture used to carry went stale the moment the ledger added `event_id`:
+    // every
+    // entry it wrote was refused by `lease::envelope` as "appended by something
+    // that did not admit it", dropped, and the fleet looked empty — which is
+    // how one fixture failed twenty-six integration tests at once. Routing the
+    // shape through the producer's own helper is what makes that impossible to
+    // repeat: a field added there arrives here with it.
+    let entry = Entry {
+        actor,
+        event_type,
+        workspace_id: workspace,
+        request_json,
+        created_at: &created,
+    };
+    let _receipt = streams
+        .append(fleet, &entry.queued_pairs(&logical))
         .await
         .expect("the append must land");
     mark_ready(queue, fleet).await;
-    id.as_str().to_owned()
+    logical
+}
+
+/// A logical event id in the ledger's shape, unique within this process.
+///
+/// `<millis>-<seq>` is what `afd_admission::logical_id` spells and what
+/// `logical_parts` reads back, and the lease path now carries it as the event's
+/// identity. The sequence is a process counter rather than the append's entry
+/// id, because the two are deliberately different things now that the ledger
+/// owns identity: the entry id
+/// is a RECEIPT, and a fixture handing one back as an identity would re-teach
+/// the confusion the ledger exists to end.
+fn mint_logical_id(created_at: i64) -> String {
+    static LOGICAL_SEQUENCE: AtomicI64 = AtomicI64::new(1);
+    let seq = LOGICAL_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    afd_admission::logical_id(created_at, seq)
 }
 
 /// Appends an entry in the shape the Rust producers wrote before the wire fix.
@@ -147,6 +172,32 @@ pub(crate) async fn enqueue_cutover_era(
 }
 
 /// Marks a fleet ready so the readiness peek can surface it.
+/// Every entry on one fleet's stream, as `(receipt, logical event id)`.
+///
+/// Over `afd_datastore::test_util::fleet_entries`, which is an `XRANGE` and not
+/// a group read — `XREADGROUP` would move `last-delivered-id` and with it the
+/// retention floor, changing the thing the caller is about to assert on.
+///
+/// Both halves are returned because after a replay one logical event
+/// legitimately sits on two entries: the receipt is the physical copy and the
+/// field is the identity.
+pub(crate) async fn entries_on(queue: &Redis, fleet: &str) -> Vec<(String, String)> {
+    afd_datastore::test_util::fleet_entries(queue, fleet)
+        .await
+        .expect("the lane's stream answers a range read")
+        .iter()
+        .map(|entry| {
+            (
+                entry.receipt.as_str().to_owned(),
+                entry
+                    .field(afd_wire::event::field::EVENT_ID)
+                    .unwrap_or_default()
+                    .to_owned(),
+            )
+        })
+        .collect()
+}
+
 pub(crate) async fn mark_ready(queue: &Redis, fleet: &str) {
     ReadyIndex::new(queue.clone())
         .mark(fleet, fleet)
