@@ -10,14 +10,12 @@ import type { PlatformCatalogEntry } from "@/lib/types";
  * of that after the operator has already been told it failed. The next page
  * load shows the fleet that was supposed to have not been imported.
  *
- * So on a timeout — and only on a timeout — the catalog gets one more read,
- * and the answer comes from the row rather than from our own patience.
+ * So on a timeout — and only on a timeout — the catalog is asked, and the
+ * answer comes from the row rather than from our own patience.
  *
- * The comparison is server value against server value. `content_hash` is
- * written by the import and by nothing else, so a hash that changed is proof
- * the import reached its last step. Comparing timestamps against the browser's
- * clock would have made skew the deciding factor; comparing hashes makes the
- * bundle the deciding factor.
+ * Every comparison here is server value against server value. Both the bundle
+ * hash and the row timestamp are written by the import and by nothing else, so
+ * neither the browser's clock nor its idea of "now" can decide the outcome.
  */
 
 /** What the catalog held for one repository at one moment. */
@@ -25,9 +23,27 @@ export type RepoImportState = {
   present: boolean;
   /** `null` is a row that exists but has never carried a bundle. */
   contentHash: string | null;
+  /** Server-written millisecond stamp; `null` only when the row is absent. */
+  updatedAt: number | null;
 };
 
-export const REPO_ABSENT: RepoImportState = { present: false, contentHash: null };
+export const REPO_ABSENT: RepoImportState = {
+  present: false,
+  contentHash: null,
+  updatedAt: null,
+};
+
+/**
+ * How long to keep asking, and how often.
+ *
+ * One read was not enough: it fires the instant our patience expires, which is
+ * exactly when the import is most likely to be inside its last few writes. A
+ * read that arrives before the upsert reports a failure the catalog contradicts
+ * a second later. Four reads spaced over roughly four and a half seconds cover
+ * that window without holding the dialog open long enough to feel hung.
+ */
+export const RECONCILE_ATTEMPTS = 4;
+export const RECONCILE_INTERVAL_MS = 1_500;
 
 /**
  * The catalog's state for one repository.
@@ -43,7 +59,7 @@ export function repoImportState(
 ): RepoImportState {
   const entry = entries.find((candidate) => candidate.source_repo === sourceRepo);
   if (!entry) return REPO_ABSENT;
-  return { present: true, contentHash: entry.content_hash };
+  return { present: true, contentHash: entry.content_hash, updatedAt: entry.updated_at };
 }
 
 /**
@@ -51,15 +67,45 @@ export function repoImportState(
  *
  * Three ways to answer no, and each is a state the catalog can really be in:
  * no row for this repository, a row that still carries no bundle, and a row
- * whose bundle is the same one it had before we submitted. That last case is
- * the refetch path's whole difficulty — the row was already there and already
- * had a hash, so presence proves nothing and only a CHANGED hash does.
+ * that is byte-for-byte and stamp-for-stamp the one we submitted against.
  *
- * Answering yes on an unchanged hash would report a refetch that timed out and
- * genuinely failed as a success, which is the same lie in the other direction.
+ * A changed bundle hash is the plain case. The hard one is a refetch of a
+ * branch that has not moved: the import runs to completion and writes the same
+ * hash it found, so the hash alone would call every such refetch a failure. The
+ * row timestamp settles it, because `core.fleet_library`'s upsert sets
+ * `updated_at = EXCLUDED.updated_at` on its DO UPDATE arm with no equality
+ * guard — a landed import always advances it, an import that never reached the
+ * upsert never does.
+ *
+ * The residual gap is another operator writing the same row in the same few
+ * seconds, which would advance the stamp without this import having landed.
+ * Closing that needs an operation id the onboard endpoint does not yet return.
  */
 export function importLanded(before: RepoImportState, after: RepoImportState): boolean {
   if (!after.present || after.contentHash === null) return false;
   if (!before.present || before.contentHash === null) return true;
-  return after.contentHash !== before.contentHash;
+  if (after.contentHash !== before.contentHash) return true;
+  return (
+    after.updatedAt !== null && before.updatedAt !== null && after.updatedAt > before.updatedAt
+  );
+}
+
+/**
+ * Ask the catalog until it answers or we run out of attempts.
+ *
+ * `readState` returns `null` for a read that itself failed — an unanswered
+ * question is not a yes, but neither is it a no, so the poll carries on rather
+ * than letting one bad response end the reconcile.
+ */
+export async function reconcileImport(
+  before: RepoImportState,
+  readState: () => Promise<RepoImportState | null>,
+  sleep: (ms: number) => Promise<void>,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await sleep(RECONCILE_INTERVAL_MS);
+    const after = await readState();
+    if (after && importLanded(before, after)) return true;
+  }
+  return false;
 }
