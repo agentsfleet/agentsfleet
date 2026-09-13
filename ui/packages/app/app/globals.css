@@ -28,12 +28,17 @@ body {
 
 /* One rhythm for the dashboard's horizontal edges.
  *
- * The canvas scrolls and the header does not, so they each need the same
- * number stated once rather than two Tailwind scales that agree at some
- * breakpoints and not others. They did not agree: the canvas ran
- * px-4/sm:px-6/md:px-8/2xl:px-12 while the header's trailing cluster ran
- * pr-4/md:pr-6, so above 640px the avatar sat 8px outboard of the content
- * below it, and 24px outboard past 1536px.
+ * The canvas states its gutter once, as a token, rather than a Tailwind scale
+ * that every block on it would have to repeat.
+ *
+ * The header keeps an edge of its own. Its leading cluster is the sidebar
+ * column: `px-3` plus the wordmark's `ml-2.5` puts the brand 22px in from
+ * the left. The trailing cluster mirrors that on the right, so the avatar
+ * sits as far from its edge as the brand sits from its own. It used to sit
+ * on the canvas's content edge instead — the gutter plus whatever scrollbar
+ * the platform reserved — which read 48px against the brand's 22 at 1920px
+ * and needed a probe to measure that scrollbar. Below `md` there is no
+ * column, and both clusters run the mobile row's 16px.
  *
  * `scrollbar-gutter: stable both-edges` is the other half, and it is on
  * BOTH edges for a reason. The canvas takes its scrollbar out of its own
@@ -49,26 +54,26 @@ body {
 :root {
   --app-scrollbar: 6px;
   --app-canvas-gutter: 1rem;
+  --app-canvas-block: 1.5rem;
+  --app-shell-edge: 1rem;
 }
 @media (min-width: 40rem) { :root { --app-canvas-gutter: 1.5rem; } }
-@media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; } }
+@media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; --app-canvas-block: 2rem; --app-shell-edge: 1.375rem; } }
 @media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
 
+/* The block padding is a token too, because a page that pins something to
+ * the canvas's foot has to give exactly this much back: a sticky element
+ * stops at the canvas's content box, so the runner page's status line reads
+ * the same variable rather than a second copy of the number. */
 .app-dashboard-canvas {
   background: var(--bg);
   padding-inline: var(--app-canvas-gutter);
+  padding-block: var(--app-canvas-block);
   scrollbar-gutter: stable both-edges;
 }
 
-/* The header does not scroll, so nothing reserves a scrollbar for it: it adds
- * that width itself to land its trailing cluster on the canvas's content edge.
- * `--app-scrollbar` above is only the value used before the page mounts —
- * CanvasScrollbarProbe measures what the canvas actually reserved and writes it
- * back, which is 0 wherever scrollbars overlay and on any route whose canvas
- * does not scroll. Without that, this rule would push the header 6px past the
- * content on every such platform: the same misalignment, mirrored. */
 .app-shell-trailing {
-  padding-right: calc(var(--app-canvas-gutter) + var(--app-scrollbar));
+  padding-right: var(--app-shell-edge);
 }
 
 /* In @layer base so per-element text-colour utilities win on <a> elements
@@ -107,5 +112,28 @@ code, pre, kbd { font-family: var(--ff-mono); }
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * The Clerk user-menu trigger's touch floor.
+ *
+ * Clerk ships it at 28x28, which made it the smallest interactive target in
+ * the app shell — smaller than every Button-derived control, all of which
+ * carry `pointer-coarse:min-h-11`, and present on every route.
+ *
+ * It is set here rather than through the `appearance` object because a nested
+ * `@media` key in `elements` type-checks and then silently does not render:
+ * measured in the built app, the trigger's `min-height` stayed `auto`. The
+ * `.cl-*` classes are Clerk's documented styling surface, so this targets the
+ * stable one, never a `cl-internal-*` hash.
+ *
+ * DESIGN_SYSTEM scopes the 44px floor to coarse pointers, so a fine pointer
+ * keeps the compact avatar.
+ */
+@media (pointer: coarse) {
+  .cl-userButtonTrigger {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
   }
 }

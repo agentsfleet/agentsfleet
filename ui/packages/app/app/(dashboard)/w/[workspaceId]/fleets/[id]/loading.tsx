@@ -14,10 +14,10 @@ export default function FleetDetailLoading() {
           </div>
         </PageHeader>
       </div>
-      <div className="flex flex-col gap-xl lg:flex-row">
-        <div className="flex gap-xs border-b border-border pb-md lg:w-48 lg:flex-col lg:border-b-0 lg:border-r lg:pr-lg">
-          {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-9 w-24 lg:w-40" />
+      <div className="flex flex-col gap-xl">
+        <div className="flex gap-xs border-b border-border pb-md">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} className="h-9 w-24" />
           ))}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-lg">

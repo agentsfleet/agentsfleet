@@ -227,13 +227,13 @@ export default function PlatformCatalogTable({
       cell: (row) =>
         row.content_hash ? (
           <span className="flex items-center gap-1">
-            <code className="text-xs text-muted-foreground">
+            <code className="text-mono leading-mono text-muted-foreground">
               {row.content_hash.slice(0, HASH_PREVIEW_LENGTH)}
             </code>
             <CopyButton value={row.content_hash} label={COPY_HASH_LABEL} />
           </span>
         ) : (
-          <code className="text-xs text-muted-foreground">{NO_HASH}</code>
+          <code className="text-mono leading-mono text-muted-foreground">{NO_HASH}</code>
         ),
     },
     {
@@ -244,8 +244,21 @@ export default function PlatformCatalogTable({
         const actions = rowActions(row);
         return (
           <div className="flex items-center justify-end gap-1">
+            <IconAction
+              variant="ghost"
+              label={EDIT}
+              disabled={busy}
+              onFocus={preloadEditFleetDialog}
+              onPointerEnter={() => {
+                if (maySpeculateOnHover()) preloadEditFleetDialog();
+              }}
+              onClick={() => setEditingId(row.id)}
+            >
+              <PencilIcon size={14} />
+            </IconAction>
             {actions.canPublish ? (
               <IconAction
+                variant="ghost"
                 label={PUBLISH}
                 disabled={busy}
                 onClick={() => void setPublished(row, true)}
@@ -255,6 +268,7 @@ export default function PlatformCatalogTable({
             ) : null}
             {actions.canUnpublish ? (
               <IconAction
+                variant="ghost"
                 label={UNPUBLISH}
                 disabled={busy}
                 onClick={() => void setPublished(row, false)}
@@ -267,6 +281,7 @@ export default function PlatformCatalogTable({
                 Delete on a published row. */}
             {actions.canFetch ? (
               <IconAction
+                variant="ghost"
                 label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
                 disabled={busy}
                 onFocus={preloadAddFleetDialog}
@@ -278,21 +293,11 @@ export default function PlatformCatalogTable({
                 <DownloadIcon size={14} />
               </IconAction>
             ) : null}
-            <IconAction
-              label={EDIT}
-              disabled={busy}
-              onFocus={preloadEditFleetDialog}
-              onPointerEnter={() => {
-                if (maySpeculateOnHover()) preloadEditFleetDialog();
-              }}
-              onClick={() => setEditingId(row.id)}
-            >
-              <PencilIcon size={14} />
-            </IconAction>
             {/* A published fleet has no Delete at all, rather than a disabled one:
                 a disabled button is a promise. Withdraw it first. */}
             {actions.canDelete ? (
               <IconAction
+                variant="destructive"
                 label={DELETE}
                 disabled={busy}
                 onClick={() => setDeletingId(row.id)}

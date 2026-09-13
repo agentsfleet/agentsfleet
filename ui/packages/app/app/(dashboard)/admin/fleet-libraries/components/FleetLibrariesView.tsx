@@ -19,6 +19,7 @@ import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-m
 import {
   ADD_TOOLTIP,
   CREATE_FLEET_LIBRARY,
+  FLEET_CATALOG_SECTION,
   FLEET_LIBRARIES_DESCRIPTION,
   FLEET_LIBRARY_TITLE,
 } from "../library-copy";
@@ -52,13 +53,14 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
   }
 
   return (
-    <PageLayout>
+    <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}>
         <PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section aria-label="Platform fleet catalog">
+      <Section aria-label="Platform fleet catalog" className="flex min-h-0 flex-1 flex-col gap-xl">
         <SectionHeader
+          as="p"
           actions={
             <TooltipButton
               type="button"
@@ -79,7 +81,7 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
             </TooltipButton>
           }
         >
-          {FLEET_LIBRARY_TITLE}
+          {FLEET_CATALOG_SECTION}
         </SectionHeader>
 
         <PlatformCatalogTable entries={entries} onFetch={openFetch} />

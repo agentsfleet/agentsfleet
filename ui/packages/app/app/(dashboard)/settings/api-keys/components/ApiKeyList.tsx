@@ -196,7 +196,7 @@ function buildColumns({
     },
     {
       key: "activity",
-      header: "Created",
+      header: "Time",
       cell: (k) => <KeyActivityCell k={k} />,
       sortable: true,
     },

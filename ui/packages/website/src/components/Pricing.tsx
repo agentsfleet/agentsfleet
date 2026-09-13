@@ -10,7 +10,7 @@ export default function Pricing() {
       <section id="pricing" aria-label="Early access and pricing">
         <div className="wrap early-access-layout">
           <div className="flex flex-col items-start gap-5">
-            <SectionLabel className="mb-0">Build with us</SectionLabel>
+            <SectionLabel as="p" className="mb-0">Build with us</SectionLabel>
             <DisplayLG>{PRICING_COPY.headline}</DisplayLG>
             <p className="text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">{PRICING_COPY.lede}</p>
             <EarlyAccessAction />

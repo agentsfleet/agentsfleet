@@ -230,3 +230,34 @@ export const RUNNER_ADMIN_ACTIONS = [
 ] as const;
 
 export type RunnerStateAction = (typeof RUNNER_ADMIN_ACTIONS)[number];
+
+/*
+ * Is the runner's last selftest describing a policy it no longer has?
+ *
+ * This lived in `runners.ts`, which imports the transport (`./client` →
+ * `./retry` → the Effect runtime). `RunnerChecksBadge` is a client component
+ * and imports this as a VALUE, so the whole retry policy — a server-only
+ * dependency — rode into the browser bundle behind one boolean. The
+ * `bundle-size-app` guard caught it as `carries the server-only module effect`.
+ *
+ * It belongs here: it is a comparison of four fields and reaches nothing.
+ *
+ * The parameter is structural rather than `RunnerDetail`, because naming that
+ * type would import `runners.ts` and rebuild the same bridge this move exists
+ * to remove. A `RunnerDetail` satisfies it, so no call site changes shape.
+ */
+export type SelftestPolicyView = {
+  selftest?: { sandbox_tier: string; network_policy: string } | null;
+  assigned_policy?: AssignedPolicy | null;
+};
+
+export function isSelftestStale(runner: SelftestPolicyView): boolean {
+  // `?? null` rather than `=== null`: a daemon older than these columns omits
+  // the keys entirely, so the field arrives undefined and a strict null check
+  // would fall through and dereference it.
+  const report = runner.selftest ?? null;
+  if (report === null) return false;
+  const assigned = runner.assigned_policy ?? null;
+  if (assigned === null) return true;
+  return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
+}

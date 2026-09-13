@@ -24,7 +24,7 @@ export function AudienceSection() {
         <div className="wrap audience-layout">
           {AUDIENCES.map((audience) => (
             <div key={audience.id} className="audience-panel" data-testid={`audience-${audience.id}`}>
-              <SectionLabel className="mb-0">{audience.eyebrow}</SectionLabel>
+              <SectionLabel as="p" className="mb-0">{audience.eyebrow}</SectionLabel>
               <DisplayLG>{audience.title}</DisplayLG>
               <p className="m-0 text-body-lg text-text-muted">{audience.detail}</p>
               <List variant="plain" className="m-0 space-y-3">

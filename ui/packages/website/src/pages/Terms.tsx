@@ -9,7 +9,7 @@ export default function Terms() {
       data-testid="terms-page"
       className="wrap site-section flex flex-col gap-6 max-w-prose font-sans text-body leading-prose text-text"
     >
-      <SectionLabel className="mb-0">legal</SectionLabel>
+      <SectionLabel as="p" className="mb-0">legal</SectionLabel>
       <DisplayXL className="text-fluid-display-lg">Terms of Service</DisplayXL>
       <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: June 2, 2026</p>
 

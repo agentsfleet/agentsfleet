@@ -28,6 +28,19 @@ export type DashboardRowProps = Omit<ComponentProps<"div">, "title"> & {
   description?: ReactNode;
   meta?: ReactNode;
   action?: ReactNode;
+  /**
+   * The element the title renders as. Defaults to `"h3"` so a collection of
+   * rows is navigable.
+   *
+   * It used to be a bare `<div>`, which left routes built from these rows —
+   * integrations, runners — with a page title, a section label, and then an
+   * unstructured pile: nothing to jump between and no count to announce. The
+   * title already reads as a heading; only its rank was missing.
+   *
+   * `"div"` stays available for a row whose title is not the name of anything
+   * a reader would navigate to.
+   */
+  titleAs?: "h3" | "h4" | "div";
 };
 
 export function DashboardRow({
@@ -36,6 +49,7 @@ export function DashboardRow({
   description,
   meta,
   action,
+  titleAs: TitleTag = "h3",
   className,
   ref,
   ...props
@@ -59,7 +73,7 @@ export function DashboardRow({
         </span>
       ) : null}
       <div className="min-w-0 flex-1">
-        <div className="font-medium text-foreground">{title}</div>
+        <TitleTag className="font-medium text-foreground">{title}</TitleTag>
         {description ? (
           <div className="mt-1 text-body-sm leading-body-sm text-muted-foreground">
             {description}

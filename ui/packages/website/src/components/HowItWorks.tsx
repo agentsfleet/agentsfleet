@@ -11,7 +11,7 @@ export default function HowItWorks() {
         <div className="wrap flex flex-col gap-8">
           <div className="section-intro">
             <div className="flex flex-col gap-3">
-              <SectionLabel className="mb-0">How it works</SectionLabel>
+              <SectionLabel as="p" className="mb-0">How it works</SectionLabel>
               <DisplayLG className="max-w-narrow">{HOW_IT_WORKS_HEADING}</DisplayLG>
             </div>
             <p className="m-0 text-body-lg text-text-muted max-w-form">Your dashboards hold the clues. Your fleet brings them together so your team can decide what to do next.</p>

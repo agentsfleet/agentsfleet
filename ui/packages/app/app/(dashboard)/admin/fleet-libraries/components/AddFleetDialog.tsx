@@ -25,7 +25,10 @@ import {
   librarySourceSchema,
   type LibrarySourceValues,
 } from "@/components/domain/fleet-library/library-source-form";
-import { onboardPlatformLibraryAction } from "../actions";
+import { RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
+import { SOURCE_KIND_GITHUB } from "@/lib/types";
+import { onboardPlatformLibraryAction, readPlatformLibraryAction } from "../actions";
+import { reconcileImport, repoImportState, type RepoImportState } from "../import-reconcile";
 import {
   ADD_ACTION,
   ADD_TOOLTIP,
@@ -100,12 +103,50 @@ export default function AddFleetDialog({
     setCollision(false);
   }
 
+  // Spacing for the reconcile poll below. Named here rather than inlined so the
+  // dialog holds no timing policy of its own — `import-reconcile` owns both the
+  // attempt count and the interval.
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** One catalog read, narrowed to the row this submit is about. */
+  async function readRepoState(repo: string): Promise<RepoImportState | null> {
+    const read = await readPlatformLibraryAction();
+    return read.ok ? repoImportState(read.data.entries, repo) : null;
+  }
+
   async function submit(values: LibrarySourceValues, replace: boolean) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setApiError(null);
     setPending(true);
+    const repo = values.source_ref;
     try {
+      /*
+       * The before half of the timeout reconciliation, read HERE rather than
+       * taken from the page's render.
+       *
+       * It used to come from an `entries` prop — the catalog as the table last
+       * drew it, which can be minutes old. Any write to this row in between —
+       * another tab, another operator, an earlier timed-out import finally
+       * finishing — advanced the stamp, and the reconcile below would have read
+       * that as proof THIS import landed and closed the dialog on a refetch
+       * that failed. Reading now narrows the window to the import itself.
+       *
+       * Only the GitHub path has a row to match: an upload stores no
+       * source_repo, so its timeout stands as reported. A baseline read that
+       * fails leaves the timeout standing too — with no trustworthy before
+       * state there is nothing to compare against, and a guess is worse than
+       * the honest answer.
+       */
+      const before =
+        values.source_kind === SOURCE_KIND_GITHUB ? await readRepoState(repo) : null;
+      // The baseline read is an await standing BEFORE the import, which the
+      // submit never used to have: the onboard call was the first one. So the
+      // staleness check has to run here too, or a dialog the operator closed
+      // during that read would still go on to start a real import for them.
+      if (requestId !== requestIdRef.current) return;
       // Only the refetch path pins a ref; a fresh add fetches the default branch,
       // and an upload carries none at all.
       const result = await onboardPlatformLibraryAction(
@@ -113,14 +154,35 @@ export default function AddFleetDialog({
       );
       if (requestId !== requestIdRef.current) return;
       if (!result.ok) {
+        if (result.errorCode === ERR_ID_COLLISION) {
+          captureProductEvent(EVENTS.platform_library_onboarded, {
+            source_kind: values.source_kind,
+            outcome: OUTCOME_FAILURE,
+          });
+          setCollision(true);
+          return;
+        }
+        // A timeout is our patience running out, not the daemon stopping. Ask
+        // the catalog before telling the operator this failed; the import may
+        // have finished in the seconds after we stopped listening.
+        if (
+          result.errorCode === RETRY_CODE_TIMEOUT &&
+          before !== null &&
+          (await reconcileImport(before, () => readRepoState(repo), sleep))
+        ) {
+          if (requestId !== requestIdRef.current) return;
+          captureProductEvent(EVENTS.platform_library_onboarded, {
+            source_kind: values.source_kind,
+            outcome: OUTCOME_SUCCESS,
+          });
+          handleOpenChange(false);
+          return;
+        }
+        if (requestId !== requestIdRef.current) return;
         captureProductEvent(EVENTS.platform_library_onboarded, {
           source_kind: values.source_kind,
           outcome: OUTCOME_FAILURE,
         });
-        if (result.errorCode === ERR_ID_COLLISION) {
-          setCollision(true);
-          return;
-        }
         setApiError(
           presentError({ errorCode: result.errorCode, message: result.error, action: errorAction }),
         );
@@ -187,7 +249,7 @@ export default function AddFleetDialog({
               <Alert variant="destructive">
                 <div>{apiError.title}</div>
                 {apiError.body ? <div>{apiError.body}</div> : null}
-                {apiError.code ? <code className="text-xs">{apiError.code}</code> : null}
+                {apiError.code ? <code className="text-mono leading-mono">{apiError.code}</code> : null}
               </Alert>
             ) : null}
 

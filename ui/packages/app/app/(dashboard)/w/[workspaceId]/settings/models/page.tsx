@@ -45,7 +45,7 @@ export default async function ModelsKeysPage({
   // before rendering anything, so an empty page was held on screen for the
   // whole round-trip.
   return (
-    <PageLayout>
+    <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={MODELS_PAGE_DESCRIPTION}>
         <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
       </PageHeader>

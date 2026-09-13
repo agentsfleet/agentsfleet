@@ -67,7 +67,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   return (
     <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
       <div className="grid gap-xl">
-      <SectionHeader
+      <SectionHeader as="p"
         actions={
           <div className="flex items-center gap-3">
             <WallLiveBadge liveTotal={liveTotal} />

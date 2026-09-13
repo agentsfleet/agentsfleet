@@ -11,7 +11,6 @@ import {
   DashboardPanel,
   DashboardPanelFooter,
   DashboardPanelHeader,
-  DashboardPanelTitle,
   Skeleton,
   cn,
 } from "@agentsfleet/design-system";
@@ -26,7 +25,7 @@ import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
-import { FleetConnectionIndicator } from "./FleetConnectionIndicator";
+import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import {
   useFleetDeliveryFailure,
   type DeliveryFailureKind,
@@ -72,6 +71,12 @@ export function FleetThread({
   initial,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  // The header row is chrome that earns its space only while the stream is not
+  // yet fine. `arrived` keeps it for the length of the arrival cue so the
+  // operator who WAS waiting gets the confirmation, and then the row goes —
+  // its disappearance being the steady-state signal that nothing is wrong.
+  const arrived = useArrivalCue(stream.connectionStatus);
+  const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const {
     failedDelivery,
     setFailedDelivery,
@@ -118,13 +123,28 @@ export function FleetThread({
           padding="none"
           className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
         >
-          <DashboardPanelHeader
-            data-testid="fleet-chat-header"
-            className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
-          >
-            <DashboardPanelTitle className="text-body font-medium">{PANEL_TITLE}</DashboardPanelTitle>
-            <FleetConnectionIndicator status={stream.connectionStatus} />
-          </DashboardPanelHeader>
+          {/*
+            * The header speaks only when the stream is not fine.
+            *
+            * It carried the word "Chat" directly under a tab already reading
+            * "Chat", and a steady "Live" that said nothing on the overwhelming
+            * majority of loads. A transcript is the page's content; labelling
+            * it costs a row and tells the operator what they can see.
+            *
+            * What is worth saying is the exception, so connecting, reconnecting
+            * and offline still render here — and OFFLINE additionally gets the
+            * notice below, with its retry. `PANEL_TITLE` stays as the scroll
+            * region's accessible name, where it is the only name that region
+            * has.
+            */}
+          {settledLive ? null : (
+            <DashboardPanelHeader
+              data-testid="fleet-chat-header"
+              className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
+            >
+              <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
+            </DashboardPanelHeader>
+          )}
           {stream.connectionStatus === CONNECTION_STATUS.OFFLINE ? (
             <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
           ) : null}
@@ -174,7 +194,7 @@ function ThreadViewport({
             role="log"
             aria-live="polite"
             aria-label={PANEL_TITLE}
-            className="mx-auto flex min-h-full w-full max-w-6xl flex-col justify-end py-lg"
+            className="mx-auto flex min-h-full w-full max-w-measure flex-col justify-end py-lg"
           >
             {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
             {isIdleEmpty ? (
@@ -199,7 +219,7 @@ function ThreadViewport({
       </ThreadPrimitive.Viewport>
       <DashboardPanelFooter
         data-testid="fleet-chat-footer"
-        className="relative mx-auto mt-0 w-full max-w-6xl shrink-0 border-0 bg-surface-deep px-0 pb-md pt-sm"
+        className="relative mx-auto mt-0 w-full max-w-measure shrink-0 border-0 bg-surface-deep px-0 pb-md pt-sm"
       >
         <SteerComposer failureKind={failureKind} onRetry={onRetry} />
       </DashboardPanelFooter>

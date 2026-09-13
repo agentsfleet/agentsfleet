@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 describe("admin/runners/[runnerId] page — views and filters", () => {
-  it("lands on Leases by default: strip over the table, tracker armed, no Grafana without a base", async () => {
+  it("lands on Leases by default: the table, the status line at the foot, tracker armed, no Grafana without a base", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
     listRunnerLeasesMock.mockResolvedValueOnce({
@@ -19,14 +19,14 @@ describe("admin/runners/[runnerId] page — views and filters", () => {
     expect(html).toContain('data-runner-header="runner-prod-ams-01.internal"');
     expect(html).toContain('data-grafana="none"');
     expect(html).toContain('data-runner-rail="leases"');
-    expect(html).toContain('data-runner-strip="1"');
+    expect(html).toContain('data-runner-status-line="1"');
     expect(html).toContain('data-lease-table="1"');
     expect(html).toContain('data-runner-viewed="active:busy"');
     expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, { limit: 25 });
     expect(listRunnerEventsMock).not.toHaveBeenCalled();
   });
 
-  it("serves Activity with the lifecycle type set and no strip", async () => {
+  it("serves Activity with the lifecycle type set and the same status line at the foot", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
     listRunnerEventsMock.mockResolvedValueOnce({
@@ -38,7 +38,7 @@ describe("admin/runners/[runnerId] page — views and filters", () => {
     const html = renderToStaticMarkup(await Page(pageProps({ view: "activity" })));
     expect(html).toContain('data-runner-rail="activity"');
     expect(html).toContain('data-activity-table="2"');
-    expect(html).not.toContain("data-runner-strip");
+    expect(html).toContain('data-runner-status-line="1"');
     expect(listRunnerEventsMock).toHaveBeenCalledWith(
       "tok",
       RUNNER.id,

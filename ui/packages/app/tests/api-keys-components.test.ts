@@ -87,12 +87,12 @@ describe("ApiKeyList component", () => {
     expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
   });
 
-  it("renders Name and Created as clickable, sortable column headers once keys exist", async () => {
+  it("renders Name and Time as clickable, sortable column headers once keys exist", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByRole("button", { name: /^name$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^created$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^time$/i })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("descending");
   });
 
   it("renders active + revoked rows with status badges and 'never used'", async () => {
@@ -151,7 +151,7 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByRole("table")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Created" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Time" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
   });
 
@@ -232,9 +232,9 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("key_name"));
   });
 
-  it("clicking the active Created column header toggles its direction", async () => {
+  it("clicking the active Time column header toggles its direction", async () => {
     await renderList(listResponse([ACTIVE], 30));
-    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("created_at"));
   });
 
