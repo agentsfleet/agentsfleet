@@ -10,24 +10,41 @@
 //! type system: it is produced by an append and consumed by an
 //! acknowledgement, so a logical id cannot be passed to `XACK` by accident.
 //!
-//! # A missing group repairs itself, once, at the stream's end
+//! # A missing group is restored by its reader, at a cursor the ledgers prove
 //!
 //! The group is created on the write path, so the steady state here is a plain
 //! read with no setup command in front of it. It can still vanish — deleted out
 //! of band, a restart without persistence, a failover to an empty replica — and
 //! every one of those announces itself the same way: `NOGROUP` on the next read.
 //!
-//! The repair recreates it at `$`, the stream's newest entry, and reads again
-//! exactly once. Not at `0`: the stream retains up to its trim length of
-//! entries that were already delivered and acknowledged under the vanished
-//! group, and a group recreated at `0` hands every one of them out again —
-//! historical agent runs re-executing with real provider spend and real
-//! connector writes. Recreated at `$`, nothing historical re-runs; the cost is
-//! that entries appended during the groupless window are skipped. That loss is
-//! bounded and repairable by re-submission. A re-executed run cannot be
-//! un-spent. (`redis_fleet.zig` reasons the same way, at length.)
+//! This crate reports that and does not repair it, because it cannot know
+//! WHERE to. The two blind choices are both wrong: at `0`, every retained
+//! entry is handed out again and the lease path re-runs each one — historical
+//! agent runs re-executing with real provider spend and real connector writes,
+//! since a redelivered entry is still a run (it merely skips the receive
+//! debit); at `$`, every entry appended during the groupless window is lost,
+//! which is accepted work vanishing. The reader that holds the durable
+//! ledgers asks them for the newest receipt that was DELIVERED and calls
+//! [`FleetStreams::restore_group`] there: everything after it is undelivered
+//! and is offered, everything at or before it ran, and nothing is guessed.
+//!
+//! # Retention is bounded by unfinished work, not by a length
+//!
+//! An append carries no `MAXLEN`. The old `MAXLEN ~ 10000` trimmed the
+//! oldest entries whatever their state, so a consumer ten thousand entries
+//! behind lost work it had never been handed, on the append path of a
+//! producer that was told yes. Trimming lives in [`retain`], runs on the
+//! acknowledgement path, and never crosses the oldest pending or undelivered
+//! entry; the admission budget is what bounds a stream that is not draining.
 
+mod render;
+pub(crate) mod retain;
 mod tail;
+
+#[cfg(feature = "test-util")]
+pub use self::render::rendered_field_samples;
+use self::render::stringify;
+pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, Trimmed};
 
 use crate::client::Redis;
 use crate::error::{self, Result};
@@ -38,14 +55,10 @@ const CMD_XGROUP: &str = "XGROUP";
 const CMD_XREADGROUP: &str = "XREADGROUP";
 const CMD_XACK: &str = "XACK";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
-const CMD_XINFO: &str = "XINFO";
 const CMD_DEL: &str = "DEL";
 
 /// Consumer group every fleet stream is read under.
 pub const FLEET_CONSUMER_GROUP: &str = "fleet_lease";
-
-/// Approximate cap on a fleet stream's retained entries (`MAXLEN ~ 10000`).
-const STREAM_MAXLEN: usize = 10_000;
 
 /// How long an entry must have sat undelivered before it may be claimed away
 /// from the consumer holding it.
@@ -69,17 +82,35 @@ const NEW_ENTRIES: &str = ">";
 const OWN_PENDING: &str = "0";
 
 /// Group start id for a stream that is brand new, where "from the beginning"
-/// and "from now" are the same position.
+/// and "from now" are the same position — and for a restore that found
+/// nothing delivered, where every retained entry is still owed.
 const GROUP_START_BEGIN: &str = "0";
 
-/// Group start id for a repair, where they are emphatically not the same.
-const GROUP_START_END: &str = "$";
+/// Where a restored consumer group starts delivering from.
+///
+/// Decided by the reader that holds the durable ledgers, never by this crate:
+/// the position is a fact about what RAN, and only Postgres knows that. The
+/// two arms are the two answers the ledgers can give; there is deliberately no
+/// third for `$`, because "skip whatever is there" is never a position the
+/// ledgers would name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupCursor {
+    /// This receipt and everything before it were delivered; deliver what
+    /// follows.
+    After(EventId),
+    /// Nothing on this stream was ever delivered; deliver from the beginning.
+    Beginning,
+}
 
 /// The key a fleet's events live on.
 #[must_use]
 pub fn fleet_stream_key(fleet_id: &str) -> String {
     format!("fleet:{fleet_id}:events")
 }
+
+/// The pattern every fleet stream key matches and nothing else does — the
+/// same shape as [`fleet_stream_key`], with the fleet left open.
+pub(crate) const FLEET_STREAM_GLOB: &str = "fleet:*:events";
 
 /// The channel a fleet's live-tail frames are published on.
 ///
@@ -182,6 +213,25 @@ impl FleetStreams {
         self.create_group(fleet_id, GROUP_START_BEGIN).await
     }
 
+    /// Recreates a vanished consumer group at `cursor`.
+    ///
+    /// The other half of the `NOGROUP` a read reports — see the module note on
+    /// why the read does not do this itself. Idempotent for the same reason
+    /// [`FleetStreams::ensure_group`] is: two readers restoring one fleet at
+    /// once both succeed, and the second's cursor is discarded because the
+    /// first's was computed from the same ledgers.
+    ///
+    /// # Errors
+    /// Returns a command error when the group could not be created for any
+    /// reason other than already existing.
+    pub async fn restore_group(&self, fleet_id: &str, cursor: &GroupCursor) -> Result<()> {
+        let start = match cursor {
+            GroupCursor::After(receipt) => receipt.as_str(),
+            GroupCursor::Beginning => GROUP_START_BEGIN,
+        };
+        self.create_group(fleet_id, start).await
+    }
+
     async fn create_group(&self, fleet_id: &str, start: &str) -> Result<()> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XGROUP);
@@ -200,21 +250,18 @@ impl FleetStreams {
 
     /// Appends an event, returning the id Redis minted for it.
     ///
-    /// `MAXLEN ~ 10000` caps retention approximately, which is the trim Redis
-    /// can do without scanning: an exact trim would make every append pay for
-    /// the whole stream.
+    /// No `MAXLEN`: the append never trims, because an append cannot know
+    /// what the consumer still owes. Retention is [`FleetStreams::trim`]'s,
+    /// on the acknowledgement path, bounded below by unfinished work.
     ///
     /// # Errors
-    /// Returns a command error when the append fails, and an unexpected-reply
-    /// error when Redis answers with something that is not an id.
+    /// Returns a command error when the append fails, a full error when the
+    /// datastore refuses to grow, and an unexpected-reply error when Redis
+    /// answers with something that is not an id.
     pub async fn append(&self, fleet_id: &str, fields: &[(&str, &str)]) -> Result<EventId> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XADD);
-        cmd.arg(&key)
-            .arg("MAXLEN")
-            .arg("~")
-            .arg(STREAM_MAXLEN)
-            .arg("*");
+        cmd.arg(&key).arg("*");
         for (name, value) in fields {
             cmd.arg(*name).arg(*value);
         }
@@ -249,65 +296,4 @@ impl FleetStreams {
         let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;
         Ok(())
     }
-}
-
-/// Every reply shape [`stringify`] renders, each with the label it is rendered
-/// from.
-///
-/// Exposed under `test-util` because Redis will not produce these on demand: a
-/// stream field is a bulk string on the wire, so the arms that keep a
-/// surprising value readable have no other way to be reached. A producer that
-/// starts writing something else — or a redis-rs release that decodes an
-/// integer field differently — is exactly the surprise these arms exist for,
-/// and an unrendered one reaching a caller as an empty string is silent.
-#[cfg(feature = "test-util")]
-#[must_use]
-pub fn rendered_field_samples() -> Vec<(&'static str, String)> {
-    vec![
-        (
-            "bulk string",
-            stringify(&redis::Value::BulkString(b"ready".to_vec())),
-        ),
-        (
-            "simple string",
-            stringify(&redis::Value::SimpleString("OK".to_owned())),
-        ),
-        ("integer", stringify(&redis::Value::Int(42))),
-        ("anything else", stringify(&redis::Value::Nil)),
-        (
-            "invalid utf-8",
-            stringify(&redis::Value::BulkString(vec![0xff, 0xfe])),
-        ),
-    ]
-}
-
-/// Renders a stream field value as text.
-///
-/// Stream fields are byte strings on the wire. Anything else is a value this
-/// producer did not write, and rendering it through `Debug` keeps a surprising
-/// entry readable instead of failing the whole read.
-///
-/// # The crate's own conversion, with the fallback this caller needs
-///
-/// `String::from_redis_value_ref` is the redis crate's answer to "render this
-/// reply as text", and it knows more shapes than a hand-written match will keep
-/// up with: `Okay`, `VerbatimString` and `Double` on top of the three below,
-/// and it unwraps an attribute-wrapped value before looking. Re-deciding that
-/// here is a second copy of the crate's knowledge that drifts every release.
-///
-/// What it does NOT do is stay infallible: it errors on a value that is not
-/// string-compatible, and on a bulk string that is not UTF-8. This caller
-/// cannot use an error — a single surprising field would fail an entire stream
-/// read — so the conversion is composed with the `Debug` fallback rather than
-/// replaced by it.
-///
-/// One behaviour changed with this: a bulk string carrying invalid UTF-8 used
-/// to render lossily, with replacement characters, and now renders as
-/// `binary-data([..])`. That is the better answer of the two. A field this
-/// daemon wrote is always valid UTF-8, so invalid bytes mean a foreign
-/// producer, and a reader chasing that wants the bytes rather than a sentence
-/// with question marks punched through it.
-fn stringify(value: &redis::Value) -> String {
-    redis::FromRedisValue::from_redis_value_ref(value)
-        .unwrap_or_else(|_not_text| format!("{value:?}"))
 }

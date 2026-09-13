@@ -156,6 +156,8 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::Correlation),
         set!(crate::metrics::label::fleet::SyntheticEvent),
         set!(crate::metrics::label::fleet::VerifierRun),
+        set!(crate::metrics::label::fleet::AdmissionOutcome),
+        set!(crate::metrics::label::fleet::ReplayOutcome),
         set!(crate::metrics::label::http::TraceSuppression),
         set!(crate::metrics::label::http::Signal),
         set!(crate::metrics::label::http::DiscardReason),

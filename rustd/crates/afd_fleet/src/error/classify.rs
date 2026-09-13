@@ -37,7 +37,11 @@ impl Error {
     /// (RULE ECL, and `docs/AUTH.md` §Runner token).
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::Datastore { .. })
+        match self.inner.kind {
+            ErrorKind::Datastore { .. } => true,
+            ErrorKind::Admission { ref source } => source.is_datastore_unavailable(),
+            _ => false,
+        }
     }
 
     /// Whether the caller sent something this plane will not accept.
@@ -63,6 +67,7 @@ impl Error {
             // and a second copy of that mapping here is the drift this crate's
             // own module header warns about.
             ErrorKind::Billing { ref source } => source.code(),
+            ErrorKind::Admission { ref source } => source.code(),
             // Delegated for the reason Billing is: the credential plane already
             // decides which of its failures is an outage and which is a fault.
             ErrorKind::Credential { ref source } => source.code(),
@@ -219,6 +224,7 @@ impl Error {
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
+            ErrorKind::Admission { ref source } => source.detail(),
             ErrorKind::Envelope { .. } | ErrorKind::EnvelopeMalformed { .. } => {
                 DETAIL_EVENT_MALFORMED
             }

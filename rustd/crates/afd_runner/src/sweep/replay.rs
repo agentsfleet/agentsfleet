@@ -28,6 +28,7 @@ use std::time::Duration;
 
 use afd_admission::Admissions;
 use afd_core::clock;
+use afd_observability::producers;
 
 use crate::error::Result;
 use crate::sweep::{Sweep, Swept};
@@ -109,10 +110,16 @@ impl Sweep for Replay {
     }
 
     async fn sweep(&self) -> Result<Swept> {
-        let replayed = self
-            .admissions
-            .replay(clock::now(), MIN_AGE, BATCH_LIMIT)
-            .await?;
+        let now = clock::now();
+        let replayed = self.admissions.replay(now, MIN_AGE, BATCH_LIMIT).await?;
+        // Counted whole after the pass, not from the batch: the batch is
+        // capped, and a capped count published as the backlog would read
+        // "thirty-two" over a hundred thousand.
+        let backlog = self.admissions.backlog(now).await?;
+        producers::fleet::admission_backlog_observed(
+            backlog.rows,
+            backlog.oldest_age.map_or(0, |age| age.as_secs()),
+        );
 
         // A full batch that the queue took every entry of means more is
         // waiting; anything else waits. A pass the queue refused partway is

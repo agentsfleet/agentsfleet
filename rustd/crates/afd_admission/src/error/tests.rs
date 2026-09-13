@@ -10,7 +10,9 @@
 //! not, because the row is already committed — the caller was answered and
 //! the sweeper owes it an entry. Both reach the HTTP edge only through the
 //! replay path's own reporting, and `is_datastore_unavailable` is what
-//! decides 503 from 500 when they do.
+//! decides 503 from 500 when they do. Capacity — a spent budget, a full
+//! queue, a Postgres out of disk — is a 503 to the caller and its own class
+//! to the operator, and both halves are asserted.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -34,7 +36,17 @@ use super::one_of_each_kind;
 /// asked the type which kinds are outages and then asserted the answer would
 /// agree with any answer. This is the list a person maintains, so a variant
 /// that changes sides has to be moved by hand.
-const OUTAGES: &[&str] = &["datastore", "queue unreachable"];
+const UNREACHABLE: &[&str] = &["datastore", "queue unreachable"];
+
+/// The labels the sample gives capacity, which a caller retries like an
+/// outage and an operator reads as a different incident.
+const CAPACITY: &[&str] = &["over budget", "exhausted", "queue full"];
+
+/// Everything a caller retries: the datastore that will not answer and the
+/// datastore that answers "not now".
+fn is_outage(label: &str) -> bool {
+    UNREACHABLE.contains(&label) || CAPACITY.contains(&label)
+}
 
 #[test]
 fn every_kind_renders_leading_with_its_code() {
@@ -83,7 +95,7 @@ fn only_a_datastore_that_could_not_be_reached_reports_an_outage() {
     // queue that is GONE is the outage a caller retries against; a queue that
     // answered and refused will answer the same way forever.
     for (label, error) in one_of_each_kind() {
-        let expected = OUTAGES.contains(&label);
+        let expected = is_outage(label);
         assert_eq!(
             error.is_datastore_unavailable(),
             expected,
@@ -95,7 +107,7 @@ fn only_a_datastore_that_could_not_be_reached_reports_an_outage() {
 #[test]
 fn an_outage_answers_the_unavailable_code_and_everything_else_does_not() {
     for (label, error) in one_of_each_kind() {
-        if OUTAGES.contains(&label) {
+        if is_outage(label) {
             assert_eq!(
                 error.code(),
                 error_code::INTERNAL_DB_UNAVAILABLE,
@@ -179,5 +191,26 @@ fn every_sentence_is_one_the_workspace_declares() {
             "{label} answers a sentence this workspace does not declare: {}",
             error.detail()
         );
+    }
+}
+
+#[test]
+fn capacity_is_an_outage_to_the_caller_and_its_own_class_to_the_operator() {
+    // Every capacity refusal invites the retry an outage does, and nothing
+    // else is allowed to call itself capacity: a queue that is merely gone is
+    // an outage, not a full one.
+    for (label, error) in one_of_each_kind() {
+        let expected = CAPACITY.contains(&label);
+        assert_eq!(
+            error.is_over_capacity(),
+            expected,
+            "{label} is on the wrong side of the capacity class"
+        );
+        if expected {
+            assert!(
+                error.is_datastore_unavailable(),
+                "{label} is capacity and must still invite a retry"
+            );
+        }
     }
 }

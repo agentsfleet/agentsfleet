@@ -10,8 +10,17 @@
 //! Redis answers a read against a vanished group with `NOGROUP`, and that is
 //! recoverable in one step — recreate the group and read again. Folding it into
 //! a generic command failure would lose that, which is why
-//! [`Error::is_group_missing`] exists: the repair path in [`crate::streams`]
-//! asks exactly this question, and nothing else has to guess.
+//! [`Error::is_group_missing`] exists: the reader that owns the restore asks
+//! exactly this question, and nothing else has to guess.
+//!
+//! # A full datastore is not a failed command either
+//!
+//! `OOM` is the server refusing to grow, and it says something different from
+//! every other refusal: the command was fine, the caller was fine, and the
+//! answer is to stop sending until something drains. A producer answered with
+//! it backs off; a sweeper answered with it stops the pass. Both need to tell
+//! it apart from a malformed argument, so [`Error::is_full`] exists (RULE ECL),
+//! and the class is never swallowed into "the queue refused".
 
 use afd_core::error_code::{self, ErrorCode};
 
@@ -73,6 +82,16 @@ pub(crate) enum ErrorKind {
 
     #[error("the consumer group on {stream} already exists")]
     GroupExists { stream: String },
+
+    /// The server refused to grow: `OOM`, the reply a node past its memory
+    /// limit gives every write.
+    #[error("{command} was refused because the datastore is full")]
+    Full { command: &'static str },
+
+    /// A primary admits to evicting keys, which no datastore holding
+    /// accepted work may do.
+    #[error("primary {node} evicts keys ({setting}); the datastore must retain every key")]
+    UnsafeEviction { node: usize, setting: String },
 
     #[error("a {what} reply was not the shape this client expects")]
     UnexpectedReply { what: &'static str },
@@ -148,7 +167,30 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::HubClosed)
     }
 
+    /// Whether the datastore refused to grow.
+    ///
+    /// The backpressure class: the server answered, the command was
+    /// well-formed, and the only cure is for something to drain. A caller
+    /// that retries immediately makes it worse; one that reports it as a
+    /// generic command failure sends an operator to the wrong place.
+    #[must_use]
+    pub fn is_full(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Full { .. })
+    }
+
+    /// Whether a primary was found evicting keys at preflight.
+    #[must_use]
+    pub fn is_unsafe_eviction(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::UnsafeEviction { .. })
+    }
+
     /// The registry code a handler would surface for this failure.
+    ///
+    /// A full datastore answers the UNAVAILABLE code rather than the
+    /// operation-failed one: to the producer being refused it is a
+    /// datastore that cannot take the write right now, and the retry
+    /// behaviour that code carries is the one wanted. The class stays
+    /// separable through [`Self::is_full`].
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
@@ -156,30 +198,37 @@ impl Error {
             | ErrorKind::UnexpectedReply { .. }
             | ErrorKind::GroupMissing { .. }
             | ErrorKind::GroupExists { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             _ => error_code::STARTUP_REDIS_CONNECT,
         }
     }
 }
 
-/// Classifies a failed command.
+/// The reply codes pulled out of a failed command by name (RULE UFS).
 ///
-/// `NOGROUP` is pulled out by name because it is the one recoverable failure:
-/// the group vanished (deleted out of band, a restart without persistence, a
-/// failover to an empty replica) and recreating it is a defined repair. Redis
-/// reports it as an ordinary error reply, so nothing else would tell it apart
-/// from a genuine command failure.
+/// `NOGROUP` is the one recoverable failure: the group vanished (deleted out
+/// of band, a restart without persistence, a failover to an empty replica)
+/// and recreating it is a defined repair. `OOM` is the one that is not a
+/// fault at all but a limit. Redis reports both as ordinary error replies, so
+/// nothing else would tell them apart from a genuine command failure.
+const CODE_NO_GROUP: &str = "NOGROUP";
+const CODE_BUSY_GROUP: &str = "BUSYGROUP";
+const CODE_OUT_OF_MEMORY: &str = "OOM";
+
+/// Classifies a failed command — see the three codes above.
 pub(crate) fn classify(command: &'static str, stream: &str, source: redis::RedisError) -> Error {
     match source.code() {
-        Some("NOGROUP") => {
+        Some(CODE_NO_GROUP) => {
             return Error::new(ErrorKind::GroupMissing {
                 stream: stream.to_owned(),
             });
         }
-        Some("BUSYGROUP") => {
+        Some(CODE_BUSY_GROUP) => {
             return Error::new(ErrorKind::GroupExists {
                 stream: stream.to_owned(),
             });
         }
+        Some(CODE_OUT_OF_MEMORY) => return Error::new(ErrorKind::Full { command }),
         _ => {}
     }
     if source.is_connection_dropped() || source.is_io_error() {
@@ -218,10 +267,13 @@ pub(crate) fn unexpected_reply(what: &'static str) -> Error {
 #[cfg(feature = "test-util")]
 #[must_use]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let redis_failure = || {
+    // One constructor for every server-side refusal the samples need; the
+    // code is the whole difference between a command the server would not
+    // run and a server that would not grow.
+    let refusal = |code: &'static str| {
         redis::RedisError::from((
             redis::ErrorKind::Extension,
-            "refused",
+            code,
             "the server said no".to_owned(),
         ))
     };
@@ -246,14 +298,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "unreachable",
             Error::new(ErrorKind::Unreachable {
                 role: "default",
-                source: Box::new(redis_failure()),
+                source: Box::new(refusal("refused")),
             }),
         ),
         ("connect timeout", connect_timed_out("default", 5_000)),
         ("timeout", timed_out("XADD", 5_000)),
         (
             "command",
-            classify("XADD", "fleet:x:events", redis_failure()),
+            classify("XADD", "fleet:x:events", refusal("refused")),
         ),
         (
             "group missing",
@@ -265,6 +317,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "group exists",
             Error::new(ErrorKind::GroupExists {
                 stream: "fleet:x:events".to_owned(),
+            }),
+        ),
+        (
+            "full",
+            classify("XADD", "fleet:x:events", refusal(CODE_OUT_OF_MEMORY)),
+        ),
+        (
+            "unsafe eviction",
+            Error::new(ErrorKind::UnsafeEviction {
+                node: 0,
+                setting: "maxmemory_policy=allkeys-lru".to_owned(),
             }),
         ),
         ("unexpected reply", unexpected_reply("PING")),

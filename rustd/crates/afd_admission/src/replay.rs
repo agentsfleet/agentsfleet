@@ -169,16 +169,15 @@ impl Admissions {
         {
             Ok(receipt) => receipt,
             Err(unreachable_queue) => {
-                metrics::replayed(ReplayOutcome::Failed);
+                let (outcome, event) = if unreachable_queue.is_full() {
+                    (ReplayOutcome::Full, "admission_replay_queue_full")
+                } else {
+                    (ReplayOutcome::Failed, "admission_replay_failed")
+                };
+                metrics::replayed(outcome);
                 let code = unreachable_queue.code().as_str();
                 let reason = unreachable_queue.to_string();
-                tracing::warn!(
-                    error_code = code,
-                    fleet_id,
-                    event_id,
-                    reason,
-                    event = "admission_replay_failed",
-                );
+                tracing::warn!(error_code = code, fleet_id, event_id, reason, event,);
                 return Ok(false);
             }
         };

@@ -1,6 +1,6 @@
 //! How a foreign error becomes this crate's.
 //!
-//! Six [`From`] impls, split from [`super`] because they answer one question
+//! Seven [`From`] impls, split from [`super`] because they answer one question
 //! the constructors beside them do not: which failures `?` may lift with no
 //! conversion written at the call site. That is a policy about the crate's
 //! boundary, and `RUST_ERROR_STANDARD` rule 2 is what it implements — compose
@@ -31,6 +31,17 @@ impl From<afd_db::Error> for Error {
 impl From<afd_datastore::Error> for Error {
     fn from(source: afd_datastore::Error) -> Self {
         Self::new(ErrorKind::Queue { source })
+    }
+}
+
+/// The admission ledger would not answer.
+///
+/// Asked exactly once on the lease path — for the cursor a lost consumer
+/// group is restored at — and its own plane has already decided the code and
+/// the sentence, so both are read off the source rather than restated here.
+impl From<afd_admission::Error> for Error {
+    fn from(source: afd_admission::Error) -> Self {
+        Self::new(ErrorKind::Admission { source })
     }
 }
 

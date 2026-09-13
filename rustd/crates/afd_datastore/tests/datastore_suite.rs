@@ -79,6 +79,8 @@ mod support;
 )]
 mod cluster;
 
+#[path = "capacity_faults.rs"]
+mod capacity_faults;
 #[path = "connect_refusals.rs"]
 mod connect_refusals;
 #[path = "dedicated_faults.rs"]
@@ -87,6 +89,8 @@ mod dedicated_faults;
 mod error_surface;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
+#[path = "integration_capacity.rs"]
+mod integration_capacity;
 #[path = "integration_cluster_prototypes.rs"]
 mod integration_cluster_prototypes;
 #[path = "integration_cluster_readiness.rs"]
@@ -97,6 +101,8 @@ mod integration_diagnose_connect;
 mod integration_hub;
 #[path = "integration_ready.rs"]
 mod integration_ready;
+#[path = "integration_retention.rs"]
+mod integration_retention;
 #[path = "integration_session.rs"]
 mod integration_session;
 #[path = "integration_streams.rs"]

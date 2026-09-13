@@ -472,6 +472,7 @@ dependencies = [
 name = "afd_fleet"
 version = "0.30.0"
 dependencies = [
+ "afd_admission",
  "afd_approval",
  "afd_auth",
  "afd_billing",

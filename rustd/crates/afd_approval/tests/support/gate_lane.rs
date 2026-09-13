@@ -246,6 +246,29 @@ impl Lane {
     }
 
     /// One pooled connection, for the fixture's own reads and writes.
+    /// Whether the ledger holds an admission for `action` that never got a
+    /// receipt — the row the replay sweeper owes an entry.
+    ///
+    /// Read through the real table rather than inferred from the call's answer:
+    /// "the queue refused and the work is still safe" is a claim about what is
+    /// in Postgres, and only Postgres can settle it.
+    pub(crate) async fn awaits_replay(&self, action: &str) -> bool {
+        use sqlx::Row as _;
+
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "SELECT receipt IS NULL FROM core.fleet_admissions \
+             WHERE producer = $1 AND producer_key = $2",
+        )
+        .bind(afd_admission::Producer::GateContinuation.as_str())
+        .bind(action)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the ledger reads")
+        .and_then(|row| row.try_get::<bool, _>(0).ok())
+        .unwrap_or(false)
+    }
+
     async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool
             .acquire()

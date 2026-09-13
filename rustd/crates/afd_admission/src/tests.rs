@@ -11,7 +11,8 @@ use std::collections::BTreeSet;
 
 use afd_wire::event::EventType;
 
-use super::{Admission, Key, Producer, Replayed, logical_id};
+use super::budget::{FLEET_BACKLOG_BUDGET, REPLAY_BACKLOG_BUDGET};
+use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, logical_id};
 
 /// Every producer, so a test cannot silently cover five of six.
 ///
@@ -189,5 +190,29 @@ fn a_replay_pass_is_clean_only_when_it_appended_everything_it_scanned() {
         }
         .is_clean(),
         "a pass that appended nothing is not clean"
+    );
+}
+
+/// The production budgets are the declared constants, and a suite that wants
+/// others has to name them.
+#[test]
+fn the_default_budgets_are_the_declared_constants() {
+    let budgets = Budgets::default();
+    assert_eq!(budgets.fleet_backlog, FLEET_BACKLOG_BUDGET);
+    assert_eq!(budgets.replay_backlog, REPLAY_BACKLOG_BUDGET);
+}
+
+/// The two scopes spell themselves apart, and the sentence a refusal renders
+/// carries the same spelling a log line does.
+#[test]
+fn each_budget_scope_spells_itself_once() {
+    assert_ne!(
+        BudgetScope::Fleet.as_str(),
+        BudgetScope::Deployment.as_str()
+    );
+    assert_eq!(BudgetScope::Fleet.to_string(), BudgetScope::Fleet.as_str());
+    assert_eq!(
+        BudgetScope::Deployment.to_string(),
+        BudgetScope::Deployment.as_str()
     );
 }

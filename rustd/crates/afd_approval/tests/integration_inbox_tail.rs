@@ -294,11 +294,17 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 
 /// An approval whose continuation the queue refuses is still answered.
 ///
-/// The row moved before the continuation was attempted, so the decision is
-/// the operator's whatever the queue does: the answer is announced (into the
-/// same queue, which drops it), the failure to restart the run is reported,
-/// and the row reads `approved` — never a gate saying yes over a run nobody
-/// was told about.
+/// The row moved before the continuation was attempted, so the decision is the
+/// operator's whatever the queue does: the answer is announced (into the same
+/// queue, which drops it) and the row reads `approved`.
+///
+/// The continuation SUCCEEDS, which is the guarantee the admission ledger was
+/// built for. Its row commits to Postgres before the append is attempted, so a
+/// queue that will not take the entry leaves an admitted row with a NULL
+/// receipt and the replay sweeper owes it one. Reporting a failure here would
+/// now be a lie: the run restarts when the queue comes back. Before the ledger
+/// the entry WAS the acceptance, so a refused append lost the continuation and
+/// an error was the only honest answer.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
@@ -313,12 +319,21 @@ async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
 
     let outcome = inbox
         .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await;
-    assert!(
-        outcome.is_err(),
-        "the run could not be restarted, and the caller is told so"
-    );
+        .await
+        .expect("a queue that refuses the entry does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
+    let continuation = match outcome {
+        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
+    };
+    assert!(
+        continuation.is_some(),
+        "the continuation has a logical id even though no entry carries it yet"
+    );
+    assert!(
+        lane.awaits_replay(&action).await,
+        "the continuation is admitted with no receipt, so the sweeper owes it an entry"
+    );
 }
 
 /// A queue that will not take the frame does not fail the decision.

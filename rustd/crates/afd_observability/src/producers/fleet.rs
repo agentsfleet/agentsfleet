@@ -43,6 +43,12 @@ static REPAIR_DUE: Observed = Observed::new();
 /// How old the oldest undispatched intent was, in seconds.
 static REPAIR_OLDEST: Observed = Observed::new();
 
+/// Admitted rows the last replay pass found without a receipt.
+static ADMISSION_BACKLOG: Observed = Observed::new();
+
+/// How long the oldest of them had waited, in seconds.
+static ADMISSION_OLDEST: Observed = Observed::new();
+
 /// Publishes what a completed lease poll saw in the readiness index.
 pub fn ready_depth_observed(fleets: u64) {
     READY_DEPTH.publish(fleets);
@@ -56,6 +62,16 @@ pub fn ready_depth_observed(fleets: u64) {
 pub fn repair_backlog_observed(due: u64, oldest_age_seconds: u64) {
     REPAIR_DUE.publish(due);
     REPAIR_OLDEST.publish(oldest_age_seconds);
+}
+
+/// Publishes what a completed replay pass found the queue still owing.
+///
+/// The same pair as the repair backlog, for the same reason: rows without
+/// an age cannot say whether the sweeper is keeping up. An empty backlog
+/// publishes zero rows and zero age, which is a measurement, not a gap.
+pub fn admission_backlog_observed(rows: u64, oldest_age_seconds: u64) {
+    ADMISSION_BACKLOG.publish(rows);
+    ADMISSION_OLDEST.publish(oldest_age_seconds);
 }
 
 /// The instruments the runner plane and the sweepers record through.
@@ -139,6 +155,22 @@ impl Handles {
 
         instruments.gauge_u64(&declared::REPAIR_DISPATCH_OLDEST_AGE_SECONDS, || {
             REPAIR_OLDEST
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
+        })?;
+
+        instruments.gauge_u64(&declared::ADMISSION_BACKLOG, || {
+            ADMISSION_BACKLOG
+                .load()
+                .into_iter()
+                .map(Reading::unlabelled)
+                .collect()
+        })?;
+
+        instruments.gauge_u64(&declared::ADMISSION_BACKLOG_OLDEST_AGE_SECONDS, || {
+            ADMISSION_OLDEST
                 .load()
                 .into_iter()
                 .map(Reading::unlabelled)

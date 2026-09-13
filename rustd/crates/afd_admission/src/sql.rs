@@ -14,15 +14,25 @@
 /// then reads the row it wrote. `xmax = 0` is how the two are told apart:
 /// a freshly inserted row has no updating transaction, a conflicted one does.
 ///
+/// The deployment budget rides the same statement. The row is inserted only
+/// while fewer than `$12` rows await a receipt — a count the partial index
+/// on `receipt IS NULL` answers without touching the table — OR when this
+/// producer key already has a row, so a retry of admitted work is answered
+/// its id however deep the backlog is. Answering no row is the refusal, and
+/// it costs no second round trip on the path every producer takes.
+///
 /// `$1` id, `$2` fleet, `$3` workspace, `$4` producer, `$5` producer key,
 /// `$6` payload digest, `$7` actor, `$8` event type, `$9` body, `$10` now,
-/// `$11` the initial replay count.
+/// `$11` the initial replay count, `$12` the replay-backlog budget.
 pub(crate) const INSERT_ADMISSION: &str = "\
 INSERT INTO core.fleet_admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
    actor, event_type, request_json, event_created_at, replay_count,
    created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $10, $10)
+SELECT $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $10, $10
+WHERE (SELECT count(*) FROM core.fleet_admissions WHERE receipt IS NULL) < $12
+   OR EXISTS (SELECT 1 FROM core.fleet_admissions
+              WHERE producer = $4 AND producer_key = $5)
 ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
 RETURNING (xmax = 0) AS inserted, created_at, seq, receipt, payload_digest";
 
@@ -73,3 +83,33 @@ UPDATE core.fleet_admissions
 SET receipt = $2, replay_count = replay_count + 1, updated_at = $3
 WHERE id = $1::uuid AND receipt IS NULL
 RETURNING replay_count";
+
+/// How many rows await a receipt, and when the oldest was admitted.
+///
+/// Both off the partial index, so an idle deployment answers from a few
+/// pages and a backed-up one from exactly the rows that are backed up.
+pub(crate) const SELECT_BACKLOG: &str = "\
+SELECT count(*), min(created_at)
+FROM core.fleet_admissions
+WHERE receipt IS NULL";
+
+/// The newest receipt among this fleet's admissions that were DELIVERED —
+/// the position a lost consumer group is recreated at.
+///
+/// Delivered means `core.fleet_events` holds the logical id, which the lease
+/// path writes on delivery and never deletes. Ordered by the receipt's two
+/// integers rather than its text, because `999-0` sorts after `1000-0` as
+/// text and a cursor one decade off would re-run or skip a thousand entries.
+/// No row means nothing on the stream was ever delivered.
+///
+/// `$1` fleet.
+pub(crate) const SELECT_DELIVERED_CURSOR: &str = "\
+SELECT a.receipt
+FROM core.fleet_admissions a
+JOIN core.fleet_events e
+  ON e.fleet_id = a.fleet_id
+ AND e.event_id = a.created_at::text || '-' || a.seq::text
+WHERE a.fleet_id = $1::uuid AND a.receipt IS NOT NULL
+ORDER BY split_part(a.receipt, '-', 1)::bigint DESC,
+         split_part(a.receipt, '-', 2)::bigint DESC
+LIMIT 1";
