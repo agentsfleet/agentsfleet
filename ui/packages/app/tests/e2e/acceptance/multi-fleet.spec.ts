@@ -5,7 +5,7 @@
  * pulsing. The per-tile stream cap this spec once pinned is gone: the wall
  * consumes ONE multiplexed workspace stream, so tile liveness no longer
  * spends per-tile connections and every live tile animates. The header
- * carries the canonical "{N} live" label.
+ * carries the canonical "{N} live" status text.
  *
  * Locators scope to this spec's own seed tag — parallel specs share the
  * fixture workspace, so unqualified counts see foreign fleets.
@@ -59,11 +59,11 @@ test.describe("multi-fleet wall", () => {
       // what it can honestly observe: the tiles exist and read live.
       // (Assertion already made by `liveRows` above; no second dot selector.)
 
-      // The header carries the canonical live-count label. The exact figure is
+      // The header carries the canonical live-count status. The exact figure is
       // workspace-wide (parallel specs may hold live fleets of their own), so
       // the tiles above carry the exact-count assertions and the header is
       // asserted by shape.
-      const header = page.getByLabel(/\d+ live/);
+      const header = page.getByRole("status").filter({ hasText: /^\d+ live$/ });
       await expect(header).toBeVisible();
       await expect(header).toContainText(/\d+ live/);
     },
