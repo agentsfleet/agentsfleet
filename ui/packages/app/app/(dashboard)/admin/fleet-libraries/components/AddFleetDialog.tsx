@@ -142,6 +142,11 @@ export default function AddFleetDialog({
        */
       const before =
         values.source_kind === SOURCE_KIND_GITHUB ? await readRepoState(repo) : null;
+      // The baseline read is an await standing BEFORE the import, which the
+      // submit never used to have: the onboard call was the first one. So the
+      // staleness check has to run here too, or a dialog the operator closed
+      // during that read would still go on to start a real import for them.
+      if (requestId !== requestIdRef.current) return;
       // Only the refetch path pins a ref; a fresh add fetches the default branch,
       // and an upload carries none at all.
       const result = await onboardPlatformLibraryAction(
