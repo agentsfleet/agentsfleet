@@ -251,6 +251,24 @@ describe("AddFleetDialog — a timeout is settled by the catalog", () => {
     expect(outcomes()).toEqual(["failure"]);
   });
 
+  it("should not start an import the operator abandoned during the baseline read", async () => {
+    // The baseline read put an await in front of the onboard call, where the
+    // submit previously had none. Closing the dialog inside that window must
+    // stop the import from ever being sent, not merely discard its answer —
+    // the fleet would otherwise be imported for an operator who cancelled.
+    let release!: (v: unknown) => void;
+    readPlatformLibraryActionMock.mockReturnValue(new Promise((r) => { release = r; }));
+
+    const user = await submitAgainst({ prefillRepo: REPO });
+    await waitFor(() => expect(readPlatformLibraryActionMock).toHaveBeenCalledTimes(1));
+    await user.keyboard("{Escape}");
+
+    release({ ok: true, data: { entries: [entry("sha256:abc123")] } });
+    await waitFor(() => expect(screen.queryByLabelText(/repository/i)).toBeNull());
+    expect(onboardPlatformLibraryActionMock).not.toHaveBeenCalled();
+    expect(outcomes()).toEqual([]);
+  });
+
   it("should land nothing when the operator closed the dialog while we were asking", async () => {
     // The poll is a run of awaits, so the staleness guard that protects the
     // submit has to protect what comes back from it: a dialog the operator
