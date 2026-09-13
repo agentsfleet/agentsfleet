@@ -28,12 +28,13 @@
 
 mod pump;
 
-use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use backon::ExponentialBuilder;
+use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::config::RedisConfig;
@@ -169,7 +170,18 @@ pub struct SubscriptionHub {
 /// pump returns.
 #[derive(Debug)]
 pub(crate) struct HubInner {
-    channels: Mutex<HashMap<String, ChannelEntry>>,
+    /// One entry per channel some reader holds.
+    ///
+    /// Sharded rather than one map behind one lock, because every frame this
+    /// hub receives looks its channel up here: a deployment streaming a
+    /// hundred fleets put every one of those dispatches through a single
+    /// lock, behind every subscribe and release as well. What the shape has
+    /// to preserve is the ORDERING of a channel's own commands — see
+    /// [`SubscriptionHub::subscribe`] and [`HubInner::release`], which take
+    /// and hold that channel's entry across the send — and per-key is exactly
+    /// what a sharded map gives. Two DIFFERENT channels never needed ordering
+    /// between them; they are independent subscriptions on one socket.
+    channels: DashMap<String, ChannelEntry>,
     /// How many times a connection has been established, including the first.
     /// A process that opens two has broken Invariant 2, and this is how a test
     /// sees it without counting sockets on the server.
@@ -228,7 +240,7 @@ impl SubscriptionHub {
     ) -> Result<Self> {
         let (commands, receiver) = mpsc::unbounded_channel();
         let inner = Arc::new(HubInner {
-            channels: Mutex::new(HashMap::new()),
+            channels: DashMap::new(),
             connections_opened: AtomicU64::new(0),
         });
 
@@ -242,18 +254,24 @@ impl SubscriptionHub {
     /// channel; the rest are handed a receiver on the same broadcast.
     #[must_use]
     pub fn subscribe(&self, channel: &str) -> Subscription {
-        let receiver = {
-            let mut channels = self.inner.lock_channels();
-            if let Some(entry) = channels.get_mut(channel) {
+        let receiver = match self.inner.channels.entry(channel.to_owned()) {
+            Entry::Occupied(mut held) => {
+                let entry = held.get_mut();
                 entry.readers += 1;
                 entry.sender.subscribe()
-            } else {
+            }
+            Entry::Vacant(slot) => {
                 let (sender, receiver) = broadcast::channel(CHANNEL_CAPACITY);
-                channels.insert(channel.to_owned(), ChannelEntry { sender, readers: 1 });
-                // Sent while holding the lock on purpose: the pump must not see
-                // an Unsubscribe for a channel whose Subscribe has not been
-                // queued yet, and the lock is what orders them.
+                // The guard is BOUND rather than dropped, because the send
+                // below has to happen while this channel's entry is still
+                // held: the pump must not see an Unsubscribe for a channel
+                // whose Subscribe has not been queued yet, and holding the
+                // entry is what orders them. Per channel is the whole
+                // requirement — two channels' commands were never ordered
+                // against each other.
+                let held = slot.insert(ChannelEntry { sender, readers: 1 });
                 let _ = self.commands.send(Command::Subscribe(channel.to_owned()));
+                drop(held);
                 receiver
             }
         };
@@ -270,7 +288,7 @@ impl SubscriptionHub {
     #[must_use]
     pub fn readers(&self, channel: &str) -> usize {
         self.inner
-            .lock_channels()
+            .channels
             .get(channel)
             .map_or(0, |entry| entry.readers)
     }
@@ -283,7 +301,7 @@ impl SubscriptionHub {
     /// hub-closed error, which is a thing it can act on; a reader waiting on an
     /// abandoned one waits forever.
     pub fn shutdown(&self) {
-        self.inner.lock_channels().clear();
+        self.inner.channels.clear();
     }
 
     /// How many connections this hub has opened over its life.
@@ -297,23 +315,35 @@ impl SubscriptionHub {
 }
 
 impl HubInner {
-    /// The channel map. Poisoning cannot happen — nothing that runs under this
-    /// lock can panic — and recovering the guard is the honest answer if it
-    /// somehow did, rather than propagating a panic into every later caller.
-    pub(crate) fn lock_channels(&self) -> std::sync::MutexGuard<'_, HashMap<String, ChannelEntry>> {
+    /// Every channel with at least one reader, for a resubscribe after a drop.
+    ///
+    /// The walk locks one shard at a time, so a channel subscribed while it
+    /// runs may land on either side of it. Nothing is stranded by that: a
+    /// subscribe queues its own `Subscribe` command while holding the
+    /// channel's entry, and the pump drains that queue as soon as it has
+    /// resubscribed what this returned — so a channel this misses is
+    /// subscribed by its own command a moment later, and one it catches twice
+    /// is an `SSUBSCRIBE` the server already answers idempotently.
+    pub(crate) fn live_channels(&self) -> Vec<String> {
         self.channels
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
-    /// Every channel with at least one reader, for a resubscribe after a drop.
-    pub(crate) fn live_channels(&self) -> Vec<String> {
-        self.lock_channels().keys().cloned().collect()
+    /// Whether any reader still holds `channel`.
+    ///
+    /// One key rather than [`HubInner::live_channels`] and a scan of it: this
+    /// is asked on every `sunsubscribe` push the server sends, and cloning
+    /// every channel name to answer a question about one of them was a cost
+    /// that grew with the deployment.
+    pub(crate) fn holds_channel(&self, channel: &str) -> bool {
+        self.channels.contains_key(channel)
     }
 
     /// Hands a message to the readers of its channel.
     pub(crate) fn dispatch(&self, message: Message) {
-        if let Some(entry) = self.lock_channels().get(&message.channel) {
+        if let Some(entry) = self.channels.get(&message.channel) {
             // The error case is "no receivers right now", which is not a
             // failure: a subscription being dropped as a message arrives is an
             // ordinary race, and the refcount cleanup is already on its way.
@@ -333,14 +363,20 @@ impl HubInner {
     /// arriving on the same channel would leave that reader holding a live
     /// subscription the server had been told to drop.
     fn release(&self, channel: &str, commands: &mpsc::UnboundedSender<Command>) {
-        let mut channels = self.lock_channels();
-        let Some(entry) = channels.get_mut(channel) else {
+        let Entry::Occupied(mut held) = self.channels.entry(channel.to_owned()) else {
             return;
         };
+        let entry = held.get_mut();
         entry.readers = entry.readers.saturating_sub(1);
         if entry.readers == 0 {
-            channels.remove(channel);
+            // Queued BEFORE the entry is removed, so the send still happens
+            // while this channel's shard is held: a reader arriving on this
+            // channel blocks on that entry, and its Subscribe therefore
+            // queues after this Unsubscribe rather than being overtaken by
+            // it. `remove` consumes the entry and releases the shard, so the
+            // two cannot be written the other way round.
             let _ = commands.send(Command::Unsubscribe(channel.to_owned()));
+            held.remove();
         }
     }
 }
