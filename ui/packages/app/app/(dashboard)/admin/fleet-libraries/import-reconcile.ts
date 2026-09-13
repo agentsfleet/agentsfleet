@@ -77,9 +77,14 @@ export function repoImportState(
  * guard — a landed import always advances it, an import that never reached the
  * upsert never does.
  *
- * The residual gap is another operator writing the same row in the same few
- * seconds, which would advance the stamp without this import having landed.
- * Closing that needs an operation id the onboard endpoint does not yet return.
+ * The baseline must be read at submit time for this to hold. A snapshot taken
+ * when the page rendered can be minutes stale, and any foreign write in between
+ * would advance the stamp and read as this import landing; `AddFleetDialog`
+ * takes its before state immediately before the onboard call for that reason.
+ *
+ * The residual gap is a foreign write during the import itself, which no
+ * baseline can exclude. Closing that needs an operation id the onboard endpoint
+ * does not yet return.
  */
 export function importLanded(before: RepoImportState, after: RepoImportState): boolean {
   if (!after.present || after.contentHash === null) return false;

@@ -26,7 +26,7 @@ import {
   type LibrarySourceValues,
 } from "@/components/domain/fleet-library/library-source-form";
 import { RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
-import { SOURCE_KIND_GITHUB, type PlatformCatalogEntry } from "@/lib/types";
+import { SOURCE_KIND_GITHUB } from "@/lib/types";
 import { onboardPlatformLibraryAction, readPlatformLibraryAction } from "../actions";
 import { reconcileImport, repoImportState, type RepoImportState } from "../import-reconcile";
 import {
@@ -59,18 +59,9 @@ export default function AddFleetDialog({
   prefillRepo,
   prefillRef,
   restoreFocus,
-  entries,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * The catalog as the page last rendered it — the before half of the timeout
-   * reconciliation. A prop rather than a read because the table already has it,
-   * so the happy path costs no extra round-trip. Required: without the before
-   * state a refetch cannot be told from a no-op, and a caller that forgot it
-   * should fail to compile rather than silently reconcile worse.
-   */
-  entries: readonly PlatformCatalogEntry[];
   /** A row's repository, when the dialog was opened from that row's Fetch action. */
   prefillRepo?: string;
   /** The row's stored ref on the Fetch-update path — the pin the fetch honors. */
@@ -119,23 +110,10 @@ export default function AddFleetDialog({
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /*
-   * The catalog's verdict on an import we stopped waiting for.
-   *
-   * Only the GitHub path can be settled this way: an upload carries no
-   * repository, so there is no row to match it against and the timeout stands
-   * as reported. A read that itself fails also leaves the timeout standing —
-   * an unanswered question is not a yes.
-   */
-  async function landedAfterTimeout(values: LibrarySourceValues): Promise<boolean> {
-    if (values.source_kind !== SOURCE_KIND_GITHUB) return false;
-    const repo = values.source_ref;
-    const before = repoImportState(entries, repo);
-    async function readState(): Promise<RepoImportState | null> {
-      const reread = await readPlatformLibraryAction();
-      return reread.ok ? repoImportState(reread.data.entries, repo) : null;
-    }
-    return reconcileImport(before, readState, sleep);
+  /** One catalog read, narrowed to the row this submit is about. */
+  async function readRepoState(repo: string): Promise<RepoImportState | null> {
+    const read = await readPlatformLibraryAction();
+    return read.ok ? repoImportState(read.data.entries, repo) : null;
   }
 
   async function submit(values: LibrarySourceValues, replace: boolean) {
@@ -143,7 +121,27 @@ export default function AddFleetDialog({
     requestIdRef.current = requestId;
     setApiError(null);
     setPending(true);
+    const repo = values.source_ref;
     try {
+      /*
+       * The before half of the timeout reconciliation, read HERE rather than
+       * taken from the page's render.
+       *
+       * It used to come from an `entries` prop — the catalog as the table last
+       * drew it, which can be minutes old. Any write to this row in between —
+       * another tab, another operator, an earlier timed-out import finally
+       * finishing — advanced the stamp, and the reconcile below would have read
+       * that as proof THIS import landed and closed the dialog on a refetch
+       * that failed. Reading now narrows the window to the import itself.
+       *
+       * Only the GitHub path has a row to match: an upload stores no
+       * source_repo, so its timeout stands as reported. A baseline read that
+       * fails leaves the timeout standing too — with no trustworthy before
+       * state there is nothing to compare against, and a guess is worse than
+       * the honest answer.
+       */
+      const before =
+        values.source_kind === SOURCE_KIND_GITHUB ? await readRepoState(repo) : null;
       // Only the refetch path pins a ref; a fresh add fetches the default branch,
       // and an upload carries none at all.
       const result = await onboardPlatformLibraryAction(
@@ -162,7 +160,11 @@ export default function AddFleetDialog({
         // A timeout is our patience running out, not the daemon stopping. Ask
         // the catalog before telling the operator this failed; the import may
         // have finished in the seconds after we stopped listening.
-        if (result.errorCode === RETRY_CODE_TIMEOUT && (await landedAfterTimeout(values))) {
+        if (
+          result.errorCode === RETRY_CODE_TIMEOUT &&
+          before !== null &&
+          (await reconcileImport(before, () => readRepoState(repo), sleep))
+        ) {
           if (requestId !== requestIdRef.current) return;
           captureProductEvent(EVENTS.platform_library_onboarded, {
             source_kind: values.source_kind,
