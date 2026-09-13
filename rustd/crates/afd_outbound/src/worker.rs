@@ -15,18 +15,26 @@
 //! [`afd_datastore::Dedicated`] connection: parking the shared one would park every
 //! other caller in the process behind it.
 //!
+//! # The read hands off; the lanes deliver
+//!
+//! A job read here is not delivered here. It goes to [`crate::lanes`] — the
+//! lane for its destination — and the loop reads on, so a destination that
+//! is slow to answer holds only its own lane and never the answers queued
+//! behind it for everyone else. Ordering within a destination is the lane's
+//! promise; this loop's is only that jobs reach the lanes in stream order.
+//!
 //! # Cancellation stops the READ, never a delivery
 //!
 //! A job in hand is finished. Abandoning one mid-post would leave a vendor call
 //! in flight with nothing to read its answer, and the durable stream would then
 //! redeliver a job that may well have landed. So the token is selected over at
-//! exactly one point — the blocking read — and inside a delivery it does one
-//! narrower thing: it stops the RETRY loop from starting another attempt. The
-//! attempt already running finishes, and a job whose last attempt failed is
-//! simply not acknowledged, which is the same thing as re-queuing it.
+//! the reads and the hand-off, and inside a delivery it does one narrower
+//! thing: it stops the RETRY loop from starting another attempt. The attempt
+//! already running finishes, and a job whose last attempt failed is simply
+//! not acknowledged, which is the same thing as re-queuing it.
 //!
-//! That bounds a shutdown at one vendor deadline rather than at the whole retry
-//! budget, which is what keeps the join inside
+//! That bounds a shutdown at one vendor deadline per in-flight lane rather
+//! than at the whole retry budget, which is what keeps the join inside
 //! [`agentsfleetd::supervisor::JOIN_TIMEOUT`] with room to spare.
 //!
 //! # Dropping the read future does not cancel the read
@@ -45,7 +53,8 @@ use std::time::Duration;
 use afd_datastore::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;
 
-use crate::poster::{Deliver, Posters, Verdict, deliver_with_retry};
+use crate::lanes::Lanes;
+use crate::poster::{Deliver, Posters};
 
 /// How long one blocking read parks before it answers empty.
 ///
@@ -101,7 +110,7 @@ enum Turn {
     Stopped,
 }
 
-impl<S: Deliver> Worker<S> {
+impl<S: Deliver + 'static> Worker<S> {
     /// Binds the worker to its own reader, the shared queue, and its posters.
     ///
     /// The reader is taken by value because it owns a connection this worker
@@ -121,7 +130,7 @@ impl<S: Deliver> Worker<S> {
     /// blip must not take the delivery path down for the life of the process,
     /// and the next turn of the loop re-reads. The one thing that ends this
     /// function is cancellation.
-    pub async fn run(mut self, token: CancellationToken) {
+    pub async fn run(self, token: CancellationToken) {
         // Idempotent, and at boot rather than per turn: an existing group answers
         // `BUSYGROUP`, which is the steady state.
         //
@@ -142,9 +151,28 @@ impl<S: Deliver> Worker<S> {
         let consumer = self.reader.consumer().to_owned();
         tracing::debug!(consumer, event = "outbound_worker_started");
 
+        let Self {
+            mut reader,
+            queue,
+            posters,
+        } = self;
+        let lanes = Lanes::new(posters, queue, token.clone());
         loop {
-            match self.next(&token).await {
-                Turn::Job(job) => self.deliver_and_ack(&job, &token).await,
+            match Self::next(&mut reader, &token).await {
+                Turn::Job(job) => {
+                    // Raced against the token because a full lane makes the
+                    // hand-off wait, and a shutdown must not wait behind it.
+                    // A job dropped here is already pending under this
+                    // consumer's name; nothing is lost by not queuing it.
+                    let stopped = tokio::select! {
+                        biased;
+                        () = token.cancelled() => true,
+                        () = lanes.dispatch(job) => false,
+                    };
+                    if stopped {
+                        break;
+                    }
+                }
                 Turn::Idle => {}
                 Turn::Failed => {
                     if pause(&token).await.is_break() {
@@ -154,6 +182,7 @@ impl<S: Deliver> Worker<S> {
                 Turn::Stopped => break,
             }
         }
+        lanes.drain().await;
         tracing::debug!(consumer, event = "outbound_worker_shutdown");
     }
 
@@ -163,7 +192,7 @@ impl<S: Deliver> Worker<S> {
     /// loop pauses, then re-reads. The pause is not optional — a failed
     /// pending read never reaches the blocking read below, so nothing else in
     /// this function would slow a loop whose socket is gone.
-    async fn next(&mut self, token: &CancellationToken) -> Turn {
+    async fn next(reader: &mut OutboundReader, token: &CancellationToken) -> Turn {
         // First, and before the pending list: a cancelled worker stops.
         //
         // The pending-first read below serves RESUME — a process finding what
@@ -198,7 +227,7 @@ impl<S: Deliver> Worker<S> {
         let pending = tokio::select! {
             biased;
             () = token.cancelled() => return Turn::Stopped,
-            read = self.reader.read_pending() => read,
+            read = reader.read_pending() => read,
         };
         match pending {
             Ok(Some(job)) => return Turn::Job(Box::new(job)),
@@ -215,7 +244,7 @@ impl<S: Deliver> Worker<S> {
             // during a shutdown that had already been requested.
             biased;
             () = token.cancelled() => Turn::Stopped,
-            read = self.reader.read_blocking(BLOCK_INTERVAL) => match read {
+            read = reader.read_blocking(BLOCK_INTERVAL) => match read {
                 Ok(Some(job)) => Turn::Job(Box::new(job)),
                 Ok(None) => Turn::Idle,
                 Err(failure) => Self::read_failed("outbound_read_next_failed", failure),
@@ -227,51 +256,6 @@ impl<S: Deliver> Worker<S> {
     fn read_failed(event: &'static str, failure: afd_datastore::Error) -> Turn {
         report(event, &failure.into());
         Turn::Failed
-    }
-
-    /// Delivers one job with bounded retry, then acknowledges it.
-    ///
-    /// # Every terminal verdict acknowledges, including the exhausted one
-    ///
-    /// A job whose attempts ran out is acknowledged and logged, not left
-    /// pending. Leaving it would redeliver it on the next turn, forever, at the
-    /// head of a serial queue — one undeliverable answer would stop every
-    /// answer behind it. The durable stream's job is to survive a CRASH, and a
-    /// crash is precisely the case where the ack never runs.
-    async fn deliver_and_ack(&self, job: &OutboundDelivery, token: &CancellationToken) {
-        if deliver_with_retry(&self.posters, job, token).await == Verdict::Retryable {
-            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-            let provider = job.provider.as_str();
-            let fleet_id = job.fleet_id.as_str();
-            // A shutdown cut the retries short, so this is not an exhausted
-            // budget — it is work this process is handing back. Left
-            // UNACKNOWLEDGED on purpose: the entry stays in this consumer's
-            // pending list, and the next process's pending-first read is what
-            // picks it up. The "re-queues" half of Dimension 5.2, and the
-            // reason the branch sits before the ack rather than after it.
-            if token.is_cancelled() {
-                tracing::info!(
-                    provider,
-                    fleet_id,
-                    event = "outbound_delivery_requeued_at_shutdown"
-                );
-                return;
-            }
-            tracing::warn!(
-                error_code,
-                provider,
-                fleet_id,
-                event = "outbound_delivery_exhausted"
-            );
-        }
-        if let Err(failure) = self.queue.ack(&job.id).await {
-            // The delivery HAPPENED. What failed is the record of it, so the
-            // job stays pending and will be delivered a second time — which is
-            // why the whole path is at-least-once and the destination's own
-            // thread is what a person reads.
-            report("outbound_ack_failed", &failure.into());
-        }
     }
 }
 
@@ -290,8 +274,8 @@ async fn pause(token: &CancellationToken) -> ControlFlow<()> {
 ///
 /// One site, so every swallowed failure is logged the same way and none is
 /// swallowed silently — the failure mode `worker.zig`'s per-call `catch` blocks
-/// each have to remember on their own.
-fn report(event: &'static str, failure: &crate::Error) {
+/// each have to remember on their own. The lanes report through it too.
+pub(crate) fn report(event: &'static str, failure: &crate::Error) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = failure.code().as_str();
     let reason = failure.to_string();

@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use afd_datastore::ready::ReadyIndex;
+use afd_datastore::ready::{Partition, ReadyIndex};
 
 use crate::support::RedisHarness;
 
@@ -31,9 +31,10 @@ async fn test_ready_index_clear_respects_the_token() {
     let fleet = harness.name("fleet");
 
     let observed = index.mark(&fleet, "token-a").await.expect("mark");
+    let partition = Partition::of(&fleet);
     assert!(
         index
-            .peek(50)
+            .peek(partition, 50)
             .await
             .expect("peek")
             .iter()
@@ -54,7 +55,7 @@ async fn test_ready_index_clear_respects_the_token() {
     );
     assert!(
         index
-            .peek(50)
+            .peek(partition, 50)
             .await
             .expect("peek")
             .iter()
@@ -116,12 +117,14 @@ async fn test_ready_index_read_surface() {
     assert!(!index.is_empty().await.expect("is_empty"));
 
     // Every sampled pair must be a field with ITS value, not a shifted pairing.
-    let sample = index.peek(100).await.expect("peek");
+    // Each fleet is looked for in ITS partition: the marks are spread by hash,
+    // and a sample of one partition says nothing about a fleet in another.
     for fleet in &fleets {
+        let sample = index.peek(Partition::of(fleet), 100).await.expect("peek");
         let found = sample
             .iter()
             .find(|ready| &ready.fleet_id == fleet)
-            .expect("a marked fleet must be sampled");
+            .expect("a marked fleet must be sampled from its own partition");
         let position = fleets
             .iter()
             .position(|candidate| candidate == fleet)
@@ -223,12 +226,10 @@ async fn test_a_command_past_its_deadline_is_a_timeout() {
 /// Removes a fleet's field from the shared index, so one test's marks never
 /// appear in another's sample.
 async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
+    let key = Partition::of(fleet).key();
     let mut cmd = redis::cmd("HDEL");
-    cmd.arg(afd_datastore::ready::READY_INDEX_KEY).arg(fleet);
-    let _: Result<i64, _> = harness
-        .redis
-        .command("HDEL", afd_datastore::ready::READY_INDEX_KEY, &cmd)
-        .await;
+    cmd.arg(&key).arg(fleet);
+    let _: Result<i64, _> = harness.redis.command("HDEL", &key, &cmd).await;
 }
 
 /// Every way opening a connection can fail, told apart.

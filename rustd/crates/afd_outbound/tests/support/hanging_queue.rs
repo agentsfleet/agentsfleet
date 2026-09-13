@@ -14,8 +14,8 @@
 //! reason.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
@@ -31,9 +31,13 @@ const CRLF: &[u8] = b"\r\n";
 const ARRAY: u8 = b'*';
 const BULK: u8 = b'$';
 
-/// One parsed command: what was asked, and how many bytes it took.
+const CMD_XACK: &str = "XACK";
+
+/// One parsed command: what was asked, its last argument, and how many bytes
+/// it took.
 struct Request {
     name: String,
+    last_argument: String,
     consumed: usize,
 }
 
@@ -50,11 +54,16 @@ pub(crate) enum OnRead {
     Stall,
 }
 
-/// A server that refuses every `XREADGROUP`, counting them.
+/// A server that refuses every `XREADGROUP`, counting them, and accepts every
+/// `XACK`, recording the id acknowledged.
+///
+/// The second half is what lets the lanes be graded without a live queue:
+/// nothing in them reads, and the one thing they write is the ack.
 #[derive(Debug)]
 pub(crate) struct HangingQueue {
     addr: SocketAddr,
     reads: Arc<AtomicUsize>,
+    acks: Arc<Mutex<Vec<String>>>,
 }
 
 impl HangingQueue {
@@ -77,15 +86,23 @@ impl HangingQueue {
             .local_addr()
             .expect("a bound listener has an address");
         let reads = Arc::new(AtomicUsize::new(0));
+        let acks = Arc::new(Mutex::new(Vec::new()));
 
         let counting = Arc::clone(&reads);
+        let recording = Arc::clone(&acks);
         let port = addr.port();
         tokio::spawn(async move {
             while let Ok((socket, _peer)) = listener.accept().await {
-                tokio::spawn(serve(socket, Arc::clone(&counting), on_read, port));
+                tokio::spawn(serve(
+                    socket,
+                    Arc::clone(&counting),
+                    Arc::clone(&recording),
+                    on_read,
+                    port,
+                ));
             }
         });
-        Self { addr, reads }
+        Self { addr, reads, acks }
     }
 
     /// The URL a client opens this server with.
@@ -97,6 +114,14 @@ impl HangingQueue {
     pub(crate) fn reads(&self) -> usize {
         self.reads.load(Ordering::Acquire)
     }
+
+    /// The ids acknowledged so far, in the order they arrived.
+    pub(crate) fn acks(&self) -> Vec<String> {
+        self.acks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
 }
 
 /// Answers one connection: the cluster handshake, `+PONG` to a ping, `+OK` to
@@ -104,7 +129,13 @@ impl HangingQueue {
 ///
 /// `port` is this server's own, because the topology it advertises has to name
 /// the address the client is already talking to.
-async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead, port: u16) {
+async fn serve(
+    mut socket: TcpStream,
+    reads: Arc<AtomicUsize>,
+    acks: Arc<Mutex<Vec<String>>>,
+    on_read: OnRead,
+    port: u16,
+) {
     let mut buffer = Vec::new();
     let mut scratch = [0_u8; 4096];
     loop {
@@ -132,6 +163,11 @@ async fn serve(mut socket: TcpStream, reads: Arc<AtomicUsize>, on_read: OnRead, 
                 &owned
             } else if request.name == "PING" {
                 b"+PONG\r\n"
+            } else if request.name == CMD_XACK {
+                acks.lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(request.last_argument.clone());
+                b":1\r\n"
             } else {
                 b"+OK\r\n"
             };
@@ -154,6 +190,7 @@ fn parse(buffer: &[u8]) -> Option<Request> {
     let mut cursor = header(buffer, ARRAY)?;
     let arguments = cursor.count;
     let mut name = String::new();
+    let mut last_argument = String::new();
     for index in 0..arguments {
         let bulk = header(buffer.get(cursor.end..)?, BULK)?;
         let start = cursor.end + bulk.end;
@@ -162,6 +199,7 @@ fn parse(buffer: &[u8]) -> Option<Request> {
         if index == 0 {
             name = String::from_utf8_lossy(argument).to_uppercase();
         }
+        last_argument = String::from_utf8_lossy(argument).into_owned();
         cursor.end = end + CRLF.len();
         if buffer.len() < cursor.end {
             return None;
@@ -169,6 +207,7 @@ fn parse(buffer: &[u8]) -> Option<Request> {
     }
     Some(Request {
         name,
+        last_argument,
         consumed: cursor.end,
     })
 }

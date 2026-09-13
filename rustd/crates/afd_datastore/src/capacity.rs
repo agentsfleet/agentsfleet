@@ -19,17 +19,12 @@
 
 use crate::client::Redis;
 use crate::error::Result;
-use crate::ready::{READY_INDEX_KEY, ReadyIndex};
+use crate::ready::{Partition, ReadyIndex};
 use crate::streams::{FLEET_CONSUMER_GROUP, FLEET_STREAM_GLOB, retain};
 use crate::topology::{self, Role};
 
 /// How many keys one `SCAN` page asks for.
 const SCAN_PAGE: usize = 1_000;
-
-/// The readiness partitions this build reads. One until the partitioned
-/// index lands, at which point this is the partition set and nothing else
-/// here changes.
-const READY_PARTITIONS: &[&str] = &[READY_INDEX_KEY];
 
 /// What the datastore holds, one figure per class of state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -76,9 +71,9 @@ impl Capacity {
         }
 
         let index = ReadyIndex::new(redis.clone());
-        for _partition in READY_PARTITIONS {
+        for partition in Partition::all() {
             sample.ready_partitions += 1;
-            sample.ready_marks += index.len().await?;
+            sample.ready_marks += index.len_of(partition).await?;
         }
 
         for node in topology::nodes(redis).await? {

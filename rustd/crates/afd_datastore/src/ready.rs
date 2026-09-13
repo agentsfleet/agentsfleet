@@ -1,8 +1,10 @@
 //! The readiness index: which fleets currently hold work.
 //!
-//! One global hash, field per fleet, value a token. A lease poll reads this
-//! before it opens a Postgres connection, so an idle poll costs one bounded
-//! Redis read and no database round-trip at all.
+//! A fixed set of hashes — one per [`Partition`] — with a field per fleet and
+//! a token for its value. A lease poll reads ONE partition, the one its
+//! cursor names, before it opens a Postgres connection, so an idle poll costs
+//! one bounded Redis read and no database round-trip at all, and a rotation
+//! of polls visits every partition whatever one of them holds.
 //!
 //! # It is a hint, never the record
 //!
@@ -21,16 +23,20 @@
 //! the one the caller saw, and the comparison happens inside Redis where there
 //! is no gap.
 
+pub mod partition;
+
+use futures_util::future::try_join_all;
+
 use crate::client::Redis;
 use crate::error::Result;
 
-/// The one index key for the whole deployment.
-pub const READY_INDEX_KEY: &str = "fleet:ready";
+pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor};
 
 /// Delete the field only if it still carries the token the caller observed.
 ///
 /// A client-side read-then-delete does not express this: the gap between the
-/// read and the delete is exactly the window a concurrent mark wins.
+/// read and the delete is exactly the window a concurrent mark wins. One key
+/// — the fleet's partition — so it runs on a cluster unchanged.
 const CLEAR_IF_TOKEN_MATCHES: &str = r"
 if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
   return redis.call('HDEL', KEYS[1], ARGV[1])
@@ -54,6 +60,7 @@ const CMD_HLEN: &str = "HLEN";
 const CMD_HRANDFIELD: &str = "HRANDFIELD";
 const CMD_EVAL: &str = "EVAL";
 const CMD_HDEL: &str = "HDEL";
+const ARG_WITHVALUES: &str = "WITHVALUES";
 
 /// Names one generation of a fleet's readiness mark.
 ///
@@ -107,20 +114,34 @@ impl ReadyIndex {
     /// re-derives what a lost mark would have said.
     pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken> {
         let value = token.to_owned();
+        let key = Partition::of(fleet_id).key();
         let mut cmd = redis::cmd(CMD_HSET);
-        cmd.arg(READY_INDEX_KEY).arg(fleet_id).arg(&value);
-        let _: i64 = self.redis.command(CMD_HSET, READY_INDEX_KEY, &cmd).await?;
+        cmd.arg(&key).arg(fleet_id).arg(&value);
+        let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
         Ok(ReadyToken(value))
     }
 
-    /// How many fleets the index currently holds.
+    /// How many fleets one partition currently holds.
     ///
     /// # Errors
     /// Returns a command error when the read fails.
-    pub async fn len(&self) -> Result<u64> {
+    pub async fn len_of(&self, partition: Partition) -> Result<u64> {
+        let key = partition.key();
         let mut cmd = redis::cmd(CMD_HLEN);
-        cmd.arg(READY_INDEX_KEY);
-        self.redis.command(CMD_HLEN, READY_INDEX_KEY, &cmd).await
+        cmd.arg(&key);
+        self.redis.command(CMD_HLEN, &key, &cmd).await
+    }
+
+    /// How many fleets the index currently holds across every partition.
+    ///
+    /// The partitions are independent keys on independent slots, so they are
+    /// asked concurrently rather than one after another.
+    ///
+    /// # Errors
+    /// Returns a command error when any partition's read fails.
+    pub async fn len(&self) -> Result<u64> {
+        let counts = try_join_all(Partition::all().map(|partition| self.len_of(partition))).await?;
+        Ok(counts.into_iter().sum())
     }
 
     /// Whether the index holds nothing.
@@ -131,23 +152,23 @@ impl ReadyIndex {
         Ok(self.len().await? == 0)
     }
 
-    /// Samples up to `count` ready fleets.
+    /// Samples up to `count` ready fleets from one partition.
     ///
-    /// Random rather than ordered, because every replica polls this index and
-    /// an ordered read would send all of them at the same fleet first.
+    /// Random within the partition rather than ordered, because every replica
+    /// polls this index and an ordered read would send all of them at the
+    /// same fleet first. Which partition is the caller's cursor's decision —
+    /// see [`ReadyCursor`] — so that a rotation of polls reaches every one.
     ///
     /// # Errors
     /// Returns a command error when the read fails.
-    pub async fn peek(&self, count: usize) -> Result<Vec<Ready>> {
+    pub async fn peek(&self, partition: Partition, count: usize) -> Result<Vec<Ready>> {
+        let key = partition.key();
         let mut cmd = redis::cmd(CMD_HRANDFIELD);
-        cmd.arg(READY_INDEX_KEY).arg(count).arg("WITHVALUES");
+        cmd.arg(&key).arg(count).arg(ARG_WITHVALUES);
         // RESP3 answers `WITHVALUES` as an array of pairs; the driver's pair
         // decoder also accepts the flat RESP2 framing, so either wire shape
         // lands here as (field, value).
-        let pairs: Vec<(String, String)> = self
-            .redis
-            .command(CMD_HRANDFIELD, READY_INDEX_KEY, &cmd)
-            .await?;
+        let pairs: Vec<(String, String)> = self.redis.command(CMD_HRANDFIELD, &key, &cmd).await?;
         Ok(pairs
             .into_iter()
             .map(|(fleet_id, token)| Ready {
@@ -172,9 +193,10 @@ impl ReadyIndex {
     /// best-effort: a stale field costs one wasted candidate check on a later
     /// poll, and the fleet is already stopped where it counts.
     pub async fn force_clear(&self, fleet_id: &str) -> Result<()> {
+        let key = Partition::of(fleet_id).key();
         let mut cmd = redis::cmd(CMD_HDEL);
-        cmd.arg(READY_INDEX_KEY).arg(fleet_id);
-        let _: i64 = self.redis.command(CMD_HDEL, READY_INDEX_KEY, &cmd).await?;
+        cmd.arg(&key).arg(fleet_id);
+        let _: i64 = self.redis.command(CMD_HDEL, &key, &cmd).await?;
         Ok(())
     }
 
@@ -187,15 +209,10 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the evaluation fails.
     pub async fn clear_if_unchanged(&self, fleet_id: &str, token: &ReadyToken) -> Result<bool> {
+        let key = Partition::of(fleet_id).key();
         let mut invocation = CLEAR_IF_TOKEN_MATCHES_SCRIPT.prepare_invoke();
-        invocation
-            .key(READY_INDEX_KEY)
-            .arg(fleet_id)
-            .arg(token.as_str());
-        let removed: i64 = self
-            .redis
-            .script(CMD_EVAL, READY_INDEX_KEY, &invocation)
-            .await?;
+        invocation.key(&key).arg(fleet_id).arg(token.as_str());
+        let removed: i64 = self.redis.script(CMD_EVAL, &key, &invocation).await?;
         Ok(removed > 0)
     }
 }

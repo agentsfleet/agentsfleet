@@ -40,10 +40,12 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 # `select!` over the blocking read and the cancellation token, and the deadline
-# on a vendor post.
-tokio = { workspace = true, features = ["macros", "time"] }
-# The supervisor's token, which is how this worker is stopped.
-tokio-util.workspace = true
+# on a vendor post; `sync` for the lanes' channels and the in-flight ceiling,
+# `rt` because each lane is a spawned task.
+tokio = { workspace = true, features = ["macros", "time", "sync", "rt"] }
+# The supervisor's token, which is how this worker is stopped, and the tracker
+# the lanes are joined through at shutdown.
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]

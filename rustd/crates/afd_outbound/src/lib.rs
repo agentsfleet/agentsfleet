@@ -58,12 +58,14 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod error;
+pub mod lanes;
 pub mod poster;
 pub mod retry;
 pub mod slack;
 pub mod worker;
 
 pub use self::error::{Error, Result};
+pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
 pub use self::poster::{Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
 pub use self::worker::{BLOCK_INTERVAL, LONGEST_PARK, Worker};
