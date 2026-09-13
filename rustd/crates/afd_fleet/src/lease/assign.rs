@@ -52,15 +52,6 @@ pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 /// keeps matching after the cutover.
 const EVENT_READY_PEEK_FAILED: &str = "assign_ready_peek_failed";
 
-/// The consumer's own pending list would not answer.
-const EVENT_PEL_READ_FAILED: &str = "assign_pel_read_failed";
-
-/// The fleet stream would not answer.
-const EVENT_STREAM_READ_FAILED: &str = "assign_xreadgroup_failed";
-
-/// An entry this consumer already held came back.
-const EVENT_PEL_REDELIVERED: &str = "assign_pel_redelivered";
-
 /// An entry no reader can decode was acknowledged and discarded.
 const EVENT_ENTRY_UNDECODABLE_DROPPED: &str = "assign_entry_undecodable_dropped";
 
@@ -93,7 +84,7 @@ fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_datastore::Err
 }
 
 /// Reports a queue failure against one fleet's stream.
-fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_datastore::Error) {
+pub(super) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_datastore::Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = error.to_string();
     tracing::warn!(
@@ -240,34 +231,8 @@ impl Leases {
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
         let streams = self.streams();
-        let consumer = runner_consumer();
         let fleet = fleet_id.as_str();
-        // A failed pending read cannot PROVE the pending list is empty, so it
-        // must not fall through to the fresh read — promoting a new entry over
-        // a possibly-pending re-poll would break own-pending-first ordering
-        // exactly when Redis is degraded. Propagating is what stops it.
-        let pending = streams
-            .read_pending(fleet, &consumer)
-            .await
-            .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
-        let event = match pending {
-            Some(event) => {
-                let id = event.receipt.as_str();
-                tracing::debug!(
-                    event = EVENT_PEL_REDELIVERED,
-                    fleet_id = fleet,
-                    receipt = id,
-                    "an entry this consumer already held is being re-delivered"
-                );
-                Some(event)
-            }
-            None => streams
-                .read_new(fleet, &consumer)
-                .await
-                .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error))?,
-        };
-
-        let Some(event) = event else {
+        let Some(event) = self.read_fresh(fleet, &runner_consumer()).await? else {
             // Both reads answered, and both were empty — the only evidence this
             // code ever has that a fleet holds nothing deliverable. Free the
             // claim so the next event is not blocked behind it.

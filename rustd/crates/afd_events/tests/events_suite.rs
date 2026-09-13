@@ -24,5 +24,7 @@ mod fleet_event_writers;
 mod integration_admission_prototype;
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
+#[path = "integration_budgets.rs"]
+mod integration_budgets;
 #[path = "integration_steer.rs"]
 mod integration_steer;

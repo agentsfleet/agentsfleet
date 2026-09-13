@@ -59,7 +59,8 @@ pub(crate) enum Reply {
     /// sends anything else: this server owns every slot, at its own port. An
     /// empty hostname tells the driver to keep dialling the address it came
     /// in on. Installed by default so a test scripting one fault does not
-    /// have to know the handshake.
+    /// have to know the handshake. The same rule answers `CLUSTER SHARDS`,
+    /// which is how this crate's per-node walks find the one node to visit.
     ClusterSlots,
 }
 
@@ -254,7 +255,7 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
                 Reply::Silent => continue,
                 Reply::SubscribeAck => confirmation("ssubscribe", request.first_argument()),
                 Reply::UnsubscribeAck => confirmation("sunsubscribe", request.first_argument()),
-                Reply::ClusterSlots => cluster_slots(control.port),
+                Reply::ClusterSlots => cluster_topology(control.port, request.first_argument()),
             };
             if socket.write_all(&bytes).await.is_err() {
                 return;
@@ -296,9 +297,17 @@ fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
     out
 }
 
-/// One shard owning slots 0..=16383 at an unnamed host and `port`.
-fn cluster_slots(port: u16) -> Vec<u8> {
-    afd_datastore::test_util::cluster_slots_reply(port)
+/// The subcommand of `CLUSTER` that asks for the shard map.
+const CLUSTER_SHARDS: &[u8] = b"SHARDS";
+
+/// One shard owning slots 0..=16383 at `port` — in the `SLOTS` framing the
+/// driver handshakes with, or the `SHARDS` framing this crate walks nodes by.
+fn cluster_topology(port: u16, subcommand: &[u8]) -> Vec<u8> {
+    if subcommand.eq_ignore_ascii_case(CLUSTER_SHARDS) {
+        afd_datastore::test_util::cluster_shards_reply(port)
+    } else {
+        afd_datastore::test_util::cluster_slots_reply(port)
+    }
 }
 
 #[path = "fake_redis/resp.rs"]

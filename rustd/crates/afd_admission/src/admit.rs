@@ -9,8 +9,8 @@ use afd_observability::producers::fleet::admission as metrics;
 use afd_wire::event::Entry;
 use sqlx::Row as _;
 
-use crate::error::{Result, query};
-use crate::{Admission, Admissions, Admitted, Key, logical_id, sql};
+use crate::error::{Error, ErrorKind, Result, query};
+use crate::{Admission, Admissions, Admitted, BudgetScope, Key, logical_id, sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ADMIT: &str = "admit an event";
@@ -41,10 +41,10 @@ impl Admissions {
     /// retrying work this daemon already holds has nothing to fix.
     ///
     /// # Errors
-    /// Reports a database that would not commit the row — the retryable
-    /// refusal, with no acceptance recorded. A queue that would not take the
-    /// append is NOT an error: the row is committed, and the replay sweeper
-    /// appends it.
+    /// Reports a database that would not commit the row, and a budget that
+    /// is spent — both the retryable refusal, with no acceptance recorded. A
+    /// queue that would not take the append is NOT an error: the row is
+    /// committed, and the replay sweeper appends it.
     pub async fn admit(&self, admission: Admission<'_>) -> Result<Admitted> {
         let now = clock::now();
         let row_id = Uuid7::encode(now, self.entropy.uuid_randomness()?)?;
@@ -60,10 +60,21 @@ impl Admissions {
         let digest = admission.payload_digest();
         let producer = admission.producer.as_str();
 
-        let ledger = match self.record(&row_id, &admission, key, &digest, now).await {
+        let ledger = match self.commit(&row_id, &admission, key, &digest, now).await {
             Ok(ledger) => ledger,
             Err(refused) => {
-                metrics::admitted(AdmissionOutcome::Refused);
+                // Two refusals, kept apart on the counter and in the log: a
+                // spent budget is the deployment doing what it was told,
+                // and a database that would not answer is an incident.
+                let (outcome, event) = if refused.is_over_capacity() {
+                    (
+                        AdmissionOutcome::OverBudget,
+                        "admission_refused_over_capacity",
+                    )
+                } else {
+                    (AdmissionOutcome::Refused, "admission_failed")
+                };
+                metrics::admitted(outcome);
                 let code = refused.code().as_str();
                 let reason = refused.to_string();
                 tracing::warn!(
@@ -71,7 +82,7 @@ impl Admissions {
                     producer,
                     fleet_id = admission.fleet,
                     reason,
-                    event = "admission_failed",
+                    event,
                 );
                 return Err(refused);
             }
@@ -109,7 +120,24 @@ impl Admissions {
         self.queue_entry(&row_id, ledger.id, &admission, now).await
     }
 
-    /// Commits the row, or finds the one an earlier call committed.
+    /// The fleet budget, then the row: the queue is asked first because a
+    /// refusal must leave nothing behind, and the row's own statement carries
+    /// the deployment budget.
+    async fn commit(
+        &self,
+        row_id: &Uuid7,
+        admission: &Admission<'_>,
+        key: &str,
+        digest: &str,
+        now: UnixMillis,
+    ) -> Result<Ledger> {
+        self.refuse_over_fleet_budget(admission.fleet).await?;
+        self.record(row_id, admission, key, digest, now).await
+    }
+
+    /// Commits the row, or finds the one an earlier call committed, or
+    /// answers the deployment budget's refusal when the statement inserted
+    /// nothing.
     async fn record(
         &self,
         row_id: &Uuid7,
@@ -131,9 +159,16 @@ impl Admissions {
             .bind(admission.request_json)
             .bind(now.as_millis())
             .bind(NO_REPLAYS)
-            .fetch_one(&mut *connection)
+            .bind(i64::try_from(self.budgets.replay_backlog).unwrap_or(i64::MAX))
+            .fetch_optional(&mut *connection)
             .await
-            .map_err(query(CONTEXT_ADMIT))?;
+            .map_err(query(CONTEXT_ADMIT))?
+            .ok_or_else(|| {
+                Error::from(ErrorKind::OverBudget {
+                    scope: BudgetScope::Deployment,
+                    limit: self.budgets.replay_backlog,
+                })
+            })?;
         let inserted: bool = row.try_get(0).map_err(query(CONTEXT_ADMIT))?;
         let created_at: i64 = row.try_get(1).map_err(query(CONTEXT_ADMIT))?;
         let seq: i64 = row.try_get(2).map_err(query(CONTEXT_ADMIT))?;
@@ -180,13 +215,21 @@ impl Admissions {
                 metrics::admitted(AdmissionOutcome::Deferred);
                 let code = unreachable_queue.code().as_str();
                 let reason = unreachable_queue.to_string();
+                // A full queue is named as such: the row is just as safe and
+                // the sweeper just as owed, but the cure is capacity rather
+                // than connectivity, and an operator reads the event name.
+                let event = if unreachable_queue.is_full() {
+                    "admission_queue_full"
+                } else {
+                    "admission_append_deferred"
+                };
                 tracing::warn!(
                     error_code = code,
                     producer,
                     fleet_id = admission.fleet,
                     event_id,
                     reason,
-                    event = "admission_append_deferred",
+                    event,
                 );
                 return Ok(Admitted {
                     id,

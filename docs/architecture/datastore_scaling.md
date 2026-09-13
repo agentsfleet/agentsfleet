@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-09-12
+verified: 2026-09-13
 product_version: 0.30.0
 executable: false
 ---
@@ -55,7 +55,7 @@ That deletion also freed the stream keys. `fleet_stream_key` returns a plain `fl
 
 **Readiness is partitioned.** `fleet:ready` becomes `fleet:ready:{p}` for a fixed partition count chosen from measurement and recorded here when §4 lands. Each runner poll rotates a partition cursor under a candidate budget; the token-checked clear stays a single-key script per partition.
 
-**Retention is bounded below by unfinished work.** Trimming never removes an entry that is pending or has no receipt; acknowledged history keeps a fixed bound. A lost consumer group is recreated from the ledger's replay cursor. Admission budgets refuse with an explicit class; `OOM` and quota replies are classified, never swallowed. Preflight refuses an eviction-enabled node.
+**Retention is bounded below by unfinished work.** An append carries no `MAXLEN`. On every acknowledgement `afd_datastore::streams::retain` computes a floor — the least of the group's last delivered id, its oldest pending id, and the id 1,000 entries from the tail — and issues `XTRIM MINID` there, so a pending or undelivered entry is never removed and acknowledged history keeps at most 1,000 entries; every race between the reads and the trim leaves the floor lower, never higher. The outbound stream is trimmed the same way. A consumer group lost on the cluster is reported by the read (`is_group_missing`) and recreated by the lease path at the newest receipt the admission ledger and `core.fleet_events` jointly prove was delivered (`afd_admission::Admissions::delivered_cursor`) — never at `$`, which loses accepted work, and never at `0`, which re-runs delivered entries because a redelivery only skips its receive debit. Admission budgets refuse before the row is committed: a fleet with 10,000 outstanding entries (pending plus undelivered, from `XINFO GROUPS`) and a deployment with 100,000 unreceipted rows (a count on the partial index, folded into the admission `INSERT`). An `OOM` reply and a SQLSTATE class-53 refusal are their own class (`is_full`, `is_over_capacity`), counted as `over_budget`/`full` and answered with the 503 producers already retry on. Boot refuses a primary reporting `cache_mode:true` or a `maxmemory_policy` other than `noeviction`. The replay sweeper publishes `agentsfleet_admission_backlog` and its oldest age each pass, and the cardinality lane reports streams, retained and pending entries, readiness partitions and marks, primaries, replicas and the ledger backlog as separate figures.
 
 **Local rig.** The compose service `dragonfly` runs four cluster processes in one network namespace announced on `127.0.0.1` with host ports equal to announced ports, bootstraps replication and `DFLYCLUSTER CONFIG` on every start, and is reset only when ownership is proven. A fifth process in the same container, `--cluster_mode=emulated --tls`, serves the TLS trust proof alone; ordinary suites take the plaintext cluster so hundreds of connects do not each pay a handshake. There is no Redis service.
 

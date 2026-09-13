@@ -103,3 +103,19 @@ pub fn build_client_for_diagnosis(config: &RedisConfig) -> Result<redis::cluster
 pub fn cluster_slots_reply(port: u16) -> Vec<u8> {
     format!("*1\r\n*3\r\n:0\r\n:16383\r\n*2\r\n$0\r\n\r\n:{port}\r\n").into_bytes()
 }
+
+/// The `CLUSTER SHARDS` twin of [`cluster_slots_reply`].
+///
+/// One shard, one primary at `127.0.0.1:port`, in the flat pair framing
+/// Dragonfly answers with — which is the shape `topology` parses, and the
+/// one every per-node walk (a scan, an `INFO`) needs before it can route by
+/// address.
+#[must_use]
+pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
+    format!(
+        "*1\r\n*4\r\n$5\r\nslots\r\n*2\r\n:0\r\n:16383\r\n$5\r\nnodes\r\n*1\r\n\
+         *8\r\n$2\r\nip\r\n$9\r\n127.0.0.1\r\n$4\r\nport\r\n:{port}\r\n\
+         $4\r\nrole\r\n$6\r\nmaster\r\n$6\r\nhealth\r\n$6\r\nonline\r\n"
+    )
+    .into_bytes()
+}

@@ -22,16 +22,25 @@
 //!
 //! # Every multi-key operation shares a slot or does not exist
 //!
-//! The at-most-once append is the crate's only two-key script, and its marker
-//! key carries the stream key as its hash tag — see `streams/once.rs`. Every
-//! other script is single-key, and `SCAN` fans out over every primary the
-//! cluster names because a walk has no key to route by.
+//! There is no multi-key operation left. The at-most-once append was the
+//! crate's only two-key script, and it went when acceptance became a
+//! Postgres row; every script that remains touches exactly one key, and
+//! `SCAN` fans out over every primary the cluster names because a walk has no
+//! key to route by.
+//!
+//! # What the datastore is allowed to forget
+//!
+//! Nothing it was not told to. `preflight` refuses a primary that evicts, and
+//! `streams::retain` trims only acknowledged history above a floor of
+//! unfinished work; a stream that is not draining grows until the admission
+//! budget refuses the producer, which is a refusal a person can see where a
+//! trim never was.
 //!
 //! # What is shared with the Zig daemon, and why
 //!
 //! Both binaries read and write the same keys. So the key shapes
 //! (`fleet:{id}:events`, `fleet:ready`, `auth:session:{id}`), the consumer
-//! group name, the stream trim, and the session time-to-live are a DATA FORMAT
+//! group name and the session time-to-live are a DATA FORMAT
 //! and are spelled here exactly as they are there. The atomic session
 //! transition goes further: `session_verify_consume.lua` is included from the
 //! Zig tree byte-for-byte, so the two binaries send the same script rather
@@ -48,6 +57,7 @@
     reason = "redis and rustls pin transitive versions this workspace does not choose"
 )]
 
+pub mod capacity;
 pub mod client;
 pub mod config;
 pub mod dedicated;
@@ -55,6 +65,7 @@ pub mod error;
 pub mod hub;
 pub mod kv;
 pub mod outbound;
+pub mod preflight;
 pub mod ready;
 pub mod session;
 pub mod streams;
@@ -65,6 +76,7 @@ pub(crate) mod transport;
 
 pub use afd_core::env::EnvSource;
 
+pub use crate::capacity::Capacity;
 pub use crate::client::Redis;
 pub use crate::config::{RedisConfig, RedisRole};
 pub use crate::dedicated::Dedicated;
@@ -80,5 +92,6 @@ pub use crate::session::{
     VerifyOutcome, VerifyPayload,
 };
 pub use crate::streams::{
-    EventId, FleetEvent, FleetStreams, fleet_activity_channel, fleet_stream_key,
+    ACKNOWLEDGED_HISTORY, Backlog, EventId, FleetEvent, FleetStreams, GroupCursor, Trimmed,
+    fleet_activity_channel, fleet_stream_key,
 };

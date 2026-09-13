@@ -130,6 +130,14 @@ pub(crate) enum ErrorKind {
         source: afd_datastore::Error,
     },
 
+    /// The admission ledger could not say where a lost consumer group
+    /// should resume.
+    #[error("the admission ledger could not answer for the runner plane")]
+    Admission {
+        #[source]
+        source: afd_admission::Error,
+    },
+
     #[error("the billing store could not answer for the runner plane")]
     Billing {
         #[source]

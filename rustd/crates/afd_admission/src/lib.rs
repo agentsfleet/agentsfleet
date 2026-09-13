@@ -29,8 +29,9 @@
 //! answers `replayed` and leaves the append to the inserter or, should it die
 //! first, to the replay sweeper. A queue that refuses the append is a
 //! deferral, not a refusal: the row is safe, the caller is answered, and the
-//! sweeper delivers when the queue is back. Only a database that will not
-//! commit refuses, with a retryable class and no acceptance recorded.
+//! sweeper delivers when the queue is back. Two things refuse, both with a
+//! retryable class and no acceptance recorded: a database that will not
+//! commit, and a budget that is spent — see [`budget`].
 //!
 //! # Why its own crate
 //!
@@ -44,6 +45,8 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 mod admit;
+pub mod budget;
+mod cursor;
 pub mod error;
 mod replay;
 mod sql;
@@ -54,10 +57,11 @@ use afd_db::Db;
 use afd_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 
+pub use self::budget::{BudgetScope, Budgets};
+pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
 pub use self::replay::Replayed;
 
-/// The `status` spellings a ledger row moves through (RULE UFS).
 /// Who is asking a fleet to run something.
 ///
 /// A closed set rather than a caller-supplied string: the spelling lands in
@@ -178,23 +182,38 @@ pub struct Admitted {
 /// The admission ledger over the database that holds it and the queue it
 /// hands receipts to.
 ///
-/// Cheap to clone: two pool handles and an entropy source.
+/// Cheap to clone: two pool handles, an entropy source and two numbers.
 #[derive(Debug, Clone)]
 pub struct Admissions {
     database: Db,
     queue: Redis,
     entropy: Entropy,
+    budgets: Budgets,
 }
 
 impl Admissions {
-    /// Binds the ledger to an already-connected pool and queue.
+    /// Binds the ledger to an already-connected pool and queue, under the
+    /// production budgets.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
             entropy,
+            budgets: Budgets::default(),
         }
+    }
+
+    /// The same ledger under other budgets.
+    ///
+    /// A builder step rather than a fourth argument to [`Admissions::new`]:
+    /// every production caller wants the defaults, and the one caller that
+    /// does not — a suite proving a refusal without a hundred thousand rows —
+    /// should have to say so by name.
+    #[must_use]
+    pub const fn with_budgets(mut self, budgets: Budgets) -> Self {
+        self.budgets = budgets;
+        self
     }
 
     /// The same ledger, with the host's own entropy supplied for a suite.

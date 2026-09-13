@@ -27,12 +27,29 @@ pub(crate) struct NodeAddress {
     pub(crate) port: u16,
 }
 
-/// Every primary the cluster currently names.
+/// What a node does for its shard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Role {
+    /// Owns the shard's slots and takes every write.
+    Primary,
+    /// Follows a primary; never addressed by this crate, counted by the
+    /// capacity report because a shard with none has no failover.
+    Replica,
+}
+
+/// One node the cluster names, with what it is for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Node {
+    pub(crate) address: NodeAddress,
+    pub(crate) role: Role,
+}
+
+/// Every node the cluster currently names, in shard order.
 ///
 /// # Errors
 /// Returns a command error when the cluster refuses the question and an
 /// unexpected-reply error when the answer is not the documented shape.
-pub(crate) async fn primaries(redis: &Redis) -> Result<Vec<NodeAddress>> {
+pub(crate) async fn nodes(redis: &Redis) -> Result<Vec<Node>> {
     let mut cmd = redis::cmd(CMD_CLUSTER);
     cmd.arg(ARG_SHARDS);
     let shards: Value = redis.command(CMD_CLUSTER, ARG_SHARDS, &cmd).await?;
@@ -41,13 +58,22 @@ pub(crate) async fn primaries(redis: &Redis) -> Result<Vec<NodeAddress>> {
     };
     let mut found = Vec::new();
     for shard in shards {
-        for node in nodes_of(shard)? {
-            if let Some(address) = primary_address(node) {
-                found.push(address);
-            }
-        }
+        found.extend(nodes_of(shard)?.into_iter().filter_map(node_of));
     }
     Ok(found)
+}
+
+/// Every primary the cluster currently names.
+///
+/// # Errors
+/// As [`nodes`].
+pub(crate) async fn primaries(redis: &Redis) -> Result<Vec<NodeAddress>> {
+    Ok(nodes(redis)
+        .await?
+        .into_iter()
+        .filter(|node| node.role == Role::Primary)
+        .map(|node| node.address)
+        .collect())
 }
 
 fn nodes_of(shard: Value) -> Result<Vec<Value>> {
@@ -57,15 +83,16 @@ fn nodes_of(shard: Value) -> Result<Vec<Value>> {
     }
 }
 
-/// A node's address when it is a primary, `None` when it is a replica.
-fn primary_address(node: Value) -> Option<NodeAddress> {
+/// A node's address and role, or `None` for an entry missing either.
+///
+/// Any role the cluster spells other than `master` is a replica: the only
+/// question this crate asks is "may I write here", and the answer is the same
+/// for a replica, a syncing replica and anything a future release adds.
+fn node_of(node: Value) -> Option<Node> {
     let entries = pairs(node)?;
     let role = entries
         .iter()
         .find_map(|(key, value)| (key == FIELD_ROLE).then(|| text(value)))?;
-    if role != ROLE_MASTER {
-        return None;
-    }
     let host = entries
         .iter()
         .find_map(|(key, value)| (key == FIELD_IP || key == FIELD_ENDPOINT).then(|| text(value)))?;
@@ -73,7 +100,15 @@ fn primary_address(node: Value) -> Option<NodeAddress> {
         Value::Int(port) if key == FIELD_PORT => u16::try_from(*port).ok(),
         _other => None,
     })?;
-    Some(NodeAddress { host, port })
+    let role = if role == ROLE_MASTER {
+        Role::Primary
+    } else {
+        Role::Replica
+    };
+    Some(Node {
+        address: NodeAddress { host, port },
+        role,
+    })
 }
 
 /// One named field of a map reply, under either RESP3 map or RESP2 flat

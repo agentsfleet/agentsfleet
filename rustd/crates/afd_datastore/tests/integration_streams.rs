@@ -10,7 +10,7 @@
 )]
 
 use afd_datastore::Dedicated;
-use afd_datastore::streams::{FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
+use afd_datastore::streams::{FLEET_CONSUMER_GROUP, FleetStreams, GroupCursor, fleet_stream_key};
 
 use crate::support::RedisHarness;
 
@@ -97,15 +97,16 @@ async fn test_stream_xadd_readgroup_ack() {
     cleanup(&harness, &[fleet_stream_key(&fleet)]).await;
 }
 
-/// A stream whose consumer group vanished repairs itself on the next read,
-/// once, and does not re-deliver its history.
+/// A stream whose consumer group vanished REPORTS it, and a restore at the
+/// receipt the ledgers name re-delivers nothing that already ran.
 ///
 /// The history part is the expensive half: a group recreated at the stream's
 /// beginning hands out every retained entry again, and those are agent runs
-/// that already spent real money.
+/// that already spent real money. The read cannot know where delivery
+/// stopped, so it does not guess; the caller that holds the ledgers does.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Redis: make test-integration-rustd"]
-async fn test_stream_repairs_a_missing_group_without_replaying_history() {
+async fn test_a_vanished_group_is_reported_and_restored_where_delivery_stopped() {
     let harness = RedisHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("fleet");
@@ -124,6 +125,11 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
         .expect("delivered");
     assert_eq!(delivered.receipt, historical);
     streams.ack(&fleet, &historical).await.expect("ack");
+    // Appended after the last delivery: the entry a blind `$` would lose.
+    let undelivered = streams
+        .append(&fleet, &[("type", "queued_before_the_loss")])
+        .await
+        .expect("append");
 
     // The group goes away — a restart without persistence, a failover, or an
     // operator with XGROUP DESTROY.
@@ -138,28 +144,39 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
         .await
         .expect("destroy the group");
 
-    // The next read repairs it rather than failing, and finds nothing: the
-    // historical entry is still in the stream, and must NOT be handed out.
+    let lost = streams
+        .read_new(&fleet, &consumer)
+        .await
+        .expect_err("a read against no group is reported, not repaired");
+    assert!(
+        lost.is_group_missing(),
+        "the report is the recoverable class: {lost}"
+    );
+
+    // Restored where the ledgers say delivery stopped: the historical entry
+    // is still on the stream and must NOT be handed out; the one appended
+    // after it must.
+    streams
+        .restore_group(&fleet, &GroupCursor::After(historical))
+        .await
+        .expect("restore");
+    let offered = streams
+        .read_new(&fleet, &consumer)
+        .await
+        .expect("read")
+        .expect("the entry appended after the last delivery is offered");
+    assert_eq!(
+        offered.receipt, undelivered,
+        "a restored group must skip what ran and offer what did not"
+    );
     assert!(
         streams
             .read_new(&fleet, &consumer)
             .await
-            .expect("the read must repair, not fail")
+            .expect("read")
             .is_none(),
-        "a repaired group must not re-deliver entries that already ran"
+        "nothing historical is re-delivered"
     );
-
-    // And the repaired group works: an event appended after it is delivered.
-    let fresh = streams
-        .append(&fleet, &[("type", "after_repair")])
-        .await
-        .expect("append");
-    let event = streams
-        .read_new(&fleet, &consumer)
-        .await
-        .expect("read")
-        .expect("the repaired group must deliver new events");
-    assert_eq!(event.receipt, fresh);
 
     cleanup(&harness, &[key]).await;
 }

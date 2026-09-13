@@ -13,6 +13,7 @@
 //! file — [`super::affinity`] is the claim and the fence, and the modules
 //! beside it add the gates and the row.
 
+use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_db::Db;
@@ -70,6 +71,19 @@ impl Leases {
     /// The fleet event streams, bound to this store's connection.
     pub(crate) fn streams(&self) -> FleetStreams {
         FleetStreams::new(self.queue.clone())
+    }
+
+    /// The admission ledger, over the same pool, queue and entropy.
+    ///
+    /// Built per call like the two views above: the ledger is three handles
+    /// this store already holds, and a second copy kept beside them would be
+    /// a second thing that could disagree about which pool it reads.
+    pub(crate) fn admissions(&self) -> Admissions {
+        Admissions::new(
+            self.database.clone(),
+            self.queue.clone(),
+            self.entropy.clone(),
+        )
     }
 
     /// The pool this store reads through, for the sibling modules that add

@@ -59,6 +59,8 @@ fn test_the_accessors_partition_the_kinds() {
             error.is_group_missing(),
             error.is_group_exists(),
             error.is_hub_closed(),
+            error.is_full(),
+            error.is_unsafe_eviction(),
         ];
         let claimed = answers.iter().filter(|answer| **answer).count();
         assert_eq!(claimed, 1, "{label} is claimed by {claimed} accessors");

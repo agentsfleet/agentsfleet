@@ -8,12 +8,14 @@
 //! million costs; the ladder says whether the cost is LINEAR, which is the
 //! question the per-fleet stream and consumer group design actually hangs on.
 //!
-//! # The top rung reads Postgres
+//! # The top rung reads Postgres, and both stores by class
 //!
 //! Table sizes, and the candidate query's plan and execution time at
 //! population — the real `SELECT_READY_CANDIDATES`, bound as the lease path
 //! binds it, under `EXPLAIN ANALYZE`. It is measured once, at the top, because
 //! the rungs below are subsets of the same rows and the plan does not change.
+//! [`capacity`] then records what each store holds, one figure per class of
+//! state, on the rig and on a deployed target alike.
 //!
 //! # A deployed profile observes and creates nothing
 //!
@@ -23,6 +25,7 @@
 //! each under its own name — reports it in the same shape, and says
 //! `created: false`.
 
+pub mod capacity;
 mod probe;
 
 use afd_datastore::ReadyIndex;
@@ -178,6 +181,7 @@ async fn climb(
         REDIS_BYTES_TOTAL,
         count(previous_bytes.saturating_sub(baseline)),
     );
+    capacity::record(stores, report).await?;
     postgres_at_population(stores, &runner.to_string(), report).await
 }
 
@@ -197,7 +201,7 @@ async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
         FLEETS_TABLE_BYTES,
         count(table_sizes(&stores.database).await?),
     );
-    Ok(())
+    capacity::record(stores, report).await
 }
 
 /// Append one sample to a series.

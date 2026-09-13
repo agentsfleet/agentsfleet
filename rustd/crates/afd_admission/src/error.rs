@@ -7,6 +7,17 @@
 //! raise site. The hull is `afd_core::error_shell!`, so nothing here repeats
 //! what fifteen sibling crates already share.
 //!
+//! # Capacity is an outage to the caller and a class to the operator
+//!
+//! A spent budget, a queue answering `OOM` and a Postgres answering an
+//! insufficient-resources SQLSTATE are one thing to a producer: the datastore
+//! cannot take this write now, retry later — the same 503 an outage earns,
+//! because the client behaviour wanted is the same. They are a different thing
+//! to whoever is on call, so [`Error::is_over_capacity`] keeps the class
+//! separable and the counters and log lines name it (RULE ECL). A dedicated
+//! wire code would be a public-contract change with a docs branch of its own,
+//! and is deliberately not made here.
+//!
 //! # What is deliberately NOT an error
 //!
 //! A queue that would not take an admission's append. The row is committed by
@@ -67,6 +78,24 @@ pub(crate) enum ErrorKind {
         source: afd_datastore::Error,
     },
 
+    /// A budget is spent, and the producer is told to come back later.
+    #[error("the {scope} admission budget of {limit} is spent")]
+    OverBudget {
+        scope: crate::BudgetScope,
+        limit: u64,
+    },
+
+    /// Postgres refused for want of a resource: disk, memory, connections.
+    ///
+    /// SQLSTATE class 53, told apart from every other statement failure
+    /// because the cure is capacity and the caller should back off.
+    #[error("statement refused for want of a resource during {context}")]
+    Exhausted {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
     /// The entropy a row identifier is minted from could not be drawn.
     #[error("the entropy a row identifier is minted from could not be drawn")]
     Entropy {
@@ -86,15 +115,18 @@ impl Error {
     /// The code and the sentence, decided together — see the module note.
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
-            ErrorKind::Datastore { .. } => (
+            // A queue that is GONE is the same outage a caller retries
+            // against, so it answers the unavailable code rather than a
+            // generic 500; so does one that is FULL, and so do the two
+            // capacity refusals, because the caller's move is the same. A
+            // queue that answered and refused is this process's problem.
+            ErrorKind::Datastore { .. }
+            | ErrorKind::OverBudget { .. }
+            | ErrorKind::Exhausted { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
-            // A queue that is GONE is the same outage a caller retries
-            // against, so it answers the unavailable code rather than a
-            // generic 500. A queue that answered and refused is this
-            // process's problem.
-            ErrorKind::Queue { source } if source.is_unavailable() => (
+            ErrorKind::Queue { source } if source.is_unavailable() || source.is_full() => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
@@ -119,15 +151,31 @@ impl Error {
         self.answer().1
     }
 
-    /// Whether a datastore behind this crate could not be reached.
+    /// Whether a datastore behind this crate could not be reached — or
+    /// could not take more, which the caller retries the same way.
     ///
     /// The question the HTTP edge turns on: an outage is this instance's to
     /// report as a 503, where every other failure here is a 500 (RULE ECL).
+    /// Capacity answers yes here because the producer's move is the same;
+    /// [`Self::is_over_capacity`] is how the two are told apart.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
-            ErrorKind::Datastore { .. } => true,
-            ErrorKind::Queue { source } => source.is_unavailable(),
+            ErrorKind::Datastore { .. }
+            | ErrorKind::OverBudget { .. }
+            | ErrorKind::Exhausted { .. } => true,
+            ErrorKind::Queue { source } => source.is_unavailable() || source.is_full(),
+            _reachable => false,
+        }
+    }
+
+    /// Whether the refusal was capacity: a spent budget, a queue that is
+    /// full, or a Postgres out of a resource.
+    #[must_use]
+    pub fn is_over_capacity(&self) -> bool {
+        match self.kind() {
+            ErrorKind::OverBudget { .. } | ErrorKind::Exhausted { .. } => true,
+            ErrorKind::Queue { source } => source.is_full(),
             _reachable => false,
         }
     }

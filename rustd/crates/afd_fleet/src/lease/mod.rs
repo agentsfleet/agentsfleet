@@ -34,6 +34,7 @@ pub mod pull;
 pub mod reclaim;
 pub mod renew;
 pub mod report;
+mod restore;
 pub mod scope;
 pub mod settle;
 pub mod sql;

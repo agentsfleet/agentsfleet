@@ -56,6 +56,9 @@ afd_events.workspace = true
 # The readiness index and the fleet event streams. A lease is the one verb
 # that cannot be served from either datastore alone.
 afd_datastore.workspace = true
+# The admission ledger, asked one question: where a fleet's lost consumer
+# group resumes. The answer is a join only the ledger's owner may write.
+afd_admission.workspace = true
 # The HOST's plane. The lease is issued TO a runner, so the lease statements
 # bind runner rows through its `Bound`, and finalize writes the one
 # `lease_released` audit row using its vocabulary — the single point the two

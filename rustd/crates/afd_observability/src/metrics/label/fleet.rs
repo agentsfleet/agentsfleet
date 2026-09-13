@@ -94,12 +94,14 @@ closed_set! {
 closed_set! {
     /// What became of one admission.
     ///
-    /// Four, and the split is the one an operator needs: `Deferred` is work
+    /// Five, and the split is the one an operator needs: `Deferred` is work
     /// this daemon ACCEPTED and could not queue — the row is safe and the
     /// replay sweeper owes it an entry — where `Refused` is work it did not
-    /// accept at all. A single "failed" would hide the difference between a
-    /// queue outage nobody loses work to and a database outage a producer
-    /// must retry through.
+    /// accept at all, and `OverBudget` is work it refused ON PURPOSE because
+    /// a fleet or the deployment holds as much as it is allowed to. A single
+    /// "failed" would hide the difference between a queue outage nobody loses
+    /// work to, a database outage a producer must retry through, and a
+    /// deployment doing exactly what its budgets say.
     AdmissionOutcome {
         /// Committed and appended.
         Appended => APPENDED,
@@ -109,16 +111,24 @@ closed_set! {
         Deferred => "deferred",
         /// Not committed, and the producer was told so.
         Refused => "refused",
+        /// Not committed because a budget is spent; the producer backs off.
+        OverBudget => "over_budget",
     }
 }
 
 closed_set! {
     /// What became of one replayed admission.
+    ///
+    /// `Full` is its own member because its cure is the opposite of
+    /// `Failed`'s: a queue that is gone wants the pass to come back, and one
+    /// that is full wants everything to stop until something drains.
     ReplayOutcome {
         /// Re-appended, and the receipt recorded.
         Appended => APPENDED,
         /// The queue would not take it; the row keeps its NULL receipt.
         Failed => "failed",
+        /// The queue refused to grow; the row keeps its NULL receipt.
+        Full => "full",
     }
 }
 

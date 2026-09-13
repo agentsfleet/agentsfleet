@@ -161,9 +161,9 @@ impl Leases {
     /// # Errors
     /// Reports a queue that would not answer.
     pub async fn acknowledge(&self, fleet_id: &Uuid7, receipt: &EventId) -> Result<()> {
-        let acknowledged = self.streams().ack(fleet_id.as_str(), receipt).await?;
+        let fleet = fleet_id.as_str();
+        let acknowledged = self.streams().ack(fleet, receipt).await?;
         if !acknowledged {
-            let fleet = fleet_id.as_str();
             let entry = receipt.as_str();
             tracing::warn!(
                 fleet_id = fleet,
@@ -172,7 +172,41 @@ impl Leases {
                 "the stream entry was already acknowledged or trimmed"
             );
         }
+        self.trim_history(fleet).await;
         Ok(())
+    }
+
+    /// Trims the fleet's acknowledged history, now that it has grown by one.
+    ///
+    /// Best-effort like every write in this module: the acknowledgement
+    /// already landed, and a trim that did not is retried by the next one.
+    /// Per-acknowledgement, so at `debug`; a trim that fails is `warn`,
+    /// because a stream that is never trimmed grows until the admission
+    /// budget refuses its producers.
+    async fn trim_history(&self, fleet: &str) {
+        match self.streams().trim(fleet).await {
+            Ok(trimmed) if trimmed.removed > 0 => {
+                let removed = trimmed.removed;
+                let retained = trimmed.retained;
+                tracing::debug!(
+                    fleet_id = fleet,
+                    removed,
+                    retained,
+                    event = "stream_history_trimmed"
+                );
+            }
+            Ok(_nothing_above_the_floor) => {}
+            Err(failure) => {
+                let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                let reason = failure.to_string();
+                tracing::warn!(
+                    error_code = code,
+                    fleet_id = fleet,
+                    reason,
+                    event = "stream_trim_failed"
+                );
+            }
+        }
     }
 
     /// Close the lease's history with the row that pairs its acquisition.

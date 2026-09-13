@@ -10,9 +10,9 @@ use redis::ToRedisArgs as _;
 use redis::streams::{StreamReadOptions, StreamReadReply};
 
 use super::{
-    AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XINFO, CMD_XREADGROUP,
-    EventId, FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, GROUP_START_END, NEW_ENTRIES,
-    OWN_PENDING, fleet_stream_key, stringify,
+    AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XREADGROUP, EventId,
+    FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, NEW_ENTRIES, OWN_PENDING, fleet_stream_key,
+    stringify,
 };
 use crate::error::Result;
 
@@ -24,8 +24,10 @@ impl FleetStreams {
     /// several fleets per poll and the runner long-polls client-side instead.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
-    /// A vanished group is repaired here rather than reported.
+    /// Returns a command error, or an unavailable error when Redis is gone. A
+    /// vanished group is REPORTED, as a group-missing error, for the caller
+    /// holding the ledgers to restore through [`FleetStreams::restore_group`]
+    /// — see the module note on why this crate cannot pick the position.
     pub async fn read_new(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
         self.read(fleet_id, consumer, NEW_ENTRIES).await
     }
@@ -40,28 +42,6 @@ impl FleetStreams {
     }
 
     async fn read(
-        &self,
-        fleet_id: &str,
-        consumer: &str,
-        read_id: &str,
-    ) -> Result<Option<FleetEvent>> {
-        match self.read_once(fleet_id, consumer, read_id).await {
-            Err(failure) if failure.is_group_missing() => {
-                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(
-                    fleet_id,
-                    error_code,
-                    event = "fleet_consumer_group_missing_repaired"
-                );
-                self.create_group(fleet_id, GROUP_START_END).await?;
-                self.read_once(fleet_id, consumer, read_id).await
-            }
-            other => other,
-        }
-    }
-
-    async fn read_once(
         &self,
         fleet_id: &str,
         consumer: &str,
@@ -144,52 +124,5 @@ impl FleetStreams {
                 .map(|(name, value)| (name, stringify(&value)))
                 .collect(),
         }))
-    }
-
-    /// Whether this fleet holds work a runner could still pick up.
-    ///
-    /// The backstop for a readiness mark that was lost — an ingress mark that
-    /// failed, an index that was evicted or flushed. The streams are the system
-    /// of record and the index is a hint, so this asks the record.
-    ///
-    /// Two things count as deliverable: entries a group has been handed and not
-    /// acknowledged (`pending`), and entries nobody has been handed at all
-    /// (`lag`). The second is the half a claim can never find, because an entry
-    /// nobody has read is in nobody's pending list.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
-    /// probe that cannot answer is REPORTED rather than read as "nothing to
-    /// recover" — this is the recovery path's own backstop, and a silent false
-    /// would leave it inert while looking exactly like an idle system.
-    pub async fn has_deliverable(&self, fleet_id: &str) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
-        let mut stream_info = redis::cmd(CMD_XINFO);
-        stream_info.arg("STREAM").arg(&key);
-        let stream: redis::streams::StreamInfoStreamReply =
-            self.redis.command(CMD_XINFO, &key, &stream_info).await?;
-        // No entries ever generated, so nothing to deliver whatever the group
-        // says about itself.
-        if stream.length == 0 {
-            return Ok(false);
-        }
-
-        let mut group_info = redis::cmd(CMD_XINFO);
-        group_info.arg("GROUPS").arg(&key);
-        let groups: redis::streams::StreamInfoGroupsReply =
-            self.redis.command(CMD_XINFO, &key, &group_info).await?;
-        let Some(group) = groups
-            .groups
-            .into_iter()
-            .find(|group| group.name == FLEET_CONSUMER_GROUP)
-        else {
-            // No consumer group yet: no runner has ever read this fleet, so
-            // every entry present is undelivered.
-            return Ok(true);
-        };
-        // A `lag` Redis cannot determine is read as deliverable. The direction
-        // matters and only one of them is safe: a false positive costs one
-        // wasted candidate check, and a false negative strands an event.
-        Ok(group.pending > 0 || group.lag.is_none_or(|lag| lag > 0))
     }
 }

@@ -38,19 +38,15 @@
 //! name has to be one the next process comes back to. See
 //! [`outbound_consumer`].
 
-use redis::ToRedisArgs as _;
-use redis::streams::StreamReadOptions;
-
 use crate::client::Redis;
-use crate::dedicated::Dedicated;
 use crate::error::{self, Result};
-use crate::streams::EventId;
+use crate::streams::{ACKNOWLEDGED_HISTORY, EventId, Trimmed, retain};
 
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XADD: &str = "XADD";
 const CMD_XGROUP: &str = "XGROUP";
-const CMD_XREADGROUP: &str = "XREADGROUP";
-const CMD_XACK: &str = "XACK";
+pub(super) const CMD_XREADGROUP: &str = "XREADGROUP";
+pub(super) const CMD_XACK: &str = "XACK";
 
 /// The stream every connector answer is queued on.
 ///
@@ -63,29 +59,23 @@ pub const OUTBOUND_STREAM_KEY: &str = "connector:outbound";
 /// The consumer group the workers read under. Shared with the Zig daemon.
 pub const OUTBOUND_CONSUMER_GROUP: &str = "connector_workers";
 
-/// Approximate cap on retained entries.
-///
-/// A wedged consumer can then never grow the stream without bound; `~` is the
-/// trim Redis performs without scanning. The Zig spells the same number.
-const OUTBOUND_MAXLEN: usize = 100_000;
-
 /// The job's fields on the wire, named once each. A DATA FORMAT: these are the
 /// field names `connector_outbound.zig` writes and reads.
-const FIELD_PROVIDER: &str = "provider";
+pub(super) const FIELD_PROVIDER: &str = "provider";
 /// See [`FIELD_PROVIDER`].
-const FIELD_WORKSPACE_ID: &str = "workspace_id";
+pub(super) const FIELD_WORKSPACE_ID: &str = "workspace_id";
 /// See [`FIELD_PROVIDER`].
-const FIELD_FLEET_ID: &str = "fleet_id";
+pub(super) const FIELD_FLEET_ID: &str = "fleet_id";
 /// See [`FIELD_PROVIDER`].
-const FIELD_EVENT_ID: &str = "event_id";
+pub(super) const FIELD_EVENT_ID: &str = "event_id";
 /// See [`FIELD_PROVIDER`].
-const FIELD_ANSWER: &str = "answer";
+pub(super) const FIELD_ANSWER: &str = "answer";
 
 /// Read id meaning "entries never delivered to any consumer".
-const NEW_ENTRIES: &str = ">";
+pub(super) const NEW_ENTRIES: &str = ">";
 
 /// Read id meaning "this consumer's own pending entries, oldest first".
-const OWN_PENDING: &str = "0";
+pub(super) const OWN_PENDING: &str = "0";
 
 /// Group start id: from the beginning, so a job queued before any worker ever
 /// read is still delivered.
@@ -234,15 +224,17 @@ impl OutboundQueue {
 
     /// Queues one answer for delivery, returning the id Redis minted.
     ///
+    /// No `MAXLEN`, for the reason the fleet streams carry none: an append
+    /// cannot know what the worker still owes. [`OutboundQueue::trim`] runs
+    /// on the acknowledgement path with the floor that knows.
+    ///
     /// # Errors
-    /// Returns a command error when the append fails, and an unexpected-reply
-    /// error when Redis answers with something that is not an id.
+    /// Returns a command error when the append fails, a full error when the
+    /// datastore refuses to grow, and an unexpected-reply error when Redis
+    /// answers with something that is not an id.
     pub async fn enqueue(&self, job: OutboundJob<'_>) -> Result<EventId> {
         let mut cmd = redis::cmd(CMD_XADD);
         cmd.arg(OUTBOUND_STREAM_KEY)
-            .arg("MAXLEN")
-            .arg("~")
-            .arg(OUTBOUND_MAXLEN)
             .arg("*")
             .arg(FIELD_PROVIDER)
             .arg(job.provider)
@@ -293,246 +285,34 @@ impl OutboundQueue {
             .await?;
         Ok(acknowledged > 0)
     }
-}
 
-/// The read half: one worker's own connection, which it is allowed to park on.
-#[derive(Debug)]
-pub struct OutboundReader {
-    connection: Dedicated,
-    consumer: String,
-}
-
-impl OutboundReader {
-    /// Binds a reader to a connection nothing else holds.
+    /// Trims delivered history to [`ACKNOWLEDGED_HISTORY`], never crossing
+    /// the oldest entry a worker still owes.
     ///
-    /// Takes the [`Dedicated`] by value, which is the invariant: a connection
-    /// this reader will block on cannot also be somebody else's.
-    #[must_use]
-    pub fn new(connection: Dedicated, consumer: String) -> Self {
-        Self {
-            connection,
-            consumer,
-        }
-    }
-
-    /// The name this reader claims entries under.
-    #[must_use]
-    pub fn consumer(&self) -> &str {
-        &self.consumer
-    }
-
-    /// This consumer's oldest unacknowledged entry, without blocking.
-    ///
-    /// What a restart has to ask first — see the module note on pending-first.
-    /// `None` means the pending list is empty, which is the ordinary answer.
+    /// The same floor the fleet streams use, over the same reader state:
+    /// the group's last delivered id, its oldest pending entry, and the
+    /// history window.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
-    pub async fn read_pending(&mut self) -> Result<Option<OutboundDelivery>> {
-        self.read(OWN_PENDING, None).await
-    }
-
-    /// The next undelivered entry, parking up to `block_ms` for one to arrive.
-    ///
-    /// The park is the point: the Zig polls every 250 ms because its pooled
-    /// connections could not hold a `BLOCK`, and pays that latency on every
-    /// answer plus a command per interval forever. Here the server holds the
-    /// read open and answers the instant an entry lands.
-    ///
-    /// `block_ms` bounds it anyway, because a read that never returns is a
-    /// task that cannot be joined: the caller races this against its
-    /// cancellation token, and dropping the future does NOT cancel the command
-    /// server-side — Redis may still assign an entry to this consumer after
-    /// the drop. That entry is not lost, it is pending, and the next process's
-    /// [`Self::read_pending`] is what finds it. Dimension 5.2.
-    ///
-    /// # Errors
-    /// As [`Self::read_pending`].
-    pub async fn read_blocking(&mut self, block_ms: usize) -> Result<Option<OutboundDelivery>> {
-        self.read(NEW_ENTRIES, Some(block_ms)).await
-    }
-
-    /// One `XREADGROUP`, built the way [`crate::streams::FleetStreams`] builds
-    /// its own.
-    ///
-    /// Through [`StreamReadOptions`] rather than by spelling `GROUP … COUNT …
-    /// BLOCK …` in order: which clause `XREADGROUP` wants where is the redis
-    /// crate's to know, and hand-writing it here would be a second copy of that
-    /// knowledge thirty lines from the first, each free to drift.
-    async fn read(
-        &mut self,
-        read_id: &str,
-        block_ms: Option<usize>,
-    ) -> Result<Option<OutboundDelivery>> {
-        let mut options = StreamReadOptions::default()
-            .group(OUTBOUND_CONSUMER_GROUP, &self.consumer)
-            .count(1);
-        if let Some(millis) = block_ms {
-            options = options.block(millis);
-        }
-
-        let mut cmd = redis::cmd(CMD_XREADGROUP);
-        for arg in options.to_redis_args() {
-            cmd.arg(arg);
-        }
-        cmd.arg("STREAMS").arg(OUTBOUND_STREAM_KEY).arg(read_id);
-
-        let reply: redis::streams::StreamReadReply = self
-            .connection
-            .command(CMD_XREADGROUP, OUTBOUND_STREAM_KEY, &cmd)
-            .await?;
-        let Some(entry) = reply.keys.into_iter().flat_map(|stream| stream.ids).next() else {
-            return Ok(None);
-        };
-
-        let Some(delivery) = decode(&entry) else {
-            // Dropped here rather than answered as "nothing pending", which is
-            // what [`decode`]'s note has always said the sane response is — and
-            // what this could not do while `None` was the only way to say it.
-            //
-            // The two are the same answer to a caller and opposite facts to the
-            // queue. An entry that will not decode stays PENDING under this
-            // consumer, so a pending-first read hands back the same entry every
-            // turn, forever, and every job queued behind it waits on one row
-            // nothing can deliver. One poisoned write by operator tooling or a
-            // foreign writer stops outbound answers for the whole deployment.
-            self.drop_undeliverable(&entry.id).await;
-            return Ok(None);
-        };
-        Ok(Some(delivery))
-    }
-
-    /// Acknowledges an entry nothing can deliver, so the pending list drains.
-    ///
-    /// Logged at `warn` because it is a write this daemon did not make and
-    /// cannot act on: the entry is gone after this, and the line naming its id
-    /// is the only record it existed. A failed acknowledgement is not raised —
-    /// the caller is mid-read on a queue that is already misbehaving, and the
-    /// next turn tries again.
-    async fn drop_undeliverable(&mut self, id: &str) {
-        let mut cmd = redis::cmd(CMD_XACK);
-        cmd.arg(OUTBOUND_STREAM_KEY)
-            .arg(OUTBOUND_CONSUMER_GROUP)
-            .arg(id);
-        let acknowledged: Result<i64> = self
-            .connection
-            .command(CMD_XACK, OUTBOUND_STREAM_KEY, &cmd)
-            .await;
-        let event = if acknowledged.is_ok() {
-            "outbound_entry_undecodable_dropped"
-        } else {
-            "outbound_entry_undecodable_drop_failed"
-        };
-        tracing::warn!(entry_id = id, event);
+    /// As [`FleetStreams::trim`](crate::streams::FleetStreams::trim).
+    pub async fn trim(&self) -> Result<Trimmed> {
+        retain::trim_history(
+            &self.redis,
+            OUTBOUND_STREAM_KEY,
+            OUTBOUND_CONSUMER_GROUP,
+            ACKNOWLEDGED_HISTORY,
+        )
+        .await
     }
 }
 
-/// A stream entry as a delivery, or nothing when a field is missing.
-///
-/// Every field is written by [`OutboundQueue::enqueue`], so an entry short of
-/// one was not written by this daemon — operator tooling, a foreign writer, a
-/// format that drifted. `None` rather than an error, because the caller's only
-/// sane response is the same either way: acknowledge it and move on, since
-/// redelivering something undeliverable forever is the one outcome worse than
-/// dropping it. The Zig raises `RedisUnexpectedResponse` here and its worker
-/// then swallows it, which is the same decision spelled twice.
-fn decode(entry: &redis::streams::StreamId) -> Option<OutboundDelivery> {
-    let field = |name: &str| entry.get::<String>(name);
-    let delivery = OutboundDelivery {
-        id: EventId::of(&entry.id),
-        provider: field(FIELD_PROVIDER)?,
-        workspace_id: field(FIELD_WORKSPACE_ID)?,
-        fleet_id: field(FIELD_FLEET_ID)?,
-        event_id: field(FIELD_EVENT_ID)?,
-        answer: field(FIELD_ANSWER)?,
-    };
-    Some(delivery)
-}
+mod reader;
+
+pub use self::reader::OutboundReader;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Builds a stream entry the way Redis hands one back.
-    fn entry(fields: &[(&str, &str)]) -> redis::streams::StreamId {
-        redis::streams::StreamId {
-            id: "1700000000001-0".to_owned(),
-            map: fields
-                .iter()
-                .map(|(name, value)| {
-                    (
-                        (*name).to_owned(),
-                        redis::Value::BulkString((*value).as_bytes().to_vec()),
-                    )
-                })
-                .collect(),
-            // Present on a pending read and absent on a fresh one; the decoder
-            // reads neither, so a plain read's shape is what is built here.
-            delivered_count: None,
-            milliseconds_elapsed_from_delivery: None,
-        }
-    }
-
-    /// Every field an enqueue writes, which is what a complete job looks like.
-    fn complete() -> Vec<(&'static str, &'static str)> {
-        vec![
-            (FIELD_PROVIDER, "slack"),
-            (FIELD_WORKSPACE_ID, "0199a0b0-0000-7000-8000-000000000001"),
-            (FIELD_FLEET_ID, "0199a0b0-0000-7000-8000-000000000002"),
-            (FIELD_EVENT_ID, "1700000000000-0"),
-            (FIELD_ANSWER, "Aurora is healthy."),
-        ]
-    }
-
-    /// Asserted as one whole-value equality rather than field by field: a
-    /// decoder that dropped a field would still pass every assertion about the
-    /// fields it kept, and the failure this guards is a field going missing.
-    #[test]
-    fn test_decode_round_trips_every_field_and_the_entry_id() {
-        let decoded = decode(&entry(&complete()));
-
-        assert_eq!(
-            decoded,
-            Some(OutboundDelivery {
-                id: EventId::of("1700000000001-0"),
-                provider: "slack".to_owned(),
-                workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-                fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-                event_id: "1700000000000-0".to_owned(),
-                answer: "Aurora is healthy.".to_owned(),
-            })
-        );
-    }
-
-    /// One case per field, so a decoder that stopped checking one is caught by
-    /// the case naming it rather than by a single entry missing everything.
-    #[test]
-    fn test_decode_refuses_an_entry_missing_any_required_field() {
-        for (index, (name, _)) in complete().iter().enumerate() {
-            let mut fields = complete();
-            fields.remove(index);
-
-            assert_eq!(
-                decode(&entry(&fields)),
-                None,
-                "an entry with no `{name}` is not a job this daemon wrote"
-            );
-        }
-    }
-
-    /// The answer is model output, so it carries whatever a run produced.
-    #[test]
-    fn test_decode_keeps_an_answer_that_is_not_ascii() {
-        let answer = "はい — 稼働中 ✅\nnewline and \"quotes\"";
-        let mut fields = complete();
-        fields.retain(|(name, _)| *name != FIELD_ANSWER);
-        fields.push((FIELD_ANSWER, answer));
-
-        assert_eq!(
-            decode(&entry(&fields)).map(|delivered| delivered.answer),
-            Some(answer.to_owned())
-        );
-    }
 
     /// The consumer name is what a restart comes back to, so it must carry
     /// nothing that differs between two runs of the same instance.

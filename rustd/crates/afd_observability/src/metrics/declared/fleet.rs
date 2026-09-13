@@ -114,6 +114,14 @@ pub const ADMISSIONS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_a
 pub const ADMISSION_REPLAYS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_admission_replays_total");
 
+/// Admitted rows the queue has not confirmed, as the last replay pass counted
+/// them.
+pub const ADMISSION_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_admission_backlog");
+
+/// How long the oldest unconfirmed admission has waited.
+pub const ADMISSION_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
+    Declared::new("agentsfleet_admission_backlog_oldest_age_seconds");
+
 /// Failure rate per reason.
 ///
 /// Labels: `runner_id,reason`.
