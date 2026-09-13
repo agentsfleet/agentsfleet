@@ -4,11 +4,11 @@ import type { ReactElement } from "react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerDetail, SelftestReport } from "@/lib/api/runners";
 import type { AssignedPolicy } from "@/lib/api/runners-types";
-import { RunnerSandboxPanel } from "./RunnerSandboxPanel";
+import { RunnerChecksReport } from "./RunnerChecksReport";
 
 afterEach(() => cleanup());
 
-// The panel's relative stamp is a tooltip trigger (the app's root provider
+// The report's relative stamp is a tooltip trigger (the app's root provider
 // serves it in production); the wrapper stands in for that root here.
 const renderPanel = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
 
@@ -57,12 +57,12 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 }
 
 function panel() {
-  return screen.getByRole("article", { name: "Sandbox" });
+  return screen.getByTestId("runner-checks-report");
 }
 
-describe("RunnerSandboxPanel — self-test half", () => {
+describe("RunnerChecksReport — self-test half", () => {
   it("says the runner has never been tested rather than showing an empty verdict", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail()} />);
+    renderPanel(<RunnerChecksReport runner={detail()} />);
     expect(within(panel()).getByText(/Never checked/)).toBeTruthy();
     expect(screen.queryByText("all checks passed")).toBeNull();
   });
@@ -78,13 +78,13 @@ describe("RunnerSandboxPanel — self-test half", () => {
         selftest_requested_at: undefined,
       }),
     ) as RunnerDetail;
-    renderPanel(<RunnerSandboxPanel runner={older} />);
+    renderPanel(<RunnerChecksReport runner={older} />);
     expect(within(panel()).getByText(/Never checked/)).toBeTruthy();
     expect(within(panel()).queryByText(/Invalid Date/)).toBeNull();
   });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
     expect(within(panel()).getByText(/Checks are outstanding/)).toBeTruthy();
   });
 
@@ -92,7 +92,7 @@ describe("RunnerSandboxPanel — self-test half", () => {
   // line, so "DNS failed inside the sandbox" reads without a journal.
   it("test_selftest_result_renders_per_check", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
       />,
     );
@@ -111,19 +111,19 @@ describe("RunnerSandboxPanel — self-test half", () => {
         { name: "the inference endpoint is reachable", ok: true, detail: "no fault detected" },
       ],
     };
-    renderPanel(<RunnerSandboxPanel runner={detail({ selftest: failing, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: failing, selftest_completed_at: 1 })} />);
     expect(within(panel()).getByText("2 failed")).toBeTruthy();
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
   });
 
   it("titles the verdict half after the header's own word for it", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail()} />);
+    renderPanel(<RunnerChecksReport runner={detail()} />);
     expect(within(panel()).getByRole("heading", { name: "Checks" })).toBeTruthy();
   });
 
   it("checks timestamp reveals the absolute time", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
       />,
     );
@@ -139,7 +139,7 @@ describe("RunnerSandboxPanel — self-test half", () => {
   // operator reads a passing verdict as proof of the current policy.
   it("test_stale_selftest_result_is_labelled", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({
           selftest: { ...PASSING, network_policy: "allow_all" },
           selftest_completed_at: 1,
@@ -151,25 +151,25 @@ describe("RunnerSandboxPanel — self-test half", () => {
   });
 
   it("shows no stale marking when the verdict names the assignment still in force", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail({ selftest: PASSING, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: 1 })} />);
     expect(within(panel()).queryByText("stale")).toBeNull();
   });
 });
 
-describe("RunnerSandboxPanel — bind half", () => {
+describe("RunnerChecksReport — bind half", () => {
   it("states the baseline-only case rather than rendering an empty list", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail()} />);
+    renderPanel(<RunnerChecksReport runner={detail()} />);
     expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
   });
 
   it("reads binds as baseline-only when the runner carries no assignment at all", () => {
-    renderPanel(<RunnerSandboxPanel runner={detail({ assigned_policy: null })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ assigned_policy: null })} />);
     expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
   });
 
   it("lists each assigned path with its mode and the operator's note", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({
           assigned_policy: {
             ...ASSIGNED,
@@ -185,7 +185,7 @@ describe("RunnerSandboxPanel — bind half", () => {
 
   it("defaults an entry that names no mode to read-only", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({ assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/models" }] } })}
       />,
     );
@@ -194,7 +194,7 @@ describe("RunnerSandboxPanel — bind half", () => {
 
   it("marks a writable mount — it widens the isolation boundary for every lease", () => {
     renderPanel(
-      <RunnerSandboxPanel
+      <RunnerChecksReport
         runner={detail({
           assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/cache", mode: "read_write" }] },
         })}

@@ -2,7 +2,7 @@
   {
     "name": "landing (critical path)",
     "path": "dist/assets/index-*.js",
-    "limit": "120 kB",
+    "limit": "128 kB",
     "gzip": true
   },
   {

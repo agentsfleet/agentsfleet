@@ -36,7 +36,7 @@ vi.mock("../../actions", () => ({
 }));
 
 import { RunnerHeader } from "./RunnerHeader";
-import { RUNNER_STATES_DOC_URL } from "./runner-copy";
+import { RUNNER_STATES_DOC_URL, RUNNER_STATES_HELP_LABEL } from "./runner-copy";
 
 afterEach(() => cleanup());
 beforeEach(() => {
@@ -211,9 +211,12 @@ describe("RunnerHeader", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("states chip links the runners page", () => {
+  it("states help links the runner-states doc from the status itself", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    const link = screen.getByRole("link", { name: /learn more/i });
+    // A question mark on the status words, not a "Learn more" link wedged
+    // between the status and the tier pills.
+    expect(screen.queryByRole("link", { name: /learn more/i })).toBeNull();
+    const link = screen.getByRole("link", { name: RUNNER_STATES_HELP_LABEL });
     expect(link.getAttribute("href")).toBe(RUNNER_STATES_DOC_URL);
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");

@@ -40,7 +40,7 @@ const WORKING_STATUSES: ReadonlySet<ConnectionStatus> = new Set([
  * genuinely trying before — so a surface that mounts already-live does not
  * announce an arrival the operator never waited for.
  */
-function useArrivalCue(status: ConnectionStatus): boolean {
+export function useArrivalCue(status: ConnectionStatus): boolean {
   const wasWorking = useRef(false);
   const [cue, setCue] = useState(false);
 
@@ -60,10 +60,22 @@ function useArrivalCue(status: ConnectionStatus): boolean {
   return cue;
 }
 
-export function FleetConnectionIndicator({ status }: { status: ConnectionStatus }) {
+/**
+ * `arrived` is supplied by the caller when the caller also decides whether this
+ * renders at all. Two `useArrivalCue` instances meant the indicator mounted
+ * already-live — its own cue saw no wait to resolve and stayed silent.
+ */
+export function FleetConnectionIndicator({
+  status,
+  arrived: arrivedProp,
+}: {
+  status: ConnectionStatus;
+  arrived?: boolean;
+}) {
   const live = status === CONNECTION_STATUS.LIVE;
   const working = WORKING_STATUSES.has(status);
-  const arrived = useArrivalCue(status);
+  const ownCue = useArrivalCue(status);
+  const arrived = arrivedProp ?? ownCue;
   return (
     <span
       aria-label={`Connection status: ${STATUS_LABEL[status]}`}

@@ -4,7 +4,7 @@ import type { EventDetail } from "@/lib/api/events";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
-import RunMetricsStrip from "./RunMetricsStrip";
+import FleetStatusLine from "./FleetStatusLine";
 
 type Props = {
   workspaceId: string;
@@ -12,13 +12,13 @@ type Props = {
   senderLabel: string;
   /** The thread turns the server rendered — the stream takes over from here. */
   initial: EventDetail[];
-  /** The strip's figures as the server rendered them. */
+  /** The status line's figures as the server rendered them. */
   initialSummary: FleetRunSummary;
   approvalsHref: string;
 };
 
-// The chat surface: the metrics strip over the thread, both views over one
-// stream. The strip's figures are the newest row the registry holds and the
+// The chat surface: the thread with its status line under the composer, both
+// over one stream. The line's figures are the newest row the registry holds and the
 // fleet facts the live tail last carried; a completion, a gate frame or a
 // reconnect backfill moves them, and nothing here issues a read. The one
 // refresh of the server tree — when the stream reports a fleet status the
@@ -36,8 +36,14 @@ export function ChatView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
+      <FleetThreadDynamic
+        workspaceId={workspaceId}
+        fleetId={fleetId}
+        senderLabel={senderLabel}
+        initial={initial}
+      />
       <div className="shrink-0">
-        <RunMetricsStrip
+        <FleetStatusLine
           status={summary.status}
           latest={summary.latest}
           pendingApprovals={summary.pendingApprovals}
@@ -45,12 +51,6 @@ export function ChatView({
           summaryAvailable={summary.latestAvailable}
         />
       </div>
-      <FleetThreadDynamic
-        workspaceId={workspaceId}
-        fleetId={fleetId}
-        senderLabel={senderLabel}
-        initial={initial}
-      />
     </div>
   );
 }

@@ -35,6 +35,32 @@ const platformEntryPath = (id: string) =>
 // round-trip can buy.
 const GALLERY_PAGE_LIMIT = 100;
 
+// What an onboard POST is allowed to take, and why it is not the transport's
+// default. Onboarding is the one write on this surface that waits on a third
+// party: the backend fetches the repository tarball from GitHub before it
+// validates, stores or upserts anything.
+//
+// `DEFAULT_REQUEST_TIMEOUT_MS` is 10s and a POST gets `maxAttempts: 1`, which
+// is what failed: the acceptance trace for the operator-catalog spec records
+// `POST /admin/fleet-libraries` returning 200 at 10,102.9ms — our own abort at
+// the 10s default, reported to the operator as "the backend took too long to
+// answer" while the daemon was still legitimately fetching.
+//
+// 30s, not more. A warm import of the acceptance sample measured under 6s
+// end-to-end against api-dev, so this is roughly five times the observed cost:
+// enough for a cold Fly machine, a cold function and the two TLS handshakes the
+// daemon makes to api.github.com and codeload.github.com, without asking an
+// operator to watch a spinner for a minute. It deliberately does NOT cover
+// `github.rs`'s own 60s `REQUEST_TIMEOUT`, which is a capacity bound sized for
+// a worst-case 8 MiB bundle over a bad link, not an expected latency — a fetch
+// genuinely running that long should surface as a failure, not a longer wait.
+//
+// It must also stay UNDER the route segment's `maxDuration` (60s, declared on
+// the two pages that host these actions) so our own message wins the race
+// against a platform kill, which would surface as an opaque 504 instead.
+// `fleet-library.test.ts` pins that ordering.
+export const ONBOARD_BUNDLE_TIMEOUT_MS = 30_000;
+
 /** One wire page: `items` is that page alone, `next_cursor` null on the last. */
 type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
   total: number | null;
@@ -80,7 +106,11 @@ export async function onboardWorkspaceFleetLibrary(
 ): Promise<OnboardedLibraryEntry> {
   return request<OnboardedLibraryEntry>(
     workspaceFleetLibrariesPath(workspaceId),
-    { method: "POST", body: JSON.stringify(body) },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
+    },
     token,
   );
 }
@@ -100,7 +130,11 @@ export async function onboardPlatformFleetLibrary(
 ): Promise<OnboardedPlatformLibraryEntry> {
   return request<OnboardedPlatformLibraryEntry>(
     PLATFORM_FLEET_LIBRARIES_PATH,
-    { method: "POST", body: JSON.stringify(body) },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
+    },
     token,
   );
 }

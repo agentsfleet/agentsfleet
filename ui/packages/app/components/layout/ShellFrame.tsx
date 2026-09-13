@@ -1,6 +1,7 @@
 import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import CanvasScrollbarProbe from "./CanvasScrollbarProbe";
+import type { TenantBilling } from "@/lib/types";
+import { BalanceLink } from "./BalanceLink";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 import {
   DesktopSidebarNavigation,
@@ -16,12 +17,15 @@ type ShellFrameProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
   operatorScopes?: string[];
+  /** Null when the read failed or there is no session: the header says nothing. */
+  billing?: TenantBilling | null;
 };
 
 export function ShellFrame({
   children,
   workspaces = [],
   operatorScopes = [],
+  billing = null,
 }: ShellFrameProps) {
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
@@ -42,6 +46,12 @@ export function ShellFrame({
             sidebarNavId={SIDEBAR_NAV_ID}
           />
           <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
+            {/* What is left to spend, on every page — the billing page owns
+                the meter and the history; the header owns the one figure. A
+                failed read renders nothing rather than a wrong number. */}
+            {billing ? (
+              <BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} />
+            ) : null}
             <WorkspaceSwitcher workspaces={workspaces} />
             <ThemeToggle />
             <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
@@ -58,9 +68,7 @@ export function ShellFrame({
           />
         </aside>
 
-        <CanvasScrollbarProbe />
-
-        <main className="app-dashboard-canvas min-h-0 overflow-y-auto py-6 md:py-8 has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
+        <main className="app-dashboard-canvas min-h-0 overflow-y-auto has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 has-[[data-page-layout]]:h-full has-[[data-page-layout]]:min-h-0">
             {children}
           </div>

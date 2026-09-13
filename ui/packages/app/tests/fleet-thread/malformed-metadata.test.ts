@@ -206,7 +206,9 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ) as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.querySelector(".flex-row-reverse")).toBeNull();
-    expect(row.querySelector(".max-w-prose")).toBeTruthy();
+    // The fleet's reply FILLS the centred rail: capping it again pinned the
+    // prose to the rail's left edge. `max-w-prose` is the operator bubble's.
+    expect(row.querySelector(".max-w-prose")).toBeNull();
     const body = row.querySelector(".break-words");
     expect(body).toBeTruthy();
   });

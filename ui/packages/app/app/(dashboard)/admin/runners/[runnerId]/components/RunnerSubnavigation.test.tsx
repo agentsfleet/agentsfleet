@@ -6,6 +6,14 @@ import { RunnerSubnavigation } from "./RunnerSubnavigation";
 afterEach(() => cleanup());
 
 describe("RunnerSubnavigation", () => {
+  it("wears the app's one tab style, not a pill", () => {
+    render(<RunnerSubnavigation runnerId="r-1" activeView={RUNNER_VIEW.leases} />);
+    expect(screen.getByRole("navigation").className).toContain("border-b");
+    const active = screen.getByRole("link", { name: /leases/i });
+    expect(active.className).toContain("border-b-2");
+    expect(active.className).not.toContain("rounded-md");
+  });
+
   it("renders exactly the two rail items, Leases leading", () => {
     render(<RunnerSubnavigation runnerId="r-1" activeView={RUNNER_VIEW.leases} />);
     const links = screen.getAllByRole("link");

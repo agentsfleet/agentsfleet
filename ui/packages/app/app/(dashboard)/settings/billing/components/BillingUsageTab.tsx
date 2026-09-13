@@ -68,7 +68,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
       <Time
         value={new Date(c.recorded_at)}
         label={formatChargeTimestamp(c.recorded_at)}
-        className="font-mono text-xs"
+        className="font-mono text-mono leading-mono"
       />
     ),
   },
@@ -99,13 +99,14 @@ export default function BillingUsageTab({
   const charges = initialCharges;
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <DataTable
+        className="flex min-h-0 flex-1 flex-col"
         columns={COLUMNS}
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
-        viewportClassName="max-h-72"
+        viewportClassName="min-h-0 flex-1 max-h-none"
         empty={
           <EmptyState
             icon={<ActivityIcon size={28} />}

@@ -16,32 +16,23 @@ describe("FleetThread — empty state", () => {
 });
 
 describe("FleetThread — header chrome", () => {
-  it("shows one Chat heading and one aligned Live indicator", () => {
+  // The panel header is gone in the steady state. It said "Chat" directly
+  // beneath a tab reading "Chat", and a "Live" that was true on almost every
+  // load — chrome restating what the operator can already see. The states that
+  // need explaining still render it; see the connection tests.
+  it("shows no chat heading and no live badge once the stream is fine", () => {
     mockStream([
       ev({ role: "system", actor: "config_reload", text: "Reloaded" }),
     ]);
     const { container } = renderThread();
-    const header = container.querySelector('[data-testid="fleet-chat-header"]');
-    expect(header).toBeTruthy();
-    expect(header?.className).toMatch(/justify-between/);
-    expect(screen.getByRole("heading", { name: "Chat" })).toBeTruthy();
+    expect(container.querySelector('[data-testid="fleet-chat-header"]')).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Chat" })).toBeNull();
+    expect(screen.queryByLabelText("Connection status: Live")).toBeNull();
     expect(screen.queryByRole("link", { name: "Steer" })).toBeNull();
     expect(screen.queryByText(/1 events/)).toBeNull();
-    const liveStatus = screen.getByLabelText("Connection status: Live");
-    expect(liveStatus.className).toMatch(/text-pulse/);
-    expect(liveStatus.querySelector('[aria-hidden="true"]')?.className).toMatch(
-      /bg-current/,
-    );
-  });
-
-  it("uses one destructive colour for the Offline label and dot", () => {
-    mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
-    renderThread();
-    const offlineStatus = screen.getByLabelText("Connection status: Not live");
-    expect(offlineStatus.className).toMatch(/text-destructive/);
-    expect(
-      offlineStatus.querySelector('[aria-hidden="true"]')?.className,
-    ).toMatch(/bg-current/);
+    // The transcript keeps its accessible name, which is the one place the
+    // word "Chat" still earns its keep.
+    expect(container.querySelector('[aria-label="Chat"][role="log"]')).toBeTruthy();
   });
 
   it("keeps the composer in the static transcript footer", () => {
@@ -55,7 +46,7 @@ describe("FleetThread — header chrome", () => {
     expect(composer?.getAttribute("id")).toBe("fleet-steer-composer");
     const footer = container.querySelector('[data-testid="fleet-chat-footer"]');
     expect(footer?.contains(composer)).toBe(true);
-    expect(footer?.className).toMatch(/max-w-6xl/);
+    expect(footer?.className).toMatch(/max-w-measure/);
     expect(footer?.className).toMatch(/shrink-0/);
     expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(
       false,

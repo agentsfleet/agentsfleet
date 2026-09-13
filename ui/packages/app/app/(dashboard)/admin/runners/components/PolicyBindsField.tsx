@@ -112,7 +112,7 @@ export function PolicyBindsField({
                 <span className="flex flex-col gap-2xs text-left">
                   <span className="text-label uppercase">{DEFAULT_MOUNTS_LABEL}</span>
                   <span className="text-body-sm text-muted-foreground">{DEFAULT_MOUNTS_NOTE}</span>
-                  <span className="flex flex-col font-mono text-body-sm">
+                  <span className="flex flex-col font-mono text-mono leading-mono">
                     {BASELINE_RO_PATHS.map((path) => (
                       <span key={path}>{path}</span>
                     ))}

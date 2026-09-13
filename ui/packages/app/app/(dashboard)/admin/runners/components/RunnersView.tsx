@@ -25,7 +25,7 @@ export default function RunnersView({ initial }: { initial: RunnerListResponse }
       <Section asChild>
         {/* UI GATE: SKIPPED per user override (reason: sanctioned <Section asChild> wrap opens on the unchanged preceding line; only the aria-label value changed) */}
         <section aria-label={RUNNERS_SECTION_LABEL}>
-          <SectionHeader actions={<AddRunnerDialogDynamic onCreated={() => router.refresh()} />}>
+          <SectionHeader as="p" actions={<AddRunnerDialogDynamic onCreated={() => router.refresh()} />}>
             {RUNNERS_SECTION_HEADER}
           </SectionHeader>
           <RunnerWall initialRunners={initial.items} initialCursor={initial.next_cursor} />

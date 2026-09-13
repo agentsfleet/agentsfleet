@@ -56,11 +56,26 @@ afterEach(() => {
   streamState = liveStream();
 });
 
+/*
+ * The badge is queried by ROLE and CONTENT, never by `aria-label`.
+ *
+ * It used to carry `aria-label={text}` on a bare <span>, and these tests
+ * asserted that label with `getByLabelText`. Both were wrong in the same way:
+ * ARIA gives a plain span no role for a name to attach to, so the label never
+ * reached a screen reader — and `getByLabelText` reads the attribute rather
+ * than the computed accessibility tree, so the tests passed anyway.
+ *
+ * `<output>` carries an implicit `role="status"`. A status region has no
+ * accessible NAME — it is not a name-from-content role — it announces its
+ * CONTENT when that content changes, which is exactly the behaviour the wall
+ * wants. So the assertion is on text content, and it now fails if the live
+ * region stops existing.
+ */
 describe("FleetWall", () => {
   it("renders one tile per fleet and a live count for active fleets", () => {
     renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
-    expect(screen.getByLabelText("1 live")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("1 live");
   });
 
   it("refuses to claim live before the stream is connected and greeted", () => {
@@ -69,28 +84,29 @@ describe("FleetWall", () => {
     // evidence for. Connection state, not fleet status, decides this now.
     streamState = { ...liveStream(), connectionStatus: "connecting", helloReceived: false };
     renderWall([fleet()]);
-    expect(screen.queryByLabelText("1 live")).toBeNull();
-    expect(screen.getByLabelText("connecting…")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).not.toContain("1 live");
+    expect(screen.getByRole("status").textContent).toContain("connecting…");
   });
 
   it("says reconnecting when the stream dropped, rather than going quiet", () => {
     streamState = { ...liveStream(), connectionStatus: "reconnecting" };
     renderWall([fleet()]);
-    expect(screen.getByLabelText("reconnecting…")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("reconnecting…");
   });
 
   it("says offline when the stream has given up, rather than going quiet", () => {
     streamState = { ...liveStream(), connectionStatus: "offline" };
     renderWall([fleet()]);
-    expect(screen.getByLabelText("offline")).toBeTruthy();
-    expect(screen.queryByLabelText("1 live")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("offline");
+    expect(screen.getByRole("status").textContent).not.toContain("1 live");
   });
 
   it("hides the live counter when no loaded fleet is active", () => {
     renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
     // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
     // is silence, not "0 live".
-    expect(screen.queryByLabelText(/live$/)).toBeNull();
+    // No badge at all, so no live region to announce anything.
+    expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
   });
 

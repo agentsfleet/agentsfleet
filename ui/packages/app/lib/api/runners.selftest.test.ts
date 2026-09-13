@@ -9,7 +9,8 @@ import type { AssignedPolicy } from "./runners-types";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
-import { isSelftestStale, requestRunnerSelftest } from "./runners";
+import { requestRunnerSelftest } from "./runners";
+import { isSelftestStale } from "./runners-types";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.resetAllMocks());

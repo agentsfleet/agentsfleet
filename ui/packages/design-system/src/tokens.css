@@ -22,6 +22,11 @@
   --border-strong: #78929c;
 
   --text: #f1f5f5;
+  /* The transcript's own ink, warmer than `--text` and used nowhere else.
+     Light-on-dark blooms optically; a warm off-white settles where a cool one
+     glares. Claude's transcript runs #F0EFEC for the same reason. Scoped on
+     purpose — `--text` is the whole product, this is one surface. */
+  --text-chat: #efece8;
   --text-muted: #c6d2d5;
   --text-subtle: #acbec4;
   --avatar-saturation: 35%;
@@ -50,12 +55,24 @@
   --ff-mono: "Commit Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
   --ff-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", sans-serif;
   --ff-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
+  /* Prototype only. System faces, no download: this exists so the serif
+     question can be looked at before it is paid for. A shipped serif means a
+     webfont and a bundle conversation. */
+  --ff-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 
   --fs-display-xl: 4.5rem;
   --fs-display-lg: 2.5rem;
   --fs-display-md: 1.75rem;
   --fs-heading: 1.25rem;
   --fs-eyebrow: 0.75rem;
+  /* Sustained prose — the fleet chat transcript, and only that.
+     16px is where Claude and ChatGPT both set their transcripts, measured
+     2026-09-13. It is a READING size: one step above the 15px that does
+     double duty as reading-and-controls, without reaching the 18px that
+     belongs to website introductions. `text-base` was removed in the same
+     week for having no role at all; this is the opposite — a role that had
+     no token. */
+  --fs-reading: 1rem;
   --fs-body-lg: 1.125rem;
   --fs-body: 0.9375rem;
   --fs-body-sm: 0.875rem;
@@ -73,6 +90,7 @@
   --lh-display-md: 1.15;
   --lh-heading: 1.3;
   --lh-eyebrow: 1.3;
+  --lh-reading: 1.6;
   --lh-body-lg: 1.5;
   --lh-body: 1.55;
   --lh-body-sm: 1.5;
@@ -133,6 +151,8 @@
   --border: #c5d3cd;
   --border-strong: #738a80;
   --text: #14251f;
+  /* Light's counterpart: warmed the same direction, off pure ink. */
+  --text-chat: #1d241f;
   --text-muted: #435d52;
 
   --text-subtle: #4e655b;

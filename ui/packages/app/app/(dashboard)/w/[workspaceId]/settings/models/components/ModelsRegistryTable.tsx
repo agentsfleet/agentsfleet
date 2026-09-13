@@ -283,7 +283,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   return (
     <Section asChild>
       <section aria-label="Models">
-        <SectionHeader
+        <SectionHeader as="p"
           actions={
             <AddModelEntryDialog
               workspaceId={workspaceId}
