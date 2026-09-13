@@ -25,8 +25,8 @@ use afd_crypto::entropy::Entropy;
 use afd_datastore::Redis;
 use afd_db::Db;
 use afd_runner::sweep::{
-    self, liveness::Liveness, reclaim::Reclaim, repair::Repairs, replay::Replay,
-    retention::Retention,
+    self, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile, repair::Repairs,
+    replay::Replay, retention::Retention,
 };
 
 use crate::supervisor::Supervisor;
@@ -50,6 +50,9 @@ pub const REPAIR: &str = "sweeper:repair-verification";
 
 /// The supervised name of the admission-replay dispatcher.
 pub const REPLAY: &str = "sweeper:admission-replay";
+
+/// The supervised name of the lost-receipt reconciler.
+pub const RECONCILE: &str = "sweeper:admission-reconcile";
 
 /// Starts every background sweeper under `supervisor`.
 ///
@@ -81,9 +84,16 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Redis) {
     let repairs = Repairs::new(database.clone(), admissions.clone(), Entropy::new());
     supervisor.spawn(REPAIR, move |token| sweep::run(repairs, token));
 
-    // Last, and the one that makes acceptance survivable: every other sweeper
-    // repairs work a runner already holds, and this one delivers work a
-    // producer was told yes about and the queue never took.
+    // Last, and the pair that makes acceptance survivable: every other sweeper
+    // repairs work a runner already holds, and these two deliver work a producer
+    // was told yes about. Replay takes the rows the queue never took; reconcile
+    // finds the rows it took and then LOST, and hands them back to replay by
+    // forgetting their receipts. Reconcile is spawned first so a daemon booting
+    // after a flush has already begun probing by the time replay's first pass
+    // reads the ledger.
+    let reconcile = Reconcile::new(admissions.clone());
+    supervisor.spawn(RECONCILE, move |token| sweep::run(reconcile, token));
+
     let replay = Replay::new(admissions);
     supervisor.spawn(REPLAY, move |token| sweep::run(replay, token));
 }
