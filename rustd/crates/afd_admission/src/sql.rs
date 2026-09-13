@@ -123,8 +123,13 @@ LIMIT 1";
 /// Stamp the instant a runner was handed this event.
 ///
 /// Run by the lease path on the same connection as its
-/// `afd_events::sql::INSERT_FLEET_EVENT`, and only on that insert's first
-/// arm — a redelivery's row was stamped by the delivery that wrote it.
+/// `afd_events::sql::INSERT_FLEET_EVENT`, and on BOTH of that insert's arms. A
+/// first delivery that committed the narrative row and then failed to stamp
+/// takes the conflict arm on redelivery; stamping only on the first arm would
+/// leave that row unstamped forever, and [`SELECT_UNDELIVERED_FLEETS`] would
+/// eventually read it as accepted work whose entry is gone and re-append an
+/// event that already ran. The `delivered_at IS NULL` guard below is what
+/// makes the second attempt free.
 ///
 /// Keyed on the fleet and the logical event id's two integers, NOT on the
 /// receipt. A replayed admission put one logical event on two stream entries
