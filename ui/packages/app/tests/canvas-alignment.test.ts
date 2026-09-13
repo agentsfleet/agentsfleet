@@ -175,6 +175,14 @@ describe("a block does not carry the gap that belongs to its column", () => {
     expect(source).toContain("flex min-h-0 min-w-0 flex-1 flex-col gap-3xl");
   });
 
+  it("trims the balance card eyebrow by its half-leading so both edges read alike", () => {
+    // Measured before: 25px from the border to the eyebrow line box on top, 25px
+    // from the meter track to the border below, and the BALANCE capitals about
+    // 4px lower than the box. Same token, unequal to the eye.
+    const source = read(BALANCE_CARD);
+    expect(source).toContain('cn(EYEBROW_CLASS, "-mt-sm text-muted-foreground")');
+  });
+
   it("ends the runner identity line without a margin of its own", () => {
     // Measured before: mb-2xl made the runner header-to-content gap 24px where
     // every other gap on that page is 32.
