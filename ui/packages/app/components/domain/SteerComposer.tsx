@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ComposerPrimitive } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, Textarea, cn } from "@agentsfleet/design-system";
+import { ArrowUpIcon } from "lucide-react";
 import type { DeliveryFailureKind } from "./useFleetDeliveryFailure";
 
 const PLACEHOLDER = "Message this fleet…";
@@ -27,7 +28,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
     <DashboardPanel
       asChild
       padding="none"
-      className="rounded-xl bg-card p-md focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
+      className="rounded-xl bg-card p-sm focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
     >
       <ComposerPrimitive.Root
         id="fleet-steer-composer"
@@ -38,7 +39,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
 
         <div
           className={cn(
-            "flex min-h-12 flex-col gap-xs",
+            "flex min-h-9 flex-col gap-xs",
             "sm:flex-row sm:items-end sm:gap-md",
           )}
         >
@@ -47,21 +48,34 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
               aria-label={PLACEHOLDER}
               rows={1}
               className={cn(
-                "min-h-12 flex-1 resize-none border-0 bg-transparent px-sm py-sm",
-                "text-body leading-body text-foreground",
+                "min-h-9 flex-1 resize-none border-0 bg-transparent px-sm py-xs",
+                "text-reading leading-reading text-foreground",
                 "placeholder:text-muted-foreground",
                 "focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0",
               )}
             />
           </ComposerPrimitive.Input>
+          {/*
+            * Send is an icon, and the word moves to the accessible name.
+            *
+            * A labelled button took ~86px of a 720px composer to say what the
+            * arrow says in 36 — and the submit path an operator actually uses
+            * is Enter, which `submitMode="enter"` already binds. Both ChatGPT
+            * and Claude land on the same shape: measured on chatgpt.com, a
+            * 36x36 round icon inset from the right edge of the composer.
+            *
+            * The name is unchanged for anyone not looking at it: the button
+            * still answers to "Send".
+            */}
           <ComposerPrimitive.Send asChild>
             <Button
               type="submit"
               variant="secondary"
-              size="sm"
-              className="h-10 min-h-10 shrink-0 self-end rounded-lg px-lg"
+              size="icon"
+              aria-label={SEND_LABEL}
+              className="shrink-0 self-end rounded-full"
             >
-              {SEND_LABEL}
+              <ArrowUpIcon size={16} aria-hidden="true" />
             </Button>
           </ComposerPrimitive.Send>
         </div>

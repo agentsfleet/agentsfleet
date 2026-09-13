@@ -90,7 +90,7 @@ export function DescriptionDetails({
   return (
     <dd
       ref={ref}
-      className={cn(mono ? "font-mono text-xs" : "", className)}
+      className={cn(mono ? "font-mono text-mono leading-mono" : "", className)}
       {...props}
     />
   );

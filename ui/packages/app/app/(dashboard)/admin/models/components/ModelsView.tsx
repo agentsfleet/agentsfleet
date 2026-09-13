@@ -32,7 +32,7 @@ export default function ModelsView({
       </PageHeader>
 
       <div aria-label="Model catalogue" className="flex min-h-0 flex-1 flex-col gap-xl">
-        <SectionHeader actions={<AddModelDialogDynamic onCreated={(m) => setModels((prev) => [...prev, m])} />}>
+        <SectionHeader as="p" actions={<AddModelDialogDynamic onCreated={(m) => setModels((prev) => [...prev, m])} />}>
           Manage model library
         </SectionHeader>
         <CatalogueList

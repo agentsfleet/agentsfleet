@@ -205,8 +205,8 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Settings");
     expect(markup).toContain('aria-label="Fleet summary"');
     expect(markup).toContain('aria-label="Fleet lifecycle actions"');
-    expect(markup).toContain('data-testid="fleet-header-alignment-spacer"');
-    expect(markup).toContain("lg:w-56");
+    expect(markup).not.toContain("fleet-header-alignment-spacer");
+    expect(markup).not.toContain("lg:w-56");
     expect(markup).toContain("Stop");
     expect(markup).toContain("Kill");
     expect(markup).not.toContain("What it knows");

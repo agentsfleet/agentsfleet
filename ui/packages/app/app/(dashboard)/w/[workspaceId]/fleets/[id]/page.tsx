@@ -118,22 +118,11 @@ export default async function FleetDetailPage({
       )}
     >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
-      <div className="flex min-w-0 flex-col gap-3xl lg:flex-row">
-        <div
-          aria-hidden="true"
-          data-testid="fleet-header-alignment-spacer"
-          className="hidden lg:block lg:w-56 lg:shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <FleetHeader
-            workspaceId={workspaceId}
-            fleet={fleet}
-            exhaustedAt={
-              billing?.is_exhausted ? billing.exhausted_at : undefined
-            }
-          />
-        </div>
-      </div>
+      <FleetHeader
+        workspaceId={workspaceId}
+        fleet={fleet}
+        exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined}
+      />
 
       <FleetInstallGate
         workspaceId={workspaceId}
@@ -147,7 +136,7 @@ export default async function FleetDetailPage({
       >
         <div
           className={cn(
-            "flex min-w-0 flex-1 flex-col gap-3xl lg:flex-row lg:items-stretch",
+            "flex min-w-0 flex-1 flex-col gap-3xl",
             claimsViewport && "h-full min-h-0 flex-1 overflow-hidden",
           )}
         >

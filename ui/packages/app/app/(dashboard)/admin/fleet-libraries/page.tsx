@@ -11,6 +11,15 @@ import FleetLibrariesView from "./components/FleetLibrariesView";
 
 export const dynamic = "force-dynamic";
 
+// The onboard action on this page waits on the daemon's own GitHub fetch, so it
+// outlives an ordinary render. Without this the function takes the platform
+// default, which is shorter than the budget the client grants the request
+// (`ONBOARD_BUNDLE_TIMEOUT_MS`, 30s) — the operator would get an opaque
+// platform 504 instead of the dialog's own message. 60 leaves the client's
+// budget room to expire first and stays inside every plan's ceiling.
+// A literal, because route segment config must be statically analysable.
+export const maxDuration = 60;
+
 export default async function AdminFleetLibrariesPage() {
   // Platform library operators only. The backend independently 403s a token
   // missing the scope (UZ-AUTH-022); this is the UI guard, so a non-operator

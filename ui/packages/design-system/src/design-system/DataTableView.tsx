@@ -255,21 +255,33 @@ export function DataTableView<T extends DataTableRowData>({
     <div
       data-slot="data-table"
       data-testid="data-table"
-      className={cn("w-full overflow-hidden rounded-md border border-border bg-card", className)}
+      // A column that can shrink, so the viewport below it has something to
+      // bound against once a page constrains the height.
+      className={cn(
+        "flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card",
+        className,
+      )}
     >
       <div
         ref={viewportRef}
-        // Unbounded by default: a table that already paginates lets the PAGE
-        // scroll rather than opening a second scroll region of its own. The
-        // old `max-h-96` default did the opposite, and its scrollbar sat inside
-        // the cell padding — so on exactly the tables with more rows than the
-        // box, header text and row actions moved 6px in from the right while
-        // the footer, outside the box, stayed put. A consumer that wants a
-        // bounded, sticky-headed pane passes the bound in `viewportClassName`;
-        // `overflow-y-auto` and the pinned header engage only once it does.
+        // The ROWS scroll, not the page. Four call sites reached this by hand
+        // with `viewportClassName="min-h-0 flex-1 max-h-none"` and six did not,
+        // so Billing and Model library kept their headers while Fleet library,
+        // Secrets, Approvals and API keys scrolled the whole canvas away. A
+        // capability only the informed caller took up is the same drift that
+        // put a 12px <h2> on nine routes; the primitive owns it now.
+        //
+        // This bounds against an ancestor that constrains height — a page
+        // passing `fullHeight` to `PageLayout`. Where nothing constrains, the
+        // flex basis simply grows and the page scrolls as it always did, so an
+        // unconverted route is unchanged rather than broken.
+        //
+        // The old `max-h-96` default is still not what this is: that put a
+        // scrollbar inside the cell padding, moving header text 6px in from the
+        // right while the footer outside the box stayed put.
         className={cn(
-          "overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
-          stickyHeader && "overflow-y-auto",
+          "min-h-0 flex-1 overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth",
+          "overflow-y-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
           viewportClassName,
         )}
         tabIndex={0}

@@ -36,7 +36,12 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
       <CardContent className="flex flex-col gap-lg">
         <div className="flex flex-row items-end justify-between gap-4">
           <div>
-            <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
+            {/* The eyebrow opens the card, and its line box carries about 4px of
+                half-leading above the capitals that the meter closing the card
+                does not carry below the track. The card pads both edges by the
+                same token, so the capitals sat visibly lower than the meter sat
+                high. The trim gives that half-leading back. */}
+            <div className={cn(EYEBROW_CLASS, "-mt-sm text-muted-foreground")}>
               Balance
             </div>
             <div className="mt-1 text-display-md font-semibold leading-display-md tracking-normal tabular-nums">
@@ -47,7 +52,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
               >
                 {formatDollars(billing.balance_nanos)}
               </span>
-              <span className="ml-1.5 font-sans text-base font-normal text-muted-foreground">
+              <span className="ml-1.5 font-sans text-body font-normal text-muted-foreground">
                 USD
               </span>
             </div>
@@ -55,18 +60,11 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
           <BuyCreditsButton />
         </div>
 
-        <UsageBar
-          data-testid="balance-meter"
-          pct={summary.meterPct}
-          sublabel={
-            <div className="text-right" data-testid="balance-usage">
-              spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span>{" "}
-              ·{" "}
-              <span className="text-foreground">{summary.eventCount}</span>{" "}
-              {summary.eventCount === 1 ? "event" : "events"}
-            </div>
-          }
-        />
+        {/* No caption: it read "spent $X · N events" as though it were a
+            lifetime total, while it summed only the charge rows the page had
+            loaded — page two gave a different figure for the same account.
+            The balance above is the number an operator can act on. */}
+        <UsageBar data-testid="balance-meter" pct={summary.meterPct} />
 
         {isExhausted ? (
           <Alert variant="destructive" className="text-xs">

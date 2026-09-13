@@ -63,7 +63,7 @@ export default async function IntegrationsPage({
 
       <Section asChild>
         <section aria-label="Integrations" data-testid="integrations-page">
-          <SectionHeader>Connectors</SectionHeader>
+          <SectionHeader as="p">Connectors</SectionHeader>
           <IntegrationsConnectors
             workspaceId={workspaceId}
             catalog={catalog}

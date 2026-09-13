@@ -14,7 +14,7 @@ import {
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
-import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
+import { senderLabelFor } from "@/lib/events/event-summary";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { AgentLabel } from "./AgentLabel";
 import {
@@ -78,81 +78,11 @@ function createEventColumns(
       cell: (row) => <AgentLabel fleetId={row.fleet_id} />,
     },
     {
-      // How many consecutive identical deliveries this row stands for. Blank
-      // for a row that stands only for itself, so the eye catches the repeats
-      // rather than a column of "×1".
-      key: "runs",
-      header: "Runs",
-      sortValue: (row) => runs.countFor(row) ?? 0,
-      cell: (row) => <RunsCell row={row} runs={runs} />,
-    },
-    {
       key: "time",
       header: "Time",
       hideOnMobile: true,
       sortValue: (row) => row.created_at,
       cell: (row) => <EventTimeCell row={row} />,
-    },
-    {
-      key: "status",
-      header: "Status",
-      hideOnMobile: true,
-      sortValue: (row) => row.status,
-      cell: (row) => (
-        <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
-          {row.status}
-        </Badge>
-      ),
-    },
-    {
-      key: "actor",
-      header: "Actor",
-      sortValue: (row) => senderLabelFor(row.actor),
-      cell: (row) => senderLabelFor(row.actor),
-    },
-    {
-      key: "details",
-      header: "Details",
-      cell: (row) => (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="min-h-11 sm:min-h-0"
-          aria-label={`Inspect event ${row.event_id}`}
-          onClick={() => onInspect(row)}
-        >
-          Inspect
-          <ChevronRightIcon size={14} aria-hidden="true" />
-        </Button>
-      ),
-    },
-    {
-      key: "type",
-      header: "Type",
-      hideOnMobile: true,
-      sortValue: (row) => row.event_type,
-      cell: (row) => row.event_type,
-    },
-    {
-      key: "result",
-      header: "Result",
-      sortValue: eventSummaryText,
-      cell: (row) => <EventSummaryCell row={row} />,
-    },
-    {
-      key: "cost",
-      header: "Cost",
-      numeric: true,
-      hideOnMobile: true,
-      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
-      cell: (row) => (
-        <DimmedWhenAbsent row={row} value={row.cost_nanos}>
-          {row.cost_nanos === null
-            ? VALUE_UNKNOWN
-            : formatDollars(row.cost_nanos)}
-        </DimmedWhenAbsent>
-      ),
     },
     {
       key: "tokens",
@@ -179,6 +109,77 @@ function createEventColumns(
           {row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)}
         </DimmedWhenAbsent>
       ),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      numeric: true,
+      hideOnMobile: true,
+      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
+      cell: (row) => (
+        <DimmedWhenAbsent row={row} value={row.cost_nanos}>
+          {row.cost_nanos === null
+            ? VALUE_UNKNOWN
+            : formatDollars(row.cost_nanos)}
+        </DimmedWhenAbsent>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      hideOnMobile: true,
+      sortValue: (row) => row.status,
+      cell: (row) => (
+        <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      // Inspect is the only place a failure is explained, deliberately. A
+      // Failure column here printed one sentence from `failure_label` and
+      // "No failure recorded" on every healthy row, while Status already
+      // flagged the failure and this dialog already showed that same sentence
+      // plus its recorded cause, the fix hint and the copyable diagnostic.
+      key: "details",
+      header: "Details",
+      cell: (row) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="min-h-11 sm:min-h-0"
+          aria-label={`Inspect event ${row.event_id}`}
+          onClick={() => onInspect(row)}
+        >
+          Inspect
+          <ChevronRightIcon size={14} aria-hidden="true" />
+        </Button>
+      ),
+    },
+    {
+      key: "actor",
+      header: "Actor",
+      sortValue: (row) => senderLabelFor(row.actor),
+      cell: (row) => senderLabelFor(row.actor),
+    },
+    {
+      key: "type",
+      header: "Type",
+      hideOnMobile: true,
+      sortValue: (row) => row.event_type,
+      cell: (row) => row.event_type,
+    },
+    {
+      // Trailing column: how many consecutive identical deliveries this row
+      // stands for. Blank for a row that stands only for itself, so the eye
+      // catches the repeats rather than a column of "×1". It closes the row
+      // because the figures an operator scans for — time, tokens, duration,
+      // cost — belong beside the fleet, not behind a repeat count.
+      key: "runs",
+      header: "Runs",
+      sortValue: (row) => runs.countFor(row) ?? 0,
+      cell: (row) => <RunsCell row={row} runs={runs} />,
     },
   ];
 }
@@ -314,28 +315,8 @@ function EventTimeCell({ row }: { row: EventRow }) {
     <Time
       value={created}
       format="relative"
-      className="font-mono text-xs text-muted-foreground tabular-nums"
+      className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
     />
   );
 }
 
-// The one prose cell. The reply itself is NOT here: the list read is kept off
-// oversized-attribute storage, so a page of 200 rows carries no bodies. What
-// survives is the actionable half — a failed run still names its reason in
-// plain language, and anything else says so plainly and sends the operator to
-// the row's own view for the text.
-function EventSummaryCell({ row }: { row: EventRow }) {
-  if (row.failure_label) {
-    return (
-      <span className="text-warning">
-        {failureSentenceFor(row.failure_label)}
-      </span>
-    );
-  }
-  return <span className="text-muted-foreground">No result recorded</span>;
-}
-
-function eventSummaryText(row: EventRow): string {
-  if (row.failure_label) return failureSentenceFor(row.failure_label);
-  return "No result recorded";
-}

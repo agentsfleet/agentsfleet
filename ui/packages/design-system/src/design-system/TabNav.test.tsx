@@ -41,6 +41,15 @@ describe("TabNav", () => {
     expect(onNavigate).toHaveBeenCalledWith("/settings/api-keys");
   });
 
+  it("renders labels only — the one tab style carries no glyphs", () => {
+    render(<TabNav label="x" items={ITEMS} activeHref="/settings" />);
+    for (const item of ITEMS) {
+      const link = screen.getByRole("link", { name: item.label });
+      expect(link.textContent).toBe(item.label);
+      expect(link.querySelector("svg")).toBeNull();
+    }
+  });
+
   it("falls back to a native <a href> when no linkComponent is injected", () => {
     render(<TabNav label="x" items={ITEMS} activeHref="/settings" />);
     const link = screen.getByRole("link", { name: "Basic Info" });

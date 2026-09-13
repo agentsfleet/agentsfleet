@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  CopyButton,
 } from "@agentsfleet/design-system";
 import type { MessageState } from "@assistant-ui/react";
 
@@ -27,6 +28,7 @@ const WORKING_LABEL = "Working";
 // Staggered so the three dots read as one travelling wave rather than three
 // lights blinking in unison.
 const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
+const COPY_REPLY_LABEL = "Copy reply";
 const REASONING_VALUE = "reasoning";
 const REASONING_LABEL = "Reasoning";
 const REASONING_LIVE_LABEL = "Thinking…";
@@ -77,6 +79,7 @@ export function FleetReply({
           streaming={streaming}
         />
       )}
+      <ReplyActions answer={answer} settled={!streaming && !errored} />
     </FleetMessageRow>
   );
 }
@@ -157,6 +160,35 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
 
 // Three dots, staggered, under one live region so a screen reader is told
 // once that the fleet is working rather than on every animation frame.
+/*
+ * The actions under a finished reply.
+ *
+ * Rendered ONLY on a settled turn, which is both the interaction we want and
+ * the cheap one. A streaming reply re-renders on every chunk; mounting a
+ * clipboard affordance inside that loop would rebuild it dozens of times for a
+ * control nobody can usefully press yet, since the text it would copy is still
+ * arriving. Both Claude and ChatGPT reveal these the same way — after the
+ * answer lands.
+ *
+ * `memo` on top of that: the transcript re-renders when ANY row changes, and a
+ * settled reply's text does not change again. Comparing one string prop is
+ * cheaper than rebuilding a button per frame of somebody else's turn.
+ */
+const ReplyActions = memo(function ReplyActions({
+  answer,
+  settled,
+}: {
+  answer: string;
+  settled: boolean;
+}) {
+  if (!settled || answer.length === 0) return null;
+  return (
+    <div className="-ml-sm flex items-center gap-xs pt-xs">
+      <CopyButton value={answer} label={COPY_REPLY_LABEL} />
+    </div>
+  );
+});
+
 function WorkingIndicator() {
   return (
     <output

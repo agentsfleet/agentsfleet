@@ -11,7 +11,7 @@ export default function Privacy() {
       data-testid="privacy-page"
       className="wrap site-section flex flex-col gap-6 max-w-prose font-sans text-body leading-prose text-text"
     >
-      <SectionLabel className="mb-0">legal</SectionLabel>
+      <SectionLabel as="p" className="mb-0">legal</SectionLabel>
       <DisplayXL className="text-fluid-display-lg">Privacy Policy</DisplayXL>
       <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: May 5, 2026</p>
 

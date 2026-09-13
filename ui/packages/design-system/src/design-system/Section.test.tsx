@@ -23,6 +23,27 @@ describe("Section", () => {
     expect((container.firstChild as HTMLElement).className).toContain("custom");
   });
 
+  // ARIA drops `aria-label` on a plain <div>: there is no role for the name to
+  // attach to. Two call sites lost their names that way while nine remembered
+  // an `asChild` wrapper, so the tag follows the label rather than the caller's
+  // memory.
+  it("renders a <section> when it carries an accessible name", () => {
+    const { container } = render(<Section aria-label="Workspace events">body</Section>);
+    const root = container.firstElementChild!;
+    expect(root.tagName).toBe("SECTION");
+    expect(root.getAttribute("aria-label")).toBe("Workspace events");
+  });
+
+  it("renders a <section> when the name comes from aria-labelledby", () => {
+    const { container } = render(<Section aria-labelledby="heading-id">body</Section>);
+    expect(container.firstElementChild!.tagName).toBe("SECTION");
+  });
+
+  it("stays a <div> when it carries no name, so nothing claims a landmark", () => {
+    const { container } = render(<Section>body</Section>);
+    expect(container.firstElementChild!.tagName).toBe("DIV");
+  });
+
   it("asChild renders the provided child as root", () => {
     const { container } = render(
       <Section asChild>

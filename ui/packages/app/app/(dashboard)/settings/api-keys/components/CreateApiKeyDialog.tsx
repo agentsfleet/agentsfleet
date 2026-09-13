@@ -183,7 +183,7 @@ function RevealPanel({ keyValue, onClose }: { keyValue: string; onClose: () => v
             readOnly
             value={keyValue}
             aria-label="API key value"
-            className="font-mono text-sm"
+            className="font-mono text-mono leading-mono"
             onFocus={(e) => e.currentTarget.select()}
           />
           <CopyButton

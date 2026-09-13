@@ -124,15 +124,14 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(indicator?.getAttribute("data-arrived")).toBe("true");
     view.unmount();
 
-    // A surface that mounts already-live announces nothing: there was no
-    // wait to resolve.
+    // A surface that mounts already-live announces nothing — and now shows
+    // nothing either. The header row is chrome for the states that need
+    // explaining; arriving to a working stream needs none, so there is no
+    // indicator to carry a cue in the first place.
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const fresh = renderThread();
-    expect(
-      fresh.container
-        .querySelector('[data-connection="live"]')
-        ?.getAttribute("data-arrived"),
-    ).toBeNull();
+    expect(fresh.container.querySelector('[data-connection="live"]')).toBeNull();
+    expect(fresh.container.querySelector('[data-testid="fleet-chat-header"]')).toBeNull();
   });
 
   it("animates a turn that has started but not spoken yet", () => {
@@ -150,6 +149,26 @@ describe("FleetThread — role rendering: turns and connection", () => {
     // "Still working." reads the same at one second and at five minutes.
     expect(screen.getByTestId("fleet-working")).toBeTruthy();
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
+  });
+
+  // The copy affordance is deliberately absent mid-turn: the text it would put
+  // on the clipboard is still arriving, and the transcript re-renders per chunk.
+  it("offers no copy action while the reply is still streaming", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "partial ans", status: "received" }),
+    ]);
+    renderThread();
+
+    expect(screen.queryByRole("button", { name: /copy reply/i })).toBeNull();
+  });
+
+  it("offers a copy action once the reply has settled", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "The whole answer.", status: "processed" }),
+    ]);
+    renderThread();
+
+    expect(screen.getByRole("button", { name: /copy reply/i })).toBeTruthy();
   });
 
   it("keeps repeated startup failures inline in one expandable activity group", () => {

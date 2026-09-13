@@ -44,9 +44,9 @@ vi.mock(
   }),
 );
 vi.mock(
-  "@/app/(dashboard)/admin/runners/[runnerId]/components/RunnerMetricsStrip",
+  "@/app/(dashboard)/admin/runners/[runnerId]/components/RunnerStatusLine",
   () => ({
-    default: () => React.createElement("div", { "data-runner-strip": "1" }),
+    default: () => React.createElement("div", { "data-runner-status-line": "1" }),
   }),
 );
 vi.mock(

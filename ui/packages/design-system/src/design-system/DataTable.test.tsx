@@ -259,12 +259,16 @@ describe("DataTable", () => {
     expect(container.querySelector(".max-h-96")).toBeNull();
   });
 
-  it("stickyHeader=false removes the pinned header and the vertical scroll region", () => {
+  // `stickyHeader` governs whether the header PINS, not whether rows scroll.
+  // The rows always scroll: a reader who has to move the whole page to reach
+  // row 40 loses the column headings that make row 40 mean anything, and the
+  // page-scrolls-instead default left six of ten tables doing exactly that.
+  it("stickyHeader=false removes the pinned header but keeps the scroll region", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader={false} />,
     );
     const viewport = container.querySelector('[role="region"]') as HTMLElement;
-    expect(viewport.className).not.toContain("overflow-y-auto");
+    expect(viewport.className).toContain("overflow-y-auto");
     const thead = container.querySelector("thead") as HTMLElement;
     expect(thead.className).not.toContain("sticky");
   });

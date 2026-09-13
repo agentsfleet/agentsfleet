@@ -93,10 +93,23 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
       aria-label={accessibleName}
       title={accessibleName}
       // Icon-only keeps its 24px visuals; the ::after overlay widens the
-      // interactive area (40px, 48px on touch) toward the 44px floor. A labelled
-      // button already clears the floor on its own.
+      // interactive area vertically, where the row's own padding leaves room.
+      // A labelled button already clears the floor on its own.
+      //
+      // The expansion is deliberately vertical ONLY. It used to be `-inset-md`
+      // on all four sides, and the arithmetic did not close: `--sp-md` is 8px,
+      // so 24 + 16 = 40px of hit area sat on a 28px pitch (24px button, 4px
+      // `gap-1`), overlapping a neighbour by 12px. `elementFromPoint` put the
+      // first 3px of the visible Rename icon inside Copy's hit area, and on
+      // `/admin/fleet-libraries` the stolen neighbour is destructive.
+      //
+      // Horizontal reach is not needed anyway: `Button`'s base carries
+      // `pointer-coarse:min-w-11`, so on the pointer where 44px is required the
+      // button box already supplies it. Adding overlay width on top of that
+      // only reached into the next control.
       className={cn(
-        !showLabel && "relative after:absolute after:-inset-md pointer-coarse:after:-inset-lg",
+        !showLabel &&
+          "relative after:absolute after:-inset-y-md after:inset-x-0 pointer-coarse:after:-inset-y-lg",
         className,
       )}
       data-slot="copy-button"
