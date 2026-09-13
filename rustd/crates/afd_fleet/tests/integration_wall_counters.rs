@@ -79,10 +79,8 @@ async fn parked() -> Parked {
 
     let now = UnixMillis::from_millis(ENROLLED_AT);
     let leases = fixtures.leases();
-    let held = leases
-        .select(&runner, now)
+    let held = crate::seed::select_within_one_rotation(&leases, &runner, now)
         .await
-        .expect("the selection pass must not fault")
         .expect("the fleet is leasable");
     let received = leases
         .record_received(&held, now)
