@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-09-05
+**Direction:** Clear Signal · **Updated:** 2026-09-13
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -22,7 +22,7 @@ The app prioritizes the current task and the next useful action.
 |---|---|---|
 | Display | Bricolage Grotesque | Website hero and large section headings |
 | Interface and reading | Instrument Sans | App titles, navigation, buttons, forms, tables, and prose |
-| Technical | Commit Mono | Code, logs, identifiers, timestamps, and technical values |
+| Technical | Commit Mono | Code, logs, identifiers, exact timestamps, and technical values |
 
 Fonts are bundled through Fontsource. Runtime font downloads from third-party domains are unnecessary.
 Use `font-display`, `font-sans`, and `font-mono` through the shared theme.
@@ -37,20 +37,20 @@ Do not redefine a font family in a consumer stylesheet.
 | body-lg | 18px | Website introductions, and the fleet chat transcript |
 | body | 15px | Default reading and controls |
 | body-sm | 14px | Supporting copy and navigation |
-| eyebrow / label | 12px | Short metadata and section labels |
+| label | 13px | Metadata, table headings, and compact status badges |
+| eyebrow | 12px | Short section labels |
 | mono | 13px | Technical content, and the density step for table cells |
 
 Use sentence case for controls and navigation.
-Uppercase is reserved for short eyebrows and compact status labels.
+Uppercase is reserved for short eyebrows, table headings, compact status labels, and shared agent display names.
+Keep long labels in sentence case so they remain easy to scan.
 Use tabular numerals for changing values and aligned numeric columns.
 Do not use mono for an entire table when its rows contain names and descriptions.
 
-13px is the one step that carries two families. In Commit Mono it is technical
-content, which is what the token is named for. In Instrument Sans it is the
-density step for table cells, and only there — a table trades a little reading
-size for the rows it can show at once, and every `DataTable` has read at 13px
-since the primitive shipped. Outside a table the smallest sans step is
-`body-sm` at 14px.
+The 13px step serves compact sans labels, dense table cells, and technical mono values.
+Use 14px for supporting descriptions, operational status lines, and relative times such as “2 hours ago.”
+Reserve monospace for exact values whose character alignment helps comparison.
+App page titles use the shared 28px semibold `PageTitle`; do not restyle individual page headings.
 
 ## Color
 
@@ -69,14 +69,21 @@ The token file owns exact values; the following roles explain their use.
 | Link / live signal | Bright mint | Deep teal |
 
 Use semantic foreground tokens on their intended backgrounds.
-Check primary, muted, and subtle text against every surface where they appear.
+Check primary, muted, subtle, mint, and status text against every surface where they appear.
 Normal text must reach 4.5:1 contrast; focus and control boundaries must remain identifiable.
 Never reduce a readable text token through opacity to create secondary copy.
+
+Test both themes with axe-core in the rendered browser and the shared token contrast tests.
+Include badges with tinted backgrounds; a foreground passing on the page can still fail inside a badge.
+Inspect incomplete browser results manually when overlays or pseudo-elements prevent a background measurement.
+Contrast ratios measure readability, not perceived brightness on every display.
+Keep the dark canvas quiet and lift cards enough to distinguish content groups without glow.
 
 Separate brand actions from status.
 Mint identifies primary actions, links, selected navigation, and live signals.
 Success, warning, error, information, and evidence colors communicate their named meanings.
 Status always includes text or an icon; color alone carries no required information.
+Success uses a distinct green, while mint remains the action and live-signal accent.
 
 ## Surfaces and layout
 
@@ -93,6 +100,9 @@ App layouts use consistent navigation, page titles, section headings, and action
 PageLayout owns section spacing. PageHeader owns the title and description.
 SectionHeader places an action beside the working area it affects.
 Descriptions sit below titles and wrap naturally.
+Page headers and their actions wrap on narrow screens.
+Keep the full wordmark visible at 320px without competing with account controls.
+Below 360px, the workspace picker becomes a labeled 44px icon button; its menu still exposes workspace names.
 
 Website layouts use an editorial grid within the shared content width.
 Pair a concise explanation with a concrete product example.
@@ -123,7 +133,8 @@ Use shared primitives before adding consumer markup with equivalent behavior.
 ### Tables and record dates
 
 Record lists place Time after the record identity and before Actions; the column is Time everywhere, never Created, so one label reads the same on Secrets, API Keys, and the feeds.
-Secrets and API Keys keep Time visible on narrow screens; the table scrolls when columns need more room.
+Secrets and API Keys fold creation metadata beneath Name on narrow screens, keeping Actions visible.
+The separate Time column returns at the small-screen breakpoint.
 Event and runner activity feeds keep their primary Time column first, followed by Tokens, Duration, Cost, Status and Details; the Runs repeat count closes the row.
 A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
@@ -134,6 +145,11 @@ Column labels and cells share horizontal padding and alignment.
 Left-align dates beneath Time, including secondary usage details in the same cell.
 Right-align numeric columns and row actions. Place a numeric column’s sort icon before its label.
 Use shared DataTable sorting, pagination, and scroll behavior.
+
+Runner detail bounds its table height on desktop and scrolls the page on mobile.
+Wrapped headers must never shrink the table viewport until all rows disappear.
+Align the table and status line to the same edges, with a 20px gap and an 8px bottom inset.
+Status lines use 14px sans-serif text, tabular digits, and keyboard-accessible horizontal scrolling.
 
 ### Forms and popups
 
@@ -217,6 +233,7 @@ Show setup requirements after the product example. Do not promise instant setup 
 Expressed intent proceeds without redundant confirmation.
 Credentials and prerequisites appear at the point of need when supported.
 Loading, success, and failure states remain visible where the action began.
+If navigation leaves an empty route slot, the shell shows a spinner until route content returns.
 Destructive actions retain their existing confirmation behavior.
 
 ## Implementation and verification
@@ -266,5 +283,6 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-07-23 | Fleet detail supports an operational conversation | Operators can steer a fleet in a centered transcript alongside evidence from GitHub, Slack, Zoho, Grafana, logs, and other sources. Human turns are distinct from source-context cards; fleet replies remain evidence-first and never use generic consumer-chat styling. |
 | 2026-09-05 | Clear Signal: sans interface, expressive display, flat surfaces | User approved brighter clarity, retained mint, and removal of gradients across app and website. |
 | 2026-09-13 | 13px carries a sans role as well as a mono one | An audit measured every `DataTable` cell at 13px sans (`DataTableView.tsx:279` sets `font-sans text-mono`) while the scale gave 13px only to mono, making the smallest documented sans step 14px. Code and doc disagreed; the code was right. Table density was a deliberate choice — `Pagination.tsx` reasons about it — so the step is documented rather than removed, and no rendered size changed. |
+| 2026-09-13 | Larger labels, clearer status colors, and mobile table access | Labels use 13px; operational status uses 14px sans. Contrast checks cover both themes. Mobile layouts preserve the wordmark, actions, and runner rows. |
 
 The flat-fill rule is enforced by `audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.

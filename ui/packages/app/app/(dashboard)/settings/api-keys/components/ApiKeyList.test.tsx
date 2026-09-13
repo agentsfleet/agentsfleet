@@ -66,8 +66,8 @@ describe("ApiKeyList timestamps", () => {
     const isos = Array.from(container.querySelectorAll("time")).map((t) =>
       t.getAttribute("dateTime"),
     );
-    // Only the created timestamp is present; the never-used branch stays text.
-    expect(isos).toEqual([new Date(CREATED_AT).toISOString()]);
+    // Desktop and mobile each render the created timestamp; CSS selects one.
+    expect(isos).toEqual([new Date(CREATED_AT).toISOString(), new Date(CREATED_AT).toISOString()]);
     expect(container.textContent).toContain("never used");
   });
 });

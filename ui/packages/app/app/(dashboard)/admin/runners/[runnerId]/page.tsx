@@ -95,14 +95,12 @@ export default async function RunnerDetailPage({
     // the page owns one rhythm for all of it. The identity line's own mb-2xl
     // made this one gap 24 where every other gap on the page is 32.
     //
-    // The negative bottom margin is the canvas's own block padding given
-    // back, read from the token the canvas states it with: a sticky element
-    // cannot leave its containing block's content box, so without it the
-    // status line stops short of the canvas edge and the table's next row
-    // shows through beneath it.
+    // Desktop bounds the table to the remaining canvas. Mobile lets the page
+    // grow: wrapped controls must not consume the table's entire viewport.
+    // Return the canvas's bottom padding so the status line owns its inset.
     <div
       data-page-layout="full-height"
-      className="-mb-[var(--app-canvas-block)] flex min-h-0 flex-1 flex-col gap-3xl overflow-hidden"
+      className="-mb-[var(--app-canvas-block)] flex flex-1 flex-col gap-3xl md:min-h-0 md:overflow-hidden"
     >
       <RunnerViewedTracker
         runnerId={runner.id}
@@ -115,16 +113,9 @@ export default async function RunnerDetailPage({
         <RunnerSubnavigation runnerId={runner.id} activeView={view} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{content}</div>
       </div>
-      {/* The foot of a bounded column, not a sticky element chasing a
-          scrolling canvas. The page no longer scrolls — the table inside it
-          does — so the line ends the column rather than following it, and
-          `shrink-0` keeps it off the table's scroll budget. Its bottom padding
-          still covers the band the root's negative margin gives back, both
-          reading the one token the canvas states. */}
-      <RunnerStatusLine
-        runner={runner}
-        className="shrink-0 pb-[var(--app-canvas-block)]"
-      />
+      {/* The table and its status line form one section. Pull the line closer
+          than the page's section gap, while preserving a small bottom inset. */}
+      <RunnerStatusLine runner={runner} className="-mt-lg shrink-0 pb-md" />
     </div>
   );
 }

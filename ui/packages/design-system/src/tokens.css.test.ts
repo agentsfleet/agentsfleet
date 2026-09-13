@@ -52,7 +52,7 @@ const SRGB_POWER = 2.4;
 const CONTRAST_OFFSET = 0.05;
 const LUMINANCE_WEIGHTS = [0.2126, 0.7152, 0.0722];
 const SURFACES = ["bg", "surface-deep", "surface-1", "surface-2", "surface-3"];
-const FOREGROUNDS = ["text", "text-muted", "text-subtle"];
+const FOREGROUNDS = ["text", "text-muted", "text-subtle", "pulse", "success", "warn", "error", "info"];
 
 function luminance(hex: string): number {
   const channels = hex.match(/[a-f0-9]{2}/gi);

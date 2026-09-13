@@ -2,8 +2,8 @@ import { type ComponentProps } from "react";
 import { cn } from "../utils";
 
 /*
- * StatusLine — one dense line of figures, the way a terminal's status line
- * reads: monospace, tabular digits, a hairline between cells, no card. Each
+ * StatusLine — one readable line of operational figures: interface type,
+ * tabular digits, a hairline between cells, no card. Each
  * cell is a StatusLineItem that puts an icon or a visually hidden label ahead
  * of its figure, so a screen reader hears "Tokens 3,255" where a sighted
  * reader sees a glyph. Owns typography, colour and the rules between cells;
@@ -39,9 +39,10 @@ export function StatusLine({ className, ref, ...props }: StatusLineProps) {
     <div
       ref={ref}
       role="group"
+      tabIndex={0}
       className={cn(
         "flex min-w-0 flex-nowrap items-center overflow-x-auto divide-x divide-border",
-        "font-mono text-label leading-label tabular-nums text-muted-foreground",
+        "font-sans text-body-sm leading-body-sm tabular-nums text-muted-foreground",
         className,
       )}
       {...props}

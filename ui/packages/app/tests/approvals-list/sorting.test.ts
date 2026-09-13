@@ -20,7 +20,7 @@ function sortBy(header: string) {
 function fleetOrder(): string[] {
   return Array.from(document.querySelectorAll("[data-agent-name]"))
     .map((el) => el.getAttribute("data-agent-name") ?? "")
-    .filter((name) => name.startsWith("Agent") || name === "Deleted agent");
+    .filter((name) => name.startsWith("AGENT") || name === "DELETED AGENT");
 }
 
 const NEWER = 1_760_000_200_000;

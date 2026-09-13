@@ -164,7 +164,7 @@ describe("FleetTile kinds", () => {
     expect(agentNames[0]?.getAttribute("data-agent-name")).not.toBe(
       agentNames[1]?.getAttribute("data-agent-name"),
     );
-    expect(container.textContent).toMatch(/Agent [A-Za-z]+-[0-9A-F]{4}/);
+    expect(container.textContent).toMatch(/AGENT [A-Z]+-[0-9A-F]{4}/);
   });
 
   it("distinguishes same-named fleet links by their agent callsigns", () => {
@@ -188,8 +188,8 @@ describe("FleetTile kinds", () => {
       ),
     );
     const labels = getAllByRole("link").map((link) => link.getAttribute("aria-label"));
-    expect(labels[0]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
-    expect(labels[1]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
+    expect(labels[0]).toMatch(/^Manage fleet: alpha — AGENT [A-Z]+-[0-9A-F]{4} — active$/);
+    expect(labels[1]).toMatch(/^Manage fleet: alpha — AGENT [A-Z]+-[0-9A-F]{4} — active$/);
     expect(labels[0]).not.toBe(labels[1]);
   });
 

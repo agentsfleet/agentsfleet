@@ -10,7 +10,7 @@ export const APPROVALS_TABLE_CAPTION = "Approvals and their outcomes";
 
 // The agent callsign carries the same prefix the Fleets tile prints, so one
 // fleet reads identically on both surfaces (RULE UFS).
-export const AGENT_PREFIX = "Agent";
+export const AGENT_PREFIX = "AGENT";
 
 export const REQUEST_COLUMN_HEADER = "Request";
 export const FLEET_COLUMN_HEADER = "Fleet";

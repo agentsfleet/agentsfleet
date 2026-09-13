@@ -32,7 +32,7 @@ const TILE_CARD = "[data-kind]";
 const MANAGE_FLEET_LABEL = "Manage fleet";
 const TILE_SPEND_SUFFIX = "spent";
 const TILE_EVENTS_SUFFIX = "events";
-const AGENT_PREFIX = "Agent";
+const AGENT_PREFIX = "AGENT";
 
 /** What the footer prints where the daemon sent no figure at all — never a
  * fabricated `$0.00` or `0`. */
@@ -79,7 +79,7 @@ function figure(rendered: string, pattern: RegExp): string | undefined {
  */
 export function tileForAgent(page: Page, callsign: string): Locator {
   const overlay = page.getByRole("link", {
-    name: new RegExp(`^${MANAGE_FLEET_LABEL}: .+ — ${AGENT_PREFIX} ${callsign} — `),
+    name: new RegExp(`^${MANAGE_FLEET_LABEL}: .+ — ${AGENT_PREFIX} ${callsign.toUpperCase()} — `),
   });
   return page.locator(TILE_CARD).filter({ has: overlay });
 }

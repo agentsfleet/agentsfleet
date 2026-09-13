@@ -22,19 +22,24 @@ async function textStart(locator: Locator, text: string) {
 async function checkCreatedColumn(page: Page, name: string) {
   const table = page.getByRole("table");
   await expect(table).toBeVisible();
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Created", "Actions"]);
   const row = table.getByRole("row").filter({ hasText: name });
   await expect(row).toBeVisible();
-  const created = row.getByRole("cell").nth(1).locator("time").first();
-  const heading = table.getByRole("columnheader", { name: "Created" });
-  await created.scrollIntoViewIfNeeded();
-  const left = await textStart(heading, "Created");
-  const timestamp = await created.boundingBox();
-  expect(Math.abs(left - timestamp!.x)).toBeLessThan(1);
-  const direction = await heading.getAttribute("aria-sort");
-  const nextDirection = direction === "ascending" ? "descending" : "ascending";
-  await heading.getByRole("button").click();
-  await expect(heading).toHaveAttribute("aria-sort", nextDirection);
+  if (page.viewportSize()!.width < 640) {
+    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Actions"]);
+    await expect(row.getByRole("cell").first().locator("time").first()).toBeVisible();
+  } else {
+    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Time", "Actions"]);
+    const created = row.getByRole("cell").nth(1).locator("time").first();
+    const heading = table.getByRole("columnheader", { name: "Time" });
+    await created.scrollIntoViewIfNeeded();
+    const left = await textStart(heading, "Time");
+    const timestamp = await created.boundingBox();
+    expect(Math.abs(left - timestamp!.x)).toBeLessThan(1);
+    const direction = await heading.getAttribute("aria-sort");
+    const nextDirection = direction === "ascending" ? "descending" : "ascending";
+    await heading.getByRole("button").click();
+    await expect(heading).toHaveAttribute("aria-sort", nextDirection);
+  }
   await expect(row).toBeVisible();
   await row.getByRole("cell").last().scrollIntoViewIfNeeded();
   await expect(row.getByRole("button").last()).toBeInViewport();
