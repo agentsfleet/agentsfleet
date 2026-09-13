@@ -36,7 +36,12 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
       <CardContent className="flex flex-col gap-lg">
         <div className="flex flex-row items-end justify-between gap-4">
           <div>
-            <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
+            {/* The eyebrow opens the card, and its line box carries about 4px of
+                half-leading above the capitals that the meter closing the card
+                does not carry below the track. The card pads both edges by the
+                same token, so the capitals sat visibly lower than the meter sat
+                high. The trim gives that half-leading back. */}
+            <div className={cn(EYEBROW_CLASS, "-mt-sm text-muted-foreground")}>
               Balance
             </div>
             <div className="mt-1 text-display-md font-semibold leading-display-md tracking-normal tabular-nums">
