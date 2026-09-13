@@ -30,18 +30,28 @@ AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
 # follow are loopback-only inside the container -- scripts/dragonfly-cluster.sh
 # is the only thing that speaks to them, through `docker compose exec`.
 AGENTSFLEET_DRAGONFLY_BASE_PORT ?= $(or $(word 4,$(TEST_INFRA_PORTS)),7001)
-# Four cluster nodes and the TLS node: BASE..BASE+4 published, admin ports
-# beyond them stay inside the container (scripts/dragonfly-cluster.sh).
-AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 4 )))
+# Seven published data ports: four cluster nodes, the TLS node, then the two
+# nodes of the migration source cluster. Admin ports beyond them stay inside
+# the container (scripts/dragonfly-cluster.sh).
+AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 6 )))
+# The TLS node is the fifth, named rather than derived from the range end. It
+# used to BE the range end, and the source cluster moved that end past it — a
+# derived spelling would have silently pointed the trust suite at a source node.
+AGENTSFLEET_DRAGONFLY_TLS_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 4 )))
+# The first node of the migration source cluster; a cluster client discovers
+# its sibling from this one.
+AGENTSFLEET_DRAGONFLY_SOURCE_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 5 )))
 # The daemon's API port rides the dragonfly service (shared namespace), one
-# past the datastore range so parallel lanes never meet on 3000.
-AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 5 )))
+# past the datastore range so parallel lanes never meet on 3000. Still inside
+# the eight ports this slot reserves for the block (scripts/test-infra-ports.sh).
+AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 7 )))
 # The plaintext Redis port, derived from the TLS one rather than allocated, so
 # a worktree's two Redis ports move together and the allocator keeps owning one
 # number per service.
 export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
 export AGENTSFLEET_DRAGONFLY_BASE_PORT AGENTSFLEET_DRAGONFLY_LAST_PORT AGENTSFLEET_API_HOST_PORT
+export AGENTSFLEET_DRAGONFLY_TLS_HOST_PORT AGENTSFLEET_DRAGONFLY_SOURCE_HOST_PORT
 
 # The live ports are still discovered from the running container rather than
 # assumed from the values above, so these stay the single source of truth about
@@ -69,7 +79,8 @@ COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/de
 # so the declared port is the only correct answer and a discovered one that
 # disagreed would be the bug, not the truth.
 COMPOSE_DRAGONFLY_PORT = $(AGENTSFLEET_DRAGONFLY_BASE_PORT)
-COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_LAST_PORT)
+COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_TLS_HOST_PORT)
+COMPOSE_DRAGONFLY_SOURCE_PORT = $(AGENTSFLEET_DRAGONFLY_SOURCE_HOST_PORT)
 
 # Optional narrowing, for studying ONE failure without the rest of the lane's
 # cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
@@ -153,12 +164,16 @@ TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # The authority that signed nothing here, for the refusal half of the trust
 # dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
 TEST_REDIS_FOREIGN_CA ?= $(CURDIR)/.tmp/redis-foreign-ca.crt
+# The datastore an operator is switching AWAY from: its own two-primary
+# cluster, given as one seed like the target. The migration rehearsal imports
+# from here and must leave it intact; nothing else in the lane touches it.
+TEST_REDIS_SOURCE_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_SOURCE_PORT)
 # How a test moves slots or resets the cluster: the script, inside its own
 # container, with the caller's arguments appended. The suites know one command
 # line and nothing about docker; the admin ports it reaches never leave the
 # container (see scripts/dragonfly-cluster.sh).
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
-export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_FOREIGN_CA TEST_DRAGONFLY_CONTROL
+export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_FOREIGN_CA TEST_REDIS_SOURCE_URL TEST_DRAGONFLY_CONTROL
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
