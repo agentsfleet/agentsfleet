@@ -236,6 +236,33 @@ impl Redis {
         .await
     }
 
+    /// One reply from ONE node, for a command that describes the DEPLOYMENT
+    /// rather than a key.
+    ///
+    /// `CLUSTER INFO` and `COMMAND INFO` answer the same on every node — they
+    /// say what the server IS and what it can do, not what it holds — so
+    /// asking one node is asking all of them. Routed explicitly rather than
+    /// left to the driver, which fans a keyless command out and answers a
+    /// reply per node: not the single value a caller decoding one expects,
+    /// which is the same trap [`Self::info_per_primary`] exists for.
+    ///
+    /// # Errors
+    /// As [`Self::command`].
+    pub(crate) async fn ask_one_node<T: FromRedisValue>(
+        &self,
+        name: &'static str,
+        context: &str,
+        cmd: &Cmd,
+    ) -> Result<T> {
+        self.route(
+            name,
+            context,
+            cmd,
+            RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random),
+        )
+        .await
+    }
+
     /// Runs a prepared script invocation, under the same deadline a command
     /// gets.
     ///

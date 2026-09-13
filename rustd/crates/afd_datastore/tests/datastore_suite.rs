@@ -95,6 +95,8 @@ mod integration_capacity;
 mod integration_cluster_prototypes;
 #[path = "integration_cluster_readiness.rs"]
 mod integration_cluster_readiness;
+#[path = "integration_cluster_recovery.rs"]
+mod integration_cluster_recovery;
 #[path = "integration_diagnose_connect.rs"]
 mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
@@ -115,5 +117,7 @@ mod integration_tls_trust;
 mod keys_and_config;
 #[path = "misbehaving_server.rs"]
 mod misbehaving_server;
+#[path = "preflight_refusals.rs"]
+mod preflight_refusals;
 #[path = "verify_outcomes.rs"]
 mod verify_outcomes;

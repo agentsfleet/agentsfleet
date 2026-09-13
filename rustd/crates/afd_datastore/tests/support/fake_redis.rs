@@ -61,7 +61,25 @@ pub(crate) enum Reply {
     /// in on. Installed by default so a test scripting one fault does not
     /// have to know the handshake. The same rule answers `CLUSTER SHARDS`,
     /// which is how this crate's per-node walks find the one node to visit.
+    /// A bulk string, framed from its payload.
+    ///
+    /// Its own variant rather than a `Raw` literal carrying its own `$NN`,
+    /// because both `INFO` fixtures in this workspace carried one that
+    /// disagreed with the bytes after it — `$52` over 57, `$41` over 45. A
+    /// short length leaves the client parsing the remainder as the next
+    /// reply and the test hanging on a deadline, which reads like a slow
+    /// datastore rather than a miscounted fixture. Nothing here counts
+    /// bytes by hand any more.
+    Bulk(&'static str),
     ClusterSlots,
+    /// The same topology handshake, but `CLUSTER INFO` reports a server that
+    /// is NOT in cluster mode — a standalone seed, which preflight refuses.
+    ///
+    /// Its own variant rather than a scripted `CLUSTER` reply, because the
+    /// driver's handshake asks the same command: a rule that answered the
+    /// standalone's `INFO` would answer the handshake's `SLOTS` with it too,
+    /// and the connection under test would never open.
+    ClusterNotEnabled,
 }
 
 /// Shared state the test drives the server through mid-flight.
@@ -255,7 +273,13 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
                 Reply::Silent => continue,
                 Reply::SubscribeAck => confirmation("ssubscribe", request.first_argument()),
                 Reply::UnsubscribeAck => confirmation("sunsubscribe", request.first_argument()),
-                Reply::ClusterSlots => cluster_topology(control.port, request.first_argument()),
+                Reply::Bulk(payload) => bulk(payload),
+                Reply::ClusterSlots => {
+                    cluster_topology(control.port, request.first_argument(), true)
+                }
+                Reply::ClusterNotEnabled => {
+                    cluster_topology(control.port, request.first_argument(), false)
+                }
             };
             if socket.write_all(&bytes).await.is_err() {
                 return;
@@ -300,14 +324,35 @@ fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
 /// The subcommand of `CLUSTER` that asks for the shard map.
 const CLUSTER_SHARDS: &[u8] = b"SHARDS";
 
+/// The subcommand of `CLUSTER` that asks what the server IS.
+const CLUSTER_INFO: &[u8] = b"INFO";
+
+/// `CLUSTER INFO` as a server in cluster mode answers it, and as one that is
+/// not. Only the field preflight reads is carried: the rest of the section
+/// is a dozen counters no caller in this workspace looks at.
+const CLUSTER_INFO_ENABLED: &str = "cluster_enabled:1\r\ncluster_state:ok\r\n";
+const CLUSTER_INFO_DISABLED: &str = "cluster_enabled:0\r\ncluster_state:ok\r\n";
+
+/// Frames `payload` as a RESP bulk string, counting it rather than trusting
+/// a number written beside it.
+fn bulk(payload: &str) -> Vec<u8> {
+    format!("${}\r\n{payload}\r\n", payload.len()).into_bytes()
+}
+
 /// One shard owning slots 0..=16383 at `port` — in the `SLOTS` framing the
 /// driver handshakes with, or the `SHARDS` framing this crate walks nodes by.
-fn cluster_topology(port: u16, subcommand: &[u8]) -> Vec<u8> {
-    if subcommand.eq_ignore_ascii_case(CLUSTER_SHARDS) {
-        afd_datastore::test_util::cluster_shards_reply(port)
-    } else {
-        afd_datastore::test_util::cluster_slots_reply(port)
+fn cluster_topology(port: u16, subcommand: &[u8], clustered: bool) -> Vec<u8> {
+    if subcommand.eq_ignore_ascii_case(CLUSTER_INFO) {
+        return bulk(if clustered {
+            CLUSTER_INFO_ENABLED
+        } else {
+            CLUSTER_INFO_DISABLED
+        });
     }
+    if subcommand.eq_ignore_ascii_case(CLUSTER_SHARDS) {
+        return afd_datastore::test_util::cluster_shards_reply(port);
+    }
+    afd_datastore::test_util::cluster_slots_reply(port)
 }
 
 #[path = "fake_redis/resp.rs"]

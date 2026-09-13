@@ -1,4 +1,11 @@
-//! What boot refuses before any work is accepted: a primary that evicts.
+//! What boot refuses before any work is accepted.
+//!
+//! Three questions, asked of the datastore itself and answered before the
+//! first write: is this a cluster, does it speak the commands this daemon's
+//! design requires, and does it keep every key it is given. A no to any of
+//! them is a deployment that would lose accepted work or silently drop a
+//! surface, and the only honest moment to say so is before a producer has
+//! been told yes.
 //!
 //! # Why eviction is a boot refusal and not a runtime warning
 //!
@@ -19,8 +26,31 @@
 //! replica that will disagree with its primary, which a failover surfaces and
 //! nothing here could prevent.
 
+use redis::Value;
+
 use crate::client::Redis;
 use crate::error::{ErrorKind, Result};
+
+/// The command that reports what the server is.
+const CMD_CLUSTER: &str = "CLUSTER";
+const ARG_INFO: &str = "INFO";
+
+/// The field `CLUSTER INFO` reports cluster mode under, and the one value
+/// that means it is on.
+const FIELD_CLUSTER_ENABLED: &str = "cluster_enabled";
+const CLUSTER_IS_ENABLED: &str = "1";
+
+/// What a missing `cluster_enabled` field is reported as. A server that
+/// does not say cannot be taken to have said yes.
+const CLUSTER_MODE_UNSTATED: &str = "unstated";
+
+/// The command that reports what the server can do.
+const CMD_COMMAND: &str = "COMMAND";
+
+/// The command this daemon's live tail is built on. Sharded pub/sub routes
+/// a channel by its own slot; the unsharded pair broadcasts every publish
+/// to every node, which is the cost this design exists to avoid.
+const CMD_SSUBSCRIBE: &str = "SSUBSCRIBE";
 
 /// The `INFO` section that carries both settings.
 const SECTION_MEMORY: &str = "memory";
@@ -33,6 +63,99 @@ const POLICY_NO_EVICTION: &str = "noeviction";
 /// Dragonfly's own switch for the same behaviour, and how it spells "on".
 const FIELD_CACHE_MODE: &str = "cache_mode";
 const CACHE_MODE_ON: &str = "true";
+
+/// Refuses a datastore this daemon must not accept work on.
+///
+/// The order is the order an operator can act on: what the datastore IS
+/// first, then what it can do, then how it is configured. A seed that is
+/// not a cluster makes the other two questions moot, and asking them first
+/// would report a missing command on a server that was never the right
+/// server.
+///
+/// # Errors
+/// Returns the first refusal found — see [`refuse_non_cluster`],
+/// [`refuse_missing_sharded_pubsub`] and [`refuse_eviction`] — and whatever
+/// asking the datastore returns.
+pub async fn refuse_unsuitable_datastore(redis: &Redis) -> Result<()> {
+    refuse_non_cluster(redis).await?;
+    refuse_missing_sharded_pubsub(redis).await?;
+    refuse_eviction(redis).await
+}
+
+/// Refuses a seed that answers as a single server.
+///
+/// Asked as `CLUSTER INFO` rather than inferred from whether the driver
+/// managed to build a slot map: the driver's behaviour against a standalone
+/// is the driver's business and has changed between releases, where
+/// `cluster_enabled` is the server's own documented answer to exactly this
+/// question. One node is asked because every node gives the same answer.
+///
+/// # Errors
+/// Returns a not-a-cluster error naming what was reported, and a command
+/// error when the datastore will not answer.
+pub async fn refuse_non_cluster(redis: &Redis) -> Result<()> {
+    let mut cmd = redis::cmd(CMD_CLUSTER);
+    cmd.arg(ARG_INFO);
+    let reply: String = redis.ask_one_node(CMD_CLUSTER, ARG_INFO, &cmd).await?;
+    let reported = field_of(&reply, FIELD_CLUSTER_ENABLED).unwrap_or(CLUSTER_MODE_UNSTATED);
+    if reported == CLUSTER_IS_ENABLED {
+        return Ok(());
+    }
+    Err(ErrorKind::NotACluster {
+        reported: reported.to_owned(),
+    }
+    .into())
+}
+
+/// Refuses a server that does not know `SSUBSCRIBE`.
+///
+/// # Errors
+/// Returns a missing-capability error, and a command error when the
+/// datastore will not answer.
+pub async fn refuse_missing_sharded_pubsub(redis: &Redis) -> Result<()> {
+    let mut cmd = redis::cmd(CMD_COMMAND);
+    cmd.arg(ARG_INFO).arg(CMD_SSUBSCRIBE);
+    let reply: Value = redis
+        .ask_one_node(CMD_COMMAND, CMD_SSUBSCRIBE, &cmd)
+        .await?;
+    if knows_command(&reply) {
+        return Ok(());
+    }
+    Err(ErrorKind::MissingCapability {
+        command: CMD_SSUBSCRIBE,
+    }
+    .into())
+}
+
+/// Whether a `COMMAND INFO` reply says the server knows what was asked
+/// about.
+///
+/// Only a reply that AFFIRMATIVELY says no — one entry, nil, which is how
+/// the protocol spells "never heard of it" — is read as a missing command.
+/// A framing this does not recognise is read as PRESENT, because refusing
+/// boot is the heavier of the two answers and "this server lacks the
+/// command" is a claim the server has to have made. A live tail that turns
+/// out to be unsupported degrades to carrying no frames, which the hub
+/// already does; a daemon that refuses to boot serves nothing at all.
+fn knows_command(reply: &Value) -> bool {
+    match reply {
+        Value::Array(entries) => entries
+            .first()
+            .is_some_and(|entry| !matches!(entry, Value::Nil)),
+        _unrecognised_framing => true,
+    }
+}
+
+/// The value of one `key:value` field in an `INFO`-shaped reply.
+///
+/// `INFO` and `CLUSTER INFO` answer the same way: one field per line, name
+/// and value split at the first colon.
+fn field_of<'reply>(reply: &'reply str, field: &str) -> Option<&'reply str> {
+    reply
+        .lines()
+        .filter_map(|line| line.trim_end().split_once(':'))
+        .find_map(|(name, value)| (name == field).then_some(value))
+}
 
 /// Refuses a cluster any of whose primaries evicts keys.
 ///
@@ -74,31 +197,4 @@ fn eviction_in(reply: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::eviction_in;
-
-    /// A Redis reply under `noeviction`, and a Dragonfly reply with the cache
-    /// switch off, both keep every key.
-    #[test]
-    fn a_node_that_keeps_every_key_is_not_refused() {
-        let redis = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noeviction\r\n";
-        let dragonfly = "# Memory\r\nused_memory:1024\r\ncache_mode:false\r\n";
-        assert_eq!(eviction_in(redis), None);
-        assert_eq!(eviction_in(dragonfly), None);
-        assert_eq!(eviction_in("# Memory\r\nused_memory:1024\r\n"), None);
-    }
-
-    /// Either switch, on, is named in the refusal — with its value, so the
-    /// operator reads which policy to change rather than that one exists.
-    #[test]
-    fn an_evicting_node_is_named_with_its_setting() {
-        assert_eq!(
-            eviction_in("maxmemory_policy:allkeys-lru\r\n").as_deref(),
-            Some("maxmemory_policy=allkeys-lru")
-        );
-        assert_eq!(
-            eviction_in("used_memory:1\r\ncache_mode:true\r\n").as_deref(),
-            Some("cache_mode=true")
-        );
-    }
-}
+mod tests;
