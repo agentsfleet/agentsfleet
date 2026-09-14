@@ -1,8 +1,9 @@
 //! The report verb: one runner's terminal result, from fence to acknowledgement.
 //!
 //! Two halves with a commit between them. Everything before
-//! [`Leases::claim_and_settle`] can still refuse the report; nothing after it
-//! can, because by then the lease is flipped and the tenant is charged.
+//! [`Leases::commit_report`](crate::lease::commit) can still refuse the report;
+//! nothing after it can, because by then the lease is flipped, the tenant is
+//! charged, and the run's answer is durable beside both.
 //!
 //! # Why the money is settled before the event row is closed
 //!
@@ -15,7 +16,11 @@
 //!
 //! So the fence — which is what authorizes reporting at all — is spent on the
 //! money first, and the narrative log is closed afterwards from a position
-//! where nothing can take it away.
+//! where nothing can take it away. Since §7 that position is the same
+//! TRANSACTION rather than merely the next statement: the result, the session
+//! cursor and the freed slot commit with the charge or not at all, so there is
+//! no interval in which a tenant is charged for a run whose answer was never
+//! written. [`crate::lease::commit`] carries that argument.
 //!
 //! # What this verb does NOT do
 //!
@@ -28,18 +33,15 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_observability::producers;
 use afd_wire::report::ReportRequest;
 
 use crate::error::{Result, lease_not_found, stale_fence};
+use crate::lease::commit::{Committed, TerminalReport};
 use crate::lease::pull::Plane;
-use crate::lease::settle::{Reported, Settled};
-use crate::lease::verdict::Verdict;
+use crate::lease::settle::Reported;
+use crate::lease::verdict::{Terminal, Verdict};
 use afd_billing::rates::Posture;
-use afd_billing::{Cumulative, Nanos};
-
-/// A settled report was written.
-const EVENT_SETTLED: &str = "report_settled";
+use afd_billing::{Cumulative, Meter, Nanos};
 
 /// What one settled report leaves its caller with.
 ///
@@ -62,7 +64,8 @@ const EVENT_SETTLED: &str = "report_settled";
 /// `non_exhaustive` struct cannot be built outside the crate that declares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reconciled {
-    /// What the final slice drained.
+    /// What the final slice drained. Zero on a repeated report, which charges
+    /// nothing because the first one charged it.
     pub charged: Nanos,
     /// The fleet that ran.
     pub fleet_id: Uuid7,
@@ -82,6 +85,15 @@ pub struct Reconciled {
     pub provider: String,
     /// The model resolved at issue.
     pub model: String,
+    /// Whether this call produced the outcome or found it already durable.
+    ///
+    /// True when the runner re-sent a report whose response it never received.
+    /// The run itself happened once, so everything a caller says ABOUT the run
+    /// — the completion analytics, the cost meters, the delivery span — must
+    /// fire on the first report and not on the repeat, or one run is counted
+    /// as many. The report still answers success: a runner told to retry
+    /// forever is how a finished answer gets thrown away.
+    pub repeated: bool,
 }
 
 impl Plane {
@@ -99,7 +111,8 @@ impl Plane {
     /// [`lease_not_found`](crate::error), and a holder the fleet has superseded
     /// with [`stale_fence`](crate::error) — neither writes anything. Also
     /// reports a datastore that would not answer, in which case the lease is
-    /// left `active` for the runner to re-report against.
+    /// left `active` for the runner to re-report against and nothing was
+    /// charged.
     pub async fn report(
         &self,
         runner_id: &Uuid7,
@@ -116,46 +129,24 @@ impl Plane {
             request.failure_reason,
             request.failure_detail.as_ref(),
         );
-        let charged = match self
-            .settle(runner_id, lease_id, &lease, request, verdict, now)
-            .await?
-        {
-            Settled::Claimed(nanos) => nanos,
-            Settled::Fenced => return Err(stale_fence()),
-        };
+        let meter = self.price_final_slice(&lease, request).await;
+        let report = terminal(lease_id, runner_id, &lease, meter, verdict, request, now);
 
-        // Hoisted for the `log` bridge's duplicated field expressions.
-        let fleet = lease.fleet_id.as_str();
-        let event = lease.event_id.as_str();
-        let nanos = charged.as_i64();
-        tracing::debug!(
-            fleet_id = fleet,
-            agentsfleet_event_id = event,
-            lease_id,
-            nanos,
-            event = EVENT_SETTLED,
-            "the report won its fence and its final slice was charged"
-        );
-
-        // After the fence is won, so a refused report does not decrement a
-        // lease its runner still holds. The counterpart of the increment
-        // `Leases::select` records when the lease was granted.
-        producers::fleet::runner::lease_released(runner_id.as_str());
-        self.finalize(runner_id, lease_id, &lease, request, verdict, now)
-            .await;
-        Ok(Reconciled {
-            charged,
-            fleet_id: lease.fleet_id,
-            workspace_id: lease.workspace_id,
-            tenant_id: lease.tenant_id,
-            event_id: lease.event_id,
-            posture: lease.posture,
-            provider: lease.provider,
-            model: lease.model,
-        })
+        match self.leases.commit_report(report).await? {
+            Committed::Fenced => Err(stale_fence()),
+            Committed::AlreadySettled => {
+                self.acknowledge_again(&lease, lease_id).await;
+                Ok(reconciled(lease, Nanos::ZERO, true))
+            }
+            Committed::Settled { charged, closed } => {
+                self.announce(runner_id, lease_id, &lease, closed, charged, now)
+                    .await;
+                Ok(reconciled(lease, charged, false))
+            }
+        }
     }
 
-    /// Price the final slice and spend the fence on it.
+    /// Price the final slice, fail-OPEN.
     ///
     /// The rate resolution is fail-OPEN and the posture is stated here rather
     /// than inside the resolver: a datastore fault while pricing must not
@@ -165,22 +156,14 @@ impl Plane {
     /// is that [`afd_billing::Accounts::meter`] hands the decision UP to here,
     /// where it is one line a reader can find, instead of absorbing it eight
     /// frames down.
-    async fn settle(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &str,
-        lease: &Reported,
-        request: &ReportRequest<'_>,
-        verdict: Verdict<'_>,
-        now: UnixMillis,
-    ) -> Result<Settled> {
+    async fn price_final_slice(&self, lease: &Reported, request: &ReportRequest<'_>) -> Meter {
         let posture = posture_of(lease);
         let cumulative = Cumulative::reported(
             request.input_tokens,
             request.cached_input_tokens,
             request.output_tokens,
         );
-        let meter = match self
+        match self
             .accounts
             .meter(posture, &lease.provider, &lease.model, cumulative)
             .await
@@ -191,17 +174,66 @@ impl Plane {
                 let reason = failure.to_string();
                 tracing::warn!(
                     fleet_id = fleet,
-                    lease_id,
+                    lease_id = request.lease_id.as_ref(),
                     reason,
                     event = "report_rates_unverified_run_fee_only",
                     "the catalogue could not be read; the final slice meters runtime only"
                 );
                 self.accounts.run_fee_meter(cumulative)
             }
-        };
-        self.leases
-            .claim_and_settle(lease_id, runner_id, meter, verdict.succeeded(), now)
-            .await
+        }
+    }
+}
+
+/// Everything the report's transaction needs, assembled from the wire request.
+///
+/// Separate from [`Plane::report`] so the verb reads as its four steps. The
+/// two `try_from` saturations are the request's own numbers: a runner reports
+/// its counts and nothing upstream bounds them, so a value past `i64` is
+/// clamped rather than refused — the run happened either way, and refusing it
+/// here would lose the answer over a telemetry field.
+fn terminal<'a>(
+    lease_id: &'a str,
+    runner_id: &'a Uuid7,
+    lease: &'a Reported,
+    meter: Meter,
+    verdict: Verdict<'a>,
+    request: &'a ReportRequest<'a>,
+    now: UnixMillis,
+) -> TerminalReport<'a> {
+    TerminalReport {
+        lease_id,
+        runner_id,
+        lease,
+        meter,
+        outcome: Terminal {
+            verdict,
+            response_text: request.response_text.as_ref(),
+            tokens: i64::try_from(request.tokens).unwrap_or(i64::MAX),
+            wall_ms: i64::try_from(request.telemetry.wall_ms).unwrap_or(i64::MAX),
+        },
+        last_event_id: request.checkpoint.last_event_id.as_ref(),
+        last_response: request.checkpoint.last_response.as_ref(),
+        now,
+    }
+}
+
+/// The lease's facts, as the caller of the verb receives them.
+///
+/// Takes the lease BY VALUE: every string field moves into the answer rather
+/// than being cloned, which is why the two call sites read the lease's columns
+/// through this and not before it.
+fn reconciled(lease: Reported, charged: Nanos, repeated: bool) -> Reconciled {
+    Reconciled {
+        charged,
+        fleet_id: lease.fleet_id,
+        workspace_id: lease.workspace_id,
+        tenant_id: lease.tenant_id,
+        event_id: lease.event_id,
+        posture: lease.posture,
+        provider: lease.provider,
+        model: lease.model,
+        repeated,
     }
 }
 

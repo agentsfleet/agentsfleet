@@ -1,25 +1,35 @@
-//! Everything a won report writes AFTER the money has committed.
+//! The writes a won report owes, and which side of the commit each falls on.
 //!
-//! The terminal event row, the session checkpoint, the stream acknowledgement,
-//! the freed affinity slot, and the audit row that closes the lease's history.
-//! Five writes, none atomic with each other, and that is the Zig's shape kept
-//! deliberately rather than improved on: they are independent facts about a run
-//! that is already over and already paid for, and a transaction spanning
-//! Postgres and Redis is not available anyway.
+//! The terminal event row, the session checkpoint, the stream acknowledgement
+//! and the audit row that closes the lease's history. The Zig ran all of them
+//! after the money, independently, each logged if it did not land — five
+//! separate facts about a run already paid for. That shape is kept for the two
+//! that cannot be anything else and abandoned for the two that can.
 //!
-//! # Best-effort means the report still succeeds
+//! # Two of these are the report, and two are about it
 //!
-//! Every write here is attempted, logged on failure, and never propagated. The
-//! claim and the settle already committed by the time this runs — the lease is
-//! `reported` and the wallet is drawn down — so failing the response now would
-//! tell the runner to retry a report whose money cannot be charged twice, and
-//! the retry would be fenced anyway. What an operator gets instead is a warn
-//! line naming which of the five did not land.
+//! [`Leases::mark_terminal`] and [`Leases::checkpoint`] take the connection
+//! their caller is already inside, because the RESULT of a run and the money
+//! charged for it are one fact: a settle that commits without its result
+//! leaves a tenant charged for a run whose answer is nowhere, and no retry
+//! recovers it — the lease is `reported`, so the retry is refused. They commit
+//! with the settle in [`Leases::commit_report`](crate::lease::commit) or
+//! neither does.
 //!
-//! The one that matters most is [`Leases::release_slot`]: without it the fleet
-//! waits out the full lease TTL before its next event can be claimed. It is
-//! still best-effort, because a fleet idle for thirty seconds is a far smaller
-//! fault than a report that answers 500 after taking a tenant's money.
+//! [`Leases::acknowledge`] and [`Leases::record_released`] stay outside it, and
+//! not because they matter less. The acknowledgement is a QUEUE write, and no
+//! transaction spans Postgres and Dragonfly; putting it inside would mean
+//! acknowledging an entry a rollback then un-did, which is the one ordering
+//! that loses work outright. It therefore runs after the commit, where a
+//! failure leaves the entry pending and re-delivered rather than a result
+//! unrecoverable. The audit row is history — a datastore blip writing it must
+//! not fail a report whose money has committed.
+//!
+//! Both post-commit writes are attempted, logged on failure, and never
+//! propagated: by then the lease is `reported` and the wallet is drawn down, so
+//! failing the response would tell the runner to retry a report whose money
+//! cannot be charged twice. What an operator gets is a warn line naming which
+//! one did not land.
 //!
 //! # The cap is `is_char_boundary`, not a nibble walk
 //!
@@ -33,8 +43,9 @@ use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_datastore::EventId;
 use afd_events::Closed;
 
+use sqlx::PgConnection;
+
 use crate::error::Result;
-use crate::lease::affinity::Fence;
 use crate::lease::sql;
 use crate::lease::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::lease::store::Leases;
@@ -68,13 +79,18 @@ impl Leases {
     /// overwrite the settled result. No row is that case, and it is logged
     /// rather than treated as a failure. The row that DID close comes back
     /// with the fleet facts beside it, for the completion frame the caller
-    /// announces on the live tail.
+    /// announces on the live tail — after the commit, because a frame
+    /// announcing an ending a rollback then removed is worse than a late one.
+    ///
+    /// Runs on the caller's connection: this is the RESULT half of the one
+    /// transaction the settle rides, per the module note.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a closing this daemon
     /// cannot read.
     pub async fn mark_terminal(
         &self,
+        connection: &mut PgConnection,
         fleet_id: &Uuid7,
         event_id: &str,
         outcome: Terminal<'_>,
@@ -86,7 +102,6 @@ impl Leases {
             tokens,
             wall_ms,
         } = outcome;
-        let mut connection = self.pool().acquire().await?;
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id.as_str())
             .bind(event_id)
@@ -118,12 +133,17 @@ impl Leases {
 
     /// Record where this fleet's session resumes.
     ///
+    /// Runs on the caller's connection, inside the settle's transaction: a
+    /// session left pointing at the run before this one would re-feed the
+    /// previous answer to a run that has already been paid for.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and a cursor that will not
     /// serialize — which cannot happen for two string fields, and is reported
     /// rather than swallowed so that stays true by test rather than by belief.
     pub async fn checkpoint(
         &self,
+        connection: &mut PgConnection,
         fleet_id: &Uuid7,
         last_event_id: &str,
         last_response: &str,
@@ -140,7 +160,6 @@ impl Leases {
         })
         .to_string();
 
-        let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::session::UPSERT_FLEET_SESSION)
             .bind(fleet_id.as_str())
             .bind(&document)
@@ -243,21 +262,5 @@ impl Leases {
             .await
             .map_err(crate::error::query(CONTEXT_RELEASED))?;
         Ok(())
-    }
-
-    /// Free the fleet's slot so its next event becomes claimable.
-    ///
-    /// Token-guarded through [`Leases::release`], so a superseded holder cannot
-    /// free the current one's slot.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn release_slot(
-        &self,
-        fleet_id: &Uuid7,
-        fence: Fence,
-        now: UnixMillis,
-    ) -> Result<()> {
-        self.release(fleet_id, fence, now).await
     }
 }

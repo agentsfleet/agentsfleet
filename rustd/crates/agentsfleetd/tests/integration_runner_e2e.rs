@@ -157,7 +157,7 @@ async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, f
     );
 
     assert_settled(run, lease_id, before).await;
-    assert_replay_is_fenced(http, run, lease_id, &report).await;
+    assert_replay_returns_the_stored_outcome(http, run, lease_id, &report).await;
 }
 
 async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
@@ -293,13 +293,23 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
     );
 }
 
-/// A second delivery of the same report claims nothing and changes nothing.
+/// A second delivery of the same report is answered, and changes nothing.
 ///
-/// The guard is the lease's `status = active` predicate, and a report that
-/// claims no row writes none: no ledger row, no wallet draw, no tally. What the
-/// runner gets back is a refusal rather than an acknowledgement, because a
-/// result nobody is waiting for is not something to retry.
-async fn assert_replay_is_fenced(
+/// The guard is still the lease's `status = active` predicate and a report that
+/// claims no row still writes none: no ledger row, no wallet draw, no tally.
+/// What CHANGED is the answer. A replay used to be a 409, on the reading that a
+/// result nobody is waiting for is not worth retrying — and that reading is
+/// wrong in the one case a replay actually happens. A runner replays because it
+/// never received the first response, so the run whose answer the platform is
+/// refusing to acknowledge is a run the platform already charged for and
+/// already stored. Told 409, the runner discards a finished result; told 200,
+/// it stops retrying with its work safely landed.
+///
+/// The route to both is the lease id, which is this endpoint's idempotency key.
+/// A fleet the runner has genuinely been superseded on still answers 409,
+/// because the lease is not `reported` there — that refusal is proven against
+/// live rows in the fleet plane's own suites, not here.
+async fn assert_replay_returns_the_stored_outcome(
     http: &reqwest::Client,
     run: &Scenario,
     lease_id: &str,
@@ -309,10 +319,14 @@ async fn assert_replay_is_fenced(
     let replay = post(http, run, "/v1/runners/me/reports", report).await;
     assert_eq!(
         replay.status().as_u16(),
-        409,
-        "the lease is no longer active, so the second delivery cannot claim it — \
-         a conflict, which is terminal for the run and tells the runner to discard \
-         rather than to back off and retry"
+        200,
+        "the second delivery is acknowledged, so the runner stops retrying a result \
+         the platform has already stored and already charged for"
+    );
+    assert_eq!(
+        json(replay).await,
+        json!({"ok": true}),
+        "and in the same shape the first one answered — a runner parses one reply, not two"
     );
     assert_eq!(
         ledger_rows(run).await,
@@ -322,11 +336,19 @@ async fn assert_replay_is_fenced(
     assert_eq!(
         balance(run).await,
         drawn,
-        "a fenced replay charges nothing at all"
+        "a repeated report charges nothing at all"
     );
     assert_eq!(
         lease_column(run, lease_id, "status").await.as_deref(),
         Some("reported"),
         "and mutates nothing — the lease reads exactly as the first report left it"
+    );
+    assert_eq!(
+        counter_column(run, "succeeded").await.as_deref(),
+        Some("1"),
+        "the lifetime tally counts the run once, because it is gated on the claim \
+         that the repeat did not win. The handler's product funnel and cost meters \
+         are skipped on the same arm and export nowhere a test can read, so this \
+         row is the durable half of that claim and the arm itself is the reviewed half"
     );
 }

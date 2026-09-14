@@ -385,8 +385,19 @@ agentsfleet-runner parent (child_supervisor.zig): establish the cgroup, fork, ex
       the policy, run the NullClaw turn — language-model calls + tool calls, secrets substituted
       at the tool bridge — emit activity frames + the final result over stdout
    │
-report → agentsfleetd: persist terminal state + telemetry + checkpoint, then XACK
+report → agentsfleetd: one transaction (settle + terminal state + checkpoint + freed slot),
+         then — after it commits — the activity frame and the XACK
 ```
+
+The parenthesis is the guarantee, not a description of the order. Those four writes
+commit together or none of them does, so there is no interval in which the tenant has
+paid for a run whose answer was never stored. The acknowledgement is outside the
+transaction because no transaction spans Postgres and the datastore, and it runs after
+it because a redelivered entry is recoverable where an acknowledged-then-rolled-back one
+is not. A report that fails leaves the lease `active` and the wallet untouched, so the
+runner retries; a report whose RESPONSE is lost retries into a lease already `reported`
+by that same runner and is answered with the stored outcome for no charge. See
+[`data_flow.md`](./data_flow.md) §Running one event.
 
 The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 

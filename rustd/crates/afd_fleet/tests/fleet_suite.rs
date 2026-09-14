@@ -11,6 +11,8 @@
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
 mod queue;
+#[path = "support/fleet_report_commit.rs"]
+mod report_commit;
 #[path = "support/fleet_report_reads.rs"]
 mod report_reads;
 #[path = "support/fleet_report_seed.rs"]
@@ -52,6 +54,10 @@ mod integration_money_gates;
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]
 mod integration_renew_coverage;
+#[path = "integration_report_commit.rs"]
+mod integration_report_commit;
+#[path = "integration_report_fence.rs"]
+mod integration_report_fence;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
 #[path = "integration_runner_admin.rs"]

@@ -51,6 +51,11 @@ impl Leasing for NoWork {
             posture: String::new(),
             provider: String::new(),
             model: String::new(),
+            // A FIRST report, not a repeat: the handler skips its analytics,
+            // meters and delivery span on a repeat, and a stub answering
+            // `true` would route every suite here down the quiet arm and
+            // prove the loud one is reachable never.
+            repeated: false,
         }))
     }
 
