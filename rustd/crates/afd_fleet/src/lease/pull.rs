@@ -169,6 +169,46 @@ impl Plane {
 
         let received = self.leases.record_received(&acquired, now).await?;
         let delivery = received.delivery;
+
+        // Dimension 7.4. The event already ran. Acknowledge the entry and stop
+        // BEFORE any of the work below — the gates, the money, the secrets, the
+        // lease row — because every one of them is an effect of executing, and
+        // the execution already happened: the tenant paid for it, and its answer
+        // is already owed or delivered.
+        //
+        // Acknowledging is the whole point rather than a tidy-up. An entry left
+        // pending is offered again, so a terminal event that is only SKIPPED
+        // comes back on the next poll forever, and each pass costs a selection,
+        // an insert attempt and this read. The ack is what ends it.
+        if delivery == crate::lease::event::Delivery::Terminal {
+            self.leases
+                .acknowledge(&acquired.fleet_id, &acquired.receipt)
+                .await
+                .unwrap_or_else(|failure| {
+                    // Logged, not propagated: the entry stays pending and this
+                    // path runs again, which is the same answer one turn later.
+                    // Failing the lease would refuse a runner that has done
+                    // nothing wrong.
+                    tracing::warn!(
+                        error_code = failure.code().as_str(),
+                        fleet_id = acquired.fleet_id.as_str(),
+                        agentsfleet_event_id = acquired.event_id.as_str(),
+                        reason = failure.to_string(),
+                        event = "terminal_redelivery_ack_failed",
+                        "a finished event was not acknowledged; it will be offered again"
+                    );
+                });
+            tracing::info!(
+                fleet_id = acquired.fleet_id.as_str(),
+                agentsfleet_event_id = acquired.event_id.as_str(),
+                event = "terminal_redelivery_suppressed",
+                "a redelivered event had already finished; it was acknowledged, not executed"
+            );
+            return Ok(Step::Stop(no_work(
+                runner_id,
+                "the redelivered event had already finished",
+            )?));
+        }
         // The tail's opening bracket, once per row: a redelivery found the row
         // already there, and its watchers already hold the marker. The counters
         // were read after the row landed, because the insert is what moves them.

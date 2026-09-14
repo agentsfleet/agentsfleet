@@ -223,7 +223,12 @@ async fn charge(
     now: UnixMillis,
 ) -> core::result::Result<Nanos, Admission> {
     match request.delivery {
-        Delivery::Repeat => Ok(Nanos::ZERO),
+        // A finished event never reaches admission — the pull path acknowledges
+        // it and stops before here. Spelled out rather than folded under a `_`
+        // so that stays true by compiler rather than by memory: if a caller ever
+        // does route one here, it must charge nothing, for the stronger version
+        // of `Repeat`'s reason — the run is not merely paid for, it is over.
+        Delivery::Repeat | Delivery::Terminal => Ok(Nanos::ZERO),
         Delivery::First => {
             let charged = Charged {
                 tenant_id,
