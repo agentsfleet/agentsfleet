@@ -40,9 +40,10 @@ fn a_pass_that_voided_rows_comes_back_sooner() {
 
 #[test]
 fn a_lost_fleet_that_voided_nothing_waits_the_ordinary_interval() {
-    // A fleet whose stream could not answer, whose rows were all taken by
-    // another replica's pass under `FOR UPDATE SKIP LOCKED`. This pass repaired
-    // nothing, so the work of coming back belongs to whoever did.
+    // A fleet whose stream could not answer, whose rows another replica's pass
+    // had already repaired: this one probed them, found the receipts it was
+    // told about already gone, and its guarded writes matched nothing. This
+    // pass repaired nothing, so the work of coming back belongs to whoever did.
     assert_eq!(pacing_after(pass(4, 1, 0)), INTERVAL);
 }
 

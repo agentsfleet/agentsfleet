@@ -57,7 +57,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_datastore::{EventId, FleetStreams};
-use sqlx::{Acquire as _, Postgres, Row as _, Transaction};
+use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::{Admissions, sql};
@@ -192,27 +192,22 @@ impl Admissions {
     /// Voids every undelivered receipt on one fleet that the stream cannot
     /// produce, up to `rows`, and answers how many.
     ///
-    /// One transaction, so two replicas running this take disjoint rows. The
-    /// probes happen INSIDE it, which is the cost of locking the rows it is
-    /// about to void — bounded by `rows`, on a path that only runs for a fleet
-    /// whose data is already gone.
+    /// No transaction, and the pool connection is never held across a probe:
+    /// the candidates are read and the connection goes back, each probe runs
+    /// with nothing held, and each void is its own short statement. A probe is
+    /// a round trip to the OTHER datastore, and the rows a lock here would
+    /// hold are the ones a live producer recording its own receipt waits
+    /// behind — the reason [`sql::SELECT_UNDELIVERED_FLEETS`] gives for not
+    /// locking, applied to the scan that probes per row.
+    ///
+    /// [`sql::VOID_LOST_RECEIPT`] pins the receipt it was told about, so a row
+    /// the replay sweeper moved between the probe and the write matches
+    /// nothing. That is also what a second replica walking this fleet hits:
+    /// both probe, one writes, and the other counts the repair it did not make
+    /// as the zero it was.
     async fn void_lost_on(&self, fleet_id: &str, now: UnixMillis, rows: i64) -> Result<u64> {
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_RECONCILE))?;
-        let unfinished = sqlx::query(sql::SELECT_UNDELIVERED_ON_FLEET)
-            .bind(fleet_id)
-            .bind(rows)
-            .fetch_all(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-
         let mut voided = 0;
-        for row in &unfinished {
-            let id: String = row.try_get(0).map_err(query(CONTEXT_RECONCILE))?;
-            let receipt = EventId::of(
-                &row.try_get::<String, _>(1)
-                    .map_err(query(CONTEXT_RECONCILE))?,
-            );
+        for (id, receipt) in self.undelivered_on(fleet_id, rows).await? {
             let still_held = Unfinished {
                 fleet_id: fleet_id.to_owned(),
                 receipt,
@@ -220,33 +215,55 @@ impl Admissions {
             if self.stream_holds(&still_held).await {
                 continue;
             }
-            voided += self.void(&id, now, &mut transaction).await?;
             let receipt = still_held.receipt.as_str();
-            tracing::info!(
-                fleet_id,
-                receipt,
-                event = EVENT_RECEIPT_VOIDED,
-                "this admission's entry is gone, so its receipt was forgotten and the replay sweeper owes it again"
-            );
+            let forgotten = self.void(&id, receipt, now).await?;
+            voided += forgotten;
+            if forgotten > 0 {
+                tracing::info!(
+                    fleet_id,
+                    receipt,
+                    event = EVENT_RECEIPT_VOIDED,
+                    "this admission's entry is gone, so its receipt was forgotten and the replay sweeper owes it again"
+                );
+            }
         }
-        transaction
-            .commit()
-            .await
-            .map_err(query(CONTEXT_RECONCILE))?;
         Ok(voided)
     }
 
+    /// One fleet's receipted-but-undelivered rows, read and released.
+    ///
+    /// Collected rather than streamed so the connection is back in the pool
+    /// before the first probe, which is the whole point of the shape.
+    async fn undelivered_on(&self, fleet_id: &str, rows: i64) -> Result<Vec<(String, EventId)>> {
+        let mut connection = self.database.acquire().await?;
+        let unfinished = sqlx::query(sql::SELECT_UNDELIVERED_ON_FLEET)
+            .bind(fleet_id)
+            .bind(rows)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RECONCILE))?;
+        unfinished
+            .iter()
+            .map(|row| {
+                let id: String = row.try_get(0).map_err(query(CONTEXT_RECONCILE))?;
+                let receipt: String = row.try_get(1).map_err(query(CONTEXT_RECONCILE))?;
+                Ok((id, EventId::of(&receipt)))
+            })
+            .collect()
+    }
+
     /// Forgets one row's receipt, answering whether this statement did it.
-    async fn void(
-        &self,
-        id: &str,
-        now: UnixMillis,
-        transaction: &mut Transaction<'_, Postgres>,
-    ) -> Result<u64> {
+    ///
+    /// Zero is not a failure: it means the row no longer carries the receipt
+    /// this pass probed, so somebody else already repaired it or a delivery
+    /// landed first.
+    async fn void(&self, id: &str, receipt: &str, now: UnixMillis) -> Result<u64> {
+        let mut connection = self.database.acquire().await?;
         let voided = sqlx::query(sql::VOID_LOST_RECEIPT)
             .bind(id)
             .bind(now.as_millis())
-            .execute(&mut **transaction)
+            .bind(receipt)
+            .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RECONCILE))?;
         Ok(voided.rows_affected())
