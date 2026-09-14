@@ -26,8 +26,8 @@ function ScrollObserver() {
   return null;
 }
 
-function View({ pendingMessageId = null, eventsCount = 0 }: {
-  pendingMessageId?: string | null;
+function View({ submittedMessageId = null, eventsCount = 0 }: {
+  submittedMessageId?: string | null;
   eventsCount?: number;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
@@ -39,7 +39,7 @@ function View({ pendingMessageId = null, eventsCount = 0 }: {
     <AssistantRuntimeProvider runtime={runtime}>
       <ScrollObserver />
       <FleetThreadViewport
-        pendingMessageId={pendingMessageId}
+        submittedMessageId={submittedMessageId}
         eventsCount={eventsCount}
         connectionStatus={CONNECTION_STATUS.LIVE}
         failureKind={null}
@@ -54,16 +54,16 @@ describe("FleetThreadViewport scroll intent", () => {
     const view = render(<View />);
     expect(onScroll).not.toHaveBeenCalled();
 
-    view.rerender(<View pendingMessageId={FIRST_MESSAGE} eventsCount={1} />);
+    view.rerender(<View submittedMessageId={FIRST_MESSAGE} eventsCount={1} />);
     expect(onScroll).toHaveBeenCalledExactlyOnceWith({ behavior: "instant" });
 
-    view.rerender(<View pendingMessageId={FIRST_MESSAGE} eventsCount={2} />);
+    view.rerender(<View submittedMessageId={FIRST_MESSAGE} eventsCount={2} />);
     expect(onScroll).toHaveBeenCalledTimes(1);
 
     view.rerender(<View eventsCount={2} />);
     expect(onScroll).toHaveBeenCalledTimes(1);
 
-    view.rerender(<View pendingMessageId={SECOND_MESSAGE} eventsCount={3} />);
+    view.rerender(<View submittedMessageId={SECOND_MESSAGE} eventsCount={3} />);
     expect(onScroll).toHaveBeenCalledTimes(2);
   });
 });

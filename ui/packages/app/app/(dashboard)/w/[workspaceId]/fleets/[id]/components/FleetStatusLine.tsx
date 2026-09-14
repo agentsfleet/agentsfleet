@@ -85,14 +85,14 @@ export default function FleetStatusLine({
         <HiddenLabel>{METRICS_STATUS_LABEL}</HiddenLabel>
         {status}
       </StatusLineItem>
-      <StatusLineItem tone={outcome.tone}>
+      <StatusLineItem tone={outcome.tone} className="min-w-0 max-w-full">
         <OutcomeIcon
           size={ICON_SIZE}
           aria-hidden="true"
           className={cn("shrink-0", outcome.live && "motion-safe:animate-spin")}
         />
         <HiddenLabel>{METRICS_OUTCOME_LABEL}</HiddenLabel>
-        <span className="truncate">{outcome.text}</span>
+        <span className="min-w-0 truncate">{outcome.text}</span>
         {outcome.at ? (
           <Time value={outcome.at} format="clock" className="text-muted-foreground" />
         ) : null}

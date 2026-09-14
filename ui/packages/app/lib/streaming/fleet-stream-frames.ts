@@ -294,9 +294,15 @@ export function mergeBackfill(
     return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
-  return [...fromBackfill, ...kept].sort(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-  );
+  // The client's clock can trail the server's. Pending operator messages
+  // remain at the visual tail until acknowledged, in submission order.
+  return [...fromBackfill, ...kept].sort((a, b) => {
+    if (a.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC) {
+      return b.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC ? 0 : 1;
+    }
+    if (b.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC) return -1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
 }
 
 // The newest server-confirmed `created_at` across the rows, folded into the

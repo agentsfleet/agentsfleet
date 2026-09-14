@@ -24,6 +24,7 @@ type NewHandlerCtx = {
   appendOptimistic: StreamApi["appendOptimistic"];
   reconcileOptimistic: StreamApi["reconcileOptimistic"];
   markOptimisticFailed: StreamApi["markOptimisticFailed"];
+  onSubmitted: (tempId: string) => void;
   onFailure: (failure: FailedDelivery) => void;
 };
 
@@ -33,6 +34,7 @@ export function useNewMessageHandler({
   appendOptimistic,
   reconcileOptimistic,
   markOptimisticFailed,
+  onSubmitted,
   onFailure,
 }: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
   // The tail of the delivery chain. Removing the browser-side queue let two
@@ -49,6 +51,7 @@ export function useNewMessageHandler({
       // Optimistic append is synchronous and in call order — the operator sees
       // both messages immediately, before any POST resolves.
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
+      if (tempId) onSubmitted(tempId);
       const send = async () => {
         try {
           const result = await steerFleetAction(workspaceId, fleetId, text);
@@ -80,6 +83,7 @@ export function useNewMessageHandler({
       appendOptimistic,
       reconcileOptimistic,
       markOptimisticFailed,
+      onSubmitted,
       onFailure,
     ],
   );
