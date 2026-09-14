@@ -28,6 +28,7 @@
 
 use std::time::Duration;
 
+use afd_core::clock::{self, UnixMillis};
 use afd_datastore::Redis;
 use afd_datastore::streams::FleetStreams;
 use afd_db::Db;
@@ -40,6 +41,9 @@ use crate::sweep::{Sweep, Swept};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FLEETS: &str = "reclaim active fleets";
+
+/// Statement name, for the context the ledger question's failure carries.
+const CONTEXT_STRANDED: &str = "reclaim stranded leases";
 
 /// The fleet status whose streams are worth sweeping.
 pub(crate) const STATUS_ACTIVE: &str = "active";
@@ -209,6 +213,15 @@ impl Reclaim {
                 }
             }
         }
+        self.mark_ready(fleet_id).await
+    }
+
+    /// Marks one fleet ready, answering whether the mark was written.
+    ///
+    /// The one path both of this sweeper's writers share — the stream probe
+    /// above and the ledger question below — so a mark that fails is counted
+    /// and logged the same way whichever question raised it.
+    async fn mark_ready(&self, fleet_id: &str) -> bool {
         match self.ready.mark(fleet_id, &self.consumer).await {
             Ok(_token) => true,
             Err(failure) => {
@@ -222,6 +235,28 @@ impl Reclaim {
                 false
             }
         }
+    }
+
+    /// Fleets the ledger says still owe work that nothing in the datastore
+    /// will surface: an `active` lease past its expiry, held by a runner
+    /// nobody can reach, on a stream that may no longer exist.
+    ///
+    /// Read from PostgreSQL in the sweeper and nowhere near the poll path,
+    /// whose zero-PostgreSQL property is deliberate. Bounded by the same
+    /// fleet count as the stream walk, because each fleet marked here is a
+    /// claim the pool will see on the next poll.
+    async fn stranded_fleets(&self, now: UnixMillis) -> Result<Vec<String>> {
+        let mut connection = self.database.acquire().await?;
+        let rows = sqlx::query(sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES)
+            .bind(vec![sql::LEASE_STATUS_ACTIVE])
+            .bind(now.as_millis())
+            .bind(BATCH_LIMIT)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_STRANDED))?;
+        rows.iter()
+            .map(|row| row.try_get(0).map_err(query(CONTEXT_STRANDED)))
+            .collect()
     }
 }
 
@@ -245,6 +280,18 @@ impl Sweep for Reclaim {
             swept.changed += claimed;
             if self.remark_if_deliverable(fleet_id, claimed > 0).await {
                 swept.changed += 1;
+            }
+        }
+        // The ledger's answer, after the stream's: a fleet the stream could
+        // not vouch for may still hold a lease a dead runner never finished.
+        for fleet_id in self.stranded_fleets(clock::now()).await? {
+            if self.mark_ready(&fleet_id).await {
+                swept.changed += 1;
+                tracing::info!(
+                    fleet_id,
+                    event = "stranded_lease_surfaced",
+                    "a fleet holding an expired lease was marked ready, so the next claim re-leases its work from the ledger"
+                );
             }
         }
         Ok(swept)

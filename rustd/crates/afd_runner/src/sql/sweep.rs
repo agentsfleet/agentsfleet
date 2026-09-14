@@ -141,6 +141,37 @@ WHERE status = $1 AND (updated_at, id) > ($2::bigint, $3::uuid)
 ORDER BY updated_at ASC, id ASC
 LIMIT $4";
 
+/// Fleets holding an `active` lease whose expiry has passed.
+///
+/// The readiness index's third writer. Its other two — ingress, and this
+/// sweeper's own stream probe — both go quiet for a fleet whose stream was
+/// lost while a runner held its work: nothing marks it, so nobody polls it,
+/// and the lease path's `reclaim_prior_active`, which only runs when a claim
+/// wins the fleet, never gets its turn. This statement finds those fleets
+/// from the ledger and the caller marks them. It flips nothing — that reclaim
+/// re-leases from PostgreSQL alone and needs the lease still `active`, so a
+/// flipped lease would be invisible to the one path that recovers it.
+///
+/// `DISTINCT`, because one fleet can hold several expired leases and wants
+/// one mark. Bounded and unordered: every fleet returned becomes a claim
+/// against the pool once marked, and a marked fleet drops out of this set on
+/// its own when the claim wins and the reclaim expires the lease, so the
+/// next pass reaches whatever this one did not.
+///
+/// `status = ANY($1::text[])` for the reason schema/620 gives: a bound
+/// parameter rides the `(status, updated_at)` index's prefix, where a partial
+/// index could not be chosen against it. `lease_expires_at` is then a filter
+/// over that prefix — the active set, bounded by concurrent jobs — rather
+/// than a range an index serves; an index for it waits for traffic to
+/// measure it against.
+///
+/// `$1` the active status, `$2` now, `$3` the batch limit.
+pub const SELECT_FLEETS_HOLDING_EXPIRED_LEASES: &str = "\
+SELECT DISTINCT fleet_id::text
+FROM fleet.runner_leases
+WHERE status = ANY($1::text[]) AND lease_expires_at < $2
+LIMIT $3";
+
 /// One batch of settled leases past the retention window.
 ///
 /// `updated_at`, not `created_at`, is the retention clock: settle and reclaim
