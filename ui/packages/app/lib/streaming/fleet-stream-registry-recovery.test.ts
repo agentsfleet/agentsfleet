@@ -41,12 +41,25 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
     release();
   });
 
-  it("returns to fast backoff once a real frame proves the stream healthy", () => {
+  it("escalates a one-frame-then-close upstream instead of resetting backoff forever", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    for (let cycle = 0; cycle < FAST_ATTEMPTS + 1; cycle += 1) {
+      const es = sourceAt(-1);
+      es.open();
+      es.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: `frame-${cycle}`, actor: "fleet" });
+      es.fail();
+      vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
+    }
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+    release();
+  });
+
+  it("returns to fast backoff once arrivals span the stable window", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     exhaustFastAttempts();
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
 
-    // Recover, and this time a frame actually arrives.
+    // Recover, then prove the connection is stable with arrivals 30 s apart.
     vi.advanceTimersByTime(OFFLINE_RETRY_MS);
     const es = sourceAt(-1);
     es.open();
@@ -55,10 +68,13 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
       event_id: "e1",
       actor: "fleet",
     });
-    // A subsequent failure is treated as attempt 1 (fast), not a continuation
-    // of the exhausted offline count.
+    vi.advanceTimersByTime(30_000);
+    es.heartbeat();
+    // A subsequent failure is treated as attempt 1 after the stability window.
+    const opened = FakeEventSource.instances.length;
     es.fail();
-    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
+    expect(FakeEventSource.instances.length).toBe(opened + 1);
     release();
   });
 
