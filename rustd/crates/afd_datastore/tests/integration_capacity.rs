@@ -82,7 +82,11 @@ async fn the_capacity_sample_accounts_for_every_class_of_retained_state_separate
         sample.pending_entries < sample.retained_entries,
         "pending is a separate, smaller figure than retained: {sample:?}"
     );
-    assert_eq!(sample.ready_partitions, 1, "one partition until §4 lands");
+    assert_eq!(
+        sample.ready_partitions, 1,
+        "ONE fleet was marked, so one partition holds a mark — the figure counts \
+         occupied partitions, not the sixteen the index declares"
+    );
     assert!(
         sample.ready_marks >= 1,
         "{sample:?} misses the readiness mark"

@@ -65,5 +65,5 @@ fn a_lost_fleets_batch_matches_what_the_replay_dispatcher_takes() {
     // round-trip bound. It is deliberately far wider than the row cap: probing
     // is how a lost fleet is FOUND, and a deployment can hold many more fleets
     // with work in flight than one pass will ever need to repair.
-    assert!(FLEET_LIMIT > ROW_LIMIT);
+    const { assert!(FLEET_LIMIT > ROW_LIMIT) };
 }

@@ -30,12 +30,15 @@
 //! including another bench run. One tag per run costs one array element and
 //! leaves the assignment pass under test rather than around it.
 
+use core::sync::atomic::{AtomicI64, Ordering};
+
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_db::Db;
 use afd_runner::Runners;
+use afd_wire::event::Entry;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 
 use crate::error::Result;
@@ -241,17 +244,24 @@ async fn enqueue(queue: &Redis, seeded: &SeededFleet, now: i64) -> Result<()> {
     let streams = FleetStreams::new(queue.clone());
     streams.ensure_group(&seeded.fleet).await?;
     let created = now.to_string();
+    // `Entry::queued_pairs` and NOT a hand-written field list. The list this
+    // seed carried went stale the moment the ledger added `event_id`: the
+    // reader refuses an entry without it as one nothing admitted, drops it,
+    // and the fleet looks empty — so the lane leased zero fleets and reported
+    // it as a lease-path result. Routing the shape through the producer's own
+    // helper is what makes that impossible to repeat: a field added there
+    // arrives here with it. `afd_fleet`'s queue fixture was repaired the same
+    // way and for the same reason.
+    let logical = afd_admission::logical_id(now, next_sequence());
+    let entry = Entry {
+        actor: BENCH_ACTOR,
+        event_type: EVENT_TYPE,
+        workspace_id: seeded.workspace.as_str(),
+        request_json: BENCH_REQUEST_JSON,
+        created_at: created.as_str(),
+    };
     streams
-        .append(
-            &seeded.fleet,
-            &[
-                ("type", EVENT_TYPE),
-                ("actor", BENCH_ACTOR),
-                ("workspace_id", seeded.workspace.as_str()),
-                ("request", BENCH_REQUEST_JSON),
-                ("created_at", created.as_str()),
-            ],
-        )
+        .append(&seeded.fleet, &entry.queued_pairs(&logical))
         .await?;
     // The token is the caller's to mint, and the ingress path uses the entry
     // it just appended. The fleet id serves here: this lane never reads the
@@ -260,6 +270,16 @@ async fn enqueue(queue: &Redis, seeded: &SeededFleet, now: i64) -> Result<()> {
         .mark(&seeded.fleet, &seeded.fleet)
         .await?;
     Ok(())
+}
+
+/// The next sequence number a logical event id carries, unique in this process.
+///
+/// A logical id is `<millis>-<seq>`, and every fleet in one window is seeded at
+/// the same instant — so the millisecond alone would hand several entries the
+/// same identity, which is the one thing an identity may not do.
+fn next_sequence() -> i64 {
+    static SEQUENCE: AtomicI64 = AtomicI64::new(1);
+    SEQUENCE.fetch_add(1, Ordering::Relaxed)
 }
 
 /// Enrol one runner carrying this run's placement tag.

@@ -36,6 +36,7 @@ use std::time::Instant;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_datastore::ReadyIndex;
+use afd_datastore::ready::Partition;
 use afd_fleet::lease::Leases;
 
 use self::drive::Shared;
@@ -86,6 +87,12 @@ const IDLE_REDIS_CALLS_PER_POLL: &str = "idle_redis_calls_per_poll";
 
 /// Measurement key: how many polls the idle window managed.
 const IDLE_POLLS: &str = "idle_polls";
+
+/// How many marks one partition sweep reads at a time.
+const QUIESCE_PEEK: usize = 256;
+
+/// How many sweeps one partition gets before the depth is reported as it is.
+const QUIESCE_ROUNDS: usize = 16;
 
 /// Parameter key: connections the pool may open, so a p95 is attributable.
 const POOL_SIZE: &str = "pool_size";
@@ -226,12 +233,42 @@ async fn populate(
     Ok((seeded, runners))
 }
 
-/// Clear this run's readiness marks, answering how many the index still
-/// holds afterwards — the depth the idle window will actually poll against.
+/// Empty the readiness index, answering how many marks it still holds —
+/// the depth the idle window will actually poll against.
+///
+/// # Why this clears marks the run did not make
+///
+/// The index is GLOBAL and `Leases::select` peeks it globally, so "idle" is a
+/// property of the whole index and not of this run's fleets. Clearing only
+/// what the run seeded left every other suite's leftovers behind — a lane run
+/// finished with 26 marks across 13 of the 16 partitions — and an idle poll
+/// landing on one of them issues the candidate query it is supposed to prove
+/// it never issues. The measurement then reported a per-poll Postgres cost
+/// that belonged to another suite's litter.
+///
+/// The marks being swept are dead: their fleets live in per-test databases
+/// that were dropped when those suites finished, so the candidate query
+/// filters every one of them out. The only thing they still cost is exactly
+/// what this window measures. Lane binaries run serially, so nothing is
+/// holding a mark this sweep could take from underneath it.
 async fn quiesce(queue: &afd_datastore::Redis, seeded: &[SeededFleet]) -> Result<u64> {
     let ready = ReadyIndex::new(queue.clone());
     for fleet in seeded {
         ready.force_clear(&fleet.fleet).await?;
+    }
+    for partition in Partition::all() {
+        // Bounded rather than `while !empty`: a mark re-appearing every round
+        // would be another writer on the rig, and spinning on it forever would
+        // hang the lane instead of reporting a depth the caller can see.
+        for _round in 0..QUIESCE_ROUNDS {
+            let holding = ready.peek(partition, QUIESCE_PEEK).await?;
+            if holding.is_empty() {
+                break;
+            }
+            for entry in &holding {
+                ready.force_clear(&entry.fleet_id).await?;
+            }
+        }
     }
     Ok(ready.len().await?)
 }
