@@ -131,8 +131,6 @@ function startEventSource(entry: Entry, fleetId: string): void {
     const frame = parseLiveFrame(e.data);
     if (!frame) return;
     received();
-    // A delivered frame is proof the stream works: return to fast backoff.
-    entry.reconnectAttempts = 0;
     onFrame(entry, frame);
   };
   // Named frames dispatch only to their matching listener, never onmessage.
