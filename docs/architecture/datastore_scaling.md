@@ -43,8 +43,27 @@ trade is only sound while an unattended node loss is survivable.
 It is survivable here for one reason: PostgreSQL is authoritative for what was
 accepted, what completed and what delivery is still owed, and Dragonfly
 accelerates discovery and delivery without holding an obligation of its own.
-Losing a node costs throughput and stalls discovery for its slots; it erases no
-work. **That is Dimension 7.8, and 7.8 is not yet proven.** Until it is green,
+Losing a node costs throughput and erases no work — but it can erase
+*discoverability*, and that is the gap Dimension 7.1 closes. The readiness
+index has two writers: ingress marks a fleet as it admits, and the reclaim
+sweeper re-marks one when the *stream* says it still holds work. A fleet whose
+lease expired while its stream was lost is marked by neither, and nothing
+re-leases it until a runner polls it, which nothing prompts. 7.1 adds the first
+PostgreSQL-driven writer: a question the sweeper asks the ledger — does this
+fleet owe work? — answered with a mark and never with a lease flip, since
+`reclaim_prior_active` re-leases from PostgreSQL alone and needs the lease still
+`active`. With that writer in place, every key the daemon holds in Dragonfly is
+rebuildable from the ledger: the streams from `core.fleet_admissions` (replay
+and reconcile), the outbound stream from `core.fleet_obligations` (the
+producer's scan), readiness from admissions and leases (7.1), while `once`
+markers may be lost because the lease path's conflict arm absorbs a
+double-append and the hub holds nothing. `rebuild()` composes those scans into
+one entry point, each looped to zero changed — the operator's tool for tearing
+the cluster down and repopulating it, and the routine 7.8's flush test runs.
+One class is a decision rather than a rebuild: `session` holds single-use
+approval codes with no ledger row, so a flush ends a pending approval and the
+user re-requests; 7.8 asserts that outcome rather than hiding it. **Dimension
+7.8 is not yet proven**, and it is the proof this whole decision rests on. Until it is green,
 this decision rests on a designed property rather than a measured one, and
 nothing should carry production traffic on it.
 
