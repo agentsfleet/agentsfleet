@@ -105,11 +105,11 @@ describe("FleetThread — role rendering: turns and connection", () => {
     reconnecting.unmount();
   });
 
-  it("offers Reconnect only after live updates stop", () => {
+  it("offers Retry now while automatic recovery continues", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
     renderThread();
     expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry now" })).toBeTruthy();
   });
 
   it("announces arrival once, and only when it was actually waiting", async () => {

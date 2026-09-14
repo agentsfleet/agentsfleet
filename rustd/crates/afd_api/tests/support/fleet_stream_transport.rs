@@ -58,6 +58,42 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_gaps() {
+    let watched = Watched::create().await;
+    const VIEWERS: usize = 100;
+    let mut bodies = join_all((0..VIEWERS).map(|_| watched.open())).await;
+    watched.ready(&mut bodies).await;
+    let held = watched
+        .database()
+        .acquire()
+        .await
+        .expect("only pool slot held");
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(15)).await;
+    tokio::time::resume();
+    let heartbeats = join_all(bodies.iter_mut().map(next_frame)).await;
+    for heartbeat in heartbeats {
+        assert_eq!(
+            heartbeat,
+            "event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
+        );
+    }
+    assert_eq!(watched.hub.connections_opened(), 1);
+    assert_eq!(watched.hub.readers(&watched.channel()), VIEWERS);
+    let payload = chunk("after-heartbeat", "one");
+    assert_eq!(watched.publish(&payload).await, 1);
+    for frame in join_all(bodies.iter_mut().map(next_frame)).await {
+        assert_frame(&frame, 1, &payload);
+    }
+    drop(held);
+    drop(bodies);
+    assert_eq!(watched.hub.readers(&watched.channel()), 0);
+    watched.unsubscribed().await;
+    watched.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn reconnect_recovers_a_missed_completion_from_durable_history() {
     let watched = Watched::create().await;
     let mut first = [watched.open().await];
