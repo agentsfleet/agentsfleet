@@ -73,6 +73,9 @@ impl Error {
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
+            // Delegated for the same reason: `afd_outbound` already decides
+            // which of its failures are an outage and which are its own fault.
+            ErrorKind::Outbound { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
@@ -219,6 +222,12 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
+            // The obligation is a PostgreSQL row, so a ledger fault reads as a
+            // database error and not a queue one. `afd_outbound::Error` can
+            // also carry a QUEUE failure, but not on any path that reaches
+            // here: this crate calls only `obligation::owe` and
+            // `obligation::receipt`, and neither touches the stream.
+            | ErrorKind::Outbound { .. }
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.detail(),
