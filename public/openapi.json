@@ -9975,7 +9975,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. ",
+        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint answers with the first run's event instead of starting a second one, so a lost response costs nothing. Omit it and every call is a new message, which is what a person sending twice means. ",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -16663,7 +16663,7 @@
       },
       "SteerRequest": {
         "type": "object",
-        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nOne field, and unknown ones are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
+        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nUnknown fields are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
         "required": [
           "message"
         ],
@@ -16671,6 +16671,13 @@
           "message": {
             "type": "string",
             "description": "What to say to the fleet.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The caller's own name for this operation, repeated across its retries.\n\nDimension 7.5. A timeout does not prove an operation failed, so a client\nthat never saw a response has to be able to ask again without risking a\nsecond run. This is the value that makes the two distinguishable, and\nonly the CALLER can supply it: a server cannot tell a retried POST from\na person pressing send twice, because the bytes are identical.\n\nPresent, it becomes the admission ledger's `producer_key`, so the retry\nconflicts on `UNIQUE (producer, producer_key)` and is answered with the\nfirst admission's event — one run, one charge. Absent, the ledger mints\na key and two identical messages stay two operations, which is the\nbehaviour a person pressing send twice expects.\n\nOptional on purpose rather than required: a human typing in a terminal\nhas no operation to identify, and forcing one would make every caller\ninvent a value whose only job is to be unique."
           }
         }
       },

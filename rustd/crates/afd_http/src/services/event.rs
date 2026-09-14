@@ -135,6 +135,9 @@ impl WorkspaceEvents for History {
 pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// Puts one message on the fleet's stream, answering with its event id.
     ///
+    /// `operation_id` is the CALLER's name for this operation, repeated across
+    /// its retries, or `None` when it has none — see [`afd_events::Steer`].
+    ///
     /// # Errors
     /// Reports a queue that would not take the append.
     fn append(
@@ -143,6 +146,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         workspace: &str,
         actor: &str,
         request_json: &str,
+        operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<String>> + Send;
 }
 
@@ -154,7 +158,8 @@ impl FleetSteering for Steer {
         workspace: &str,
         actor: &str,
         request_json: &str,
+        operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<String>> + Send {
-        Self::append(self, fleet, workspace, actor, request_json)
+        Self::append(self, fleet, workspace, actor, request_json, operation_id)
     }
 }

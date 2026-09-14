@@ -382,7 +382,7 @@ pub struct ThreadResponse<'a> {
 
 /// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
 ///
-/// One field, and unknown ones are ignored rather than refused, which is what
+/// Unknown fields are ignored rather than refused, which is what
 /// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
 /// a field this build does not read is not making a mistake it needs telling
 /// about.
@@ -396,7 +396,36 @@ pub struct SteerRequest<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES))]
     pub message: Cow<'a, str>,
+
+    /// The caller's own name for this operation, repeated across its retries.
+    ///
+    /// Dimension 7.5. A timeout does not prove an operation failed, so a client
+    /// that never saw a response has to be able to ask again without risking a
+    /// second run. This is the value that makes the two distinguishable, and
+    /// only the CALLER can supply it: a server cannot tell a retried POST from
+    /// a person pressing send twice, because the bytes are identical.
+    ///
+    /// Present, it becomes the admission ledger's `producer_key`, so the retry
+    /// conflicts on `UNIQUE (producer, producer_key)` and is answered with the
+    /// first admission's event — one run, one charge. Absent, the ledger mints
+    /// a key and two identical messages stay two operations, which is the
+    /// behaviour a person pressing send twice expects.
+    ///
+    /// Optional on purpose rather than required: a human typing in a terminal
+    /// has no operation to identify, and forcing one would make every caller
+    /// invent a value whose only job is to be unique.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES)))]
+    pub operation_id: Option<Cow<'a, str>>,
 }
+
+/// The longest client operation identity a steer may carry.
+///
+/// Generous enough for a UUID, a ULID, a vendor's delivery id or a short
+/// composite, and bounded because it is stored per admission and indexed: an
+/// unbounded key would let a caller decide how much of the ledger's index one
+/// of its retries occupies.
+pub const OPERATION_ID_MAX_BYTES: usize = 200;
 
 /// The longest thing anyone may say to a fleet in one steer.
 ///
