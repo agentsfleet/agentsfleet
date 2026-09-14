@@ -44,25 +44,35 @@ async function installBlankFrameAudit(page: Page): Promise<void> {
 async function expectShellLoadingFallback(page: Page): Promise<void> {
   const fallback = page.getByTestId("shell-route-loading");
   await expect(fallback).toBeHidden();
-  // Reproduce the empty route slot captured in the failed CI trace. Keep
-  // the original nodes so React retains ownership when they are restored.
-  const detached = await fallback.evaluateHandle((element) => {
+  // Probe the empty slot and restore it in one browser task. Yielding with
+  // React-owned nodes detached lets hydration or a live update remove them
+  // a second time, crashing React and turning the next link into a reload.
+  const emptySlot = await fallback.evaluate((element) => {
     const container = element.parentElement;
     if (!container) throw new Error("shell route container is missing");
     const nodes = Array.from(container.childNodes).filter((node) => node !== element);
-    for (const node of nodes) container.removeChild(node);
-    return { container, nodes, element };
-  });
-  try {
-    await expect(fallback.getByRole("status")).toBeVisible();
-    await expect(fallback).toHaveText("Loading page…");
-    expect(await page.locator("main").innerText()).toContain("Loading page…");
-  } finally {
-    await detached.evaluate(({ container, nodes, element }) => {
+    const isVisible = (node: Element | null): boolean => {
+      if (!node || node.closest('[aria-hidden="true"]')) return false;
+      const box = node.getBoundingClientRect();
+      return node.checkVisibility({ visibilityProperty: true }) && box.width > 0 && box.height > 0;
+    };
+    try {
+      for (const node of nodes) container.removeChild(node);
+      const status = element.querySelector('[role="status"]');
+      return {
+        visible: isVisible(element),
+        statusVisible: isVisible(status),
+        text: element.textContent,
+        mainText: element.closest("main")?.innerText,
+      };
+    } finally {
       for (const node of nodes) container.insertBefore(node, element);
-    });
-    await detached.dispose();
-  }
+    }
+  });
+  expect(emptySlot.visible).toBe(true);
+  expect(emptySlot.statusVisible).toBe(true);
+  expect(emptySlot.text).toBe("Loading page…");
+  expect(emptySlot.mainText).toContain("Loading page…");
   await expect(fallback).toBeHidden();
   await expectFleetsRouteLoaded(page);
 }
@@ -97,6 +107,8 @@ test.describe("authenticated dashboard fluidity", () => {
   test(
     "test_shell_navigation_and_workspace_creation_survive_boundary_split",
     async ({ page }) => {
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
       await expect(page.locator('[data-surface="dashboard"]')).toBeVisible();
@@ -144,6 +156,7 @@ test.describe("authenticated dashboard fluidity", () => {
       });
       await expect(mobileNavigation).toBeHidden();
       await expect(page.locator("main")).toBeVisible();
+      expect(pageErrors).toEqual([]);
       expect(await blankFrameCount(page)).toBe(0);
     },
   );
