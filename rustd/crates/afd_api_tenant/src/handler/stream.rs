@@ -27,6 +27,9 @@
 
 mod wall;
 
+#[cfg(test)]
+mod transport_tests;
+
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -71,7 +74,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
     summary = "Stream live fleet activity",
     description = concat!(
         "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each ",
-        "message includes `id`, `event`, and `data`. `event` is the `kind` ",
+        "activity message includes `id`, `event`, and `data`. `event` is the `kind` ",
         "field that leads `data`. The daemon brackets every run. ",
         "`event_received` carries `event_id`, `actor`, `event_type` and ",
         "`created_at` when a run's row is written. `event_complete` carries ",
@@ -85,7 +88,9 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "and `tool_call_completed`. Identifiers restart at 0 ",
         "for each connection. The route ignores `Last-Event-ID`. At capacity, ",
         "the route returns 503 `UZ-API-002` with `Retry-After`. Read missed ",
-        "events before reconnecting. ",
+        "events before reconnecting. After 15 seconds without activity, the ",
+        "stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. ",
+        "Heartbeats have no `id` and do not advance the activity sequence. ",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -142,14 +147,17 @@ pub(crate) async fn fleet<D: Services>(
         "can overflow its bounded server queue. ",
         "The server then sends `event: catching_up` with ",
         "`{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop ",
-        "count since the previous signal. Control frames use identifier 0 and ",
+        "count since the previous signal. These control frames use identifier 0 and ",
         "do not advance the activity sequence. Activity identifiers start at ",
         "0 for each connection. The route ignores `Last-Event-ID`. The ",
         "connection adjusts its fan-in as fleets appear or disappear. A ",
         "caller whose workspace access is revoked stops receiving on the next ",
         "refresh. At capacity the route returns 503 `UZ-API-002` with ",
         "`Retry-After`. After a reconnect opens, recover the gap through `GET ",
-        "/v1/workspaces/{workspace_id}/events`. ",
+        "/v1/workspaces/{workspace_id}/events`. After 15 seconds without a ",
+        "frame, the stream sends `event: heartbeat` with ",
+        "`data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not ",
+        "advance the activity sequence. ",
     ),
     params(
         afd_http::openapi::path::Workspace,
@@ -193,9 +201,9 @@ fn admit(live: &Live) -> Result<Slot, Refusal> {
 
 /// One response body, holding `slot` for as long as it is alive.
 ///
-/// The heartbeat is `axum`'s own keep-alive rather than a frame this crate
-/// emits: it is a comment, an `EventSource` ignores it, and the WRITE is the
-/// point — it is what discovers a client that went away without closing.
+/// Axum's keep-alive emits a named event so browsers can observe transport
+/// liveness. It has no activity ID, and ordinary traffic resets its timer.
+/// The event is built once per response; heartbeats need no datastore work.
 fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
     let held = stream::unfold((frames, slot), |(mut frames, slot)| async move {
         let frame = frames.next().await?;
@@ -205,7 +213,11 @@ fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
         .keep_alive(
             KeepAlive::new()
                 .interval(afd_sse::HEARTBEAT_INTERVAL)
-                .text(afd_sse::HEARTBEAT_TEXT),
+                .event(
+                    Event::default()
+                        .event(afd_sse::HEARTBEAT_EVENT)
+                        .data(afd_sse::HEARTBEAT_DATA),
+                ),
         )
         .into_response()
 }
