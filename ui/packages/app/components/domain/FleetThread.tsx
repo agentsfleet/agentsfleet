@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -23,7 +23,6 @@ import {
 } from "./useFleetDeliveryFailure";
 import { useNewMessageHandler } from "./useFleetMessageDelivery";
 import { FleetThreadViewport } from "./FleetThreadViewport";
-import { STATUS_OPTIMISTIC } from "./fleetMessageStatus";
 
 export type FleetThreadProps = {
   workspaceId: string;
@@ -57,6 +56,8 @@ export function FleetThread({
   initial,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  const [submission, setSubmission] = useState<{ fleetId: string; id: string } | null>(null);
+  const onSubmitted = useCallback((id: string) => setSubmission({ fleetId, id }), [fleetId]);
   // The header row is chrome that earns its space only while the stream is not
   // yet fine. `arrived` keeps it for the length of the arrival cue so the
   // operator who WAS waiting gets the confirmation, and then the row goes —
@@ -77,6 +78,7 @@ export function FleetThread({
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     markOptimisticFailed: stream.markOptimisticFailed,
+    onSubmitted,
     onFailure: setFailedDelivery,
   });
   const { discardOptimistic } = stream;
@@ -93,8 +95,7 @@ export function FleetThread({
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
-  const newestEvent = stream.events.at(-1);
-  const pendingMessageId = newestEvent?.status === STATUS_OPTIMISTIC ? newestEvent.id : null;
+  const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
   const runtime = useExternalStoreRuntime<FleetThreadEntry>({
     messages: entries,
     convertMessage: convertEntry,
@@ -138,7 +139,7 @@ export function FleetThread({
           ) : null}
           <FleetThreadViewport
             eventsCount={stream.events.length}
-            pendingMessageId={pendingMessageId}
+            submittedMessageId={submittedMessageId}
             connectionStatus={stream.connectionStatus}
             failureKind={failedDelivery?.kind ?? null}
             onRetry={retryFailedDelivery}

@@ -17,21 +17,21 @@ const BACKFILL_LABEL = "Loading recent activity";
 type FleetThreadViewportProps = {
   eventsCount: number;
   connectionStatus: ConnectionStatus;
-  pendingMessageId: string | null;
+  submittedMessageId: string | null;
   failureKind: DeliveryFailureKind | null;
   onRetry: () => void;
 };
 
 export function FleetThreadViewport({
-  eventsCount, connectionStatus, pendingMessageId, failureKind, onRetry,
+  eventsCount, connectionStatus, submittedMessageId, failureKind, onRetry,
 }: FleetThreadViewportProps) {
   const viewport = useThreadViewportStore();
   // The external runtime stays steerable while the fleet runs, so its normal
   // run-start scroll event never fires. Only a newly submitted message pulls
   // the reader to the latest turn; background replies leave history alone.
   useLayoutEffect(() => {
-    if (pendingMessageId) viewport.getState().scrollToBottom({ behavior: "instant" });
-  }, [pendingMessageId, viewport]);
+    if (submittedMessageId) viewport.getState().scrollToBottom({ behavior: "instant" });
+  }, [submittedMessageId, viewport]);
   return (
     <ThreadPrimitive.Root
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
