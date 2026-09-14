@@ -25,6 +25,7 @@
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
 mod accept;
+pub mod drain;
 mod exporting;
 mod optional;
 mod runtime;
@@ -41,6 +42,7 @@ use tokio::net::TcpListener;
 pub use self::accept::Acceptor;
 #[cfg(feature = "test-util")]
 pub use self::accept::serve_accepts;
+pub use self::drain::{DRAIN_TIMEOUT, Drain, Settled};
 
 use self::accept::accept_loop;
 use self::exporting::gauge_sources;
@@ -77,6 +79,10 @@ pub struct Booted {
     pub database: Db,
     /// The Redis client, likewise.
     pub queue: Redis,
+    /// The accept loop's stop signal and its in-flight count, so the shutdown
+    /// path can stop accepting and wait for live requests before the supervisor
+    /// cancels anything. Cloned from the one the accept loop holds.
+    pub drain: Drain,
 }
 
 /// Opens everything the daemon serves through, in `cmd/serve.zig`'s order.
@@ -169,7 +175,8 @@ async fn open(
     )
     .await;
     report_workers(supervisor, &analytics);
-    let address = listen(port, router, supervisor).await?;
+    let drain = Drain::new();
+    let address = listen(port, router, supervisor, drain.clone()).await?;
     analytics.report(&Telemetry::ServerStarted {
         port: address.port(),
     });
@@ -182,6 +189,7 @@ async fn open(
         address,
         database: runtime.database,
         queue: runtime.queue,
+        drain,
     })
 }
 
@@ -230,11 +238,14 @@ async fn listen(
     port: u16,
     router: axum::Router,
     supervisor: &mut Supervisor,
+    drain: Drain,
 ) -> Result<SocketAddr, BootFailure> {
     let listener = dual_stack_listener(port).await?;
     let address = listener.local_addr()?;
+    // `token` is the supervisor's: the loop passes it to each connection as the
+    // ABORT signal, which fires only after the drain's bound has expired.
     supervisor.spawn(ACCEPT_LOOP, move |token| {
-        accept_loop(listener, router, token)
+        accept_loop(listener, router, drain, token)
     });
     Ok(address)
 }
@@ -303,6 +314,7 @@ where
     // task rather than a stopped server, and `Daemon::run` reads the outcome
     // from the report either way.
     let outcome = Daemon::new(supervisor)
+        .draining(booted.drain.clone())
         .run(std::future::pending(), signal)
         .await;
 
