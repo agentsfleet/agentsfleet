@@ -45,6 +45,21 @@ impl Fixtures {
             .expect("the lease write must run");
     }
 
+    /// Removes one lease row, as the retention sweep does once it is old
+    /// enough (`afd_runner`'s `DELETE FROM fleet.runner_leases`).
+    ///
+    /// The race it stands in for is narrow and real: a report loads its lease,
+    /// the sweep removes the row, and the claim then matches nothing for a
+    /// reason that is neither a lost fence nor a settled lease.
+    pub(crate) async fn delete_lease(&self, lease: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("DELETE FROM fleet.runner_leases WHERE id = $1::uuid")
+            .bind(lease)
+            .execute(&mut *connection)
+            .await
+            .expect("the lease delete must run");
+    }
+
     /// Stands a metering cursor up mid-slice, as a dying holder would leave it.
     pub(crate) async fn set_metered_input(&self, fleet: &str, tokens: i64) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");

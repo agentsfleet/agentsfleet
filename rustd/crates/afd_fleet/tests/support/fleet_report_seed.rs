@@ -27,7 +27,7 @@ use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_fleet::lease::Plane;
-use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases};
+use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
 use afd_fleet::memory::Memories;
 
 use crate::requests::ENROLLED_AT;
@@ -194,6 +194,30 @@ pub(crate) async fn held() -> Held {
 const FIXTURE_KEK_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 impl Fixtures {
+    /// Runs the claim-and-settle statement by itself, on its own connection.
+    ///
+    /// The verb takes the connection its caller's transaction owns, because
+    /// the money commits with the run's result, its checkpoint and the freed
+    /// slot — `Leases::commit_report` is the boundary. A suite whose subject
+    /// is the STATEMENT wants it alone and autocommitted, which is what this
+    /// is: one pooled connection, one statement, nothing around it to confuse
+    /// what the assertions are measuring.
+    pub(crate) async fn settle_alone(
+        &self,
+        leases: &Leases,
+        lease_id: &str,
+        runner: &Uuid7,
+        meter: Meter,
+        succeeded: bool,
+        at: UnixMillis,
+    ) -> Settled {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        leases
+            .claim_and_settle(&mut connection, lease_id, runner, meter, succeeded, at)
+            .await
+            .expect("the settle must reach the datastore")
+    }
+
     /// The whole lease plane, for the two verbs that need more than the store.
     ///
     /// The report and renew SQL is provable through [`Leases`] alone, which is

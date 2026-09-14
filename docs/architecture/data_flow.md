@@ -239,6 +239,12 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
 
 The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `rustd/crates/afd_api_runner/src/handler/runner/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
 
+**The report's Postgres writes do not commit independently.** The claim-and-settle, write 7, write 10 and write 12 ride ONE transaction: the money, the run's result, the resume cursor and the freed slot commit together or none of them does. That is not tidiness. Split, the window between the settle and write 7 is a window in which a tenant is charged for a run whose answer is nowhere — and nothing recovers it, because the lease is already `reported` and every retry is refused. Inside one transaction a failure at any statement leaves the lease `active` and the wallet untouched, which makes the runner's retry the recovery path instead of a permanent conflict.
+
+The queue is **not** in that transaction and cannot be: nothing spans Postgres and the datastore. Write 11 (`XACK`) and write 8 (the activity frame) run after the commit. That ordering is the safe direction — an acknowledgement a rollback then un-did takes an entry off the stream with nothing durable to show for it, where an acknowledgement that never lands leaves the entry pending and redelivered against durable terminal state.
+
+A retry that arrives **after** the commit — the response was lost, not the work — finds the lease `reported` by the same runner. It is answered with the stored outcome and charges nothing, so the runner stops retrying with its result safely landed. The lease id is the report's idempotency key, which is why `POST /v1/runners/me/reports` takes no `Idempotency-Key` header. A holder the fleet has genuinely superseded is a different empty claim and still gets `409`: the lease there is not `reported`, it is somebody else's.
+
 ## The three durable stores: who owns what
 
 The flow writes three Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.

@@ -482,8 +482,9 @@ async fn run_one_to_settlement(
         )
         .await
         .expect("the lease row must be written");
-    let Settled::Claimed(charged) = leases
-        .claim_and_settle(
+    let Settled::Claimed(charged) = fixtures
+        .settle_alone(
+            leases,
             issued.lease_id.as_str(),
             runner,
             run_fee_meter(),
@@ -491,7 +492,6 @@ async fn run_one_to_settlement(
             settled_at,
         )
         .await
-        .expect("the settle must reach the datastore")
     else {
         unreachable!("the only holder of this fleet cannot be fenced out")
     };
