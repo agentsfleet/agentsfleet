@@ -89,6 +89,18 @@ impl From<afd_events::Error> for Error {
     }
 }
 
+/// The delivery ledger would not answer.
+///
+/// `afd_outbound` owns `core.fleet_obligations` and the report path commits one
+/// through it, on the transaction's own connection. Lifted so `?` carries that
+/// fault without a conversion at the call site — the same shape the event store
+/// above uses, for the same reason: the lease still speaks this crate's error.
+impl From<afd_outbound::Error> for Error {
+    fn from(source: afd_outbound::Error) -> Self {
+        Self::new(ErrorKind::Outbound { source })
+    }
+}
+
 /// An identifier could not be minted — the instant is unrepresentable.
 ///
 /// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure

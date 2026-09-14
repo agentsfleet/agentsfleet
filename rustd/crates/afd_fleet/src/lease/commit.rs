@@ -41,10 +41,10 @@ use afd_events::Closed;
 use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
-use crate::lease::obligation::Delivery;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::store::Leases;
 use crate::lease::verdict::Terminal;
+use afd_outbound::obligation::Delivery;
 
 /// Statement name, for the context a transaction failure carries.
 const CONTEXT_COMMIT: &str = "report commit";
@@ -199,8 +199,8 @@ impl Leases {
             .owe_delivery(
                 &mut transaction,
                 Delivery {
-                    fleet_id: &lease.fleet_id,
-                    workspace_id: &lease.workspace_id,
+                    fleet_id: lease.fleet_id.as_str(),
+                    workspace_id: lease.workspace_id.as_str(),
                     provider: &lease.provider,
                     event_id: &lease.event_id,
                     answer,

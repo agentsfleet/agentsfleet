@@ -72,6 +72,7 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
             | ErrorKind::Envelope { .. }
             | ErrorKind::EnvelopeMalformed { .. }
             | ErrorKind::Rejected { .. }

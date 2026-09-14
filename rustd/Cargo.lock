@@ -487,6 +487,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_gate",
  "afd_observability",
+ "afd_outbound",
  "afd_runner",
  "afd_state",
  "afd_wire",
