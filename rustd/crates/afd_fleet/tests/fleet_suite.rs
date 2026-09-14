@@ -30,6 +30,8 @@ mod view_heartbeat;
 mod integration_activity_publish;
 #[path = "integration_admission_recovery.rs"]
 mod integration_admission_recovery;
+#[path = "integration_cluster_rebuild.rs"]
+mod integration_cluster_rebuild;
 #[path = "integration_credential_mint.rs"]
 mod integration_credential_mint;
 #[path = "integration_gate_grants.rs"]
