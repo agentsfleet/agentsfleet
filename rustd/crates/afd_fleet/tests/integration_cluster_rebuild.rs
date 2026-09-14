@@ -87,10 +87,17 @@ struct Staged {
     lease_id: Option<String>,
 }
 
-fn admission<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
+/// The producer key, scoped by fleet: `(producer, producer_key)` is unique
+/// across the whole ledger, so a key shared by every fleet would dedup them
+/// all to the first row.
+fn producer_key(fleet: &str) -> String {
+    format!("{fleet}:{DELIVERY}")
+}
+
+fn admission<'a>(fleet: &'a str, workspace: &'a str, key: &'a str) -> Admission<'a> {
     Admission {
         producer: Producer::Webhook,
-        key: Key::Repeated(DELIVERY),
+        key: Key::Repeated(key),
         fleet,
         workspace,
         actor: ACTOR,
@@ -109,8 +116,9 @@ fn ledger(fixtures: &Fixtures) -> Admissions {
 async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMillis) -> Staged {
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(fixtures).await;
     fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let key = producer_key(&fleet);
     let admitted = ledger(fixtures)
-        .admit(admission(&fleet, &workspace))
+        .admit(admission(&fleet, &workspace, &key))
         .await
         .expect("a live queue admits and receipts");
 
@@ -152,8 +160,9 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
 /// A fleet whose one admission is receipted and sits on the stream unread.
 async fn queued_undelivered(fixtures: &Fixtures) -> Staged {
     let (fleet, workspace, _tenant, [poller]) = seeded_parts::<1>(fixtures).await;
+    let key = producer_key(&fleet);
     let admitted = ledger(fixtures)
-        .admit(admission(&fleet, &workspace))
+        .admit(admission(&fleet, &workspace, &key))
         .await
         .expect("a live queue admits and receipts");
     Staged {
@@ -169,8 +178,9 @@ async fn queued_undelivered(fixtures: &Fixtures) -> Staged {
 async fn admitted_unreceipted(fixtures: &Fixtures) -> Staged {
     let (fleet, workspace, _tenant, [poller]) = seeded_parts::<1>(fixtures).await;
     let deferring = Admissions::for_tests(fixtures.database.clone(), queue::unreachable());
+    let key = producer_key(&fleet);
     let admitted = deferring
-        .admit(admission(&fleet, &workspace))
+        .admit(admission(&fleet, &workspace, &key))
         .await
         .expect("a queue that is away defers: the row commits and the caller is answered");
     assert!(
@@ -257,7 +267,7 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     // on `rebuild` explains: reconcile feeds replay, and reclaim marks last.
     let admissions = ledger(&fixtures);
     let reconcile = Reconcile::new(admissions.clone());
-    let replay = Replay::new(admissions);
+    let replay = Replay::for_rebuild(admissions);
     let reclaim = Reclaim::new(
         fixtures.database.clone(),
         fixtures.queue().clone(),
