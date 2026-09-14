@@ -5,13 +5,9 @@ import { agentDisplayName } from "@/lib/fleets/agent-label";
 /**
  * One fleet, spelled the same way on every surface that names one.
  *
- * The callsign itself is mixed case (`Orly-6056`) because `data-agent-name`,
- * aria-labels and sort keys all want it that way; the UPPERCASE is typography,
- * carried by `EYEBROW_CLASS`. That split is why the Fleets tile read
- * `AGENT ORLY-6056` while Billing read `Agent Orly-6056` — each render site
- * decided its own casing, and one of them forgot. Rendering through this
- * component is what makes the decision once; the text itself is composed in
- * `lib/fleets/agent-label.ts`, where billing and the sort keys read it too.
+ * The shared display name is uppercase on every surface, including labels,
+ * sort keys and the data attribute. EYEBROW_CLASS supplies the visual rhythm.
+ * The text itself is composed in `lib/fleets/agent-label.ts`.
  */
 export function AgentLabel({
   fleetId,

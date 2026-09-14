@@ -28,6 +28,7 @@ export type DashboardRowProps = Omit<ComponentProps<"div">, "title"> & {
   description?: ReactNode;
   meta?: ReactNode;
   action?: ReactNode;
+  stackActionOnMobile?: boolean;
   /**
    * The element the title renders as. Defaults to `"h3"` so a collection of
    * rows is navigable.
@@ -49,6 +50,7 @@ export function DashboardRow({
   description,
   meta,
   action,
+  stackActionOnMobile = false,
   titleAs: TitleTag = "h3",
   className,
   ref,
@@ -59,6 +61,7 @@ export function DashboardRow({
       ref={ref}
       className={cn(
         "flex items-start gap-3 border-b border-border px-lg py-md last:border-b-0",
+        stackActionOnMobile && "max-sm:flex-wrap",
         "transition-colors duration-snap ease-snap hover:bg-secondary",
         className,
       )}
@@ -81,7 +84,7 @@ export function DashboardRow({
         ) : null}
         {meta ? <div className="mt-2">{meta}</div> : null}
       </div>
-      {action ? <div className="ml-auto flex-none">{action}</div> : null}
+      {action ? <div className={cn("ml-auto flex-none", stackActionOnMobile && "max-sm:w-full")}>{action}</div> : null}
     </div>
   );
 }

@@ -155,6 +155,7 @@ export function OAuthConnectorRow({
   return (
     <DashboardRow
       data-testid={`integration-${entry.id}`}
+      stackActionOnMobile
       icon={<Icon size={16} />}
       title={entry.display_name}
       description={
@@ -168,7 +169,7 @@ export function OAuthConnectorRow({
         </>
       }
       action={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:justify-start">
           <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>
             {pill.label}
           </StatusPill>

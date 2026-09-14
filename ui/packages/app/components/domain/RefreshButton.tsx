@@ -66,12 +66,14 @@ export function RefreshButton({
       <output className="sr-only" data-testid="refresh-ack">
         {refreshed ? REFRESHED_LABEL : ""}
       </output>
+      {/* Page headers require a 32px target; IconAction's compact row size
+          would shrink this control below that minimum. */}
       <TooltipButton
         size="sm"
-        variant="outline"
         className="aspect-square px-0"
+        variant="outline"
         aria-label={refreshing ? REFRESHING_LABEL : label}
-        tooltip={label}
+        tooltip={refreshing ? REFRESHING_LABEL : label}
         disabled={refreshing}
         aria-busy={refreshing}
         onClick={refresh}

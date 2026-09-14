@@ -29,7 +29,7 @@ describe("the agent label has one composer", () => {
     // Dimension 5.2.
     expect(chargeAgentLabel(charge(FLEET_ID))).toBe(agentDisplayName(FLEET_ID));
     expect(agentDisplayName(FLEET_ID)).toBe(
-      `${AGENT_PREFIX} ${deriveFleetIdentity(FLEET_ID).callsign}`,
+      `${AGENT_PREFIX} ${deriveFleetIdentity(FLEET_ID).callsign.toUpperCase()}`,
     );
     expect(chargeAgentLabel(charge(null))).toBe(DELETED_AGENT_LABEL);
   });
