@@ -76,6 +76,11 @@ export class FakeEventSource {
     this.onopen?.call(this as unknown as EventSource, {} as Event);
   }
 
+  heartbeat(): void {
+    const ev = { data: "" } as MessageEvent;
+    for (const fn of this.listeners.get("heartbeat") ?? []) fn(ev);
+  }
+
   fail(): void {
     this.onerror?.call(this as unknown as EventSource, {} as Event);
   }

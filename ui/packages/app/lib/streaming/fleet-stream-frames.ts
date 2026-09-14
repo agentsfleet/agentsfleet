@@ -28,6 +28,16 @@ import {
 // spelling marks the turn done rather than leaving it working forever.
 const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(EVENT_STATUS));
 
+export function parseLiveFrame(data: string): LiveFrame | null {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    if (!parsed || typeof parsed !== "object" || typeof (parsed as { kind?: unknown }).kind !== "string") return null;
+    return parsed as LiveFrame;
+  } catch {
+    return null;
+  }
+}
+
 export function applyLiveFrame(
   prev: FleetEvent[],
   frame: LiveFrame,

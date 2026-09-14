@@ -4,8 +4,8 @@ import { Alert, Button } from "@agentsfleet/design-system";
 
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 
-const OFFLINE_MESSAGE = "Live updates stopped. Reconnect to resume updates.";
-const RECONNECT_LABEL = "Reconnect";
+const OFFLINE_MESSAGE = "Live updates are temporarily unavailable. We’re reconnecting automatically.";
+const RECONNECT_LABEL = "Retry now";
 
 export function FleetConnectionNotice({
   status,
