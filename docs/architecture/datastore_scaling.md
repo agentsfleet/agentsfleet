@@ -10,7 +10,7 @@ executable: false
 
 | Decision | Requirement |
 |---|---|
-| Required target | Dragonfly Cloud Swarm must pass the application and recovery tests before this work is complete. |
+| Required target | Four self-hosted Dragonfly processes, one region, must pass the application and recovery tests before this work is complete. Dragonfly Cloud Swarm is the later move, not the first one (Indy, 2026-09-14). |
 | Existing deployment | Redis is not a supported backend. Dragonfly, cluster-only, is the datastore; the cutover is recorded in the M192_001 Discovery (Indy, 2026-09-12). |
 | Rust client | redis-rs `cluster_async` over RESP3 through the existing operation-specific boundaries is the only transport; primaries only; there is no standalone path and no topology selector. |
 | Evidence | Compare the local cluster before and after each change on the same rig and workload; the Redis baseline (closed PR #681) is a historical reference point only. |
@@ -26,7 +26,58 @@ The [datastore scaling roadmap](./roadmap.md#datastore-scaling) links the implem
 
 Redis carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.
 
-Dragonfly Cloud Swarm is the required destination. There is no Dragonfly single-shard migration stage. Changing that destination requires an explicit user decision. Redis support remains part of the acceptance requirements.
+Four self-hosted Dragonfly processes in one region are the near-term destination; Dragonfly Cloud Swarm is where this moves when operational risk justifies its control plane. There is no Dragonfly single-shard migration stage. Changing that destination requires an explicit user decision — this one was made on 2026-09-14 and is recorded below. Redis support remains part of the acceptance requirements.
+
+## Destination: self-hosted first, Swarm later (Indy, 2026-09-14)
+
+Swarm was the recorded destination until this decision. What changed is not the
+data plane — it is the price of the control plane, and when it is worth paying.
+
+Four processes are not a cheap Swarm. They are four processes that need their
+own cluster controller. Dragonfly's own cluster-mode documentation says
+multi-shard server mode does not manage failover, health, rebalancing or
+consistent topology configuration; Swarm is what supplies those. So a
+self-hosted deployment buys the data plane and owes the operations, and that
+trade is only sound while an unattended node loss is survivable.
+
+It is survivable here for one reason: PostgreSQL is authoritative for what was
+accepted, what completed and what delivery is still owed, and Dragonfly
+accelerates discovery and delivery without holding an obligation of its own.
+Losing a node costs throughput and stalls discovery for its slots; it erases no
+work. **That is Dimension 7.8, and 7.8 is not yet proven.** Until it is green,
+this decision rests on a designed property rather than a measured one, and
+nothing should carry production traffic on it.
+
+Move to Swarm when the cost of an unattended failover exceeds the difference
+between the two bills.
+
+### What the local rig does not prove
+
+`scripts/dragonfly-cluster.sh` runs all four nodes in ONE container's network
+namespace, every node announcing `127.0.0.1`, because a multi-container layout
+makes a `MOVED` reply name an address that does not resolve from the host. That
+is the right trade for deterministic local addressability and it is why the lane
+is reliable. It also means the rig proves neither host failure nor real DNS
+between nodes. Proving those needs four actual machines with announced internal
+hostnames, on the platform that will run them — a staging lane this repository
+does not have yet, and a separate milestone from M192.
+
+### A node can abort on its own (2026-09-14)
+
+Dragonfly v1.40.2 took a `SIGABRT` mid-run on the local cluster:
+`db_slice.cc:1176 Check failed: res.is_new`, through
+`CreateGroup → OpCreate → DbSlice::AddNew`. The node died; the other three kept
+running and every suite then failed with `Connection refused`. A 64-way
+concurrent `XGROUP CREATE … MKSTREAM` does NOT reproduce it — Redis 7.4.11 and
+Dragonfly v1.40.2 both answer that correctly with one `OK` and 63 `BUSYGROUP` —
+so the trigger is not group creation alone. The same window carried slot
+migration and `DFLYCLUSTER FLUSHSLOTS`, which is the leading unproven candidate.
+
+Recorded because it bears on the decision above: a node here can die from an
+internal assertion on a routine command path, not only from infrastructure. A
+self-hosted deployment must therefore restart a dead process automatically and
+must not assume node loss is rare. Second observed occurrence; the first is in
+the M192_001 session record.
 
 ## What the cluster probe showed (2026-09-12)
 

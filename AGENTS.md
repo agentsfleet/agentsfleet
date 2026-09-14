@@ -12,8 +12,10 @@ facts.
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
 - The datastore is Dragonfly, cluster-only, per [the datastore requirements](docs/architecture/datastore_scaling.md).
   `agentsfleetd` speaks one transport — redis-rs `cluster_async` over RESP3 — with no standalone
-  path and no topology selector; a seed that is not a cluster refuses boot. Dragonfly Cloud Swarm
-  is the deployment target and the local lane is a real four-node cluster. Redis is not a supported
+  path and no topology selector; a seed that is not a cluster refuses boot. Four self-hosted
+  Dragonfly processes in one region are the deployment target, with Dragonfly Cloud Swarm the
+  later move once its control plane is worth its bill (Indy, 2026-09-14, superseding the earlier
+  "Swarm is the required target" rule); the local lane is a real four-node cluster. Redis is not a supported
   backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
   "Redis remains the default" rule. The crate is `afd_datastore`; the `REDIS_*` environment
   variable names are unchanged, because they are a deployment contract renamed only by its own change.
