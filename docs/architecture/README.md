@@ -33,7 +33,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
 | Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER" |
 | What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §Steer flow end-to-end |
-| Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The three durable stores |
+| Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The five durable stores |
 | How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
 | What happens if Redis blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
 | Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §"The webhook auth taxonomy" |
@@ -91,7 +91,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🧭 [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
 | 📐 [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
 | 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises a Fleet. Includes Fleet Bundle entrypoints, the CLI + template-catalogue install walkthrough, deployment posture, and the model-cap origin story (§8.7). |
-| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
+| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the five durable stores, the Dragonfly streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
 | 📦 [`fleet_bundles.md`](./fleet_bundles.md) | The bundle/fleet split: how a GitHub source is fetched, re-packed into agentsfleet's own canonical tar, and stored across R2 + Postgres; what is immutable vs `PATCH`-editable; the runtime read path; and the current support-file storage redundancy. |
 | 🏃 [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the M80 roadmap. Sibling of `data_flow.md` (the same runtime, traced per event). |
 | 🧰 [`capabilities.md`](./capabilities.md) | What the fleet has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
