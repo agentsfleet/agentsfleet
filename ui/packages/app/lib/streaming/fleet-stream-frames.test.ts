@@ -23,9 +23,9 @@ describe("mergeBackfill", () => {
   it("keeps multiple pending submissions after settled rows in submission order", () => {
     const merged = mergeBackfill(
       [
-        evt({ id: "pending-1", status: "optimistic", createdAt: new Date(MS_PER_SECOND) }),
+        evt({ id: "pending-1", status: "received", clientTimestamp: true, createdAt: new Date(MS_PER_SECOND) }),
         evt({ id: "settled", status: "processed", createdAt: new Date(2 * MS_PER_SECOND) }),
-        evt({ id: "pending-2", status: "optimistic", createdAt: new Date(0) }),
+        evt({ id: "pending-2", status: "optimistic", clientTimestamp: true, createdAt: new Date(0) }),
       ],
       [row({ event_id: "server", status: "processed", created_at: 3 * MS_PER_SECOND })],
     );
