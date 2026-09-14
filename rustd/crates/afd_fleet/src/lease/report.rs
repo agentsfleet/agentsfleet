@@ -138,9 +138,22 @@ impl Plane {
                 self.acknowledge_again(&lease, lease_id).await;
                 Ok(reconciled(lease, Nanos::ZERO, true))
             }
-            Committed::Settled { charged, closed } => {
+            Committed::Settled {
+                charged,
+                closed,
+                owed,
+            } => {
                 self.announce(runner_id, lease_id, &lease, closed, charged, now)
                     .await;
+                if let Some(obligation) = owed {
+                    self.queue_owed_answer(
+                        &obligation,
+                        &lease,
+                        request.response_text.as_ref(),
+                        now,
+                    )
+                    .await;
+                }
                 Ok(reconciled(lease, charged, false))
             }
         }

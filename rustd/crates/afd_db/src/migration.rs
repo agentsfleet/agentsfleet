@@ -157,6 +157,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("910_fleet_admissions.sql"),
     migration!("911_runner_leases_receipt.sql"),
     migration!("912_repair_verifications_drop_once_cleanup.sql"),
+    migration!("913_fleet_obligations.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

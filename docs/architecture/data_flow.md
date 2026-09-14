@@ -226,6 +226,10 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║      context_json, execution_id=NULL   ║     clears handle,
            ║  11. XACK fleet:{id}:events            ║     advances bookmark
            ║  12. release affinity (token-guard)    ║
+           ║  13. INSERT core.fleet_obligations     ║   ← the answer is OWED
+           ║      receipt=NULL delivered_at=NULL    ║     (in the transaction)
+           ║  14. XADD connector:outbound           ║   ← after the commit
+           ║  15. UPDATE …obligations SET receipt   ║   ← the entry id, recorded
            ╚════════════════════════════════════════╝
                           ↓
    Coding Fleet's `agentsfleet steer <fleet_id>` polls GET /events
@@ -242,6 +246,24 @@ The 12 numbered writes are the deleted worker's `processEvent` effects, in the s
 **The report's Postgres writes do not commit independently.** The claim-and-settle, write 7, write 10 and write 12 ride ONE transaction: the money, the run's result, the resume cursor and the freed slot commit together or none of them does. That is not tidiness. Split, the window between the settle and write 7 is a window in which a tenant is charged for a run whose answer is nowhere — and nothing recovers it, because the lease is already `reported` and every retry is refused. Inside one transaction a failure at any statement leaves the lease `active` and the wallet untouched, which makes the runner's retry the recovery path instead of a permanent conflict.
 
 The queue is **not** in that transaction and cannot be: nothing spans Postgres and the datastore. Write 11 (`XACK`) and write 8 (the activity frame) run after the commit. That ordering is the safe direction — an acknowledgement a rollback then un-did takes an entry off the stream with nothing durable to show for it, where an acknowledgement that never lands leaves the entry pending and redelivered against durable terminal state.
+
+**Write 13 is the delivery obligation, and it rides the same transaction for the same reason.** Sending the answer is the last thing a run is for, and until this row existed the queue append was simply the next thing that happened after the commit — a process dying in that gap left a run committed, charged and answered, with the answer existing nowhere: not on the queue, which never got the entry, and not in Postgres, which recorded only that the run finished. The row is that missing record. `receipt` and `delivered_at` start NULL, and the two NULL tests are the whole status vocabulary:
+
+```
+   receipt IS NULL              → committed, never queued
+                                  (a crash between 13 and 14)
+
+   receipt, delivered_at NULL   → queued, nobody received it
+                                  (lost group, lost stream, replaced host)
+
+   delivered_at IS NOT NULL     → a person has it
+```
+
+Writes 14 and 15 are the fast path and are allowed to fail. What they leave behind is a row in the first state, and `afd_outbound`'s producer re-appends exactly that set every 30s — plus the second state after 5 minutes, which is the one a queue failure leaves. So losing the datastore costs an answer latency and never the answer, which is the property `datastore_scaling.md` states and Dimension 7.8 must prove.
+
+This is the inbound admission ledger pointed outbound. There, the row is the acceptance and the stream entry is a receipt recorded after the fact; here the row is the obligation and the queue entry is a receipt recorded after the fact. Both exist because a stream entry is not a durable record of intent.
+
+**`delivered_at` is stamped by the poster, never by the `XACK`.** The two record different facts: `Lanes::deliver_and_ack` acknowledges an EXHAUSTED job too — deliberately, since leaving it pending would park one undeliverable answer at the head of a destination's lane forever — so an ack-time stamp would mark undeliverable answers delivered and drop them out of the recovery set for good.
 
 A retry that arrives **after** the commit — the response was lost, not the work — finds the lease `reported` by the same runner. It is answered with the stored outcome and charges nothing, so the runner stops retrying with its result safely landed. The lease id is the report's idempotency key, which is why `POST /v1/runners/me/reports` takes no `Idempotency-Key` header. A holder the fleet has genuinely superseded is a different empty claim and still gets `409`: the lease there is not `reported`, it is somebody else's.
 

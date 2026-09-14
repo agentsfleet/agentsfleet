@@ -47,6 +47,7 @@
 use std::sync::Arc;
 
 use afd_datastore::{OutboundDelivery, OutboundQueue};
+use afd_db::Db;
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 use tokio::sync::Semaphore;
@@ -108,6 +109,8 @@ impl<S> Clone for Lanes<S> {
 struct Inner<S> {
     posters: Posters<S>,
     queue: OutboundQueue,
+    /// The obligation ledger, for stamping what a destination actually took.
+    database: Db,
     permits: Semaphore,
     lanes: DashMap<Destination, mpsc::Sender<Job>>,
     tasks: TaskTracker,
@@ -115,14 +118,20 @@ struct Inner<S> {
 }
 
 impl<S: Deliver + 'static> Lanes<S> {
-    /// Lanes delivering through `posters`, acknowledging through `queue`, and
-    /// stopping on `token`.
+    /// Lanes delivering through `posters`, acknowledging through `queue`,
+    /// stamping obligations in `database`, and stopping on `token`.
     #[must_use]
-    pub fn new(posters: Posters<S>, queue: OutboundQueue, token: CancellationToken) -> Self {
+    pub fn new(
+        posters: Posters<S>,
+        queue: OutboundQueue,
+        database: Db,
+        token: CancellationToken,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 posters,
                 queue,
+                database,
                 permits: Semaphore::new(IN_FLIGHT_DELIVERIES),
                 lanes: DashMap::new(),
                 tasks: TaskTracker::new(),
@@ -244,7 +253,29 @@ impl<S: Deliver + 'static> Inner<S> {
     /// job is to survive a CRASH, and a crash is precisely the case where the
     /// ack never runs.
     async fn deliver_and_ack(&self, job: &OutboundDelivery) {
-        if deliver_with_retry(&self.posters, job, &self.token).await == Verdict::Retryable {
+        let verdict = deliver_with_retry(&self.posters, job, &self.token).await;
+        if verdict == Verdict::Delivered {
+            // Stamped BEFORE the acknowledgement, because the two record
+            // different facts and only this one says a person received
+            // anything. The ack below fires for an EXHAUSTED job too, so an
+            // ack-time stamp would mark undeliverable answers delivered.
+            //
+            // A failure here leaves the row receipted and unstamped, which the
+            // recovery scan reads as "queued and never received" and re-offers.
+            // That costs a duplicate message in a thread; the opposite error —
+            // marking delivered what was not — loses the answer silently.
+            if let Err(failure) = crate::obligation::stamp_delivered(
+                &self.database,
+                job.fleet_id.as_str(),
+                job.event_id.as_str(),
+                afd_core::clock::now(),
+            )
+            .await
+            {
+                crate::worker::report("outbound_obligation_stamp_failed", &failure);
+            }
+        }
+        if verdict == Verdict::Retryable {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
             let provider = job.provider.as_str();

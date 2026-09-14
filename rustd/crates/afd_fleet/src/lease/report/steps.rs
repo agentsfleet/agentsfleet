@@ -31,6 +31,7 @@ use afd_events::Closed;
 use afd_observability::producers;
 
 use crate::error::Result;
+use crate::lease::obligation::Delivery;
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
 
@@ -86,6 +87,39 @@ impl Plane {
             lease_id,
             self.leases
                 .record_released(runner_id, lease_id, &lease.fleet_id, event, now)
+                .await,
+        );
+    }
+
+    /// Put an owed answer on the delivery queue, and receipt the row.
+    ///
+    /// Best-effort by construction, and logged rather than returned: the
+    /// obligation is already committed, so a failure here leaves a row the
+    /// producer sweep will re-append. Failing the report instead would tell a
+    /// runner its finished, charged run did not land — and it did.
+    pub(super) async fn queue_owed_answer(
+        &self,
+        obligation: &Uuid7,
+        lease: &Reported,
+        answer: &str,
+        now: UnixMillis,
+    ) {
+        step(
+            "queue_delivery",
+            lease,
+            obligation.as_str(),
+            self.leases
+                .queue_delivery(
+                    obligation,
+                    Delivery {
+                        fleet_id: &lease.fleet_id,
+                        workspace_id: &lease.workspace_id,
+                        provider: &lease.provider,
+                        event_id: &lease.event_id,
+                        answer,
+                    },
+                    now,
+                )
                 .await,
         );
     }

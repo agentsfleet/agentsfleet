@@ -247,7 +247,12 @@ async fn test_outbound_delivery_retry() {
     };
 
     let token = CancellationToken::new();
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     let started = Instant::now();
     let running = tokio::spawn(worker.run(token.clone()));
 
@@ -325,7 +330,12 @@ async fn test_outbound_shutdown_no_loss() {
         slack: interrupted_poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), interrupted);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        interrupted,
+    );
     tokio::time::timeout(PROGRESS_BUDGET, worker.run(token.clone()))
         .await
         .expect("a cancelled worker joins inside the supervisor's budget");
@@ -357,7 +367,12 @@ async fn test_outbound_shutdown_no_loss() {
         slack: resumed_poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), resumed);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        resumed,
+    );
     let running = tokio::spawn(worker.run(resumed_token.clone()));
 
     await_until("the re-queued answer to be acknowledged", async || {
@@ -406,7 +421,12 @@ async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
         slack: poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     tokio::time::timeout(PROGRESS_BUDGET, worker.run(token.clone()))
         .await
         .expect("a cancelled worker joins inside the supervisor's budget");
@@ -440,7 +460,12 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
         slack: poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     let running = tokio::spawn(worker.run(token.clone()));
 
     // Queued AFTER the worker started, so the group it reads under can only be

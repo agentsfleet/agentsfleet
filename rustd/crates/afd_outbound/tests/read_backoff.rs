@@ -105,6 +105,7 @@ async fn worker_against(
     let worker = Worker::new(
         OutboundReader::new(connection, "read-backoff-probe".to_owned()),
         OutboundQueue::new(redis),
+        no_ledger(),
         Posters {
             slack: Unreachable {
                 calls: Arc::clone(&calls),
@@ -213,4 +214,20 @@ async fn test_a_shutdown_does_not_wait_out_the_backoff() {
         "the worker took {stopped:?} to stop — the backoff is being slept through \
          rather than raced against the token"
     );
+}
+
+/// A ledger handle these tests never reach.
+///
+/// The lane and backoff suites drive a FAKE queue and a poster that answers
+/// without a vendor, so no delivery reaches the stamp — a lazy, unreachable
+/// pool is the honest handle to give them. A real one would apply the whole
+/// schema to serve statements this suite never issues.
+fn no_ledger() -> afd_db::Db {
+    let environment = afd_core::env::MapEnv::from_pairs([(
+        afd_db::config::DbRole::Api.url_knob(),
+        "postgres://nowhere/agentsfleet",
+    )]);
+    let pool = afd_db::config::PoolConfig::resolve(&environment, afd_db::config::DbRole::Api)
+        .expect("a lazy pool config resolves");
+    afd_db::Db::unreachable(&pool)
 }

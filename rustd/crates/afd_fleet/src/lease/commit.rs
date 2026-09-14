@@ -1,7 +1,8 @@
 //! The one transaction a terminal report commits, and what it answers.
 //!
-//! Four writes with one fate: the money, the result, the session cursor and
-//! the freed slot. Before §7 they were a settle that committed on its own
+//! Five writes with one fate: the money, the result, the session cursor, the
+//! freed slot, and the delivery the answer is owed. Before §7 the first four
+//! were a settle that committed on its own
 //! followed by four best-effort writes that each logged their own failure, and
 //! the gap between them is where a run's answer could be lost for good — the
 //! wallet drawn down, the lease flipped to `reported`, and `core.fleet_events`
@@ -28,7 +29,7 @@
 //! # Rollback is the language's, not a compensating write
 //!
 //! `sqlx::Transaction` rolls back when it is DROPPED, so every `?` below
-//! unwinds all four writes with no rollback path of its own — the argument
+//! unwinds all five writes with no rollback path of its own — the argument
 //! `afd_connector`'s grant install already makes, and the reason RULE TXN's
 //! "every failure branch must ROLLBACK" is satisfied here without a `match`
 //! per statement.
@@ -40,6 +41,7 @@ use afd_events::Closed;
 use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
+use crate::lease::obligation::Delivery;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::store::Leases;
 use crate::lease::verdict::Terminal;
@@ -85,7 +87,7 @@ pub struct TerminalReport<'a> {
 /// on from.
 #[derive(Debug)]
 pub enum Committed {
-    /// The report won its fence and all four writes committed. The final slice
+    /// The report won its fence and all five writes committed. The final slice
     /// drained `charged`; `closed` is the row the terminal write ended, absent
     /// when the event was already terminal and there was no new ending to
     /// announce.
@@ -99,6 +101,15 @@ pub enum Committed {
         /// every fenced answer that size too. `Option<Box<_>>` rather than
         /// `Box<Option<_>>`: a report that closed nothing allocates nothing.
         closed: Option<Box<Closed>>,
+        /// The delivery obligation this report newly owed, for the caller to
+        /// append and receipt.
+        ///
+        /// `None` when the run answered nothing, and `None` on a repeat that
+        /// conflicted — so a caller cannot append an entry for an answer that
+        /// is already owed and in flight. Carried up rather than appended in
+        /// here because the append is not part of the transaction and must not
+        /// be able to fail it.
+        owed: Option<Uuid7>,
     },
     /// This runner already settled this lease and the earlier report committed
     /// everything below. Nothing was written and nothing charged; what the
@@ -119,8 +130,8 @@ impl Leases {
     /// # Errors
     /// Reports an entropy source that could not produce the ledger row's
     /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer at any of the four statements — in which case nothing
-    /// at all was written, including the charge.
+    /// would not answer at any of the five statements — in which case nothing
+    /// at all was written, including the charge and the obligation.
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
         let TerminalReport {
             lease_id,
@@ -132,6 +143,13 @@ impl Leases {
             last_response,
             now,
         } = report;
+
+        // Read before `outcome` moves into the terminal write below. This is
+        // the run's OUTPUT, which is what a destination receives — never
+        // `last_response`, which is the session checkpoint and is truncated to
+        // fit one, so delivering it would silently cut a long answer off at the
+        // byte cap.
+        let answer = outcome.response_text;
 
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
@@ -172,8 +190,30 @@ impl Leases {
         .await?;
         self.release_through(&mut transaction, &lease.fleet_id, lease.fence, now)
             .await?;
+        // The fifth write, and the one that closes 7.6's window: the answer is
+        // owed before anything tries to send it, so a process that dies between
+        // here and the queue append leaves a record rather than a charged run
+        // whose answer exists nowhere. The append itself is NOT here — see
+        // `obligation` for why it cannot be.
+        let owed = self
+            .owe_delivery(
+                &mut transaction,
+                Delivery {
+                    fleet_id: &lease.fleet_id,
+                    workspace_id: &lease.workspace_id,
+                    provider: &lease.provider,
+                    event_id: &lease.event_id,
+                    answer,
+                },
+                now,
+            )
+            .await?;
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
-        Ok(Committed::Settled { charged, closed })
+        Ok(Committed::Settled {
+            charged,
+            closed,
+            owed,
+        })
     }
 }
