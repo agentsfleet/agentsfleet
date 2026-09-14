@@ -9,6 +9,7 @@ import {
   CopyButton,
 } from "@agentsfleet/design-system";
 import type { MessageState } from "@assistant-ui/react";
+import { PawPrintIcon } from "lucide-react";
 
 import { FleetMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
@@ -25,9 +26,6 @@ import { splitReasoning } from "@/lib/events/reasoning";
 
 const STREAM_CURSOR = "▍";
 const WORKING_LABEL = "Working";
-// Staggered so the three dots read as one travelling wave rather than three
-// lights blinking in unison.
-const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
 const COPY_REPLY_LABEL = "Copy reply";
 const REASONING_VALUE = "reasoning";
 const REASONING_LABEL = "Reasoning";
@@ -50,15 +48,14 @@ export function FleetReply({
 }) {
   const reply = readReply(message);
   const errored = status === STATUS_AGENT_ERROR;
-  const streaming = status === STATUS_IN_FLIGHT;
-  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
+  const streaming = status === STATUS_IN_FLIGHT || status === STATUS_OPTIMISTIC;
+  if (status === STATUS_FAILED) return null;
   // Models that reason out loud wrap it in `<think>`. The durable row keeps
   // only the answer, so leaving the raw text in place made a turn read one way
   // live and another way after a navigation.
   const { reasoning, answer, thinking } = splitReasoning(reply);
-  // A turn that has started but said nothing yet gets motion, not a sentence.
-  // "Still working." is true and completely inert — it reads the same at one
-  // second and at five minutes, so the operator cannot tell the fleet is alive.
+  // Keep the same reply-side cue while delivery is pending and until the
+  // first response arrives, so acknowledgement does not flash a second label.
   const awaitingFirstWord = streaming && reply.length === 0;
   return (
     <FleetMessageRow
@@ -158,8 +155,6 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-// Three dots, staggered, under one live region so a screen reader is told
-// once that the fleet is working rather than on every animation frame.
 /*
  * The actions under a finished reply.
  *
@@ -192,18 +187,12 @@ const ReplyActions = memo(function ReplyActions({
 function WorkingIndicator() {
   return (
     <output
-      className="inline-flex items-baseline gap-xs"
+      className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"
       aria-label={WORKING_LABEL}
       data-testid="fleet-working"
     >
-      {WORKING_DOT_DELAYS.map((delay) => (
-        <span
-          key={delay}
-          aria-hidden="true"
-          className="inline-block size-1 rounded-full bg-pulse motion-safe:animate-pulse"
-          style={{ animationDelay: delay }}
-        />
-      ))}
+      <PawPrintIcon aria-hidden="true" className="size-4 motion-safe:animate-pulse" />
+      <span>{WORKING_LABEL}…</span>
     </output>
   );
 }

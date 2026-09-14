@@ -62,23 +62,21 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     release();
   });
 
-  it("keeps a pending row the mergeBackfill sort buried among older settled rows", () => {
-    // The reviewer's skew case: a pending optimistic row carries the client
-    // clock; a backfill sorts it BELOW newer server rows. The cap must still
-    // refuse to evict it, or its reconcile graft finds nothing and the
-    // message blanks until reload.
+  it("keeps a clock-skewed pending row visible after newer settled backfill rows", () => {
+    // A pending row carries the client clock. A server backfill can be newer
+    // even though the operator just submitted, so the visual tail must retain
+    // the pending message and its Working cue after the merge and cap.
     const release = subscribe(WS, Z_A, [], () => {});
     // Pending row stamped in the past (client clock behind the server).
     const tempId = appendOptimistic(Z_A, "buried steer", "steer:pending");
-    // A backfill of 260 newer server rows re-sorts the pending row down-array.
+    // A backfill of 260 newer server rows must leave the pending row last.
     const backfill = Array.from({ length: 260 }, (_, i) =>
       row({ event_id: `srv_${i}`, status: "processed", created_at: Date.UTC(2026, 4, 15, 18, 0, i) }),
     );
     reconcileServerRows(Z_A, backfill);
 
     const events = getSnapshot(Z_A).events;
-    // The pending row is not the newest, yet it survives the cap.
-    expect(events.some((e) => e.id === tempId)).toBe(true);
+    expect(events.at(-1)?.id).toBe(tempId);
     expect(events.length).toBeLessThanOrEqual(200 + 1);
     release();
   });

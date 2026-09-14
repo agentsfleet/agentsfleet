@@ -54,6 +54,7 @@ describe("FleetThread — header chrome", () => {
     expect(
       screen.getByRole("button", { name: /jump to latest/i }).className,
     ).toMatch(/absolute/);
+    expect(footer?.contains(screen.getByRole("button", { name: /jump to latest/i }))).toBe(true);
   });
 
   it("names each connection state rather than only the live one", () => {
