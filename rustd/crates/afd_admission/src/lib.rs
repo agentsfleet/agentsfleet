@@ -52,12 +52,15 @@ mod reconcile;
 mod replay;
 pub mod sql;
 
+use std::sync::Arc;
+
 use afd_crypto::entropy::Entropy;
 use afd_datastore::Redis;
 use afd_db::Db;
 use afd_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 
+use self::budget::Ceiling;
 pub use self::budget::{BudgetScope, Budgets};
 pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
@@ -184,13 +187,18 @@ pub struct Admitted {
 /// The admission ledger over the database that holds it and the queue it
 /// hands receipts to.
 ///
-/// Cheap to clone: two pool handles, an entropy source and two numbers.
+/// Cheap to clone: two pool handles, an entropy source, two numbers, and a
+/// shared handle on the deployment ceiling's sampled figure. The figure is
+/// behind an [`Arc`] on purpose — every clone of one ledger must read the
+/// sample the last one published, or each clone would carry its own idea of
+/// the backlog and none of them would resample often enough to matter.
 #[derive(Debug, Clone)]
 pub struct Admissions {
     database: Db,
     queue: Redis,
     entropy: Entropy,
     budgets: Budgets,
+    ceiling: Arc<Ceiling>,
 }
 
 impl Admissions {
@@ -203,6 +211,7 @@ impl Admissions {
             queue,
             entropy,
             budgets: Budgets::default(),
+            ceiling: Arc::new(Ceiling::default()),
         }
     }
 
