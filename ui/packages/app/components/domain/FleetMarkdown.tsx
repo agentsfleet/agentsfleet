@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, memo, useContext, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -101,7 +101,7 @@ const COMPONENTS: Components = {
  * white glares against the graphite canvas at reading length; `--text` stays
  * cool for the rest of the product, which is interface rather than prose.
  */
-export function FleetMarkdown({ children }: { children: string }) {
+export const FleetMarkdown = memo(function FleetMarkdown({ children }: { children: string }) {
   return (
     <div className="space-y-md font-sans text-reading leading-reading text-text-chat [font-variation-settings:'wght'_380]">
       <Markdown components={COMPONENTS} remarkPlugins={[remarkGfm]}>
@@ -109,7 +109,7 @@ export function FleetMarkdown({ children }: { children: string }) {
       </Markdown>
     </div>
   );
-}
+});
 
 // One size for every level. A reply is a paragraph in a conversation, not a
 // document, so an `###` inside it is a label — nesting six type scales into a

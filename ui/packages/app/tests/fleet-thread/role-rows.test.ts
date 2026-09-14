@@ -135,7 +135,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     ).toBeTruthy();
   });
 
-  it("renders an optimistic user message with the queued badge", () => {
+  it("shows a working reply while the operator message is being sent", () => {
     mockStream([
       ev({
         role: "user",
@@ -146,7 +146,10 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     ]);
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
-    expect(screen.getByText(/^sending$/i)).toBeTruthy();
+    const working = screen.getByRole("status", { name: "Working" });
+    expect(working.textContent).toBe("Working…");
+    expect(working.closest('[data-role="assistant"]')).toBeTruthy();
+    expect(screen.queryByText(/^sending$/i)).toBeNull();
   });
 
   it("renders a failed user message with the destructive failed badge", () => {
@@ -163,6 +166,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     expect(screen.getByText(/^not sent$/i)).toBeTruthy();
     // The in-flight annotation must not also render for a failed row.
     expect(screen.queryByText(/^sending$/i)).toBeNull();
+    expect(screen.queryByRole("status", { name: "Working" })).toBeNull();
   });
 
   it("renders a fleet_error as a destructive fleet reply", () => {

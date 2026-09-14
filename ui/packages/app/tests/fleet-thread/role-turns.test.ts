@@ -148,6 +148,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
 
     // "Still working." reads the same at one second and at five minutes.
     expect(screen.getByTestId("fleet-working")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Working" }).textContent).toBe("Working…");
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
@@ -160,6 +161,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     renderThread();
 
     expect(screen.queryByRole("button", { name: /copy reply/i })).toBeNull();
+    expect(screen.queryByRole("status", { name: "Working" })).toBeNull();
   });
 
   it("offers a copy action once the reply has settled", () => {
@@ -169,6 +171,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     renderThread();
 
     expect(screen.getByRole("button", { name: /copy reply/i })).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Working" })).toBeNull();
   });
 
   it("keeps repeated startup failures inline in one expandable activity group", () => {

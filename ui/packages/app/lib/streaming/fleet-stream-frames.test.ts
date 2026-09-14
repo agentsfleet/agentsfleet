@@ -20,6 +20,21 @@ describe("mergeBackfill", () => {
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
+  it("keeps multiple pending submissions after settled rows in submission order", () => {
+    const merged = mergeBackfill(
+      [
+        evt({ id: "pending-1", status: "received", clientTimestamp: true, createdAt: new Date(MS_PER_SECOND) }),
+        evt({ id: "settled", status: "processed", createdAt: new Date(2 * MS_PER_SECOND) }),
+        evt({ id: "pending-2", status: "optimistic", clientTimestamp: true, createdAt: new Date(0) }),
+      ],
+      [row({ event_id: "server", status: "processed", created_at: 3 * MS_PER_SECOND })],
+    );
+
+    expect(merged.map((event) => event.id)).toEqual([
+      "settled", "server", "pending-1", "pending-2",
+    ]);
+  });
+
   it("maps a null response_text with request context and a readable failure outcome", () => {
     const [first] = mergeBackfill([], [row({
       response_text: null,

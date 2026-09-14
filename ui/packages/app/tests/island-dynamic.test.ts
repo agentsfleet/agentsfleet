@@ -218,12 +218,15 @@ describe("dynamic island shims mount their inner component", () => {
 });
 
 describe("FleetThread uses design-system tokens, not raw assistant-ui defaults", () => {
-  const source = read("components/domain/FleetThread.tsx");
+  const source = [
+    read("components/domain/FleetThread.tsx"),
+    read("components/domain/FleetThreadViewport.tsx"),
+  ].join("\n");
 
   it("styles with design-system token utilities", () => {
     // Spacing + surface + text tokens from @agentsfleet/design-system — not raw
     // pixel/hex values or assistant-ui's stock theme.
-    expect(source).toContain("bg-card");
+    expect(source).toContain("bg-background");
     expect(source).toContain("border-border");
     expect(source).toContain("text-muted-foreground");
   });

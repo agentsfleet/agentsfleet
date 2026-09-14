@@ -39,7 +39,6 @@ import {
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
-const SENDING_LABEL = "sending";
 const FAILED_LABEL = "not sent";
 const SOURCE_LINK_FALLBACK = "View source";
 
@@ -83,7 +82,7 @@ function FleetMessage({ message }: { message: MessageState }) {
           messageRole={message.role}
           dimmed={optimistic}
           failed={failed}
-          annotation={<Annotation optimistic={optimistic} failed={failed} />}
+          annotation={failed ? <Badge variant="destructive">{FAILED_LABEL}</Badge> : null}
         >
           <span>{trigger}</span>
         </FleetMessageRow>
@@ -232,12 +231,6 @@ function activityHeadline(headline: string, reference: string | null): string {
   }
   if (suffix.length === 0 && prefix.endsWith("·")) return prefix.slice(0, -1).trimEnd();
   return `${prefix}${suffix.length > 0 ? ` ${suffix}` : ""}`.trim();
-}
-
-function Annotation({ optimistic, failed }: { optimistic: boolean; failed: boolean }) {
-  if (optimistic) return <Badge variant="evidence">{SENDING_LABEL}</Badge>;
-  if (failed) return <Badge variant="destructive">{FAILED_LABEL}</Badge>;
-  return null;
 }
 
 // Any integration event with a stored payload can reveal it. Restricting this
