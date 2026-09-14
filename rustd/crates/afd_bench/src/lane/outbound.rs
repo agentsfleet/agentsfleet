@@ -226,6 +226,7 @@ async fn drain(
         Worker::new(
             reader,
             queue,
+            stores.database.clone(),
             Posters {
                 slack: poster.clone(),
             },

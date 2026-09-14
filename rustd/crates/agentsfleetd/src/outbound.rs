@@ -29,6 +29,7 @@ use afd_datastore::{
     Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer,
 };
 use afd_db::Db;
+use afd_outbound::producer::Producer;
 use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
 
 use crate::supervisor::Supervisor;
@@ -40,6 +41,13 @@ use crate::supervisor::Supervisor;
 
 /// The supervised name of the connector answer-delivery worker.
 pub const OUTBOUND_WORKER: &str = "connector:outbound";
+
+/// The supervised name of the owed-answer producer.
+///
+/// Its own task rather than a turn of the worker's loop: the worker parks on a
+/// blocking read for whole seconds at a time, and a pass that had to wait for
+/// that park would run at the queue's idle cadence instead of its own.
+pub const OUTBOUND_PRODUCER: &str = "connector:outbound-producer";
 
 /// Starts the outbound worker under `supervisor`, if it can open its socket.
 ///
@@ -68,6 +76,7 @@ pub async fn spawn(
     let worker = Worker::new(
         OutboundReader::new(connection, outbound_consumer()),
         OutboundQueue::new(queue.clone()),
+        database.clone(),
         Posters {
             slack: SlackPoster::new(
                 database.clone(),
@@ -78,4 +87,11 @@ pub async fn spawn(
         },
     );
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
+
+    // The recovery half. The report path appends an answer the moment it
+    // commits, so in a healthy deployment this finds nothing; it exists for the
+    // two cases that path cannot cover — a process that died between the commit
+    // and the append, and a queue that lost the entry afterwards.
+    let producer = Producer::new(OutboundQueue::new(queue.clone()), database.clone());
+    supervisor.spawn(OUTBOUND_PRODUCER, move |token| producer.run(token));
 }

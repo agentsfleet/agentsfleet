@@ -385,11 +385,12 @@ agentsfleet-runner parent (child_supervisor.zig): establish the cgroup, fork, ex
       the policy, run the NullClaw turn — language-model calls + tool calls, secrets substituted
       at the tool bridge — emit activity frames + the final result over stdout
    │
-report → agentsfleetd: one transaction (settle + terminal state + checkpoint + freed slot),
-         then — after it commits — the activity frame and the XACK
+report → agentsfleetd: one transaction (settle + terminal state + checkpoint
+         + freed slot + the OWED DELIVERY), then — after it commits — the
+         activity frame, the XACK, and the answer onto connector:outbound
 ```
 
-The parenthesis is the guarantee, not a description of the order. Those four writes
+The parenthesis is the guarantee, not a description of the order. Those five writes
 commit together or none of them does, so there is no interval in which the tenant has
 paid for a run whose answer was never stored. The acknowledgement is outside the
 transaction because no transaction spans Postgres and the datastore, and it runs after

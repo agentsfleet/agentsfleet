@@ -115,13 +115,23 @@ async fn assert_the_retry_commits_all_four(
         ))
         .await
         .expect("the retry must reach the datastore");
-    let Committed::Settled { charged, closed } = committed else {
+    let Committed::Settled {
+        charged,
+        closed,
+        owed,
+    } = committed
+    else {
         unreachable!("the only holder of this fleet cannot be fenced out of its own retry")
     };
     assert_eq!(
         charged.as_i64(),
         SLICE_NANOS,
         "the retry charges the slice ONCE — the refused attempt charged nothing"
+    );
+    assert!(
+        owed.is_some(),
+        "the retry that charged is the one that owes the answer: the refused \
+         attempt wrote nothing, so nothing else is going to deliver this run"
     );
     assert!(
         closed.is_some(),
@@ -198,7 +208,12 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         ))
         .await
         .expect("the report must reach the datastore");
-    let Committed::Settled { charged, closed } = committed else {
+    let Committed::Settled {
+        charged,
+        closed,
+        owed,
+    } = committed
+    else {
         unreachable!("the lease is this runner's and still active, so the claim wins")
     };
     assert_eq!(
@@ -209,6 +224,12 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     assert!(
         closed.is_none(),
         "there is no NEW ending to announce, so no completion frame is published for one"
+    );
+    assert!(
+        owed.is_some(),
+        "charged implies owed. The event row was already terminal, which says an \
+         ending was recorded — not that anybody received the answer, and this run \
+         produced one and was billed for it"
     );
     assert_eq!(
         held.fixtures

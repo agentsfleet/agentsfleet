@@ -291,3 +291,54 @@ INSERT INTO fleet.runner_events
 VALUES ($1::uuid, $2::uuid, $3::text,
         jsonb_build_object($5::text, $6::text, $7::text, $8::text, $9::text, $10::text),
         NULL, $4::bigint)";
+
+/// Owe the answer's delivery, in the report's own transaction.
+///
+/// The fifth write, and the one that closes the window Dimension 7.6 names: a
+/// process dying between the result committing and the queue append used to
+/// leave a run finished, charged and answered with nothing recording that a
+/// delivery was owed. The row is that record, and it commits or rolls back with
+/// the money, the result, the cursor and the slot.
+///
+/// `receipt` and `delivered_at` are left NULL on purpose. The queue append is
+/// NOT part of this transaction and cannot be — no transaction spans PostgreSQL
+/// and Dragonfly — so the producer appends afterwards and records the entry id
+/// back here, exactly as `core.fleet_admissions` receipts an inbound append.
+/// Until it does, this row IS the obligation and the producer's unreceipted
+/// scan is what finds it.
+///
+/// `ON CONFLICT DO NOTHING` on the event, so a re-sent report owes one delivery
+/// and not two. That agrees with the settle above, which answers a repeat with
+/// `AlreadySettled` and charges nothing: both halves of a replayed report are
+/// no-ops, which is what makes the endpoint idempotent rather than merely
+/// idempotent about money.
+///
+/// `$1` row id, `$2` fleet, `$3` workspace, `$4` provider, `$5` event,
+/// `$6` answer, `$7` now.
+pub const OWE_DELIVERY: &str = "\
+INSERT INTO core.fleet_obligations
+  (id, fleet_id, workspace_id, provider, event_id, answer,
+   receipt, delivered_at, attempt_count, created_at, updated_at)
+VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::text, $6::text,
+        NULL, NULL, 0, $7::bigint, $7::bigint)
+ON CONFLICT ON CONSTRAINT uq_fleet_obligations_event DO NOTHING
+RETURNING id";
+
+/// Record the queue entry an obligation was appended to.
+///
+/// The third step of the same three the inbound producer takes — commit the
+/// row, append the entry, record the receipt — and the one a crash is most
+/// likely to miss, which is exactly why the producer's scan keys on
+/// `receipt IS NULL` and not on anything the append itself wrote.
+///
+/// Guarded on the receipt still being NULL so a pass that races the fast path
+/// cannot overwrite a receipt already recorded. The loser writes nothing and
+/// its entry becomes a duplicate the worker acknowledges without delivering —
+/// the safe direction, since the alternative is a row pointing at an entry
+/// nobody is holding.
+///
+/// `$1` obligation row, `$2` receipt, `$3` now.
+pub const RECEIPT_DELIVERY: &str = "\
+UPDATE core.fleet_obligations
+   SET receipt = $2::text, updated_at = $3::bigint
+ WHERE id = $1::uuid AND receipt IS NULL";

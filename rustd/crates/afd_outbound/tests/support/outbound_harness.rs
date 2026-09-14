@@ -29,6 +29,9 @@ use afd_datastore::{
     Dedicated, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundQueue, OutboundReader, Redis,
     outbound_consumer,
 };
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::TestDatabase;
 
 /// The knob `make test-integration-rustd` exports. See `make/test-infra.mk`.
 const URL_KNOB: &str = "TEST_REDIS_URL";
@@ -54,6 +57,13 @@ pub(crate) static OUTBOUND_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::co
 pub(crate) struct OutboundHarness {
     redis: Redis,
     pub(crate) queue: OutboundQueue,
+    /// The obligation ledger the worker stamps deliveries into.
+    ///
+    /// Held by the harness rather than minted per test so every worker these
+    /// tests build shares one schema, which is what `TestDatabase::shared`
+    /// exists to give — a per-test database here would apply forty-seven
+    /// migrations per case to serve a handful of statements.
+    pub(crate) database: Db,
 }
 
 impl OutboundHarness {
@@ -71,7 +81,11 @@ impl OutboundHarness {
             .ensure_group()
             .await
             .expect("the consumer group must be creatable on an empty stream");
-        Self { redis, queue }
+        Self {
+            redis,
+            queue,
+            database: TestDatabase::shared().open(DbRole::Api, &[]).await,
+        }
     }
 
     /// Connects and leaves the stream absent, with no group on it.
@@ -83,7 +97,11 @@ impl OutboundHarness {
 
         Self::drop_stream(&redis).await;
         let queue = OutboundQueue::new(redis.clone());
-        Self { redis, queue }
+        Self {
+            redis,
+            queue,
+            database: TestDatabase::shared().open(DbRole::Api, &[]).await,
+        }
     }
 
     /// Writes an entry no reader can decode, as a foreign writer would.

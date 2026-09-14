@@ -76,6 +76,7 @@ async fn lanes_against(server: &HangingQueue, token: &CancellationToken) -> (Lan
             slack: poster.clone(),
         },
         OutboundQueue::new(redis),
+        no_ledger(),
         token.clone(),
     );
     (lanes, poster)
@@ -276,4 +277,20 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
         vec!["1700000000001-0".to_owned()],
         "only the finished delivery is acknowledged; the rest stay pending"
     );
+}
+
+/// A ledger handle these tests never reach.
+///
+/// The lane and backoff suites drive a FAKE queue and a poster that answers
+/// without a vendor, so no delivery reaches the stamp — a lazy, unreachable
+/// pool is the honest handle to give them. A real one would apply the whole
+/// schema to serve statements this suite never issues.
+fn no_ledger() -> afd_db::Db {
+    let environment = afd_core::env::MapEnv::from_pairs([(
+        afd_db::config::DbRole::Api.url_knob(),
+        "postgres://nowhere/agentsfleet",
+    )]);
+    let pool = afd_db::config::PoolConfig::resolve(&environment, afd_db::config::DbRole::Api)
+        .expect("a lazy pool config resolves");
+    afd_db::Db::unreachable(&pool)
 }

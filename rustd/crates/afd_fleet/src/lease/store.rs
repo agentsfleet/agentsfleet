@@ -15,7 +15,7 @@
 
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{FleetStreams, ReadyCursor, ReadyIndex, Redis};
+use afd_datastore::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, Redis};
 use afd_db::Db;
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
@@ -84,6 +84,15 @@ impl Leases {
     /// The fleet event streams, bound to this store's connection.
     pub(crate) fn streams(&self) -> FleetStreams {
         FleetStreams::new(self.queue.clone())
+    }
+
+    /// The outbound delivery queue, bound to this store's connection.
+    ///
+    /// Constructed per call for the reason [`Leases::streams`] is: the handle is
+    /// a thin wrapper over the shared connection, and keeping `queue` private
+    /// means no caller can reach past the verbs this store exposes.
+    pub(crate) fn outbound(&self) -> OutboundQueue {
+        OutboundQueue::new(self.queue.clone())
     }
 
     /// The admission ledger, over the same pool, queue and entropy.
