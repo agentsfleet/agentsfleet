@@ -3,41 +3,27 @@
 import { useCallback } from "react";
 import {
   AssistantRuntimeProvider,
-  ThreadPrimitive,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import {
-  Button,
   DashboardPanel,
-  DashboardPanelFooter,
   DashboardPanelHeader,
-  Skeleton,
-  cn,
 } from "@agentsfleet/design-system";
 import {
   CONNECTION_STATUS,
   useFleetEventStream,
-  type ConnectionStatus,
 } from "./useFleetEventStream";
 import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
 import type { EventRow } from "@/lib/api/events";
-import { SteerComposer } from "./SteerComposer";
-import { renderFleetMessage } from "./fleetMessageRenderers";
 import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import {
   useFleetDeliveryFailure,
-  type DeliveryFailureKind,
 } from "./useFleetDeliveryFailure";
 import { useNewMessageHandler } from "./useFleetMessageDelivery";
-
-const PANEL_TITLE = "Chat";
-const EMPTY_HINT =
-  "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
-const JUMP_TO_LATEST = "Jump to latest";
-const JUMP_TO_LATEST_LABEL = "↓ latest";
-const BACKFILL_LABEL = "Loading recent activity";
+import { FleetThreadViewport } from "./FleetThreadViewport";
+import { STATUS_OPTIMISTIC } from "./fleetMessageStatus";
 
 export type FleetThreadProps = {
   workspaceId: string;
@@ -107,6 +93,8 @@ export function FleetThread({
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
+  const newestEvent = stream.events.at(-1);
+  const pendingMessageId = newestEvent?.status === STATUS_OPTIMISTIC ? newestEvent.id : null;
   const runtime = useExternalStoreRuntime<FleetThreadEntry>({
     messages: entries,
     convertMessage: convertEntry,
@@ -121,7 +109,7 @@ export function FleetThread({
           id="fleet-chat-transcript"
           aria-label="Fleet chat"
           padding="none"
-          className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-background"
         >
           {/*
             * The header speaks only when the stream is not fine.
@@ -148,8 +136,9 @@ export function FleetThread({
           {stream.connectionStatus === CONNECTION_STATUS.OFFLINE ? (
             <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
           ) : null}
-          <ThreadViewport
+          <FleetThreadViewport
             eventsCount={stream.events.length}
+            pendingMessageId={pendingMessageId}
             connectionStatus={stream.connectionStatus}
             failureKind={failedDelivery?.kind ?? null}
             onRetry={retryFailedDelivery}
@@ -157,86 +146,5 @@ export function FleetThread({
         </DashboardPanel>
       </SenderLabelProvider>
     </AssistantRuntimeProvider>
-  );
-}
-
-// ── internals ────────────────────────────────────────────────────────────
-
-function ThreadViewport({
-  eventsCount,
-  connectionStatus,
-  failureKind,
-  onRetry,
-}: {
-  eventsCount: number;
-  connectionStatus: ConnectionStatus;
-  failureKind: DeliveryFailureKind | null;
-  onRetry: () => void;
-}) {
-  const isAwaitingFirstFrames =
-    eventsCount === 0 &&
-    (connectionStatus === CONNECTION_STATUS.CONNECTING ||
-      connectionStatus === CONNECTION_STATUS.RECONNECTING);
-  const isIdleEmpty = eventsCount === 0 && connectionStatus === CONNECTION_STATUS.LIVE;
-  return (
-    <ThreadPrimitive.Root
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-deep"
-    >
-      {/* The conversation is the only thing on this page that scrolls. Its
-          own overflow keeps the centered composer visible on screen. */}
-      <ThreadPrimitive.Viewport
-        autoScroll
-        className="min-h-0 flex-1 overflow-y-auto px-lg sm:px-xl"
-        role="presentation"
-      >
-        <div className="relative min-h-full w-full">
-          <div
-            role="log"
-            aria-live="polite"
-            aria-label={PANEL_TITLE}
-            className="mx-auto flex min-h-full w-full max-w-measure flex-col justify-end py-lg"
-          >
-            {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
-            {isIdleEmpty ? (
-              <p className="px-sm py-lg text-sm text-muted-foreground">{EMPTY_HINT}</p>
-            ) : null}
-            <ThreadPrimitive.Messages>{renderFleetMessage}</ThreadPrimitive.Messages>
-          </div>
-          <ThreadPrimitive.ScrollToBottom asChild>
-            <Button
-              variant="secondary"
-              size="sm"
-              aria-label={JUMP_TO_LATEST}
-              className={cn(
-                "absolute bottom-md right-0 z-20 font-sans text-label",
-                "disabled:invisible disabled:pointer-events-none",
-              )}
-            >
-              {JUMP_TO_LATEST_LABEL}
-            </Button>
-          </ThreadPrimitive.ScrollToBottom>
-        </div>
-      </ThreadPrimitive.Viewport>
-      <DashboardPanelFooter
-        data-testid="fleet-chat-footer"
-        className="relative mx-auto mt-0 w-full max-w-measure shrink-0 border-0 bg-surface-deep px-0 pb-md pt-sm"
-      >
-        <SteerComposer failureKind={failureKind} onRetry={onRetry} />
-      </DashboardPanelFooter>
-    </ThreadPrimitive.Root>
-  );
-}
-
-function BackfillSkeleton() {
-  return (
-    <div
-      className="flex w-full flex-col gap-md py-lg"
-      data-testid="backfill-skeleton"
-    >
-      <output className="sr-only">{BACKFILL_LABEL}</output>
-      <Skeleton className="h-12 w-full rounded-md" />
-      <Skeleton className="h-12 w-3/4 rounded-md" />
-      <Skeleton className="h-12 w-2/3 rounded-md" />
-    </div>
   );
 }
