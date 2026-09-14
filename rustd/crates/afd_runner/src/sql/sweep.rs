@@ -153,10 +153,13 @@ LIMIT $4";
 /// flipped lease would be invisible to the one path that recovers it.
 ///
 /// `DISTINCT`, because one fleet can hold several expired leases and wants
-/// one mark. Bounded and unordered: every fleet returned becomes a claim
-/// against the pool once marked, and a marked fleet drops out of this set on
-/// its own when the claim wins and the reclaim expires the lease, so the
-/// next pass reaches whatever this one did not.
+/// one mark. Bounded, because every fleet returned becomes a claim against
+/// the pool once marked. Keyset on `fleet_id` after `$4`, for the reason the
+/// fleet walk above carries a cursor: a marked fleet leaves this set only
+/// once a runner has claimed it and the reclaim has expired its lease, and
+/// until then an unordered `LIMIT` would hand back the same page every pass
+/// and starve the fleet behind it. The caller rewinds on a short page, so
+/// the scan is cyclic.
 ///
 /// `status = ANY($1::text[])` for the reason schema/620 gives: a bound
 /// parameter rides the `(status, updated_at)` index's prefix, where a partial
@@ -165,11 +168,13 @@ LIMIT $4";
 /// than a range an index serves; an index for it waits for traffic to
 /// measure it against.
 ///
-/// `$1` the active status, `$2` now, `$3` the batch limit.
+/// `$1` the active status, `$2` now, `$3` the batch limit, `$4` the cursor's
+/// fleet id.
 pub const SELECT_FLEETS_HOLDING_EXPIRED_LEASES: &str = "\
 SELECT DISTINCT fleet_id::text
 FROM fleet.runner_leases
-WHERE status = ANY($1::text[]) AND lease_expires_at < $2
+WHERE status = ANY($1::text[]) AND lease_expires_at < $2 AND fleet_id > $4::uuid
+ORDER BY fleet_id
 LIMIT $3";
 
 /// One batch of settled leases past the retention window.

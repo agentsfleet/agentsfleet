@@ -48,8 +48,11 @@ const CONTEXT_STRANDED: &str = "reclaim stranded leases";
 /// The fleet status whose streams are worth sweeping.
 pub(crate) const STATUS_ACTIVE: &str = "active";
 
-/// How many fleets one pass reaches.
-const BATCH_LIMIT: i64 = 100;
+/// How many fleets one pass reaches, on either of its questions.
+///
+/// Public so a proof can size its envelope one past it and exercise the wrap,
+/// rather than at a literal this constant can drift past unnoticed.
+pub const BATCH_LIMIT: i64 = 100;
 
 /// How many entries one pass claims per fleet.
 ///
@@ -112,6 +115,11 @@ pub struct Reclaim {
     /// `sweep` takes `&self` — so the interior mutability is a `Mutex` rather
     /// than a `&mut`, and it is never contended.
     cursor: std::sync::Arc<tokio::sync::Mutex<Cursor>>,
+    /// Where the ledger question's last page ended: a fleet id, or `None`
+    /// for the start. Its own cursor, because the two questions walk two
+    /// populations — every active fleet, and the fleets holding an expired
+    /// lease — that advance and wrap independently.
+    stranded_after: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl Reclaim {
@@ -124,6 +132,7 @@ impl Reclaim {
             ready: afd_datastore::ready::ReadyIndex::new(queue),
             consumer: consumer.into(),
             cursor: std::sync::Arc::new(tokio::sync::Mutex::new(Cursor::default())),
+            stranded_after: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -246,17 +255,29 @@ impl Reclaim {
     /// fleet count as the stream walk, because each fleet marked here is a
     /// claim the pool will see on the next poll.
     async fn stranded_fleets(&self, now: UnixMillis) -> Result<Vec<String>> {
+        let mut after = self.stranded_after.lock().await;
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES)
             .bind(vec![sql::LEASE_STATUS_ACTIVE])
             .bind(now.as_millis())
             .bind(BATCH_LIMIT)
+            .bind(after.as_deref().unwrap_or(CURSOR_START_ID))
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_STRANDED))?;
-        rows.iter()
+        let page = rows
+            .iter()
             .map(|row| row.try_get(0).map_err(query(CONTEXT_STRANDED)))
-            .collect()
+            .collect::<Result<Vec<String>>>()?;
+        // A full page may have more behind it; a short one reached the end,
+        // and the next pass starts over — the same rule the fleet walk uses.
+        *after = match page.last() {
+            Some(last) if page.len() >= usize::try_from(BATCH_LIMIT).unwrap_or(0) => {
+                Some(last.clone())
+            }
+            _exhausted => None,
+        };
+        Ok(page)
     }
 }
 

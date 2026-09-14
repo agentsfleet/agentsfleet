@@ -73,4 +73,8 @@ fn the_ledger_question_marks_and_never_flips() {
         statement.contains("lease_expires_at <"),
         "expiry is the ledger's own clock, not a proxy for it: {statement}"
     );
+    assert!(
+        statement.contains("fleet_id > $4") && statement.contains("ORDER BY fleet_id"),
+        "an unordered LIMIT hands back the same page every pass and starves the fleet behind it: {statement}"
+    );
 }
