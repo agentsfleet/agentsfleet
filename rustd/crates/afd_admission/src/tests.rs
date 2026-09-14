@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use afd_wire::event::EventType;
 
 use super::budget::{FLEET_BACKLOG_BUDGET, REPLAY_BACKLOG_BUDGET};
+use super::sql;
 use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, logical_id};
 
 /// Every producer, so a test cannot silently cover five of six.
@@ -214,5 +215,46 @@ fn each_budget_scope_spells_itself_once() {
     assert_eq!(
         BudgetScope::Deployment.to_string(),
         BudgetScope::Deployment.as_str()
+    );
+}
+
+/// The pair the unlocked reconcile scan rests on.
+///
+/// Asserted on the statement text because the clause IS the guarantee, the
+/// same reason `afd_vault::sql` asserts its own `FOR UPDATE`. Neither half is
+/// safe alone: an unlocked read whose write tested only for a receipt's
+/// PRESENCE would forget one the replay sweeper had since replaced, and a
+/// pinned write under a lock held across a datastore probe per row is the
+/// occupancy the lock was removed to stop.
+#[test]
+fn the_reconcile_scan_trades_its_row_lock_for_a_pinned_receipt() {
+    assert!(
+        !sql::SELECT_UNDELIVERED_ON_FLEET.contains("FOR UPDATE"),
+        "a lock here is held across one datastore probe per row: {}",
+        sql::SELECT_UNDELIVERED_ON_FLEET
+    );
+    assert!(
+        sql::VOID_LOST_RECEIPT.contains("receipt = $3"),
+        "the void must compare-and-set on the receipt it probed: {}",
+        sql::VOID_LOST_RECEIPT
+    );
+    assert!(
+        !sql::VOID_LOST_RECEIPT.contains("receipt IS NOT NULL"),
+        "a receipt's presence is not its identity: {}",
+        sql::VOID_LOST_RECEIPT
+    );
+}
+
+/// Replay keeps the lock this pass gave up, and the difference is the point.
+///
+/// Replay reads its batch and re-appends inside one transaction with no other
+/// system in it, so the rows stay held for statements only. Reconcile asks
+/// Dragonfly about every row it read, which is why it cannot.
+#[test]
+fn the_replay_scan_keeps_the_lock_that_keeps_replicas_disjoint() {
+    assert!(
+        sql::SELECT_UNRECEIPTED.contains("FOR UPDATE SKIP LOCKED"),
+        "replay batches must stay disjoint across replicas: {}",
+        sql::SELECT_UNRECEIPTED
     );
 }

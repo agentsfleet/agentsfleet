@@ -174,8 +174,9 @@ WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3
 ///
 /// No `FOR UPDATE`: this statement decides only which streams to ASK about, and
 /// locking a row here would make the probe hold a transaction open across a
-/// network round trip to the datastore. [`SELECT_UNDELIVERED_ON_FLEET`] takes
-/// the locks, on the fleet that needs them.
+/// network round trip to the datastore. [`SELECT_UNDELIVERED_ON_FLEET`] reads
+/// under the same rule, for the same reason — it probes per row, so it would
+/// hold the lock across one round trip per row rather than one per pass.
 ///
 /// `$1` how many fleets one pass may examine.
 pub(crate) const SELECT_UNDELIVERED_FLEETS: &str = "\
@@ -185,17 +186,24 @@ WHERE receipt IS NOT NULL AND delivered_at IS NULL
 ORDER BY fleet_id, created_at, seq
 LIMIT $1";
 
-/// Every admission on one fleet that is receipted and not delivered, locked
-/// for this pass.
+/// Every admission on one fleet that is receipted and not delivered.
 ///
 /// Read only for a fleet whose oldest receipt the stream could not produce —
 /// its data is gone, and each of these rows has to be asked about in turn
 /// because a rebuilt stream may already hold NEW entries that are perfectly
 /// alive.
 ///
-/// `FOR UPDATE SKIP LOCKED` for the reason the replay scan takes it: every
-/// replica runs the sweeper, and two passes must take disjoint rows rather
-/// than both voiding one.
+/// A plain read, where the replay scan takes `FOR UPDATE SKIP LOCKED`, and the
+/// difference is what happens between the read and the write. Replay reads its
+/// batch and re-appends inside one transaction with no other system in it. This
+/// pass asks the datastore about every row it read, so a lock taken here would
+/// be held across a round trip per row — and the rows it holds are the ones a
+/// live producer recording its own receipt waits behind. [`VOID_LOST_RECEIPT`]
+/// carries the guarantee instead, by pinning the receipt it was told about.
+///
+/// The cost is that two replicas walking one lost fleet probe the same rows.
+/// Duplicated round trips, not a duplicated repair: the guard means one write
+/// lands and the other matches nothing.
 ///
 /// `$1` fleet, `$2` the batch limit.
 pub(crate) const SELECT_UNDELIVERED_ON_FLEET: &str = "\
@@ -203,8 +211,7 @@ SELECT id::text, receipt
 FROM core.fleet_admissions
 WHERE fleet_id = $1::uuid AND receipt IS NOT NULL AND delivered_at IS NULL
 ORDER BY created_at, seq
-LIMIT $2
-FOR UPDATE SKIP LOCKED";
+LIMIT $2";
 
 /// Forget a receipt whose entry the datastore no longer holds.
 ///
@@ -214,11 +221,18 @@ FOR UPDATE SKIP LOCKED";
 /// correct. It also re-enters the deployment's replay backlog, which is honest
 /// — the work IS owed again.
 ///
-/// Guarded on the row still being receipted and still undelivered, so a
-/// delivery that landed between the probe and this write keeps its receipt.
+/// Guarded on the row still carrying THE receipt the caller probed and still
+/// being undelivered, which is what lets the read above go unlocked. `receipt
+/// IS NOT NULL` would not do: between the probe and this write the replay
+/// sweeper can re-append the row and record a DIFFERENT receipt, and a test
+/// for mere presence would then forget a receipt nobody ever asked the stream
+/// about. Pinning the value makes the pair a compare-and-set — the write lands
+/// only if the row is as it was when the answer was obtained — and a row that
+/// moved reports zero rows affected, which the caller counts as the repair it
+/// did not do.
 ///
-/// `$1` id, `$2` now.
+/// `$1` id, `$2` now, `$3` the receipt the probe was answered for.
 pub(crate) const VOID_LOST_RECEIPT: &str = "\
 UPDATE core.fleet_admissions
 SET receipt = NULL, updated_at = $2
-WHERE id = $1::uuid AND receipt IS NOT NULL AND delivered_at IS NULL";
+WHERE id = $1::uuid AND receipt = $3::text AND delivered_at IS NULL";
