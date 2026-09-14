@@ -297,16 +297,32 @@ pub(crate) fn unexpected_reply(what: &'static str) -> Error {
 /// every kind.
 #[cfg(feature = "test-util")]
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    // One constructor for every server-side refusal the samples need; the
-    // code is the whole difference between a command the server would not
-    // run and a server that would not grow.
-    let refusal = |code: &'static str| {
-        redis::RedisError::from((
-            redis::ErrorKind::Extension,
-            code,
-            "the server said no".to_owned(),
-        ))
+    // One server-side refusal, built the way the wire builds one, because the
+    // code is the whole difference between a command the server would not run
+    // and a server that would not grow.
+    //
+    // Parsed from a RESP error reply rather than assembled from
+    // `RedisError::from((ErrorKind::Extension, code, detail))`. That
+    // constructor LOOKS like it carries the code and does not: it produces a
+    // `General` repr, whose `code()` is always `None`. Every sample routed
+    // through `classify` therefore fell past all three code arms and came back
+    // a plain command failure — including the one labelled `full`, so this
+    // function promised one of each kind and held no `Full` at all, and
+    // `afd_admission`'s error suite panicked looking for it. Parse-then-extract
+    // is the route the driver itself takes — the parser answers an error reply
+    // as `Value::ServerError` so a caller can find one nested in an array, and
+    // `extract_error` is what turns it into the `Err` a command sees — so the
+    // code survives and `classify` is exercised instead of bypassed.
+    let refusal = |code: &str| -> redis::RedisError {
+        let reply = format!("-{code} the server said no\r\n");
+        redis::parse_redis_value(reply.as_bytes())
+            .and_then(redis::Value::extract_error)
+            .expect_err("a RESP error reply extracts as an error, not a value")
     };
 
     vec![

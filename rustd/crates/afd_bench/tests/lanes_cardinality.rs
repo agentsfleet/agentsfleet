@@ -20,6 +20,7 @@ use afd_bench::RunPrefix;
 use afd_bench::lane::cardinality;
 use afd_bench::lane::cardinality::capacity::MEASUREMENTS;
 use afd_bench::profile::{Profile, Target};
+use afd_datastore::ready::READY_PARTITIONS;
 
 use self::support::{LANE, datastores, measurement, series, swept};
 
@@ -170,9 +171,17 @@ async fn test_the_capacity_report_accounts_for_every_class_of_retained_state() {
         measurement(&report, "datastore_streams") >= 50.0,
         "every seeded fleet has a stream"
     );
+    // The figure counts OCCUPIED partitions, and 50 fleets hash across the
+    // index's declared count — so this is the measurement that changed when the
+    // partitioned readiness index landed. An exact count would be a coin flip,
+    // because a partition the hash happens to leave empty is ordinary; the
+    // bound is the property. A readiness index collapsed back onto one key
+    // fails the lower half, and one that outran its own declaration fails the
+    // upper half.
+    let partitions = measurement(&report, "datastore_ready_partitions");
     assert!(
-        (measurement(&report, "datastore_ready_partitions") - 1.0).abs() < f64::EPSILON,
-        "one readiness partition until the partitioned index lands"
+        partitions > 1.0 && partitions <= f64::from(READY_PARTITIONS),
+        "the readiness index is partitioned, and bounded by the count it declares: {partitions}"
     );
     assert!(
         measurement(&report, "datastore_primaries") >= 1.0,
