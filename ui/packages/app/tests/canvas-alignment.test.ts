@@ -168,10 +168,12 @@ describe("a block does not carry the gap that belongs to its column", () => {
     // Measured before: the page root stacked its header row and view row with
     // no gap at all, so the only separation was the identity line's own margin.
     const source = read(RUNNER_PAGE);
-    // `min-h-0`, not `min-h-full`: the page bounds itself so the table inside
-    // it scrolls and the identity line, tabs and filter hold still.
-    const rootGap = source.split("flex min-h-0 flex-1 flex-col")[1]?.split('"')[0] ?? "";
+    // Desktop bounds the table; mobile lets the page grow so a wrapped
+    // header cannot shrink the table viewport until its rows disappear.
+    const rootGap = source.split('data-page-layout="full-height"')[1]?.split('className="')[1]?.split('"')[0] ?? "";
     expect(rootGap).toContain("gap-3xl");
+    expect(rootGap).toContain("md:min-h-0");
+    expect(rootGap).toContain("md:overflow-hidden");
     expect(source).toContain("flex min-h-0 min-w-0 flex-1 flex-col gap-3xl");
   });
 

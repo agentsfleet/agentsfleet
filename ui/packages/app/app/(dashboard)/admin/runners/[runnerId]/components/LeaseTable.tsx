@@ -101,7 +101,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
           <Time
             value={new Date(lease.created_at)}
             format="relative"
-            className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
+            className="font-sans text-body-sm leading-body-sm text-muted-foreground tabular-nums"
           />
         ),
       },

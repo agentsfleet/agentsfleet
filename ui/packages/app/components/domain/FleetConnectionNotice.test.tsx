@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { CONNECTION_STATUS } from "./useFleetEventStream";
 
-const RECONNECT_LABEL = "Reconnect";
+const RECONNECT_LABEL = "Retry now";
 
 afterEach(() => {
   cleanup();
@@ -46,7 +46,7 @@ describe("FleetConnectionNotice", () => {
 
     const notice = screen.getByTestId("fleet-connection-notice");
     expect(notice.textContent).not.toMatch(/history/i);
-    expect(notice.textContent).toMatch(/Live updates stopped.*resume updates/i);
+    expect(notice.textContent).toMatch(/temporarily unavailable.*reconnecting automatically/i);
 
     await userEvent.click(screen.getByRole("button", { name: RECONNECT_LABEL }));
     expect(retry).toHaveBeenCalledTimes(1);

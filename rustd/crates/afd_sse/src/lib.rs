@@ -14,8 +14,8 @@
 //!
 //! Rendering. A [`Frame`] is `seq`, `kind` and `data`; turning that into
 //! `id:`/`event:`/`data:` lines on a socket is `axum::response::sse`'s job, and
-//! so is the heartbeat comment that probes a vanished client. This crate names
-//! the cadence and leaves the writing to the library that owns the transport.
+//! so is the named heartbeat that lets a browser detect a stalled transport.
+//! This crate names the cadence and payload; the transport library writes it.
 //!
 //! # What stays in the caller
 //!
@@ -41,7 +41,7 @@ pub use crate::frame::{DEFAULT_KIND, Frame, KIND_CATCHING_UP, KIND_HELLO};
 pub use crate::live::Live;
 pub use crate::tail::tail;
 
-/// How often a stream with nothing to say says nothing, out loud.
+/// How often an idle stream proves that its transport still carries events.
 ///
 /// `HEARTBEAT_INTERVAL_MS`, mirrored. The write is the point: it is what
 /// discovers a client that went away without closing, and without it a stream
@@ -49,8 +49,10 @@ pub use crate::tail::tail;
 /// come. It also keeps intermediaries from idling the connection out.
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 
-/// The text of the heartbeat comment.
+/// The named event browsers can observe without treating it as activity.
 ///
-/// A comment rather than a frame, so an `EventSource` ignores it and no client
-/// has to learn a keep-alive event name.
-pub const HEARTBEAT_TEXT: &str = "heartbeat";
+/// Mirrored as `HEARTBEAT_EVENT` in the browser's stream client.
+pub const HEARTBEAT_EVENT: &str = "heartbeat";
+
+/// Static JSON for each heartbeat; no activity identifier or sequence is added.
+pub const HEARTBEAT_DATA: &str = r#"{"kind":"heartbeat"}"#;

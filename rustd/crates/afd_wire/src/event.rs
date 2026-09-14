@@ -399,20 +399,23 @@ pub struct SteerRequest<'a> {
 
     /// The caller's own name for this operation, repeated across its retries.
     ///
-    /// Dimension 7.5. A timeout does not prove an operation failed, so a client
-    /// that never saw a response has to be able to ask again without risking a
-    /// second run. This is the value that makes the two distinguishable, and
-    /// only the CALLER can supply it: a server cannot tell a retried POST from
-    /// a person pressing send twice, because the bytes are identical.
+    /// Dimension 7.5. A timeout does not prove an operation failed. A client
+    /// that never saw a response must be able to ask again, and asking again
+    /// must not risk a second run.
     ///
-    /// Present, it becomes the admission ledger's `producer_key`, so the retry
+    /// This value is what tells the two apart, and only the CALLER can supply
+    /// it. A server cannot tell a retried POST from a person pressing send
+    /// twice, because the bytes are identical.
+    ///
+    /// Present, it becomes the admission ledger's `producer_key`. The retry
     /// conflicts on `UNIQUE (producer, producer_key)` and is answered with the
-    /// first admission's event — one run, one charge. Absent, the ledger mints
-    /// a key and two identical messages stay two operations, which is the
-    /// behaviour a person pressing send twice expects.
+    /// first admission's event — one run, one charge.
     ///
-    /// Optional on purpose rather than required: a human typing in a terminal
-    /// has no operation to identify, and forcing one would make every caller
+    /// Absent, the ledger mints a key. Two identical messages stay two
+    /// operations, which is the behaviour a person pressing send twice expects.
+    ///
+    /// Optional on purpose rather than required. A human typing in a terminal
+    /// has no operation to identify. Forcing one would make every caller
     /// invent a value whose only job is to be unique.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES)))]

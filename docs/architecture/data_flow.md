@@ -932,6 +932,22 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    UI        Fleet Console /fleets/{id}
                → browser EventSource opens the same-origin
                  /live/v1/workspaces/{ws}/fleets/{id}/events/stream proxy.
+               → one registry entry owns the connection and retry timers.
+                 Connection attempts expire after 30 seconds. Open connections
+                 expire after 45 seconds without a heartbeat or application frame.
+                 Named heartbeat events arrive every 15 idle seconds, without ids
+                 or database queries. They update timing, not React snapshots.
+               → actual arrivals spanning 30 seconds establish stability and
+                 reset retry history. HTTP open alone never confirms recovery.
+                 Heartbeats prove HTTP transport, not Redis publisher health.
+               → after a stable connection closes, the displayed status retains
+                 last-known health for up to 25 seconds while reconnection runs.
+                 Browser recovery signals preserve that deadline. Sustained
+                 failures show a notice; automatic retries continue alongside
+                 the optional Retry now action. Backfill remains best effort.
+               → deploy the named-heartbeat server before the watchdog client.
+                 Old clients ignore named keepalives; new clients need them to
+                 distinguish quiet streams from silent network failures.
                → the core chat data starts with two reads: fleet detail
                  (status, pending_approvals) and GET /messages?limit=20 (the
                  thread, bodies included). The summary strip is a view

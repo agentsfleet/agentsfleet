@@ -1,7 +1,7 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
+import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
 import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
@@ -123,9 +123,12 @@ export default function ApiKeyList({
 
 function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <span className="truncate text-sm">{k.key_name}</span>
-      <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="truncate text-sm">{k.key_name}</span>
+        <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
+      </div>
+      <div className="sm:hidden"><KeyActivityCell k={k} /></div>
     </div>
   );
 }
@@ -134,19 +137,19 @@ function KeyNameCell({ k }: { k: ApiKeyRow }) {
 // as nullable, so Time renders only for a real timestamp (never for null).
 function KeyActivityCell({ k }: { k: ApiKeyRow }) {
   return (
-    <div className="flex flex-col items-start gap-xs text-xs text-muted-foreground">
-      <Time value={new Date(k.created_at)} format="relative" className="font-mono tabular-nums" />
+    <div className="flex flex-col items-start gap-xs text-label leading-label text-muted-foreground">
+      <span><span className="sm:hidden">Created </span><Time value={new Date(k.created_at)} format="relative" className="tabular-nums" /></span>
       <span>
       {k.last_used_at ? (
         <>
-          last used <Time value={new Date(k.last_used_at)} format="relative" className="font-mono tabular-nums" />
+          last used <Time value={new Date(k.last_used_at)} format="relative" className="tabular-nums" />
         </>
       ) : (
         "never used"
       )}
       {k.revoked_at ? (
         <>
-          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" className="font-mono tabular-nums" />
+          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" className="tabular-nums" />
         </>
       ) : null}
       </span>
@@ -168,13 +171,13 @@ function KeyActionsCell({
   // Icon actions matching the catalogue/registry rows — the aria-label
   // carries the verb + key name, the glyph carries the affordance.
   return k.active ? (
-    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
+    <IconAction type="button" variant="destructive" disabled={pending} onClick={onRevoke} label={`Revoke API key ${k.key_name}`}>
       <BanIcon size={14} />
-    </Button>
+    </IconAction>
   ) : (
-    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
+    <IconAction type="button" variant="destructive" disabled={pending} onClick={onDelete} label={`Delete API key ${k.key_name}`}>
       <Trash2Icon size={14} />
-    </Button>
+    </IconAction>
   );
 }
 
@@ -197,6 +200,7 @@ function buildColumns({
     {
       key: "activity",
       header: "Time",
+      hideOnMobile: true,
       cell: (k) => <KeyActivityCell k={k} />,
       sortable: true,
     },

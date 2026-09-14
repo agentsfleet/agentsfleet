@@ -179,9 +179,9 @@ pub(crate) async fn thread<D: Services>(
         "Starts a fleet run with a chat event. Returns an event identifier ",
         "for tracking in the activity stream. ",
         "Send `operation_id` to make a retry safe: repeat the same value and ",
-        "this endpoint answers with the first run's event instead of starting ",
-        "a second one, so a lost response costs nothing. Omit it and every ",
-        "call is a new message, which is what a person sending twice means. ",
+        "this endpoint returns the first run's event, never a second run. ",
+        "A lost response then costs nothing. Omit it and every call is a new ",
+        "message, which is what a person sending twice means. ",
     ),
     request_body = SteerRequest,
     params(

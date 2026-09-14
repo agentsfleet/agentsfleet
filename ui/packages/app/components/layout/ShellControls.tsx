@@ -102,7 +102,7 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
       <div
         data-testid="shell-leading-cluster"
         className={cn(
-          "flex min-w-0 items-center gap-4 px-4 md:shrink-0 md:px-3",
+          "flex shrink-0 items-center gap-2 px-4 md:gap-4 md:px-3",
           "transition-all duration-snap ease-snap",
           collapsed
             ? `${SIDEBAR_COLUMN.header.collapsed} md:justify-center`

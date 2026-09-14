@@ -35,7 +35,7 @@ const toneOf = (text: string | RegExp) => screen.getByText(text).closest("[data-
 describe("RunnerStatusLine", () => {
   it("test_runner_status_line_cells_and_colours", () => {
     render(<RunnerStatusLine runner={RUNNER} />);
-    expect(line().className).toContain("font-mono");
+    expect(line().className).toContain("font-sans");
     // Three cells: a beating heart, the outcome pair, the live count.
     expect(screen.getByText(/seconds ago/)).toBeTruthy();
     expect(toneOf(/seconds ago/)).toBe("pulse");

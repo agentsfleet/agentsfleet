@@ -42,7 +42,7 @@ test.describe("install-fleet-seed", () => {
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");
     await expect(row).toHaveAccessibleName(
-      new RegExp(`^Manage fleet: ${name} — Agent .+ — active$`),
+      new RegExp(`^Manage fleet: ${name} — AGENT .+ — active$`),
     );
   });
 

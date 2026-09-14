@@ -60,6 +60,24 @@ it("does not count a blank that never crosses a frame boundary", async () => {
   expect(readBlankFrames()).toBe(0);
 });
 
+it("counts a painted blank even when hidden route and loading text remain mounted", async () => {
+  installPaintBoundaryAudit();
+  const main = document.querySelector("main");
+  if (!main) throw new Error("fixture main missing");
+  main.innerHTML = '<div style="display:none">Previous route</div><div style="display:none">Loading page…</div>';
+  await nextFrame();
+  expect(readBlankFrames()).toBe(1);
+});
+
+it("accepts visible loading feedback while route content is absent", async () => {
+  installPaintBoundaryAudit();
+  const main = document.querySelector("main");
+  if (!main) throw new Error("fixture main missing");
+  main.innerHTML = '<div role="status">Loading page…</div>';
+  await nextFrame();
+  expect(readBlankFrames()).toBe(0);
+});
+
 it("keeps refusing a replaced main region", async () => {
   installPaintBoundaryAudit();
   await nextFrame();
@@ -107,4 +125,9 @@ it("refuses to install while the route's own fallback is still the only content"
 
 it("refuses diagnostics when the page never installed the audit", () => {
   expect(() => readBlankFrameEvidence()).toThrow(/audit is missing/);
+});
+
+it("refuses to install when only hidden loading text is present", () => {
+  document.body.innerHTML = '<main><div style="display:none">Loading page…</div></main>';
+  expect(() => installPaintBoundaryAudit()).toThrow(/no content yet/);
 });

@@ -15,6 +15,7 @@ import {
 import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
 import type { InstallStepId } from "./install-steps";
+import { StreamRecoveryWindow } from "./stream-recovery-window";
 
 export const CONNECTION_STATUS = {
   CONNECTING: "connecting",
@@ -60,6 +61,7 @@ export type Entry = {
   eventSource: EventSource | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempts: number;
+  recoveryWindow: StreamRecoveryWindow;
   idleTimer: ReturnType<typeof setTimeout> | null;
   // Whether this entry's EventSource has ever reached onopen. Distinguishes
   // the initial (SSR-seeded) connect from a reconnect — only the latter
@@ -105,6 +107,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     eventSource: null,
     reconnectTimer: null,
     reconnectAttempts: 0,
+    recoveryWindow: new StreamRecoveryWindow(),
     idleTimer: null,
     hasConnectedOnce: false,
     hadConnectionError: false,
