@@ -103,8 +103,8 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_gaps() {
-    let watched = Watched::create().await;
     const VIEWERS: usize = 100;
+    let watched = Watched::create().await;
     let mut bodies = join_all((0..VIEWERS).map(|_| watched.open())).await;
     watched.ready(&mut bodies).await;
     let held = watched

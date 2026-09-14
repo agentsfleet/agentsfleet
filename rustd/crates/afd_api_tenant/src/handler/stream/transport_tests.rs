@@ -11,6 +11,7 @@ use super::serve;
 
 const HEARTBEAT_WIRE: &str = "event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n";
 const CADENCE: Duration = Duration::from_secs(15);
+const BEFORE_CADENCE: Duration = Duration::from_millis(14_999);
 const ACTIVITY: &str = "{\"kind\":\"chunk\",\"text\":\"live\"}";
 const CONCURRENT_STREAMS: usize = 100;
 const ADMISSION_PRECONDITION: &str = "stream admitted";
@@ -39,7 +40,7 @@ async fn an_idle_stream_emits_named_heartbeats_at_the_documented_cadence() {
     let mut body = quiet_body(&ceiling);
     for _ in 0..3 {
         assert!(body.next().now_or_never().is_none());
-        tokio::time::advance(CADENCE - Duration::from_millis(1)).await;
+        tokio::time::advance(BEFORE_CADENCE).await;
         assert!(body.next().now_or_never().is_none());
         tokio::time::advance(Duration::from_millis(1)).await;
         assert_eq!(next_text(&mut body).await, HEARTBEAT_WIRE);
@@ -74,7 +75,7 @@ async fn heartbeats_neither_consume_activity_ids_nor_delay_ready_activity() {
             frame,
             format!("id: {sequence}\nevent: chunk\ndata: {ACTIVITY}\n\n")
         );
-        tokio::time::advance(CADENCE - Duration::from_millis(1)).await;
+        tokio::time::advance(BEFORE_CADENCE).await;
         assert!(body.next().now_or_never().is_none());
     }
     drop(sender);
