@@ -12,7 +12,7 @@
 
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::{
-    Acceptor, BootFailure, DEFAULT_PORT, dual_stack_listener, serve_accepts,
+    Acceptor, BootFailure, DEFAULT_PORT, Drain, dual_stack_listener, serve_accepts,
 };
 use agentsfleetd::supervisor::Supervisor;
 
@@ -205,9 +205,14 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
     };
     let token = tokio_util::sync::CancellationToken::new();
 
+    // The accept loop stops on the DRAIN's token; the supervisor's only cuts a
+    // connection already in flight, which is the split Dimension 7.7 rests on.
+    let drain = Drain::new();
+    let loop_drain = drain.clone();
     let loop_token = token.clone();
-    let serving =
-        tokio::spawn(async move { serve_accepts(acceptor, axum::Router::new(), loop_token).await });
+    let serving = tokio::spawn(async move {
+        serve_accepts(acceptor, axum::Router::new(), loop_drain, loop_token).await;
+    });
 
     // The loop must survive all three failures and still be waiting.
     while observed.load(Ordering::SeqCst) < 3 {
@@ -218,7 +223,7 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
         "three failed accepts must not end serving"
     );
 
-    token.cancel();
+    drain.accepting().cancel();
     tokio::time::timeout(std::time::Duration::from_secs(1), serving)
         .await
         .expect("the loop stops when cancelled, even after failures")

@@ -244,13 +244,15 @@ fn test_a_stalled_blocking_task_does_not_hold_the_exit() {
 fn test_only_a_clean_stop_is_success() {
     let clean = Outcome {
         cause: StopCause::Signalled,
-        shutdown: ShutdownReport::default(),
+        settled: agentsfleetd::serve::Settled::EMPTY,
+                shutdown: ShutdownReport::default(),
     };
     assert_eq!(status_for(&clean), SUCCESS);
 
     let stuck = Outcome {
         cause: StopCause::Signalled,
-        shutdown: ShutdownReport {
+        settled: agentsfleetd::serve::Settled::EMPTY,
+                shutdown: ShutdownReport {
             joined: Vec::new(),
             abandoned: vec!["accept_loop"],
             panicked: Vec::new(),
@@ -264,7 +266,8 @@ fn test_only_a_clean_stop_is_success() {
 
     let fell_over = Outcome {
         cause: StopCause::ServerStopped,
-        shutdown: ShutdownReport::default(),
+        settled: agentsfleetd::serve::Settled::EMPTY,
+                shutdown: ShutdownReport::default(),
     };
     assert_eq!(
         status_for(&fell_over),

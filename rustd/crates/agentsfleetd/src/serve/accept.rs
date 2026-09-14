@@ -18,6 +18,8 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
+use super::drain::Drain;
+
 /// The accept syscall, as a seam.
 ///
 /// M-MOCKABLE-SYSCALLS. `accept()` fails for reasons a test cannot arrange —
@@ -44,13 +46,19 @@ impl Acceptor for TcpListener {
 pub(super) async fn accept_loop<A: Acceptor>(
     listener: A,
     router: axum::Router,
-    token: CancellationToken,
+    drain: Drain,
+    abort: CancellationToken,
 ) {
     loop {
         let accepted = tokio::select! {
             // Cancellation is checked against a genuinely blocked accept, not
             // between iterations — the property Dimension 7.5 exists to prove.
-            () = token.cancelled() => break,
+            //
+            // The DRAIN's token, not the supervisor's: this one only stops the
+            // loop. Breaking drops `listener`, so the port stops answering and
+            // a new connection is refused by the kernel, while the connections
+            // already accepted keep running (`drain`).
+            () = drain.accepting().cancelled() => break,
             accepted = listener.accept() => accepted,
         };
 
@@ -70,8 +78,15 @@ pub(super) async fn accept_loop<A: Acceptor>(
         };
 
         let service = router.clone();
-        let connection_token = token.clone();
+        let connection_token = abort.clone();
+        // Claimed BEFORE the spawn, deliberately: taken inside, there is a
+        // window where the connection exists and is not counted, and a drain
+        // landing in it would see zero and return while this request runs.
+        let guard = drain.enter();
         tokio::spawn(async move {
+            // Held for the whole task, released however it ends — returned,
+            // errored, or cut at `abort`. Only `Drop` covers all three.
+            let _guard = guard;
             // Bound to a local, not spelled inline: `serve_connection` BORROWS
             // the builder, where the http1-only one consumed a copy of it.
             let builder = connection_builder();
@@ -98,7 +113,8 @@ pub(super) async fn accept_loop<A: Acceptor>(
 pub async fn serve_accepts<A: Acceptor>(
     listener: A,
     router: axum::Router,
-    token: CancellationToken,
+    drain: Drain,
+    abort: CancellationToken,
 ) {
-    accept_loop(listener, router, token).await;
+    accept_loop(listener, router, drain, abort).await;
 }

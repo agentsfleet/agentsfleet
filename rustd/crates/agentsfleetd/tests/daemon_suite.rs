@@ -80,6 +80,7 @@ mod preflight_optional;
 mod presentation;
 #[path = "serve.rs"]
 mod serve;
+mod shutdown_drain;
 #[path = "signal.rs"]
 mod signal;
 #[path = "supervisor.rs"]
