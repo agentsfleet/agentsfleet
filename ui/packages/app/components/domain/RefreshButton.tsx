@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { CheckIcon, RefreshCwIcon } from "lucide-react";
-import { IconAction, cn } from "@agentsfleet/design-system";
+import { TooltipButton, cn } from "@agentsfleet/design-system";
 
 /** How long the acknowledgement stands before it fades out. */
 const ACK_MS = 2000;
@@ -66,9 +66,14 @@ export function RefreshButton({
       <output className="sr-only" data-testid="refresh-ack">
         {refreshed ? REFRESHED_LABEL : ""}
       </output>
-      <IconAction
+      {/* Page headers require a 32px target; IconAction's compact row size
+          would shrink this control below that minimum. */}
+      <TooltipButton
+        size="sm"
+        className="aspect-square px-0"
         variant="outline"
-        label={refreshing ? REFRESHING_LABEL : label}
+        aria-label={refreshing ? REFRESHING_LABEL : label}
+        tooltip={refreshing ? REFRESHING_LABEL : label}
         disabled={refreshing}
         aria-busy={refreshing}
         onClick={refresh}
@@ -78,7 +83,7 @@ export function RefreshButton({
         ) : (
           <RefreshCwIcon aria-hidden="true" className={cn(refreshing && "animate-spin")} />
         )}
-      </IconAction>
+      </TooltipButton>
     </>
   );
 }
