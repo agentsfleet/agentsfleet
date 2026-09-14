@@ -130,7 +130,7 @@ fn runPollAgainstStub(mode: StubMode, applied: *AppliedPolicy, worker_index: u32
     var env_map: std.process.Environ.Map = .init(ALLOC);
     defer env_map.deinit();
 
-    loop.pollAndProcess(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, applied, worker_index);
+    loop.pollAndProcess(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, applied, worker_index, null);
 
     stub.shutdown(port);
     stub_thread.join();

@@ -122,16 +122,6 @@ pub fn getSelf(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8
         ClientError.MalformedResponse;
 }
 
-/// POST /v1/runners/me/reports → finalize one execution. Body is `{ok:true}`;
-/// only the 2xx status matters to the caller.
-pub fn report(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, req: protocol.ReportRequest, deadline_ms: u31) !void {
-    const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
-    defer alloc.free(payload);
-    const res = try self.post(alloc, protocol.PATH_RUNNER_REPORTS, runner_token, payload, deadline_ms);
-    defer alloc.free(res.body);
-    try checkStatus(res.status);
-}
-
 /// GET /v1/runners/me/memory/{fleet_id} → the fleet's prior memory (a
 /// compacted recency window). The parent seeds the child's in-run store from
 /// this; the sandboxed child never makes the call. `.alloc_always` so the
@@ -240,6 +230,12 @@ pub fn renew(
 }
 
 // `cp.mint` lives in `control_plane_client_mint.zig` (RULE FLL — at the cap).
+const report_mod = @import("control_plane_client_report.zig");
+/// The terminal-report verb lives beside the client; see that file for why
+/// the durable path needs the bytes spelling.
+pub const report = report_mod.report;
+pub const reportBody = report_mod.reportBody;
+
 const mint_mod = @import("control_plane_client_mint.zig");
 pub const MintOutcome = mint_mod.MintOutcome;
 pub const mint = mint_mod.mint;
