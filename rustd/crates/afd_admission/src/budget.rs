@@ -26,6 +26,7 @@
 //! appends when the queue is back. Refusing on an unreadable figure would turn
 //! the one outage acceptance was designed to ride through into a refusal.
 
+use afd_core::clock::UnixMillis;
 use afd_datastore::FleetStreams;
 
 use crate::Admissions;
@@ -115,6 +116,44 @@ impl Admissions {
     /// Asked of the stream before the row is committed, so a refusal leaves
     /// nothing behind. A stream that will not answer — or has no group yet —
     /// admits: see the module note.
+    /// What the deployment believes awaits a receipt, resampling the figure
+    /// when it is due.
+    ///
+    /// The statement in `sql.rs` takes this as a bound parameter where it used
+    /// to carry a `count(*)` of its own — see `budget/ceiling.rs` for why the
+    /// figure is sampled and what the estimate trades for the walk it saves.
+    ///
+    /// A read that fails leaves the previous figure standing and admits, which
+    /// is the module note above applied to the ledger's side of the same
+    /// outage. Nothing is lost by it: a Postgres that will not count is a
+    /// Postgres that will not insert, and the statement reports that itself.
+    ///
+    /// # Errors
+    /// Never. The signature is fallible because the figure is read from the
+    /// database and the caller is already in a `Result` pipeline.
+    pub(crate) async fn deployment_estimate(&self, now: UnixMillis) -> Result<u64> {
+        let budget = self.budgets.replay_backlog;
+        let estimate = self.ceiling.estimate();
+        if !self.ceiling.due(now, estimate, budget) {
+            return Ok(estimate);
+        }
+        let claim = self.ceiling.claim();
+        if !claim.won() {
+            return Ok(estimate);
+        }
+        match self.backlog(now).await {
+            Ok(read) => {
+                claim.publish(read.rows, now);
+                Ok(self.ceiling.estimate())
+            }
+            Err(unread) => {
+                let reason = unread.to_string();
+                tracing::debug!(reason, event = "admission_ceiling_unread",);
+                Ok(estimate)
+            }
+        }
+    }
+
     pub(crate) async fn refuse_over_fleet_budget(&self, fleet: &str) -> Result<()> {
         let limit = self.budgets.fleet_backlog;
         match FleetStreams::new(self.queue.clone()).backlog(fleet).await {
@@ -134,3 +173,7 @@ impl Admissions {
         }
     }
 }
+
+mod ceiling;
+
+pub(crate) use self::ceiling::Ceiling;

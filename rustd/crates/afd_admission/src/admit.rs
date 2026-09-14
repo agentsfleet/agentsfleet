@@ -146,6 +146,7 @@ impl Admissions {
         digest: &str,
         now: UnixMillis,
     ) -> Result<Ledger> {
+        let estimate = self.deployment_estimate(now).await?;
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::INSERT_ADMISSION)
             .bind(row_id.as_str())
@@ -160,6 +161,7 @@ impl Admissions {
             .bind(now.as_millis())
             .bind(NO_REPLAYS)
             .bind(i64::try_from(self.budgets.replay_backlog).unwrap_or(i64::MAX))
+            .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?
@@ -170,6 +172,11 @@ impl Admissions {
                 })
             })?;
         let inserted: bool = row.try_get(0).map_err(query(CONTEXT_ADMIT))?;
+        if inserted {
+            // Only a fresh row joins the set the ceiling counts; the conflict
+            // arm updated a row that was already in it, or already receipted.
+            self.ceiling.admitted();
+        }
         let created_at: i64 = row.try_get(1).map_err(query(CONTEXT_ADMIT))?;
         let seq: i64 = row.try_get(2).map_err(query(CONTEXT_ADMIT))?;
         let receipt: Option<String> = row.try_get(3).map_err(query(CONTEXT_ADMIT))?;

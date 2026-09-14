@@ -21,22 +21,31 @@
 /// a freshly inserted row has no updating transaction, a conflicted one does.
 ///
 /// The deployment budget rides the same statement. The row is inserted only
-/// while fewer than `$12` rows await a receipt — a count the partial index
-/// on `receipt IS NULL` answers without touching the table — OR when this
+/// while the estimate in `$13` is under the budget in `$12`, OR when this
 /// producer key already has a row, so a retry of admitted work is answered
 /// its id however deep the backlog is. Answering no row is the refusal, and
 /// it costs no second round trip on the path every producer takes.
 ///
+/// `$13` arrives already measured — see `Admissions::deployment_estimate` and
+/// the note in `budget/ceiling.rs`. It used to be a `count(*)` over
+/// `receipt IS NULL` right here, which read well and cost a walk of every
+/// waiting row on every accepted event: the partial index keeps that walk off
+/// the table but not off the rows, so the price rose with the backlog and
+/// peaked when the deployment was already behind. Two bound integers compare
+/// in the planner instead, and the `EXISTS` arm below is a point lookup on
+/// the unique key that only runs when the estimate has already refused.
+///
 /// `$1` id, `$2` fleet, `$3` workspace, `$4` producer, `$5` producer key,
 /// `$6` payload digest, `$7` actor, `$8` event type, `$9` body, `$10` now,
-/// `$11` the initial replay count, `$12` the replay-backlog budget.
+/// `$11` the initial replay count, `$12` the replay-backlog budget,
+/// `$13` the estimated rows awaiting a receipt.
 pub(crate) const INSERT_ADMISSION: &str = "\
 INSERT INTO core.fleet_admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
    actor, event_type, request_json, event_created_at, replay_count,
    created_at, updated_at)
 SELECT $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $10, $10
-WHERE (SELECT count(*) FROM core.fleet_admissions WHERE receipt IS NULL) < $12
+WHERE $13::bigint < $12
    OR EXISTS (SELECT 1 FROM core.fleet_admissions
               WHERE producer = $4 AND producer_key = $5)
 ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
