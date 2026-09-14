@@ -13,6 +13,50 @@ use fixture::{Watched, assert_frame, chunk, completion, next_frame};
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
+    use super::{Fixture, SUBJECT};
+    use crate::harness::{self, Fleet};
+    use afd_auth::scope::{Scope, ScopeSet};
+    use http::{Method, StatusCode};
+
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .carrying_at_most(1)
+    .router();
+    let missing = afd_db::test_util::mint_id();
+    for _ in 0..3 {
+        let path = format!(
+            "/v1/workspaces/{}/fleets/{missing}/events/stream",
+            fixture.workspace
+        );
+        let response = harness::send(&router, Method::GET, &path, Some(&fixture.token), "").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let document = harness::json_body(response).await;
+        assert_eq!(document.get("detail"), Some(&json!("Fleet not found")));
+        assert_eq!(
+            document.get("error_code"),
+            Some(&json!(afd_core::error_code::AGENTSFLEET_NOT_FOUND.as_str()))
+        );
+    }
+    let path = format!(
+        "/v1/workspaces/{}/fleets/{}/events/stream",
+        fixture.workspace, fixture.fleet
+    );
+    let response = harness::send(&router, Method::GET, &path, Some(&fixture.token), "").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    drop(response);
+    drop(router);
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn one_hundred_live_responses_share_one_subscription_and_release_every_reader() {
     let watched = Watched::create().await;
     for viewers in [1, 10, 100] {
@@ -53,6 +97,42 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
             })
         );
     }
+    watched.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_gaps() {
+    const VIEWERS: usize = 100;
+    let watched = Watched::create().await;
+    let mut bodies = join_all((0..VIEWERS).map(|_| watched.open())).await;
+    watched.ready(&mut bodies).await;
+    let held = watched
+        .database()
+        .acquire()
+        .await
+        .expect("only pool slot held");
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(15)).await;
+    tokio::time::resume();
+    let heartbeats = join_all(bodies.iter_mut().map(next_frame)).await;
+    for heartbeat in heartbeats {
+        assert_eq!(
+            heartbeat,
+            "event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
+        );
+    }
+    assert_eq!(watched.hub.connections_opened(), 1);
+    assert_eq!(watched.hub.readers(&watched.channel()), VIEWERS);
+    let payload = chunk("after-heartbeat", "one");
+    assert_eq!(watched.publish(&payload).await, 1);
+    for frame in join_all(bodies.iter_mut().map(next_frame)).await {
+        assert_frame(&frame, 1, &payload);
+    }
+    drop(held);
+    drop(bodies);
+    assert_eq!(watched.hub.readers(&watched.channel()), 0);
+    watched.unsubscribed().await;
     watched.cleanup().await;
 }
 

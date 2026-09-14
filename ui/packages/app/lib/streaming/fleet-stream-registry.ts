@@ -1,4 +1,4 @@
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type EventRow } from "@/lib/api/events";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
 import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
 import { backfillEntry } from "./fleet-stream-backfill";
@@ -11,7 +11,8 @@ import {
   cancelPendingReconnect,
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
-import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
+import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
+import { HEARTBEAT_EVENT } from "./stream-recovery-window";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
 import { capEvents } from "./fleet-stream-cap";
@@ -103,16 +104,21 @@ function startEventSource(entry: Entry, fleetId: string): void {
   const url = streamFleetEventsUrl(entry.workspaceId, fleetId);
   const es = new EventSource(url);
   entry.eventSource = es;
+  const onTimeout = () => { if (entry.eventSource === es) onEventSourceError(entry, fleetId); };
+  const received = () => {
+    entry.recoveryWindow.received(onTimeout);
+    if (entry.recoveryWindow.isStable()) entry.reconnectAttempts = 0;
+    if (entry.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
+      patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
+    }
+  };
   es.onopen = () => {
+    if (entry.eventSource !== es) return;
+    entry.recoveryWindow.opened(onTimeout);
     const needsBackfill = entry.hasConnectedOnce || entry.hadConnectionError;
     entry.hasConnectedOnce = true;
     entry.hadConnectionError = false;
-    // Deliberately NOT resetting reconnectAttempts here. A TCP/SSE open is not
-    // proof of a working stream — an unhealthy upstream can accept and close
-    // immediately. Attempts reset only once a real frame arrives (onFrame), so
-    // an accept-then-close upstream escalates to the slow cadence instead of
-    // hammering at the base delay forever.
-    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
+    // An open alone does not reset failure history: accept-close loops back off.
     if (needsBackfill) {
       void backfillEntry(entry, fleetId, {
         stillCurrent: () => REGISTRY.get(fleetId) === entry,
@@ -121,37 +127,24 @@ function startEventSource(entry: Entry, fleetId: string): void {
     }
   };
   const handleFrame = (e: MessageEvent) => {
-    // A delivered frame is proof the stream works: return to fast backoff.
-    entry.reconnectAttempts = 0;
-    onFrame(entry, e);
+    if (entry.eventSource !== es) return;
+    const frame = parseLiveFrame(e.data);
+    if (!frame) return;
+    received();
+    onFrame(entry, frame);
   };
-  // The daemon names every frame with its payload kind (`event: chunk`,
-  // `event: event_complete` — sse_frame.writeHead), and a NAMED Server-Sent
-  // Events frame dispatches ONLY to its addEventListener — never to
-  // `onmessage`. An onmessage-only client shows a green Live badge (onopen
-  // fires, heartbeats flow) while silently dropping every frame; replies then
-  // appear only on the next server render. Same wiring as workspace-stream.ts.
+  // Named frames dispatch only to their matching listener, never onmessage.
+  // Keep both paths: the daemon uses message for its no-kind fallback.
   for (const name of Object.values(FRAME_KIND)) {
     es.addEventListener(name, handleFrame as (e: Event) => void);
   }
-  // The daemon's fallback for a payload with no leading kind is
-  // `event: message`, which is what onmessage receives.
   es.onmessage = handleFrame;
-  es.onerror = () => onEventSourceError(entry, fleetId);
+  es.addEventListener(HEARTBEAT_EVENT, () => { if (entry.eventSource === es) received(); });
+  es.onerror = onTimeout;
+  entry.recoveryWindow.connecting(onTimeout);
 }
 
-function onFrame(entry: Entry, e: MessageEvent): void {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(e.data);
-  } catch {
-    return;
-  }
-  // SSE payloads are untrusted — validate shape before trusting the cast.
-  if (!parsed || typeof parsed !== "object" || typeof (parsed as { kind?: unknown }).kind !== "string") {
-    return;
-  }
-  const frame = parsed as LiveFrame;
+function onFrame(entry: Entry, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
   // Install frames advance the install step, never the message list. Forking
   // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
   // two concerns — a long-lived chat timeline vs. a one-shot install beat —
@@ -181,14 +174,14 @@ function onEventSourceError(entry: Entry, fleetId: string): void {
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.hadConnectionError = true;
-  if (entry.reconnectTimer) return;
+  if (entry.recoveryWindow.isStable()) entry.reconnectAttempts = 0;
   entry.reconnectAttempts += 1;
   const exhausted = entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS;
-  patchSnapshot(entry, {
-    connectionStatus: exhausted
+  entry.recoveryWindow.reportLoss(() => patchSnapshot(entry, {
+    connectionStatus: entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS
       ? CONNECTION_STATUS.OFFLINE
       : CONNECTION_STATUS.RECONNECTING,
-  });
+  }));
   entry.reconnectTimer = setTimeout(
     () => {
       entry.reconnectTimer = null;
@@ -202,6 +195,7 @@ export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   cancelPendingReconnect(entry);
+  entry.recoveryWindow.dispose();
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.reconnectAttempts = 0;
@@ -211,10 +205,12 @@ export function retryConnection(fleetId: string): void {
 
 function teardown(entry: Entry, fleetId: string): void {
   cancelPendingReconnect(entry);
+  entry.recoveryWindow.dispose();
   if (entry.idleTimer) clearTimeout(entry.idleTimer);
   entry.detachRecovery?.();
   entry.detachRecovery = null;
   entry.eventSource?.close();
+  entry.eventSource = null;
   REGISTRY.delete(fleetId);
 }
 
@@ -230,11 +226,14 @@ export function subscribe(
     REGISTRY.set(fleetId, entry);
     const tracked = entry;
     entry.detachRecovery = attachRecoveryListeners({
-      hasConnection: () => tracked.eventSource !== null,
+      hasConnection: () => tracked.eventSource !== null && !tracked.recoveryWindow.isStale(),
       recover: () => {
+        if (tracked.eventSource) onEventSourceError(tracked, fleetId);
         cancelPendingReconnect(tracked);
         tracked.reconnectAttempts = 0;
-        patchSnapshot(tracked, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+        if (tracked.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
+          patchSnapshot(tracked, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+        }
         startEventSource(tracked, fleetId);
       },
     });
