@@ -18,6 +18,14 @@ test {
     _ = @import("bundle_materialize_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/StorageHome.zig");
+    _ = @import("daemon/ReportSpool.zig");
+    _ = @import("daemon/report_spool_delivery.zig");
+    _ = @import("daemon/report_spool_entry.zig");
+    _ = @import("daemon/report_spool_replay.zig");
+    _ = @import("daemon/lease_run_report.zig");
+    _ = @import("daemon/loop_spool.zig");
+    _ = @import("daemon/loop_poll_verdict.zig");
+    _ = @import("daemon/control_plane_client_report.zig");
     _ = @import("daemon/loop.zig");
     _ = @import("daemon/startup.zig");
     _ = @import("daemon/loop_test.zig");

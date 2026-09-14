@@ -156,7 +156,7 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     // clean exit either way, never token_rejected/worker_pool_failed here.
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
-    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map);
+    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map, null);
     try testing.expect(exit_reason == .fleet_stop or exit_reason == .drained);
     wd.done.store(true, .seq_cst);
     server_thread.join();
@@ -271,7 +271,7 @@ fn runRejectedTokenLoop(drop_at: u32) !struct { exit: loop.LoopExit, accepts: u3
 
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
-    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map);
+    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map, null);
     // Read before this helper's own defer clears the flag for the next test.
     const drained = loop.drain_requested.load(.seq_cst);
     wd.done.store(true, .seq_cst);
@@ -352,7 +352,7 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     // A 401 lease must come back to the worker loop after ONE bounded idle —
     // the heartbeat loop owns the process exit; a worker that crashed, spun,
     // or retried inline here would hammer a known-rejected control plane.
-    loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map, &applied, 0);
+    loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map, &applied, 0, null);
     try testing.expectEqual(@as(u32, 1), stub.accepts.load(.seq_cst));
 
     stub.shutdown(port); // Linux-safe: wake the blocked accept, then join, THEN deinit

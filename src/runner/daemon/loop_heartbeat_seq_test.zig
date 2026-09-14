@@ -174,7 +174,7 @@ test "the control loop brings the pool up on assignment, dedupes probes, forgets
 
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
-    const exit_reason = loop.runLoop(io, ALLOC, try deadlines.start(ALLOC), cfg, &env_map);
+    const exit_reason = loop.runLoop(io, ALLOC, try deadlines.start(ALLOC), cfg, &env_map, null);
 
     wd.done.store(true, .seq_cst);
     wd_thread.join();

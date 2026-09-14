@@ -226,7 +226,7 @@ fn runBundleFailureArc(report_mode: ReportMode) !struct { bundle_gets: u32, repo
     var env_map: std.process.Environ.Map = .init(ALLOC);
     defer env_map.deinit();
 
-    lease_run.executeAndReport(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, leasePayload(.{ .content_hash = BUNDLE_HASH }));
+    lease_run.executeAndReport(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, leasePayload(.{ .content_hash = BUNDLE_HASH }), null);
 
     stub.shutdown(port);
     stub_thread.join();
@@ -277,7 +277,7 @@ test "an uncreatable workspace backs off once and returns without touching the p
     defer env_map.deinit();
 
     const started = common.clock.nowMillis();
-    lease_run.executeAndReport(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, leasePayload(null));
+    lease_run.executeAndReport(io, ALLOC, &cp, RUNNER_TOKEN, cfg, &env_map, leasePayload(null), null);
     const wall = common.clock.nowMillis() - started;
     // Backed off (worker poll loops must not hot-spin on a persistent prep
     // failure) yet bounded — returned after one backoff step, no hang.
