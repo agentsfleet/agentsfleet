@@ -140,7 +140,8 @@ A feed row never explains a failure. Status flags it and the row's own Inspect d
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
 Every row action names its variant: ghost for the neutral ones, destructive for Delete and Deny. IconAction's own default is outline, which draws a box per icon and belongs to standalone buttons, never to a cluster in a table row.
-Use the same IconAction size for icon-only section controls such as Refresh. Keep loading and completion cues inside that fixed square.
+Header controls such as Refresh use a square TooltipButton with `size="sm"`, preserving a minimum 32px target.
+Keep loading and completion cues inside that fixed square.
 Do not add creation dates to catalog tables whose records have no useful creation-date field.
 
 Column labels and cells share horizontal padding and alignment.
