@@ -53,6 +53,14 @@ NODE_COUNT=4
 # The TLS node's index: one past the cluster, so its ports follow theirs.
 TLS_NODE=4
 TLS_DIR="$DATA/tls"
+# --masterauth is not decoration. Every node sets --requirepass, so a replica
+# dialling its primary's DATA port must authenticate like any other client; the
+# REPLICAOF below was answered "-NOAUTH Authentication required.", replication
+# was cancelled, and both replicas stayed masters holding nothing. The topology
+# read as two primaries and two replicas in CLUSTER config while INFO reported
+# connected_slaves:0 on both primaries — a declared replica set is not a
+# replicating one, and only the second is worth anything to recovery.
+#
 # Node i is a primary when i is even; node i+1 is its replica. The ids are
 # stable across restarts because they are named here, not minted — a cluster
 # config names nodes by id, and a re-minted id would orphan every replica.
@@ -85,7 +93,7 @@ start_nodes() {
       --port="$(data_port "$i")" --admin_port="$(admin_port "$i")" \
       --admin_bind="$HOST" --admin_nopass \
       --cluster_announce_ip="$HOST" --announce_port="$(data_port "$i")" \
-      --requirepass="$PASSWORD" --dir="$DATA/n$i" \
+      --requirepass="$PASSWORD" --masterauth="$PASSWORD" --dir="$DATA/n$i" \
       --maxmemory=512mb --proactor_threads=2 --lock_on_hashtags \
       >/dev/null 2>"$DATA/n$i/dragonfly.log" &
   done
