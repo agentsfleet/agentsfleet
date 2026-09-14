@@ -83,17 +83,40 @@ const _: () = {
 pub struct Replay {
     /// The ledger this pass walks.
     admissions: Admissions,
+    /// How long a row is left for its own producer — [`MIN_AGE`] on the
+    /// interval loop, zero for a rebuild. See [`Replay::for_rebuild`].
+    min_age: Duration,
     /// What the last pass concluded about when to come back.
     pacing: Mutex<Duration>,
 }
 
 impl Replay {
-    /// A dispatcher over `admissions`.
+    /// A dispatcher over `admissions`, leaving young rows to their producers.
     #[must_use]
     pub fn new(admissions: Admissions) -> Self {
         Self {
             admissions,
+            min_age: MIN_AGE,
             pacing: Mutex::new(INTERVAL),
+        }
+    }
+
+    /// A dispatcher for a rebuild, which leaves no row to its producer.
+    ///
+    /// The age floor exists so a pass does not race a producer that is about
+    /// to record its own receipt and put a second entry on the stream for no
+    /// reason. After a flush there is no reason left: the entry that producer
+    /// appended is already gone, and if it appends again now, its receipt
+    /// write is guarded on `receipt IS NULL` and the extra entry is dropped at
+    /// lease — the same two guards that make the interval loop's floor a
+    /// courtesy rather than a correctness condition. A rebuild owes every
+    /// unreceipted row immediately, and waiting thirty seconds per round for
+    /// rows the cache just lost would be the floor protecting nothing.
+    #[must_use]
+    pub fn for_rebuild(admissions: Admissions) -> Self {
+        Self {
+            min_age: Duration::ZERO,
+            ..Self::new(admissions)
         }
     }
 }
@@ -111,7 +134,10 @@ impl Sweep for Replay {
 
     async fn sweep(&self) -> Result<Swept> {
         let now = clock::now();
-        let replayed = self.admissions.replay(now, MIN_AGE, BATCH_LIMIT).await?;
+        let replayed = self
+            .admissions
+            .replay(now, self.min_age, BATCH_LIMIT)
+            .await?;
         // Counted whole after the pass, not from the batch: the batch is
         // capped, and a capped count published as the backlog would read
         // "thirty-two" over a hundred thousand.
