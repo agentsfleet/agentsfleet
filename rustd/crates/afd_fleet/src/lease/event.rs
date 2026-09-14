@@ -53,8 +53,21 @@ const CONTEXT_DELIVERED: &str = "admission delivered stamp";
 pub enum Delivery {
     /// This event had no row; the caller owes it a receive debit.
     First,
-    /// The row already existed, so an earlier delivery already paid.
+    /// The row already existed and is still OPEN, so an earlier delivery paid
+    /// for it and this one may carry on executing it.
     Repeat,
+    /// The row already existed and has already FINISHED.
+    ///
+    /// Dimension 7.4. A redelivery of an event that already ran must be
+    /// acknowledged and dropped, not executed: the run happened, the tenant
+    /// paid for it, and the answer is already owed or delivered. Running it
+    /// again spends a provider's money a second time and posts a second answer
+    /// into a thread a person is reading.
+    ///
+    /// A third arm rather than a `bool` beside [`Self::Repeat`] for the reason
+    /// the enum exists at all — every `match` on this type now has to say what
+    /// it does with a finished event, and the compiler is what asks.
+    Terminal,
 }
 
 /// What opening the narrative log answered: whether this was the first
@@ -120,7 +133,7 @@ impl Leases {
         // there, so somebody has already paid for this event.
         if landed.rows_affected() == 0 {
             return Ok(Received {
-                delivery: Delivery::Repeat,
+                delivery: self.redelivery_of(&mut connection, acquired).await?,
                 counters: None,
             });
         }
@@ -130,6 +143,38 @@ impl Leases {
         Ok(Received {
             delivery: Delivery::First,
             counters,
+        })
+    }
+
+    /// Which kind of redelivery this is: one that may still run, or one that
+    /// has already finished.
+    ///
+    /// Open means `received` and nothing else, which is not a shortcut — it is
+    /// the same predicate the failure and report updates guard on. Every other
+    /// stored spelling is an ending somebody already wrote: a runner's
+    /// `processed` or `fleet_error`, or a daemon-side refusal like
+    /// `gate_blocked`, which `afd_core::event::status` documents as terminal in
+    /// its own right. Asking "is it still open" rather than listing the endings
+    /// is what keeps this correct when a new refusal spelling is added.
+    ///
+    /// A row that vanished between the insert and this read is treated as still
+    /// open. That is the conservative direction: the alternative is dropping an
+    /// event nobody can prove ran, and a redelivery that runs twice is visible
+    /// while one that is silently discarded is not.
+    async fn redelivery_of(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        acquired: &Acquired,
+    ) -> Result<Delivery> {
+        let stored: Option<String> = sqlx::query_scalar(afd_events::sql::SELECT_FLEET_EVENT_STATUS)
+            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.event_id)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RECEIVED))?;
+        Ok(match stored.as_deref() {
+            Some(afd_core::event::status::RECEIVED) | None => Delivery::Repeat,
+            Some(_) => Delivery::Terminal,
         })
     }
 }
