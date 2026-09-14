@@ -75,6 +75,10 @@ _migrate-test-db:
 # checked and linted like the rest), lists them as ignored, and runs none —
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
+# afd_bench is a measuring instrument with separate manual bench-* targets.
+# Its sampled datastore counters are not deterministic integration assertions.
+# Keep it out of both datastore gates; retain the zero-tests guard for the
+# actual service integration suite.
 
 # ONE guard, both lanes — $(call _rust_lane,<tally-name>,<label>,<command...>)
 #
@@ -117,7 +121,7 @@ endef
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --all-features --test "*" -- --ignored)
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored)
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
@@ -288,7 +292,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --all-features --no-report -- --include-ignored)
+	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --exclude afd_bench --all-features --no-report -- --include-ignored)
 	@echo "→ [rustd] Rendering lcov.info from the run's profile..."; \
 	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov.info \
