@@ -30,6 +30,7 @@
 //! a worse outage than the one it reported.
 
 pub mod liveness;
+pub mod rebuild;
 pub mod reclaim;
 pub mod reconcile;
 pub mod repair;
