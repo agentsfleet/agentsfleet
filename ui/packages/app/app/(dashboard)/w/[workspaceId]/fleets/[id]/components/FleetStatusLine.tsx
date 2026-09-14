@@ -73,7 +73,10 @@ export default function FleetStatusLine({
   // No rule of its own: the card above already draws the edge, and a second
   // hairline 16px under it read as a doubled border.
   return (
-    <StatusLine aria-label={METRICS_STRIP_LABEL}>
+    <StatusLine
+      aria-label={METRICS_STRIP_LABEL}
+      className="flex-wrap gap-x-md gap-y-xs overflow-visible divide-x-0 [&>span]:px-0"
+    >
       <StatusLineItem
         tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"}
         className="uppercase"
@@ -86,7 +89,7 @@ export default function FleetStatusLine({
         <OutcomeIcon
           size={ICON_SIZE}
           aria-hidden="true"
-          className={cn("shrink-0", outcome.live && "animate-spin")}
+          className={cn("shrink-0", outcome.live && "motion-safe:animate-spin")}
         />
         <HiddenLabel>{METRICS_OUTCOME_LABEL}</HiddenLabel>
         <span className="truncate">{outcome.text}</span>

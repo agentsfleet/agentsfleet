@@ -217,7 +217,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const messageLog = container.querySelector('[role="log"]') as HTMLElement;
-    const viewport = messageLog.parentElement?.parentElement as HTMLElement;
+    const viewport = messageLog.closest('[role="presentation"]') as HTMLElement;
     const composer = container.querySelector('[aria-label="Chat composer"]');
     expect(messageLog).toBeTruthy();
     // The message list owns the overflow. Without this the card grows to the
