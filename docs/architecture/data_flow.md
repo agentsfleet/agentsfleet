@@ -14,7 +14,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Event ingress | ONE — six producers | steer / webhook / cron / continuation / Slack / repair-verifier each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
-| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
+| Durable stores | 5 tables, join key `event_id` | `fleet_admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet_events` (one row per delivery) · `fleet_obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet_sessions` (one row per fleet, UPSERT) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
 | Shared Redis handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
@@ -64,7 +64,7 @@ The diagrams live with their flows — each is the section's proof, so none is d
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The three durable stores |
+| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The five durable stores |
 | `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Redis tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
@@ -267,12 +267,51 @@ This is the inbound admission ledger pointed outbound. There, the row is the acc
 
 A retry that arrives **after** the commit — the response was lost, not the work — finds the lease `reported` by the same runner. It is answered with the stored outcome and charges nothing, so the runner stops retrying with its result safely landed. The lease id is the report's idempotency key, which is why `POST /v1/runners/me/reports` takes no `Idempotency-Key` header. A holder the fleet has genuinely superseded is a different empty claim and still gets `409`: the lease there is not `reported`, it is somebody else's.
 
-## The three durable stores: who owns what
+## The five durable stores: who owns what
 
-The flow writes three Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
+The flow writes five Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
+
+Two of the five arrived after that cutover and bracket the others. `core.fleet_admissions` records work this deployment ACCEPTED, committed before a producer is told yes. `core.fleet_obligations` records an answer this deployment OWES, committed with the result that produced it. They are deliberate mirror images, and the property they share is the one the whole datastore design turns on: **PostgreSQL records it before Dragonfly carries it, and the stream entry is a receipt written back afterwards.** A stream entry is not a durable record of intent, so anything whose loss would strand work is a row first and an entry second.
+
+Read the primary keys and the shape falls out:
+
+```
+  fleet_admissions   PK id  + UNIQUE (producer, producer_key)   one row per ACCEPTANCE
+  fleet_events       PK (fleet_id, event_id)                    one row per EVENT
+  fleet_obligations  PK id  + UNIQUE (fleet_id, event_id)       one row per ANSWER
+  fleet_sessions     PK fleet_id                                one row per FLEET
+```
+
+Three of them grow with traffic. `fleet_sessions` does not — it is a cursor, not a log, which is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
+
+One event's life across all four:
+
+```
+  a message arrives
+      │
+      ├─▶ fleet_admissions   INSERT  "accepted"          before the producer hears yes
+      │                                                  dedupes the PRODUCER's retry
+      ├─▶ fleet_events       INSERT  status='received'   the narrative opens
+      │                                                  dedupes REDELIVERY
+      │   ┌── a runner executes ──┐
+      │   │                       │
+      ├─▶ fleet_events       UPDATE  status='processed', response_text
+      ├─▶ fleet_obligations  INSERT  "owed"              ← same transaction as the money
+      ├─▶ fleet_sessions     UPSERT  context_json        cursor moves, execution_id cleared
+      │
+      └─▶ fleet_obligations  UPDATE  delivered_at        a person received it
+```
+
+The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity. A destination has no such key — a chat provider cannot tell us "this is the same message" — so an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
+
+That decides the direction of error, too. An uncertain admission is REFUSED, because a 4xx is what stops a provider retrying. An uncertain obligation is RE-SENT, because the path is at-least-once and a duplicate message in a thread is visible and recoverable by a person, while an answer never sent is neither.
+
+`fleet_events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
+| `core.fleet_admissions` | **One row per acceptance** | INSERT, then UPDATE `receipt` and `delivered_at` | "Did we accept this work, and has a runner taken it?" — committed before the producer is told yes, so a lost queue loses no accepted work. `UNIQUE (producer, producer_key)` is what makes a producer's retry one row rather than two runs. |
+| `core.fleet_obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
 | `core.fleet_sessions` | **One row per Fleet** | UPSERT — mutated on every event boundary | "Where is this Fleet *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
 | `core.fleet_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
 | `billing.usage_ledger` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `event_id`. |
