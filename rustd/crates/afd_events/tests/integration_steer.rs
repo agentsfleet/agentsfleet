@@ -77,7 +77,13 @@ async fn test_steer_append_event_id() {
         .expect("the consumer group is created");
 
     let answered = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the append reaches the queue");
 
@@ -170,11 +176,23 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the consumer group is created");
 
     let first = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the first append reaches the queue");
     let second = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the second append reaches the queue");
 

@@ -252,7 +252,7 @@ async fn append_until(
         }
         let started = Instant::now();
         match steer
-            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON)
+            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON, None)
             .await
         {
             Ok(_id) => {

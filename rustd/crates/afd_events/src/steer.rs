@@ -12,13 +12,25 @@
 //! indistinguishable from every other way a run starts, and it is why there
 //! is no synthetic-event injection anywhere behind this.
 //!
-//! # A steer's key is minted, because a steer has no retry identity
+//! # A steer's key is the CALLER's, when the caller has one
 //!
 //! Every other producer repeats a value across its retries: a delivery id, a
-//! scheduler message id, a gate action. A person pressing send twice means
-//! two messages, so there is nothing to deduplicate against and the key is
-//! this call's own row identifier. The ledger still records the acceptance,
-//! which is the half that matters — the message survives queue loss.
+//! scheduler message id, a gate action. A steer has no such value of its own,
+//! and for a long time that meant the key was this call's own row identifier —
+//! correct for a person pressing send twice, wrong for an API client that
+//! never saw its response.
+//!
+//! Those two are indistinguishable from here. The bytes are identical, so only
+//! the caller knows which one it is making, and Dimension 7.5 is the field that
+//! lets it say: `operation_id`, repeated across a retry. Present, it is the
+//! ledger's `producer_key` and the retry conflicts on
+//! `UNIQUE (producer, producer_key)` — answered with the first admission's
+//! event, one run, one charge. Absent, the ledger mints one and two identical
+//! messages stay two operations.
+//!
+//! The absent case is a real answer and not a default nobody thought about: a
+//! timeout does not prove an operation failed, but neither does it prove one
+//! happened, and a human typing in a terminal has no operation to identify.
 
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_wire::event::EventType;
@@ -70,14 +82,20 @@ impl Steer {
         workspace: &str,
         actor: &str,
         request_json: &str,
+        operation_id: Option<&str>,
     ) -> Result<String> {
         let admitted = self
             .admissions
             .admit(Admission {
                 producer: Producer::Steer,
-                // See the module note: a steer has no value that survives a
-                // retry, so the ledger keys it on its own row.
-                key: Key::Unrepeatable,
+                // Mapped explicitly, never by `unwrap_or`-ing into a default:
+                // `Key`'s own note warns that an `Option` lets a caller which
+                // HAS an identity lose deduplication by omission, and this is
+                // the call site that would do it.
+                key: match operation_id {
+                    Some(operation) => Key::Repeated(operation),
+                    None => Key::Unrepeatable,
+                },
                 fleet,
                 workspace,
                 actor,
