@@ -6,7 +6,9 @@
 //! [`super::forget_every_script`] because the hazard is the same one — both
 //! one-time actions in this crate are Lua — and nothing else.
 
-use afd_datastore::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome, session_key};
+use afd_datastore::session::{
+    SessionState, SessionStatus, SessionStore, VerifyOutcome, session_key,
+};
 
 use crate::support::RedisHarness;
 

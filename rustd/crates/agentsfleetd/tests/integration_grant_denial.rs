@@ -65,13 +65,11 @@ async fn connect_and_declare(run: &Scenario) {
 
 /// How many approval cards this fixture's fleet has raised.
 async fn gate_cards(run: &Scenario) -> i64 {
-    sqlx::query_scalar(
-        "SELECT count(*) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
-    )
-    .bind(&run.fleet)
-    .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
-    .await
-    .expect("the gate count must run")
+    sqlx::query_scalar("SELECT count(*) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid")
+        .bind(&run.fleet)
+        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the gate count must run")
 }
 
 /// Polls until the gate has actually SEEN this fleet.

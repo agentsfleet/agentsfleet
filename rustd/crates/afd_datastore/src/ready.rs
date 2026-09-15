@@ -30,9 +30,7 @@ use futures_util::future::try_join_all;
 use crate::client::Redis;
 use crate::error::Result;
 
-pub use self::partition::{
-    Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix,
-};
+pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// Delete the field only if it still carries the token the caller observed.
 ///

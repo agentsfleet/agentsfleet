@@ -93,9 +93,9 @@ fn node_of(node: Value) -> Option<Node> {
     let role = entries
         .iter()
         .find_map(|(key, value)| (key == FIELD_ROLE).then(|| shown(value)))?;
-    let host = entries
-        .iter()
-        .find_map(|(key, value)| (key == FIELD_IP || key == FIELD_ENDPOINT).then(|| shown(value)))?;
+    let host = entries.iter().find_map(|(key, value)| {
+        (key == FIELD_IP || key == FIELD_ENDPOINT).then(|| shown(value))
+    })?;
     let port = entries.iter().find_map(|(key, value)| match value {
         Value::Int(port) if key == FIELD_PORT => u16::try_from(*port).ok(),
         _other => None,

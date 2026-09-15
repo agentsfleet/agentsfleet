@@ -215,4 +215,3 @@ fn message_of(data: Vec<Value>) -> Option<Message> {
 fn channel_of(data: &[Value]) -> Option<String> {
     text(data.first()?)
 }
-
