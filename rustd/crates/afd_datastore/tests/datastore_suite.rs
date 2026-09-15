@@ -101,6 +101,8 @@ mod integration_cluster_recovery;
 mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
 mod integration_hub;
+#[path = "integration_hub_exclusive.rs"]
+mod integration_hub_exclusive;
 #[path = "integration_partitioned_ready.rs"]
 mod integration_partitioned_ready;
 #[path = "integration_ready.rs"]
