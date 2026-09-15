@@ -24,15 +24,23 @@
 //! thing that fires rather than the first, the ladder's worst case has to fit:
 //!
 //! ```text
-//! (CONNECT_RETRIES + 1) * CONNECT_ATTEMPT_TIMEOUT   <- the attempts
+//! CONNECT_ATTEMPTS * CONNECT_ATTEMPT_TIMEOUT       <- the attempts
 //!   + jittered sum of the backoff delays            <- the sleeps
 //!   < RedisConfig::connect_timeout                  <- the outer budget
 //! ```
 //!
-//! While that holds, the driver's own error always arrives first and keeps
-//! its source chain through [`ErrorKind::Unreachable`]. When it does not, the
-//! outer deadline cancels the driver mid-ladder and the caller is handed a
-//! `ConnectTimeout` naming the datastore, with the initiating error destroyed.
+//! While that holds, the driver's own error always arrives first and keeps its
+//! source chain. When it does not, the outer deadline cancels the driver
+//! mid-ladder and the caller is handed a `ConnectTimeout` naming the
+//! datastore, with the initiating error destroyed.
+//!
+//! The ladder costs something even when it fits. A refusal the server will
+//! repeat — a certificate the configured authority does not trust — is retried
+//! anyway, and an attempt that trips `CONNECT_ATTEMPT_TIMEOUT` late in the
+//! ladder replaces the refusal that opened it, because the driver keeps only
+//! the LAST initial-connection error. That is what `diagnose` re-asks for, and
+//! why a failed TLS dial can end in [`ErrorKind::CertificateRejected`] rather
+//! than [`ErrorKind::Unreachable`].
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -135,9 +143,13 @@ pub(crate) fn builder(
 /// Builds the client, which parses the seed and reads the authority but opens
 /// no socket. A seed that is not a URL is refused here, by role.
 pub(crate) fn client(config: &RedisConfig, response_timeout: Duration) -> Result<ClusterClient> {
+    // No socket is opened here, so nothing that fails here can be an outage.
+    // Reporting it as one sent an operator to look at the network for a seed
+    // their own configuration had malformed -- and this function's own
+    // documentation already promised a config error.
     builder(config, response_timeout)?
         .build()
-        .map_err(|source| unreachable(config, source))
+        .map_err(|source| error::config_rejected(config.role().tag(), source))
 }
 
 /// The per-connection settings: the reply deadline a caller declares, and the
@@ -216,13 +228,6 @@ pub(crate) fn pending(
         .get_pending_async_connection_with_config(connection_config(response_timeout, None)))
 }
 
-fn unreachable(config: &RedisConfig, source: redis::RedisError) -> Error {
-    Error::new(ErrorKind::Unreachable {
-        role: config.role().tag(),
-        source: Box::new(source),
-    })
-}
-
 /// Whether a failed dial says the server's certificate was not trusted.
 ///
 /// Read out of the rendering rather than matched on a typed cause, because
@@ -278,14 +283,13 @@ async fn dial_failure(
     if names_a_certificate(&source) {
         return error::certificate_rejected(config.role().tag(), source);
     }
-    if config.is_tls() {
-        if let Some(recovered) = diagnose(config, response_timeout).await {
-            if names_a_certificate(&recovered) {
-                return error::certificate_rejected(config.role().tag(), recovered);
-            }
-        }
+    if config.is_tls()
+        && let Some(recovered) = diagnose(config, response_timeout).await
+        && names_a_certificate(&recovered)
+    {
+        return error::certificate_rejected(config.role().tag(), recovered);
     }
-    unreachable(config, source)
+    error::unreachable(config.role().tag(), source)
 }
 
 #[cfg(test)]
