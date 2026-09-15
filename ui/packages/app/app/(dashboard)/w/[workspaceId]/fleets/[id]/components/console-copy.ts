@@ -80,6 +80,11 @@ export const METRICS_STATUS_LABEL = "Status";
 export const METRICS_OUTCOME_LABEL = "Latest outcome";
 export const METRICS_TOKENS_LABEL = "Tokens";
 export const METRICS_TIME_LABEL = "Duration";
+// Rides beside the duration the way `tok` rides beside the token count.
+// Every figure on the strip belongs to the LATEST run -- not a lifetime
+// total -- and the duration is the one a reader was most likely to take
+// for an uptime or an age.
+export const METRICS_TIME_UNIT = "run";
 export const METRICS_COST_LABEL = "Spend";
 // Any missing figure (tokens, time, or cost) renders a dash — an unknown is
 // never a fabricated zero.
