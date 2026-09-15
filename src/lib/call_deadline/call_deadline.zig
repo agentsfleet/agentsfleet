@@ -26,7 +26,7 @@ const common = @import("common");
 /// Default verb deadline (heartbeat, lease poll, self, memory hydrate/capture).
 pub const DEFAULT_DEADLINE_MS: u31 = 10_000;
 /// Reports carry the full response_text + checkpoint payload — extra headroom.
-pub const REPORT_DEADLINE_MS: u31 = 15_000;
+const REPORT_DEADLINE_MS: u31 = 15_000;
 /// Live-tail batches are best-effort; tight bound so a dead control plane
 /// cannot stall the frame pump for long.
 pub const ACTIVITY_DEADLINE_MS: u31 = 5_000;

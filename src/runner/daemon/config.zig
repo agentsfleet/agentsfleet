@@ -56,7 +56,7 @@ cp_deadlines: call_deadline.Deadlines,
 
 alloc: Allocator,
 
-pub const ConfigError = error{ MissingEnvVar, InvalidRunnerToken, OutOfMemory };
+const ConfigError = error{ MissingEnvVar, InvalidRunnerToken, OutOfMemory };
 
 /// Read the bootstrap trio from the process environment. Returns
 /// `ConfigError.MissingEnvVar` for required vars that are absent, and
@@ -132,7 +132,7 @@ const AppliedPolicy = @import("AppliedPolicy.zig");
 /// assigned by the control plane and delivered with its identity.
 pub const ENV_AGENTSFLEET_API_URL = "AGENTSFLEET_API_URL";
 pub const ENV_AGENTSFLEET_RUNNER_TOKEN = "AGENTSFLEET_RUNNER_TOKEN";
-pub const ENV_RUNNER_STORAGE_HOME = "RUNNER_STORAGE_HOME";
+const ENV_RUNNER_STORAGE_HOME = "RUNNER_STORAGE_HOME";
 
 const DEFAULT_STORAGE_HOME = "/tmp/agentsfleet-runner";
 

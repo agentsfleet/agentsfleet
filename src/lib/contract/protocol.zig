@@ -27,7 +27,7 @@ const reports = @import("protocol_report.zig");
 const memory = @import("protocol_memory.zig");
 const credentials = @import("protocol_credentials.zig");
 
-pub const LEASE_WIRE_VERSION_V1: u16 = 1;
+const LEASE_WIRE_VERSION_V1: u16 = 1;
 pub const LEASE_WIRE_VERSION_CURRENT: u16 = 2;
 pub const LEASE_REQUEST_CURRENT_JSON = "{\"wire_version\":2}";
 
@@ -171,7 +171,7 @@ pub const RunnerEventsResponse = runner_events.RunnerEventsResponse;
 /// derives `registered` from it, so a fresh runner is honestly "registered",
 /// not a fake "online". Single-sourced (RULE UFS) — the minter and the liveness
 /// derivation must agree on the sentinel.
-pub const RUNNER_LAST_SEEN_NEVER: i64 = 0;
+const RUNNER_LAST_SEEN_NEVER: i64 = 0;
 
 /// Derived runtime liveness of a runner — computed by the fleet read from
 /// `last_seen_at` + the live-lease join, NEVER stored (storing it would drift;
@@ -181,7 +181,7 @@ pub const RUNNER_LAST_SEEN_NEVER: i64 = 0;
 ///   busy       — holds a live lease (actively renewing — takes precedence over offline)
 ///   online     — heartbeat fresh, no live lease
 ///   offline    — heartbeat stale beyond the lapse threshold
-pub const RunnerLiveness = enum { registered, busy, online, offline };
+const RunnerLiveness = enum { registered, busy, online, offline };
 
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an

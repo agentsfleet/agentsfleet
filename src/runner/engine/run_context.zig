@@ -16,7 +16,7 @@ const credential_request = @import("credential_request.zig");
 /// Acquire the LLM provider for one run. The bundle is owned by the caller (it
 /// holds the real provider's resources and is `deinit`'d there); the production
 /// impl fills it, a stub leaves it empty (its `deinit` then no-ops).
-pub const AcquireProviderFn = *const fn (
+const AcquireProviderFn = *const fn (
     alloc: std.mem.Allocator,
     cfg: *Config,
     bundle: *runner_helpers.ProviderBundle,

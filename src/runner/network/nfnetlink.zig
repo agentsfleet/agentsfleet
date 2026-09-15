@@ -32,7 +32,7 @@ const NFNL_MSG_BATCH_BEGIN: u16 = 16;
 const NFNL_MSG_BATCH_END: u16 = 17;
 
 // Families + verdicts the caller passes to `newChain` (linux/netfilter.h).
-pub const NFPROTO_UNSPEC: u8 = 0;
+const NFPROTO_UNSPEC: u8 = 0;
 pub const NFPROTO_INET: u8 = 1;
 pub const NF_DROP: u32 = 0;
 pub const NF_ACCEPT: u32 = 1;

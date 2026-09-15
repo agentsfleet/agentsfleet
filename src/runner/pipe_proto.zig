@@ -137,7 +137,7 @@ pub fn readFrame(
 
 /// Whether `fd` became readable before the deadline. `.readable` includes a
 /// closed write end (a subsequent read returns 0 = EOF).
-pub const ReadyState = enum { readable, timed_out };
+const ReadyState = enum { readable, timed_out };
 
 /// Wait until `fd` has data (or EOF) to read, or `deadline_ms` (absolute epoch
 /// ms) passes. The supervisor uses this to wake at a renewal-tick cadence in the

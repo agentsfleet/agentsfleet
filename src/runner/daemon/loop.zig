@@ -64,7 +64,7 @@ pub fn installDrainHandlers() void {
 /// from `drain_requested` (signal / fleet `.drain`) only by origin; each worker
 /// halts on either at its between-lease boundary, so both are graceful drains
 /// (finish in-flight, take no new lease) per the locked design.
-pub var stop_requested = std.atomic.Value(bool).init(false);
+var stop_requested = std.atomic.Value(bool).init(false);
 
 /// Why the control loop exited. The entrypoint maps `token_rejected` to a
 /// non-zero process exit so a stale/revoked runner token surfaces as a loud,

@@ -20,7 +20,7 @@ alloc: std.mem.Allocator,
 /// Fallback registry baseline — the daemon feeds this in when the assigned
 /// `registry_allowlist` is empty. NOT the authoritative source: the operator
 /// overrides it from the dashboard. Single-sourced here (RULE UFS).
-pub const DEFAULT_REGISTRY = [_][]const u8{
+const DEFAULT_REGISTRY = [_][]const u8{
     "registry.npmjs.org",
     "pypi.org",
     "files.pythonhosted.org",

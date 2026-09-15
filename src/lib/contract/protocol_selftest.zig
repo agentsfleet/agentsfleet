@@ -48,7 +48,7 @@ pub const SelftestReport = struct {
 pub const MAX_SELFTEST_CHECKS: usize = 32;
 pub const MAX_CHECK_NAME_LEN: usize = 128;
 pub const MAX_CHECK_DETAIL_LEN: usize = 256;
-pub const MAX_SELFTEST_POLICY_LEN: usize = 64;
+const MAX_SELFTEST_POLICY_LEN: usize = 64;
 
 /// Why a verdict was refused, or `.none`. One verdict rather than two separate
 /// predicates so a caller cannot check the bounds and forget the consistency —

@@ -12,10 +12,10 @@ const std = @import("std");
 const native_endian = @import("builtin").cpu.arch.endian();
 
 // Message types (linux/rtnetlink.h).
-pub const RTM_NEWLINK: u16 = 16;
-pub const RTM_DELLINK: u16 = 17;
-pub const RTM_NEWADDR: u16 = 20;
-pub const RTM_NEWROUTE: u16 = 24;
+const RTM_NEWLINK: u16 = 16;
+const RTM_DELLINK: u16 = 17;
+const RTM_NEWADDR: u16 = 20;
+const RTM_NEWROUTE: u16 = 24;
 
 const AF_UNSPEC: u8 = 0;
 const AF_INET: u8 = 2;
