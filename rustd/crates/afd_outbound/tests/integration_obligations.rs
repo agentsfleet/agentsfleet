@@ -57,8 +57,8 @@ mod seed;
 mod support;
 
 use seed::{
-    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, entries_on, forget_group, forget_stream,
-    obligation_id, reader_named, seed_parents,
+    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, entries_naming, entries_on, forget_group,
+    forget_stream, obligation_id, reader_named, seed_parents,
 };
 use support::{OUTBOUND_LANE, OutboundHarness};
 
@@ -574,9 +574,11 @@ async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
          Dimensions 4.2 and 4.3 never reached `OutboundQueue::enqueue`"
     );
     assert_eq!(
-        entries_on(&redis).await,
+        entries_naming(&redis, event).await,
         1,
-        "the owed answer was appended exactly once"
+        "the owed answer was appended exactly once — asked about THIS event \
+         rather than about the stream, which the producer also fills with every \
+         other fleet's owed answers, correctly"
     );
     assert!(
         awaiting_append(&harness).await.is_empty(),
