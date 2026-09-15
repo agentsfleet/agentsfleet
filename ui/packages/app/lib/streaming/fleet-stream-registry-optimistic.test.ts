@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendOptimistic, discardOptimistic, getSnapshot, markOptimisticFailed, reconcileOptimistic, subscribe } from "./fleet-stream-registry";
+import { appendOptimistic, discardOptimistic, getSnapshot, markOptimisticFailed, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
@@ -27,6 +27,30 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     expect(snap.events[0]?.id).toBe("evt_real");
     expect(snap.events[0]?.status).toBe("received");
     a();
+  });
+
+  it("keeps an acknowledged steer visible through backfill until its server timestamp arrives", () => {
+    const clientInstant = Date.UTC(2026, 0, 1);
+    vi.setSystemTime(clientInstant);
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "keep this turn visible", "steer:k@e2e.com");
+    reconcileOptimistic(Z_A, tempId, "evt_ack");
+    const newerRow = row({ event_id: "evt_other", status: "processed", created_at: Date.UTC(2026, 4, 15) });
+
+    reconcileServerRows(Z_A, [newerRow]);
+    expect(getSnapshot(Z_A).events.at(-1)?.id).toBe("evt_ack");
+    expect(getSnapshot(Z_A).events.at(-1)?.clientTimestamp).toBe(true);
+
+    sourceAt(0).emit({
+      kind: FRAME_KIND.EVENT_RECEIVED,
+      event_id: "evt_ack",
+      actor: "steer:k@e2e.com",
+      created_at: clientInstant,
+    });
+    reconcileServerRows(Z_A, [newerRow]);
+    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual(["evt_ack", "evt_other"]);
+    expect(getSnapshot(Z_A).events[0]?.clientTimestamp).toBe(false);
+    release();
   });
 
   it("grafts the operator's text onto a body-less live row that beat the POST response", () => {

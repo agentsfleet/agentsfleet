@@ -21,6 +21,7 @@ export function optimisticRow(tempId: string, text: string, actor: string): Flee
     failureDetail: null,
     createdAt: new Date(),
     status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC,
+    clientTimestamp: true,
   };
 }
 

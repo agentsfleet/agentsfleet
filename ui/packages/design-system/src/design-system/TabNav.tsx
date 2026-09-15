@@ -40,7 +40,7 @@ export function TabNav({ items, activeHref, label, linkComponent, onNavigate }: 
   return (
     <nav
       aria-label={label}
-      className={`${TAB_LIST_CLASS} max-w-full overflow-x-hidden`}
+      className={`${TAB_LIST_CLASS} max-w-full shrink-0 overflow-x-auto overflow-y-hidden`}
     >
       {items.map((item) => {
         const active = item.href === activeHref;

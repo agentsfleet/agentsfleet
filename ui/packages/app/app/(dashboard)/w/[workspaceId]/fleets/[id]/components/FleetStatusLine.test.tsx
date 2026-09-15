@@ -98,7 +98,7 @@ describe("FleetStatusLine", () => {
     renderLine(event({ status: "received", event_type: "webhook", response_text: null }));
     expect(screen.getByText(OUTCOME.WORKING)).toBeTruthy();
     expect(toneOf(OUTCOME.WORKING)).toBe("foreground");
-    expect(line().querySelector(".animate-spin")).not.toBeNull();
+    expect(line().querySelector('[class~="motion-safe:animate-spin"]')).not.toBeNull();
   });
 
   it.each([
@@ -109,7 +109,7 @@ describe("FleetStatusLine", () => {
     renderLine(event(over));
     expect(screen.getByText(expected)).toBeTruthy();
     expect(toneOf(expected)).toBe(tone);
-    expect(line().querySelector(".animate-spin")).toBeNull();
+    expect(line().querySelector('[class~="motion-safe:animate-spin"]')).toBeNull();
   });
 
   it("says a run completed rather than claiming no reply when the read carries no body", () => {

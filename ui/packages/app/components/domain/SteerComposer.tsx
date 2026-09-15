@@ -28,7 +28,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
     <DashboardPanel
       asChild
       padding="none"
-      className="rounded-xl bg-card p-sm focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
+      className="rounded-xl bg-card p-md focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
     >
       <ComposerPrimitive.Root
         id="fleet-steer-composer"
@@ -39,8 +39,8 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
 
         <div
           className={cn(
-            "flex min-h-9 flex-col gap-xs",
-            "sm:flex-row sm:items-end sm:gap-md",
+            "flex min-h-9 flex-row items-end gap-sm",
+            "sm:gap-md",
           )}
         >
           <ComposerPrimitive.Input asChild placeholder={PLACEHOLDER} submitMode="enter">
@@ -48,7 +48,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
               aria-label={PLACEHOLDER}
               rows={1}
               className={cn(
-                "min-h-9 flex-1 resize-none border-0 bg-transparent px-sm py-xs",
+                "field-sizing-content min-h-9 max-h-48 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-sm py-xs",
                 "text-reading leading-reading text-foreground",
                 "placeholder:text-muted-foreground",
                 "focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0",
@@ -70,7 +70,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
           <ComposerPrimitive.Send asChild>
             <Button
               type="submit"
-              variant="secondary"
+              variant="default"
               size="icon"
               aria-label={SEND_LABEL}
               className="shrink-0 self-end rounded-full"

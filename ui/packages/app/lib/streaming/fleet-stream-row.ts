@@ -87,6 +87,9 @@ export type FleetEvent = {
   failureDetail: string | null;
   createdAt: Date;
   status: FleetEventStatus;
+  /** True while this locally submitted row still carries the browser clock.
+   * The first server timestamp clears it so backfill can order the turn. */
+  clientTimestamp?: boolean;
   /**
    * The run's figures, as the daemon reported them: tokens spent, wall time,
    * and the summed telemetry cost. Absent on a row the browser assembled from

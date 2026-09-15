@@ -14,6 +14,7 @@ const {
   useFleetEventStreamMock,
   capturedOnNew,
   capturedRetry,
+  capturedSubmittedMessageId,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
   capturedRetry: { current: null as (() => void) | null },
+  capturedSubmittedMessageId: { current: null as string | null },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -71,6 +73,21 @@ vi.mock("@/components/domain/SteerComposer", async () => {
     ) => {
       capturedRetry.current = props.onRetry;
       return React.createElement(actual.SteerComposer, props);
+    },
+  };
+});
+
+vi.mock("@/components/domain/FleetThreadViewport", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/components/domain/FleetThreadViewport")
+  >("@/components/domain/FleetThreadViewport");
+  return {
+    ...actual,
+    FleetThreadViewport: (
+      props: React.ComponentProps<typeof actual.FleetThreadViewport>,
+    ) => {
+      capturedSubmittedMessageId.current = props.submittedMessageId;
+      return React.createElement(actual.FleetThreadViewport, props);
     },
   };
 });
@@ -218,8 +235,9 @@ beforeEach(() => {
   __resetFleetDeliveryFailuresForTests();
   capturedOnNew.current = null;
   capturedRetry.current = null;
+  capturedSubmittedMessageId.current = null;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry };
+export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry, capturedSubmittedMessageId };
