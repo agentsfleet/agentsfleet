@@ -33,7 +33,11 @@ const TLS_URL_KNOB: &str = "TEST_REDIS_TLS_URL";
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
 /// A well-formed authority that signed nothing on this machine.
-const FOREIGN_CA_KNOB: &str = "TEST_REDIS_FOREIGN_CA";
+///
+/// "Bad" names the trust relationship, not the file: the certificate itself is
+/// valid, it simply did not sign this server. The name is what a reader needs
+/// from it -- this is the one that must NOT connect.
+const BAD_CA_KNOB: &str = "TEST_REDIS_BAD_CA";
 
 fn lane(knob: &str) -> String {
     std::env::var(knob)
@@ -70,8 +74,8 @@ async fn test_the_lanes_authority_verifies_the_lanes_redis() {
 /// pass and only this one would fail. That asymmetry is the whole point.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live Redis: make test-integration-rustd"]
-async fn test_a_foreign_authority_is_refused_by_the_lanes_redis() {
-    let config = tls_config().with_ca_cert_file(Some(lane(FOREIGN_CA_KNOB).into()));
+async fn test_a_bad_authority_is_refused_by_the_lanes_redis() {
+    let config = tls_config().with_ca_cert_file(Some(lane(BAD_CA_KNOB).into()));
 
     let failure = afd_datastore::test_util::connect_live(&config)
         .await
@@ -83,7 +87,7 @@ async fn test_a_foreign_authority_is_refused_by_the_lanes_redis() {
     // surface and then requires the certificate to be named as the reason.
     assert!(
         failure.is_unavailable(),
-        "a foreign authority must be refused as unavailable, not as {}",
+        "a bad authority must be refused as unavailable, not as {}",
         failure.code().as_str()
     );
     let rendered = format!("{failure:?}");

@@ -10,14 +10,16 @@
 # The fifth process is not a cluster member. It runs `--cluster_mode=emulated`
 # (one node answering as a whole cluster) over TLS, and exists for exactly one
 # suite: the trust proof, which asserts the lane's own authority verifies AND
-# a foreign one is refused. Every other suite takes the plaintext cluster,
+# a bad one is refused. Every other suite takes the plaintext cluster,
 # because a TLS handshake against an RSA-2048 leaf costs ~230 ms and a lane
 # opens hundreds of connections — that cost, queued in front of a connect
 # budget, is what turns a healthy datastore into ConnectTimeout. The
 # certificates are minted once into the data volume: a CA and a LEAF (a trust
 # anchor must carry CA:TRUE, an end-entity must not — one self-signed file
-# cannot be both, and rustls refuses the shortcut), plus a second, well-formed
-# authority that signs nothing here, for the refusal half.
+# cannot be both, and rustls refuses the shortcut), plus `bad-ca.crt`: a
+# second, well-formed authority that signs nothing here, for the refusal half.
+# It is "bad" for this server only -- the file itself is a valid CA -- and it
+# is named for what a reader needs to know, which is that it must not connect.
 #
 # Two primaries and one replica each, all in this container's network
 # namespace, every node announcing 127.0.0.1 and the port it listens on. The
@@ -115,9 +117,16 @@ mint_certificates() {
     openssl req -newkey rsa:2048 -nodes -keyout "$TLS_DIR/server.key" -out "$TLS_DIR/server.csr" -subj "/CN=localhost" 2>/dev/null
     printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' >"$TLS_DIR/server.ext"
     openssl x509 -req -in "$TLS_DIR/server.csr" -CA "$TLS_DIR/ca.crt" -CAkey "$TLS_DIR/ca.key" -CAcreateserial       -out "$TLS_DIR/server.crt" -days 3650 -extfile "$TLS_DIR/server.ext" 2>/dev/null
-    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/foreign-ca.key" -out "$TLS_DIR/foreign-ca.crt" -days 3650       -subj "/CN=agentsfleet-foreign-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
   fi
-  chmod 0644 "$TLS_DIR/ca.crt" "$TLS_DIR/server.crt" "$TLS_DIR/foreign-ca.crt"
+  # Minted on its own condition rather than beside the server material above.
+  # A volume provisioned before this authority was renamed already carries a
+  # `ca.crt`, so folding it into that `if` would skip it forever and leave the
+  # refusal half of the trust proof with no certificate to present -- and the
+  # `chmod` below would then fail on a file that was never created.
+  if [ ! -s "$TLS_DIR/bad-ca.crt" ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/bad-ca.key" -out "$TLS_DIR/bad-ca.crt" -days 3650 -subj "/CN=agentsfleet-bad-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+  fi
+  chmod 0644 "$TLS_DIR/ca.crt" "$TLS_DIR/server.crt" "$TLS_DIR/bad-ca.crt"
 }
 
 start_tls_node() {
