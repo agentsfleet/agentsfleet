@@ -28,3 +28,5 @@ mod integration_backfill;
 mod integration_budgets;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_retry.rs"]
+mod integration_steer_retry;
