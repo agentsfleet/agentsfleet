@@ -36,8 +36,16 @@ UPDATE core.fleet_obligations
 ///
 /// Rides `idx_fleet_obligations_unreceipted`, whose predicate is the same NULL
 /// test.
+///
+/// The three `::text` casts are load-bearing, not decoration: `id`, `fleet_id`
+/// and `workspace_id` are `UUID` columns and [`Owed`](crate::obligation::Owed)
+/// decodes them as `String`, which `sqlx` refuses to do without the cast. An
+/// EMPTY scan decodes nothing and passes either way, so the uncast form failed
+/// only once a row was actually owed — which is the only time this statement
+/// runs. `afd_admission`'s replay scan casts the same three for the same
+/// reason.
 pub(crate) const SELECT_UNRECEIPTED: &str = "\
-SELECT id, fleet_id, workspace_id, provider, event_id, answer
+SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NULL AND created_at < $1::bigint
  ORDER BY created_at, seq
@@ -59,7 +67,7 @@ SELECT id, fleet_id, workspace_id, provider, event_id, answer
 /// Rides `idx_fleet_obligations_undelivered`, leading on `fleet_id` because
 /// order is promised per destination.
 pub(crate) const SELECT_UNDELIVERED: &str = "\
-SELECT id, fleet_id, workspace_id, provider, event_id, answer
+SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NOT NULL AND delivered_at IS NULL AND updated_at < $1::bigint
  ORDER BY fleet_id, created_at, seq
