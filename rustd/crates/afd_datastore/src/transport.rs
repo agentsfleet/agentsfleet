@@ -74,6 +74,15 @@ const CONNECT_ATTEMPTS: NonZeroUsize = match NonZeroUsize::new(3) {
     None => unreachable!(),
 };
 
+/// The attempt count the diagnosis dial uses.
+///
+/// One, and that is the entire point: the ladder above is what destroys the
+/// answer that dial exists to recover.
+const ONE_ATTEMPT: NonZeroUsize = match NonZeroUsize::new(1) {
+    Some(attempts) => attempts,
+    None => unreachable!(),
+};
+
 /// A connection and the receiver its server-initiated pushes arrive on.
 pub(crate) struct Pushed {
     pub(crate) connection: ClusterConnection,
@@ -161,7 +170,8 @@ pub(crate) async fn connect(
     let client = client(config, response_timeout)?;
     let dial = client.get_async_connection_with_config(connection_config(response_timeout, None));
     match tokio::time::timeout(config.connect_timeout(), dial).await {
-        Ok(dialed) => dialed.map_err(|source| unreachable(config, source)),
+        Ok(Ok(connection)) => Ok(connection),
+        Ok(Err(source)) => Err(dial_failure(config, response_timeout, source).await),
         Err(_elapsed) => Err(error::connect_timed_out(
             config.role().tag(),
             config.connect_timeout().as_millis(),
@@ -179,9 +189,8 @@ pub(crate) async fn connect_with_pushes(
     let dial =
         client.get_async_connection_with_config(connection_config(response_timeout, Some(sender)));
     match tokio::time::timeout(config.connect_timeout(), dial).await {
-        Ok(dialed) => dialed
-            .map(|connection| Pushed { connection, pushes })
-            .map_err(|source| unreachable(config, source)),
+        Ok(Ok(connection)) => Ok(Pushed { connection, pushes }),
+        Ok(Err(source)) => Err(dial_failure(config, response_timeout, source).await),
         Err(_elapsed) => Err(error::connect_timed_out(
             config.role().tag(),
             config.connect_timeout().as_millis(),
@@ -212,6 +221,71 @@ fn unreachable(config: &RedisConfig, source: redis::RedisError) -> Error {
         role: config.role().tag(),
         source: Box::new(source),
     })
+}
+
+/// Whether a failed dial says the server's certificate was not trusted.
+///
+/// Read out of the rendering rather than matched on a typed cause, because
+/// there is no typed cause left to match. When every initial connection
+/// fails, the cluster driver keeps ONE of the errors and folds it into an
+/// `ErrorKind::Io` as `err.to_string()` — the lossy conversion
+/// `docs/RUST_ERROR_STANDARD.md` rule 3 forbids, performed upstream where
+/// this crate cannot decline it. The text is what survives, so the text is
+/// what we read.
+fn names_a_certificate(source: &redis::RedisError) -> bool {
+    let rendered = format!("{source:?}");
+    rendered.contains("UnknownIssuer") || rendered.contains("certificate")
+}
+
+/// Re-dials once, without retries, to recover the cause the ladder discarded.
+///
+/// The driver stores only the LAST initial-connection error. A trust failure
+/// is refused in about twenty milliseconds and can never succeed on a retry,
+/// so the retries that follow it are pure cost — and when one of them trips
+/// the one-second attempt timeout instead, THAT is the error kept, and a
+/// certificate the server will never present acceptably reads as an
+/// unreachable port. Measured on the lane: the refusal lands at 0.66s and the
+/// displaced timeout at 1.4s and up, from the same configuration, at roughly
+/// one run in five.
+///
+/// Costs a single handshake, only on a path that has already failed.
+/// `None` means the diagnosis did not produce an answer worth preferring —
+/// the dial unexpectedly succeeded, or it timed out in its own right — and
+/// the caller keeps the error it already had.
+async fn diagnose(config: &RedisConfig, response_timeout: Duration) -> Option<redis::RedisError> {
+    let client = builder(config, response_timeout)
+        .ok()?
+        .max_connection_attempts(ONE_ATTEMPT)
+        .build()
+        .ok()?;
+    let dial = client.get_async_connection_with_config(connection_config(response_timeout, None));
+    match tokio::time::timeout(CONNECT_ATTEMPT_TIMEOUT, dial).await {
+        Ok(Err(source)) => Some(source),
+        Ok(Ok(_)) | Err(_) => None,
+    }
+}
+
+/// Names the cause of a failed dial, asking a second time when it has to.
+///
+/// The happy path never reaches here, and a plaintext endpoint pays nothing:
+/// only a TLS dial that failed without naming a certificate is worth a second
+/// question, because only there can the answer have been thrown away.
+async fn dial_failure(
+    config: &RedisConfig,
+    response_timeout: Duration,
+    source: redis::RedisError,
+) -> Error {
+    if names_a_certificate(&source) {
+        return error::certificate_rejected(config.role().tag(), source);
+    }
+    if config.is_tls() {
+        if let Some(recovered) = diagnose(config, response_timeout).await {
+            if names_a_certificate(&recovered) {
+                return error::certificate_rejected(config.role().tag(), recovered);
+            }
+        }
+    }
+    unreachable(config, source)
 }
 
 #[cfg(test)]

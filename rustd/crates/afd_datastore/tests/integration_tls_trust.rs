@@ -90,10 +90,9 @@ async fn test_a_bad_authority_is_refused_by_the_lanes_redis() {
         "a bad authority must be refused as unavailable, not as {}",
         failure.code().as_str()
     );
-    let rendered = format!("{failure:?}");
     assert!(
-        rendered.contains("certificate") || rendered.contains("UnknownIssuer"),
+        failure.is_certificate_rejected(),
         "the refusal must name the certificate as its reason, or this test \
-         cannot tell verification from an unreachable port: {rendered}"
+         cannot tell verification from an unreachable port: {failure:?}"
     );
 }
