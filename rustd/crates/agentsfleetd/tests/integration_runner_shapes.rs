@@ -21,7 +21,7 @@
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
 #![cfg(feature = "test-util")]
-#![expect(
+#![allow(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]

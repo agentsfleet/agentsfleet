@@ -44,7 +44,7 @@ use serde_json::json;
 use crate::e2e::{Scenario, redis_config, scenario};
 use crate::reads::{balance, counter_column, lease_column, ledger_rows};
 use crate::tail::{next_frame, settle};
-use crate::wire::{capable_beat, claim, field, json, post, report_body};
+use crate::wire::{capable_beat, field, json, poll_for_seeded_lease, post, report_body};
 
 /// The event type the daemon has a gate for, so an extra append is leasable
 /// rather than ended as unsupported.
@@ -113,24 +113,13 @@ async fn a_poll_crosses_the_partition_and_the_stream(
     http: &reqwest::Client,
     run: &Scenario,
 ) -> (String, u64) {
-    let polled = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(
-        polled.status().as_u16(),
-        200,
-        "work and no-work share a status on this verb, as documented"
-    );
-    let body = json(polled).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the fleet holds work, so the documented answer carries a lease and not null");
-    assert_eq!(
-        field(field(lease, "event"), "event_id"),
-        &json!(run.event_id),
-        "and it is the OLDEST entry, so the stream read followed the partition read \
-         to a different node rather than answering from whatever was local"
-    );
-    claim(lease)
+    // WHICH fleet answers is a rotation's question, not one request's: the
+    // index is sixteen partitions and a poll reads one. `poll_for_seeded_lease`
+    // turns the rotation and stops on this scenario's own event, which is the
+    // OLDEST entry on this fleet's stream — so a lease coming back at all is
+    // the stream read having followed the partition read to a different node
+    // rather than answering from whatever was local.
+    poll_for_seeded_lease(http, run).await
 }
 
 /// A frame the daemon publishes reaches a subscriber that attached elsewhere.

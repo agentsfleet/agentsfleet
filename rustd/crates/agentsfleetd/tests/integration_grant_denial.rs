@@ -1,6 +1,10 @@
 //! A connected workspace still needs fleet approval; denial must drain the queue.
 #![cfg(feature = "test-util")]
-#![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test preconditions must fail loudly"
+)]
 
 use crate::e2e::{GOOD_KEK, Scenario, scenario};
 use crate::reads::event_column;
