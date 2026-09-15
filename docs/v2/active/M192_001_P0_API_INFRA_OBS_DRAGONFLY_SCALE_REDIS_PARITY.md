@@ -154,7 +154,7 @@ Dependencies: §2–§5 and §7's fixes. **This section owns every lane run defe
 
 - **Dimension 6.1**: real application golden paths return their documented outcomes on the cluster → Test `test_cluster_preserves_application_outcomes`.
 - **Dimension 6.2**: lost replies, script cache loss, session races and expiry preserve error classes and one-time actions → Test `test_cluster_preserves_failure_and_session_semantics`.
-- **Dimension 6.3**: a shared target or leaked fixtures fail verification → Test `test_evidence_refuses_unsafe_or_incomplete_runs`.
+- **Dimension 6.3**: a shared target or leaked fixtures fail verification → Test `test_a_shared_target_fails_every_mode_that_names_the_file`, with `test_a_leaked_fixture_fails_even_though_the_numbers_look_fine`, `test_ownership_must_be_true_and_not_merely_truthy`, `test_a_run_with_no_provenance_block_is_refused` and `test_an_aborted_run_is_not_evidence` (`scripts/bench_datastore_test.py`, 14 tests; discovered by `SCRIPT_SELF_TESTS` and run by `make lint-all` → `lint-scripts`, the declared `verify.lint`). Renamed from the single `test_evidence_refuses_unsafe_or_incomplete_runs` the spec predicted: the grader is Python and its refusals are one test per refused shape. DONE.
 
 ### §7: Restart and cutover safety
 
@@ -238,7 +238,7 @@ Exact names land in `observability.md` with the typed registry change in the sam
 | 5.4 | integration | `test_session_transition_atomic` | Verify, approve, abort are single-use on the cluster. |
 | 6.1 | e2e | `test_cluster_preserves_application_outcomes` | Login, steer, lease, report, approval, stream return their documented outcomes. |
 | 6.2 | integration | `test_cluster_preserves_failure_and_session_semantics` | Error classes and one-time actions hold. |
-| 6.3 | unit + integration | `test_evidence_refuses_unsafe_or_incomplete_runs` | Shared target or leaked fixture fails. |
+| 6.3 | unit | `test_a_shared_target_fails_every_mode_that_names_the_file` | Shared target or leaked fixture fails. |
 | 7.1 | unit + integration | `test_recovery_finds_every_unfinished_fleet_within_budget` | A fleet with an `active` lease past expiry and no stream is marked ready by the sweeper and re-leased through the ordinary claim path inside two reclaim passes; the sweeper never flips the lease; the cursor wraps at `BATCH_LIMIT + 1`; the empty poll issues no PostgreSQL query; the refusal fires and clears under a `with_budgets` ceiling below the row count. |
 | 7.2 | unit (Zig) | `test_runner_retains_terminal_report_until_acknowledged` | A failed report is retried with identical identity; a spooled report is drained on restart; a full spool stops leasing. |
 | 7.3 | integration | `test_report_persists_result_with_settlement_atomically` | A crash injected after settlement leaves no charged lease without its result; an identical repeat returns the outcome and charges nothing; the acknowledgement follows the commit. |

@@ -41,7 +41,7 @@
 )]
 
 use afd_datastore::ReadyIndex;
-use afd_datastore::ready::READY_INDEX_KEY;
+use afd_datastore::ready::Partition;
 use afd_datastore::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
 use afd_wire::event::{EventType, field};
@@ -94,11 +94,14 @@ async fn test_steer_append_event_id() {
         .expect("the append left an entry to lease");
 
     assert_eq!(
-        leased.receipt.as_str(),
-        answered,
-        "the id answered to the client must BE the stream entry id — a client \
-         filters its SSE frames by this value and a runner leases the entry \
-         under it, so two spellings would be two events"
+        leased.field(field::EVENT_ID),
+        Some(answered.as_str()),
+        "the id answered to the client must BE the id the runner sees — a \
+         client filters its SSE frames by this value and the lease path reads \
+         it back off the entry, so two spellings would be two events. It is \
+         the ledger's LOGICAL id, carried as a field: since the admission \
+         ledger took ownership of identity, `receipt` names the physical copy, \
+         and one logical event legitimately sits on two of those after a replay"
     );
 
     // The envelope the runner reads is the one the handler wrote. Asserted
@@ -215,8 +218,8 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the read reaches the queue")
         .expect("the second entry is deliverable");
 
-    assert_eq!(leased_first.receipt.as_str(), first);
-    assert_eq!(leased_second.receipt.as_str(), second);
+    assert_eq!(leased_first.field(field::EVENT_ID), Some(first.as_str()));
+    assert_eq!(leased_second.field(field::EVENT_ID), Some(second.as_str()));
 
     ReadyIndex::new(lane.queue.clone())
         .force_clear(&lane.fleet)
@@ -231,14 +234,19 @@ async fn test_steer_repeats_are_two_messages_not_one() {
 
 /// The readiness mark held for one fleet, or `None` when it carries none.
 ///
-/// Straight `HGET` against the index key `afd_datastore` publishes, because the
-/// crate's own reader samples at random by design and this assertion needs the
-/// one field.
+/// Straight `HGET` against the fleet's own partition, because the crate's own
+/// reader samples at random by design and this assertion needs the one field.
+///
+/// The partition, not `READY_INDEX_KEY` itself: since §4 sharded readiness the
+/// bare key is only the PREFIX every partition hangs off (`fleet:ready`), and
+/// the marks live in `fleet:ready:{n}`. Reading the prefix answered `None` for
+/// a fleet that was correctly marked, which reads as the mark going missing.
 async fn ready_mark(lane: &EventsLane, fleet: &str) -> Option<String> {
+    let key = Partition::of(fleet).key();
     let mut cmd = redis::cmd("HGET");
-    cmd.arg(READY_INDEX_KEY).arg(fleet);
+    cmd.arg(&key).arg(fleet);
     lane.queue
-        .command("HGET", READY_INDEX_KEY, &cmd)
+        .command("HGET", &key, &cmd)
         .await
         .expect("the readiness index answers")
 }
