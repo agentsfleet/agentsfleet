@@ -398,7 +398,7 @@ it because a redelivered entry is recoverable where an acknowledged-then-rolled-
 is not. A report that fails leaves the lease `active` and the wallet untouched, so the
 runner retries; a report whose RESPONSE is lost retries into a lease already `reported`
 by that same runner and is answered with the stored outcome for no charge. See
-[`data_flow.md`](./data_flow.md) §Running one event.
+[`data_flow.md`](./data_flow.md) §"C. EXECUTE".
 
 The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 
