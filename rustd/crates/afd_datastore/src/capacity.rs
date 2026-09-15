@@ -38,7 +38,8 @@ pub struct Capacity {
     pub retained_entries: u64,
     /// Entries delivered and not acknowledged over the walked streams.
     pub pending_entries: u64,
-    /// Readiness partitions read.
+    /// Readiness partitions HOLDING at least one mark, not the width the
+    /// index declares — that width is a constant and describes no deployment.
     pub ready_partitions: u64,
     /// Fleets marked ready across every partition.
     pub ready_marks: u64,
@@ -72,8 +73,15 @@ impl Capacity {
 
         let index = ReadyIndex::new(redis.clone());
         for partition in Partition::all() {
-            sample.ready_partitions += 1;
-            sample.ready_marks += index.len_of(partition).await?;
+            // Counted only when the partition HOLDS something. Incrementing per
+            // iteration reports the width the index declares, which is a
+            // constant and tells a reader nothing; what the sample is for is
+            // how far the marks have spread across that width.
+            let marks = index.len_of(partition).await?;
+            if marks > 0 {
+                sample.ready_partitions += 1;
+            }
+            sample.ready_marks += marks;
         }
 
         for node in topology::nodes(redis).await? {
