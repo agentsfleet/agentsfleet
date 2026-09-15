@@ -131,6 +131,7 @@ start_tls_node() {
     --tls --tls_cert_file="$TLS_DIR/server.crt" --tls_key_file="$TLS_DIR/server.key" \
     --port="$(data_port "$TLS_NODE")" --admin_port="$(admin_port "$TLS_NODE")" \
     --admin_bind="$HOST" --no_tls_on_admin_port \
+    --cluster_announce_ip="$HOST" --announce_port="$(data_port "$TLS_NODE")" \
     --requirepass="$PASSWORD" --dir="$DATA/n$TLS_NODE" \
     --maxmemory=256mb --proactor_threads=1 \
     >/dev/null 2>"$DATA/n$TLS_NODE/dragonfly.log" &
