@@ -164,6 +164,41 @@ pub(crate) async fn seeded_parts<const N: usize>(
 ///
 /// `None` therefore means what the old single call was trying to mean: no
 /// partition holds leasable work for this runner.
+/// [`select_within_one_rotation`], narrowed to ONE fleet's work.
+///
+/// The readiness index is global and the lane resets once per RUN rather than
+/// per test, so a rotation started here can acquire a fleet an earlier test
+/// left marked. Handing that back to a caller asserting on its own admission
+/// is how `test_cluster_restart_and_stale_snapshot_preserve_obligations` came
+/// to compare two unrelated event ids -- green alone, red in a full run, with
+/// no change in between.
+///
+/// Polls until this fleet's slot is the one acquired. A slot belonging to
+/// someone else is passed over, which does lease it; those are fleets from
+/// tests that already finished, and the next run's reset clears them. The
+/// budget is several rotations rather than one because residue can hold many
+/// partitions at once, and `None` still means the fleet was genuinely never
+/// offered rather than that the walk was too short.
+pub(crate) async fn select_fleet_within_rotations(
+    leases: &Leases,
+    runner: &Uuid7,
+    now: UnixMillis,
+    fleet: &str,
+) -> Option<Acquired> {
+    const ROTATIONS: u16 = 8;
+    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+        if let Some(acquired) = leases
+            .select(runner, now)
+            .await
+            .expect("the assignment pass must not fault")
+            && acquired.fleet_id.to_string() == fleet
+        {
+            return Some(acquired);
+        }
+    }
+    None
+}
+
 pub(crate) async fn select_within_one_rotation(
     leases: &Leases,
     runner: &Uuid7,
