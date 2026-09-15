@@ -34,12 +34,18 @@
 # migration moves it, and the next start must push the layout the tests left
 # rather than the canonical one — `reset` is what puts it back.
 #
-# The admin ports are bound to loopback and take no password, because a node
-# migrating slots dials its peer's admin port and does not authenticate. They
-# are therefore never published: every administrative verb runs inside the
+# The admin ports are bound to loopback and carry the same password as the data
+# ports. They are never published: every administrative verb runs inside the
 # container, through `docker compose exec`, which is also what keeps this
 # script unable to address a shared or remote datastore — the ownership
-# guarantee the reset path relies on.
+# guarantee the reset path relies on. At an address only this container can
+# reach, that password is not a hardening measure; it is symmetry with
+# --masterauth below. A node migrating slots dials its peer's ADMIN port over
+# the replication path, so it AUTHenticates like a replica. An admin port
+# opened --admin_nopass answers that handshake "-ERR AUTH <password> called
+# without any password configured for admin port", the source retries every
+# 500ms, and no slot ever moves — while every other admin verb keeps working,
+# which is what makes the half-configured shape survive review.
 set -euo pipefail
 
 BASE_PORT="${DRAGONFLY_BASE_PORT:-7001}"
@@ -78,8 +84,9 @@ data_port() { echo $((BASE_PORT + $1)); }
 admin_port() { echo $((BASE_PORT + $1 + ADMIN_OFFSET)); }
 cli() { local port=$1; shift; redis-cli -h "$HOST" -p "$port" -a "$PASSWORD" --no-auth-warning "$@"; }
 tls_cli() { redis-cli -h "$HOST" -p "$(data_port "$TLS_NODE")" --tls --cacert "$TLS_DIR/ca.crt" -a "$PASSWORD" --no-auth-warning "$@"; }
-# The admin port answers without a password (see the header), so no `-a`.
-admin() { local port=$1; shift; redis-cli -h "$HOST" -p "$port" "$@"; }
+# The admin port shares requirepass (see the header), so it authenticates like
+# any other client.
+admin() { local port=$1; shift; redis-cli -h "$HOST" -p "$port" -a "$PASSWORD" --no-auth-warning "$@"; }
 replica_of() { echo $(( $1 + 1 )); }
 
 start_nodes() {
@@ -91,7 +98,7 @@ start_nodes() {
     dragonfly --logtostderr --version_check=false \
       --cluster_mode=yes --cluster_node_id="${NODE_IDS[$i]}" \
       --port="$(data_port "$i")" --admin_port="$(admin_port "$i")" \
-      --admin_bind="$HOST" --admin_nopass \
+      --admin_bind="$HOST" \
       --cluster_announce_ip="$HOST" --announce_port="$(data_port "$i")" \
       --requirepass="$PASSWORD" --masterauth="$PASSWORD" --dir="$DATA/n$i" \
       --maxmemory=512mb --proactor_threads=2 --lock_on_hashtags \
@@ -123,7 +130,7 @@ start_tls_node() {
     --cluster_mode=emulated \
     --tls --tls_cert_file="$TLS_DIR/server.crt" --tls_key_file="$TLS_DIR/server.key" \
     --port="$(data_port "$TLS_NODE")" --admin_port="$(admin_port "$TLS_NODE")" \
-    --admin_bind="$HOST" --admin_nopass --no_tls_on_admin_port \
+    --admin_bind="$HOST" --no_tls_on_admin_port \
     --requirepass="$PASSWORD" --dir="$DATA/n$TLS_NODE" \
     --maxmemory=256mb --proactor_threads=1 \
     >/dev/null 2>"$DATA/n$TLS_NODE/dragonfly.log" &
