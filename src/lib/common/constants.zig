@@ -11,7 +11,6 @@ pub const clock = @import("clock.zig");
 /// `Options` is reached by coercion from an anonymous literal at every
 /// instantiation, so it stays unexported — a re-export nobody names is dead code
 /// (RULE NDC).
-
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
 /// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.
 const sync = @import("sync.zig");
@@ -66,12 +65,6 @@ pub const RENEWAL_WINDOW_MS: i64 = 10_000;
 /// frames, so a legitimate long run renews and is never falsely reclaimed.
 pub const RENEWAL_TICK_MS: i64 = 5_000;
 
-/// Hard ceiling on a single lease's total wall-clock, measured from the lease
-/// row's `created_at`. Renewal clamps to `min(now + LEASE_TTL_MS, created_at +
-/// MAX_RUNTIME_MS)` and is refused once exceeded — a wedged-but-emitting agent
-/// still terminates regardless of progress frames.
-pub const MAX_RUNTIME_MS: i64 = 43_200_000;
-
 /// Liveness lapse threshold: a runner whose `last_seen_at` is older than this is
 /// derived `offline` by the fleet read. Reintroduced here with its first
 /// consumer (the derived-liveness display) now that the detection model is
@@ -99,25 +92,6 @@ comptime {
 /// Backoff hint handed to a runner when there is no work to lease. The lease
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
-
-/// Hard ceiling on how many fleets one lease poll will examine. Lives beside
-/// `NO_WORK_RETRY_AFTER_MS` because it trades the same axis — per-poll cost
-/// against discovery latency — and an operator tuning either must see both.
-///
-/// This is the bound that makes per-poll cost independent of how many fleets
-/// the platform holds. It stays load-bearing even when the readiness index is
-/// wrong in either direction: a stale or over-marked index costs extra
-/// candidate checks up to this many, never more, so a hint failure degrades
-/// discovery fairness and never per-poll cost.
-///
-/// Sized generously rather than tightly. The readiness peek samples randomly
-/// and the label gate (`required_tags <@ labels`) filters that sample in
-/// Postgres afterwards, so a runner whose labels match only a small share of
-/// ready fleets needs a wide enough slice to draw one of them. A membership
-/// restriction on this many ids is a single index-served query, so the cost of
-/// widening it is far below the cost of a runner repeatedly drawing a slice
-/// that its labels reject.
-pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
 // ── Connectors (Slack-resident channel bot, M106) ───────────────────────────
 // Provider + binding-kind identifiers shared across the OAuth connector
