@@ -2,9 +2,11 @@
 //! readiness partitions and replicas SEPARATELY, and counts each from the
 //! datastore rather than inferring one from another.
 //!
-//! The lane's keyspace is shared with every other suite in this binary, so
-//! every assertion is a lower bound over what this test seeded: another
-//! test's streams can only raise a count, never lower it.
+//! The lane's keyspace is shared with every other suite in this binary, and
+//! with the suites in other crates' binaries, so each seeded figure is a lower
+//! bound over what this test put there: another test's streams can only raise
+//! a count, never lower it. The readiness figures carry upper bounds too,
+//! chosen so that arriving marks cannot break them.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing a datastore; `make test-integration-rustd` runs them.
@@ -15,7 +17,7 @@
 )]
 
 use afd_datastore::streams::{FleetStreams, fleet_stream_key};
-use afd_datastore::{Capacity, ReadyIndex};
+use afd_datastore::{Capacity, Partition, ReadyIndex};
 
 use crate::support::RedisHarness;
 
@@ -82,10 +84,28 @@ async fn the_capacity_sample_accounts_for_every_class_of_retained_state_separate
         sample.pending_entries < sample.retained_entries,
         "pending is a separate, smaller figure than retained: {sample:?}"
     );
-    assert_eq!(
-        sample.ready_partitions, 1,
-        "ONE fleet was marked, so one partition holds a mark — the figure counts \
-         occupied partitions, not the sixteen the index declares"
+    assert!(
+        sample.ready_partitions >= 1,
+        "the marked fleet's partition is counted: {sample:?}"
+    );
+    let declared = u64::try_from(Partition::all().count()).expect("fits");
+    assert!(
+        sample.ready_partitions <= declared,
+        "a count of occupied partitions can never exceed the width the index \
+         declares: {sample:?}"
+    );
+    // The discriminator this Dimension exists for, and the one an exact figure
+    // cannot give here. Counting the declared width instead of the occupied
+    // partitions would report sixteen while fewer than sixteen marks are held,
+    // so the count must never outrun the marks it is drawn from. Unlike a
+    // pinned figure this survives a contaminated lane: `READY_INDEX_KEY` is one
+    // global key, the readiness tests in OTHER crates are other test binaries
+    // and so other processes, and no mutex in this binary can keep them out.
+    // Contamination only ever adds marks, which this bound tolerates.
+    assert!(
+        sample.ready_partitions <= sample.ready_marks,
+        "the sample counts OCCUPIED partitions rather than the width the index \
+         declares, so it can never exceed the marks held across them: {sample:?}"
     );
     assert!(
         sample.ready_marks >= 1,
