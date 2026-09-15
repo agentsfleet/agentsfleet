@@ -11,7 +11,7 @@ import {
   METRICS_TOKENS_LABEL,
 } from "./console-copy";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { formatTimeClock } from "@agentsfleet/design-system";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 
@@ -38,15 +38,20 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+// Wrapped the way `(dashboard)/layout.tsx` wraps the real tree: the outcome's
+// instant renders `relative`, which carries a tooltip holding the absolute
+// time, and `Tooltip` throws outside a provider.
 function renderLine(latest: EventRow | null, pendingApprovals = 0, summaryAvailable = true, status = "active") {
   return render(
+    <TooltipProvider>
     <FleetStatusLine
       status={status}
       latest={latest}
       pendingApprovals={pendingApprovals}
       approvalsHref="/w/ws_1/approvals?fleetId=agt_1"
       summaryAvailable={summaryAvailable}
-    />,
+    />
+    </TooltipProvider>,
   );
 }
 
@@ -146,11 +151,17 @@ describe("FleetStatusLine", () => {
     expect(line().querySelector("time")).toBeNull();
   });
 
-  it("shows when the latest outcome happened", () => {
+  it("shows how long ago the latest outcome happened, not a bare wall clock", () => {
+    // A second-precision clock with no date reads as though the run just
+    // happened: 03:28:58 AM against a 9 PM now says nothing a reader can use.
+    // The relative label answers the question actually being asked, and the
+    // absolute instant stays in the element's `dateTime` and its tooltip.
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
     renderLine(event({ created_at: at }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
-    expect(screen.getByText(formatTimeClock(new Date(at)))).toBeTruthy();
+    const stamp = line().querySelector("time");
+    expect(stamp?.getAttribute("datetime")).toBe(new Date(at).toISOString());
+    expect(stamp?.textContent).toMatch(/ago|now|in /);
   });
 
   it("renders missing telemetry as unknown, never fabricated zero, and never a unit beside a dash", () => {
