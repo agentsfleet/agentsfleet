@@ -119,11 +119,11 @@ async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
 /// Whether the resolve woke the fleet for a parked delivery to poll again.
 async fn fleet_is_ready(lane: &Lane) -> bool {
     ReadyIndex::new(lane.queue.clone())
-        .peek(4096)
+        .token_for(lane.fleet.as_str())
         .await
         .expect("the ready index is readable")
-        .iter()
-        .any(|ready| ready.fleet_id == lane.fleet.as_str())
+        .as_ref()
+        .is_some_and(|token| token.as_str() == lane.fleet.as_str())
 }
 
 /// The action id of the one card this fleet holds.
