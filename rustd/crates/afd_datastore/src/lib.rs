@@ -86,7 +86,7 @@ pub use crate::outbound::{
     OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundDelivery, OutboundJob, OutboundQueue,
     OutboundReader, outbound_consumer,
 };
-pub use crate::ready::{Partition, Ready, ReadyCursor, ReadyIndex, ReadyToken};
+pub use crate::ready::{Partition, Ready, ReadyCursor, ReadyIndex, ReadyPrefix, ReadyToken};
 pub use crate::session::{
     AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionState, SessionStatus, SessionStore,
     VerifyOutcome, VerifyPayload,

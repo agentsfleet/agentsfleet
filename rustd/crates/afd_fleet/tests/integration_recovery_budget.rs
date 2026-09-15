@@ -27,6 +27,15 @@
 //! poll publishes for the operator gauges: a query that was never issued
 //! leaves nothing else behind to assert on.
 //!
+//! That proof needs an index no other writer touches, and says so in the
+//! fixture: on the shared index, ~445 earlier tests seed fleets across all
+//! sixteen partitions, so no partition is ever empty and the path under test
+//! is never entered. `Partition::of` does not rescue it — a fleet's own
+//! partition is shared with every other fleet whose checksum lands there. So
+//! the store polls a `ReadyPrefix::private` index, and the same fixture
+//! proves the seam is wired by marking a fleet IN it and watching the same
+//! store reach Postgres.
+//!
 //! # Not asserted here, named rather than implied
 //!
 //! The wrapping cursor at one past the sweeper's page bound: staged at
@@ -49,7 +58,9 @@ use std::time::Duration;
 use afd_admission::{Admissions, Budgets};
 use afd_core::clock;
 use afd_datastore::FleetStreams;
-use afd_datastore::ready::READY_PARTITIONS;
+use afd_datastore::ready::{READY_PARTITIONS, ReadyIndex, ReadyPrefix};
+use afd_core::id::Uuid7;
+use afd_fleet::lease::assign::measured::PollMeasurement;
 use afd_fleet::lease::{Leases, runner_consumer};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::rebuild::rebuild;
@@ -149,26 +160,18 @@ async fn recovers_an_abandoned_lease(fixtures: &Fixtures, leases: &Leases) {
     queue::clear_ready(fixtures.queue(), &staged.fleet).await;
 }
 
-/// The empty poll answers without asking Postgres anything.
+/// Every partition of an index nobody has marked, polled in turn.
 ///
-/// Read off the tally the poll itself publishes, through the `test-util` seam
-/// beside `select`, because a query that was never issued leaves no row, no
-/// error and no lease to assert on. The peek is bounded and the index is
-/// shared, so a rotation is walked and every poll that scanned nothing is
-/// checked; the count guards against a run where a sibling suite kept every
-/// partition busy and the empty path was never entered at all.
-async fn an_empty_poll_reaches_no_database(fixtures: &Fixtures) {
-    let leases = fixtures.leases();
-    let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(fixtures).await;
-    queue::clear_ready(fixtures.queue(), &fleet).await;
-
-    let mut empty_polls = 0_u16;
+/// A full rotation rather than one poll: the cursor is shared by every handle
+/// in the process, so which partition this store reads first is not this
+/// test's to choose, and the property is about all of them.
+async fn every_partition_of_an_empty_index_is_free(leases: &Leases, runner: &Uuid7) {
     for _poll in 0..READY_PARTITIONS {
-        let (outcome, cost) = leases.select_measured(&runner, clock::now()).await;
-        if cost.candidates_scanned > 0 {
-            continue;
-        }
-        empty_polls += 1;
+        let (outcome, cost) = leases.select_measured(runner, clock::now()).await;
+        assert_eq!(
+            cost.candidates_scanned, 0,
+            "no writer has marked this index, so a peek offers nothing"
+        );
         assert_eq!(
             cost.database_roundtrips, 0,
             "an empty peek returns before the candidate query, so nothing reaches Postgres"
@@ -178,10 +181,58 @@ async fn an_empty_poll_reaches_no_database(fixtures: &Fixtures) {
             "and it answers no-work rather than faulting"
         );
     }
+}
+
+/// The first poll of a rotation that the index answered with a candidate.
+///
+/// `None` when a whole rotation found nothing, which is the failure this
+/// helper exists to name: it means the store is not reading the index the
+/// mark was written to.
+async fn poll_until_a_candidate(leases: &Leases, runner: &Uuid7) -> Option<PollMeasurement> {
+    for _poll in 0..READY_PARTITIONS {
+        let (_outcome, cost) = leases.select_measured(runner, clock::now()).await;
+        if cost.candidates_scanned > 0 {
+            return Some(cost);
+        }
+    }
+    None
+}
+
+/// The empty poll answers without asking Postgres anything.
+///
+/// Read off the tally the poll itself publishes, through the `test-util` seam
+/// beside `select`, because a query that was never issued leaves no row, no
+/// error and no lease to assert on.
+///
+/// The index is this test's own. On the shared one the empty state is not
+/// reachable at all — see the module header — and a fixture that skipped the
+/// polls where a foreign mark appeared would report green on a run where the
+/// path under test never executed. A private index makes the zero
+/// deterministic, and the second half is what stops the zero from being
+/// vacuous: the same store, the same prefix, one mark, and Postgres is
+/// reached. A seam aimed at a key nothing writes would pass the first half
+/// and fail here.
+async fn an_empty_poll_reaches_no_database(fixtures: &Fixtures) {
+    let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(fixtures).await;
+    let prefix = ReadyPrefix::private(&fleet);
+    let leases = fixtures.leases().with_ready_prefix(prefix.clone());
+
+    every_partition_of_an_empty_index_is_free(&leases, &runner).await;
+
+    let index = ReadyIndex::under(fixtures.queue().clone(), prefix);
+    let token = index
+        .mark(&fleet, &fleet)
+        .await
+        .expect("the private index takes a mark like any other");
+    let cost = poll_until_a_candidate(&leases, &runner)
+        .await
+        .expect("the store polls the index its prefix names, so one rotation reaches the mark");
     assert!(
-        empty_polls > 0,
-        "every one of the {READY_PARTITIONS} readiness partitions held a foreign mark, so the empty path was never entered"
+        cost.database_roundtrips > 0,
+        "a peek that offered a candidate goes on to the query, so the zero above is the empty path and not a misaimed key"
     );
+
+    let _cleared = index.clear_if_unchanged(&fleet, &token).await;
 }
 
 /// Rows the queue never confirmed: committed, `receipt IS NULL`.
