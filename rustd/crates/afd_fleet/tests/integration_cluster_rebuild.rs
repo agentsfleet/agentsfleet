@@ -57,7 +57,7 @@ use afd_wire::event::EventType;
 use crate::queue;
 use crate::report_seed::DEEP_POOL;
 use crate::requests::ENROLLED_AT;
-use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_within_one_rotation};
+use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
 /// How many stranded fleets: one past the page, so the second round of the
@@ -122,7 +122,7 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
         .await
         .expect("a live queue admits and receipts");
 
-    let acquired = select_within_one_rotation(leases, &holder, at)
+    let acquired = select_fleet_within_rotations(leases, &holder, at, &fleet)
         .await
         .expect("one rotation of polls reaches the fleet holding admitted work");
     assert_eq!(acquired.event_id, admitted.id);
@@ -286,7 +286,8 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     // event to the next poll, from the ledger, with the dead lease expired.
     let polled_at = clock::now();
     for staged in &stranded {
-        let offered = select_within_one_rotation(&leases, &staged.poller, polled_at).await;
+        let offered =
+            select_fleet_within_rotations(&leases, &staged.poller, polled_at, &staged.fleet).await;
         assert!(
             offered.is_some(),
             "fleet {} was marked ready and offers its work",
@@ -316,7 +317,7 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     // ── A live holder is left alone: not stranded, so not marked, so the
     // other runner's poll finds nothing and the lease it holds is untouched.
     assert!(
-        select_within_one_rotation(&leases, &live.poller, polled_at)
+        select_fleet_within_rotations(&leases, &live.poller, polled_at, &live.fleet)
             .await
             .is_none(),
         "a fleet whose holder is still inside its lease offers nothing to a second runner"
