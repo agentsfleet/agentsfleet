@@ -124,14 +124,32 @@ pub(crate) async fn poll_for_seeded_lease(
     }
     panic!(
         "the seeded event {} was never offered in {ROTATIONS} rotations of the \
-         readiness index. Established on a freshly reset rig: the index holds \
-         exactly this one fleet and nothing else, `Leases::installed` answers \
-         for it, and every poll returns `lease: null` — so the fleet is found \
-         by the peek and dropped between there and the claim. Not the consumer \
-         group's start: `ensure_group` creates it at 0, so an entry appended \
-         before it is still visible",
+         readiness index.\n\
+         \n\
+         What is established, against a freshly reset rig:\n\
+         - the fleet row is `active` with empty `required_tags`, and the runner \
+           carries labels and is not degraded, so SELECT_READY_CANDIDATES run by \
+           hand DOES return this fleet;\n\
+         - `Leases::installed` answers for it;\n\
+         - `ReadyIndex::peek(Partition::of(fleet))` finds its mark, and the index \
+           holds depth 1;\n\
+         - and yet every poll logs `runner_lease_no_work` with reason \
+           \"no leasable work\" and issues NO candidate query, which means \
+           `select` returned at the empty-peek arm.\n\
+         \n\
+         So the poll's own peek disagrees with a peek made from the test over the \
+         same connection and the same partition. That contradiction is the thing \
+         to chase; it is not residue (depth 1) and not the group's start \
+         (`ensure_group` creates at 0).\n\
+         \n\
+         Separately and confirmed: the lane's shared database carries fleets whose \
+         `config_json` is `{{}}` or `{{\"not\": \"a fleet config\"}}`, seeded by the \
+         store suites that call `Leases::select` directly. The pull path resolves \
+         a config and answers UZ-INTERNAL-003 on those, so a poll that lands on \
+         one 500s — see the note at the head of `e2e_seed.rs`, which predicted it.",
         run.event_id
     )
+
 }
 
 /// The report one completed run sends.
