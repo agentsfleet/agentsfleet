@@ -97,6 +97,8 @@ mod integration_cluster_prototypes;
 mod integration_cluster_readiness;
 #[path = "integration_cluster_recovery.rs"]
 mod integration_cluster_recovery;
+#[path = "integration_cluster_semantics.rs"]
+mod integration_cluster_semantics;
 #[path = "integration_diagnose_connect.rs"]
 mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
