@@ -57,9 +57,9 @@ use std::time::Duration;
 
 use afd_admission::{Admissions, Budgets};
 use afd_core::clock;
+use afd_core::id::Uuid7;
 use afd_datastore::FleetStreams;
 use afd_datastore::ready::{READY_PARTITIONS, ReadyIndex, ReadyPrefix};
-use afd_core::id::Uuid7;
 use afd_fleet::lease::assign::measured::PollMeasurement;
 use afd_fleet::lease::{Leases, runner_consumer};
 use afd_runner::sweep::Sweep as _;

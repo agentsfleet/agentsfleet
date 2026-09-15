@@ -100,10 +100,7 @@ pub(crate) fn claim(lease: &Value) -> (String, u64) {
 /// Even with the index swept, the assertion is on this scenario's own event
 /// rather than on whatever arrives: a fixture that appended twice has two
 /// entries owed, and the oldest is the one these suites are written against.
-pub(crate) async fn poll_for_seeded_lease(
-    http: &reqwest::Client,
-    run: &Scenario,
-) -> (String, u64) {
+pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
         // Asserted on EVERY turn, not once before the loop: a caller that
@@ -149,7 +146,6 @@ pub(crate) async fn poll_for_seeded_lease(
          one 500s — see the note at the head of `e2e_seed.rs`, which predicted it.",
         run.event_id
     )
-
 }
 
 /// The report one completed run sends.

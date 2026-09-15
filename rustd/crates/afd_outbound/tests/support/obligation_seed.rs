@@ -194,9 +194,7 @@ pub(crate) async fn entries_on(redis: &Redis) -> u64 {
 /// entries and change the pending list this suite asserts on.
 pub(crate) async fn entries_naming(redis: &Redis, event: &str) -> u64 {
     let mut cmd = redis::cmd(CMD_XRANGE);
-    cmd.arg(OUTBOUND_STREAM_KEY)
-        .arg(RANGE_START)
-        .arg(RANGE_END);
+    cmd.arg(OUTBOUND_STREAM_KEY).arg(RANGE_START).arg(RANGE_END);
     let entries: Vec<(String, Vec<String>)> = redis
         .command(CMD_XRANGE, OUTBOUND_STREAM_KEY, &cmd)
         .await
