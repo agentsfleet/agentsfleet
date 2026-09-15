@@ -25,11 +25,20 @@ const REFUSAL_BUDGET: Duration = Duration::from_secs(5);
 /// per call would be asserting nothing about the value.
 const PARK: Duration = Duration::from_millis(100);
 
-/// A URL the client cannot be built from is an unreachable-Redis failure that
-/// names the role, not a panic and not a hang.
+/// A URL the client cannot be built from is a CONFIGURATION failure that names
+/// the role, not a panic and not a hang.
 ///
-/// The role matters: a deployment runs two of these, and "Redis is unreachable"
-/// without saying which one sends an operator to the wrong connection string.
+/// The role matters: a deployment runs two of these, and a refusal that does
+/// not say which one sends an operator to the wrong connection string.
+///
+/// The class matters for a second reason. This test asserted `is_unavailable`
+/// and `preflight_refusals` asserted `is_config` for the SAME `"not-a-url"`
+/// seed, so one of the two had to be red whatever the code did. `is_config` is
+/// what the accessor documents -- "a role's URL or certificate path was absent
+/// or malformed" -- and what the callers need: `afd_admission`,
+/// `afd_connector` and `afd_outbound` all read `is_unavailable` as the
+/// retryable outage class, and an operator's typo retried as an outage never
+/// resolves.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_url_the_client_cannot_be_built_from_is_refused_by_role() {
     for bad in [
@@ -47,7 +56,7 @@ async fn test_a_url_the_client_cannot_be_built_from_is_refused_by_role() {
                 .expect_err("{bad:?} must not produce a client");
 
             assert!(
-                error.is_unavailable(),
+                error.is_config(),
                 "{bad:?} for {role:?} gave the wrong class: {error}"
             );
             let rendered = error.to_string();
@@ -101,7 +110,7 @@ async fn test_the_tls_client_carries_the_same_refusal() {
         .expect_err("an unparseable certificate authority must not produce a client");
 
     assert!(
-        error.is_unavailable(),
+        error.is_config(),
         "the TLS path must report the same class as the plain one: {error}"
     );
     assert!(

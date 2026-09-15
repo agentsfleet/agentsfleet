@@ -122,9 +122,20 @@ async fn the_capacity_sample_accounts_for_every_class_of_retained_state_separate
     let capped = Capacity::sample(&harness.redis, 1)
         .await
         .expect("the datastore answers");
-    assert_eq!(
-        capped.streams, sample.streams,
-        "the cap does not hide streams"
+    // `>=` and not `==`, for the reason the readiness bound above already
+    // gives. `streams` is a SCAN over a global glob, so it counts every fleet
+    // stream in the datastore, including ones other tests in this tier created
+    // between the two samples. The regression worth catching is a cap that
+    // TRUNCATES the count -- that shows up as capped < sample, and this
+    // catches it. Equality additionally demanded that nothing else in a
+    // parallel lane wrote a stream, which is not a property of the code under
+    // test, and it failed exactly that way: green one run, red the next, no
+    // change in between.
+    assert!(
+        capped.streams >= sample.streams,
+        "the cap does not hide streams: capped {} < full {}",
+        capped.streams,
+        sample.streams
     );
     assert_eq!(capped.streams_walked, 1, "the cap bounds what is described");
 

@@ -54,6 +54,13 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
+    #[error("the {role} Redis configuration was refused before any connection was attempted")]
+    ConfigRejected {
+        role: &'static str,
+        #[source]
+        source: Box<redis::RedisError>,
+    },
+
     #[error("the {role} Redis is unreachable")]
     Unreachable {
         role: &'static str,
@@ -160,6 +167,7 @@ impl Error {
             ErrorKind::MissingRedisUrl { .. }
                 | ErrorKind::InvalidRedisUrl { .. }
                 | ErrorKind::CaCertUnreadable { .. }
+                | ErrorKind::ConfigRejected { .. }
         )
     }
 
@@ -345,6 +353,33 @@ pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
     Error::new(ErrorKind::Timeout { command, waited_ms })
 }
 
+/// A datastore that could not be reached at all.
+///
+/// Here rather than at the call site so the three ways a dial can end —
+/// unreachable, refused for trust, refused for configuration — are raised
+/// through one seam instead of two constructors and a hand-rolled
+/// `Error::new`.
+pub(crate) fn unreachable(role: &'static str, source: redis::RedisError) -> Error {
+    Error::new(ErrorKind::Unreachable {
+        role,
+        source: Box::new(source),
+    })
+}
+
+/// A seed or certificate the driver refused before opening any socket.
+///
+/// Deliberately not [`ErrorKind::InvalidRedisUrl`]: the client is built from
+/// the seed AND the certificate bytes, and a build that fails has not said
+/// which. Naming the URL would be a guess, and a guess in an error message is
+/// how an operator ends up reading the wrong file. The driver's own reason
+/// stays on the source.
+pub(crate) fn config_rejected(role: &'static str, source: redis::RedisError) -> Error {
+    Error::new(ErrorKind::ConfigRejected {
+        role,
+        source: Box::new(source),
+    })
+}
+
 /// A TLS endpoint whose certificate the configured authority does not trust.
 ///
 /// Separate from [`ErrorKind::Unreachable`] because the two send an operator
@@ -428,6 +463,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
                 role: "default",
                 source: Box::new(refusal("refused")),
             }),
+        ),
+        (
+            "certificate rejected",
+            certificate_rejected("default", refusal("refused")),
+        ),
+        (
+            "config rejected",
+            config_rejected("default", refusal("refused")),
         ),
         ("connect timeout", connect_timed_out("default", 5_000)),
         ("timeout", timed_out("XADD", 5_000)),

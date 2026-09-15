@@ -92,10 +92,10 @@ fn node_of(node: Value) -> Option<Node> {
     let entries = pairs(node)?;
     let role = entries
         .iter()
-        .find_map(|(key, value)| (key == FIELD_ROLE).then(|| text(value)))?;
+        .find_map(|(key, value)| (key == FIELD_ROLE).then(|| shown(value)))?;
     let host = entries
         .iter()
-        .find_map(|(key, value)| (key == FIELD_IP || key == FIELD_ENDPOINT).then(|| text(value)))?;
+        .find_map(|(key, value)| (key == FIELD_IP || key == FIELD_ENDPOINT).then(|| shown(value)))?;
     let port = entries.iter().find_map(|(key, value)| match value {
         Value::Int(port) if key == FIELD_PORT => u16::try_from(*port).ok(),
         _other => None,
@@ -124,14 +124,14 @@ fn pairs(value: Value) -> Option<Vec<(String, Value)>> {
         Value::Map(entries) => Some(
             entries
                 .into_iter()
-                .map(|(key, value)| (text(&key), value))
+                .map(|(key, value)| (shown(&key), value))
                 .collect(),
         ),
         Value::Array(flat) => {
             let mut out = Vec::with_capacity(flat.len() / 2);
             let mut items = flat.into_iter();
             while let (Some(key), Some(value)) = (items.next(), items.next()) {
-                out.push((text(&key), value));
+                out.push((shown(&key), value));
             }
             Some(out)
         }
@@ -139,10 +139,25 @@ fn pairs(value: Value) -> Option<Vec<(String, Value)>> {
     }
 }
 
-fn text(value: &Value) -> String {
+/// The text of a RESP string value, or `None` when it is not one.
+///
+/// The crate's single reading of a `Value` as text. `hub::pump` had its own,
+/// which matched `BulkString` and `SimpleString` and dropped
+/// `VerbatimString` -- a shape RESP3 is exactly the protocol to send, and the
+/// hub speaks RESP3. Two matches meant the second could go on missing a case
+/// the first already handled.
+pub(crate) fn text(value: &Value) -> Option<String> {
     match value {
-        Value::BulkString(bytes) => String::from_utf8_lossy(bytes).into_owned(),
-        Value::SimpleString(text) | Value::VerbatimString { text, .. } => text.clone(),
-        other => format!("{other:?}"),
+        Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
+        Value::SimpleString(text) | Value::VerbatimString { text, .. } => Some(text.clone()),
+        _other => None,
     }
+}
+
+/// The same reading, rendered for a field this module always has to show.
+///
+/// A topology row is diagnostic output: a value that is not a string is still
+/// worth printing as itself rather than vanishing.
+fn shown(value: &Value) -> String {
+    text(value).unwrap_or_else(|| format!("{value:?}"))
 }

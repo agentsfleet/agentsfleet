@@ -32,7 +32,7 @@ static CONNECT_SERIAL: Semaphore = Semaphore::const_new(1);
 /// So a lapsed budget here means "the machine was busy", not "Redis is down",
 /// and three attempts distinguish them. A genuinely absent Redis fails three
 /// times quickly and still fails; a contended one wins a later attempt.
-const CONNECT_ATTEMPTS: u32 = 3;
+const CONNECT_RETRY_ATTEMPTS: u32 = 3;
 
 /// How long to wait after a lapsed attempt, giving the CPU spike time to pass.
 const RETRY_BACKOFF: Duration = Duration::from_millis(250);
@@ -65,7 +65,7 @@ pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
             // diagnosis into a three-second one that reports the same fault.
             Err(error)
                 if matches!(error.kind(), ErrorKind::ConnectTimeout { .. })
-                    && attempt < CONNECT_ATTEMPTS =>
+                    && attempt < CONNECT_RETRY_ATTEMPTS =>
             {
                 attempt += 1;
                 tokio::time::sleep(RETRY_BACKOFF).await;

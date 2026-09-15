@@ -49,6 +49,12 @@ fn test_every_kind_renders_with_its_code() {
 /// This is the property that makes them useful. Two accessors answering for one
 /// kind means a caller that matches on the first never sees the second, and a
 /// kind no accessor claims is one nobody can handle at all.
+///
+/// `is_certificate_rejected` is deliberately NOT in the list below. It narrows
+/// `is_unavailable` rather than standing beside it — a rejected certificate is
+/// an unusable datastore that happens to say which of two places to look — so
+/// adding it here would claim its kind twice and fail this test. That is the
+/// test working, not a gap in it.
 #[test]
 fn test_the_accessors_partition_the_kinds() {
     for (label, error) in one_of_each_kind() {

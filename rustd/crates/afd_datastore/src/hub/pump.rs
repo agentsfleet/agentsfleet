@@ -32,6 +32,7 @@ use tokio::sync::mpsc;
 use super::{Command, HubInner, Message};
 use crate::config::RedisConfig;
 use crate::error::{Error, Result};
+use crate::topology::text;
 use crate::transport;
 
 /// Opens the first connection and leaves a task owning it.
@@ -215,10 +216,3 @@ fn channel_of(data: &[Value]) -> Option<String> {
     text(data.first()?)
 }
 
-fn text(value: &Value) -> Option<String> {
-    match value {
-        Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
-        Value::SimpleString(text) => Some(text.clone()),
-        _other => None,
-    }
-}
