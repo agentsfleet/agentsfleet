@@ -42,7 +42,11 @@ export function StatusLine({ className, ref, ...props }: StatusLineProps) {
       tabIndex={0}
       className={cn(
         "flex min-w-0 flex-nowrap items-center overflow-x-auto divide-x divide-border",
-        "font-sans text-body-sm leading-body-sm tabular-nums text-muted-foreground",
+        // `label`, not `body-sm`: a status line is metadata under content set in
+        // `body` (15px), and `body-sm` (14px) is one pixel away from it, which is
+        // no hierarchy at all. `label` (13px) is the step the scale reserves for
+        // exactly this role and carries its own leading.
+        "font-sans text-label leading-label tabular-nums text-muted-foreground",
         className,
       )}
       {...props}

@@ -12,7 +12,10 @@ describe("StatusLine", () => {
     );
     const line = screen.getByRole("group", { name: "Fleet summary" });
     expect(line.nodeName).toBe("DIV");
-    for (const cls of ["font-sans", "tabular-nums", "text-body-sm", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
+    // `text-label`, not `text-body-sm`: the line is metadata under content set
+    // in `body` (15px), and `body-sm` (14px) left it a single pixel from the
+    // prose above it. Pinned because the whole point of the token is the step.
+    for (const cls of ["font-sans", "tabular-nums", "text-label", "divide-x", "flex-nowrap", "overflow-x-auto"]) {
       expect(line.className).toContain(cls);
     }
     // Never a wrapped row: `divide-x` draws on every cell but the last, so a
