@@ -110,13 +110,25 @@ async fn test_boot_to_ready_on_compose() {
         .expect("the lane's Postgres and Redis are up");
 
     // Every task the daemon spawns, in spawn order: the pub/sub pump the live
-    // streams read through, the four sweepers §6 put under the supervisor, the
+    // streams read through, the sweepers put under the supervisor, the two
+    // the admission ledger added with it, both halves of outbound delivery, the
     // accept loop, and the analytics flush that drains queued product events
     // before the process exits. Asserted as the WHOLE inventory rather than as
     // a `contains`, because the claim this test makes is C2 — nothing runs
     // outside the supervisor — and a subset check would pass for a sweeper that
     // had quietly gone back to a bare `tokio::spawn` and so would never be
     // cancelled at shutdown.
+    //
+    // The three most recent are here for that reason and not as bookkeeping.
+    // `REPLAY` and `RECONCILE` are the admission ledger's recovery: the
+    // dispatcher that re-appends an admitted row the queue never receipted,
+    // and the pass that settles one the stream can no longer account for.
+    // `OUTBOUND_PRODUCER` is the owed-answer producer, and it is the reason
+    // outbound delivery has a production path at all — before it, nothing in
+    // the daemon called `OutboundQueue::enqueue` and the delivery half was
+    // proven only against a fake. A daemon that dropped any of the three would
+    // still answer `/readyz`, which is exactly why the inventory is asserted
+    // whole.
     //
     // `inventory::OTLP_EXPORT` is in `BACKGROUND_TASKS` and deliberately not
     // here: the exporter's flush loop is spawned only where a span endpoint is
@@ -130,12 +142,15 @@ async fn test_boot_to_ready_on_compose() {
             agentsfleetd::sweepers::RECLAIM,
             agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::REPAIR,
+            agentsfleetd::sweepers::RECONCILE,
+            agentsfleetd::sweepers::REPLAY,
             agentsfleetd::inventory::OUTBOUND_WORKER,
+            agentsfleetd::outbound::OUTBOUND_PRODUCER,
             agentsfleetd::serve::ACCEPT_LOOP,
             agentsfleetd::inventory::ANALYTICS_FLUSH,
         ],
-        "a booted daemon supervises its pump, its sweepers, its connector \
-         answer worker, its accept loop and its analytics flush"
+        "a booted daemon supervises its pump, its sweepers, both halves of \
+         outbound delivery, its accept loop and its analytics flush"
     );
     assert_ne!(
         booted.address.port(),
@@ -166,10 +181,22 @@ async fn test_boot_to_ready_on_compose() {
     );
 
     // Teardown, asserted rather than left to a drop: the accept loop is parked
-    // in `accept()` and must be interrupted by the token, not waited out.
+    // in `accept()` and must be interrupted, not waited out.
+    //
+    // `draining` is what interrupts it, and leaving it off is not a detail this
+    // test can skip — it is the difference between a clean stop and a ten
+    // second hang. The loop selects over the DRAIN's token rather than the
+    // supervisor's, because stopping the accept and cutting the
+    // connections already accepted are two different instants and the bound
+    // between them is the drain's whole purpose. A `Daemon` built without the
+    // drain therefore cancels every other task and leaves this one parked in
+    // `accept()` until `JOIN_TIMEOUT` abandons it. `serve::run` hands it over
+    // for exactly this reason; a teardown that did not would be asserting on a
+    // shutdown sequence production does not run.
     let report = tokio::time::timeout(
         std::time::Duration::from_secs(1),
         agentsfleetd::daemon::Daemon::new(supervisor)
+            .draining(booted.drain.clone())
             .run(std::future::pending(), std::future::ready(())),
     )
     .await
