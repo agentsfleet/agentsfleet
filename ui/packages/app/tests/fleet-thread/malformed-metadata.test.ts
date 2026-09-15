@@ -114,6 +114,34 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(row?.querySelector("time")).toBeNull();
   });
 
+  it("renders no operator bubble for a turn whose body the read never carried", () => {
+    // The blank-pill regression. A completion frame for a run the timeline
+    // never opened (a reconnect missed its `event_received`) is rebuilt from
+    // the events-list shape, which selects no `request_json` and no
+    // `response_text` — so the turn arrives with an empty text part. Rendering
+    // that as an operator row put an empty pill in the thread beside a bare
+    // "Completed.", which reads as a message somebody sent with nothing in it.
+    // Contrast the image-only case above: that one has content and keeps its row.
+    const e = ev({ role: "user", actor: "steer:user_3gkbg", text: "" });
+    useFleetEventStreamMock.mockReturnValue({
+      events: [e],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      isRunning: false,
+      appendOptimistic: vi.fn(),
+      reconcileOptimistic: vi.fn(),
+      markOptimisticFailed: vi.fn(),
+      convertEvent: (m: FleetEvent) => ({
+        role: m.role,
+        id: m.id,
+        createdAt: m.createdAt,
+        content: [{ type: "text" as const, text: "" }],
+        metadata: { custom: { actor: m.actor, status: m.status } },
+      }),
+    });
+    const { container } = renderThread();
+    expect(container.querySelector('[data-role="user"]')).toBeNull();
+  });
+
   it("viewport carries role=log, aria-live=polite, aria-label", () => {
     mockStream([ev({ role: "system", actor: "config_reload", text: "ok" })]);
     const { container } = renderThread();

@@ -28,6 +28,7 @@ import {
   readReply,
   readRenderKind,
   readRequestJson,
+  hasOwnContent,
   readText,
 } from "./fleetMessageReaders";
 import { RENDER_KIND } from "./useFleetThreadEntries";
@@ -63,6 +64,14 @@ function FleetMessage({ message }: { message: MessageState }) {
   const failed = status === STATUS_FAILED;
   const tools = readTools(message);
   const trigger = readText(message);
+  // A turn whose body this read never CARRIED is not a turn that said nothing,
+  // and an empty operator bubble claims it was. The events list selects no
+  // `request_json`, and a completion frame for a run the timeline never opened
+  // is rebuilt from exactly that shape — so a reconnect could leave a blank
+  // pill in the thread beside a bare "Completed.". The outcome line still
+  // reports the run. An image-only append keeps its row: it has content, just
+  // no text part, which is why this asks `hasOwnContent` and not `trigger`.
+  const hasTrigger = hasOwnContent(message);
   const isReplyRow = message.role === "assistant";
   const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // A run of identical deliveries is one row until the operator opens it.
@@ -75,7 +84,7 @@ function FleetMessage({ message }: { message: MessageState }) {
   }
   return (
     <>
-      {isReplyRow ? null : (
+      {isReplyRow || !hasTrigger ? null : (
         <FleetMessageRow
           sender={sender}
           tone={ROW_TONE.OPERATOR}
