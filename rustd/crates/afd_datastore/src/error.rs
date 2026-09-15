@@ -83,6 +83,26 @@ pub(crate) enum ErrorKind {
     #[error("the consumer group on {stream} already exists")]
     GroupExists { stream: String },
 
+    /// A stream command addressed a key holding something else.
+    ///
+    /// Raised by the CALLER, before the command goes out, because the one
+    /// command that would provoke it cannot safely be sent: `XGROUP CREATE …
+    /// MKSTREAM` creates its key, so it reaches `DbSlice::AddNew`, where
+    /// Dragonfly v1.40.2 trips `db_slice.cc:1176 Check failed: res.is_new` and
+    /// aborts the node instead of answering. Redis answers `WRONGTYPE`, so this
+    /// kind is what a working server owes and this crate supplies.
+    ///
+    /// Carries no `#[source]`: nothing failed underneath it. The cause is the
+    /// `TYPE` reply this crate read and judged, which is the data below
+    /// (`RUST_ERROR_STANDARD` rule 4 — `source()` returns what caused you, and
+    /// a fabricated reply from a server that was never asked is not a cause).
+    #[error("{command} cannot run: {stream} holds a {holds}, not a stream")]
+    WrongType {
+        command: &'static str,
+        stream: String,
+        holds: String,
+    },
+
     /// The server refused to grow: `OOM`, the reply a node past its memory
     /// limit gives every write.
     #[error("{command} was refused because the datastore is full")]
@@ -147,12 +167,21 @@ impl Error {
         )
     }
 
-    /// Whether a command reached Redis and Redis refused it.
+    /// Whether a command was refused rather than prevented by an outage.
+    ///
+    /// [`ErrorKind::WrongType`] is claimed here although it never reaches the
+    /// wire: a caller's question is "did the datastore refuse my command, or is
+    /// it unreachable?", and a create this crate declined on the server's behalf
+    /// answers the first. Leaving it unclaimed would put it outside every
+    /// accessor, which is a kind nobody can handle — the thing
+    /// `test_the_accessors_partition_the_kinds` exists to prevent.
     #[must_use]
     pub fn is_command(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::Command { .. } | ErrorKind::UnexpectedReply { .. }
+            ErrorKind::Command { .. }
+                | ErrorKind::UnexpectedReply { .. }
+                | ErrorKind::WrongType { .. }
         )
     }
 
@@ -228,7 +257,8 @@ impl Error {
             ErrorKind::Command { .. }
             | ErrorKind::UnexpectedReply { .. }
             | ErrorKind::GroupMissing { .. }
-            | ErrorKind::GroupExists { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::GroupExists { .. }
+            | ErrorKind::WrongType { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             _ => error_code::STARTUP_REDIS_CONNECT,
         }
@@ -271,6 +301,20 @@ pub(crate) fn classify(command: &'static str, stream: &str, source: redis::Redis
     Error::new(ErrorKind::Command {
         command,
         source: Box::new(source),
+    })
+}
+
+/// The `WRONGTYPE` a working server owes, raised by the caller instead.
+///
+/// `FleetStreams` and `OutboundQueue` ask `TYPE` before any `MKSTREAM` create
+/// and call this when the answer rules the command out — see
+/// [`ErrorKind::WrongType`] for why the command cannot simply be sent and let
+/// the server refuse it.
+pub(crate) fn wrong_type(command: &'static str, stream: &str, holds: &str) -> Error {
+    Error::new(ErrorKind::WrongType {
+        command,
+        stream: stream.to_owned(),
+        holds: holds.to_owned(),
     })
 }
 
@@ -353,6 +397,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "command",
             classify("XADD", "fleet:x:events", refusal("refused")),
+        ),
+        (
+            "wrong type",
+            wrong_type("XGROUP", "fleet:x:events", "string"),
         ),
         (
             "group missing",

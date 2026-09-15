@@ -118,13 +118,27 @@ impl Leases {
     /// Reports a datastore that would not answer. "Nothing to do" is
     /// `Ok(None)`, not an error — the runner backs off and re-polls.
     pub async fn select(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Option<Acquired>> {
+        self.select_recording(runner_id, now).await.0
+    }
+
+    /// The poll, its outcome, and what it cost.
+    ///
+    /// The one body the public entry point above and the `test-util`
+    /// measurement in `assign/measured.rs` both run, so a suite asserting on
+    /// the cost is asserting on the tally production publishes rather than on
+    /// a second one written beside it.
+    async fn select_recording(
+        &self,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
         let selected = self.select_counted(runner_id, now, &mut cost).await;
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
         producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
-        selected
+        (selected, cost)
     }
 
     /// [`Leases::select`] without the recording, tallying what it cost.
@@ -314,6 +328,9 @@ async fn drop_undecodable(
 pub fn runner_consumer() -> String {
     format!("agentsfleetd-{}", std::process::id())
 }
+
+#[cfg(feature = "test-util")]
+pub mod measured;
 
 #[cfg(all(test, feature = "test-util"))]
 mod tests;

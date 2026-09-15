@@ -302,6 +302,11 @@ async fn test_a_group_create_that_fails_for_another_reason_is_not_swallowed() {
     install_subscriber();
     let server = FakeRedis::spawn(&[
         ("PING", Reply::Raw("+PONG\r\n")),
+        // `ensure_group` asks what the key holds before it creates one, because
+        // `MKSTREAM` over an occupied key aborts Dragonfly v1.40.2 rather than
+        // answering. A fake that does not answer `TYPE` like a server is read as
+        // an occupied key, and the create under test never goes out.
+        ("TYPE", Reply::Raw("+none\r\n")),
         // An error that is NOT BUSYGROUP — the arm the narrow swallow must
         // leave alone.
         (

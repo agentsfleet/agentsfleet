@@ -45,6 +45,15 @@ use crate::streams::{ACKNOWLEDGED_HISTORY, EventId, Trimmed, retain};
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XADD: &str = "XADD";
 const CMD_XGROUP: &str = "XGROUP";
+
+/// Asks what a key holds, so a create is never issued over the wrong thing.
+const CMD_TYPE: &str = "TYPE";
+
+/// `TYPE`'s answer for a key that does not exist.
+const TYPE_NONE: &str = "none";
+
+/// `TYPE`'s answer for a key that is already a stream.
+const TYPE_STREAM: &str = "stream";
 pub(super) const CMD_XREADGROUP: &str = "XREADGROUP";
 pub(super) const CMD_XACK: &str = "XACK";
 
@@ -204,6 +213,20 @@ impl OutboundQueue {
     /// Returns a command error when the group could not be created for any
     /// reason other than already existing.
     pub async fn ensure_group(&self) -> Result<()> {
+        // The same guard `FleetStreams::create_group` carries, for the same
+        // reason: `MKSTREAM` below creates the key, a create reaches
+        // `DbSlice::AddNew`, and Dragonfly v1.40.2 aborts the node there rather
+        // than answering `WRONGTYPE` when the key holds something else.
+        let mut probe = redis::cmd(CMD_TYPE);
+        probe.arg(OUTBOUND_STREAM_KEY);
+        let holds: String = self
+            .redis
+            .command(CMD_TYPE, OUTBOUND_STREAM_KEY, &probe)
+            .await?;
+        if holds != TYPE_NONE && holds != TYPE_STREAM {
+            return Err(error::wrong_type(CMD_XGROUP, OUTBOUND_STREAM_KEY, &holds));
+        }
+
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg(XGROUP_CREATE)
             .arg(OUTBOUND_STREAM_KEY)

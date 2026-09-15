@@ -146,3 +146,9 @@ workspace = true
 [[test]]
 name = "fleet_suite"
 path = "tests/fleet_suite.rs"
+
+# Its own binary so cargo runs it alone: it marks BATCH_LIMIT + 1 fleets ready
+# at once, and the readiness index is process-global. See the file header.
+[[test]]
+name = "fleet_rebuild_suite"
+path = "tests/fleet_rebuild_suite.rs"

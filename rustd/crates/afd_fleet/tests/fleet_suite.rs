@@ -11,6 +11,8 @@
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
 mod queue;
+#[path = "support/fleet_recovery_seed.rs"]
+mod recovery_seed;
 #[path = "support/fleet_report_commit.rs"]
 mod report_commit;
 #[path = "support/fleet_report_reads.rs"]
@@ -30,8 +32,6 @@ mod view_heartbeat;
 mod integration_activity_publish;
 #[path = "integration_admission_recovery.rs"]
 mod integration_admission_recovery;
-#[path = "integration_cluster_rebuild.rs"]
-mod integration_cluster_rebuild;
 #[path = "integration_credential_mint.rs"]
 mod integration_credential_mint;
 #[path = "integration_gate_grants.rs"]
@@ -52,6 +52,8 @@ mod integration_lease_issue;
 mod integration_memory_capture;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
+#[path = "integration_recovery_budget.rs"]
+mod integration_recovery_budget;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

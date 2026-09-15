@@ -31,12 +31,6 @@ pub fn nowMonotonicMillis() i64 {
     };
 }
 
-/// Wall-clock seconds since the Unix epoch. Drop-in replacement for the
-/// `std.time.timestamp()` removed in Zig 0.16.
-pub fn nowSeconds() i64 {
-    return @intCast(@divTrunc(nowNanos(), std.time.ns_per_s));
-}
-
 /// Wall-clock nanoseconds since the Unix epoch. Drop-in replacement for the
 /// `std.time.nanoTimestamp()` removed in Zig 0.16.
 pub fn nowNanos() i128 {

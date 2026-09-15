@@ -182,7 +182,6 @@ pub const SelftestReport = selftest.SelftestReport;
 pub const MAX_SELFTEST_CHECKS = selftest.MAX_SELFTEST_CHECKS;
 pub const MAX_CHECK_NAME_LEN = selftest.MAX_CHECK_NAME_LEN;
 pub const MAX_CHECK_DETAIL_LEN = selftest.MAX_CHECK_DETAIL_LEN;
-pub const SelftestRejection = selftest.Rejection;
 pub const selftestReportRejection = selftest.selftestReportRejection;
 
 test {

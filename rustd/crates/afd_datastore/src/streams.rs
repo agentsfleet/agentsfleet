@@ -52,6 +52,15 @@ use crate::error::{self, Result};
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XADD: &str = "XADD";
 const CMD_XGROUP: &str = "XGROUP";
+
+/// Asks what a key holds, so a create is never issued over the wrong thing.
+const CMD_TYPE: &str = "TYPE";
+
+/// `TYPE`'s answer for a key that does not exist.
+const TYPE_NONE: &str = "none";
+
+/// `TYPE`'s answer for a key that is already a stream.
+const TYPE_STREAM: &str = "stream";
 const CMD_XREADGROUP: &str = "XREADGROUP";
 const CMD_XACK: &str = "XACK";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
@@ -236,8 +245,31 @@ impl FleetStreams {
         self.create_group(fleet_id, start).await
     }
 
+    /// Refuses a create the server cannot be asked to refuse for us.
+    ///
+    /// `MKSTREAM` below is what makes `XGROUP CREATE` create its key, and a
+    /// create reaches `DbSlice::AddNew`. Over a key already holding another
+    /// type, Dragonfly v1.40.2 trips `db_slice.cc:1176 Check failed: res.is_new`
+    /// and aborts the node instead of answering `WRONGTYPE`, taking every other
+    /// caller on that node down with it. Redis answers `WRONGTYPE`, so the
+    /// guard is this datastore's, not the protocol's.
+    ///
+    /// `none` and `stream` are both fine: the first is what `MKSTREAM` exists
+    /// for, and the second answers `BUSYGROUP`, which the callers treat as
+    /// success. Anything else never reaches the wire.
+    async fn refuse_occupied_key(&self, key: &str) -> Result<()> {
+        let mut cmd = redis::cmd(CMD_TYPE);
+        cmd.arg(key);
+        let holds: String = self.redis.command(CMD_TYPE, key, &cmd).await?;
+        if holds == TYPE_NONE || holds == TYPE_STREAM {
+            return Ok(());
+        }
+        Err(error::wrong_type(CMD_XGROUP, key, &holds))
+    }
+
     async fn create_group(&self, fleet_id: &str, start: &str) -> Result<()> {
         let key = fleet_stream_key(fleet_id);
+        self.refuse_occupied_key(&key).await?;
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg("CREATE")
             .arg(&key)

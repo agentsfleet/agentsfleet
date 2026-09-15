@@ -245,14 +245,14 @@ fn test_only_a_clean_stop_is_success() {
     let clean = Outcome {
         cause: StopCause::Signalled,
         settled: agentsfleetd::serve::Settled::EMPTY,
-                shutdown: ShutdownReport::default(),
+        shutdown: ShutdownReport::default(),
     };
     assert_eq!(status_for(&clean), SUCCESS);
 
     let stuck = Outcome {
         cause: StopCause::Signalled,
         settled: agentsfleetd::serve::Settled::EMPTY,
-                shutdown: ShutdownReport {
+        shutdown: ShutdownReport {
             joined: Vec::new(),
             abandoned: vec!["accept_loop"],
             panicked: Vec::new(),
@@ -267,7 +267,7 @@ fn test_only_a_clean_stop_is_success() {
     let fell_over = Outcome {
         cause: StopCause::ServerStopped,
         settled: agentsfleetd::serve::Settled::EMPTY,
-                shutdown: ShutdownReport::default(),
+        shutdown: ShutdownReport::default(),
     };
     assert_eq!(
         status_for(&fell_over),
