@@ -120,6 +120,11 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # Joins the contenders in the affinity race so the datastore, and not the order
 # of a test loop, decides which claim arrives first.
 futures-util = { workspace = true }
+# `XPENDING` in `tests/integration_terminal_redelivery.rs`. The library spells no
+# Redis command itself -- `afd_datastore` owns every one it issues -- but
+# Dimension 7.4's claim is that a redelivered terminal entry is ACKNOWLEDGED,
+# and whether an entry is still held is a question only the server answers.
+redis.workspace = true
 # Installs a subscriber so `tracing` event macros evaluate their fields at all;
 # without one a diagnostic line reads as unreachable to llvm-cov.
 tracing-subscriber.workspace = true
