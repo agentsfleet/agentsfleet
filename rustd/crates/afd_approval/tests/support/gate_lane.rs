@@ -111,6 +111,7 @@ pub(crate) struct Lane {
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
+    pub(crate) queue: Redis,
     pub(crate) inbox: Inbox,
     /// The fleet every seeded gate belongs to.
     pub(crate) fleet: Uuid7,
@@ -142,9 +143,10 @@ impl Lane {
             .expect("the lane's Redis must be reachable");
 
         let lane = Self {
-            inbox: Inbox::new(pool.clone(), queue),
+            inbox: Inbox::new(pool.clone(), queue.clone()),
             _database: database,
             pool,
+            queue,
             fleet: Uuid7::parse(&fleet).expect("a fixture fleet id is well formed"),
             workspace: Uuid7::parse(&workspace).expect("a fixture workspace id is well formed"),
             tenant: Uuid7::parse(TENANT).expect("the fixture tenant id is well formed"),
