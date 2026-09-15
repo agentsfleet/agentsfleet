@@ -37,9 +37,11 @@ use std::time::Duration;
 use afd_datastore::SubscriptionHub;
 use afd_datastore::streams::FleetStreams;
 use afd_sse::FanIn;
+use afd_sse::ceiling::Ceiling;
 use afd_sse::channel;
 use afd_sse::frame::Frame;
 use afd_sse::tail::tail;
+use afd_sse::{KIND_HELLO, Live};
 use futures_util::StreamExt as _;
 
 #[path = "support/sse_lane.rs"]
@@ -100,6 +102,68 @@ async fn test_sse_sequencing_semantics() {
     prime(&publisher, &activity, &mut primer).await;
     assert_ordered_frames(&publisher, &hub, &activity).await;
     assert_reconnect_starts_over(&publisher, &hub, &activity, &mut primer).await;
+}
+
+/// The per-fleet stream ANNOUNCES itself, before anything is published.
+///
+/// Without this the first byte of an idle fleet's body is the keep-alive
+/// heartbeat, `afd_sse::HEARTBEAT_INTERVAL` away. The browser opens the socket
+/// at once, but the surface reports itself live off the first FRAME -- so a
+/// quiet fleet rendered "Connecting…" for fifteen seconds with nothing whatever
+/// wrong. The wall stream has always opened with `hello`; the per-fleet route
+/// is what lacked one.
+///
+/// The `hello` spends no activity sequence number: it is the server talking
+/// ABOUT the stream, so the first real frame is still `seq` zero. Asserted here
+/// because a control frame that consumed a number would leave a gap in the ids
+/// a client uses to tell a dropped frame from a control one.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn test_fleet_stream_opens_with_hello_before_any_activity() {
+    let lane = SseLane::connect().await;
+    let publisher = FleetStreams::new(lane.redis.clone());
+    let fleet = lane.fleet("hello");
+    let activity = channel::activity(&fleet);
+
+    let hub = SubscriptionHub::start(SseLane::config())
+        .await
+        .expect("the hub starts");
+    let mut primer = hub.subscribe(&activity);
+    prime(&publisher, &activity, &mut primer).await;
+
+    let live = Live::new(hub, Ceiling::new(1));
+    let mut stream = Box::pin(live.tail_of(&fleet));
+
+    // Nothing is published before this read. The frame must arrive anyway --
+    // that IS the claim, and a test that published first would pass on the
+    // behaviour it exists to refuse.
+    let hello = next_frame(&mut stream).await;
+    assert_eq!(
+        hello.kind, KIND_HELLO,
+        "the per-fleet stream opens with `hello`, so a client watching a quiet \
+         fleet is told the subscription attached instead of waiting out a \
+         heartbeat interval in `Connecting…`"
+    );
+    assert!(
+        hello.data.contains(fleet.as_str()),
+        "the opening frame names the fleet it carries: {}",
+        hello.data
+    );
+    assert_eq!(
+        hello.seq, 0,
+        "a control frame rides the synthetic sequence, never the connection's"
+    );
+
+    publisher
+        .publish(&activity, &payload(0))
+        .await
+        .expect("the publish reaches Redis");
+    let first = next_frame(&mut stream).await;
+    assert_eq!(
+        first.seq, 0,
+        "the hello spent no activity number -- the first real frame is still zero"
+    );
+    assert_eq!(first.data, payload(0));
 }
 
 async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, activity: &str) {

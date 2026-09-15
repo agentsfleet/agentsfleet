@@ -10,7 +10,7 @@
 //! and a client polls it — where a 500 would take the dashboard down over a
 //! surface that is by construction best-effort.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use afd_datastore::SubscriptionHub;
 use futures_util::StreamExt as _;
@@ -78,7 +78,30 @@ impl Live {
     #[must_use]
     pub fn tail_of(&self, fleet_id: &str) -> BoxStream<'static, Frame> {
         match self.hub.as_ref() {
-            Some(hub) => tail(hub.subscribe(&channel::activity(fleet_id))).boxed(),
+            Some(hub) => {
+                // Subscribe FIRST, then announce. The `hello` is the client's
+                // signal that this connection is carrying activity, and an
+                // announcement made before the subscription existed would be a
+                // claim about a stream nobody had attached to yet.
+                let subscription = hub.subscribe(&channel::activity(fleet_id));
+                // Without it the first byte of an idle fleet's body is the
+                // keep-alive heartbeat, `HEARTBEAT_INTERVAL` away. The browser
+                // opens the socket immediately, but the surface reports itself
+                // live off the first FRAME -- so a quiet fleet rendered
+                // "Connecting…" for fifteen seconds while nothing whatever was
+                // wrong. The wall stream has always opened this way; the
+                // per-fleet route is what lacked it.
+                let opening = Frame::hello(&[fleet_id.to_owned()], &BTreeMap::new());
+                stream::once(async move { opening })
+                    .chain(tail(subscription))
+                    .boxed()
+            }
+            // Deliberately silent. This instance holds no pub/sub connection,
+            // so there is nothing to say hello ABOUT: the route still serves,
+            // the ceiling is still charged and the heartbeat still runs, per
+            // this module's header. A `hello` here would report a live stream
+            // on a deployment that can never deliver a frame, which is worse
+            // than the wait it would paper over.
             None => stream::pending().boxed(),
         }
     }
