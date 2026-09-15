@@ -240,7 +240,7 @@ const mint_mod = @import("control_plane_client_mint.zig");
 pub const MintOutcome = mint_mod.MintOutcome;
 pub const mint = mint_mod.mint;
 
-pub const PostResult = struct { status: u16, body: []u8 };
+const PostResult = struct { status: u16, body: []u8 };
 
 /// Pin the pooled connection the next fetch will use (get-or-create, then
 /// release back to the free list so the fetch pops the same one) and return

@@ -40,7 +40,7 @@ pub fn ms(attempt: u32) u64 {
 
 /// The monotonic, un-jittered spine: `min(BASE_MS << attempt, MAX_BACKOFF_MS)`,
 /// saturating so a large attempt can't overflow the shift or the multiply.
-pub fn cappedMs(attempt: u32) u64 {
+fn cappedMs(attempt: u32) u64 {
     const shift: u6 = @intCast(@min(attempt, SHIFT_CAP));
     const grown = BASE_MS *| (@as(u64, 1) << shift);
     return @min(grown, MAX_BACKOFF_MS);

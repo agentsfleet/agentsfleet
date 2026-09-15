@@ -63,7 +63,7 @@ cred_channel: ?credential_request.Channel = null,
 inner_execute: InnerExecute = dispatchInner,
 
 pub const tool_name = HttpRequestTool.tool_name;
-pub const tool_description = HttpRequestTool.tool_description;
+const tool_description = HttpRequestTool.tool_description;
 pub const tool_params = HttpRequestTool.tool_params;
 
 const vtable = tools_mod.ToolVTable(@This());

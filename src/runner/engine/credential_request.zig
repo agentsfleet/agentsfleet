@@ -54,7 +54,7 @@ pub const Channel = struct {
     deadline_ms: i64,
 };
 
-pub const MintError = error{
+const MintError = error{
     /// Could not write the request frame (parent closed stdout-read end).
     ChannelWrite,
     /// Parent closed the response pipe at a frame boundary before replying.

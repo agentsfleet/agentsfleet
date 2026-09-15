@@ -32,7 +32,7 @@ pub fn fromPairs(alloc: std.mem.Allocator, pairs: []const [2][]const u8) std.mem
 /// 0.16 removed `std.process.getEnvMap`; the env now arrives via `Init`, which
 /// tests don't get). Walks libc's `environ`. `Map.put` copies, so the borrowed
 /// `std.c.environ` spans don't escape. Caller `deinit()`s the map.
-pub fn testLiveSnapshot(alloc: std.mem.Allocator) std.mem.Allocator.Error!Map {
+fn testLiveSnapshot(alloc: std.mem.Allocator) std.mem.Allocator.Error!Map {
     var map: Map = .init(alloc);
     errdefer map.deinit();
     var i: usize = 0;

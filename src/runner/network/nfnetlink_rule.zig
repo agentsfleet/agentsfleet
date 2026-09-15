@@ -86,7 +86,7 @@ const REQ_ADD = MessageBuilder.NLM_F_REQUEST | MessageBuilder.NLM_F_CREATE |
     MessageBuilder.NLM_F_APPEND;
 
 /// IANA protocol numbers for the two DNS transports we drop.
-pub const L4Proto = enum(u8) { tcp = 6, udp = 17 };
+const L4Proto = enum(u8) { tcp = 6, udp = 17 };
 
 /// `iifname <if> {udp|tcp} dport 53 drop` — the DNS-tunnel closure. Sits
 /// BEFORE the allowlist accept so even an allowlisted IP is no resolver.

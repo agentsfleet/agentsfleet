@@ -88,7 +88,7 @@ pub fn hostsFile(self: Plan, alloc: std.mem.Allocator) Error![]u8 {
 /// names resolve via the static `/etc/hosts`; with port 53 dropped at nft, any
 /// DNS attempt fails fast and the DNS-tunnel channel stays closed. Static — no
 /// allocation.
-pub fn resolvConf() []const u8 {
+fn resolvConf() []const u8 {
     return "# agentsfleet egress: names resolve via /etc/hosts only; no resolver.\n";
 }
 

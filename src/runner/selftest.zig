@@ -76,8 +76,8 @@ pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a rea
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
 pub const DETAIL_EGRESS_DENIED_EXPECTED = "no egress by assignment (deny_all_egress) — expected, not a fault";
-pub const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the model transport — the engine spawns curl for every model call, so every lease dies at execvp before its first one";
-pub const DETAIL_TRANSPORT_ABSENT = "no curl binary at /usr/bin/curl or /bin/curl on this host — the engine spawns one for every model call, so no lease can reach a model";
+const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the model transport — the engine spawns curl for every model call, so every lease dies at execvp before its first one";
+const DETAIL_TRANSPORT_ABSENT = "no curl binary at /usr/bin/curl or /bin/curl on this host — the engine spawns one for every model call, so no lease can reach a model";
 pub const DETAIL_ENGINE_SPAWN_FAILED = "the engine's own spawn machinery could not run the model transport — the raw exec works, so the fault is in the spawn plumbing (process Io wiring or a sandbox rule on its pipes), and every lease dies before its first model call";
 pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
@@ -153,7 +153,7 @@ pub const Result = struct {
 /// from a default. Both are optional: a runner that declared no registry has no
 /// egress requirement to prove, and inventing a target would red-flag a host
 /// configured exactly as intended.
-pub const ProbeTargets = struct {
+const ProbeTargets = struct {
     /// Host to resolve (no port).
     resolve: ?[]const u8 = null,
     /// `host:port` to dial.

@@ -34,7 +34,7 @@ const log = logging.scoped(.fleet_runner);
 /// Spawn failure: either the threads handle could not be allocated, or the OS
 /// refused a thread. The caller (control loop) logs and exits; workers already
 /// spawned are joined before the error propagates.
-pub const PoolError = std.mem.Allocator.Error || std.Thread.SpawnError;
+const PoolError = std.mem.Allocator.Error || std.Thread.SpawnError;
 
 /// Per-worker context, copied by value into each spawned thread. The pointers
 /// (`stop`/`drain`/`env_map`) and `cfg`'s slices outlive the pool: the control

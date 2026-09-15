@@ -112,14 +112,14 @@ pub const CapabilityReport = struct {
 /// call cannot stuff the per-heartbeat payload — and, once `EgressScope`
 /// lands, the kernel allowlist input — with unbounded arbitrary content.
 pub const MAX_REGISTRY_ENTRIES: usize = 32;
-pub const MAX_REGISTRY_HOST_LEN: usize = 259; // 253-char host + ":" + 5-digit port
+const MAX_REGISTRY_HOST_LEN: usize = 259; // 253-char host + ":" + 5-digit port
 
 /// Capability-report bounds — a runner token must not be a persistence
 /// amplifier: the controllers list is a handful of kernel names, so anything
 /// past these caps is a malformed report (dropped as "no report this beat"),
 /// never a mebibyte JSONB the operator list re-reads on every page.
-pub const MAX_REPORT_CONTROLLERS: usize = 16;
-pub const MAX_CONTROLLER_NAME_LEN: usize = 64;
+const MAX_REPORT_CONTROLLERS: usize = 16;
+const MAX_CONTROLLER_NAME_LEN: usize = 64;
 
 pub fn capabilityReportBounded(report: CapabilityReport) bool {
     if (report.cgroup_controllers.len > MAX_REPORT_CONTROLLERS) return false;

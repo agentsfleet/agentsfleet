@@ -35,7 +35,7 @@ pub const NetworkPolicy = struct {
 pub const HttpMethod = enum { get, head, post };
 
 /// Whether a request path must equal the authored bytes or begin with them.
-pub const HttpPathMatch = enum { exact, prefix };
+const HttpPathMatch = enum { exact, prefix };
 
 /// One required top-level JSON field. Exactly one expected-value field is set.
 pub const HttpJsonFieldRule = struct {

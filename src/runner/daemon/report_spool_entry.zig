@@ -9,7 +9,7 @@
 
 /// Held entries carry this suffix. Anything else in the spool belongs to an
 /// operator, not to us, and is never posted.
-pub const SUFFIX = ".report.json";
+const SUFFIX = ".report.json";
 
 /// Entries no retry can settle move one level down into this directory, which
 /// is a pile for a person to look at rather than a queue anything drains.
@@ -17,7 +17,7 @@ pub const QUARANTINE_DIR_NAME = "quarantine";
 
 /// A lease id is canonical dashed UUID text (36 bytes). The cap is generous
 /// rather than exact, so a future id spelling does not silently refuse to spool.
-pub const LEASE_ID_MAX: usize = 64;
+const LEASE_ID_MAX: usize = 64;
 pub const NAME_MAX: usize = LEASE_ID_MAX + SUFFIX.len;
 pub const QUARANTINE_PATH_MAX: usize = QUARANTINE_DIR_NAME.len + 1 + NAME_MAX;
 

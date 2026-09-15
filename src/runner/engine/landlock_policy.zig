@@ -14,19 +14,19 @@ const std = @import("std");
 const protocol = @import("contract").protocol;
 
 // Landlock access flags for filesystem (ABI v1).
-pub const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;
-pub const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
-pub const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
-pub const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
-pub const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
-pub const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
-pub const LANDLOCK_ACCESS_FS_MAKE_CHAR: u64 = 1 << 6;
-pub const LANDLOCK_ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
-pub const LANDLOCK_ACCESS_FS_MAKE_REG: u64 = 1 << 8;
-pub const LANDLOCK_ACCESS_FS_MAKE_SOCK: u64 = 1 << 9;
-pub const LANDLOCK_ACCESS_FS_MAKE_FIFO: u64 = 1 << 10;
-pub const LANDLOCK_ACCESS_FS_MAKE_BLOCK: u64 = 1 << 11;
-pub const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
+const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;
+const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
+const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
+const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
+const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
+const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
+const LANDLOCK_ACCESS_FS_MAKE_CHAR: u64 = 1 << 6;
+const LANDLOCK_ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
+const LANDLOCK_ACCESS_FS_MAKE_REG: u64 = 1 << 8;
+const LANDLOCK_ACCESS_FS_MAKE_SOCK: u64 = 1 << 9;
+const LANDLOCK_ACCESS_FS_MAKE_FIFO: u64 = 1 << 10;
+const LANDLOCK_ACCESS_FS_MAKE_BLOCK: u64 = 1 << 11;
+const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
 
 pub const LANDLOCK_RULE_PATH_BENEATH: u32 = 1;
 
@@ -83,7 +83,7 @@ pub const FILE_ONLY_ACCESS: u64 = LANDLOCK_ACCESS_FS_READ_FILE |
 /// `BASELINE_RO_PATHS` instead, so the mount layer and the policy layer take it
 /// from the same source. A second entry here would be the exact drift this
 /// derivation exists to prevent.
-pub const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/dev", "/proc" };
+const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/dev", "/proc" };
 
 /// Device files a lease WRITES, granted per FILE on top of the read-only floor
 /// above. `--dev` builds a devtmpfs where these are writable at the MOUNT

@@ -49,7 +49,7 @@ pub const rss = @import("rss.zig");
 /// duration); dead-runner detection is a separate later workstream (a lapse
 /// scan over `last_seen_at`), not a function of shrinking this — so it stays
 /// short as the silent-death backstop.
-pub const LEASE_TTL_MS: i64 = 30_000;
+const LEASE_TTL_MS: i64 = 30_000;
 
 /// The runner auto-renews a lease once fewer than this many ms remain before
 /// `lease_expires_at`. Must be < `LEASE_TTL_MS` so a renewal leaves slack for a
@@ -103,4 +103,4 @@ pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 /// Connector provider id for Slack — the `provider` column value in
 /// `connector_installs`/`connector_channels` and the `<provider>-app` /
 /// `fleet:<provider>` vault-key stem.
-pub const PROVIDER_SLACK = "slack";
+const PROVIDER_SLACK = "slack";

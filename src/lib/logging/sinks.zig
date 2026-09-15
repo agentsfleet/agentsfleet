@@ -33,7 +33,7 @@ const common = @import("common");
 /// envelope) plus level/scope/ts_ms so each sink owns its own format
 /// choice — stderr sink renders pretty/logfmt envelope, OTLP sink
 /// forwards body verbatim, BufferedSink appends body to a heap buffer.
-pub const SinkEmit = *const fn (
+const SinkEmit = *const fn (
     ctx: *anyopaque,
     level: std.log.Level,
     scope: []const u8,
