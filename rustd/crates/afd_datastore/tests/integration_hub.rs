@@ -192,8 +192,16 @@ async fn server_subscriber_count(harness: &RedisHarness, channel: &str) -> i64 {
         .command("PUBSUB", channel, &cmd)
         .await
         .expect("PUBSUB NUMSUB");
-    match reply.get(1) {
-        Some(redis::Value::Int(count)) => *count,
+    // RESP3, not RESP2. `transport::builder` pins `ProtocolVersion::RESP3`,
+    // where `PUBSUB NUMSUB` answers a MAP of channel -> count; RESP2 answers
+    // the flat `[channel, count]` pair this used to index at 1. `redis-cli`
+    // renders both identically, so the difference does not show in a probe --
+    // only in the decoded `Value`.
+    match reply.as_slice() {
+        [redis::Value::Map(entries)] => match entries.as_slice() {
+            [(_, redis::Value::Int(count))] => *count,
+            other => panic!("NUMSUB names one channel, got: {other:?}"),
+        },
         other => panic!("unexpected NUMSUB reply: {other:?}"),
     }
 }
