@@ -152,9 +152,10 @@ function adoptInstant(
   existing: FleetEvent,
   createdAt: number | null,
 ): FleetEvent[] {
-  if (createdAt === null || existing.createdAt.getTime() === createdAt) return prev;
+  if (createdAt === null) return prev;
+  if (existing.createdAt.getTime() === createdAt && !existing.clientTimestamp) return prev;
   const updated = [...prev];
-  updated[index] = { ...existing, createdAt: new Date(createdAt) };
+  updated[index] = { ...existing, createdAt: new Date(createdAt), clientTimestamp: false };
   return updated;
 }
 
@@ -226,6 +227,7 @@ function applyEventComplete(
     // The row's own instant and figures ride the frame, so the strip orders
     // and moves without a read.
     createdAt: createdAt === null ? existing.createdAt : new Date(createdAt),
+    clientTimestamp: createdAt === null ? existing.clientTimestamp : false,
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
     costNanos: figure(frame.cost_nanos),
@@ -294,9 +296,16 @@ export function mergeBackfill(
     return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
-  return [...fromBackfill, ...kept].sort(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-  );
+  // The client's clock can trail the server's. Keep locally submitted turns
+  // at the visual tail until an opening or completion frame supplies the
+  // server timestamp, even when the Server Action already acknowledged them.
+  return [...fromBackfill, ...kept].sort((a, b) => {
+    if (a.clientTimestamp) {
+      return b.clientTimestamp ? 0 : 1;
+    }
+    if (b.clientTimestamp) return -1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
 }
 
 // The newest server-confirmed `created_at` across the rows, folded into the
