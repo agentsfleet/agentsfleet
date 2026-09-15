@@ -19,158 +19,139 @@ test {
     _ = @import("tool_builders_test.zig");
 }
 
+/// Heap-allocates `value` and hands back its `Tool` interface.
+///
+/// Every builder below allocated, filled and returned a tool in the same three
+/// lines, twenty-five times over. One place to allocate is one place to change
+/// if ownership or a failure path ever moves; twenty-five was twenty-five
+/// chances for one of them to drift.
+///
+/// The caller owns what this allocates -- `runner.zig` frees the whole set
+/// through `tools_mod.deinitTools`.
+fn make(ctx: BuildCtx, comptime T: type, value: T) anyerror!tools_mod.Tool {
+    const ptr = try ctx.alloc.create(T);
+    ptr.* = value;
+    return ptr.tool();
+}
+
 // ── Core file tools ────────────────────────────────────────────────────────
 
 pub fn buildShell(ctx: BuildCtx) anyerror!tools_mod.Tool {
     const tc = ctx.cfg.tools;
-    const ptr = try ctx.alloc.create(tools_mod.shell.ShellTool);
-    ptr.* = .{
+    // Sandbox setup requires NullClaw-internal createSandbox() which is not
+    // pub-exported. The runner workspace is already isolated (temporary
+    // worktree, deleted after run), so sandbox=null is safe here.
+    return make(ctx, tools_mod.shell.ShellTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .timeout_ns = tc.shell_timeout_secs * std.time.ns_per_s,
         .max_output_bytes = tc.shell_max_output_bytes,
         .policy = null,
         .path_env_vars = tc.path_env_vars,
-    };
-    // Sandbox setup requires NullClaw-internal createSandbox() which is not
-    // pub-exported. The runner workspace is already isolated (temporary
-    // worktree, deleted after run), so sandbox=null is safe here.
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileRead(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_read.FileReadTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_read.FileReadTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileWrite(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_write.FileWriteTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_write.FileWriteTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileEdit(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_edit.FileEditTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_edit.FileEditTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileAppend(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_append.FileAppendTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_append.FileAppendTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileDelete(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_delete.FileDeleteTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_delete.FileDeleteTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileReadHashed(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_read_hashed.FileReadHashedTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_read_hashed.FileReadHashedTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildFileEditHashed(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_edit_hashed.FileEditHashedTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.file_edit_hashed.FileEditHashedTool, .{
         .workspace_dir = ctx.workspace_path,
         .allowed_paths = ctx.cfg.autonomy.allowed_paths,
         .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
+    });
 }
 
 // ── Git ────────────────────────────────────────────────────────────────────
 
 pub fn buildGit(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.git.GitTool);
-    ptr.* = .{ .workspace_dir = ctx.workspace_path };
-    return ptr.tool();
+    return make(ctx, tools_mod.git.GitTool, .{ .workspace_dir = ctx.workspace_path });
 }
 
 // ── Stateless tools ────────────────────────────────────────────────────────
 
 pub fn buildImage(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.image.ImageInfoTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.image.ImageInfoTool, .{});
 }
 
 pub fn buildCalculator(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.calculator.CalculatorTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.calculator.CalculatorTool, .{});
 }
 
 // ── Memory tools ───────────────────────────────────────────────────────────
 
 pub fn buildMemoryStore(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_store.MemoryStoreTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.memory_store.MemoryStoreTool, .{});
 }
 
 pub fn buildMemoryRecall(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_recall.MemoryRecallTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.memory_recall.MemoryRecallTool, .{});
 }
 
 pub fn buildMemoryList(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_list.MemoryListTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.memory_list.MemoryListTool, .{});
 }
 
 pub fn buildMemoryForget(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_forget.MemoryForgetTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.memory_forget.MemoryForgetTool, .{});
 }
 
 // ── Fleet orchestration ────────────────────────────────────────────────────
 
 pub fn buildDelegate(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.delegate.DelegateTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.delegate.DelegateTool, .{
         .agents = &.{},
         .configured_providers = &.{},
         .fallback_api_key = null,
         .depth = 0,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildSpawn(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.spawn.SpawnTool);
-    ptr.* = .{ .manager = null };
-    return ptr.tool();
+    return make(ctx, tools_mod.spawn.SpawnTool, .{ .manager = null });
 }
 
 // ── Network tools (HTTP/search/fetch) ──────────────────────────────────────
@@ -181,7 +162,6 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
     // Without a policy we fall back to plain NullClaw — relevant for the
     // runner unit-test path that drives the bridge with no session.
     if (ctx.policy) |policy_ptr| {
-        const ptr = try ctx.alloc.create(PolicyHttpRequestTool);
         // M100 (SSRF tenant-pin). The inner allowlist is left EMPTY on
         // purpose. `network_policy.allow` is the TENANT-supplied set; feeding it
         // as NullClaw's `allowed_domains` made the inner tool treat tenant hosts
@@ -195,7 +175,7 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
         // tool and a wildcard can never widen it. Public registries still
         // resolve to global IPs and pass the pin; an operator-trusted private
         // internal service is a deliberate, separate opt-in (not shipped here).
-        ptr.* = .{
+        return make(ctx, PolicyHttpRequestTool, .{
             .policy = policy_ptr,
             .inner = .{
                 .allowed_domains = &.{},
@@ -205,68 +185,51 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
             // The on-demand mint channel (M102 §4); null on the no-session path —
             // a mintable placeholder then fails closed at the tool boundary.
             .cred_channel = ctx.cred_channel,
-        };
-        return ptr.tool();
+        });
     }
-    const ptr = try ctx.alloc.create(tools_mod.http_request.HttpRequestTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.http_request.HttpRequestTool, .{
         .allowed_domains = &.{},
         .max_response_size = MAX_RESPONSE_SIZE_BYTES,
         .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildWebSearch(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.web_search.WebSearchTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.web_search.WebSearchTool, .{
         .searxng_base_url = null,
         .provider = "auto",
         .fallback_providers = &.{},
         .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildWebFetch(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.web_fetch.WebFetchTool);
-    ptr.* = .{
+    return make(ctx, tools_mod.web_fetch.WebFetchTool, .{
         .default_max_chars = ctx.cfg.tools.web_fetch_max_chars,
         .allowed_domains = &.{},
-    };
-    return ptr.tool();
+    });
 }
 
 pub fn buildPushover(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.pushover.PushoverTool);
-    ptr.* = .{ .workspace_dir = ctx.workspace_path };
-    return ptr.tool();
+    return make(ctx, tools_mod.pushover.PushoverTool, .{ .workspace_dir = ctx.workspace_path });
 }
 
 // ── Browser tools ──────────────────────────────────────────────────────────
 
 pub fn buildBrowser(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.browser.BrowserTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.browser.BrowserTool, .{});
 }
 
 pub fn buildScreenshot(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.screenshot.ScreenshotTool);
-    ptr.* = .{ .workspace_dir = ctx.workspace_path };
-    return ptr.tool();
+    return make(ctx, tools_mod.screenshot.ScreenshotTool, .{ .workspace_dir = ctx.workspace_path });
 }
 
 pub fn buildBrowserOpen(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.browser_open.BrowserOpenTool);
-    ptr.* = .{ .allowed_domains = &.{} };
-    return ptr.tool();
+    return make(ctx, tools_mod.browser_open.BrowserOpenTool, .{ .allowed_domains = &.{} });
 }
 
 // ── Misc tools ─────────────────────────────────────────────────────────────
 
 pub fn buildMessage(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.message.MessageTool);
-    ptr.* = .{};
-    return ptr.tool();
+    return make(ctx, tools_mod.message.MessageTool, .{});
 }
