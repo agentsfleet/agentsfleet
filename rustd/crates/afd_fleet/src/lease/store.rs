@@ -15,7 +15,7 @@
 
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, Redis};
+use afd_datastore::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix, Redis};
 use afd_db::Db;
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
@@ -45,6 +45,7 @@ pub struct Leases {
     queue: Redis,
     entropy: Entropy,
     cursor: ReadyCursor,
+    ready_prefix: ReadyPrefix,
 }
 
 impl Leases {
@@ -56,7 +57,22 @@ impl Leases {
             queue,
             entropy,
             cursor: ReadyCursor::new(),
+            ready_prefix: ReadyPrefix::production(),
         }
+    }
+
+    /// The same store, polling the readiness index `prefix` names.
+    ///
+    /// A test seam, and one the suites cannot do without: the empty-poll
+    /// property — that a partition holding nothing costs no Postgres round
+    /// trip — is unobservable on the index every other writer shares, because
+    /// on a lane that has seeded hundreds of fleets no partition is ever
+    /// empty. [`ReadyPrefix`] is what gates the minting; this only chooses.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_ready_prefix(mut self, prefix: ReadyPrefix) -> Self {
+        self.ready_prefix = prefix;
+        self
     }
 
     /// The entropy source, for the sibling module that mints a lease's
@@ -73,7 +89,7 @@ impl Leases {
     /// handle, and constructing it here keeps [`Leases::queue`] private for the
     /// same reason [`Leases::pool`] is.
     pub(crate) fn ready(&self) -> ReadyIndex {
-        ReadyIndex::new(self.queue.clone())
+        ReadyIndex::under(self.queue.clone(), self.ready_prefix.clone())
     }
 
     /// The partition cursor every poll through this store turns.

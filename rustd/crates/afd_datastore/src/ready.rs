@@ -30,7 +30,9 @@ use futures_util::future::try_join_all;
 use crate::client::Redis;
 use crate::error::Result;
 
-pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor};
+pub use self::partition::{
+    Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix,
+};
 
 /// Delete the field only if it still carries the token the caller observed.
 ///
@@ -92,13 +94,43 @@ pub struct Ready {
 #[derive(Debug, Clone)]
 pub struct ReadyIndex {
     redis: Redis,
+    prefix: ReadyPrefix,
 }
 
 impl ReadyIndex {
-    /// Binds index operations to a connection.
+    /// Binds index operations to a connection, over the production index.
     #[must_use]
     pub const fn new(redis: Redis) -> Self {
-        Self { redis }
+        Self {
+            redis,
+            prefix: ReadyPrefix::production(),
+        }
+    }
+
+    /// The same, over whichever key family `prefix` names.
+    ///
+    /// Ungated on purpose: this is the one body every index runs, and
+    /// [`ReadyPrefix`] is what decides whether a non-production family can be
+    /// minted at all.
+    #[must_use]
+    pub const fn under(redis: Redis, prefix: ReadyPrefix) -> Self {
+        Self { redis, prefix }
+    }
+
+    /// Which key family this index reads and writes.
+    #[must_use]
+    pub const fn prefix(&self) -> &ReadyPrefix {
+        &self.prefix
+    }
+
+    /// The key `partition`'s hash lives under in THIS index.
+    fn key_of(&self, partition: Partition) -> String {
+        partition.key_under(&self.prefix)
+    }
+
+    /// The key a fleet's mark lives under in THIS index.
+    fn key_for(&self, fleet_id: &str) -> String {
+        self.key_of(Partition::of(fleet_id))
     }
 
     /// Marks a fleet as holding work under `token`.
@@ -114,7 +146,7 @@ impl ReadyIndex {
     /// re-derives what a lost mark would have said.
     pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken> {
         let value = token.to_owned();
-        let key = Partition::of(fleet_id).key();
+        let key = self.key_for(fleet_id);
         let mut cmd = redis::cmd(CMD_HSET);
         cmd.arg(&key).arg(fleet_id).arg(&value);
         let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
@@ -126,7 +158,7 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the read fails.
     pub async fn len_of(&self, partition: Partition) -> Result<u64> {
-        let key = partition.key();
+        let key = self.key_of(partition);
         let mut cmd = redis::cmd(CMD_HLEN);
         cmd.arg(&key);
         self.redis.command(CMD_HLEN, &key, &cmd).await
@@ -162,7 +194,7 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the read fails.
     pub async fn peek(&self, partition: Partition, count: usize) -> Result<Vec<Ready>> {
-        let key = partition.key();
+        let key = self.key_of(partition);
         let mut cmd = redis::cmd(CMD_HRANDFIELD);
         cmd.arg(&key).arg(count).arg(ARG_WITHVALUES);
         // RESP3 answers `WITHVALUES` as an array of pairs; the driver's pair
@@ -193,7 +225,7 @@ impl ReadyIndex {
     /// best-effort: a stale field costs one wasted candidate check on a later
     /// poll, and the fleet is already stopped where it counts.
     pub async fn force_clear(&self, fleet_id: &str) -> Result<()> {
-        let key = Partition::of(fleet_id).key();
+        let key = self.key_for(fleet_id);
         let mut cmd = redis::cmd(CMD_HDEL);
         cmd.arg(&key).arg(fleet_id);
         let _: i64 = self.redis.command(CMD_HDEL, &key, &cmd).await?;
@@ -209,7 +241,7 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the evaluation fails.
     pub async fn clear_if_unchanged(&self, fleet_id: &str, token: &ReadyToken) -> Result<bool> {
-        let key = Partition::of(fleet_id).key();
+        let key = self.key_for(fleet_id);
         let mut invocation = CLEAR_IF_TOKEN_MATCHES_SCRIPT.prepare_invoke();
         invocation.key(&key).arg(fleet_id).arg(token.as_str());
         let removed: i64 = self.redis.script(CMD_EVAL, &key, &invocation).await?;

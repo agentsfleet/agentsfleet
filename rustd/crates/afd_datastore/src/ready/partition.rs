@@ -19,6 +19,7 @@
 //! is the checksum the cluster itself keys slots by: deterministic, stable
 //! across builds, and already compiled into this tree by the driver.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -37,6 +38,63 @@ const _: () = assert!(
 /// The key every partition hangs off; the partition's number follows it as
 /// a hash tag, so the number alone decides the slot.
 pub const READY_INDEX_KEY: &str = "fleet:ready";
+
+/// The segment a private index inserts between [`READY_INDEX_KEY`] and its
+/// caller's name, so one glance at a key says whose it is.
+#[cfg(feature = "test-util")]
+const PRIVATE_SEGMENT: &str = "private";
+
+/// Which key family an index hangs its partitions off.
+///
+/// One index per deployment is the production shape and the default, and
+/// nothing outside a test can mint anything else: [`ReadyPrefix::production`]
+/// is the only constructor compiled into the daemon.
+///
+/// # Why a test may need its own
+///
+/// The index is a hint shared by every writer — ingress marks, the sweeper
+/// re-marks, a poll clears. A test asserting that an EMPTY partition costs no
+/// Postgres round trip cannot observe that on a shared index at all: with
+/// enough fleets seeded by earlier tests, every partition holds a foreign
+/// mark and the empty path is never entered. Partition-addressed polling does
+/// not rescue it either, because [`Partition::of`] gives a fleet its
+/// partition and other fleets share the same one. A private key family is the
+/// only thing that makes the empty state reachable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadyPrefix(Cow<'static, str>);
+
+impl ReadyPrefix {
+    /// The one index a deployment keeps.
+    #[must_use]
+    pub const fn production() -> Self {
+        Self(Cow::Borrowed(READY_INDEX_KEY))
+    }
+
+    /// An index no other writer touches, named for the test that owns it.
+    ///
+    /// `name` should be unique to the test run — a fleet id already is — so
+    /// two runs against a rig that was not reset cannot read each other's
+    /// marks.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn private(name: &str) -> Self {
+        Self(Cow::Owned(format!(
+            "{READY_INDEX_KEY}:{PRIVATE_SEGMENT}:{name}"
+        )))
+    }
+
+    /// The prefix as stored.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ReadyPrefix {
+    fn default() -> Self {
+        Self::production()
+    }
+}
 
 /// One of the readiness index's hashes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,10 +129,20 @@ impl Partition {
         self.0
     }
 
-    /// The key this partition's hash lives under.
+    /// The key this partition's hash lives under in the one production index.
     #[must_use]
     pub fn key(self) -> String {
-        format!("{READY_INDEX_KEY}:{{{}}}", self.0)
+        self.key_under(&ReadyPrefix::production())
+    }
+
+    /// The key this partition's hash lives under in `prefix`'s index.
+    ///
+    /// The number stays the hash tag whatever the prefix, so a private index
+    /// spreads over the cluster exactly the way the production one does and a
+    /// test proves the real routing rather than a single-slot stand-in.
+    #[must_use]
+    pub fn key_under(self, prefix: &ReadyPrefix) -> String {
+        format!("{}:{{{}}}", prefix.as_str(), self.0)
     }
 }
 
