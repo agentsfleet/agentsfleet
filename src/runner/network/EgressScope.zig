@@ -132,14 +132,6 @@ pub fn destroy(self: *EgressScope) void {
     log.debug("egress_destroyed", .{ .host_if = self.plan.host_ifname });
 }
 
-/// Capability probe: can this host open the netlink sockets at all?
-pub fn isAvailable() bool {
-    if (builtin.os.tag != .linux) return false;
-    var s = Socket.open(.netfilter) catch return false;
-    s.close();
-    return true;
-}
-
 // ── host-side helpers ────────────────────────────────────────────────────────
 
 /// The full default-deny ruleset as ONE nftables transaction.

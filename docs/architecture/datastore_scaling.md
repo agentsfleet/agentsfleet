@@ -70,6 +70,38 @@ nothing should carry production traffic on it.
 Move to Swarm when the cost of an unattended failover exceeds the difference
 between the two bills.
 
+### Two containers, cross-paired (Indy, 2026-09-15)
+
+Every requirement above says four *processes*, and until this decision nothing
+said how many hosts or containers carry them — which is what decides what a node
+loss costs. Asked and answered by Indy on 2026-09-15; recorded here because
+deployment shape belongs to this page, and it seeds the cutover spec M192 defers
+this to.
+
+The local rig packs all four into ONE container on purpose, and that choice does
+not carry: it exists so every node can announce `127.0.0.1` and have a `MOVED`
+reply resolve from the host as well as from inside (see *What the local rig does
+not prove* above).
+
+| option | shape | failure behaviour |
+|---|---|---|
+| A | four containers, one process each, across hosts or zones in one region | each failure domain holds one node; a host loss costs one node |
+| B | two containers, CROSS-paired — `dfly-a` with `b-replica`, `dfly-b` with `a-replica` | halves the count and no primary shares a domain with its OWN replica |
+| C | two containers, naively paired — each primary beside its own replica | reads as four nodes and fails as two: a replica dies with the primary it covers, so replication buys nothing |
+
+**B is chosen.** Two containers, `dfly-a` beside `b-replica` and `dfly-b` beside
+`a-replica`, so a container loss costs one primary and one unrelated replica and
+never a primary together with the replica that covers it. C is the shape to
+refuse: it is the one that looks like the others on a diagram and fails as two
+nodes. Budget roughly 512 MiB per node plus overhead — the same per-node floor
+the rig enforces.
+
+The shard count is unchanged by this: two shards from the first deployment, not
+one. A single shard would leave `MOVED`, cross-node sharded pub/sub and the
+hub's `SUNSUBSCRIBE` reconcile dormant in production until the day they all
+arrive at once during a scale-out, and that reconcile is a path §0 measured as
+required rather than optional.
+
 ### What the local rig does not prove
 
 `scripts/dragonfly-cluster.sh` runs all four nodes in ONE container's network
@@ -97,6 +129,59 @@ internal assertion on a routine command path, not only from infrastructure. A
 self-hosted deployment must therefore restart a dead process automatically and
 must not assume node loss is rare. Second observed occurrence; the first is in
 the M192_001 session record.
+
+#### Root cause found: `XGROUP CREATE … MKSTREAM` over an occupied key (2026-09-15)
+
+The entry above names slot migration and `DFLYCLUSTER FLUSHSLOTS` as the leading
+candidate. **That candidate is wrong.** Two commands abort Dragonfly v1.40.2, on
+one node, with no cluster involvement, no migration and no concurrency:
+
+    SET occupied notastream
+    XGROUP CREATE occupied g $ MKSTREAM
+    -> F db_slice.cc:1176 Check failed: res.is_new   -> SIGABRT -> Exited (134)
+
+`MKSTREAM` is the whole differential. The same key answers correctly for every
+neighbouring shape, node healthy each time:
+
+| command over a key already holding a string | answer |
+|---|---|
+| `XGROUP CREATE occupied g $` (no `MKSTREAM`) | `WRONGTYPE`, node survives |
+| `XADD occupied * f v` | `WRONGTYPE`, node survives |
+| `XGROUP CREATE occupied g $ MKSTREAM` | **`SIGABRT`** |
+
+So `MKSTREAM` reaches `DbSlice::AddNew` to create the key, `AddNew` finds one
+already there, and the fatal `CHECK` fires where the type check should have
+returned `WRONGTYPE`. The occupying key's TYPE does not matter — a list aborts
+the node exactly as a string does — so no variant of the test keeps its
+assertion and leaves the node alive. Redis answers `WRONGTYPE` here, which is
+why the test is correct and this server cannot honour it. That is a server assertion reachable from ordinary client
+input, on the newest release — there is no version to upgrade into.
+
+How it was found, recorded so the path is not re-walked: `datastore_suite` run
+serially (`--test-threads=1`) against a freshly recreated container names the
+offender directly —
+`integration_streams::test_a_group_create_that_is_not_a_race_is_reported` is the
+last test to start and every test after it fails `Connection refused`. That test
+occupies the stream key with a string on purpose, to assert the `WRONGTYPE` is
+reported. It is correct and the server is not.
+
+**Three earlier explanations are dead, and none should be re-derived:** that a
+consumer group carried across a migration breaks a later idempotent
+`XGROUP CREATE` (it answers `BUSYGROUP`, probed); that `MKSTREAM` on a new key in
+a freshly received slot is the trigger (it answers `OK`, probed twice); and that
+a node stays fragile for seconds after a migration settles (an abort was observed
+14 minutes after the last migration, and then on a container that had never
+migrated at all). The `Flushing newly unowned slots` line that made migration
+look implicated **also fires at bootstrap**, when the first cluster configuration
+is pushed, which is why it appeared before every abort.
+
+The operational consequence above is unchanged: a self-hosted deployment must
+restart a dead process automatically. What changes is the exposure. `create_group`
+in `afd_datastore` (`streams.rs`, `outbound.rs`) always passes `MKSTREAM`, so any
+path that leaves a non-stream value at a fleet stream key or at the outbound
+stream key turns a routine group create into a node kill. Nothing in the daemon
+writes those keys with another type today; the risk is that nothing prevents it
+either.
 
 ## What the cluster probe showed (2026-09-12)
 

@@ -70,10 +70,6 @@ var unregister_mutex: common.Mutex = .{};
 /// Sentinel pointer for stateless sinks (stderr, OTLP). Never read by
 /// the emit fn — just satisfies the `*anyopaque` non-null contract.
 var stateless_marker: u8 = 0;
-pub fn statelessCtx() *anyopaque {
-    return @ptrCast(&stateless_marker);
-}
-
 pub fn registerSink(sink: Sink) void {
     sinks_mutex.lock();
     defer sinks_mutex.unlock();

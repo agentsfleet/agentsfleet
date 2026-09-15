@@ -85,12 +85,6 @@ pub const PATH_RUNNER_BUNDLES = PATH_RUNNERS ++ "/me/bundles";
 /// the runner forwarder builds the URL from it.
 pub const PATH_RUNNER_CREDENTIALS_MINT = PATH_RUNNERS ++ "/me/credentials/mint";
 
-/// GET /v1/fleets/runners — platform-admin operator-plane read of the whole
-/// fleet (paginated). The `/v1/fleet/...` namespace is the operator plane;
-/// `/v1/runners` is enrollment + the runner self-plane. Distinct prefix so the
-/// two never collide in the matcher.
-pub const PATH_FLEET_RUNNERS = "/v1/fleets/runners";
-
 /// Trailing segment of the per-lease activity sub-resource. `lease_id` is a path
 /// param — `POST /v1/runners/me/leases/{lease_id}/activity` — so this can't be a
 /// joined const like the others: the runner builds the full path off
@@ -188,15 +182,6 @@ pub const RUNNER_LAST_SEEN_NEVER: i64 = 0;
 ///   online     — heartbeat fresh, no live lease
 ///   offline    — heartbeat stale beyond the lapse threshold
 pub const RunnerLiveness = enum { registered, busy, online, offline };
-
-/// `fleet.runner_leases.status` lifecycle values — app-enforced (no SQL CHECK,
-/// per RULE STS). `active` at lease issue, `reported` once the runner's report
-/// finalizes, `expired` when reclaim re-leases a dead holder's event to another
-/// runner. Single-sourced here (insert in the lease service, update in the
-/// report + reclaim services); not a wire value.
-pub const RUNNER_LEASE_STATUS_ACTIVE = "active";
-pub const RUNNER_LEASE_STATUS_REPORTED = "reported";
-pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an

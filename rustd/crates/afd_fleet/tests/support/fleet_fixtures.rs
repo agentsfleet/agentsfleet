@@ -67,6 +67,20 @@ impl Fixtures {
         }
     }
 
+    /// The same as [`Fixtures::create_isolated`], plus the lane's Redis.
+    ///
+    /// The pairing a deployment-WIDE assertion needs. A budget counted across
+    /// every unconfirmed row in the database cannot be proven to clear on the
+    /// shared lane, where a sibling suite's deferred row keeps the count up;
+    /// a private database makes this test the only writer of the number it
+    /// asserts on. Redis stays shared, which is harmless — its keys are
+    /// namespaced by the fleet ids this test mints.
+    pub(crate) async fn create_isolated_with_queue() -> Self {
+        let mut fixtures = Self::create_isolated().await;
+        fixtures.queue = Some(crate::queue::connect().await);
+        fixtures
+    }
+
     /// The same, plus the lane's Redis.
     ///
     /// Shared rather than per-test: Redis has no database-per-test equivalent,

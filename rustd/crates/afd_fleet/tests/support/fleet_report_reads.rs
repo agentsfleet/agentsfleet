@@ -166,6 +166,11 @@ impl Fixtures {
     }
 
     /// One column of a `core.fleet_events` row, as text.
+    ///
+    /// `None` for both a missing row and a NULL column. The two are the same
+    /// answer to every caller here — "the row does not say" — and decoding as
+    /// `String` instead would panic on the NULL, which is the ordinary state
+    /// of an optional column like `response_text`.
     pub(crate) async fn event_column(
         &self,
         fleet: &str,
@@ -183,7 +188,10 @@ impl Fixtures {
             .fetch_optional(&mut *connection)
             .await
             .expect("the event read must run")
-            .map(|row| row.try_get(0).expect("the column must be readable as text"))
+            .and_then(|row| {
+                row.try_get::<Option<String>, _>(0)
+                    .expect("the column must be readable as text")
+            })
     }
 
     /// One column of a fleet's session row, as text.

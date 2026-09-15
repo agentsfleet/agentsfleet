@@ -199,6 +199,15 @@ async fn cleanup(harness: &RedisHarness, keys: &[String]) {
 /// key already holding a non-stream value is a fleet id colliding with
 /// something else in the keyspace, and silently continuing means every later
 /// append to that fleet fails with no explanation of the first cause.
+///
+/// Runs against a server that cannot answer it. `XGROUP CREATE … MKSTREAM` over
+/// an occupied key aborts Dragonfly v1.40.2 —
+/// `db_slice.cc:1176 Check failed: res.is_new`, through
+/// `CreateGroup -> OpCreate -> DbSlice::AddNew` — where Redis answers
+/// `WRONGTYPE`. `FleetStreams::refuse_occupied_key` asks `TYPE` first and raises
+/// that `WRONGTYPE` itself, so the command never reaches the wire and this test
+/// asserts the report the caller actually receives.
+/// `docs/architecture/datastore_scaling.md` carries the measurements.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Redis: make test-integration-rustd"]
 async fn test_a_group_create_that_is_not_a_race_is_reported() {

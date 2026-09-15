@@ -27,18 +27,6 @@ pub fn fromPairs(alloc: std.mem.Allocator, pairs: []const [2][]const u8) std.mem
     return map;
 }
 
-/// Read a live process env var by value — TEST-ONLY. Zig 0.16 removed the
-/// `std.process` live-read wrappers (`getEnvVarOwned`/`hasEnvVarConstant`/
-/// `posix.getenv`); the environment now arrives via `std.process.Init`, which
-/// tests don't receive. Infra-gating tests ("is `REDIS_URL_API`/`DATABASE_URL`
-/// set? skip vs connect") read the real environment through libc here. Returns
-/// a borrowed slice valid for the process lifetime — never free it. Production
-/// code must thread the `Init` env map, NOT call this.
-pub fn testLiveValue(name: [:0]const u8) ?[]const u8 {
-    const raw = std.c.getenv(name.ptr) orelse return null;
-    return std.mem.span(raw);
-}
-
 /// Snapshot the LIVE process environment into an owned `Map` — TEST-ONLY. For
 /// tests that must hand a child process the parent env PLUS an extra var (Zig
 /// 0.16 removed `std.process.getEnvMap`; the env now arrives via `Init`, which

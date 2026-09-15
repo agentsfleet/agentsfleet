@@ -10,8 +10,13 @@
 -- installation_id through the same index before repository, event, grant and
 -- fleet routing filters apply.
 --
--- Provider values are app-enforced named constants in `src/lib/common/constants.zig`,
--- not a SQL CHECK (RULE STS).
+-- Provider values are app-enforced named constants, not a SQL CHECK (RULE STS).
+-- GitHub's is `PROVIDER_GITHUB` in
+-- `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`. The Zig
+-- constants this line used to name went with the Zig daemon, and the providers
+-- they covered (slack, zoho, jira, linear) currently have no named constant in
+-- any language -- so for those, nothing enforces the vocabulary. The fix is a
+-- constant beside the GitHub one, never a CHECK here.
 
 CREATE TABLE IF NOT EXISTS core.connector_installs (
     id                  UUID   PRIMARY KEY,

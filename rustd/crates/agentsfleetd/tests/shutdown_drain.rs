@@ -178,7 +178,12 @@ async fn test_shutdown_stops_within_its_bound_when_a_request_will_not_finish() {
 
     let drain = Drain::new();
     let abort = CancellationToken::new();
-    let serving = tokio::spawn(serve_accepts(listener, router, drain.clone(), abort.clone()));
+    let serving = tokio::spawn(serve_accepts(
+        listener,
+        router,
+        drain.clone(),
+        abort.clone(),
+    ));
 
     let mut client = TcpStream::connect(("127.0.0.1", port))
         .await
