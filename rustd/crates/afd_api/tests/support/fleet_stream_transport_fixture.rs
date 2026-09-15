@@ -16,6 +16,14 @@ use super::super::{Fixture, SUBJECT};
 use crate::harness::{self, Fleet};
 
 pub(super) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
+
+/// The sequence a control frame rides.
+///
+/// Zero, and deliberately not a number from the connection's counter:
+/// `hello` is the server talking ABOUT the stream, so burning a sequence
+/// on it would leave a gap in the ids a client uses to tell a dropped frame
+/// from a control one. Mirrors `afd_sse::frame`'s own `SYNTHETIC_SEQ`.
+const HELLO_SEQ: u64 = 0;
 const MAX_VIEWERS: usize = 100;
 
 pub(super) struct Watched {
@@ -109,6 +117,19 @@ impl Watched {
         .await
         .expect("Redis acknowledges the first server-side subscription");
         for body in bodies {
+            // The route announces itself before any activity, so every body
+            // opens with `hello` and this barrier's own payload is the SECOND
+            // frame. Asserted rather than skipped: a fixture that silently
+            // swallowed a frame would hide the opening frame going missing,
+            // and the opening frame is what tells a client watching a quiet
+            // fleet that its subscription attached.
+            assert_frame(
+                &next_frame(body).await,
+                HELLO_SEQ,
+                &json!({"kind":"hello","fleet_ids":[&self.fixture.fleet],"counters":{}}),
+            );
+            // Still sequence zero: `hello` is the server talking about the
+            // stream, so it spends no activity number.
             assert_frame(&next_frame(body).await, 0, &payload);
         }
     }
