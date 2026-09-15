@@ -135,7 +135,7 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_P
 #
 # Nothing about TLS goes unproven. It moves to `TEST_REDIS_TLS_URL` below and is
 # proven where proving it means something -- and proven harder, because that
-# suite asserts a foreign authority is REFUSED, which an all-TLS lane never did:
+# suite asserts a bad authority is REFUSED, which an all-TLS lane never did:
 # every connect there used the right certificate, so a lane that had silently
 # stopped verifying would have passed exactly the same.
 # The cluster, as one seed. A cluster client discovers the other nodes from
@@ -152,13 +152,13 @@ TEST_REDIS_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_TLS_PO
 TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # The authority that signed nothing here, for the refusal half of the trust
 # dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
-TEST_REDIS_FOREIGN_CA ?= $(CURDIR)/.tmp/redis-foreign-ca.crt
+TEST_REDIS_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
 # How a test moves slots or resets the cluster: the script, inside its own
 # container, with the caller's arguments appended. The suites know one command
 # line and nothing about docker; the admin ports it reaches never leave the
 # container (see scripts/dragonfly-cluster.sh).
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
-export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_FOREIGN_CA TEST_DRAGONFLY_CONTROL
+export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_BAD_CA TEST_DRAGONFLY_CONTROL
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -212,7 +212,7 @@ _ensure-test-infra:
 	@# container satisfies. Every TLS connection then failed signature
 	@# verification, which reads as dozens of unrelated datastore test failures.
 	@docker compose cp dragonfly:/data/tls/ca.crt "$(TEST_REDIS_CA_CERT)"
-	@docker compose cp dragonfly:/data/tls/foreign-ca.crt "$(TEST_REDIS_FOREIGN_CA)"
+	@docker compose cp dragonfly:/data/tls/bad-ca.crt "$(TEST_REDIS_BAD_CA)"
 	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ Failed to extract the datastore TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.
