@@ -118,10 +118,27 @@ endef
 # The wrapper merges the command's stderr into stdout itself. Its diagnostic log
 # is best-effort: losing that file may lose a convenience artifact, never the
 # child's exit status or the passing-test count.
+# The modules that must own the cluster while they run, as one filter both
+# invocations share: the parallel lane skips them, the second runs only them,
+# and neither can drift from the other.
+#
+# A test earns a place here by needing to observe the SERVER's whole client
+# set. `integration_hub_exclusive` snapshots every node's `CLIENT LIST`, starts
+# the hub, and kills the difference -- Dragonfly implements no `CLIENT KILL
+# TYPE` and exposes no subscriber marker, so a diff is the only way to name the
+# hub's connections at all. A sibling opening a connection inside that window
+# would be killed by it, which is why this cannot ride the parallel lane.
+#
+# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so a
+# renamed or deleted module here fails the lane rather than silently passing.
+EXCLUSIVE_FILTER := integration_hub_exclusive
+
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored)
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))
+	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
+	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.

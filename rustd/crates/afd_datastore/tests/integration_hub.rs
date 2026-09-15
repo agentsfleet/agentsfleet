@@ -18,7 +18,6 @@ use std::time::Duration;
 use afd_datastore::SubscriptionHub;
 use afd_datastore::hub::Received;
 use afd_datastore::streams::FleetStreams;
-use backon::ExponentialBuilder;
 use tokio::sync::Mutex;
 
 use crate::support::RedisHarness;
@@ -99,56 +98,17 @@ async fn test_hub_refcount_single_connection() {
     wait_for(|| async { server_subscriber_count(&harness, &channel).await == 0 }).await;
 }
 
-/// Dimension 3.3 — the connection dies, the hub redials, and readers that never
-/// noticed keep receiving.
-///
-/// What is NOT claimed: that messages published during the gap arrive. Pub/sub
-/// has no replay, and a test that pretended otherwise would be encoding a
-/// promise the transport cannot keep.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
-async fn test_hub_reconnect_resubscribes() {
-    let _lane = HUB_LANE.lock().await;
-    let harness = RedisHarness::connect().await;
-    let publisher = FleetStreams::new(harness.redis.clone());
-    let channel = harness.name("channel");
-
-    // A short schedule: the production one would have this test waiting out a
-    // fifth of a second per attempt for no extra proof.
-    let hub = SubscriptionHub::start_with_backoff(
-        RedisHarness::config(),
-        ExponentialBuilder::new()
-            .with_min_delay(Duration::from_millis(20))
-            .with_max_delay(Duration::from_millis(100)),
-    )
-    .await
-    .expect("hub starts");
-
-    let mut reader = hub.subscribe(&channel);
-    publish_until_delivered(&publisher, &channel, "before", &mut reader).await;
-    assert_eq!(hub.connections_opened(), 1);
-
-    // Kill it the way an operator, a failover or an idle timeout would.
-    let mut kill = redis::cmd("CLIENT");
-    kill.arg("KILL").arg("TYPE").arg("pubsub");
-    let _: i64 = harness
-        .redis
-        .command("CLIENT", "kill", &kill)
-        .await
-        .expect("kill the pub/sub connections");
-
-    // The hub notices, redials, and resubscribes what readers still hold.
-    wait_for(|| async { hub.connections_opened() > 1 }).await;
-    wait_for(|| async { server_subscriber_count(&harness, &channel).await == 1 }).await;
-
-    // The reader never touched anything, and receives again.
-    publish_until_delivered(&publisher, &channel, "after", &mut reader).await;
-    assert_eq!(
-        hub.readers(&channel),
-        1,
-        "the refcount survives a reconnect"
-    );
-}
+// `test_hub_reconnect_resubscribes` lived here (Dimension 3.3). It killed the
+// hub's connection with `CLIENT KILL TYPE pubsub`, which Dragonfly answers with
+// a syntax error: it implements `ADDR`, `LADDR` and `ID` and nothing narrower,
+// and its `CLIENT LIST` carries no subscriber marker -- so on this datastore
+// there is no server-side handle for "the hub's connection" to aim at.
+//
+// The guarantee did not move out of the suite, only out of this file. It is
+// `integration_hub_exclusive`, which names the connections by diffing every
+// node's client set around the hub's start and kills them by id. That has to
+// own the cluster while it runs, so it is a module of its own and a lane of its
+// own rather than a test beside these.
 
 /// Publishes until the reader sees the payload, or the budget runs out.
 ///
