@@ -61,6 +61,13 @@ pub(crate) enum ErrorKind {
         source: Box<redis::RedisError>,
     },
 
+    #[error("the {role} Redis presented a certificate the configured authority does not trust")]
+    CertificateRejected {
+        role: &'static str,
+        #[source]
+        source: Box<redis::RedisError>,
+    },
+
     #[error("the {role} Redis did not connect within {waited_ms}ms")]
     ConnectTimeout { role: &'static str, waited_ms: u128 },
 
@@ -162,9 +169,24 @@ impl Error {
         matches!(
             self.inner.kind,
             ErrorKind::Unreachable { .. }
+                | ErrorKind::CertificateRejected { .. }
                 | ErrorKind::ConnectTimeout { .. }
                 | ErrorKind::Timeout { .. }
         )
+    }
+
+    /// Whether the server's certificate was not trusted by the configured
+    /// authority.
+    ///
+    /// A narrowing of [`Self::is_unavailable`], not a peer of it: the
+    /// datastore is unusable either way, and this says which of the two
+    /// places to go looking. A question rather than a substring of an error
+    /// message, for the reason [`Self::is_group_exists`] gives — the driver
+    /// stringifies the cause it was handed, so the text is the least stable
+    /// thing about this failure.
+    #[must_use]
+    pub fn is_certificate_rejected(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::CertificateRejected { .. })
     }
 
     /// Whether a command was refused rather than prevented by an outage.
@@ -321,6 +343,21 @@ pub(crate) fn wrong_type(command: &'static str, stream: &str, holds: &str) -> Er
 /// A command that never answered inside its deadline.
 pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
     Error::new(ErrorKind::Timeout { command, waited_ms })
+}
+
+/// A TLS endpoint whose certificate the configured authority does not trust.
+///
+/// Separate from [`ErrorKind::Unreachable`] because the two send an operator
+/// to opposite places: unreachable is a port, a firewall or a dead process,
+/// and this is the authority they configured. Both are still
+/// [`Error::is_unavailable`] — the datastore is equally unusable either way,
+/// and a caller branching on availability should not have to learn a new kind
+/// to keep working.
+pub(crate) fn certificate_rejected(role: &'static str, source: redis::RedisError) -> Error {
+    Error::new(ErrorKind::CertificateRejected {
+        role,
+        source: Box::new(source),
+    })
 }
 
 /// A connection that did not finish inside its whole-operation budget.
