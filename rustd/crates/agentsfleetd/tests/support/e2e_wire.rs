@@ -14,9 +14,14 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use afd_datastore::ready::READY_PARTITIONS;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;
+
+/// How many rotations of the readiness index a poll is given to reach a
+/// specific fleet. See [`poll_for_seeded_lease`].
+const ROTATIONS: u16 = 8;
 
 /// A runner credential belonging to no row: well-formed, sixty-four hex
 /// characters after the marker, so the refusal comes from the DIRECTORY rather
@@ -75,6 +80,47 @@ pub(crate) fn claim(lease: &Value) -> (String, u64) {
         field(lease, "fencing_token")
             .as_u64()
             .expect("a lease carries its fence"),
+    )
+}
+
+/// Polls until the seeded event is handed over, and claims it.
+///
+/// # Why one poll is not enough
+///
+/// Readiness is sixteen partitions and a poll reads ONE of them, the next in a
+/// rotation the process keeps. A single request therefore reaches a given
+/// fleet about one time in sixteen, so every suite that polled once and
+/// expected work was a lottery it usually lost — and it failed with
+/// `lease: null`, which is a documented, entirely valid answer, so the
+/// failures read as "the fleet was not leasable" rather than "the poll never
+/// looked there".
+///
+/// # Why it also checks WHICH event came back
+///
+/// A rotation returns the first fleet that offers work, and on a lane that has
+/// run hundreds of tests the index carries other fleets' marks. Taking the
+/// first answer means asserting against somebody else's event. So the loop
+/// keeps polling until the lease carries THIS scenario's event.
+///
+/// Passing over a residue fleet does lease it, which is the same trade
+/// `select_fleet_within_rotations` records on the store side: those fleets
+/// belong to finished tests and the next run's reset clears them.
+pub(crate) async fn poll_for_seeded_lease(
+    http: &reqwest::Client,
+    run: &Scenario,
+) -> (String, u64) {
+    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+        let body = json(post(http, run, "/v1/runners/me/leases", &json!({})).await).await;
+        let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
+            continue;
+        };
+        if field(field(lease, "event"), "event_id") == &json!(run.event_id) {
+            return claim(lease);
+        }
+    }
+    panic!(
+        "the seeded event {} was not offered in {ROTATIONS} rotations of the readiness index",
+        run.event_id
     )
 }
 

@@ -32,8 +32,8 @@ use serde_json::json;
 use crate::e2e::{MODEL, POSTURE, scenario};
 use crate::reads::{assert_shape, lease_column};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, claim, json, post,
-    report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
+    poll_for_seeded_lease, post, report_body,
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
@@ -122,12 +122,7 @@ async fn test_seeded_row_shapes() {
         "the runner proves its capabilities"
     );
 
-    let body = json(post(&http, &run, "/v1/runners/me/leases", &json!({})).await).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable");
-    let (lease_id, fence) = claim(lease);
+    let (lease_id, fence) = poll_for_seeded_lease(&http, &run).await;
 
     let captured = post(
         &http,

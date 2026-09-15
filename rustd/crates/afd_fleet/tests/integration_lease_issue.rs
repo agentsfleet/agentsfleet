@@ -46,7 +46,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let held = crate::seed::select_within_one_rotation(&leases, &first, now)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await
         .expect("the fleet is leasable");
     // Hot-path write ONE, which the gate pass will own and which does not
@@ -89,7 +89,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     // The holder dies. Past its expiry another runner claims, and finds that
     // still-active row rather than an empty slot.
     let lapsed = held.leased_until.saturating_add_millis(1);
-    let reclaimed = crate::seed::select_within_one_rotation(&leases, &second, lapsed)
+    let reclaimed = crate::seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 

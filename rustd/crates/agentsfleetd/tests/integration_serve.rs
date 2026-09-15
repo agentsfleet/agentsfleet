@@ -226,7 +226,11 @@ async fn test_a_second_boot_finds_nothing_left_behind() {
 
         assert_eq!(get_status(booted.address, "/readyz").await, 200);
 
+        // `draining` for the reason the teardown above spells out: without it
+        // the accept loop is never told to stop and the report comes back
+        // carrying it as abandoned, ten seconds later.
         let report = agentsfleetd::daemon::Daemon::new(supervisor)
+            .draining(booted.drain.clone())
             .run(std::future::pending(), std::future::ready(()))
             .await;
         assert!(

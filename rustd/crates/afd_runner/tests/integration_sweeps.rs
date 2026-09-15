@@ -233,10 +233,11 @@ impl Fixture {
              INSERT INTO fleet.runner_leases \
                (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor, event_type, \
                 event_created_at, posture, provider, model, metered_input_tokens, metered_cached_tokens, \
-                metered_output_tokens, last_metered_at, fencing_token, lease_expires_at, status, created_at, updated_at) \
+                metered_output_tokens, last_metered_at, fencing_token, lease_expires_at, status, created_at, updated_at, \
+                receipt) \
              SELECT $5::uuid, $6::uuid, $1::uuid, $2::uuid, $7::uuid, event_id, \
                     'test', 'chat', $4, 'platform', 'test', 'test', 0, 0, 0, $4, \
-                    1, $4, $8, $4, $4 FROM event",
+                    1, $4, $8, $4, $4, event_id FROM event",
         )
         .bind(row.fleet)
         .bind(&self.workspace)
