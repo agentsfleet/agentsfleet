@@ -494,6 +494,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "object_store",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",
