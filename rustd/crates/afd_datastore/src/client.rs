@@ -302,11 +302,27 @@ impl Redis {
         context: &str,
         query: impl Future<Output = redis::RedisResult<Value>>,
     ) -> Result<T> {
+        let waited_ms = self.request_timeout.as_millis();
         let value = tokio::time::timeout(self.request_timeout, query)
             .await
-            .map_err(|_elapsed| error::timed_out(name, self.request_timeout.as_millis()))?
+            .map_err(|_elapsed| error::timed_out(name, waited_ms))?
             .and_then(Value::extract_error)
-            .map_err(|source| error::classify(name, context, source))?;
+            // Two deadlines race on every command and either may win: this
+            // one, and the driver's own `response_timeout`, which
+            // `transport::builder` sets from the same budget. The driver's
+            // surfaces as a redis error, and `classify` reads it as a dropped
+            // connection -- true, but `Unreachable` renders only the role, so
+            // the command that actually hung is dropped from the sentence an
+            // operator reads. The command and the budget are this call site's
+            // knowledge; naming them here is what rule 3 keeps a `map_err`
+            // for.
+            .map_err(|source| {
+                if source.is_timeout() {
+                    error::timed_out(name, waited_ms)
+                } else {
+                    error::classify(name, context, source)
+                }
+            })?;
         // A parse failure is not a datastore failure: the server answered, and
         // the reply is a shape this client did not expect. Reporting it as a
         // command error would send an operator looking at the datastore.
