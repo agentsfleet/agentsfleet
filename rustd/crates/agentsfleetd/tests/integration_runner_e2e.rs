@@ -41,8 +41,8 @@ use serde_json::{Value, json};
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, claim, field, get,
-    json, post, report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
+    poll_for_seeded_lease, post, report_body,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -109,17 +109,12 @@ async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, 
         200,
         "work and no-work are the same status on this verb"
     );
-    let body = json(leased).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable, so the poll carries work");
-    assert_eq!(
-        field(field(lease, "event"), "event_id"),
-        &json!(run.event_id),
-        "the daemon handed back the event this scenario put on the stream"
-    );
-    claim(lease)
+    // That first request proved the STATUS. Which event comes back is a
+    // separate question and needs a rotation to answer: see
+    // `poll_for_seeded_lease` on why one poll reaches a given fleet about one
+    // time in sixteen. If the request above already carried this scenario's
+    // event, the helper's first poll finds the lease it issued.
+    poll_for_seeded_lease(http, run).await
 }
 
 async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {

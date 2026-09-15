@@ -52,6 +52,8 @@ mod cli;
 mod daemon;
 #[path = "integration_cli.rs"]
 mod integration_cli;
+#[path = "integration_cluster_outcomes.rs"]
+mod integration_cluster_outcomes;
 #[path = "integration_readyz.rs"]
 mod integration_readyz;
 #[path = "integration_runner_activity.rs"]

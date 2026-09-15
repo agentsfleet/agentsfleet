@@ -59,19 +59,64 @@ async fn connect_and_declare(run: &Scenario) {
     .expect("new fleet is unclaimed");
 }
 
+/// How many approval cards this fixture's fleet has raised.
+async fn gate_cards(run: &Scenario) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+    )
+    .bind(&run.fleet)
+    .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+    .await
+    .expect("the gate count must run")
+}
+
+/// Polls until the gate has actually SEEN this fleet.
+///
+/// # Why one request is not enough
+///
+/// Readiness is sixteen partitions and a poll reads one of them, so a single
+/// request reaches a given fleet about one time in sixteen. The trap is that
+/// the assertion below still passes when it does not: a poll that never looked
+/// at this fleet answers `lease: null`, which is exactly what a gate-blocked
+/// fleet answers too. The test then went on to assert a card that nothing had
+/// raised, and failed several steps later with `0 != 1`, pointing at the gate
+/// rather than at the poll.
+///
+/// So the loop's exit condition is the CARD, which only the gate can write.
+/// Every response on the way is still checked, because "no work" is the answer
+/// under test and a 200 carrying a lease would mean the gate let it through.
 async fn poll(http: &reqwest::Client, run: &Scenario) {
-    // A no-work poll retains its affinity claim until expiry. Move that deadline
-    // into the past so this test reaches redelivery without a wall-clock sleep.
-    // Redis remains untouched: a missing acknowledgment must still be visible.
-    sqlx::query("UPDATE fleet.runner_affinity SET leased_until = $2 WHERE fleet_id = $1::uuid")
-        .bind(&run.fleet)
-        .bind(afd_core::clock::now().as_millis() - 1)
-        .execute(&mut *run.booted.database.acquire().await.expect("connection"))
-        .await
-        .expect("expire the previous no-work claim");
-    let response = post(http, run, LEASES, &json!({})).await;
-    assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(field(&json(response).await, "lease"), &json!(null));
+    const ROTATIONS: u16 = 8;
+    for _poll in 0..(afd_datastore::ready::READY_PARTITIONS * ROTATIONS) {
+        // A no-work poll retains its affinity claim until expiry. Move that
+        // deadline into the past so this test reaches redelivery without a
+        // wall-clock sleep. Redis remains untouched: a missing acknowledgment
+        // must still be visible.
+        sqlx::query("UPDATE fleet.runner_affinity SET leased_until = $2 WHERE fleet_id = $1::uuid")
+            .bind(&run.fleet)
+            .bind(afd_core::clock::now().as_millis() - 1)
+            .execute(&mut *run.booted.database.acquire().await.expect("connection"))
+            .await
+            .expect("expire the previous no-work claim");
+
+        let response = post(http, run, LEASES, &json!({})).await;
+        // The body is in the message on purpose: a bare status says a poll
+        // failed and nothing about why, and the daemon's own log is not
+        // captured by this suite.
+        let status = response.status().as_u16();
+        let body = json(response).await;
+        assert_eq!(status, 200, "the poll answers: {body}");
+        assert_eq!(field(&body, "lease"), &json!(null));
+
+        if gate_cards(run).await > 0 {
+            return;
+        }
+    }
+    panic!(
+        "the gate never saw this fleet in {ROTATIONS} rotations of the readiness index — \
+         the mark is present but `Leases::select` answers None for it, so the block is \
+         between the peek and the claim, not in the index"
+    );
 }
 
 async fn deny(run: &Scenario) {

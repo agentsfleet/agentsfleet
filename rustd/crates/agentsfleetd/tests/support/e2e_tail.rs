@@ -18,10 +18,10 @@ use std::time::Duration;
 
 use afd_datastore::Subscription;
 use afd_datastore::hub::Received;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::e2e::Scenario;
-use crate::wire::{capable_beat, claim, json, post};
+use crate::wire::{capable_beat, poll_for_seeded_lease, post};
 
 /// How long a published frame is given to reach the subscriber.
 ///
@@ -57,12 +57,7 @@ pub(crate) async fn lease(http: &reqwest::Client, run: &Scenario) -> (String, u6
         "the runner proves its capabilities"
     );
 
-    let body = json(post(http, run, "/v1/runners/me/leases", &json!({})).await).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable");
-    claim(lease)
+    poll_for_seeded_lease(http, run).await
 }
 
 /// Gives the hub's pump time to register the subscription with Redis.
