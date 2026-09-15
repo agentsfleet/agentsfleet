@@ -23,6 +23,18 @@ use crate::streams::EventId;
 pub struct OutboundReader {
     connection: Dedicated,
     consumer: String,
+    /// Where the next resume read starts.
+    ///
+    /// Advances past every entry [`Self::read_pending`] hands out, and that is
+    /// the whole reason it exists rather than being spelled `0` at the call.
+    /// `XREADGROUP` on a pending list answers entries AFTER the id it is
+    /// given, so a read fixed at `0` always answers this consumer's oldest
+    /// unacknowledged entry — and an entry stays unacknowledged for as long as
+    /// the lane holding it is still delivering. A caller that dispatches
+    /// without waiting therefore reads the same entry back on its next turn
+    /// and delivers it a second time, and a third, for as long as the first
+    /// delivery takes.
+    pending_cursor: String,
 }
 
 impl OutboundReader {
@@ -35,6 +47,7 @@ impl OutboundReader {
         Self {
             connection,
             consumer,
+            pending_cursor: OWN_PENDING.to_owned(),
         }
     }
 
@@ -44,15 +57,25 @@ impl OutboundReader {
         &self.consumer
     }
 
-    /// This consumer's oldest unacknowledged entry, without blocking.
+    /// This consumer's next unacknowledged entry, without blocking.
     ///
     /// What a restart has to ask first — see the module note on pending-first.
-    /// `None` means the pending list is empty, which is the ordinary answer.
+    /// `None` means nothing is left to resume, which is the ordinary answer.
+    ///
+    /// NEXT, not oldest: the cursor moves past each entry handed out, so a
+    /// caller walks its predecessor's work once instead of re-reading whatever
+    /// is still in flight. See [`Self::pending_cursor`] for what the fixed `0`
+    /// this replaced actually did.
     ///
     /// # Errors
     /// Returns a command error, or an unavailable error when Redis is gone.
     pub async fn read_pending(&mut self) -> Result<Option<OutboundDelivery>> {
-        self.read(OWN_PENDING, None).await
+        let from = self.pending_cursor.clone();
+        let delivery = self.read(&from, None).await?;
+        if let Some(ref entry) = delivery {
+            self.pending_cursor = entry.id.to_string();
+        }
+        Ok(delivery)
     }
 
     /// The next undelivered entry, parking up to `block_ms` for one to arrive.

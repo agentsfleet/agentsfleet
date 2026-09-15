@@ -126,6 +126,16 @@ const CMD_DESTROY: &str = "DESTROY";
 const CMD_DEL: &str = "DEL";
 /// See [`CMD_XGROUP`].
 const CMD_XLEN: &str = "XLEN";
+/// See [`CMD_XGROUP`].
+const CMD_XRANGE: &str = "XRANGE";
+
+/// `XRANGE`'s whole-stream bounds.
+const RANGE_START: &str = "-";
+const RANGE_END: &str = "+";
+
+/// The entry field naming the logical event an answer belongs to; written by
+/// `OutboundQueue::enqueue`.
+const FIELD_EVENT_ID: &str = "event_id";
 
 /// Destroys the consumer group, leaving the stream and its entries in place.
 ///
@@ -165,6 +175,44 @@ pub(crate) async fn entries_on(redis: &Redis) -> u64 {
         // returns the very value those assertions are looking for, so an
         // unreachable server would pass all three while proving nothing.
         .expect("XLEN answers on a live stream, and a missing key reads as 0")
+}
+
+/// How many entries on the stream carry `event`.
+///
+/// # Why a count of the whole stream will not do
+///
+/// [`entries_on`] answers for the stream, and the stream is one key for the
+/// deployment. `Producer::run` scans `core.fleet_obligations` deployment-WIDE
+/// and appends every row it finds owed — which is correct, and which means a
+/// test asserting "appended exactly once" against `XLEN` is really asserting
+/// that no other fleet in the shared database owed anything. On a lane that
+/// has run hundreds of tests that is never true, and the failure reads as a
+/// duplicate append the producer never made.
+///
+/// So the question is asked about this test's own answer. Scanned with
+/// `XRANGE` rather than read through the group, because a read would claim the
+/// entries and change the pending list this suite asserts on.
+pub(crate) async fn entries_naming(redis: &Redis, event: &str) -> u64 {
+    let mut cmd = redis::cmd(CMD_XRANGE);
+    cmd.arg(OUTBOUND_STREAM_KEY)
+        .arg(RANGE_START)
+        .arg(RANGE_END);
+    let entries: Vec<(String, Vec<String>)> = redis
+        .command(CMD_XRANGE, OUTBOUND_STREAM_KEY, &cmd)
+        .await
+        .expect("XRANGE answers on a live stream, and a missing key reads as empty");
+    entries
+        .into_iter()
+        .filter(|(_id, fields)| {
+            fields
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .any(|[key, value]| key == FIELD_EVENT_ID && value == event)
+        })
+        .count()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 /// A reader under a consumer name of the caller's choosing.
