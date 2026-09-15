@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2
 **Branch:** feat/m192-dragonfly-cluster
 **Baseline revision:** 995566da8118cbb88b0b32bb5b44a19d2e704f5e
-**Test Baseline:** pending — measured before the Pull Request.
+**Test Baseline:** unit=7568 integration=pending — unit measured at `995566da8118` in a clean worktree: `make test-unit-rustd` 2417 passed / 0 failed / 446 ignored, `make test-coverage-all` 5151 passed / 0 failed (app 2768, agentsfleet 1673, design-system 564, website 146). Integration is due before the Pull Request; it needs its own compose rig at that revision.
 **Depends on:** M188_001 drivers (merged). The historical Redis baseline is closed PR #681 (`agentsfleet/agentsfleet#681`, unmerged); its twelve samples are reference data and are not recaptured here.
 **Provenance:** Third revision. Redesigned after the closed baseline PR from a live probe of a four-node Dragonfly v1.40.2 cluster; then Redis retired and the transport made cluster-only on Indy's call (Discovery below).
 **Canonical architecture:** `docs/architecture/datastore_scaling.md` (target sharding, evidence rules); runtime context in `data_flow.md` and `runner_fleet.md`.
