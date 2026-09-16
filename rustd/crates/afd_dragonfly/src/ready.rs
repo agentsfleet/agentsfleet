@@ -27,7 +27,7 @@ pub mod partition;
 
 use futures_util::future::try_join_all;
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::Result;
 
 pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
@@ -92,14 +92,14 @@ pub struct Ready {
 /// The readiness index against one connection.
 #[derive(Debug, Clone)]
 pub struct ReadyIndex {
-    redis: Redis,
+    redis: Dragonfly,
     prefix: ReadyPrefix,
 }
 
 impl ReadyIndex {
     /// Binds index operations to a connection, over the production index.
     #[must_use]
-    pub const fn new(redis: Redis) -> Self {
+    pub const fn new(redis: Dragonfly) -> Self {
         Self {
             redis,
             prefix: ReadyPrefix::production(),
@@ -112,7 +112,7 @@ impl ReadyIndex {
     /// [`ReadyPrefix`] is what decides whether a non-production family can be
     /// minted at all.
     #[must_use]
-    pub const fn under(redis: Redis, prefix: ReadyPrefix) -> Self {
+    pub const fn under(redis: Dragonfly, prefix: ReadyPrefix) -> Self {
         Self { redis, prefix }
     }
 

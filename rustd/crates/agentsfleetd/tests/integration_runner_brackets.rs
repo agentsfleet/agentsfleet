@@ -43,7 +43,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     // poll itself, and pub/sub keeps nothing for a reader that arrives late.
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 
@@ -125,7 +125,7 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
 
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 

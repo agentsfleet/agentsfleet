@@ -36,8 +36,8 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_vault::Vault;
 
 use afd_connector::state::{self, Rejected};
@@ -86,8 +86,8 @@ fn connectors() -> Connectors {
     let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
     let pool = PoolConfig::resolve(&environment, DbRole::Api).expect("the fixture URL resolves");
     let database = Db::unreachable(&pool);
-    let queue = Redis::unreachable(&RedisConfig::from_url(
-        RedisRole::Default,
+    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
         NOWHERE_QUEUE.to_owned(),
     ))
     .expect("a lazy manager opens no socket, so it cannot fail to open one");

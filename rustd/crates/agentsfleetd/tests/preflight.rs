@@ -18,13 +18,13 @@ use agentsfleetd::preflight::{
 /// The API role's Postgres knob — the name an operator actually exports.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Redis knob.
+/// The API role's Dragonfly knob.
 const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// A Postgres URL the resolver accepts.
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
 
-/// A Redis URL the resolver accepts.
+/// A Dragonfly URL the resolver accepts.
 const GOOD_REDIS: &str = "redis://127.0.0.1:6379";
 
 /// Sixty-four hex characters: exactly one 32-byte key.
@@ -223,8 +223,8 @@ fn test_preflight_resolves_a_complete_environment() {
     );
     assert_eq!(
         config.redis().role(),
-        afd_dragonfly::config::RedisRole::Api,
-        "preflight resolves the API Redis role"
+        afd_dragonfly::config::DragonflyRole::Api,
+        "preflight resolves the API Dragonfly role"
     );
     // The KEK is redacted by construction, so the assertion is that it EXISTS
     // and does not print itself — checking the bytes would be checking

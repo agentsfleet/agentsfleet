@@ -31,7 +31,7 @@ use crate::wire::{capable_beat, poll_for_seeded_lease, post};
 /// here would make the suite fail on a loaded machine and read as a lost frame.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register a subscription with Redis
+/// How long the hub's pump is given to register a subscription with Dragonfly
 /// before the suite publishes; see [`settle`].
 pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
@@ -60,7 +60,7 @@ pub(crate) async fn lease(http: &reqwest::Client, run: &Scenario) -> (String, u6
     poll_for_seeded_lease(http, run).await
 }
 
-/// Gives the hub's pump time to register the subscription with Redis.
+/// Gives the hub's pump time to register the subscription with Dragonfly.
 ///
 /// `subscribe` queues a command for the pump rather than round-tripping, so a
 /// publish issued in the same instant can beat the `SUBSCRIBE` to the server

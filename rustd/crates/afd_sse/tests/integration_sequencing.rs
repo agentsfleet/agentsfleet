@@ -5,7 +5,7 @@
 //! number, and a lag notice arrives in band as `catching_up`. Those are
 //! decisions this crate makes about values it is handed.
 //!
-//! What they cannot prove is that Redis hands them over IN THE ORDER THEY WERE
+//! What they cannot prove is that Dragonfly hands them over IN THE ORDER THEY WERE
 //! PUBLISHED, because there is no publisher in a unit test — the ordering is a
 //! property of the transport and of the hub's single pumped connection, and the
 //! only way to observe it is to publish through one. That is this file.
@@ -157,7 +157,7 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
     publisher
         .publish(&activity, &payload(0))
         .await
-        .expect("the publish reaches Redis");
+        .expect("the publish reaches Dragonfly");
     let first = next_frame(&mut stream).await;
     assert_eq!(
         first.seq, 0,
@@ -173,7 +173,7 @@ async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, 
         publisher
             .publish(activity, &payload(n))
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
     }
 
     for n in 0..ORDERED_FRAMES {
@@ -202,7 +202,7 @@ async fn assert_reconnect_starts_over(
     publisher
         .publish(activity, missed)
         .await
-        .expect("the publish reaches Redis");
+        .expect("the publish reaches Dragonfly");
 
     drain_until(primer, missed).await;
 
@@ -211,7 +211,7 @@ async fn assert_reconnect_starts_over(
     publisher
         .publish(activity, &resumed)
         .await
-        .expect("the publish reaches Redis");
+        .expect("the publish reaches Dragonfly");
 
     let frame = next_frame(&mut second).await;
     assert_eq!(
@@ -243,7 +243,7 @@ async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
 
     // Prime each server-side subscription before the fan-in joins its local
     // broadcast. Once the channel exists, `subscribe` adds a receiver without
-    // a second Redis round trip, so no fixed sleep is involved.
+    // a second Dragonfly round trip, so no fixed sleep is involved.
     let mut alpha_primer = hub.subscribe(&alpha_channel);
     prime(&publisher, &alpha_channel, &mut alpha_primer).await;
     let mut beta_primer = hub.subscribe(&beta_channel);
@@ -276,7 +276,7 @@ async fn assert_fan_in_delivery(
     publisher
         .publish(&beta_channel, &payload(3))
         .await
-        .expect("a valid fan-in frame reaches Redis");
+        .expect("a valid fan-in frame reaches Dragonfly");
     let first = tokio::time::timeout(DELIVERY_BUDGET, fan_in.next_frame())
         .await
         .expect("the fan-in yields its first frame");
@@ -352,7 +352,7 @@ async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_dragon
         publisher
             .publish(activity, marker)
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
             Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {

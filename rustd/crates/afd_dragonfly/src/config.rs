@@ -31,14 +31,14 @@ pub const CA_CERT_FILE_KNOB: &str = "DRAGONFLY_TLS_CA_CERT_FILE";
 /// Two roles, not three: Dragonfly has no migrator. `redis_types.zig` carries the
 /// same pair for the same reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RedisRole {
+pub enum DragonflyRole {
     /// Background work and anything without a more specific role.
     Default,
     /// Request-path commands.
     Api,
 }
 
-impl RedisRole {
+impl DragonflyRole {
     /// Every role, for callers that build the whole set.
     pub const ALL: &'static [Self] = &[Self::Default, Self::Api];
 
@@ -64,21 +64,21 @@ impl RedisRole {
 
 /// One role's resolved connection settings.
 #[derive(Debug, Clone)]
-pub struct RedisConfig {
-    role: RedisRole,
+pub struct DragonflyConfig {
+    role: DragonflyRole,
     url: String,
     ca_cert_file: Option<PathBuf>,
     connect_timeout: Duration,
     request_timeout: Duration,
 }
 
-impl RedisConfig {
+impl DragonflyConfig {
     /// Resolves a role's URL, certificate path and deadline from `env`.
     ///
     /// # Errors
     /// Returns a config error when the role's URL knob is unset, blank, or not
     /// a Dragonfly URL.
-    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: RedisRole) -> Result<Self> {
+    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DragonflyRole) -> Result<Self> {
         let knob = role.url_knob();
         let url = env
             .get(knob)
@@ -127,7 +127,7 @@ impl RedisConfig {
     /// Builds a configuration directly from a URL, for tests and for the
     /// subscription hub reusing an already-resolved connection string.
     #[must_use]
-    pub fn from_url(role: RedisRole, url: String) -> Self {
+    pub fn from_url(role: DragonflyRole, url: String) -> Self {
         Self {
             role,
             url,
@@ -161,7 +161,7 @@ impl RedisConfig {
 
     /// The role these settings belong to.
     #[must_use]
-    pub const fn role(&self) -> RedisRole {
+    pub const fn role(&self) -> DragonflyRole {
         self.role
     }
 

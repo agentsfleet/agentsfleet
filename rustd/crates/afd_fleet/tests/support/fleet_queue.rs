@@ -1,8 +1,8 @@
-//! The lane's Redis, and the two things a lease test has to put in it.
+//! The lane's Dragonfly, and the two things a lease test has to put in it.
 //!
 //! Separate from `fleet_fixtures.rs` because the two harnesses have opposite
 //! lifetimes. That file creates a DATABASE PER TEST and drops it, which is what
-//! keeps row assertions independent. Redis has no such equivalent: the
+//! keeps row assertions independent. Dragonfly has no such equivalent: the
 //! readiness index is one hash at a fixed key and the streams are keyed by
 //! fleet, so isolation here comes from every test declaring its own fleet ids
 //! rather than from tearing anything down.
@@ -22,25 +22,25 @@
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use afd_dragonfly::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
+use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, FleetStreams, ReadyIndex};
 use afd_wire::event::Entry;
 
-/// The lane's Redis URL.
+/// The lane's Dragonfly URL.
 const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// The lane's Redis certificate authority, when it serves TLS.
+/// The lane's Dragonfly certificate authority, when it serves TLS.
 const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The configuration the lane hands these suites.
-pub(crate) fn config() -> RedisConfig {
+pub(crate) fn config() -> DragonflyConfig {
     let url = std::env::var(URL_KNOB).unwrap_or_else(|_error| {
         panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
-    RedisConfig::from_url(RedisRole::Default, url)
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
         .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
 }
 
-/// A Redis nobody is listening on.
+/// A Dragonfly nobody is listening on.
 ///
 /// Port 1 is reserved and unbound on every platform this builds for, so a
 /// command fails on connection refusal rather than waiting out a timeout — the
@@ -50,26 +50,26 @@ pub(crate) fn config() -> RedisConfig {
 /// nothing reads.
 const NOWHERE: &str = "redis://127.0.0.1:1";
 
-/// A handle over a Redis that will not answer, for the drop paths.
+/// A handle over a Dragonfly that will not answer, for the drop paths.
 ///
-/// `Redis::unreachable` skips the ping `connect` performs, which is the only
-/// way to hold this: the lane's Redis is SHARED by every test binary running in
+/// `Dragonfly::unreachable` skips the ping `connect` performs, which is the only
+/// way to hold this: the lane's Dragonfly is SHARED by every test binary running in
 /// parallel, so pausing the container or killing the server would fail
 /// unrelated suites at the same instant. A handle one test owns fails only that
 /// test's commands.
-pub(crate) fn unreachable() -> Redis {
-    Redis::unreachable(&RedisConfig::from_url(
-        RedisRole::Default,
+pub(crate) fn unreachable() -> Dragonfly {
+    Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail")
 }
 
-/// Connects to the lane's Redis.
-pub(crate) async fn connect() -> Redis {
+/// Connects to the lane's Dragonfly.
+pub(crate) async fn connect() -> Dragonfly {
     afd_dragonfly::test_util::connect_live(&config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 /// Puts one event on a fleet's stream and marks the fleet ready.
@@ -81,7 +81,7 @@ pub(crate) async fn connect() -> Redis {
 /// The field names are `event_envelope.zig`'s `encodeForXAdd` argv — the
 /// producer's side of the contract `assign.rs` reads.
 pub(crate) async fn enqueue(
-    queue: &Redis,
+    queue: &Dragonfly,
     fleet: &str,
     workspace: &str,
     actor: &str,
@@ -143,7 +143,7 @@ fn mint_logical_id(created_at: i64) -> String {
 /// through `afd_wire`'s constants would make the fixture move with the code it
 /// exists to contradict.
 pub(crate) async fn enqueue_cutover_era(
-    queue: &Redis,
+    queue: &Dragonfly,
     fleet: &str,
     workspace: &str,
     actor: &str,
@@ -181,7 +181,7 @@ pub(crate) async fn enqueue_cutover_era(
 /// Both halves are returned because after a replay one logical event
 /// legitimately sits on two entries: the receipt is the physical copy and the
 /// field is the identity.
-pub(crate) async fn entries_on(queue: &Redis, fleet: &str) -> Vec<(String, String)> {
+pub(crate) async fn entries_on(queue: &Dragonfly, fleet: &str) -> Vec<(String, String)> {
     afd_dragonfly::test_util::fleet_entries(queue, fleet)
         .await
         .expect("the lane's stream answers a range read")
@@ -198,7 +198,7 @@ pub(crate) async fn entries_on(queue: &Redis, fleet: &str) -> Vec<(String, Strin
         .collect()
 }
 
-pub(crate) async fn mark_ready(queue: &Redis, fleet: &str) {
+pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
     ReadyIndex::new(queue.clone())
         .mark(fleet, fleet)
         .await
@@ -207,7 +207,7 @@ pub(crate) async fn mark_ready(queue: &Redis, fleet: &str) {
 
 /// Removes a fleet's readiness mark, so one test's fleet does not crowd the
 /// bounded peek another test depends on.
-pub(crate) async fn clear_ready(queue: &Redis, fleet: &str) {
+pub(crate) async fn clear_ready(queue: &Dragonfly, fleet: &str) {
     let index = ReadyIndex::new(queue.clone());
     let token = index
         .mark(fleet, fleet)

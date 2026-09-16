@@ -22,7 +22,7 @@
 //! # Why the callbacks read a closure rather than the world
 //!
 //! An observable callback runs under the SDK's pipeline lock, with no
-//! `catch_unwind` and no timeout. A callback that touches Redis or takes a
+//! `catch_unwind` and no timeout. A callback that touches Dragonfly or takes a
 //! lock some other thread holds does not slow one metric down — it stalls the
 //! whole pipeline, and the first symptom is every family going silent at once.
 //! So a gauge is registered with a closure that only LOADS, and what it loads

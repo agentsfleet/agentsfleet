@@ -47,7 +47,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     );
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 

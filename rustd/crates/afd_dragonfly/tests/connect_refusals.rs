@@ -1,4 +1,4 @@
-//! What `Redis::connect` does when the client cannot even be built.
+//! What `Dragonfly::connect` does when the client cannot even be built.
 //!
 //! These need no server, which is the point: the failures here happen before a
 //! socket is opened, and a suite that only ever pointed at a live Dragonfly would
@@ -13,8 +13,8 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::config::{RedisConfig, RedisRole};
-use afd_dragonfly::{Dedicated, Redis};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dedicated, Dragonfly};
 
 /// Long enough that a real connection attempt would finish, short enough that a
 /// URL which somehow DID open a socket fails the test rather than hanging it.
@@ -48,9 +48,9 @@ async fn test_a_url_the_client_cannot_be_built_from_is_refused_by_role() {
         "",
         "redis://user:pw@host:99999",
     ] {
-        for role in RedisRole::ALL {
-            let config = RedisConfig::from_url(*role, bad.to_owned());
-            let error = tokio::time::timeout(REFUSAL_BUDGET, Redis::connect(&config))
+        for role in DragonflyRole::ALL {
+            let config = DragonflyConfig::from_url(*role, bad.to_owned());
+            let error = tokio::time::timeout(REFUSAL_BUDGET, Dragonfly::connect(&config))
                 .await
                 .expect("a URL that cannot be parsed must fail fast, not hang")
                 .expect_err("{bad:?} must not produce a client");
@@ -97,14 +97,14 @@ async fn test_the_tls_client_carries_the_same_refusal() {
     )
     .expect("the temp directory must be writable");
 
-    let config = RedisConfig::from_url(RedisRole::Api, "rediss://127.0.0.1:1/".to_owned())
+    let config = DragonflyConfig::from_url(DragonflyRole::Api, "rediss://127.0.0.1:1/".to_owned())
         .with_ca_cert_file(Some(ca_path.clone()));
     assert!(
         config.is_tls(),
         "a plain URL would take the non-TLS branch and prove nothing here"
     );
 
-    let error = tokio::time::timeout(REFUSAL_BUDGET, Redis::connect(&config))
+    let error = tokio::time::timeout(REFUSAL_BUDGET, Dragonfly::connect(&config))
         .await
         .expect("must fail fast, not hang")
         .expect_err("an unparseable certificate authority must not produce a client");
@@ -114,7 +114,7 @@ async fn test_the_tls_client_carries_the_same_refusal() {
         "the TLS path must report the same class as the plain one: {error}"
     );
     assert!(
-        error.to_string().contains(RedisRole::Api.tag()),
+        error.to_string().contains(DragonflyRole::Api.tag()),
         "the failure must name the role: {error}"
     );
 
@@ -124,18 +124,18 @@ async fn test_the_tls_client_carries_the_same_refusal() {
 /// A dedicated connection to a Dragonfly that is not there names its role too.
 ///
 /// Its own construction path: [`Dedicated::connect`] deliberately skips the
-/// ping [`Redis::connect`] does, so a caller could reasonably expect it to
+/// ping [`Dragonfly::connect`] does, so a caller could reasonably expect it to
 /// succeed and fail later. It does not — the multiplexed connection is opened
 /// eagerly — and the failure has to carry the role for the same reason the
 /// shared client's does: a deployment runs two, and an operator told only
 /// "Dragonfly is unreachable" edits the wrong connection string.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_dedicated_connection_to_nothing_is_refused_by_role() {
-    for role in RedisRole::ALL {
+    for role in DragonflyRole::ALL {
         // A port nothing listens on, rather than a malformed URL: the client
         // BUILDS here and the connection is what fails, which is the branch a
         // deployment meets when Dragonfly is down rather than misconfigured.
-        let config = RedisConfig::from_url(*role, "redis://127.0.0.1:1/".to_owned());
+        let config = DragonflyConfig::from_url(*role, "redis://127.0.0.1:1/".to_owned());
 
         let error = tokio::time::timeout(REFUSAL_BUDGET, Dedicated::connect(&config, PARK))
             .await

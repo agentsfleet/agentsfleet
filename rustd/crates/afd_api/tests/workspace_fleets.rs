@@ -2,7 +2,7 @@
 //!
 //! # What this suite is for, and what it deliberately is not
 //!
-//! The install writes a row, creates a Redis stream and a consumer group, and
+//! The install writes a row, creates a Dragonfly stream and a consumer group, and
 //! flips a status; the list is one statement; the PATCH is a transaction holding
 //! a row lock. None of that can be stubbed honestly, so the harness answers the
 //! refusal a datastore that would not answer gives, and what these tests pin is

@@ -1,4 +1,4 @@
-//! Repair-verification dispatch through live Postgres and Redis.
+//! Repair-verification dispatch through live Postgres and Dragonfly.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"

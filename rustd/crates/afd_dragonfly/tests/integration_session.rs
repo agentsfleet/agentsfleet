@@ -11,7 +11,7 @@
 
 use afd_dragonfly::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome};
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// A code that is correct, and one that is not.
 const GOOD_HMAC: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
@@ -50,7 +50,7 @@ fn approved_session(session_id: &str) -> SessionState {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_transition_atomic() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
     let session_id = harness.name("session");
 
@@ -121,7 +121,7 @@ async fn test_session_transition_atomic() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_locks_out_after_repeated_wrong_codes() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
     let session_id = harness.name("session");
     store
@@ -172,7 +172,7 @@ async fn test_session_locks_out_after_repeated_wrong_codes() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_missing_and_unapproved_are_distinct() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
 
     let absent = harness.name("absent");
@@ -208,7 +208,7 @@ async fn test_session_missing_and_unapproved_are_distinct() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_blob_round_trips() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
     let session_id = harness.name("session");
     let written = approved_session(&session_id);
@@ -231,7 +231,7 @@ async fn test_session_blob_round_trips() {
     cleanup(&harness, &session_id).await;
 }
 
-async fn cleanup(harness: &RedisHarness, session_id: &str) {
+async fn cleanup(harness: &DragonflyHarness, session_id: &str) {
     let key = afd_dragonfly::session::session_key(session_id);
     let mut cmd = redis::cmd("DEL");
     cmd.arg(&key);

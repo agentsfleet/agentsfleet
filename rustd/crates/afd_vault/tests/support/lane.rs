@@ -5,11 +5,11 @@
 //! module on why a database per test was six thousand seven hundred migration
 //! applications buying isolation the minted identifiers already gave.
 //!
-//! # No Redis, deliberately
+//! # No Dragonfly, deliberately
 //!
 //! Nothing on this surface touches the queue. The fleet lifecycle's lane
 //! connects one because its install guarantee is about a stream; a secret is a
-//! row and an envelope, so a fixture that opened Redis would be making this
+//! row and an envelope, so a fixture that opened Dragonfly would be making this
 //! suite depend on a service its subject does not use.
 #![expect(
     clippy::expect_used,

@@ -33,7 +33,7 @@ use crate::report_seed::{DEEP_POOL, Held, SLICE_MS, SLICE_NANOS, held};
 ///
 /// Three phases on one lease, in the order a runner actually meets them.
 ///
-/// The store is built over a Redis that will not answer. Nothing in the
+/// The store is built over a Dragonfly that will not answer. Nothing in the
 /// transaction may touch the queue — the acknowledgement is the one write that
 /// loses an event outright if it runs early — so a dead queue that changes no
 /// assertion below is the proof that the ordering holds by construction rather

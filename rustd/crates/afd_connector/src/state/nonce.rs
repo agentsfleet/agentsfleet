@@ -16,7 +16,7 @@
 //! module is reached.
 
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 
 use crate::error::Result;
 use crate::registry::{STATE_TTL_SECONDS, StateBinding};
@@ -52,7 +52,7 @@ pub fn mint(entropy: &Entropy) -> Result<String> {
 /// Reports a store that would not answer. A connect whose nonce was not
 /// remembered must not proceed: its state would verify and then fail to
 /// consume, which reads to the person as a forged callback.
-pub async fn remember(queue: &Redis, binding: StateBinding, nonce: &str) -> Result<()> {
+pub async fn remember(queue: &Dragonfly, binding: StateBinding, nonce: &str) -> Result<()> {
     Ok(queue
         .set_for(
             &key(binding, nonce),
@@ -72,7 +72,7 @@ pub async fn remember(queue: &Redis, binding: StateBinding, nonce: &str) -> Resu
 /// Reports a store that would not answer. Deliberately NOT collapsed into
 /// `false`: a store that is down would otherwise read as a replayed callback,
 /// and an operator would go looking for an attacker.
-pub async fn consume(queue: &Redis, binding: StateBinding, nonce: &str) -> Result<bool> {
+pub async fn consume(queue: &Dragonfly, binding: StateBinding, nonce: &str) -> Result<bool> {
     Ok(queue.spend_key(&key(binding, nonce)).await?)
 }
 

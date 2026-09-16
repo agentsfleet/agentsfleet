@@ -14,9 +14,9 @@
 use std::time::Duration;
 
 use afd_core::error_code;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::FleetStreams;
-use afd_dragonfly::{Redis, preflight};
+use afd_dragonfly::{Dragonfly, preflight};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
@@ -31,14 +31,14 @@ const OOM_REPLY: &str = "-OOM command not allowed when used memory > 'maxmemory'
 const INFO_NO_EVICTION: &str = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noeviction\r\n";
 const INFO_CACHE_MODE: &str = "# Memory\r\nused_memory:1024\r\ncache_mode:cache\r\n";
 
-fn config_for(server: &FakeRedis) -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, server.url())
+fn config_for(server: &FakeRedis) -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(Duration::from_secs(2))
 }
 
-async fn connect(server: &FakeRedis) -> Redis {
+async fn connect(server: &FakeRedis) -> Dragonfly {
     install_subscriber();
-    tokio::time::timeout(BUDGET, Redis::connect(&config_for(server)))
+    tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted")

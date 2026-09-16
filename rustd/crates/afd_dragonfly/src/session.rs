@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 /// The commands this store issues, named once each (RULE UFS).
@@ -72,7 +72,7 @@ const SESSION_KEY_GLOB: &str = "auth:session:*";
 /// How many keys one `SCAN` page asks for.
 ///
 /// A hint rather than a bound — Dragonfly may answer with more, and
-/// [`Redis::scan_keys`] takes whatever comes rather than sizing a buffer for
+/// [`Dragonfly::scan_keys`] takes whatever comes rather than sizing a buffer for
 /// it, which is the one place the Zig scan can fail on a page it did not
 /// expect.
 const SCAN_PAGE_HINT: usize = 100;
@@ -263,13 +263,13 @@ pub fn session_key(session_id: &str) -> String {
 /// Sessions in Dragonfly.
 #[derive(Debug, Clone)]
 pub struct SessionStore {
-    redis: Redis,
+    redis: Dragonfly,
 }
 
 impl SessionStore {
     /// Binds session operations to a connection.
     #[must_use]
-    pub const fn new(redis: Redis) -> Self {
+    pub const fn new(redis: Dragonfly) -> Self {
         Self { redis }
     }
 

@@ -1,4 +1,4 @@
-//! Dimensions 5.1 and 5.2 against a live Redis, through `Worker::run`.
+//! Dimensions 5.1 and 5.2 against a live Dragonfly, through `Worker::run`.
 //!
 //! `tests/delivery.rs` grades the retry POLICY without a server, because no
 //! server can make a vendor answer 429 three times on demand. What it cannot
@@ -180,7 +180,7 @@ impl Deliver for Scripted {
 /// Polls `condition` until it holds or [`PROGRESS_BUDGET`] runs out.
 ///
 /// A poll rather than a channel because what is being waited on is the worker's
-/// EFFECT — an acknowledgement in Redis, a counter in a poster — and wiring a
+/// EFFECT — an acknowledgement in Dragonfly, a counter in a poster — and wiring a
 /// signal into the worker to observe it would be testing the signal. `note`
 /// names what was being waited for, so a timeout says which claim failed rather
 /// than that a duration elapsed.
@@ -210,7 +210,7 @@ async fn enqueue(harness: &OutboundHarness, answer: &str) {
             answer,
         })
         .await
-        .expect("the lane's Redis must accept an enqueue");
+        .expect("the lane's Dragonfly must accept an enqueue");
 }
 
 /// Dimension 5.1 — an answer is delivered once, and a failing destination is
@@ -547,7 +547,7 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 /// is what an operator acts on: a queue that is GONE is
 /// `INTERNAL_DB_UNAVAILABLE` — retry it, page the infrastructure — while a
 /// queue that answered and said no is `INTERNAL_OPERATION_FAILED`, a defect
-/// here. Collapsing them sends somebody to check a healthy Redis over a bug in
+/// here. Collapsing them sends somebody to check a healthy Dragonfly over a bug in
 /// this crate. `worker.rs` reads that code onto every failure it reports, so
 /// the mapping is what an incident is triaged from.
 ///

@@ -14,7 +14,7 @@
 //! # Deadlines are here, not in the caller
 //!
 //! Every I/O deadline is a `tokio::time::timeout` at the call site.
-//! [`Redis::command`] is that call site, so no caller can start an unbounded
+//! [`Dragonfly::command`] is that call site, so no caller can start an unbounded
 //! datastore operation by forgetting to wrap one.
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,7 +24,7 @@ use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 use redis::{Cmd, FromRedisValue, Value};
 
-use crate::config::{RedisConfig, RedisRole};
+use crate::config::{DragonflyConfig, DragonflyRole};
 use crate::error::{self, Result};
 use crate::transport;
 
@@ -43,29 +43,29 @@ const CMD_PING: &str = "PING";
 /// another, which is what keeps "one connection per process per role" true no
 /// matter how many components hold one.
 #[derive(Clone)]
-pub struct Redis {
-    role: RedisRole,
+pub struct Dragonfly {
+    role: DragonflyRole,
     connection: ClusterConnection,
     request_timeout: Duration,
 }
 
-impl std::fmt::Debug for Redis {
+impl std::fmt::Debug for Dragonfly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Redis")
+        f.debug_struct("Dragonfly")
             .field("role", &self.role)
             .field("request_timeout", &self.request_timeout)
             .finish_non_exhaustive()
     }
 }
 
-impl Redis {
+impl Dragonfly {
     /// Opens the connection for `config`'s role, proving the cluster answers.
     ///
     /// # Errors
     /// Returns an unavailable error when the cluster cannot be reached, and a
     /// config error when a certificate authority file was named but not
     /// readable.
-    pub async fn connect(config: &RedisConfig) -> Result<Self> {
+    pub async fn connect(config: &DragonflyConfig) -> Result<Self> {
         let started = Instant::now();
         let attempt_id = NEXT_CONNECT_ATTEMPT.fetch_add(1, Ordering::Relaxed);
         let role = config.role().tag();
@@ -114,7 +114,7 @@ impl Redis {
         }
     }
 
-    async fn connect_inner(config: &RedisConfig) -> Result<Self> {
+    async fn connect_inner(config: &DragonflyConfig) -> Result<Self> {
         let connection = transport::connect(config, config.request_timeout()).await?;
         let redis = Self {
             role: config.role(),
@@ -131,7 +131,7 @@ impl Redis {
     /// A handle over a cluster that has NOT been proven to answer.
     ///
     /// The mirror of [`afd_db::Db::unreachable`], and behind `test-util` for
-    /// the same reason: the ping in [`Redis::connect`] is the promise that a
+    /// the same reason: the ping in [`Dragonfly::connect`] is the promise that a
     /// boot which returned has a datastore that SERVES, and a constructor
     /// skipping it would let a binary start against a queue that is not there.
     /// What it exists for is proving what the request path does when the
@@ -143,7 +143,7 @@ impl Redis {
     /// not readable, and an unreachable error when the seed is not a URL —
     /// both before any socket.
     #[cfg(feature = "test-util")]
-    pub fn unreachable(config: &RedisConfig) -> Result<Self> {
+    pub fn unreachable(config: &DragonflyConfig) -> Result<Self> {
         Ok(Self {
             role: config.role(),
             connection: transport::pending(config, config.request_timeout())?,
@@ -153,7 +153,7 @@ impl Redis {
 
     /// The role this connection serves.
     #[must_use]
-    pub const fn role(&self) -> RedisRole {
+    pub const fn role(&self) -> DragonflyRole {
         self.role
     }
 

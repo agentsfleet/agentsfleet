@@ -2,7 +2,7 @@
 //!
 //! One binary per lane, so each holds its own serialising lock over one
 //! process and cargo runs the binaries one after another — the readiness
-//! index, the outbound consumer and Redis's memory figure are all global to
+//! index, the outbound consumer and Dragonfly's memory figure are all global to
 //! the server, and two lanes measuring at once would read each other's work.
 //!
 //! Marked `#[ignore]` so `make test-unit-all` compiles and lints these without

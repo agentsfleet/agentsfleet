@@ -37,10 +37,10 @@ pub const DETAIL_EVENT_MALFORMED: &str = "leased event malformed";
 
 /// A queue outage, shaped like its database counterpart above.
 ///
-/// Zig has no byte-identical original: its lease path collapses every Redis
+/// Zig has no byte-identical original: its lease path collapses every Dragonfly
 /// failure to a no-work reply rather than surfacing one, so no `hx.fail` in
 /// that family ever writes this sentence. It exists because a detail is not
-/// optional here, and answering "Database unavailable" for a Redis outage
+/// optional here, and answering "Database unavailable" for a Dragonfly outage
 /// would send an operator to the wrong datastore. The CODE stays
 /// `UZ-INTERNAL-003`, which is what the Zig assign path logs — no new registry
 /// entry, so the ERROR REGISTRY gate does not fire.

@@ -5,7 +5,7 @@
 //! version nibble `7` and an RFC 4122 variant. Uppercase is REJECTED, never
 //! normalized — Postgres folds `::uuid` to lowercase, so an uppercase spelling
 //! would be the same row there but a different key everywhere an identifier is
-//! handled as text: Redis dedupe keys, session keys, every `==` on a string.
+//! handled as text: Dragonfly dedupe keys, session keys, every `==` on a string.
 //! One entity with two valid spellings is the bug the rejection prevents.
 //!
 //! # Why not the `uuid` crate

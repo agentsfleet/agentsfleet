@@ -1,26 +1,26 @@
-//! A connection to the lane's Redis.
+//! A connection to the lane's Dragonfly.
 //!
 //! No key namespacing, unlike the copy in `afd_dragonfly`: every suite here works
 //! through a service that MINTS its own identifiers, so two tests running in
 //! parallel cannot collide on a key without one of them having minted the
 //! other's version 7 identifier. Nothing is flushed between tests either — the
-//! lane's Redis is one server shared by every test binary, and a flush would
+//! lane's Dragonfly is one server shared by every test binary, and a flush would
 //! delete another suite's session mid-handshake.
 
 use std::time::Duration;
 
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
-/// The lane's Redis.
-pub(crate) struct RedisHarness {
-    pub(crate) redis: Redis,
+/// The lane's Dragonfly.
+pub(crate) struct DragonflyHarness {
+    pub(crate) redis: Dragonfly,
 }
 
-impl RedisHarness {
+impl DragonflyHarness {
     /// Connects, with a deadline short enough that a hung server fails a test
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
@@ -28,16 +28,16 @@ impl RedisHarness {
         let config = Self::config();
         let redis = afd_dragonfly::test_util::connect_live(&config)
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
         Self { redis }
     }
 
     /// The configuration the lane hands this suite.
-    pub(crate) fn config() -> RedisConfig {
+    pub(crate) fn config() -> DragonflyConfig {
         let url = std::env::var(URL_KNOB).unwrap_or_else(|_| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        RedisConfig::from_url(RedisRole::Default, url)
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
             .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
             .with_request_timeout(Duration::from_secs(5))
     }

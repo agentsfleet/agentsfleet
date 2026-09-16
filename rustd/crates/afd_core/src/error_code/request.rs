@@ -194,7 +194,7 @@ pub const INTERNAL_DB_QUERY: ErrorCode = ErrorCode::declare("UZ-INTERNAL-002");
 /// know, a migration that failed and left its failure row behind.
 pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-005");
 
-/// Redis could not be reached, or did not answer in time.
+/// Dragonfly could not be reached, or did not answer in time.
 ///
 /// `cmd/serve.zig` reports this when the dependency is absent at boot. A
 /// request-path timeout answers the same code because the caller's situation is

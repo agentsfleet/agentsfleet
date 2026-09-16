@@ -19,7 +19,7 @@
 //!
 //! Every decision past the wall is a function of the binding the ingress seam
 //! answered, so the whole matrix runs with the store scripted and no Postgres
-//! or Redis anywhere.
+//! or Dragonfly anywhere.
 
 #![cfg(feature = "test-util")]
 #![expect(

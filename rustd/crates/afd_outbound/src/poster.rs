@@ -97,7 +97,7 @@ pub async fn dispatch<S: Deliver>(posters: &Posters<S>, job: &OutboundDelivery) 
 /// POLICY has nothing to do with the worker's state — it needs the posters, the
 /// job and the token, and none of the reader, the queue or the loop. That is
 /// also what makes it gradeable: Dimension 5.1 asks what a vendor sees after
-/// three 5xx, and a test can answer that without a Redis.
+/// three 5xx, and a test can answer that without a Dragonfly.
 ///
 /// The loop AND the schedule are `backon`'s — see [`crate::retry`] on why this
 /// one has no adapter. `when` is what makes the retry mean something twice

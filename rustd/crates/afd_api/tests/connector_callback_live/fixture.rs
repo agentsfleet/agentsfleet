@@ -21,7 +21,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
@@ -54,7 +54,7 @@ const SUBJECT_PREFIX: &str = "user_live_connector_callback_";
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) queue: Redis,
+    pub(crate) queue: Dragonfly,
     pub(crate) subject: String,
     /// The provider account this fixture's grant is scoped to.
     ///

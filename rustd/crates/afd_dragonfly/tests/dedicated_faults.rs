@@ -15,7 +15,7 @@
 use std::time::{Duration, Instant};
 
 use afd_dragonfly::Dedicated;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use redis::Value;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
@@ -81,7 +81,7 @@ fn blocking_read(park: Duration) -> redis::Cmd {
 async fn test_a_dedicated_read_waits_out_the_park_it_declared() {
     install_subscriber();
     let server = FakeRedis::spawn(&[(CMD_XREADGROUP, Reply::Silent)]).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(REQUEST_DEADLINE);
     let mut owned = Dedicated::connect(&config, PARK)
         .await
@@ -129,7 +129,7 @@ async fn test_a_dedicated_read_waits_out_the_park_it_declared() {
 async fn test_a_dedicated_socket_that_is_hung_up_on_is_redialled() {
     install_subscriber();
     let server = FakeRedis::spawn(&[(CMD_XREADGROUP, Reply::Hangup)]).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(REQUEST_DEADLINE);
     let mut owned = Dedicated::connect(&config, PARK)
         .await
@@ -197,7 +197,7 @@ async fn test_a_dedicated_socket_that_is_hung_up_on_is_redialled() {
 async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
     install_subscriber();
     let server = FakeRedis::spawn(&[(CMD_CLIENT, Reply::Silent)]).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_connect_timeout(CONNECT_DEADLINE);
 
     let started = Instant::now();

@@ -4,7 +4,7 @@
 //! still-`active` lease row carries the billing context and the event row it
 //! names carries the body. [`Leases::reclaim_prior_active`] takes both in one
 //! atomic statement and expires the old lease on the way, so the caller can
-//! re-lease the SAME event under the fresh, higher fence — no Redis re-read
+//! re-lease the SAME event under the fresh, higher fence — no Dragonfly re-read
 //! (the envelope is durable in Postgres) and no re-billing (the original lease
 //! already debited).
 //!

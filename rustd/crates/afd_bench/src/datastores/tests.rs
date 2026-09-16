@@ -2,7 +2,7 @@
 
 use super::{redis_calls_in, used_memory_in};
 
-/// Two commands' worth of `INFO commandstats`, as Redis prints it.
+/// Two commands' worth of `INFO commandstats`, as Dragonfly prints it.
 const COMMANDSTATS: &str = "# Commandstats\r\n\
 cmdstat_hset:calls=12,usec=48,usec_per_call=4.00,rejected_calls=0,failed_calls=0\r\n\
 cmdstat_xadd:calls=30,usec=900,usec_per_call=30.00,rejected_calls=0,failed_calls=0\r\n";

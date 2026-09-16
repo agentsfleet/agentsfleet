@@ -23,7 +23,7 @@
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_runner::sweep::{
     self, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile, repair::Repairs,
     replay::Replay, retention::Retention,
@@ -59,7 +59,7 @@ pub const RECONCILE: &str = "sweeper:admission-reconcile";
 /// Called after the datastores are open and before the listener binds: a
 /// sweeper touching a pool that is not yet connected would fail its first pass
 /// for a reason that has nothing to do with the rows it reads.
-pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Redis) {
+pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Dragonfly) {
     // The same ledger shape the request planes hold — see `crate::plane`. A
     // sweeper is a producer's other half, so it must read the table the
     // producers write rather than one built differently.

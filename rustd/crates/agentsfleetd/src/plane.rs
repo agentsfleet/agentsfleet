@@ -47,7 +47,7 @@ use afd_tenant::preference::Preferences;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
 use afd_sse::Live;
 use afd_state::Credentials;
@@ -301,7 +301,7 @@ impl ServingPlane {
 fn connect_flow(
     database: &Db,
     kek: &Arc<Kek>,
-    queue: &Redis,
+    queue: &Dragonfly,
     vendor_client: reqwest::Client,
 ) -> afd_connector::Connectors {
     afd_connector::Connectors::new(

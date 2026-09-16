@@ -40,8 +40,8 @@ use afd_api::router::Dependencies as _;
 use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{CA_CERT_FILE_KNOB, DragonflyConfig, DragonflyRole};
 use agentsfleetd::probes::LiveDependencies;
 
 use crate::support::install_subscriber;
@@ -49,10 +49,10 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Redis it brought up.
+/// Where the lane publishes the TLS Dragonfly it brought up.
 const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// Where the lane extracted the Redis certificate authority to.
+/// Where the lane extracted the Dragonfly certificate authority to.
 const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Reads a lane knob, failing with the command that sets it.
@@ -62,8 +62,8 @@ fn lane(knob: &str) -> String {
     })
 }
 
-/// A connected pool and Redis client, both proven to answer.
-async fn connected() -> (Db, Redis) {
+/// A connected pool and Dragonfly client, both proven to answer.
+async fn connected() -> (Db, Dragonfly) {
     install_subscriber();
 
     let db_env = MapEnv::from_pairs([(DbRole::Api.url_knob(), lane(DATABASE_LANE_KNOB).as_str())]);
@@ -74,16 +74,19 @@ async fn connected() -> (Db, Redis) {
         .expect("the lane's Postgres is up");
 
     let redis_env = MapEnv::from_pairs([
-        (RedisRole::Api.url_knob(), lane(REDIS_LANE_KNOB).as_str()),
+        (
+            DragonflyRole::Api.url_knob(),
+            lane(REDIS_LANE_KNOB).as_str(),
+        ),
         (CA_CERT_FILE_KNOB, lane(REDIS_CA_LANE_KNOB).as_str()),
     ]);
-    let redis_config = RedisConfig::resolve(&redis_env, RedisRole::Api)
-        .expect("the lane publishes a usable Redis URL");
+    let redis_config = DragonflyConfig::resolve(&redis_env, DragonflyRole::Api)
+        .expect("the lane publishes a usable Dragonfly URL");
     // Through the admission gate, like every other lane harness: the handshake
     // is the expensive part and it queues behind the rest of the suite.
     let queue = afd_dragonfly::test_util::connect_live(&redis_config)
         .await
-        .expect("the lane's Redis is up");
+        .expect("the lane's Dragonfly is up");
 
     (database, queue)
 }
@@ -101,7 +104,7 @@ async fn test_readyz_dependency_probe() {
         inputs.database,
         "the lane's Postgres answered at connect; it must answer a probe"
     );
-    assert!(inputs.queue, "the lane's Redis answered at connect");
+    assert!(inputs.queue, "the lane's Dragonfly answered at connect");
     assert!(
         afd_api::router::ready_decision(inputs),
         "both dependencies up is ready"
@@ -117,7 +120,7 @@ async fn test_readyz_dependency_probe() {
     );
     assert!(
         inputs.queue,
-        "Redis is untouched — a red database and a red queue are different incidents, \
+        "Dragonfly is untouched — a red database and a red queue are different incidents, \
          and collapsing them means reading logs to learn which"
     );
     assert!(

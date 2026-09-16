@@ -8,8 +8,8 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 use crate::subscriber::install_subscriber;
 
@@ -23,12 +23,12 @@ const TLS_URL_KNOB: &str = "TEST_DRAGONFLY_TLS_URL";
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 /// The lane's Dragonfly, plus a name nothing else in the suite uses.
-pub(crate) struct RedisHarness {
-    pub(crate) redis: Redis,
+pub(crate) struct DragonflyHarness {
+    pub(crate) redis: Dragonfly,
     prefix: String,
 }
 
-impl RedisHarness {
+impl DragonflyHarness {
     /// Connects through the crate's own admission gate, not around it.
     ///
     /// `connect_live` is what every other crate's lane harness calls, and this
@@ -38,7 +38,7 @@ impl RedisHarness {
     /// rustls handshake against an RSA-2048 certificate, redone per connection
     /// with no session resumption. That is CPU work competing with the suite
     /// that asked for it, so under load the budget lapses on a Dragonfly that is
-    /// perfectly healthy. `Redis::connect` stays the right call for the
+    /// perfectly healthy. `Dragonfly::connect` stays the right call for the
     /// fault-injection suites next door, which point at private endpoints and
     /// want the raw failure.
     pub(crate) async fn connect() -> Self {
@@ -46,7 +46,7 @@ impl RedisHarness {
         let config = Self::config();
         let redis = afd_dragonfly::test_util::connect_live(&config)
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
         Self {
             redis,
             prefix: format!(
@@ -65,19 +65,20 @@ impl RedisHarness {
     /// plaintext URL and is correctly ignored there — so a test asserting that
     /// a MISSING or MALFORMED authority is refused has to ask over `rediss://`,
     /// or it asserts nothing and passes for the wrong reason.
-    pub(crate) fn tls_config() -> RedisConfig {
+    pub(crate) fn tls_config() -> DragonflyConfig {
         let url = std::env::var(TLS_URL_KNOB).unwrap_or_else(|_| {
             panic!("{TLS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        RedisConfig::from_url(RedisRole::Default, url).with_request_timeout(Duration::from_secs(5))
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
+            .with_request_timeout(Duration::from_secs(5))
     }
 
     /// The configuration the lane hands this suite.
-    pub(crate) fn config() -> RedisConfig {
+    pub(crate) fn config() -> DragonflyConfig {
         let url = std::env::var(URL_KNOB).unwrap_or_else(|_| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        RedisConfig::from_url(RedisRole::Default, url)
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
             .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
             .with_request_timeout(Duration::from_secs(5))
     }

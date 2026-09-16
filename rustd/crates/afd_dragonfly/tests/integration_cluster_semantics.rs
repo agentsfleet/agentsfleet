@@ -49,7 +49,7 @@ use afd_dragonfly::ready::{Partition, ReadyIndex};
 use redis::cluster_routing::{MultipleNodeRoutingInfo, ResponsePolicy, RoutingInfo};
 
 use crate::cluster::ClusterHarness;
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// Emptying every primary's Lua cache. `SCRIPT` names no key, so the routing
 /// has to be given rather than derived from one.
@@ -102,7 +102,7 @@ async fn is_marked(index: &ReadyIndex, fleet: &str) -> bool {
 /// clear DID run, the reply was lost, and by the time the retry lands ingress
 /// has marked the fleet again. An unconditional delete would erase that second
 /// mark, and the work behind it would wait for a sweep.
-async fn a_lost_reply_retried_does_not_erase_newer_work(harness: &RedisHarness) {
+async fn a_lost_reply_retried_does_not_erase_newer_work(harness: &DragonflyHarness) {
     let index = ReadyIndex::new(harness.redis.clone());
     let fleet = harness.name("lost-reply");
 
@@ -147,7 +147,7 @@ async fn a_lost_reply_retried_does_not_erase_newer_work(harness: &RedisHarness) 
 /// still answer CORRECTLY, because a reload that lost the body would be a
 /// script that runs and compares nothing.
 async fn a_forgotten_script_reloads_and_still_compares(
-    harness: &RedisHarness,
+    harness: &DragonflyHarness,
     cluster: &ClusterHarness,
 ) {
     let index = ReadyIndex::new(harness.redis.clone());
@@ -199,7 +199,7 @@ async fn a_forgotten_script_reloads_and_still_compares(
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the live cluster: make test-integration-rustd"]
 async fn test_cluster_preserves_failure_and_session_semantics() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let cluster = ClusterHarness::from_lane();
 
     a_lost_reply_retried_does_not_erase_newer_work(&harness).await;

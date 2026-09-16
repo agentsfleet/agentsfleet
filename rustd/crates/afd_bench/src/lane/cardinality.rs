@@ -3,7 +3,7 @@
 //! # A ladder, not a jump
 //!
 //! The population is created in rungs, and every rung reports the same three
-//! things: Redis memory per fleet, the readiness peek's latency, and one
+//! things: Dragonfly memory per fleet, the readiness peek's latency, and one
 //! stream's read latency. A single number at a million would say what a
 //! million costs; the ladder says whether the cost is LINEAR, which is the
 //! question the per-fleet stream and consumer group design actually hangs on.
@@ -21,7 +21,7 @@
 //!
 //! Creating a million streams in a shared environment is not a measurement
 //! anyone consented to. Against a deployed target the lane reads what is
-//! there — the fleet population from Postgres, the readiness depth from Redis,
+//! there — the fleet population from Postgres, the readiness depth from Dragonfly,
 //! each under its own name — reports it in the same shape, and says
 //! `created: false`.
 
@@ -43,7 +43,7 @@ use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
 
-/// Series key: Redis bytes per fleet at each rung, over the rung below.
+/// Series key: Dragonfly bytes per fleet at each rung, over the rung below.
 const BYTES_PER_FLEET: &str = "redis_bytes_per_fleet";
 
 /// Series key: readiness peek latency at each rung, milliseconds.
@@ -52,7 +52,7 @@ const PEEK_MS: &str = "peek_ms";
 /// Series key: one stream's read latency at each rung, milliseconds.
 const STREAM_READ_MS: &str = "stream_read_ms";
 
-/// Measurement key: Redis bytes the whole population added.
+/// Measurement key: Dragonfly bytes the whole population added.
 const REDIS_BYTES_TOTAL: &str = "redis_bytes_total";
 
 /// Measurement key: how many fleets the readiness index holds on a deployed

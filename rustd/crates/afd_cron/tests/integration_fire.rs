@@ -58,7 +58,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
     let fired = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(
         !fired.replayed,
@@ -81,11 +81,11 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let first = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let retry = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis answers the second attempt");
+        .expect("the lane's Dragonfly answers the second attempt");
 
     assert!(!first.replayed);
     assert!(retry.replayed, "a repeated message id is the same fire");
@@ -112,8 +112,8 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
         left.deliver(&schedule, &target, MESSAGE_ID),
         right.deliver(&schedule, &target, MESSAGE_ID),
     );
-    let one = one.expect("the lane's Redis answers the first daemon");
-    let two = two.expect("the lane's Redis answers the second daemon");
+    let one = one.expect("the lane's Dragonfly answers the first daemon");
+    let two = two.expect("the lane's Dragonfly answers the second daemon");
 
     assert_eq!(
         one.event_id, two.event_id,
@@ -145,11 +145,11 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let first = fire
         .deliver(&nightly, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let second = fire
         .deliver(&hourly, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!first.replayed);
     assert!(
@@ -174,11 +174,11 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let tonight = fire
         .deliver(&schedule, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let tomorrow = fire
         .deliver(&schedule, &target, "msg_01J8ZQ4X7K2P")
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!tonight.replayed);
     assert!(
@@ -200,11 +200,11 @@ async fn one_fleets_fire_does_not_claim_anothers() {
     let mine = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let theirs = fire
         .deliver(&schedule, &target(&other), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!mine.replayed);
     assert!(

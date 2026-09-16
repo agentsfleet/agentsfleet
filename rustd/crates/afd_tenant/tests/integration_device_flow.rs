@@ -21,7 +21,7 @@ use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::{Approval, Code, Opening};
 use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 
-use crate::redis_harness::RedisHarness;
+use crate::redis_harness::DragonflyHarness;
 
 /// The dashboard this suite's login URLs are built against.
 const APP_URL: &str = "https://app-dev.agentsfleet.net/";
@@ -36,7 +36,7 @@ const APPROVER: &str = "user_2abcDEF";
 const NOW_MS: i64 = 1_700_000_000_000;
 
 /// The login surface, over the lane's queue.
-fn surface(harness: &RedisHarness) -> Sessions {
+fn surface(harness: &DragonflyHarness) -> Sessions {
     Sessions::new(
         SessionStore::new(harness.redis.clone()),
         SecretBytes::new(b"c0ffee".repeat(8)),
@@ -69,7 +69,7 @@ fn origin(session_id: &str) -> Fingerprint {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_happy_path() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -123,12 +123,12 @@ async fn test_device_flow_happy_path() {
 ///
 /// Split from the handshake above because it is a different claim about a
 /// different thing: that one is about what a client receives, this is about
-/// what an operator with a Redis console can read. If the six digits were
+/// what an operator with a Dragonfly console can read. If the six digits were
 /// stored, anybody who can read the queue could finish somebody else's login.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_stores_only_the_code_digest() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
     let store = SessionStore::new(harness.redis.clone());
 
@@ -171,7 +171,7 @@ async fn test_device_flow_stores_only_the_code_digest() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_rejects_malformed() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     // An id that is not an identifier reads as "not found", never as
@@ -231,7 +231,7 @@ async fn test_device_flow_rejects_malformed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_terminal_states_are_terminal() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -272,7 +272,7 @@ async fn test_device_flow_terminal_states_are_terminal() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -318,7 +318,7 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_approve() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -361,7 +361,7 @@ async fn test_device_flow_state_races_on_approve() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_verify() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -406,7 +406,7 @@ async fn test_device_flow_state_races_on_verify() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_replays_for_the_original_caller_only() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -448,7 +448,7 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -482,7 +482,7 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_attempt_ceiling_aborts_the_session() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -529,7 +529,7 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
     let owner = format!("{APPROVER}_{}", std::process::id());
     let other = format!("{owner}_other");

@@ -20,7 +20,7 @@ use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
 use afd_bench::lane::lease::drive::{Shared, poll_until};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::{Redis, RedisConfig, RedisRole};
+use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_fleet::lease::Leases;
 
 /// Port 1 is reserved and unbound on every platform this builds for, so a
@@ -42,8 +42,8 @@ fn no_pool() -> afd_db::config::PoolConfig {
 
 #[tokio::test]
 async fn test_a_run_aborts_when_the_target_starts_failing() {
-    let queue = Redis::unreachable(&RedisConfig::from_url(
-        RedisRole::Default,
+    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");

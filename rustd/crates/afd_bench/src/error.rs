@@ -80,7 +80,7 @@ pub enum Error {
         source: afd_db::Error,
     },
 
-    /// Redis would not answer.
+    /// Dragonfly would not answer.
     #[error("the bench queue would not open")]
     QueueUnavailable {
         /// What `afd_dragonfly` refused.

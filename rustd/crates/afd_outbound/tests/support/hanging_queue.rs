@@ -1,16 +1,16 @@
-//! A Redis that answers everything and then hangs up on the read.
+//! A Dragonfly that answers everything and then hangs up on the read.
 //!
 //! Purpose-built and deliberately tiny: the only behaviour under test is what
 //! the worker does when its READ keeps failing, so this server needs to do
 //! exactly three things — let a connection open, satisfy the client's own
 //! setup, and refuse the read while counting how often it was asked. It is not
-//! a Redis: `afd_dragonfly`'s own suites own the protocol-shaped fake, and a second
+//! a Dragonfly: `afd_dragonfly`'s own suites own the protocol-shaped fake, and a second
 //! general one here would be a second thing to keep true.
 //!
 //! It does parse RESP arrays, because it has to. The client pipelines its
 //! connection setup, and a server that answered one reply per READ rather than
 //! one per COMMAND leaves the client waiting for the rest — which looks exactly
-//! like an unreachable Redis and would make every test here pass for the wrong
+//! like an unreachable Dragonfly and would make every test here pass for the wrong
 //! reason.
 
 use std::net::SocketAddr;

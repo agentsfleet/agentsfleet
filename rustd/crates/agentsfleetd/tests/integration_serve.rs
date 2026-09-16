@@ -30,10 +30,10 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Redis it brought up.
+/// Where the lane publishes the TLS Dragonfly it brought up.
 const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// Where the lane extracted the Redis certificate authority to.
+/// Where the lane extracted the Dragonfly certificate authority to.
 const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
@@ -110,7 +110,7 @@ async fn test_boot_to_ready_on_compose() {
     let mut supervisor = Supervisor::new();
     let booted = boot(&lane_environment(), EPHEMERAL, &mut supervisor)
         .await
-        .expect("the lane's Postgres and Redis are up");
+        .expect("the lane's Postgres and Dragonfly are up");
 
     // Every task the daemon spawns, in spawn order: the pub/sub pump the live
     // streams read through, the sweepers put under the supervisor, the two

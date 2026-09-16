@@ -30,7 +30,7 @@ use clap::Parser as _;
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Redis URL that parses and points at nothing listening.
+/// A Dragonfly URL that parses and points at nothing listening.
 const DEAD_REDIS: &str = "redis://127.0.0.1:1";
 
 /// Sixty-four hex characters.

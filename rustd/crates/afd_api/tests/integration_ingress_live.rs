@@ -7,7 +7,7 @@
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
 //! These do run them. The row comes out of `core.fleets`, the secret out of
-//! `vault.secrets`, and the claim lands in a live Redis — so a delivery here
+//! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
 //! crosses the same three stores in the same order the daemon crosses them.
 //!
 //! # What this suite is for, and what `webhook_fleet_route.rs` keeps
@@ -85,7 +85,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
     // The whole order in one pass, and the only test that proves the stores
     // answer at all: the binding is read from `core.fleets`' stored document,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
-    // and the claim reaches Redis. A stub can answer each of those; none of
+    // and the claim reaches Dragonfly. A stub can answer each of those; none of
     // them can be WRONG under a stub, which is what this is here to catch.
     let fixture = Fixture::create().await;
     fixture.seed(Runnable::Active, Secret::Stored).await;
@@ -107,7 +107,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn the_same_delivery_arriving_twice_is_claimed_once() {
-    // At-most-once over a REAL Redis, which is the half a stub cannot prove: the
+    // At-most-once over a REAL Dragonfly, which is the half a stub cannot prove: the
     // claim is a `SET NX` in the queue, so a scripted store asserting "the
     // handler asked for a claim" says nothing about whether the queue would
     // have granted it twice.

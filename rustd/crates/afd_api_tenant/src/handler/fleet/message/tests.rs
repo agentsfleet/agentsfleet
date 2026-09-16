@@ -3,7 +3,7 @@
 //! Both halves of this surface decide something before any datastore is
 //! reached: the read decides how many rows a page carries and which row the
 //! cursor names, and the write decides whether the bytes a client sent are a
-//! message at all. Neither decision needs Postgres or Redis, so both are proven
+//! message at all. Neither decision needs Postgres or Dragonfly, so both are proven
 //! here; `fleet_messages.rs` is left proving the credential, the two rungs and
 //! the ownership layer over HTTP.
 
@@ -24,7 +24,7 @@ use super::{
 /// The millisecond the fixture thread's oldest row was stamped.
 const FIRST_MS: i64 = 1_700_000_000_000;
 
-/// A stream entry id, spelled the way Redis mints one.
+/// A stream entry id, spelled the way Dragonfly mints one.
 fn entry_id(ordinal: i64) -> String {
     format!("{}-0", FIRST_MS + ordinal)
 }

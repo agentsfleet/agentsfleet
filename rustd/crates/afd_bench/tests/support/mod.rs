@@ -4,7 +4,7 @@
 //! # One lane at a time
 //!
 //! The readiness index is one global hash, the outbound consumer name is
-//! constant per process, and Redis's `used_memory` is one number for the
+//! constant per process, and Dragonfly's `used_memory` is one number for the
 //! server. Two lanes measuring at once would each see the other's work in
 //! its numbers, so every test takes [`LANE`] first — a slower suite, but one
 //! whose assertions are about the lane under test and nothing else.
@@ -36,14 +36,14 @@ const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 /// clippy refuses for good reason.
 pub(crate) static LANE: Mutex<()> = Mutex::const_new(());
 
-/// The lane's Redis URL, for the outbound lane's dedicated reader.
+/// The lane's Dragonfly URL, for the outbound lane's dedicated reader.
 pub(crate) fn redis_url() -> String {
     std::env::var(REDIS_KNOB).unwrap_or_else(|_unset| {
         panic!("{REDIS_KNOB} is unset — run through make test-integration-rustd")
     })
 }
 
-/// The lane's Redis certificate authority, when it serves TLS.
+/// The lane's Dragonfly certificate authority, when it serves TLS.
 pub(crate) fn ca_cert() -> Option<String> {
     std::env::var(CA_KNOB).ok()
 }

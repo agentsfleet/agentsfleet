@@ -18,7 +18,7 @@ use super::*;
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
-    // The single-use slot, against the Redis that holds it. Without it, anyone
+    // The single-use slot, against the Dragonfly that holds it. Without it, anyone
     // who saw a callback URL — a browser history, a proxy log, a referrer —
     // could replay it, and each replay would redeem the code again.
     let fixture = Fixture::create().await;

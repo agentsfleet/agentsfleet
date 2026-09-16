@@ -24,7 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The TLS endpoint, which is NOT the one the rest of the lane uses.
 const TLS_URL_KNOB: &str = "TEST_DRAGONFLY_TLS_URL";
@@ -44,8 +44,8 @@ fn lane(knob: &str) -> String {
         .unwrap_or_else(|_| panic!("{knob} unset — run through `make test-integration-rustd`"))
 }
 
-fn tls_config() -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, lane(TLS_URL_KNOB))
+fn tls_config() -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, lane(TLS_URL_KNOB))
 }
 
 /// The accepting direction: the lane's authority verifies this server.
@@ -56,7 +56,7 @@ async fn test_the_lanes_authority_verifies_the_lanes_redis() {
 
     let redis = afd_dragonfly::test_util::connect_live(&config)
         .await
-        .expect("the lane's own certificate authority must verify its own Redis");
+        .expect("the lane's own certificate authority must verify its own Dragonfly");
 
     redis
         .ping()

@@ -31,7 +31,7 @@ pub const SSE_IN_FLIGHT_STREAMS: Declared<GaugeKind> =
 pub const SSE_DROPPED_FRAMES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_sse_dropped_frames_total");
 
-/// Pub/sub redials; spikes mean Redis instability.
+/// Pub/sub redials; spikes mean Dragonfly instability.
 pub const SSE_HUB_RECONNECTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_sse_hub_reconnects_total");
 

@@ -80,8 +80,8 @@ mod tests {
     use std::time::Duration;
 
     use super::super::FleetStreams;
-    use crate::Redis;
-    use crate::config::{RedisConfig, RedisRole};
+    use crate::Dragonfly;
+    use crate::config::{DragonflyConfig, DragonflyRole};
 
     /// A loopback port nobody listens on.
     const NOWHERE: &str = "redis://127.0.0.1:1";
@@ -95,8 +95,8 @@ mod tests {
     /// never got as far as asking.
     #[tokio::test]
     async fn should_drop_a_frame_that_will_not_serialize_before_asking_the_queue() {
-        let queue = Redis::unreachable(&RedisConfig::from_url(
-            RedisRole::Default,
+        let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+            DragonflyRole::Default,
             NOWHERE.to_owned(),
         ))
         .expect("a lazy handle opens no socket");

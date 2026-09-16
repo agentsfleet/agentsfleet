@@ -1,4 +1,4 @@
-//! The lane's Redis, and a clean `connector:outbound` to run one test against.
+//! The lane's Dragonfly, and a clean `connector:outbound` to run one test against.
 //!
 //! # Why this harness resets a key instead of namespacing one
 //!
@@ -27,10 +27,10 @@ use std::time::Duration;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{
-    Dedicated, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundQueue, OutboundReader, Redis,
-    outbound_consumer,
+    Dedicated, Dragonfly, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundQueue,
+    OutboundReader, outbound_consumer,
 };
 
 /// The knob `make test-integration-rustd` exports. See `make/test-infra.mk`.
@@ -53,9 +53,9 @@ const REQUEST_DEADLINE: Duration = Duration::from_secs(5);
 /// awaits for the whole body of a test.
 pub(crate) static OUTBOUND_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// The lane's Redis, with the outbound stream emptied and its group recreated.
+/// The lane's Dragonfly, with the outbound stream emptied and its group recreated.
 pub(crate) struct OutboundHarness {
-    redis: Redis,
+    redis: Dragonfly,
     pub(crate) queue: OutboundQueue,
     /// The obligation ledger the worker stamps deliveries into.
     ///
@@ -128,7 +128,7 @@ impl OutboundHarness {
 
     /// Points the stream key at a plain string, so commands answer WRONGTYPE.
     ///
-    /// The one way to get a Redis error that is NOT an outage without taking
+    /// The one way to get a Dragonfly error that is NOT an outage without taking
     /// the server down. `afd_dragonfly` builds its error kinds crate-privately, so
     /// a "the queue answered and refused" case cannot be constructed by hand
     /// from here — it has to be provoked, and a key holding the wrong type is
@@ -144,15 +144,15 @@ impl OutboundHarness {
     }
 
     /// Opens the shared handle, installing the subscriber on the way.
-    async fn connect() -> Redis {
+    async fn connect() -> Dragonfly {
         install_subscriber();
-        Redis::connect(&Self::config())
+        Dragonfly::connect(&Self::config())
             .await
-            .expect("the lane's Redis must be reachable")
+            .expect("the lane's Dragonfly must be reachable")
     }
 
     /// Removes the stream and every group on it.
-    async fn drop_stream(redis: &Redis) {
+    async fn drop_stream(redis: &Dragonfly) {
         let mut cmd = redis::cmd(CMD_DEL);
         cmd.arg(OUTBOUND_STREAM_KEY);
         let _removed: i64 = redis
@@ -162,11 +162,11 @@ impl OutboundHarness {
     }
 
     /// The configuration the lane hands this suite.
-    pub(crate) fn config() -> RedisConfig {
+    pub(crate) fn config() -> DragonflyConfig {
         let url = std::env::var(URL_KNOB).unwrap_or_else(|_| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        RedisConfig::from_url(RedisRole::Default, url)
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
             .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
             .with_request_timeout(REQUEST_DEADLINE)
     }

@@ -20,7 +20,7 @@ use afd_dragonfly::hub::Received;
 use afd_dragonfly::streams::FleetStreams;
 use tokio::sync::Mutex;
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// Serialises the two hub tests. See the module documentation.
 static HUB_LANE: Mutex<()> = Mutex::const_new(());
@@ -38,11 +38,11 @@ const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_hub_refcount_single_connection() {
     let _lane = HUB_LANE.lock().await;
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let publisher = FleetStreams::new(harness.redis.clone());
     let channel = harness.name("channel");
 
-    let hub = SubscriptionHub::start(RedisHarness::config())
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
         .await
         .expect("hub starts");
     assert_eq!(hub.connections_opened(), 1, "the hub opens one connection");
@@ -144,7 +144,7 @@ async fn publish_until_delivered(
 }
 
 /// How many subscribers the SERVER thinks the channel has.
-async fn server_subscriber_count(harness: &RedisHarness, channel: &str) -> i64 {
+async fn server_subscriber_count(harness: &DragonflyHarness, channel: &str) -> i64 {
     let mut cmd = redis::cmd("PUBSUB");
     cmd.arg("NUMSUB").arg(channel);
     let reply: Vec<redis::Value> = harness
@@ -194,11 +194,11 @@ where
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
     let _lane = HUB_LANE.lock().await;
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let publisher = FleetStreams::new(harness.redis.clone());
     let channel = harness.name("channel");
 
-    let hub = SubscriptionHub::start(RedisHarness::config())
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
         .await
         .expect("hub starts");
     let mut reader = hub.subscribe(&channel);

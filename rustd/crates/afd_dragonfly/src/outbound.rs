@@ -17,7 +17,7 @@
 //!
 //! # Two types because there are two connections
 //!
-//! [`OutboundQueue`] enqueues and acknowledges over the shared [`Redis`]: both
+//! [`OutboundQueue`] enqueues and acknowledges over the shared [`Dragonfly`]: both
 //! are ordinary commands and both are issued from the request path, which is
 //! where a shared multiplexed connection belongs.
 //!
@@ -38,7 +38,7 @@
 //! name has to be one the next process comes back to. See
 //! [`outbound_consumer`].
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{self, Result};
 use crate::streams::{ACKNOWLEDGED_HISTORY, EventId, Trimmed, retain};
 
@@ -193,13 +193,13 @@ pub struct OutboundDelivery {
 /// The write half: enqueue and acknowledge, over the shared connection.
 #[derive(Debug, Clone)]
 pub struct OutboundQueue {
-    redis: Redis,
+    redis: Dragonfly,
 }
 
 impl OutboundQueue {
     /// Binds the queue to a connection.
     #[must_use]
-    pub const fn new(redis: Redis) -> Self {
+    pub const fn new(redis: Dragonfly) -> Self {
         Self { redis }
     }
 

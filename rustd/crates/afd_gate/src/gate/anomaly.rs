@@ -2,7 +2,7 @@
 //!
 //! # It runs before the approval gate, and it fails the other way
 //!
-//! The approval gate fails CLOSED — a Redis outage leaves an event waiting
+//! The approval gate fails CLOSED — a Dragonfly outage leaves an event waiting
 //! rather than releasing it. This check fails OPEN. That asymmetry is not an
 //! inconsistency: the gate answers "did a human say yes", where the safe answer
 //! under uncertainty is to keep waiting, while this answers "has this repeated
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn the_two_outcomes_are_distinct() {
         // A trivial assertion over a two-arm enum, and it is here for one
-        // reason: the behaviour that matters — a threshold crossing, a Redis
+        // reason: the behaviour that matters — a threshold crossing, a Dragonfly
         // outage admitting — is exercised by the integration suite against a
         // live counter, and a unit test that mocked the counter would prove
         // only that the mock returns what it was told.

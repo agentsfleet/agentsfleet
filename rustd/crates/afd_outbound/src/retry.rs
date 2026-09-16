@@ -5,7 +5,7 @@
 //! `afd_fleet_lifecycle::install` writes a `Schedule` iterator adapter so
 //! `backon` drives its loop from `afd_dragonfly::Backoff`'s delays, and that is
 //! right THERE: those delays are shared with the subscription hub's reconnect,
-//! so the install and the pump recover from one Redis outage on one proven
+//! so the install and the pump recover from one Dragonfly outage on one proven
 //! curve. Nothing shares this curve. A vendor POST retry has no sibling to
 //! agree with, so the adapter would buy nothing and cost a jitter source, an
 //! `Iterator` impl and its own tests.

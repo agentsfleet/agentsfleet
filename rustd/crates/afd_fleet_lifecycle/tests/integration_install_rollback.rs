@@ -2,7 +2,7 @@
 //!
 //! `#[ignore]`d so `make test-unit-all` compiles and lints these without a
 //! datastore; `make test-integration-rustd` runs them against compose Postgres
-//! and Redis.
+//! and Dragonfly.
 //!
 //! # What only this lane can prove
 //!
@@ -15,11 +15,11 @@
 //!
 //! # The partial-completion window
 //!
-//! One install touches the pool three times around a Redis call:
+//! One install touches the pool three times around a Dragonfly call:
 //!
 //! ```text
 //!   acquire PG ①  library read → INSERT core.fleets (installing)
-//!   release PG    ← released BEFORE Redis, so a slow queue is not a PG outage
+//!   release PG    ← released BEFORE Dragonfly, so a slow queue is not a PG outage
 //!                 XGROUP CREATE          ← 4 attempts, ~1.75s, jittered
 //!   acquire PG ②  flip installing → active
 //!     on failure  acquire PG ③ (fresh)   DELETE the row
@@ -112,7 +112,7 @@ async fn a_queue_that_never_answers_rolls_the_row_back_and_leaves_no_orphan() {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_refused_command_fails_fast_rather_than_spending_the_retry_budget() {
     // Workflow ordinal 2 again, COMMAND class this time, and the point is the
-    // classification: Redis is up and answering. `XGROUP CREATE … MKSTREAM`
+    // classification: Dragonfly is up and answering. `XGROUP CREATE … MKSTREAM`
     // against a key holding a string is `WRONGTYPE`, and asking three more
     // times answers the same. Spending 1.75 seconds on that makes a person wait
     // out a foregone conclusion.

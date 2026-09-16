@@ -37,10 +37,10 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Redis it brought up.
+/// Where the lane publishes the TLS Dragonfly it brought up.
 const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// Where the lane extracted the Redis certificate authority to.
+/// Where the lane extracted the Dragonfly certificate authority to.
 const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Sixty-four hex characters. Boot validates the key; nothing here decrypts.

@@ -19,7 +19,7 @@
 //!
 //! The accepted fire is the only path here that WRITES, and what it answers is
 //! the identifier of the entry it wrote. `Fleet::live` points the appender at a
-//! Redis nothing resolves; `with_live_fire` is the seam that gives it one that
+//! Dragonfly nothing resolves; `with_live_fire` is the seam that gives it one that
 //! takes the append, which is also what makes the retry case reachable at all.
 
 #![cfg(feature = "test-util")]

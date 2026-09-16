@@ -54,7 +54,7 @@ const COMMIT: &str = match option_env!("GIT_COMMIT") {
 pub struct ReadyInputs {
     /// Whether Postgres answered.
     pub database: bool,
-    /// Whether Redis answered.
+    /// Whether Dragonfly answered.
     pub queue: bool,
 }
 
@@ -70,7 +70,7 @@ pub const fn ready_decision(inputs: ReadyInputs) -> bool {
 /// What `/readyz` consults.
 ///
 /// The trait is the seam between §5 and §7: routing and the response shape are
-/// settled here, and what it MEANS to reach Postgres and Redis is supplied by
+/// settled here, and what it MEANS to reach Postgres and Dragonfly is supplied by
 /// whoever owns the pools. Generic rather than `dyn`, so the probe is a static
 /// call and the trait needs no boxed future to stay object safe.
 pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {

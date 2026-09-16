@@ -1,6 +1,6 @@
 //! Putting a verified delivery on the fleet's stream, at most once.
 //!
-//! # A Postgres row, and NOT a Redis claim
+//! # A Postgres row, and NOT a Dragonfly claim
 //!
 //! The idempotency boundary for an inbound delivery is the admission ledger's
 //! `(producer, producer_key)` unique index. It used to be a Lua script's

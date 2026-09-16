@@ -67,7 +67,7 @@ impl EventType {
     }
 }
 
-/// The field names an event carries as a Redis stream entry.
+/// The field names an event carries as a Dragonfly stream entry.
 ///
 /// Declared here for the reason [`EventType`]'s spellings are: they cross a
 /// boundary. A producer writes them and the runner's pull reads them back, so
@@ -95,12 +95,12 @@ pub mod field {
     ///
     /// Written by the producer rather than derived from the entry id, because
     /// the lease path bills against it: a value the ingress stamped is the one
-    /// a tenant is charged for, and Redis assigning a second opinion at append
+    /// a tenant is charged for, and Dragonfly assigning a second opinion at append
     /// time would make the charge depend on queue latency.
     pub const CREATED_AT: &str = "created_at";
     /// The logical event id the admission ledger assigned.
     ///
-    /// The entry id Redis mints is a RECEIPT, not an identity: after a
+    /// The entry id Dragonfly mints is a RECEIPT, not an identity: after a
     /// replay one logical event can have had two entries, and it is this
     /// field — not the entry id — that `core.fleet_events`, the usage ledger
     /// and every read address. Written by the ledger's append alone; a
@@ -437,7 +437,7 @@ pub const OPERATION_ID_MAX_BYTES: usize = 200;
 /// payload belongs.
 pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 
-// `event_id` is the stream entry id Redis minted, which IS the canonical
+// `event_id` is the stream entry id Dragonfly minted, which IS the canonical
 // event id.
 /// What a steer returns once agentsfleet accepts the request.
 ///

@@ -12,7 +12,7 @@
 use afd_dragonfly::Dedicated;
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, FleetStreams, GroupCursor, fleet_stream_key};
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// Dimension 3.1 — the round trip, and the identity claim inside it.
 ///
@@ -23,7 +23,7 @@ use crate::support::RedisHarness;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_stream_xadd_readgroup_ack() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("fleet");
     let consumer = harness.name("consumer");
@@ -62,7 +62,7 @@ async fn test_stream_xadd_readgroup_ack() {
     );
     assert!(
         !appended.to_string().is_empty(),
-        "Redis mints a non-empty id"
+        "Dragonfly mints a non-empty id"
     );
     assert_eq!(event.field("type"), Some("message"));
     assert_eq!(event.field("actor"), Some("user_1"));
@@ -107,7 +107,7 @@ async fn test_stream_xadd_readgroup_ack() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_vanished_group_is_reported_and_restored_where_delivery_stopped() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("fleet");
     let consumer = harness.name("consumer");
@@ -183,7 +183,7 @@ async fn test_a_vanished_group_is_reported_and_restored_where_delivery_stopped()
 
 /// Deletes the keys a test made. The lane resets Dragonfly between runs; this keeps
 /// one test's leftovers out of another's read inside a run.
-async fn cleanup(harness: &RedisHarness, keys: &[String]) {
+async fn cleanup(harness: &DragonflyHarness, keys: &[String]) {
     for key in keys {
         let mut cmd = redis::cmd("DEL");
         cmd.arg(key);
@@ -211,7 +211,7 @@ async fn cleanup(harness: &RedisHarness, keys: &[String]) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_group_create_that_is_not_a_race_is_reported() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("wrongtype");
     let key = fleet_stream_key(&fleet);
@@ -254,7 +254,7 @@ async fn test_a_group_create_that_is_not_a_race_is_reported() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("fleet");
     let died = harness.name("consumer_that_died");
@@ -329,12 +329,12 @@ async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_dedicated_connection_reports_the_role_it_opened_for() {
-    let config = RedisHarness::config();
+    let config = DragonflyHarness::config();
     let expected = config.role();
 
     let owned = Dedicated::connect(&config, std::time::Duration::from_millis(100))
         .await
-        .expect("the lane's Redis must be reachable");
+        .expect("the lane's Dragonfly must be reachable");
 
     assert_eq!(
         owned.role(),

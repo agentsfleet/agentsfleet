@@ -1,4 +1,4 @@
-//! Readiness-index recovery over real fleet rows and Redis streams.
+//! Readiness-index recovery over real fleet rows and Dragonfly streams.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"

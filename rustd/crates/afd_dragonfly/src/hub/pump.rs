@@ -30,7 +30,7 @@ use redis::{PushInfo, PushKind, Value};
 use tokio::sync::mpsc;
 
 use super::{Command, HubInner, Message};
-use crate::config::RedisConfig;
+use crate::config::DragonflyConfig;
 use crate::error::{Error, Result};
 use crate::topology::text;
 use crate::transport;
@@ -41,7 +41,7 @@ use crate::transport;
 /// boot fails boot rather than starting and reconnecting forever behind a
 /// `/readyz` that says nothing is wrong.
 pub(super) async fn spawn(
-    config: RedisConfig,
+    config: DragonflyConfig,
     schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -58,7 +58,7 @@ struct Connection {
     pushes: mpsc::UnboundedReceiver<PushInfo>,
 }
 
-async fn connect(config: &RedisConfig) -> Result<Connection> {
+async fn connect(config: &DragonflyConfig) -> Result<Connection> {
     let pushed = transport::connect_with_pushes(config, config.request_timeout()).await?;
     Ok(Connection {
         connection: pushed.connection,
@@ -69,7 +69,7 @@ async fn connect(config: &RedisConfig) -> Result<Connection> {
 /// Pumps messages until the process ends, reconnecting whenever the
 /// connection does.
 async fn run(
-    config: RedisConfig,
+    config: DragonflyConfig,
     schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
     mut commands: mpsc::UnboundedReceiver<Command>,
@@ -105,7 +105,7 @@ async fn run(
 /// to and nothing sensible to do with one but try again. `production_backoff`
 /// says so with `without_max_times` — the loop ends when the cluster comes
 /// back and at no other point.
-async fn redial(config: &RedisConfig, schedule: ExponentialBuilder) -> Connection {
+async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Connection {
     let mut attempt = 0_u32;
     (|| connect(config))
         .retry(schedule)

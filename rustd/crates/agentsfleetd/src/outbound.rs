@@ -7,17 +7,17 @@
 //!
 //! # Why this one opens a connection the rest of the process does not share
 //!
-//! Every other Redis caller in this binary goes through the one multiplexed
-//! [`Redis`], because sharing a socket is what makes a pool unnecessary. This
+//! Every other Dragonfly caller in this binary goes through the one multiplexed
+//! [`Dragonfly`], because sharing a socket is what makes a pool unnecessary. This
 //! worker blocks on `XREADGROUP … BLOCK`, and a blocking command on a shared
-//! connection is not a slow command — it is a stopped process, since Redis
+//! connection is not a slow command — it is a stopped process, since Dragonfly
 //! executes a connection's commands in order. So it dials its own, exactly as
 //! the pub/sub hub does, and [`afd_dragonfly::Dedicated`] is not `Clone` so nobody
 //! can join it there.
 //!
 //! # A worker that cannot dial does not stop the boot
 //!
-//! Redis is already proven reachable by the time this runs — the shared handle
+//! Dragonfly is already proven reachable by the time this runs — the shared handle
 //! pinged it, and `/readyz` reports on it. A second dial that fails here is a
 //! blip on a connection nothing else needs, and refusing to boot over it would
 //! take down the whole API to protect the return leg of one connector. It is
@@ -27,7 +27,7 @@
 use afd_connector::Grants;
 use afd_db::Db;
 use afd_dragonfly::{
-    Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer,
+    Dedicated, Dragonfly, DragonflyConfig, OutboundQueue, OutboundReader, outbound_consumer,
 };
 use afd_outbound::producer::Producer;
 use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
@@ -56,9 +56,9 @@ pub const OUTBOUND_PRODUCER: &str = "connector:outbound-producer";
 /// connected would fail its first pass for a reason unrelated to the rows.
 pub async fn spawn(
     supervisor: &mut Supervisor,
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     database: &Db,
-    queue: &Redis,
+    queue: &Dragonfly,
     grants: Grants,
     vendor_client: reqwest::Client,
 ) {

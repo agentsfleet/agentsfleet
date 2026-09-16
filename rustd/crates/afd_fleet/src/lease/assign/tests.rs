@@ -14,7 +14,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
     .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
-/// Both queue reporters render every Redis failure kind without panicking.
+/// Both queue reporters render every Dragonfly failure kind without panicking.
 ///
 /// Thin, and deliberately so. These are `tracing::warn!` calls with no
 /// return value, so what there is to prove is that each field expression

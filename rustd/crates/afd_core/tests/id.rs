@@ -28,7 +28,7 @@ fn should_accept_a_canonical_lowercase_version_7_identifier() {
 
 /// Catches the bug the Zig module exists to prevent: one entity reachable under
 /// two spellings, because Postgres folds `::uuid` to lowercase while every
-/// text-keyed store (Redis dedupe keys, session keys, string equality) does not.
+/// text-keyed store (Dragonfly dedupe keys, session keys, string equality) does not.
 #[test]
 fn test_uuid_v7_rejects_uppercase() {
     let upper = CANONICAL.to_uppercase();

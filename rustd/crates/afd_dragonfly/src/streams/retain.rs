@@ -40,7 +40,7 @@ use redis::streams::{
 };
 
 use super::{ARG_COUNT, FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 /// The commands this module issues, named once each (RULE UFS).
@@ -159,7 +159,7 @@ struct Group {
 ///
 /// A missing group means no consumer has ever read: every entry is owed and
 /// nothing may be trimmed, which is what every caller does with `None`.
-async fn group_of(redis: &Redis, key: &str, group: &str) -> Result<Option<Group>> {
+async fn group_of(redis: &Dragonfly, key: &str, group: &str) -> Result<Option<Group>> {
     let mut cmd = redis::cmd(CMD_XINFO);
     cmd.arg(XINFO_GROUPS).arg(key);
     let reply: StreamInfoGroupsReply = redis.command(CMD_XINFO, key, &cmd).await?;
@@ -180,7 +180,7 @@ async fn group_of(redis: &Redis, key: &str, group: &str) -> Result<Option<Group>
 }
 
 /// The oldest entry any consumer of `group` still holds, if one does.
-async fn oldest_pending(redis: &Redis, key: &str, group: &str) -> Result<Option<Position>> {
+async fn oldest_pending(redis: &Dragonfly, key: &str, group: &str) -> Result<Option<Position>> {
     let mut cmd = redis::cmd(CMD_XPENDING);
     cmd.arg(key).arg(group);
     let reply: StreamPendingReply = redis.command(CMD_XPENDING, key, &cmd).await?;
@@ -195,7 +195,7 @@ async fn oldest_pending(redis: &Redis, key: &str, group: &str) -> Result<Option<
 }
 
 /// The oldest of the newest `keep` entries — the floor of the history window.
-async fn history_floor(redis: &Redis, key: &str, keep: usize) -> Result<Option<Position>> {
+async fn history_floor(redis: &Dragonfly, key: &str, keep: usize) -> Result<Option<Position>> {
     let mut cmd = redis::cmd(CMD_XREVRANGE);
     cmd.arg(key)
         .arg(RANGE_NEWEST)
@@ -211,7 +211,7 @@ async fn history_floor(redis: &Redis, key: &str, keep: usize) -> Result<Option<P
 }
 
 /// How many entries `key` holds.
-pub(crate) async fn length_of(redis: &Redis, key: &str) -> Result<u64> {
+pub(crate) async fn length_of(redis: &Dragonfly, key: &str) -> Result<u64> {
     let mut cmd = redis::cmd(CMD_XLEN);
     cmd.arg(key);
     redis.command(CMD_XLEN, key, &cmd).await
@@ -225,7 +225,7 @@ pub(crate) async fn length_of(redis: &Redis, key: &str) -> Result<u64> {
 /// from it on is owed), and the oldest of the newest `keep` entries (the
 /// history window). `XTRIM MINID` then removes what lies below.
 pub(crate) async fn trim_history(
-    redis: &Redis,
+    redis: &Dragonfly,
     key: &str,
     group: &str,
     keep: usize,
@@ -268,7 +268,11 @@ pub(crate) async fn trim_history(
 /// Returns a command error when the stream cannot be described — including
 /// when there is no such key, because a caller asking about a stream that
 /// was never created has a different bug than one asking about an empty one.
-pub(crate) async fn backlog_of(redis: &Redis, key: &str, group: &str) -> Result<Option<Backlog>> {
+pub(crate) async fn backlog_of(
+    redis: &Dragonfly,
+    key: &str,
+    group: &str,
+) -> Result<Option<Backlog>> {
     Ok(group_of(redis, key, group)
         .await?
         .map(|found| found.backlog))

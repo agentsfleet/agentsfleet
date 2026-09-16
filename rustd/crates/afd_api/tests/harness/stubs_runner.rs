@@ -7,7 +7,7 @@ use afd_fleet::lease::report::Reconciled;
 
 /// A lease plane that always answers no-work.
 ///
-/// The production plane holds a Redis connection that is opened by CONNECTING,
+/// The production plane holds a Dragonfly connection that is opened by CONNECTING,
 /// so these suites cannot build one — and should not: what they prove is the
 /// router's guard, scope and refusal matrix, which is decided BEFORE any verb
 /// runs. A stub that always answers the same thing keeps that boundary honest,

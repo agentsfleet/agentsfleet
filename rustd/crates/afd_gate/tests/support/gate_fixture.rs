@@ -17,8 +17,8 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Mode;
 use afd_fleet_runtime::provider::StaticRegistry;
@@ -50,19 +50,19 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
         .expect("the gate policy fixture resolves")
 }
 
-pub(crate) fn redis_config() -> RedisConfig {
+pub(crate) fn redis_config() -> DragonflyConfig {
     let url = std::env::var(REDIS_URL_KNOB)
         .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
-    RedisConfig::from_url(RedisRole::Default, url)
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }
 
-pub(crate) async fn connect_redis() -> Redis {
+pub(crate) async fn connect_redis() -> Dragonfly {
     afd_dragonfly::test_util::connect_live(&redis_config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 pub(crate) struct Fixture {

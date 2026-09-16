@@ -7,7 +7,7 @@ use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
-use afd_dragonfly::{Redis, SubscriptionHub};
+use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -45,7 +45,7 @@ impl Watched {
             .await
             .expect("live hub");
         let publisher = FleetStreams::new(
-            Redis::connect(&harness::redis_config())
+            Dragonfly::connect(&harness::redis_config())
                 .await
                 .expect("publisher"),
         );
@@ -115,7 +115,7 @@ impl Watched {
             }
         })
         .await
-        .expect("Redis acknowledges the first server-side subscription");
+        .expect("Dragonfly acknowledges the first server-side subscription");
         for body in bodies {
             // The route announces itself before any activity, so every body
             // opens with `hello` and this barrier's own payload is the SECOND
@@ -149,7 +149,7 @@ impl Watched {
             }
         })
         .await
-        .expect("Redis releases the last subscription after the body drops");
+        .expect("Dragonfly releases the last subscription after the body drops");
     }
 
     pub(super) async fn commit_without_publish(&self) -> String {
