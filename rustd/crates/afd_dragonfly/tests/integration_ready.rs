@@ -174,6 +174,72 @@ async fn test_ready_index_token_for_reads_one_fleet_exactly() {
     cleanup_fields(&harness, &fleet).await;
 }
 
+/// An exact read answers for the asked fleet and no other, ACROSS partitions.
+///
+/// The test above marks one fleet and reads it back. That proves `mark` and
+/// `token_for` agree with each other, which they would even if both derived the
+/// wrong key, and it cannot prove the "exactly" its name claims: exactness is a
+/// statement about the OTHER fleets in the index, and a one-fleet index has
+/// none.
+///
+/// So this seeds two fleets whose ids land in DIFFERENT partitions — asserted,
+/// not assumed, because `Partition::of` is a checksum and a chosen pair could
+/// silently collide and make the test vacuous. Each fleet must return its own
+/// token and neither may return the other's. A `token_for` that read a fixed
+/// key, or sampled a partition the way a poll does, fails here and passes
+/// above.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_token_for_answers_for_one_fleet_across_partitions() {
+    let harness = DragonflyHarness::connect().await;
+    let index = ReadyIndex::new(harness.redis.clone());
+
+    let (left, right) = (0..64)
+        .map(|n| {
+            (
+                harness.name(&format!("part-a{n}")),
+                harness.name(&format!("part-b{n}")),
+            )
+        })
+        .find(|(a, b)| Partition::of(a) != Partition::of(b))
+        .expect("two fleet ids landing in different partitions");
+    assert_ne!(
+        Partition::of(&left),
+        Partition::of(&right),
+        "the pair must straddle a partition boundary or this test proves nothing"
+    );
+
+    index.mark(&left, "token-left").await.expect("mark left");
+    index.mark(&right, "token-right").await.expect("mark right");
+
+    for (fleet, expected) in [(&left, "token-left"), (&right, "token-right")] {
+        assert_eq!(
+            index
+                .token_for(fleet)
+                .await
+                .expect("read the marked token")
+                .as_ref()
+                .map(afd_dragonfly::ReadyToken::as_str),
+            Some(expected),
+            "{fleet} in partition {:?} must answer with its OWN token",
+            Partition::of(fleet)
+        );
+    }
+
+    let absent = harness.name("part-never-marked");
+    assert_eq!(
+        index
+            .token_for(&absent)
+            .await
+            .expect("read an absent fleet"),
+        None,
+        "an unmarked fleet must answer None rather than a neighbour's token"
+    );
+
+    cleanup_fields(&harness, &left).await;
+    cleanup_fields(&harness, &right).await;
+}
+
 /// The connection answers for itself, and a certificate path that is not there
 /// is a config failure rather than an outage.
 #[tokio::test(flavor = "multi_thread")]
