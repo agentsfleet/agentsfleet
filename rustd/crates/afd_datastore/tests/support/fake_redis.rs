@@ -1,7 +1,7 @@
-//! A Redis that answers wrongly, on purpose.
+//! A Dragonfly that answers wrongly, on purpose.
 //!
 //! Several branches in this crate exist for a server that misbehaves, and a
-//! real Redis never does: a `PING` answered with something that is not `PONG`,
+//! real Dragonfly never does: a `PING` answered with something that is not `PONG`,
 //! an `XADD` answered with an empty id, a socket that accepts a command and
 //! then dies, and a pub/sub connection that comes back up but refuses the
 //! resubscribe. The live-service suite cannot reach any of them, because the
@@ -315,7 +315,7 @@ impl Drop for OpenConnection {
     }
 }
 
-/// Builds the `subscribe`/`unsubscribe` confirmation Redis pushes back.
+/// Builds the `subscribe`/`unsubscribe` confirmation Dragonfly pushes back.
 ///
 /// The trailing count is the number of channels the connection now holds. It is
 /// reported as one because nothing in these tests branches on it, and a fixture

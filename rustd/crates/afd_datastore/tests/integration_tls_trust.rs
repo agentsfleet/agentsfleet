@@ -3,7 +3,7 @@
 //! The rest of the lane connects over plaintext, because a handshake that
 //! re-proves an unchanging certificate authority two hundred times costs a
 //! 232 ms median against 0.1 ms and builds the queue that turns a healthy
-//! Redis into `ConnectTimeout`. TLS is not thereby unproven; it is proven
+//! Dragonfly into `ConnectTimeout`. TLS is not thereby unproven; it is proven
 //! here, and proven HARDER than the all-TLS lane managed.
 //!
 //! # What an all-TLS lane could not tell you
@@ -29,7 +29,7 @@ use afd_datastore::config::{RedisConfig, RedisRole};
 /// The TLS endpoint, which is NOT the one the rest of the lane uses.
 const TLS_URL_KNOB: &str = "TEST_REDIS_TLS_URL";
 
-/// The authority that signed the lane's Redis certificate.
+/// The authority that signed the lane's Dragonfly certificate.
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
 /// A well-formed authority that signed nothing on this machine.

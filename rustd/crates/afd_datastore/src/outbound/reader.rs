@@ -68,7 +68,7 @@ impl OutboundReader {
     /// this replaced actually did.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
+    /// Returns a command error, or an unavailable error when Dragonfly is gone.
     pub async fn read_pending(&mut self) -> Result<Option<OutboundDelivery>> {
         let from = self.pending_cursor.clone();
         let delivery = self.read(&from, None).await?;
@@ -88,7 +88,7 @@ impl OutboundReader {
     /// `block_ms` bounds it anyway, because a read that never returns is a
     /// task that cannot be joined: the caller races this against its
     /// cancellation token, and dropping the future does NOT cancel the command
-    /// server-side — Redis may still assign an entry to this consumer after
+    /// server-side — Dragonfly may still assign an entry to this consumer after
     /// the drop. That entry is not lost, it is pending, and the next process's
     /// [`Self::read_pending`] is what finds it. Dimension 5.2.
     ///
@@ -199,7 +199,7 @@ fn decode(entry: &redis::streams::StreamId) -> Option<OutboundDelivery> {
 mod tests {
     use super::*;
 
-    /// Builds a stream entry the way Redis hands one back.
+    /// Builds a stream entry the way Dragonfly hands one back.
     fn entry(fields: &[(&str, &str)]) -> redis::streams::StreamId {
         redis::streams::StreamId {
             id: "1700000000001-0".to_owned(),

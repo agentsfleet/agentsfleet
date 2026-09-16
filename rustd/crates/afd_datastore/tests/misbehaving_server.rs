@@ -1,9 +1,9 @@
 //! What this client does when the server answers, but answers wrongly.
 //!
-//! Every other target here points at a Redis that works, so none of them can
+//! Every other target here points at a Dragonfly that works, so none of them can
 //! reach the branches written for one that does not. The distinction these hold
 //! is the one an operator is paged by: a reply this client did not expect is
-//! Redis being *wrong*, and a socket that dies mid-command is Redis being
+//! Dragonfly being *wrong*, and a socket that dies mid-command is Dragonfly being
 //! *gone*. Collapsing them sends someone to restart a server that is running
 //! fine, or to debug a query against a server that is not there at all.
 //!
@@ -173,12 +173,12 @@ async fn test_an_empty_xadd_id_is_refused_rather_than_handed_out() {
     );
 }
 
-/// A socket that dies mid-command is Redis being unreachable, not a command
+/// A socket that dies mid-command is Dragonfly being unreachable, not a command
 /// that failed.
 ///
 /// This is the classification the two halves of `error::classify` exist to
 /// separate, and the one a live server cannot produce on demand. An operator
-/// reading "unavailable" goes and looks at Redis; one reading a command error
+/// reading "unavailable" goes and looks at Dragonfly; one reading a command error
 /// goes and looks at the query, which here would be the wrong place entirely.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_socket_that_dies_mid_command_reports_redis_unreachable() {

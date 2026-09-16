@@ -3,7 +3,7 @@
 //! A fixed set of hashes — one per [`Partition`] — with a field per fleet and
 //! a token for its value. A lease poll reads ONE partition, the one its
 //! cursor names, before it opens a Postgres connection, so an idle poll costs
-//! one bounded Redis read and no database round-trip at all, and a rotation
+//! one bounded Dragonfly read and no database round-trip at all, and a rotation
 //! of polls visits every partition whatever one of them holds.
 //!
 //! # It is a hint, never the record
@@ -20,7 +20,7 @@
 //! between that poll's last read and its clear. An unconditional delete would
 //! erase a mark for genuinely undelivered work, and nothing would rediscover it
 //! until a sweep. So a clear deletes a field only when the token still matches
-//! the one the caller saw, and the comparison happens inside Redis where there
+//! the one the caller saw, and the comparison happens inside Dragonfly where there
 //! is no gap.
 
 pub mod partition;

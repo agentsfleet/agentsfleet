@@ -1,4 +1,4 @@
-//! Which Redis a role talks to, and how long it may take.
+//! Which Dragonfly a role talks to, and how long it may take.
 //!
 //! Knob names are the Zig daemon's, spelled identically
 //! (the retired daemon's `queue/redis_config.zig`, `redis_types.zig`), so a
@@ -17,12 +17,12 @@ const CONNECT_TIMEOUT_KNOB: &str = "REDIS_CONNECT_TIMEOUT_MS";
 const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 5_000;
 
 /// Where a self-signed certificate authority is read from, for the local
-/// compose Redis. Unset means the system trust store.
+/// compose Dragonfly. Unset means the system trust store.
 pub const CA_CERT_FILE_KNOB: &str = "REDIS_TLS_CA_CERT_FILE";
 
 /// Which connection a piece of work belongs on.
 ///
-/// Two roles, not three: Redis has no migrator. `redis_types.zig` carries the
+/// Two roles, not three: Dragonfly has no migrator. `redis_types.zig` carries the
 /// same pair for the same reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RedisRole {
@@ -70,7 +70,7 @@ impl RedisConfig {
     ///
     /// # Errors
     /// Returns a config error when the role's URL knob is unset, blank, or not
-    /// a Redis URL.
+    /// a Dragonfly URL.
     pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: RedisRole) -> Result<Self> {
         let knob = role.url_knob();
         let url = env

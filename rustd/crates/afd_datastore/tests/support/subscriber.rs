@@ -1,4 +1,4 @@
-//! One enabled tracing subscriber for Redis integration-test binaries.
+//! One enabled tracing subscriber for Dragonfly integration-test binaries.
 
 /// Installs a subscriber so event fields execute on success and failure paths.
 ///

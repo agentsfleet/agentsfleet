@@ -303,7 +303,7 @@ async fn deliver(streams: &FleetStreams, fleet: &str, payload: &str, reader: &mu
     assert!(seen.is_ok(), "the reader never saw {payload}");
 }
 
-/// Every `event_id` on the fleet's stream, in the order Redis holds them.
+/// Every `event_id` on the fleet's stream, in the order Dragonfly holds them.
 async fn entries_on(
     connection: &mut redis::cluster_async::ClusterConnection,
     fleet: &str,

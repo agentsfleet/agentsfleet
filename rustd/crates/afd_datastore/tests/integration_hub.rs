@@ -25,13 +25,13 @@ use crate::support::RedisHarness;
 /// Serialises the two hub tests. See the module documentation.
 static HUB_LANE: Mutex<()> = Mutex::const_new(());
 
-/// How long a message may take to travel publisher → Redis → hub → reader.
+/// How long a message may take to travel publisher → Dragonfly → hub → reader.
 const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
 /// Dimension 3.2 — N readers, one connection, and a channel that closes when
 /// the last of them goes.
 ///
-/// Invariant 2 of the milestone is "exactly one Redis subscribe connection per
+/// Invariant 2 of the milestone is "exactly one Dragonfly subscribe connection per
 /// process". The number that proves it is the hub's own connection count: a
 /// hub that opened one connection per subscriber would report four here.
 #[tokio::test(flavor = "multi_thread")]

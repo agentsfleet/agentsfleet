@@ -3,7 +3,7 @@
 //!
 //! # One transport, and why it is the cluster one
 //!
-//! Redis and Dragonfly speak the same protocol, so the only axis this crate
+//! Dragonfly and Dragonfly speak the same protocol, so the only axis this crate
 //! can see is standalone versus cluster — and the daemon's datastore is a
 //! cluster. There is no standalone path and no selector between the two:
 //! every connection is a redis-rs `ClusterConnection` over RESP3, built in

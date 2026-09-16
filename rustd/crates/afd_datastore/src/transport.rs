@@ -2,7 +2,7 @@
 //!
 //! # Why there is no standalone path
 //!
-//! Redis and Dragonfly speak the same protocol, so the only axis the code can
+//! Dragonfly and Dragonfly speak the same protocol, so the only axis the code can
 //! see is standalone versus cluster — and the daemon's datastore is a cluster.
 //! A selector between two transports would be a knob nobody flips, carried
 //! across every surface as a second arm. This module is the whole choice: one

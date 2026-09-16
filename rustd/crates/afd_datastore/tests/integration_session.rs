@@ -45,7 +45,7 @@ fn approved_session(session_id: &str) -> SessionState {
 /// This is the whole reason the transition is a script. Written as `GET` then
 /// `SET` from the client, every one of these tasks reads
 /// `verification_pending`, every one writes `consumed`, and a device-flow code
-/// is redeemed a hundred times. Redis runs a script body to completion, so the
+/// is redeemed a hundred times. Dragonfly runs a script body to completion, so the
 /// window does not exist.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
@@ -203,7 +203,7 @@ async fn test_session_missing_and_unapproved_are_distinct() {
     cleanup(&harness, &pending_id).await;
 }
 
-/// The blob round-trips through Redis unchanged, which is what lets the Zig
+/// The blob round-trips through Dragonfly unchanged, which is what lets the Zig
 /// daemon read what this writes.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
@@ -218,7 +218,7 @@ async fn test_session_blob_round_trips() {
     assert_eq!(read, written, "the stored blob must survive the round trip");
 
     // The key carries a time-to-live, so an abandoned session cannot sit in
-    // Redis forever holding a public key someone pasted.
+    // Dragonfly forever holding a public key someone pasted.
     let key = afd_datastore::session::session_key(&session_id);
     let mut cmd = redis::cmd("TTL");
     cmd.arg(&key);

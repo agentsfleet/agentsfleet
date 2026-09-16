@@ -1,8 +1,8 @@
-//! Bounded live-Redis connection setup for datastore-backed tests.
+//! Bounded live-Dragonfly connection setup for datastore-backed tests.
 //!
 //! A Rust test binary runs its tests in parallel. Opening one TLS connection
 //! per test makes connection setup the bottleneck and can exhaust a short boot
-//! deadline before Redis has accepted every handshake. Each `#[tokio::test]`
+//! deadline before Dragonfly has accepted every handshake. Each `#[tokio::test]`
 //! also owns a distinct runtime, so its connection cannot outlive that runtime
 //! and be shared process-wide. Serializing just the handshake keeps
 //! every manager on its owning runtime without flooding the TLS listener.
@@ -29,8 +29,8 @@ static CONNECT_SERIAL: Semaphore = Semaphore::const_new(1);
 /// handshake queues behind compilation and other tests until it passes the
 /// connect budget.
 ///
-/// So a lapsed budget here means "the machine was busy", not "Redis is down",
-/// and three attempts distinguish them. A genuinely absent Redis fails three
+/// So a lapsed budget here means "the machine was busy", not "Dragonfly is down",
+/// and three attempts distinguish them. A genuinely absent Dragonfly fails three
 /// times quickly and still fails; a contended one wins a later attempt.
 const CONNECT_RETRY_ATTEMPTS: u32 = 3;
 

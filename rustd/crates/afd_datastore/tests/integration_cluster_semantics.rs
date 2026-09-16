@@ -3,7 +3,7 @@
 //! The dimension names four hazards, and each is one a SHARDED datastore
 //! introduces or sharpens. They are asserted together because they share the
 //! property under test: the answer a caller reads is the same answer a
-//! single-node Redis gave, and an action that may happen once still happens
+//! single-node Dragonfly gave, and an action that may happen once still happens
 //! once.
 //!
 //! # Lost replies

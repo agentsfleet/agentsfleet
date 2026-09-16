@@ -7,7 +7,7 @@
 /// Every reply shape [`stringify`] renders, each with the label it is rendered
 /// from.
 ///
-/// Exposed under `test-util` because Redis will not produce these on demand: a
+/// Exposed under `test-util` because Dragonfly will not produce these on demand: a
 /// stream field is a bulk string on the wire, so the arms that keep a
 /// surprising value readable have no other way to be reached. A producer that
 /// starts writing something else — or a redis-rs release that decodes an

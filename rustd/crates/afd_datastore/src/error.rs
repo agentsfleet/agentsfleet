@@ -7,7 +7,7 @@
 //!
 //! # A missing consumer group is not an outage
 //!
-//! Redis answers a read against a vanished group with `NOGROUP`, and that is
+//! Dragonfly answers a read against a vanished group with `NOGROUP`, and that is
 //! recoverable in one step — recreate the group and read again. Folding it into
 //! a generic command failure would lose that, which is why
 //! [`Error::is_group_missing`] exists: the reader that owns the restore asks
@@ -103,7 +103,7 @@ pub(crate) enum ErrorKind {
     /// command that would provoke it cannot safely be sent: `XGROUP CREATE …
     /// MKSTREAM` creates its key, so it reaches `DbSlice::AddNew`, where
     /// Dragonfly v1.40.2 trips `db_slice.cc:1176 Check failed: res.is_new` and
-    /// aborts the node instead of answering. Redis answers `WRONGTYPE`, so this
+    /// aborts the node instead of answering. Dragonfly answers `WRONGTYPE`, so this
     /// kind is what a working server owes and this crate supplies.
     ///
     /// Carries no `#[source]`: nothing failed underneath it. The cause is the
@@ -171,7 +171,7 @@ impl Error {
         )
     }
 
-    /// Whether Redis could not be reached, or did not answer in time.
+    /// Whether Dragonfly could not be reached, or did not answer in time.
     #[must_use]
     pub fn is_unavailable(&self) -> bool {
         matches!(
@@ -229,7 +229,7 @@ impl Error {
     /// The expected answer to an idempotent create, not a failure — which is
     /// why it is a question and not a substring of an error message. Reading it
     /// off `Display` was the first attempt, and it did not work: `Display`
-    /// renders the kind, and the Redis code lives on the source.
+    /// renders the kind, and the Dragonfly code lives on the source.
     #[must_use]
     pub fn is_group_exists(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::GroupExists { .. })
@@ -300,7 +300,7 @@ impl Error {
 /// `NOGROUP` is the one recoverable failure: the group vanished (deleted out
 /// of band, a restart without persistence, a failover to an empty replica)
 /// and recreating it is a defined repair. `OOM` is the one that is not a
-/// fault at all but a limit. Redis reports both as ordinary error replies, so
+/// fault at all but a limit. Dragonfly reports both as ordinary error replies, so
 /// nothing else would tell them apart from a genuine command failure.
 const CODE_NO_GROUP: &str = "NOGROUP";
 const CODE_BUSY_GROUP: &str = "BUSYGROUP";
@@ -408,7 +408,7 @@ pub(crate) fn unexpected_reply(what: &'static str) -> Error {
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// Same seam and same argument as `afd_db::error::one_of_each_kind`: these are
-/// the renderings a human reads while something is already wrong, and a Redis
+/// the renderings a human reads while something is already wrong, and a Dragonfly
 /// that refuses a command on demand is not something a test can arrange for
 /// every kind.
 #[cfg(feature = "test-util")]

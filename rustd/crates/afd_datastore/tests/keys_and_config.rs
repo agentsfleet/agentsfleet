@@ -2,7 +2,7 @@
 //!
 //! Every key format, knob name and constant here is read or written by the Zig
 //! daemon too. A drift in any of them is not a failed test in production — it
-//! is two processes quietly using different keys against the same Redis, which
+//! is two processes quietly using different keys against the same Dragonfly, which
 //! looks like lost events rather than like a bug.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -39,7 +39,7 @@ fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
 
 /// The key every fleet's events live on, and the group they are read under.
 ///
-/// The three names a Redis key is built from, frozen as `queue/constants.zig`
+/// The three names a Dragonfly key is built from, frozen as `queue/constants.zig`
 /// spelled them at sunset.
 ///
 /// These were read out of that file at test time so the assertion could not
@@ -108,7 +108,7 @@ fn test_each_role_resolves_only_its_own_knob() {
     assert!(error.to_string().contains("REDIS_URL_API"));
 }
 
-/// Unset, blank, and not-a-Redis-URL are all refused at resolve.
+/// Unset, blank, and not-a-Dragonfly-URL are all refused at resolve.
 ///
 /// The last two cases are the ones a scheme-prefix check let through: each
 /// starts with the seven characters that check looked for and neither is a URL,
@@ -238,8 +238,8 @@ fn test_ca_cert_file_comes_from_the_documented_knob() {
 ///
 /// `backon` owns the arithmetic, so what is asserted here is our CONFIGURATION
 /// of it — the two knobs an operator feels. The ceiling is the one that matters:
-/// a backoff that keeps doubling turns a ten-minute Redis outage into an
-/// hour-long one, because the last sleep started before Redis came back.
+/// a backoff that keeps doubling turns a ten-minute Dragonfly outage into an
+/// hour-long one, because the last sleep started before Dragonfly came back.
 ///
 /// Jitter is on in production, so each delay is a random offset inside its
 /// step rather than a fixed number. The assertions are therefore bounds, which
@@ -272,10 +272,10 @@ fn test_the_reconnect_schedule_grows_then_settles_at_its_ceiling() {
     );
 }
 
-/// Jitter spreads the delay, so two processes that lost the same Redis do not
+/// Jitter spreads the delay, so two processes that lost the same Dragonfly do not
 /// redial in the same millisecond.
 ///
-/// The reconnect storm is what keeps a struggling Redis down, and a schedule
+/// The reconnect storm is what keeps a struggling Dragonfly down, and a schedule
 /// that produced one sequence for everybody would cause it.
 #[test]
 fn test_the_reconnect_schedule_is_spread() {
@@ -341,7 +341,7 @@ fn test_every_stream_field_reply_shape_renders() {
 
 /// Every abort reason spells itself the way the stored value reads.
 ///
-/// The reason rides `session:*` in Redis and BOTH binaries read it back. A
+/// The reason rides `session:*` in Dragonfly and BOTH binaries read it back. A
 /// respelling here is not a failed test in production — it is one process
 /// writing a reason the other cannot classify, on a record that exists to say
 /// why somebody's run was stopped.

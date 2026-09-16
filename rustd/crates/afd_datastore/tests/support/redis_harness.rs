@@ -1,7 +1,7 @@
-//! A connection to the lane's Redis, and keys nothing else will touch.
+//! A connection to the lane's Dragonfly, and keys nothing else will touch.
 //!
 //! Shared by every integration target here. Keys are namespaced per test rather
-//! than the database being flushed between them: the lane's Redis is one
+//! than the database being flushed between them: the lane's Dragonfly is one
 //! server, cargo runs these targets in parallel, and a flush would delete
 //! another test's stream mid-read.
 
@@ -22,7 +22,7 @@ const TLS_URL_KNOB: &str = "TEST_REDIS_TLS_URL";
 /// Distinguishes keys minted by one process.
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
-/// The lane's Redis, plus a name nothing else in the suite uses.
+/// The lane's Dragonfly, plus a name nothing else in the suite uses.
 pub(crate) struct RedisHarness {
     pub(crate) redis: Redis,
     prefix: String,
@@ -37,7 +37,7 @@ impl RedisHarness {
     /// reason it matters there: the whole cost of a lane connection is the
     /// rustls handshake against an RSA-2048 certificate, redone per connection
     /// with no session resumption. That is CPU work competing with the suite
-    /// that asked for it, so under load the budget lapses on a Redis that is
+    /// that asked for it, so under load the budget lapses on a Dragonfly that is
     /// perfectly healthy. `Redis::connect` stays the right call for the
     /// fault-injection suites next door, which point at private endpoints and
     /// want the raw failure.
