@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Dragonfly, OutboundQueue};
+use afd_dragonfly::{Dragonfly, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, Delivery};
 use afd_outbound::producer::Producer;
 use tokio_util::sync::CancellationToken;
@@ -182,4 +182,46 @@ async fn an_empty_answer_owes_nothing() {
     .await
     .expect("the ledger answers a scan");
     assert!(owed.is_empty(), "an empty answer wrote a row: {owed:?}");
+}
+
+/// Trimming the outbound stream never removes an answer the group still owes.
+///
+/// The queue's own trim is what keeps the acknowledged history bounded, and it
+/// runs on the delivery path after every acknowledgement — so an entry nobody
+/// has taken yet must survive it. A trim that removed the backlog would drop
+/// answers a destination is still owed and no scan would ever find them again:
+/// the obligation row is repairable, the stream entry is not.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = OutboundHarness::reset().await;
+
+    harness
+        .queue
+        .enqueue(OutboundJob {
+            provider: PROVIDER,
+            workspace_id: WORKSPACE,
+            fleet_id: FLEET,
+            event_id: EVENT_ID,
+            answer: ANSWER,
+        })
+        .await
+        .expect("the lane's queue takes an append");
+
+    let before = harness.pending_count().await;
+    let trimmed = harness
+        .queue
+        .trim()
+        .await
+        .expect("the stream answers a trim");
+    assert_eq!(
+        harness.pending_count().await,
+        before,
+        "a trim must not touch the pending list: {trimmed:?}"
+    );
+    assert!(
+        trimmed.retained >= 1,
+        "the entry nobody has taken must survive the trim: {trimmed:?}"
+    );
 }

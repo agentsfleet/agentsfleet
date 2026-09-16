@@ -231,3 +231,28 @@ async fn test_a_dial_that_is_never_answered_gives_up_at_the_connect_timeout() {
         server.seen()
     );
 }
+
+/// A dedicated connection renders its role and stops there.
+///
+/// It is the line an operator reads beside a park that timed out, and the two
+/// roles are the whole question at that moment: a deployment runs both, and a
+/// rendering that named neither sends someone to the wrong connection string.
+/// The driver's own socket state is not theirs to act on and would not survive
+/// a `Debug` derive anyway.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_dedicated_connection_renders_its_role() {
+    let server = FakeRedis::spawn(&[(CMD_XREADGROUP, Reply::Silent)]).await;
+    let config = DragonflyConfig::from_url(DragonflyRole::Api, server.url())
+        .with_request_timeout(REQUEST_DEADLINE);
+    let owned = Dedicated::connect(&config, PARK)
+        .await
+        .expect("a listening socket must be connectable");
+
+    let rendered = format!("{owned:?}");
+    assert!(rendered.starts_with("Dedicated"), "{rendered}");
+    assert!(
+        rendered.contains(".."),
+        "the rendering must stay non-exhaustive: {rendered}"
+    );
+    assert_eq!(owned.role(), DragonflyRole::Api);
+}
