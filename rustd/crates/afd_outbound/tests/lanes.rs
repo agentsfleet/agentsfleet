@@ -295,3 +295,45 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
         "only the finished delivery is acknowledged; the rest stay pending"
     );
 }
+
+/// A job that lands while its lane is retiring is delivered IN ORDER with the
+/// one dispatched behind it.
+///
+/// The lane the job reached is leaving, so the job is handed to a fresh one.
+/// Handing it over after the map entry was released would let the NEXT job
+/// find no lane, spawn its own and overtake it — an inversion to the one
+/// destination whose order this module promises. The hand-over happens holding
+/// the entry instead, so the next dispatch queues behind what was rescued.
+///
+/// Pairs dispatched back to back with no wait between them, each pair landing
+/// while the previous pair's lane retires: the window is two statements wide,
+/// so reaching it means aiming at it repeatedly rather than once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
+    let server = HangingQueue::spawn().await;
+    let token = CancellationToken::new();
+    let (lanes, poster) = lanes_against(&server, &token).await;
+
+    let rounds = 60_u32;
+    for round in 0..rounds {
+        lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 1)).await;
+        lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 2)).await;
+        let acknowledged = (round as usize + 1) * 2;
+        await_until("the pair to be acknowledged", || {
+            server.acks().len() == acknowledged
+        })
+        .await;
+    }
+
+    let expected: Vec<String> = (1..=rounds * 2)
+        .map(|n| format!("{FAST_WORKSPACE}-{n}"))
+        .collect();
+    assert_eq!(
+        poster.delivered(),
+        expected,
+        "an answer rescued from a retiring lane was overtaken by the one behind it"
+    );
+
+    token.cancel();
+    lanes.drain().await;
+}
