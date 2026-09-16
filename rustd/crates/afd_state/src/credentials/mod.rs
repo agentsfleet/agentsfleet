@@ -5,9 +5,7 @@
 //! `src/auth/` in the Zig tree may not import `src/db/`, and `make test-auth`
 //! greps to keep it that way; `afd_auth` reaches the same wall by construction,
 //! because it does not list `sqlx` and so cannot name it. The concrete lookups
-//! therefore live with the host — `cmd/api_key_lookup.zig`,
-//! `cmd/cli_credential_lookup.zig`, `cmd/serve_runner_lookup.zig` — and this
-//! crate is where that lands for the port.
+//! therefore live with the host, and this crate is where they land.
 //!
 //! # One implementation, three statements
 //!
@@ -24,8 +22,7 @@
 //! is not. The runner client counts consecutive rejections toward a
 //! self-termination ceiling and resets that counter on transport-class
 //! failures, so answering an outage with a rejection walks a healthy fleet's
-//! runners to shutdown — `runner_bearer.zig`'s own test pins that behaviour.
-//! Every `?` in this file is chosen against that rule.
+//! runners to shutdown. Every `?` in this file is chosen against that rule.
 
 mod rows;
 

@@ -32,10 +32,10 @@ use crate::services::Services;
 /// The scoped event a failed enrolment is logged under.
 const EVENT: &str = "runner_enrolment_failed";
 
-/// `register.zig`'s refusal for an absent body.
+/// The refusal for an absent body.
 const DETAIL_BODY_REQUIRED: &str = "Request body required";
 
-/// `register.zig`'s refusal for a body it could not read, naming the shape.
+/// The refusal for a body that could not be read, naming the shape.
 ///
 /// Pinned byte-for-byte: an operator enrolling a host by hand reads this
 /// sentence to find out what they got wrong, which makes it behaviour.

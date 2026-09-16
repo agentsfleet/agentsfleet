@@ -2,9 +2,9 @@
 //!
 //! # One statement, not eight
 //!
-//! `fleet_events_store.zig` concatenates its WHERE clause from the filters that
-//! are present, which gives it four statement variants per entry point and
-//! eight across the two. Every one of them repeats the same column list, the
+//! Concatenating a WHERE clause from whichever filters are present gives four
+//! statement variants per entry point and eight across the two. Every one of
+//! them repeats the same column list, the
 //! same ordering and the same limit, and a fix applied to three of four is the
 //! failure mode that shape invites.
 //!
@@ -56,8 +56,7 @@ pub const THREAD_DEFAULT_LIMIT: i64 = 20;
 
 /// The largest message-thread page this surface will build.
 ///
-/// `LIMIT_MAX` from `messages_list.zig`, and deliberately an order of
-/// magnitude below [`MAX_LIMIT`]: every row here carries a trigger payload and
+/// Deliberately an order of magnitude below [`MAX_LIMIT`]: every row here carries a trigger payload and
 /// an agent's full answer, where a listing row carries neither.
 pub const THREAD_MAX_LIMIT: i64 = 25;
 

@@ -9,9 +9,8 @@
 //!
 //! # There is no ownership check, and that is the design
 //!
-//! `bundles.zig` opens by refusing a principal with no `runner_id`, which the
-//! [`RunnerIdentity`] extractor has already done by the time this function
-//! exists — the route's guard is `RunnerBearer` and a tenant credential never
+//! A principal with no `runner_id` is refused before this function exists, by
+//! the [`RunnerIdentity`] extractor — the route's guard is `RunnerBearer` and a tenant credential never
 //! reaches it. What neither implementation does is check that THIS runner's
 //! lease named THIS bundle, and the reason is that the snapshot is
 //! content-addressed by SHA-256 and holds no secrets: resolved secret values
@@ -38,8 +37,8 @@ use crate::services::Services;
 /// The scoped event a failed fetch is logged under.
 const EVENT: &str = "runner_bundle_fetch_failed";
 
-/// What a canonical snapshot is, and it is not negotiable — `importer.zig`
-/// writes one shape and this serves it.
+/// What a canonical snapshot is, and it is not negotiable: one shape is
+/// written and this serves it.
 const TAR: &str = "application/x-tar";
 
 /// [`TAR`], as the response header carries it.

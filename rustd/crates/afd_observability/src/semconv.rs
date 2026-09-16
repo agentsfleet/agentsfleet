@@ -1,8 +1,8 @@
 //! The attribute keys this daemon emits, spelled once.
 //!
-//! Mirrors `observability/semconv.zig`, which exists for the reason this does:
-//! a key that differs by one character between two emitters is two series in
-//! the backend, and nothing reports that as an error.
+//! Spelled once because a key that differs by one character between two
+//! emitters is two series in the backend, and nothing reports that as an
+//! error.
 //!
 //! # What is here, and what deliberately is not
 //!

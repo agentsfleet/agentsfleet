@@ -40,10 +40,10 @@
 //!
 //! # Why a map behind a lock, and not a lock-free slot table
 //!
-//! `metrics_runner.zig` is a fixed array of slots with a compare-and-swap
-//! claim, a readiness flag, a bounded spin for a slot another thread is still
-//! initialising, and a truncated `[48]u8` copy of each identifier — because it
-//! has no allocator at runtime and must not block a request path.
+//! A lock-free slot table is what this would be without an allocator: a fixed
+//! array, a compare-and-swap claim, a readiness flag, a bounded spin for a slot
+//! another thread is still initialising, and a truncated fixed-width copy of
+//! each identifier.
 //!
 //! None of that buys anything here. The write path takes a read lock and
 //! touches atomics; only a runner's FIRST record takes the write lock, and a

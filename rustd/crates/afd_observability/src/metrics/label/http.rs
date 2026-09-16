@@ -6,7 +6,7 @@ use crate::semconv;
 closed_set! {
     /// Why a request that would have opened a span did not.
     ///
-    /// `route_trace.zig`'s own set, kept whole: the budget exists so a storm of
+    /// The set is kept whole: the budget exists so a storm of
     /// idle heartbeats cannot evict the server-error spans, and an operator
     /// reading suppression needs to know WHICH budget shed — a total would say
     /// only that something did.

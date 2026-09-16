@@ -1,7 +1,7 @@
 //! An operator's message to a fleet, on the way in.
 //!
-//! The port of `fleets/messages.zig`. One verb: normalize what a person typed
-//! into an event envelope and admit it.
+//! One verb: normalize what a person typed into an event envelope and admit
+//! it.
 //!
 //! # A steer is admitted like every other producer
 //!

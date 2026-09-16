@@ -12,8 +12,7 @@
 //! as text, so the report path enqueues without importing a connector and this
 //! crate stays out of the connector graph entirely. Exactly one crate resolves
 //! that string to a poster — `afd_outbound` — which is what keeps a new
-//! connector from being a change to the report path. `connector_outbound.zig`
-//! makes the same split for the same reason.
+//! connector from being a change to the report path.
 //!
 //! # Two types because there are two connections
 //!
@@ -68,8 +67,8 @@ pub const OUTBOUND_STREAM_KEY: &str = "connector:outbound";
 /// The consumer group the workers read under. Shared with the Zig daemon.
 pub const OUTBOUND_CONSUMER_GROUP: &str = "connector_workers";
 
-/// The job's fields on the wire, named once each. A DATA FORMAT: these are the
-/// field names `connector_outbound.zig` writes and reads.
+/// The job's fields on the wire, named once each. A DATA FORMAT: a reader
+/// deserialises by these exact names, so renaming one is a wire change.
 pub(super) const FIELD_PROVIDER: &str = "provider";
 /// See [`FIELD_PROVIDER`].
 pub(super) const FIELD_WORKSPACE_ID: &str = "workspace_id";
@@ -122,8 +121,8 @@ const CONSUMER_FALLBACK_HOST: &str = "localhost";
 /// that changed per process would stand every unacknowledged answer in a
 /// pending list nothing ever reads again — the entry would be neither
 /// delivered nor lost, just permanently invisible, which is the worst of the
-/// three. `redis_client.zig` reaches the same conclusion in the comment above
-/// `stableConsumerId`, having shipped the per-probe version first.
+/// three. The per-probe version shipped first and was replaced for this
+/// reason.
 ///
 /// # The name is the host's, through the syscall rather than the environment
 ///
@@ -131,9 +130,8 @@ const CONSUMER_FALLBACK_HOST: &str = "localhost";
 /// reading it finds nothing and every instance on the deployment collapses
 /// onto one consumer name — the exact stranding this function exists to
 /// prevent, reintroduced by the cheaper lookup. The `hostname` crate is a safe
-/// wrapper over the one call `redis_client.zig` makes, so the two daemons name
-/// themselves identically and, being different hosts or containers, do not
-/// collide.
+/// wrapper over that syscall, so instances name themselves by host and,
+/// being different hosts or containers, do not collide.
 #[must_use]
 pub fn outbound_consumer() -> String {
     let host = hostname::get()

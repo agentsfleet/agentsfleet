@@ -127,10 +127,10 @@ pub(crate) const FLEET_STREAM_GLOB: &str = "fleet:*:events";
 
 /// The channel a fleet's live-tail frames are published on.
 ///
-/// `activity_publisher.zig` builds this into a 128-byte stack buffer and has a
-/// failure arm for the overflow, which is a fact about `bufPrint` rather than
-/// about the channel. Here the string owns its own length and the arm is gone —
-/// there is no truncated-channel case left to handle, so nothing has to decide
+/// The string owns its own length, so there is no overflow arm: a fixed stack
+/// buffer would need one, and that arm would be a fact about the buffer rather
+/// than about the channel. There is no truncated-channel case to handle, so
+/// nothing has to decide
 /// what publishing to a truncated channel would mean.
 ///
 /// Distinct from [`fleet_stream_key`] and deliberately adjacent to it: one is a
