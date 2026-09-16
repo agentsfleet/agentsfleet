@@ -61,7 +61,22 @@ impl<S: tracing::Subscriber> Layer<S> for Recorded {
 }
 
 /// Records for the length of one test, on this thread.
+///
+/// Thread-local, so it captures only what is emitted on the thread that called
+/// it. Every test here runs on `#[tokio::test]`'s default CURRENT-THREAD
+/// runtime, so the whole future — including a diagnostic emitted after an
+/// await — runs on this one. The assertion holds a caller to that: adding
+/// `flavor = "multi_thread"` to a recording test would let the future resume on
+/// a worker the subscriber never saw, and the event-name assertions would start
+/// failing intermittently for a reason that reads like a drain bug.
 fn recording() -> (Recorded, tracing::subscriber::DefaultGuard) {
+    assert!(
+        matches!(
+            tokio::runtime::Handle::current().runtime_flavor(),
+            tokio::runtime::RuntimeFlavor::CurrentThread
+        ),
+        "a thread-local recorder only sees a future that stays on this thread"
+    );
     let recorded = Recorded::default();
     let guard =
         tracing::subscriber::set_default(tracing_subscriber::registry().with(recorded.clone()));

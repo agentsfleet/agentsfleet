@@ -122,6 +122,18 @@ impl Drain {
         &self.accepting
     }
 
+    /// The token cancelled once the accept loop has left and dropped its
+    /// listener — the moment the port is guaranteed to refuse.
+    ///
+    /// [`Self::accepting`] only ASKS; this says it has happened, which is what
+    /// a caller probing the port has to wait for. A drain with no accept loop
+    /// never cancels it, so only [`Self::settle`] may wait on it unconditionally
+    /// — it checks `attached` first.
+    #[must_use]
+    pub fn stopped(&self) -> &CancellationToken {
+        &self.stopped
+    }
+
     /// Declares that an accept loop is running against this drain.
     ///
     /// Called once, by the loop, before it takes its first connection.
