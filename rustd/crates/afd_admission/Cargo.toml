@@ -60,5 +60,10 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 # The replay proofs read the stream back by exact entry, which is what a
 # lease does; the crate's own reader samples through a consumer group.
 redis.workspace = true
+# The error surface reaches THROUGH the chain to the driver's own
+# `DatabaseError`, which is the only way to grade what the exhausted-disk
+# sample claims to be. A dev-dependency on a crate this one already depends
+# on, for a type only the suite names.
+sqlx.workspace = true
 # So the event macros in the code under test evaluate their fields.
 tracing-subscriber.workspace = true

@@ -223,3 +223,53 @@ fn the_backtrace_accessor_answers_for_every_kind() {
         let _status = error.backtrace().status();
     }
 }
+
+/// The exhausted-disk sample IS a Postgres disk-full error, not a stand-in.
+///
+/// It exists so the suites that grade this surface meet the one statement
+/// failure an operator acts on differently from every other — the cure is
+/// space, not a retry — and the only way to say that honestly is for the
+/// sample to carry what the driver would carry: `53100`, the sentence the
+/// server sends, and a kind the driver can classify. A fixture that answered
+/// a bare string here would let the surface look covered while the branch an
+/// operator needs was never built.
+#[test]
+fn the_exhausted_sample_carries_a_real_disk_full_database_error() {
+    const DISK_FULL_SQLSTATE: &str = "53100";
+
+    let (_label, exhausted) = one_of_each_kind()
+        .into_iter()
+        .find(|(label, _error)| *label == "exhausted")
+        .expect("the sample declares an exhausted kind");
+
+    let cause = exhausted.source().expect("a statement failure keeps its cause");
+    let driver = cause
+        .downcast_ref::<sqlx::Error>()
+        .expect("the cause is the driver's own error, not a stringified copy");
+    let sqlx::Error::Database(database) = driver else {
+        panic!("an exhausted disk is a DATABASE error: {driver:?}");
+    };
+
+    assert_eq!(
+        database.code().as_deref(),
+        Some(DISK_FULL_SQLSTATE),
+        "the SQLSTATE is what tells a disk-full apart from any other refused statement"
+    );
+    assert!(
+        database.message().contains("No space left on device"),
+        "the server's own sentence must survive: {}",
+        database.message()
+    );
+    assert_eq!(
+        database.kind(),
+        sqlx::error::ErrorKind::Other,
+        "sqlx classifies this as Other; a sample claiming a constraint violation \
+         would route a caller to a retry that can never succeed"
+    );
+    // The chain is walkable all the way down as `std::error::Error`, which is
+    // what an operator's log line renders.
+    assert!(
+        !database.as_error().to_string().is_empty(),
+        "the driver error must render as itself"
+    );
+}
