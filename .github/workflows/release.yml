@@ -504,6 +504,20 @@ jobs:
       OTLP_COLLECTOR_DIR: deploy/fly/otelcol-prod
       OTLP_COLLECTOR_MACHINES: "2"
       OTLP_COLLECTOR_ENDPOINT: http://otelcol-prod.internal:4318
+      # The datastore hop, wired by M196_001 alongside the dev one and graded
+      # by its own next run rather than by that milestone. A production lane
+      # still resolving an Upstash seed cannot boot the daemon at all -- the
+      # transport has been cluster-only since M192 -- so leaving this to a
+      # later change would leave production unshippable, not merely
+      # unrehearsed.
+      #
+      # Build context is the repository root: the image copies
+      # scripts/dragonfly-cluster.sh, the same bootstrap the integration lane
+      # runs and the same one dev deploys.
+      DRAGONFLY_APP: dragonfly-prod
+      DRAGONFLY_BUILD_CONTEXT: .
+      DRAGONFLY_CONFIG: deploy/fly/dragonfly-prod/fly.toml
+      DRAGONFLY_MACHINES: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -517,7 +531,7 @@ jobs:
           TUNNEL_TOKEN: op://${{ vars.VAULT_PROD }}/cloudflare-tunnel-prod/credential
           DATABASE_URL_API: op://${{ vars.VAULT_PROD }}/planetscale-prod/api-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
-          DRAGONFLY_URL: op://${{ vars.VAULT_PROD }}/upstash-prod/api-url
+          DRAGONFLY_URL: op://${{ vars.VAULT_PROD }}/dragonfly-prod/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_PROD }}/approval-signing-secret/credential
@@ -566,6 +580,29 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-prod
+
+      - name: Ensure the Dragonfly cluster is serving
+        # Before the daemon, and for a harder reason than the collector's: a
+        # daemon that cannot reach telemetry still serves, while a daemon whose
+        # seed is not a cluster refuses to boot with a permanently classified
+        # error no retry clears. Standing this up afterwards would guarantee a
+        # crash-loop in between.
+        run: |
+          bash scripts/ensure_fly_app.sh --create-only "$DRAGONFLY_APP"
+          bash scripts/ensure_fly_app.sh \
+            "$DRAGONFLY_APP" "$DRAGONFLY_BUILD_CONTEXT" "$DRAGONFLY_MACHINES" "$DRAGONFLY_CONFIG"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+          FLY_ORG: agentsfleet-prod
+
+      - name: Prove the cluster is bootstrapped, not merely listening
+        # Fly's check is TCP, which a node holding no DFLYCLUSTER CONFIG passes
+        # happily. The daemon's preflight wants more than a listening socket,
+        # so the gate is the script's own `healthy` verb.
+        run: |
+          bash playbooks/operations/datastore_cutover/probes.sh cluster-ready "$DRAGONFLY_APP"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |

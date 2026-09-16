@@ -9,13 +9,26 @@ Every step below is a command, not a description, and every step carries a probe
 tag. `playbooks/operations/cutover/probes.sh` runs the probes and refuses when a rubric row
 of the merged milestones has none.
 
+## What this playbook covers
+
+The Zig-to-Rust BINARY SWAP (`M181_006`), and nothing else. It is not the
+procedure for a change that moves the datastore — that is
+`playbooks/operations/datastore_cutover/001_playbook.md`, and the section
+below is why the two cannot share one.
+
 ## Why the rollback is boring
 
 No schema change, no data migration, no store change. The swap replaces one
-binary with another against the same Postgres, the same Redis and the same
+binary with another against the same Postgres, the same datastore and the same
 ledger. That is the whole rollback story, and it is a property this milestone
 family protects rather than a plan it writes down: the absence of `schema/` from
 Files Changed is what makes it true, and the SCHEMA GUARD is what keeps it true.
+
+**That premise holds for a binary swap and fails for a store change.** Rolling
+a daemon back onto a datastore it has been writing to since the cutover does
+not restore the previous state; it points an older binary at newer data. If
+the change you are rolling back moved the store, this section does not apply
+to it and the datastore cutover playbook's own abort criteria do.
 
 ## Drain order
 
