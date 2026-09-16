@@ -49,6 +49,9 @@ pub(super) async fn accept_loop<A: Acceptor>(
     drain: Drain,
     abort: CancellationToken,
 ) {
+    // Before the first accept, so a drain landing immediately still knows to
+    // wait for this loop rather than reading a count it can still join.
+    drain.attach();
     loop {
         let accepted = tokio::select! {
             // Cancellation is checked against a genuinely blocked accept, not
@@ -103,6 +106,10 @@ pub(super) async fn accept_loop<A: Acceptor>(
             }
         });
     }
+    // However the loop ended, `listener` is dropped from here, so no further
+    // connection can be accepted or counted. Saying so is what lets a drain
+    // snapshot a settled number.
+    drain.stopped_accepting();
 }
 
 /// Runs `accept_loop` over any [`Acceptor`], for tests that need a faulty one.
