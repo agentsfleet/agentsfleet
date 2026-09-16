@@ -49,7 +49,7 @@ fn target(lane: &CronLane) -> FireTarget {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn a_verified_fire_reaches_the_stream_once() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions().await);
@@ -72,7 +72,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
 
 /// The retry case, which is the ordinary one rather than the exceptional one.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions().await);
@@ -98,7 +98,7 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
 
 /// Two daemons, one retry, at the same moment.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn two_daemons_receiving_one_retry_together_append_once() {
     let lane = CronLane::open().await;
     let target = target(&lane);
@@ -134,7 +134,7 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
 /// second would be reported as a replay and the fleet would never be woken for
 /// it.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions().await);
@@ -164,7 +164,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
 /// The scheduler repeats its id only for a RETRY. A fresh id means the schedule
 /// came round again, and suppressing that would silently skip a run.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions().await);
@@ -190,7 +190,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
 
 /// Two fleets cannot claim over each other, even on one schedule id.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn one_fleets_fire_does_not_claim_anothers() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;

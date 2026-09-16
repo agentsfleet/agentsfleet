@@ -107,7 +107,7 @@ async fn carded_services(lane: &Lane, fleet: &str) -> Vec<Option<String>> {
 
 /// Installing a bundle that declares a mintable credential raises its card.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn install_requests_a_grant_per_declared_mintable_credential() {
     let lane = Lane::create().await;
     lane.seed_library_entry(
@@ -150,7 +150,7 @@ async fn install_requests_a_grant_per_declared_mintable_credential() {
 /// for `elastic`, `grafana` and `fly` — decisions no credential mint ever
 /// consults, on a page an operator has to clear by hand.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_non_mintable_declaration_requests_no_grant() {
     let lane = Lane::create().await;
     lane.seed_library_entry(LIBRARY_ID_STATIC, SKILL_MD_STATIC, Some(TRIGGER_MD_STATIC))
@@ -177,7 +177,7 @@ async fn a_non_mintable_declaration_requests_no_grant() {
 /// fleet's own request is written once and names only its own fleet, which is
 /// the property a shared-row implementation would break silently.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_second_install_asks_for_its_own_fleets_grant() {
     let lane = Lane::create().await;
     lane.seed_library_entry(
@@ -216,7 +216,7 @@ async fn a_second_install_asks_for_its_own_fleets_grant() {
 /// unreachable — this test is the one that reaches it, and it covers the whole
 /// class of fleets that declare a mintable credential.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_fleet_carrying_a_grant_card_still_purges() {
     let lane = Lane::create().await;
     lane.seed_library_entry(
@@ -265,7 +265,7 @@ async fn a_fleet_carrying_a_grant_card_still_purges() {
 
 /// An unreadable stored handle must not undo an otherwise usable install.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unreadable_handle_leaves_the_install_active_without_a_grant() {
     let lane = Lane::create().await;
     lane.seed_library_entry(
@@ -296,7 +296,7 @@ async fn an_unreadable_handle_leaves_the_install_active_without_a_grant() {
 /// A grant-write prerequisite failing after the fleet identity was minted is
 /// recoverable: the fleet and stream survive for the lease-time backstop.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_failed_grant_identifier_leaves_the_install_active_without_a_card() {
     let lane = Lane::create().await;
     lane.seed_library_entry(

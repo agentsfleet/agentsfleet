@@ -36,7 +36,7 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 /// names; the count rides the frame so the console can show the gate waiting
 /// without a read of its own.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

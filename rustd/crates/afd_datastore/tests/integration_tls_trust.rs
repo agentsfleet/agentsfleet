@@ -50,7 +50,7 @@ fn tls_config() -> RedisConfig {
 
 /// The accepting direction: the lane's authority verifies this server.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_the_lanes_authority_verifies_the_lanes_redis() {
     let config = tls_config().with_ca_cert_file(Some(lane(CA_KNOB).into()));
 
@@ -73,7 +73,7 @@ async fn test_the_lanes_authority_verifies_the_lanes_redis() {
 /// quietly falling back to system roots — the accepting test above would still
 /// pass and only this one would fail. That asymmetry is the whole point.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_bad_authority_is_refused_by_the_lanes_redis() {
     let config = tls_config().with_ca_cert_file(Some(lane(BAD_CA_KNOB).into()));
 

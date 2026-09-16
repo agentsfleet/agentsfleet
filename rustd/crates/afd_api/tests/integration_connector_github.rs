@@ -164,7 +164,7 @@ async fn github_fixture() -> Fixture {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn connect_restores_an_existing_installation() {
     // The drift the whole leg exists for: the App is installed, the datastore
     // was rebuilt, and the workspace has no handle. Pressing Connect lists the
@@ -222,7 +222,7 @@ async fn connect_restores_an_existing_installation() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_claimed_installation_is_probed_and_bound_only_when_the_token_opens_it() {
     // GitHub's install return carries `installation_id`. It is a CLAIM: the
     // daemon spends the user token on one repository read of it and binds

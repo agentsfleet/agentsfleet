@@ -59,7 +59,7 @@ fn report(label: &str, mut micros: Vec<u128>) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "diagnostic: needs live Redis: make test-integration-rustd"]
+#[ignore = "diagnostic: needs live Dragonfly: make test-integration-rustd"]
 async fn diagnose_where_connect_spends_its_time() {
     let config = config();
 

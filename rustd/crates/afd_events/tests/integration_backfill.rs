@@ -94,7 +94,7 @@ const SECOND_GAP_AFTER_MS: i64 = 1_000;
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 

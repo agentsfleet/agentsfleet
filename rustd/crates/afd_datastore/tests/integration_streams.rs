@@ -21,7 +21,7 @@ use crate::support::RedisHarness;
 /// A second identifier anywhere in that chain is how an event gets processed
 /// twice under two names.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_stream_xadd_readgroup_ack() {
     let harness = RedisHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
@@ -105,7 +105,7 @@ async fn test_stream_xadd_readgroup_ack() {
 /// that already spent real money. The read cannot know where delivery
 /// stopped, so it does not guess; the caller that holds the ledgers does.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_vanished_group_is_reported_and_restored_where_delivery_stopped() {
     let harness = RedisHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
@@ -209,7 +209,7 @@ async fn cleanup(harness: &RedisHarness, keys: &[String]) {
 /// asserts the report the caller actually receives.
 /// `docs/architecture/datastore_scaling.md` carries the measurements.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_group_create_that_is_not_a_race_is_reported() {
     let harness = RedisHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
@@ -252,7 +252,7 @@ async fn test_a_group_create_that_is_not_a_race_is_reported() {
 /// counter directly, which is how this asserts the real threshold rather than
 /// lowering it for the test's convenience.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
     let harness = RedisHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
@@ -327,7 +327,7 @@ async fn test_an_abandoned_entry_is_autoclaimed_by_another_consumer() {
 /// connection that forgot which role it serves would log an outage against the
 /// wrong connection string.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_dedicated_connection_reports_the_role_it_opened_for() {
     let config = RedisHarness::config();
     let expected = config.role();

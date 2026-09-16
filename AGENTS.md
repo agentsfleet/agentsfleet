@@ -29,7 +29,7 @@ facts.
 - **One lane needs live datastores, and only one.** The Zig integration and
   memory-leak lanes went with the rest of the Zig gating; `make/test-infra.mk`
   survived them, and M176 built `make test-integration-rustd` on it — docker
-  compose Postgres and Redis, schemas reset per run. Nothing else a developer
+  compose Postgres and Dragonfly, schemas reset per run. Nothing else a developer
   runs needs either: `make test-unit-all` stays datastore-free, because every
   Rust test that needs one is `#[ignore]`d and runs only in that lane.
   `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
@@ -37,7 +37,7 @@ facts.
   equivalents.** CONFORM → `make harness-verify` · lint → `make lint-all`
   (Rust lint rides `lint-rustd`, script self-tests ride `lint-scripts`) ·
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
-  gate) · integration → `make test-integration-rustd` (live Postgres + Redis) ·
+  gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
   version → `make check-version` · dry lanes → `make dry-app` /
   `make dry` · wire fixtures → `make wire-fixtures`. A package-scoped runner
   (`cd ui/packages/app && bun run test`, `cargo test -p afd_wire`, …) is

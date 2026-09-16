@@ -48,7 +48,7 @@ fn approved_session(session_id: &str) -> SessionState {
 /// is redeemed a hundred times. Redis runs a script body to completion, so the
 /// window does not exist.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_transition_atomic() {
     let harness = RedisHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
@@ -119,7 +119,7 @@ async fn test_session_transition_atomic() {
 /// The lockout is the security property: without it a six-digit code is
 /// brute-forceable inside the five-minute window.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_locks_out_after_repeated_wrong_codes() {
     let harness = RedisHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
@@ -170,7 +170,7 @@ async fn test_session_locks_out_after_repeated_wrong_codes() {
 
 /// A session that was never written, and one that is not yet approved.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_missing_and_unapproved_are_distinct() {
     let harness = RedisHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());
@@ -206,7 +206,7 @@ async fn test_session_missing_and_unapproved_are_distinct() {
 /// The blob round-trips through Redis unchanged, which is what lets the Zig
 /// daemon read what this writes.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_blob_round_trips() {
     let harness = RedisHarness::connect().await;
     let store = SessionStore::new(harness.redis.clone());

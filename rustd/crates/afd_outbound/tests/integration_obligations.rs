@@ -225,7 +225,7 @@ async fn datastore() -> Redis {
 /// stream is empty AND the ledger still owes, which is what makes the loss
 /// recoverable instead of silent.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_result_committed_without_its_append_is_still_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -277,7 +277,7 @@ async fn a_result_committed_without_its_append_is_still_owed() {
 /// the signal it uses not to append. Asserting only the row count would pass
 /// even if both replicas queued the answer twice.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn two_replicas_reporting_one_answer_owe_one_delivery() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -321,7 +321,7 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
 /// `delivered_at IS NULL` so the retry cannot move the instant the destination
 /// FIRST took the answer, nor count a second attempt against it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_destination_that_accepted_an_answer_is_stamped_once() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -374,7 +374,7 @@ async fn a_destination_that_accepted_an_answer_is_stamped_once() {
 /// Staged with two explicitly-named readers because one test process has one
 /// hostname: the name is the only thing that differs from what production builds.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_outbound_obligations_survive_worker_replacement() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -474,7 +474,7 @@ async fn test_outbound_obligations_survive_worker_replacement() {
 /// The entries SURVIVE here and become unreachable, which is a different shape
 /// from losing the stream — and the point is that the ledger does not care.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_lost_consumer_group_leaves_the_answer_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -502,7 +502,7 @@ async fn a_lost_consumer_group_leaves_the_answer_owed() {
 /// entries, group and pending lists all gone at once, and the answer is still
 /// owed because PostgreSQL never stopped knowing about it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_wholly_lost_stream_leaves_the_answer_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
@@ -539,7 +539,7 @@ async fn a_wholly_lost_stream_leaves_the_answer_owed() {
 /// No clock is waited on. `SEEDED_AT` is older than `producer::MIN_AGE` by
 /// years, so the producer's first pass already finds the row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;

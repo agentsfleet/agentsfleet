@@ -67,7 +67,7 @@ type Node = String;
 
 /// The hub survives the server killing its connection, and keeps delivering.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed() {
     let harness = RedisHarness::connect().await;
     let publisher = FleetStreams::new(harness.redis.clone());

@@ -165,7 +165,7 @@ pub(crate) async fn complete_as(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_bystander_cannot_finish_somebody_elses_connect_and_the_starter_still_can() {
     // Both halves of the identity binding, in one walk. The refusal alone is
     // proven with no store in `afd_connector/tests/connect_verify.rs`; what
@@ -214,7 +214,7 @@ async fn a_bystander_cannot_finish_somebody_elses_connect_and_the_starter_still_
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
     // The landing transaction, proven by breaking its second write. The
     // routing row is written first and the grant sealed second, inside one
@@ -252,7 +252,7 @@ async fn a_connect_that_cannot_seal_its_grant_leaves_no_routing_row() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

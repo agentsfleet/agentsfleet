@@ -11,7 +11,7 @@ use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
 use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn write_gate_parks_once_and_honours_each_durable_outcome() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -91,7 +91,7 @@ async fn assert_expired_path(gates: &Gates, fixture: &Fixture, writing: &FleetCo
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -142,7 +142,7 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

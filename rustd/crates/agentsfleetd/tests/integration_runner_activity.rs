@@ -55,7 +55,7 @@ const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 /// them: the frame that should publish, the body that should be refused before
 /// the publish, and the lease this runner does not hold.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_publish() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -175,7 +175,7 @@ async fn test_activity_publish() {
 /// change. A telemetry failure that turned into a 500 would make a runner treat
 /// a healthy run as a failed one and terminate its child.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_drops_a_frame_it_cannot_render() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

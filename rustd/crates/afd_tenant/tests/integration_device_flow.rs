@@ -67,7 +67,7 @@ fn origin(session_id: &str) -> Fingerprint {
 /// it. The assertion is that equality — not that a credential was minted, which
 /// happens in the client after it decrypts what this hands back.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_happy_path() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -126,7 +126,7 @@ async fn test_device_flow_happy_path() {
 /// what an operator with a Redis console can read. If the six digits were
 /// stored, anybody who can read the queue could finish somebody else's login.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_stores_only_the_code_digest() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -169,7 +169,7 @@ async fn test_device_flow_stores_only_the_code_digest() {
 /// against a live queue, rather than being swallowed by a store error on the
 /// way.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_rejects_malformed() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -229,7 +229,7 @@ async fn test_device_flow_rejects_malformed() {
 
 /// Dimension 1.2 — a redeemed session is terminal, and reads as gone.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_terminal_states_are_terminal() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -270,7 +270,7 @@ async fn test_device_flow_terminal_states_are_terminal() {
 
 /// Dimension 1.2 — a login is cancellable by its owner and by nobody else.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -316,7 +316,7 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
 
 /// Dimension 1.3 — two dashboards click Approve, and exactly one wins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_approve() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -359,7 +359,7 @@ async fn test_device_flow_state_races_on_approve() {
 /// each is given a distinct fingerprint: the replay window is for the caller
 /// who asked first losing its reply, not for a crowd sharing one answer.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_verify() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -404,7 +404,7 @@ async fn test_device_flow_state_races_on_verify() {
 
 /// Dimension 1.3 — the caller who asked first may ask again, and only them.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_replays_for_the_original_caller_only() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -446,7 +446,7 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
 
 /// Dimension 1.3 — verifying before approval never advances the machine.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -480,7 +480,7 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
 
 /// Dimension 1.3 — the attempt ceiling is terminal, and says so distinctly.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_attempt_ceiling_aborts_the_session() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);
@@ -527,7 +527,7 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
 
 /// Dimension 1.2 — one person's bulk cancel touches nobody else's logins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
     let harness = RedisHarness::connect().await;
     let sessions = surface(&harness);

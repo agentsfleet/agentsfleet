@@ -61,7 +61,7 @@ const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
 /// fleet is marked ready so the message is leasable now rather than at the next
 /// poll.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_steer_append_event_id() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());
@@ -167,7 +167,7 @@ async fn test_steer_append_event_id() {
 /// entry and both are leasable. Should a dedup ever be introduced, this is the
 /// test that fails and says so.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_steer_repeats_are_two_messages_not_one() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());

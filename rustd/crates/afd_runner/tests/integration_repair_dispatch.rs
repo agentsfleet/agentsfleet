@@ -17,7 +17,7 @@ use crate::support::connect_redis;
 const NOW: i64 = 1_760_000_000_000;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn repair_dispatch_records_one_event_under_a_fenced_claim() {
     let fixture = Fixture::create().await;
     fixture.seed_intent().await;

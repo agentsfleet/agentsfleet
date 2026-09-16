@@ -80,7 +80,7 @@ fn payload(n: u8) -> String {
 /// 3. a second connection to the same channel numbers from zero AGAIN, and
 ///    receives nothing published while nobody held a subscription.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_sse_sequencing_semantics() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
@@ -118,7 +118,7 @@ async fn test_sse_sequencing_semantics() {
 /// because a control frame that consumed a number would leave a gap in the ids
 /// a client uses to tell a dropped frame from a control one.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_fleet_stream_opens_with_hello_before_any_activity() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
@@ -229,7 +229,7 @@ async fn assert_reconnect_starts_over(
 /// frames across channels, drops an unrouteable payload without spending a
 /// number, and detaches a fleet on the next authorization refresh.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());

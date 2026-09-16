@@ -46,7 +46,7 @@ const APPROVE_BODY: &str = r#"{
 const VERIFY_BODY: &str = r#"{"verification_code":"012345"}"#;
 
 #[tokio::test]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn device_sessions_open_approve_verify_replay_and_cancel() {
     let router = Fleet::new()
         .with_session_queue(harness::connect_redis().await)
