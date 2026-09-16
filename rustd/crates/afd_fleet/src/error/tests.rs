@@ -276,6 +276,12 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         .find(|(kind, _error)| *kind == "datastore")
         .map(|(_kind, error)| error)
         .ok_or("the admission sample has no outage kind")?;
+    // The delivery ledger `afd_outbound` owns. Lifted through that crate's own
+    // `error_lifts!` rather than converted here, so `?` carries a report's
+    // obligation failure with no `map_err` at the call site.
+    let outbound = afd_outbound::Error::from(first_db_error()?);
+    let lifted_outbound = Error::from(outbound);
+    assert!(!lifted_outbound.code().as_str().is_empty());
     let lifted_admission = Error::from(admission);
     // Read off the source, not restated here: a second copy of the admission
     // plane's mapping in this crate is exactly the drift the lift exists to
@@ -301,6 +307,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         Error::from(events),
         Error::from(entropy),
         lifted_admission,
+        lifted_outbound,
     ] {
         assert!(failure.source().is_some());
         assert!(!failure.detail().is_empty());

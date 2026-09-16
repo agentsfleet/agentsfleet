@@ -87,6 +87,8 @@ mod connect_refusals;
 mod dedicated_faults;
 #[path = "error_surface.rs"]
 mod error_surface;
+#[path = "hub_connect_deadline.rs"]
+mod hub_connect_deadline;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
 #[path = "index_addressing.rs"]
