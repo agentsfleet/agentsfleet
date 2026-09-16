@@ -28,8 +28,7 @@ pub const CA_CERT_FILE_KNOB: &str = "DRAGONFLY_TLS_CA_CERT_FILE";
 
 /// Which connection a piece of work belongs on.
 ///
-/// Two roles, not three: Dragonfly has no migrator. `redis_types.zig` carries the
-/// same pair for the same reason.
+/// Two roles, not three: Dragonfly has no migrator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DragonflyRole {
     /// Background work and anything without a more specific role.

@@ -9,9 +9,8 @@
 //!
 //! A `const` cannot be concatenated into another `const`, and the alternative —
 //! writing the column list out twice — is the drift this exists to prevent.
-//! `fleet_events_store.zig` repeats its own `EVENTS_SELECT` across eight
-//! concatenated variants for want of this, and `fleet_event_detail_store.zig`
-//! carries a ninth copy with two columns added.
+//! Without it the same `EVENTS_SELECT` is repeated across eight concatenated
+//! variants, with a ninth copy carrying two columns more.
 //!
 //! # The bodies are appended, not spliced
 //!
@@ -127,9 +126,8 @@ pub(super) const SELECT_DETAIL: &str = concat!(
 /// them still does not.
 ///
 /// The cursor is NULL-gated the way [`SELECT_PAGE`]'s is, so the first page
-/// and the resumed page are one text rather than the two
-/// `fleet_event_detail_store.zig` carries — a fix applied to one of two is the
-/// failure mode that shape invites.
+/// and the resumed page are one text rather than two — a fix applied to one
+/// of two is the failure mode that shape invites.
 ///
 /// `$1` workspace, `$2` fleet, `$3` cursor timestamp or NULL, `$4` cursor
 /// event id, `$5` limit.

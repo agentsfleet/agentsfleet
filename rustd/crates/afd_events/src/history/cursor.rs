@@ -3,10 +3,8 @@
 //! # Why this is not [`afd_core::paging::Cursor`]
 //!
 //! That type exists, it is keyset, and it carries the same two fields. It also
-//! spells a timestamp boundary `{millis}:{id}` in the CLEAR, because that is
-//! what `keyset_cursor.zig` spells — and the events endpoints do not use
-//! `keyset_cursor.zig`. They use `fleet_events_filter.zig`, which wraps the
-//! whole pair in base64url.
+//! spells a timestamp boundary `{millis}:{id}` in the CLEAR. The events
+//! endpoints do not: they wrap the whole pair in base64url.
 //!
 //! Two cursor formats in one product is not a thing to be pleased about, and it
 //! was inherited rather than chosen. What settles which one this crate emits is

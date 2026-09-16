@@ -72,8 +72,7 @@ fn test_stream_key_and_group_match_the_zig_constants() {
     );
 }
 
-/// The session key and time-to-live, frozen as `session_store_redis.zig`
-/// declared them at sunset.
+/// The session key and time-to-live, frozen as they were declared.
 ///
 /// Read from that file until the tree's deletion; pinned here now. The property
 /// outlives its source: a prefix or a lifetime that moves without a migration

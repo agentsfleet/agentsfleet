@@ -25,8 +25,8 @@ mod known_answer;
 mod mac;
 #[path = "secret.rs"]
 mod secret;
-#[path = "zig_parity.rs"]
-mod zig_parity;
+#[path = "envelope_conformance.rs"]
+mod envelope_conformance;
 
 #[path = "secret_object.rs"]
 mod secret_object;

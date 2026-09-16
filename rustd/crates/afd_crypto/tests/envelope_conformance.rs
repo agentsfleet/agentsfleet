@@ -1,35 +1,21 @@
-//! The Zig unit suite, re-run against the Rust implementation.
+//! The envelope's behaviour, pinned case by case.
 //!
-//! Each test below mirrors one the retired daemon's `secrets/crypto_primitives.zig` carried
-//! with the SAME inputs and the SAME expected outcome. Where the Zig suite is
-//! the specification, this file is the conformance run: no fixture is committed,
-//! no Zig is compiled, and nothing is executed outside this crate — the parity
-//! claim is carried entirely by the assertions agreeing.
+//! Seven properties, each with fixed inputs and a fixed expected outcome: a
+//! round trip returns the plaintext, a tampered tag is refused, associated data
+//! that does not match is refused, two seals of one plaintext differ, a key
+//! survives its hex round trip, a wrong-length hex fails closed, and secret
+//! bytes are zeroed before their memory is released.
 //!
-//! # Mapping
+//! # Why these run at the envelope and not the primitive
 //!
-//! | Zig test (`crypto_primitives.zig`) | Rust test here |
-//! |---|---|
-//! | `encrypt/decrypt round-trip with raw bytes` | [`round_trip_with_raw_bytes`] |
-//! | `decrypt fails when tag is tampered` | [`decrypt_fails_when_tag_is_tampered`] |
-//! | `associated data mismatch rejects ciphertext` | [`associated_data_mismatch_rejects_ciphertext`] |
-//! | `encrypt generates unique nonces` | [`encrypt_generates_unique_nonces`] |
-//! | `loadKek returns the KEK seeded via setKekFromHex` | [`kek_round_trips_through_hex`] |
-//! | `setKekFromHex rejects a wrong-length hex (fails closed)` | [`kek_rejects_a_wrong_length_hex`] |
-//! | `secure memory free hands zeroed bytes ...` (`secure_memory_test.zig`) | [`secret_bytes_are_zeroed_before_release`] |
+//! The single-layer primitive takes arbitrary associated data and stays
+//! private, because a caller reaching it could seal a payload under the Key
+//! Encryption Key (KEK) directly and skip the per-row Data Encryption Key
+//! (DEK). Every case below is therefore exercised through the two-layer
+//! envelope with the SAME associated-data bytes. The extra layer can only make
+//! a case stricter, never weaker.
 //!
-//! # One deliberate difference, and why it is not a gap
-//!
-//! Zig's `encrypt`/`decrypt` are the single-layer primitive taking arbitrary
-//! associated data. This crate's public surface is the two-layer envelope, and
-//! the primitive stays private because a caller reaching it could seal a payload
-//! under the KEK directly and skip the per-row Data Encryption Key. So each case
-//! is mirrored at the envelope level with the SAME associated-data bytes: the
-//! inputs, the tampering, and the expected outcome are identical, and the extra
-//! layer can only make a test stricter, never weaker.
-//!
-//! `TEST_KEK_HEX` below is `crypto_primitives.zig`'s own constant, character for
-//! character. It protects nothing.
+//! `TEST_KEK_HEX` is a fixed test vector. It protects nothing.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::unwrap_used,
@@ -41,7 +27,7 @@ use afd_crypto::aad::Aad;
 use afd_crypto::envelope::{Envelope, Sealer};
 use afd_crypto::secret::Kek;
 
-/// `crypto_primitives.zig`'s `TEST_KEK_HEX`, verbatim.
+/// The fixed key these cases seal under.
 const TEST_KEK_HEX: &str = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 
 /// The plaintext the Zig round-trip test uses.

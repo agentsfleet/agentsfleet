@@ -1,6 +1,5 @@
-//! The parity proof: names, attribution, and the properties each event carries.
+//! The wire proof: names, attribution, and the properties each event carries.
 //!
-//! Every assertion here is against the Zig `telemetry_events.zig` this ports.
 //! The bytes matter more than usual — a funnel on the other end matches on the
 //! event name and groups by the property keys, so a rename that compiles
 //! silently splits a dashboard in two.

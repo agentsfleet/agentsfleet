@@ -160,8 +160,8 @@ impl SessionStatus {
 
 /// The blob a session is stored as.
 ///
-/// Field names and JSON shape match `auth/session_state.zig` exactly, because
-/// the Lua script reads them by name and both binaries write the same key. The
+/// Field names and JSON shape are a DATA FORMAT, not a convention: the Lua
+/// script reads them by name off a key it does not otherwise parse. The
 /// hex-encoded fields are hex because Lua has neither bit operations nor crypto
 /// across the Dragonfly versions this has to run on, so it compares them as text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -145,9 +145,9 @@ impl FleetStreams {
             .arg(ARG_COUNT)
             .arg(1);
 
-        // The typed reply is the crate's. `redis_fleet_decode.zig` hand-decodes
-        // the same nested array — a length check, two index reads and a field
-        // walk — for want of one.
+        // The typed reply is the driver's. Decoding this nested array by hand
+        // is a length check, two index reads and a field walk; taking the type
+        // costs none of them.
         let reply: redis::streams::StreamAutoClaimReply =
             self.redis.command(CMD_XAUTOCLAIM, &key, &cmd).await?;
         Ok(reply.claimed.into_iter().next().map(|entry| FleetEvent {
