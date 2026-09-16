@@ -99,7 +99,7 @@ The MVP wedge is:
 - approvals where needed
 - one flagship workflow
 
-The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails, the fleet wakes from the webhook, gathers the right evidence from Fly.io, Upstash, Redis, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same fleet can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
+The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails, the fleet wakes from the webhook, gathers the right evidence from Fly.io, Dragonfly, Postgres, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same fleet can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
 
 ---
 
@@ -179,7 +179,7 @@ Primary job:
 
 - investigate failed GitHub Actions deploys (webhook trigger)
 - investigate unhealthy production state on a schedule (cron trigger) or on operator request (steer trigger)
-- collect logs and health evidence from Fly.io, Upstash, Redis, GitHub Actions run logs, and adjacent systems
+- collect logs and health evidence from Fly.io, Dragonfly, Postgres, GitHub Actions run logs, and adjacent systems
 - summarize the likely cause
 - recommend or execute the next action depending on approval policy
 
