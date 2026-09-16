@@ -158,7 +158,10 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     // Past the holder's expiry the same fleet becomes winnable again, and the
     // SAME event comes back re-fenced rather than being lost with the claim.
     let lapsed = held.leased_until.saturating_add_millis(1);
-    let regained = crate::seed::select_within_one_rotation(&leases, &second, lapsed)
+    // Scoped like the two acquisitions above it. `seeded::<2>` leaves a second
+    // fleet leasable, so an unscoped poll could win THAT one and then be
+    // compared, event id and fence, against a claim it never displaced.
+    let regained = crate::seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 

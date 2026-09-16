@@ -38,10 +38,10 @@ use afd_fleet_lifecycle::Fleets;
 use sqlx::Row as _;
 
 /// The environment knob naming the lane's Dragonfly.
-const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The environment knob naming its certificate authority, where the lane uses one.
-const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// A Postgres nobody is listening on.
 ///
@@ -147,7 +147,7 @@ impl Lane {
     pub(crate) async fn create() -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&redis_config())
+        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
             .await
             .expect("the lane's Dragonfly must be reachable");
         let fleets = Fleets::new(
@@ -345,12 +345,12 @@ impl Lane {
 }
 
 /// The lane's Dragonfly configuration.
-fn redis_config() -> DragonflyConfig {
-    let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
-        panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
 }
 

@@ -160,7 +160,7 @@ pub(super) const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployme
 pub(super) const WHY_DATABASE: &str = "the API role's Postgres connection URL";
 
 /// Why the daemon needs the API Dragonfly role.
-pub(super) const WHY_REDIS: &str = "the API role's Dragonfly connection URL";
+pub(super) const WHY_DRAGONFLY: &str = "the API role's Dragonfly connection URL";
 
 /// Why the daemon needs the master key.
 pub(super) const WHY_KEK: &str = "64 hex characters; every stored credential is sealed under it";

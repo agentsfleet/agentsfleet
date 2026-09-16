@@ -109,37 +109,65 @@ impl Credentials {
             .map_err(|_logged| Unavailable)
     }
 
-    /// `agt_t` — the key's row, and the person who minted it.
-    async fn tenant_api_key(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
-        let Some(row) = self
-            .fetch::<TenantApiKeyRow>("tenant_api_key", sql::SELECT_TENANT_API_KEY, digest)
+    /// The record `digest` resolves to under `R`, or `None` if it matched no row.
+    ///
+    /// One body for all three classes: [`Resolved`] holds the four facts they
+    /// differ in, so a miss stays `Ok(None)` and a mapping failure stays `Err`
+    /// through a single `transpose` rather than three `let … else` returns that
+    /// each had their own chance to collapse the two.
+    async fn lookup<R: Resolved>(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
+        self.fetch::<R>(R::CLASS, R::STATEMENT, digest)
             .await?
-        else {
-            return Ok(None);
-        };
-        rows::person(&row.tenant, &row.subject, row.live).map(Some)
+            .map(R::into_record)
+            .transpose()
     }
+}
 
-    /// `afc_` — the credential's row, joined to the person who holds it.
-    async fn cli_credential(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
-        let Some(row) = self
-            .fetch::<CliCredentialRow>("cli_credential", sql::SELECT_CLI_CREDENTIAL, digest)
-            .await?
-        else {
-            return Ok(None);
-        };
-        rows::person(&row.tenant, &row.subject, row.live).map(Some)
+/// A credential row that knows how it is looked up and what it becomes.
+///
+/// The three lookups differed in exactly four facts — the class label, the
+/// statement, the row type and the record it reads into — and spelled them in
+/// three bodies carrying the same `let Some(row) = … else { return Ok(None) }`.
+/// Held as associated items, that shape is written once in
+/// [`Credentials::lookup`] and a fourth credential class becomes an `impl`
+/// rather than a fourth copy of the shape.
+trait Resolved: for<'r> FromRow<'r, PgRow> + Send + Unpin {
+    /// The class label, as this lookup's log lines spell it.
+    const CLASS: &'static str;
+    /// The statement selecting the row by digest.
+    const STATEMENT: &'static str;
+
+    /// Reads the row into the record a resolver answers with.
+    fn into_record(self) -> Result<CredentialRecord>;
+}
+
+/// `agt_t` — the key's row, and the person who minted it.
+impl Resolved for TenantApiKeyRow {
+    const CLASS: &'static str = "tenant_api_key";
+    const STATEMENT: &'static str = sql::SELECT_TENANT_API_KEY;
+
+    fn into_record(self) -> Result<CredentialRecord> {
+        rows::person(&self.tenant, &self.subject, self.live)
     }
+}
 
-    /// `agt_r` — the runner's row, with its reconciled verdict.
-    async fn runner_token(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
-        let Some(row) = self
-            .fetch::<RunnerTokenRow>("runner_token", sql::SELECT_RUNNER_TOKEN, digest)
-            .await?
-        else {
-            return Ok(None);
-        };
-        rows::machine(&row.runner, row.degraded, row.live).map(Some)
+/// `afc_` — the credential's row, joined to the person who holds it.
+impl Resolved for CliCredentialRow {
+    const CLASS: &'static str = "cli_credential";
+    const STATEMENT: &'static str = sql::SELECT_CLI_CREDENTIAL;
+
+    fn into_record(self) -> Result<CredentialRecord> {
+        rows::person(&self.tenant, &self.subject, self.live)
+    }
+}
+
+/// `agt_r` — the runner's row, with its reconciled verdict.
+impl Resolved for RunnerTokenRow {
+    const CLASS: &'static str = "runner_token";
+    const STATEMENT: &'static str = sql::SELECT_RUNNER_TOKEN;
+
+    fn into_record(self) -> Result<CredentialRecord> {
+        rows::machine(&self.runner, self.degraded, self.live)
     }
 }
 
@@ -150,9 +178,9 @@ impl CredentialDirectory for Credentials {
         digest: &Digest,
     ) -> Result<Option<CredentialRecord>> {
         match kind {
-            CredentialKind::TenantApiKey => self.tenant_api_key(digest).await,
-            CredentialKind::CliCredential => self.cli_credential(digest).await,
-            CredentialKind::RunnerToken => self.runner_token(digest).await,
+            CredentialKind::TenantApiKey => self.lookup::<TenantApiKeyRow>(digest).await,
+            CredentialKind::CliCredential => self.lookup::<CliCredentialRow>(digest).await,
+            CredentialKind::RunnerToken => self.lookup::<RunnerTokenRow>(digest).await,
             // Never asked for: a session token is verified, not looked up, and
             // the caller proves that by dispatch. `Ok(None)` is what the trait
             // asks an implementation to answer if it is asked anyway — there is

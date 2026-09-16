@@ -3,7 +3,7 @@
 //! # Why this harness resets a key instead of namespacing one
 //!
 //! Every other integration suite in this workspace mints a per-test key prefix
-//! (`afd_dragonfly/tests/support/redis_harness.rs`) so parallel targets never
+//! (`afd_dragonfly/tests/support/dragonfly_harness.rs`) so parallel targets never
 //! collide. That is not available here: `OUTBOUND_STREAM_KEY` and
 //! `OUTBOUND_CONSUMER_GROUP` are constants shared with the Zig daemon — both
 //! binaries read the same stream by name — and a test that pointed the worker
@@ -225,7 +225,7 @@ impl OutboundHarness {
 /// arguments never run. The worker's failure paths are mostly diagnostics, so
 /// without this a test proves the branch is reached and never proves the line
 /// reporting it works. Output goes to a sink; the point is evaluation, not
-/// readership. `afd_dragonfly/tests/support/redis_harness.rs` learned this first.
+/// readership. `afd_dragonfly/tests/support/dragonfly_harness.rs` learned this first.
 pub(crate) fn install_subscriber() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {

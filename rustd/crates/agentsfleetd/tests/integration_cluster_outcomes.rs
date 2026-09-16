@@ -42,7 +42,7 @@ use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{Scenario, redis_config, scenario};
+use crate::e2e::{Scenario, dragonfly_config, scenario};
 use crate::reads::{balance, counter_column, lease_column, ledger_rows};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
@@ -146,7 +146,7 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
     // Subscribed BEFORE the forward: pub/sub keeps nothing for a reader that
     // arrives late, so a subscription opened afterwards would prove a drop
     // that never happened.
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the dashboard's hub connects to the lane's cluster");
     let mut tail = hub.subscribe(&format!("{CHANNEL_PREFIX}{}{CHANNEL_SUFFIX}", run.fleet));

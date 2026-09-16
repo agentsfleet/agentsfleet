@@ -38,10 +38,10 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Dragonfly it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Dragonfly certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Sixty-four hex characters. Boot validates the key; nothing here decrypts.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -77,8 +77,8 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
     vec![
         ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB)),
         ("DATABASE_URL_MIGRATOR", lane(DATABASE_LANE_KNOB)),
-        ("DRAGONFLY_URL", lane(REDIS_LANE_KNOB)),
-        ("DRAGONFLY_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB)),
+        ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB)),
+        ("DRAGONFLY_TLS_CA_CERT_FILE", lane(DRAGONFLY_CA_LANE_KNOB)),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]

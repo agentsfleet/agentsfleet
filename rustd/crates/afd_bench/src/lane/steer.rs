@@ -40,7 +40,7 @@ use crate::abort::Abort;
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 
-use crate::datastores::{Datastores, postgres_transactions, redis_calls};
+use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{
@@ -152,7 +152,7 @@ pub async fn run(
 struct Submitted {
     outcomes: Outcomes,
     length: Duration,
-    redis_calls: u64,
+    dragonfly_calls: u64,
     transactions: u64,
     depth: Vec<f64>,
 }
@@ -174,7 +174,7 @@ async fn submit(
     let slices = partition(fleets, parameters.concurrency);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(sample_depth(stores.queue.clone(), stop.clone()));
-    let redis_before = redis_calls(&stores.queue).await?;
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
     let started = Instant::now();
     let deadline = started + parameters.window;
@@ -200,9 +200,9 @@ async fn submit(
     }
     // The window is the submitters', measured the instant they are all back.
     let length = started.elapsed();
-    let redis_calls = redis_calls(&stores.queue)
+    let dragonfly_calls = dragonfly_calls(&stores.queue)
         .await?
-        .saturating_sub(redis_before);
+        .saturating_sub(dragonfly_before);
     let transactions = postgres_transactions(&stores.database)
         .await?
         .saturating_sub(transactions_before);
@@ -214,7 +214,7 @@ async fn submit(
     Ok(Submitted {
         outcomes,
         length,
-        redis_calls,
+        dragonfly_calls,
         transactions,
         depth,
     })
@@ -299,7 +299,7 @@ impl Submitted {
         report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
         report.measurement(
             REDIS_CALLS_PER_STEER,
-            ratio(self.redis_calls, self.outcomes.successes),
+            ratio(self.dragonfly_calls, self.outcomes.successes),
         );
         report.measurement(
             POSTGRES_TRANSACTIONS_PER_STEER,
@@ -310,7 +310,7 @@ impl Submitted {
             .insert(READY_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
-                operations: self.redis_calls,
+                operations: self.dragonfly_calls,
                 time_ms: None,
             },
             postgres: DatastoreCost {

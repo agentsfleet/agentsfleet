@@ -3,7 +3,7 @@
 //! Keys are namespaced per harness rather than the database being flushed
 //! between tests: the lane's Dragonfly is one server, cargo runs these targets in
 //! parallel, and a flush would delete another suite's stream mid-read. Same
-//! contract `afd_dragonfly/tests/support/redis_harness.rs` states; this is the
+//! contract `afd_dragonfly/tests/support/dragonfly_harness.rs` states; this is the
 //! copy that lives where `afd_sse`'s own suites can reach it, because a
 //! `#[path]` reaching into a sibling crate's test tree would make one crate's
 //! test layout another crate's build dependency.

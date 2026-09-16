@@ -16,7 +16,7 @@
 use std::process::ExitCode;
 
 use crate::datastores::{
-    DATABASE_URL_VARIABLE, Datastores, REDIS_CA_CERT_VARIABLE, REDIS_URL_VARIABLE,
+    DATABASE_URL_VARIABLE, DRAGONFLY_CA_CERT_VARIABLE, DRAGONFLY_URL_VARIABLE, Datastores,
 };
 use crate::error::Result;
 use crate::knobs::{required, variable};
@@ -57,8 +57,8 @@ pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target
 pub async fn datastores(env: &dyn Fn(&str) -> Option<String>) -> Result<Datastores> {
     Datastores::open(
         &required(env, DATABASE_URL_VARIABLE)?,
-        &required(env, REDIS_URL_VARIABLE)?,
-        variable(env, REDIS_CA_CERT_VARIABLE),
+        &required(env, DRAGONFLY_URL_VARIABLE)?,
+        variable(env, DRAGONFLY_CA_CERT_VARIABLE),
     )
     .await
 }

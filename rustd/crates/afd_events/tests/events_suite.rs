@@ -30,3 +30,6 @@ mod integration_budgets;
 mod integration_steer;
 #[path = "integration_steer_retry.rs"]
 mod integration_steer_retry;
+
+#[path = "error_surface.rs"]
+mod error_surface;

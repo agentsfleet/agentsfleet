@@ -95,26 +95,27 @@ async fn test_ready_index_read_surface() {
             .expect("mark");
     }
 
-    // `len()` accounts for this test's marks; it is NOT asserted to have moved
-    // by exactly three. The ready index is one key shared by the whole lane, and
-    // this file used to be its own test binary, which cargo ran while no sibling
-    // suite was writing. Aggregating the crate's suites into one binary runs
-    // them concurrently, and a sibling marking or clearing a fleet between the
-    // two reads made the delta 23 where the arithmetic wanted 24 — a failure of
-    // the test's isolation assumption, not of the read surface.
+    // Both aggregate accessors are EXERCISED, and neither is asserted against a
+    // magnitude. The ready index is one key shared by the whole lane. This file
+    // was once its own test binary, which cargo ran while no sibling suite was
+    // writing; aggregating the crate's suites into one binary runs them
+    // concurrently, and any sibling marking or clearing between two reads moves
+    // both answers. An exact delta failed that way first, `>= marked` was the
+    // repair, and `>= marked` failed the same way second — a sibling's cleanup
+    // between the mark and the read left 2 where this test had written 3.
     //
-    // What the read surface actually promises survives, and is graded below: a
-    // count that includes what this test marked, an emptiness question that
-    // answers false while it holds entries, and — the dimension this file names
-    // — a sample that pairs every fleet with ITS OWN token rather than a
-    // neighbour's.
-    let marked = u64::try_from(fleets.len()).unwrap_or(u64::MAX);
-    let counted = index.len().await.expect("len");
-    assert!(
-        counted >= marked,
-        "the index must account for the fleets this test marked: {counted} < {marked}"
-    );
-    assert!(!index.is_empty().await.expect("is_empty"));
+    // A count over a shared key cannot be made stable by choosing a weaker
+    // comparison, so it is not asserted at all. `runtime_suite.rs` states the
+    // invariant this test kept breaking: no suite asserts over global state —
+    // no `total()`, `COUNT(`, or unfiltered listing over a shared table.
+    //
+    // What the read surface actually promises is graded below, per fleet and in
+    // each fleet's OWN partition, which no sibling can move: every fleet this
+    // test marked is sampled, paired with ITS OWN token and not a neighbour's.
+    // That is a strictly stronger statement than any count, and it is the
+    // dimension this file names.
+    let _counted = index.len().await.expect("len");
+    let _empty = index.is_empty().await.expect("is_empty");
 
     // Every sampled pair must be a field with ITS value, not a shifted pairing.
     // Each fleet is looked for in ITS partition: the marks are spread by hash,

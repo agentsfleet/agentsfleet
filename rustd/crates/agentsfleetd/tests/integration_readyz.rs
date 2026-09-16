@@ -50,10 +50,10 @@ use crate::support::install_subscriber;
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Dragonfly it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Dragonfly certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
@@ -73,18 +73,18 @@ async fn connected() -> (Db, Dragonfly) {
         .await
         .expect("the lane's Postgres is up");
 
-    let redis_env = MapEnv::from_pairs([
+    let dragonfly_env = MapEnv::from_pairs([
         (
             DragonflyRole::Api.url_knob(),
-            lane(REDIS_LANE_KNOB).as_str(),
+            lane(DRAGONFLY_LANE_KNOB).as_str(),
         ),
-        (CA_CERT_FILE_KNOB, lane(REDIS_CA_LANE_KNOB).as_str()),
+        (CA_CERT_FILE_KNOB, lane(DRAGONFLY_CA_LANE_KNOB).as_str()),
     ]);
-    let redis_config = DragonflyConfig::resolve(&redis_env, DragonflyRole::Api)
+    let dragonfly_config = DragonflyConfig::resolve(&dragonfly_env, DragonflyRole::Api)
         .expect("the lane publishes a usable Dragonfly URL");
     // Through the admission gate, like every other lane harness: the handshake
     // is the expensive part and it queues behind the rest of the suite.
-    let queue = afd_dragonfly::test_util::connect_live(&redis_config)
+    let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config)
         .await
         .expect("the lane's Dragonfly is up");
 

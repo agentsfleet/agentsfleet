@@ -21,7 +21,7 @@ use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 use serde_json::json;
 
-use self::fixture::{Fixture, NOW, config, connect_redis, redis_config};
+use self::fixture::{Fixture, NOW, config, connect_redis, dragonfly_config};
 
 /// How long the hub's pump is given to register the subscription before the
 /// park publishes; `subscribe` queues the command rather than round-tripping.
@@ -45,7 +45,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         connect_redis().await,
         Entropy::new(),
     );
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));

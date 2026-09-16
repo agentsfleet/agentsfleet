@@ -140,8 +140,24 @@ async fn poll_until_acknowledged(
     held: &crate::report_seed::Held,
     now: afd_core::clock::UnixMillis,
 ) {
+    // The readiness partition cursor is GLOBAL to the process, so
+    // `READY_PARTITIONS` polls are one rotation only when nothing else is
+    // polling. The measured sixteenth-poll probe that set that budget ran on a
+    // quiet lane; under a loaded one this fleet's partition need not come up
+    // inside the window, and the loop then fell through SILENTLY and left the
+    // caller to report a still-pending entry as an acknowledgement failure --
+    // the wrong bug, and the one this class has now been misdiagnosed as five
+    // times. Same budget as `select_fleet_within_rotations`, which reaches a
+    // NAMED fleet across a shared index for exactly this reason.
+    //
+    // The extra budget is spent only while the entry is still pending: the
+    // loop returns on the effect. That bounds the cost the doc above names --
+    // a poll turning past its own fleet can lease another suite's ready fleet
+    // out from under it -- to the runs that were going to fail anyway.
+    const ROTATIONS: u16 = 8;
+
     let plane = held.fixtures.plane();
-    for _poll in 0..READY_PARTITIONS {
+    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         let answer = plane
             .lease(&held.runner, false, now)
             .await
@@ -156,6 +172,18 @@ async fn poll_until_acknowledged(
             return;
         }
     }
+
+    // Loud, because the silent version reported this as the CALLER's
+    // assertion: a poll that never sampled this fleet's partition and a
+    // redelivery that was never suppressed read identically from outside.
+    assert_eq!(
+        pending_on(&held.fixtures, &held.fleet).await,
+        0,
+        "{} polls ({ROTATIONS} rotations) never acknowledged the entry. Either \
+         the suppression did not run, or this fleet's partition never came up \
+         -- the cursor is shared with every other suite polling the lane",
+        READY_PARTITIONS * ROTATIONS
+    );
 }
 
 /// Gives the seeded fleet a config the runtime parser can read.

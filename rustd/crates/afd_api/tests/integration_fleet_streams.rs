@@ -53,7 +53,7 @@ const SHORT_ACQUIRE_MS: &str = "1500";
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let fleet = Fleet::live(
@@ -118,7 +118,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     ])
     .await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let fleet = Fleet::live(
@@ -184,7 +184,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let router = Fleet::live(
@@ -198,7 +198,7 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut body = open_stream(&router, &fixture).await;
 
     let publisher = FleetStreams::new(
-        afd_dragonfly::Dragonfly::connect(&harness::redis_config())
+        afd_dragonfly::Dragonfly::connect(&harness::dragonfly_config())
             .await
             .expect("the lane's Dragonfly accepts a publisher"),
     );

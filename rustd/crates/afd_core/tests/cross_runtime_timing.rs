@@ -43,11 +43,11 @@ const TYPE_SUFFIX: &str = ": i64";
 const CRATE_DEPTH_BELOW_ROOT: usize = 3;
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(CRATE_DEPTH_BELOW_ROOT)
-        .expect("crates/afd_core is three levels below the repository root")
-        .to_path_buf()
+    let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for _ in 0..CRATE_DEPTH_BELOW_ROOT {
+        root.pop();
+    }
+    root
 }
 
 /// Splits `pub const NAME: i64 = EXPR;` into its name and its expression text.
@@ -86,10 +86,10 @@ fn eval(expr: &str, seen: &BTreeMap<String, i64>) -> Option<i64> {
 }
 
 /// Every integer-valued `pub const` in the Zig mirror, in file order.
-fn mirrored_ints() -> BTreeMap<String, i64> {
+fn mirrored_ints() -> Result<BTreeMap<String, i64>, String> {
     let path = repo_root().join(ZIG_MIRROR);
     let source = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let mut out = BTreeMap::new();
     for line in source.lines() {
         let Some((name, expr)) = pub_const(line) else {
@@ -99,28 +99,29 @@ fn mirrored_ints() -> BTreeMap<String, i64> {
             out.insert(name.to_owned(), value);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Asserts one named constant carries `expected` in the Zig mirror.
 fn assert_pinned(mirror: &BTreeMap<String, i64>, name: &str, expected: i64) {
-    let found = mirror.get(name).copied().unwrap_or_else(|| {
-        panic!(
-            "{ZIG_MIRROR} no longer exports {name}; the runner keeps the lease \
-             clock from it and the Grafana alerting playbook reads it with sed, \
-             so dropping the `pub` breaks both without failing a compile"
-        )
-    });
+    let found = mirror.get(name).copied();
+    assert!(
+        found.is_some(),
+        "{ZIG_MIRROR} no longer exports {name}; the runner keeps the lease \
+         clock from it and the Grafana alerting playbook reads it with sed, \
+         so dropping the `pub` breaks both without failing a compile"
+    );
     assert_eq!(
-        found, expected,
-        "{ZIG_MIRROR} spells {name} as {found}, the daemon enforces {expected}"
+        found,
+        Some(expected),
+        "{ZIG_MIRROR} spells {name} as {found:?}, the daemon enforces {expected}"
     );
 }
 
 /// The daemon's lease clock and the runner's are the same clock.
 #[test]
-fn test_the_lease_clock_agrees_across_both_runtimes() {
-    let mirror = mirrored_ints();
+fn test_the_lease_clock_agrees_across_both_runtimes() -> Result<(), String> {
+    let mirror = mirrored_ints()?;
     assert_pinned(&mirror, "LEASE_TTL_MS", timing::LEASE_TTL_MS);
     assert_pinned(&mirror, "RENEWAL_WINDOW_MS", timing::RENEWAL_WINDOW_MS);
     assert_pinned(&mirror, "RENEWAL_TICK_MS", timing::RENEWAL_TICK_MS);
@@ -134,6 +135,7 @@ fn test_the_lease_clock_agrees_across_both_runtimes() {
         "HEARTBEAT_INTERVAL_MS",
         timing::HEARTBEAT_INTERVAL_MS,
     );
+    Ok(())
 }
 
 /// The parser reads the shapes the mirror is actually written in.
@@ -143,8 +145,8 @@ fn test_the_lease_clock_agrees_across_both_runtimes() {
 /// a pinning test worse than none, because it reports agreement it never
 /// checked.
 #[test]
-fn test_the_mirror_parses_and_is_not_silently_empty() {
-    let mirror = mirrored_ints();
+fn test_the_mirror_parses_and_is_not_silently_empty() -> Result<(), String> {
+    let mirror = mirrored_ints()?;
     assert!(
         mirror.len() >= 5,
         "parsed only {} constants from {ZIG_MIRROR}; the pinning test above \
@@ -166,4 +168,5 @@ fn test_the_mirror_parses_and_is_not_silently_empty() {
         None,
         "a private constant is not a shared clock"
     );
+    Ok(())
 }

@@ -26,7 +26,7 @@ use afd_bench::report::{Provenance, Report};
 
 /// The knobs `make test-integration-rustd` exports; see `make/test-infra.mk`.
 const DATABASE_KNOB: &str = "TEST_DATABASE_URL";
-const REDIS_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_KNOB: &str = "TEST_DRAGONFLY_URL";
 const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Held for the whole of a lane run.
@@ -37,9 +37,9 @@ const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 pub(crate) static LANE: Mutex<()> = Mutex::const_new(());
 
 /// The lane's Dragonfly URL, for the outbound lane's dedicated reader.
-pub(crate) fn redis_url() -> String {
-    std::env::var(REDIS_KNOB).unwrap_or_else(|_unset| {
-        panic!("{REDIS_KNOB} is unset — run through make test-integration-rustd")
+pub(crate) fn dragonfly_url() -> String {
+    std::env::var(DRAGONFLY_KNOB).unwrap_or_else(|_unset| {
+        panic!("{DRAGONFLY_KNOB} is unset — run through make test-integration-rustd")
     })
 }
 
@@ -53,7 +53,7 @@ pub(crate) async fn datastores() -> Datastores {
     let database = std::env::var(DATABASE_KNOB).unwrap_or_else(|_unset| {
         panic!("{DATABASE_KNOB} is unset — run through make test-integration-rustd")
     });
-    Datastores::open(&database, &redis_url(), ca_cert())
+    Datastores::open(&database, &dragonfly_url(), ca_cert())
         .await
         .expect("the rig's datastores must be reachable")
 }

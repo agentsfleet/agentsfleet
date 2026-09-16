@@ -21,7 +21,7 @@ use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::{Approval, Code, Opening};
 use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 
-use crate::redis_harness::DragonflyHarness;
+use crate::dragonfly_harness::DragonflyHarness;
 
 /// The dashboard this suite's login URLs are built against.
 const APP_URL: &str = "https://app-dev.agentsfleet.net/";

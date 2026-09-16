@@ -24,7 +24,7 @@
 //! implements `ADDR`, `LADDR` and `ID` and nothing narrower -- and its
 //! `CLIENT LIST` carries no `sub=`/`psub=` marker, defaulting a connection's
 //! name to its own id. Measured against `dragonfly_version:df-v1.40.2`, which
-//! reports `redis_version:7.4.0` while implementing neither. So there is no
+//! reports `dragonfly_version:7.4.0` while implementing neither. So there is no
 //! server-side handle for "the hub's connection", and the only way to find it
 //! is to snapshot every node's clients, start the hub, and diff.
 //!

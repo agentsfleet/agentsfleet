@@ -195,7 +195,7 @@ impl BootFailure {
         match *self {
             Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
-            Self::Queue(_) => afd_core::error_code::STARTUP_REDIS_CONNECT,
+            Self::Queue(_) => afd_core::error_code::STARTUP_DRAGONFLY_CONNECT,
             Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) => {
                 afd_core::error_code::INTERNAL_OPERATION_FAILED
             }
