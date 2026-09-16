@@ -19,7 +19,7 @@ use afd_dragonfly::hub::Received;
 use afd_dragonfly::{ReadyIndex, Subscription, SubscriptionHub};
 use serde_json::{Value, json};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, redis_config, sweeper_exclusive};
+use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -49,7 +49,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
@@ -148,7 +148,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
@@ -227,7 +227,7 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
@@ -265,7 +265,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));

@@ -33,7 +33,7 @@ use afd_dragonfly::ReadyIndex;
 use self::probe::{
     FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
 };
-use crate::datastores::{Datastores, redis_used_memory};
+use crate::datastores::{Datastores, dragonfly_used_memory};
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
@@ -142,7 +142,7 @@ async fn climb(
     let tag = seed::placement_tag(prefix);
     let runner = seed::runner(&stores.database, &prefix.name("host"), &tag, SEEDED_AT).await?;
     ledger.created(ROWS_PER_RUNNER);
-    let baseline = redis_used_memory(&stores.queue).await?;
+    let baseline = dragonfly_used_memory(&stores.queue).await?;
 
     let mut seeded_to = 0;
     let mut previous_bytes = baseline;
@@ -164,7 +164,7 @@ async fn climb(
         }
         seeded_to = rung;
 
-        let bytes = redis_used_memory(&stores.queue).await?;
+        let bytes = dragonfly_used_memory(&stores.queue).await?;
         let added = bytes.saturating_sub(previous_bytes);
         let fleets_added = rung.saturating_sub(previous_rung);
         push(report, LADDER, count(rung));

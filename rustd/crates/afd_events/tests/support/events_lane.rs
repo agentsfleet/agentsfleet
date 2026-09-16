@@ -35,10 +35,10 @@ use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use sqlx::Row as _;
 
 /// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
-const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// How long anything crossing a datastore is given before the test fails.
 pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
@@ -59,7 +59,7 @@ impl EventsLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&redis_config())
+        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
             .await
             .expect("the lane's Dragonfly must be reachable");
 
@@ -85,7 +85,7 @@ impl EventsLane {
     }
 
     pub(crate) fn redis() -> DragonflyConfig {
-        redis_config()
+        dragonfly_config()
     }
 
     /// A pooled connection, or a failed test.
@@ -201,11 +201,11 @@ impl EventsLane {
 const SEED_MS: i64 = 1_700_000_000_000;
 
 /// The lane's Dragonfly configuration.
-fn redis_config() -> DragonflyConfig {
-    let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
-        panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
 }

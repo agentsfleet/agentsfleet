@@ -51,10 +51,10 @@ pub mod command {
 pub const DATABASE_URL_VARIABLE: &str = "BENCH_DATABASE_URL";
 
 /// Where a lane reads its Dragonfly from.
-pub const REDIS_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
+pub const DRAGONFLY_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
 
 /// The certificate authority for a Dragonfly serving TLS, when it does.
-pub const REDIS_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
+pub const DRAGONFLY_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
 
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";
@@ -125,12 +125,12 @@ impl Datastores {
     /// datastore".
     pub async fn open(
         database_url: &str,
-        redis_url: &str,
+        dragonfly_url: &str,
         ca_cert: Option<String>,
     ) -> Result<Self> {
         let pool = PoolConfig::resolve(&LaneEnv { database_url }, DbRole::Api)?;
         let database = Db::connect(&pool).await?;
-        let redis = DragonflyConfig::from_url(DragonflyRole::Default, redis_url.to_owned())
+        let redis = DragonflyConfig::from_url(DragonflyRole::Default, dragonfly_url.to_owned())
             .with_ca_cert_file(ca_cert.map(Into::into));
         let queue = Dragonfly::connect(&redis).await?;
         Ok(Self {
@@ -162,7 +162,7 @@ impl Datastores {
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when the server will not answer `INFO`.
-pub async fn redis_calls(queue: &Dragonfly) -> Result<u64> {
+pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
     // Summed across primaries: a command is served by whichever shard owns its
     // key, so one node's tally is a fraction of the lane's work reported as the
     // whole of it.
@@ -170,7 +170,7 @@ pub async fn redis_calls(queue: &Dragonfly) -> Result<u64> {
     let mut total = 0_u64;
     let mut read_any = false;
     for raw in &per_node {
-        if let Some(calls) = redis_calls_in(raw) {
+        if let Some(calls) = dragonfly_calls_in(raw) {
             total = total.saturating_add(calls);
             read_any = true;
         }
@@ -189,7 +189,7 @@ pub async fn redis_calls(queue: &Dragonfly) -> Result<u64> {
 /// `INFO` with nothing this parser recognises is not a server that served zero
 /// commands, and reporting it as one is the zero RULE ECL forbids.
 #[must_use]
-pub(crate) fn redis_calls_in(info: &str) -> Option<u64> {
+pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
     let mut seen = false;
     let total = info
         .lines()
@@ -228,7 +228,7 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
 /// [`crate::Error::QueueUnavailable`] when `INFO` will not answer, and
 /// [`crate::Error::CounterUnreadable`] when the reply carries no
 /// `used_memory:` line — which is not a server using zero bytes.
-pub async fn redis_used_memory(queue: &Dragonfly) -> Result<u64> {
+pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
     // Summed for the same reason the call tally is: a fleet's keys are spread
     // across shards by their own hash, so the memory they occupy is the sum
     // over primaries and never one node's figure.

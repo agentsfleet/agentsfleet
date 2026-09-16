@@ -33,7 +33,7 @@ pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> L
     match SubscriptionHub::start(config.clone()).await {
         Ok(hub) => Live::new(hub, ceiling),
         Err(unopened) => {
-            let code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            let code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             let reason = unopened.to_string();
             tracing::warn!(
                 error_code = code,

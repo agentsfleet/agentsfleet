@@ -83,7 +83,7 @@ impl DragonflyConfig {
             .get(knob)
             .map(|value| value.trim().to_owned())
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| Error::new(ErrorKind::MissingRedisUrl { knob }))?;
+            .ok_or_else(|| Error::new(ErrorKind::MissingUrl { knob }))?;
 
         // Through the client's own parser rather than a scheme prefix. A
         // prefix test is not a parse: `redis://[::1` and `redis://h:notaport`
@@ -99,7 +99,7 @@ impl DragonflyConfig {
         // the point rather than a side effect: this check exists to catch a
         // typo, not to be a stricter policy than the connection it guards.
         if redis::parse_redis_url(&url).is_none() {
-            return Err(Error::new(ErrorKind::InvalidRedisUrl { knob }));
+            return Err(Error::new(ErrorKind::InvalidUrl { knob }));
         }
 
         Ok(Self {

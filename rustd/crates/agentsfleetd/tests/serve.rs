@@ -20,7 +20,7 @@ use agentsfleetd::supervisor::Supervisor;
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
 /// The API role's Dragonfly knob.
-const REDIS_KNOB: &str = "DRAGONFLY_URL";
+const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
@@ -32,14 +32,14 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
 /// A Dragonfly URL that parses and points at nothing listening.
-const DEAD_REDIS: &str = "redis://127.0.0.1:1";
+const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
 
 /// An environment whose knobs all parse but whose datastores are not there.
 fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             (DATABASE_KNOB, DEAD_DATABASE),
-            (REDIS_KNOB, DEAD_REDIS),
+            (DRAGONFLY_KNOB, DEAD_DRAGONFLY_URL),
             (KEK_KNOB, GOOD_KEK),
         ]
         .into_iter()
@@ -75,7 +75,7 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
     );
 
     let rendered = failure.to_string();
-    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB] {
+    for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB] {
         assert!(
             rendered.contains(knob),
             "the refusal names every missing knob; {knob} is absent from: {rendered}"
@@ -157,7 +157,10 @@ fn test_every_boot_failure_renders_a_reason() {
         .expect("the Dragonfly error fixture is exhaustive");
     let queue = BootFailure::from(queue_source);
     assert_eq!(queue.phase(), "queue");
-    assert_eq!(queue.code(), afd_core::error_code::STARTUP_REDIS_CONNECT);
+    assert_eq!(
+        queue.code(),
+        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
+    );
     assert!(
         std::error::Error::source(&queue).is_some(),
         "the queue failure preserves the original Dragonfly error"

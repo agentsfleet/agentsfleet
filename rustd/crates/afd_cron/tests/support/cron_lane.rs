@@ -43,10 +43,10 @@ use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 const SEED_MS: i64 = 1_760_000_000_000;
 
 /// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
-const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// How long anything crossing a datastore is given before the test fails.
 const REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
@@ -192,11 +192,13 @@ impl CronLane {
 
     /// The lane's Dragonfly configuration.
     pub(crate) fn redis() -> DragonflyConfig {
-        let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
-            panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+        let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+            panic!(
+                "{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`"
+            )
         });
         DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+            .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
             .with_request_timeout(REQUEST_BUDGET)
     }
 

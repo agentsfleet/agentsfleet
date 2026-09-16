@@ -19,7 +19,7 @@ use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{redis_config, scenario};
+use crate::e2e::{dragonfly_config, scenario};
 use crate::reads::event_column;
 use crate::tail::{lease, next_frame, settle};
 use crate::wire::{capable_beat, field, poll_until, post, report_body};
@@ -41,7 +41,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
     // poll itself, and pub/sub keeps nothing for a reader that arrives late.
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
@@ -123,7 +123,7 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));

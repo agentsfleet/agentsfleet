@@ -42,7 +42,7 @@ use afd_fleet::lease::Leases;
 use self::drive::Shared;
 use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
 use crate::abort::Abort;
-use crate::datastores::{Datastores, redis_calls};
+use crate::datastores::{Datastores, dragonfly_calls};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::instrument::{LeaseInstrument, PollCounters};
@@ -279,7 +279,7 @@ struct Window {
     length: Duration,
     exhausted: bool,
     counters: PollCounters,
-    redis_calls: u64,
+    dragonfly_calls: u64,
 }
 
 /// Drive every runner concurrently, measuring what it cost.
@@ -293,7 +293,7 @@ async fn measure(
     abort: &Arc<Abort>,
 ) -> Result<Window> {
     let before = instrument.read()?;
-    let redis_before = redis_calls(&stores.queue).await?;
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let started = Instant::now();
     let shared = Arc::new(Shared {
         deadline: started + window,
@@ -331,9 +331,9 @@ async fn measure(
         length: drive::window_length(started, ended, last_lease, exhausted),
         exhausted,
         counters: instrument.read()?.since(before),
-        redis_calls: redis_calls(&stores.queue)
+        dragonfly_calls: dragonfly_calls(&stores.queue)
             .await?
-            .saturating_sub(redis_before),
+            .saturating_sub(dragonfly_before),
     })
 }
 
@@ -360,7 +360,7 @@ impl Window {
         // timer inside the pass rather than around it.
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
-                operations: self.redis_calls,
+                operations: self.dragonfly_calls,
                 time_ms: None,
             },
             postgres: DatastoreCost {
@@ -382,6 +382,9 @@ impl Window {
             IDLE_ROUNDTRIPS_PER_POLL,
             self.counters.roundtrips_per_poll(),
         );
-        report.measurement(IDLE_REDIS_CALLS_PER_POLL, ratio(self.redis_calls, polls));
+        report.measurement(
+            IDLE_REDIS_CALLS_PER_POLL,
+            ratio(self.dragonfly_calls, polls),
+        );
     }
 }

@@ -45,3 +45,6 @@ mod integration_inbox_decider_name;
 mod integration_inbox_paging;
 #[path = "integration_inbox_tail.rs"]
 mod integration_inbox_tail;
+
+#[path = "error_surface.rs"]
+mod error_surface;

@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `docs/architecture/datastore_scaling.md` — the canonical target sharding and the evidence rules a claim here has to meet.
 3. `playbooks/operations/cutover/001_playbook.md` — the SHAPE to mirror (register, probe tags, drain order, rollback rule) and the document §4 corrects: it is the Zig-to-Rust binary swap and its "no store change" premise is false for this one.
 4. `.github/workflows/deploy-dev-fly.yml` — where the dev secret is resolved and handed to the daemon.
-5. `docs/v2/active/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md` — the Discovery entries that already decided the fresh start and the knob names; this spec inherits them rather than re-deciding.
+5. `docs/v2/done/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md` — the Discovery entries that already decided the fresh start and the knob names; this spec inherits them rather than re-deciding.
 
 ## Files Changed (blast radius)
 
@@ -161,7 +161,13 @@ No public endpoint, command, flag or wire shape changes. `DRAGONFLY_URL`, `DRAGO
 
 ## Metrics & Observability
 
-The daemon's own datastore metrics are M192's and do not change. What this spec adds is deployment-time evidence rather than a runtime signal: each cutover step records its probe result into the playbook's coverage file, and the Grafana runner-offline threshold keeps deriving from the pinned lease clock (`afd_core::timing`, pinned to the Zig mirror by `cross_runtime_timing`). No product or operator signal changes shape, and no new event name is minted.
+The daemon's own datastore metrics keep the SHAPE M192 gave them. What this spec adds is deployment-time evidence rather than a runtime signal: each cutover step records its probe result into the playbook's coverage file, and the Grafana runner-offline threshold keeps deriving from the pinned lease clock (`afd_core::timing`, pinned to the Zig mirror by `cross_runtime_timing`). No product or operator signal changes shape, and no new event name is minted.
+
+**Ten measurement names still say `redis`, and this spec owns them.** M192 renamed every Rust identifier whose name disagreed with its value and deliberately left the string literals, because a measurement name is read by Grafana queries that live outside this repository and a rename inside the repository alone silently breaks the dashboard that reads it. That is the M181 `LEASE_TTL_MS` failure exactly, and the reason it is a cutover task rather than a rename commit: the dashboard and the emitter have to move together, in a change window, with the old name still serving until the new one is proven.
+
+The names, verified present as string literals in `rustd/` at the time of writing: `redis_connect_started`, `redis_connect_completed`, `redis_connect_failed`, `redis_connections_opened`, `redis_dedicated_connected`, `redis_subscribers`, `redis_bytes_total`, `redis_bytes_per_fleet`, `redis_calls_per_steer`, and `idle_redis_calls_per_poll`. Their Rust constants keep the same spelling as their values, so name and value agree and M192's own rename rule left them alone correctly.
+
+The rename lands with the dashboard migration in one step, is graded by the same probe-and-record discipline as every other cutover step, and is reverted by the same rollback. Until it runs, the names are load-bearing and MUST NOT be changed by a repository-only sweep.
 
 ## Test Specification (tiered)
 
@@ -221,7 +227,7 @@ The `upstash-dev` and `upstash-prod` vault items, every workflow reference to th
 6. **What we do NOT build** — an import tool, a reverse migration, a Swarm trial, or a second queue service.
 7. **Fit with existing features** — it completes M192, which is otherwise undeployable.
 8. **Surface order** — dev, then prod, then deletion. Nothing user-visible changes order.
-9. **Dashboard restraint** — no new dashboard. The runner-offline threshold keeps deriving from the pinned lease clock.
+9. **Dashboard restraint** — no NEW dashboard. The runner-offline threshold keeps deriving from the pinned lease clock. The existing panels do change once, when the ten `redis_*` measurement names are renamed with their queries in the same cutover step; that is a migration of what exists, not a new surface.
 10. **Confused-user next step** — an operator whose deploy refuses boot reads the permanent class and the preflight message, which already names which check failed.
 
 ## Decomposition & alternatives (patch vs refactor)

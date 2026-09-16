@@ -92,8 +92,8 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     // and that order put a configuration error first — so the sample set held
     // no queue that is GONE, and the arm answering the outage code for one was
     // unreachable from this builder while looking covered by "queue".
-    let queue = redis_sample("command");
-    let queue_gone = redis_sample("unreachable");
+    let queue = dragonfly_sample("command");
+    let queue_gone = dragonfly_sample("unreachable");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty vault name is refused");
     let entropy =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
@@ -155,7 +155,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn redis_sample(label: &str) -> afd_dragonfly::Error {
+fn dragonfly_sample(label: &str) -> afd_dragonfly::Error {
     afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)

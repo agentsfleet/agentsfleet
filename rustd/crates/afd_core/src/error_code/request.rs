@@ -200,7 +200,7 @@ pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-00
 /// request-path timeout answers the same code because the caller's situation is
 /// identical — the datastore is not there — and the operator's distinction is
 /// kept in `afd_dragonfly::Error`'s variants rather than on the wire.
-pub const STARTUP_REDIS_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
+pub const STARTUP_DRAGONFLY_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
 
 /// A knob is unset, blank, or not the shape this daemon can use.
 ///

@@ -26,8 +26,8 @@ use afd_gate::gate::Check;
 use sqlx::Acquire as _;
 
 pub(crate) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
-const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -50,17 +50,17 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
         .expect("the gate policy fixture resolves")
 }
 
-pub(crate) fn redis_config() -> DragonflyConfig {
-    let url = std::env::var(REDIS_URL_KNOB)
+pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB)
         .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }
 
 pub(crate) async fn connect_redis() -> Dragonfly {
-    afd_dragonfly::test_util::connect_live(&redis_config())
+    afd_dragonfly::test_util::connect_live(&dragonfly_config())
         .await
         .expect("the lane's Dragonfly must be reachable")
 }

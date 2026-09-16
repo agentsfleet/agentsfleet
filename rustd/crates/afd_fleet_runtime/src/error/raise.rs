@@ -25,6 +25,48 @@ pub(crate) fn missing(field: &'static str) -> Error {
     ErrorKind::MissingRequiredField { field }.into()
 }
 
+/// The three kinds this crate lifts, each still carrying its cause.
+///
+/// Apart from [`one_of_each_kind`] only because that list is at its length
+/// cap. These are the kinds that are NOT transparent, so they are the ones a
+/// stringify could silently strip a `source()` from.
+#[cfg(feature = "test-util")]
+fn lifted_kinds() -> Vec<(&'static str, Error)> {
+    use serde::de::Error as _;
+
+    let unreadable_field = serde_json::Error::custom("a string where an integer belongs");
+    let unreadable_frontmatter = yaml_serde::Error::custom("a sequence where a mapping belongs");
+    let mut out_of_bounds = garde::Report::new();
+    out_of_bounds.append(
+        garde::Path::new("tools"),
+        garde::Error::new("more entries than the bound allows"),
+    );
+
+    vec![
+        (
+            "invalid field type",
+            ErrorKind::InvalidFieldType {
+                source: unreadable_field,
+            }
+            .into(),
+        ),
+        (
+            "out of bounds",
+            ErrorKind::OutOfBounds {
+                source: out_of_bounds,
+            }
+            .into(),
+        ),
+        (
+            "frontmatter unreadable",
+            ErrorKind::FrontmatterUnreadable {
+                source: unreadable_frontmatter,
+            }
+            .into(),
+        ),
+    ]
+}
+
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
 /// A sample built here rather than in the suite means adding a kind without a
@@ -34,7 +76,7 @@ pub(crate) fn missing(field: &'static str) -> Error {
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     const REASON: &str = "the fixture breaks this rule";
 
-    vec![
+    let mut kinds = vec![
         ("missing required field", missing("name")),
         (
             "runtime key outside block",
@@ -115,5 +157,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "invalid repository binding",
             ErrorKind::InvalidRepositoryBinding { reason: REASON }.into(),
         ),
-    ]
+    ];
+    kinds.extend(lifted_kinds());
+    kinds
 }

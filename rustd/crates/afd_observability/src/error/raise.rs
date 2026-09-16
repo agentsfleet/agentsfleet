@@ -97,5 +97,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             stream_rejected(FAMILY, "the SDK said no"),
         ),
         ("unknown family", unknown_family(FAMILY)),
+        (
+            // Transparent over `csv::Error`, whose own `source()` is `None`, so
+            // this sample adds a KIND without adding a chain -- which is why
+            // WITH_SOURCE stays zero here and the suite says so.
+            "census",
+            ErrorKind::Census {
+                source: csv::Error::from(std::io::Error::other(
+                    "the census file went away mid-read",
+                )),
+            }
+            .into(),
+        ),
     ]
 }

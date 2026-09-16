@@ -31,10 +31,10 @@ use crate::support::install_subscriber;
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Dragonfly it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Dragonfly certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
 const EPHEMERAL: u16 = 0;
@@ -54,10 +54,10 @@ fn lane_environment() -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
-            ("DRAGONFLY_URL", lane(REDIS_LANE_KNOB).as_str()),
+            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
             (
                 "DRAGONFLY_TLS_CA_CERT_FILE",
-                lane(REDIS_CA_LANE_KNOB).as_str(),
+                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
             ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]

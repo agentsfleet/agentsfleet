@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M192
 **Workstream:** 001
 **Date:** Sep 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0
 **Categories:** API, INFRA, OBS
 **Batch:** B2

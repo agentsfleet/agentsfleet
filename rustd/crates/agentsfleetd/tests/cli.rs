@@ -31,7 +31,7 @@ use clap::Parser as _;
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
 /// A Dragonfly URL that parses and points at nothing listening.
-const DEAD_REDIS: &str = "redis://127.0.0.1:1";
+const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
 
 /// Sixty-four hex characters.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -44,7 +44,7 @@ fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", DEAD_DATABASE),
-            ("DRAGONFLY_URL", DEAD_REDIS),
+            ("DRAGONFLY_URL", DEAD_DRAGONFLY_URL),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()

@@ -442,7 +442,15 @@ async fn run_one_to_settlement(
     now: UnixMillis,
 ) -> Completed {
     let settled_at = now.saturating_add_millis(SLICE_MS);
-    let acquired = crate::seed::select_within_one_rotation(leases, runner, now)
+    // Scoped to THIS fleet, not "whatever any partition offers". The expect
+    // below always claimed it reached the fleet holding admitted work while
+    // accepting any leasable fleet, and every line after it reads `fleet` --
+    // `admission_receipt(fleet, &event_id)` pairs the parameter with an
+    // event_id taken from the acquisition. A lease won on a neighbour's fleet
+    // pairs an id with a fleet that never held it, which is a wrong answer
+    // rather than a flake. The readiness cursor is global, so this is decided
+    // by what else is polling.
+    let acquired = crate::seed::select_fleet_within_rotations(leases, runner, now, fleet)
         .await
         .expect("one rotation of polls must reach the fleet holding admitted work");
     let event_id = acquired.event_id.clone();

@@ -35,7 +35,7 @@ use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{redis_config, scenario};
+use crate::e2e::{dragonfly_config, scenario};
 use crate::tail::{lease, next_frame, settle, silence};
 use crate::wire::{field, json, post};
 
@@ -66,7 +66,7 @@ async fn test_activity_publish() {
     // Subscribed BEFORE the first forward. Pub/sub keeps nothing for a reader
     // that arrives late, so a subscription opened after the request would prove
     // a drop that never happened.
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
@@ -183,7 +183,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
 
     let (lease_id, _fence) = lease(&http, &run).await;
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));

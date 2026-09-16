@@ -24,7 +24,7 @@
 //!
 //! # Nested modules stay where they are
 //!
-//! `redis_harness` declares its own `subscriber`, and `fake_redis` its own
+//! `dragonfly_harness` declares its own `subscriber`, and `fake_redis` its own
 //! `resp`, through `#[path]` attributes that resolve against the directory of
 //! the file declaring them — `tests/support/`. Aggregation does not move those
 //! files, so those paths keep resolving and are deliberately not hoisted.
@@ -35,7 +35,7 @@
 // scoped to the helpers rather than blanketed over every suite, which would
 // hand the suites permissions their own headers deliberately withhold.
 //
-// `subscriber` is declared here exactly once. `fake_redis` and `redis_harness`
+// `subscriber` is declared here exactly once. `fake_redis` and `dragonfly_harness`
 // each used to declare it, which was fine while no single binary loaded both,
 // and is a duplicate module the moment one does.
 #[path = "support/subscriber.rs"]
@@ -63,7 +63,7 @@ mod fake_redis;
 )]
 mod recorder;
 
-#[path = "support/redis_harness.rs"]
+#[path = "support/dragonfly_harness.rs"]
 #[allow(
     clippy::expect_used,
     clippy::panic,

@@ -42,10 +42,10 @@ afd_core::error_shell!(
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
     #[error("{knob} is not set")]
-    MissingRedisUrl { knob: &'static str },
+    MissingUrl { knob: &'static str },
 
     #[error("{knob} must be a redis:// or rediss:// URL")]
-    InvalidRedisUrl { knob: &'static str },
+    InvalidUrl { knob: &'static str },
 
     #[error("the TLS certificate authority file {path} could not be read")]
     CaCertUnreadable {
@@ -164,8 +164,8 @@ impl Error {
     pub fn is_config(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::MissingRedisUrl { .. }
-                | ErrorKind::InvalidRedisUrl { .. }
+            ErrorKind::MissingUrl { .. }
+                | ErrorKind::InvalidUrl { .. }
                 | ErrorKind::CaCertUnreadable { .. }
                 | ErrorKind::ConfigRejected { .. }
         )
@@ -290,7 +290,7 @@ impl Error {
             | ErrorKind::GroupExists { .. }
             | ErrorKind::WrongType { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            _ => error_code::STARTUP_REDIS_CONNECT,
+            _ => error_code::STARTUP_DRAGONFLY_CONNECT,
         }
     }
 }
@@ -368,7 +368,7 @@ pub(crate) fn unreachable(role: &'static str, source: redis::RedisError) -> Erro
 
 /// A seed or certificate the driver refused before opening any socket.
 ///
-/// Deliberately not [`ErrorKind::InvalidRedisUrl`]: the client is built from
+/// Deliberately not [`ErrorKind::InvalidUrl`]: the client is built from
 /// the seed AND the certificate bytes, and a build that fails has not said
 /// which. Naming the URL would be a guess, and a guess in an error message is
 /// how an operator ends up reading the wrong file. The driver's own reason
@@ -444,13 +444,13 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     vec![
         (
             "missing url",
-            Error::new(ErrorKind::MissingRedisUrl {
+            Error::new(ErrorKind::MissingUrl {
                 knob: "DRAGONFLY_URL",
             }),
         ),
         (
             "invalid url",
-            Error::new(ErrorKind::InvalidRedisUrl {
+            Error::new(ErrorKind::InvalidUrl {
                 knob: "DRAGONFLY_URL",
             }),
         ),

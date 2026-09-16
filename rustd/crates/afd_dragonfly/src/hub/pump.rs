@@ -87,7 +87,7 @@ async fn run(
         }
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+        let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
         tracing::warn!(error_code, event = "hub_connection_dropped");
 
         connection = redial(&config, schedule).await;
@@ -111,7 +111,7 @@ async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Conne
         .retry(schedule)
         .notify(|failure: &Error, _delay| {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             attempt = attempt.saturating_add(1);
             let count = attempt;
             let reason = failure.to_string();
@@ -192,7 +192,7 @@ async fn pump(
 async fn resubscribe(connection: &mut ClusterConnection, channels: &[String]) {
     for channel in channels {
         if let Err(failure) = connection.ssubscribe(channel).await {
-            let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             tracing::warn!(
                 channel,
                 error = %failure,
