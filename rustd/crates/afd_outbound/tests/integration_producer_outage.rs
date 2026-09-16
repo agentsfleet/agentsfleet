@@ -62,7 +62,11 @@ fn unreachable_queue() -> OutboundQueue {
 async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bool {
     use sqlx::Acquire as _;
 
-    let mut connection = harness.database.acquire().await.expect("the ledger answers");
+    let mut connection = harness
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
     let mut transaction = connection
         .begin()
         .await
@@ -116,12 +120,17 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
     assert_eq!(owed_before.len(), 1, "the seeded row is the one owed");
 
     let token = CancellationToken::new();
-    let running = tokio::spawn(Producer::new(unreachable_queue(), harness.database.clone()).run(token.clone()));
+    let running = tokio::spawn(
+        Producer::new(unreachable_queue(), harness.database.clone()).run(token.clone()),
+    );
     // The pass reaches the refused append and reports it. The producer must
     // still be parked afterwards: one unavailable store does not take the
     // delivery path down for the life of the process.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    assert!(!running.is_finished(), "a refused append ended the producer");
+    assert!(
+        !running.is_finished(),
+        "a refused append ended the producer"
+    );
     token.cancel();
     tokio::time::timeout(PASS_BUDGET, running)
         .await

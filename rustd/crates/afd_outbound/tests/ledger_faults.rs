@@ -30,7 +30,8 @@ const SHUTDOWN_BUDGET: Duration = Duration::from_secs(10);
 /// LEDGER, before anything is appended, so the queue is only here to satisfy
 /// the constructor.
 fn unreachable_queue() -> OutboundQueue {
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned());
+    let config =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned());
     OutboundQueue::new(Dragonfly::unreachable(&config).expect("a well-formed URL builds a handle"))
 }
 
