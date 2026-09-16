@@ -115,5 +115,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "datastore",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),
         ),
+        // The ledger this crate asks for a sweep's cursor. Its code, its
+        // sentence and its outage class are all read OFF the source rather
+        // than restated here, so a sample is the only way that delegation is
+        // ever executed.
+        (
+            "admission",
+            afd_admission::error::one_of_each_kind()
+                .into_iter()
+                .find(|(kind, _error)| *kind == "datastore")
+                .map(|(_kind, error)| Error::from(error))
+                .expect("the admission sample declares an outage kind"),
+        ),
     ]
 }

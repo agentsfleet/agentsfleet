@@ -268,6 +268,20 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
     let credential = afd_credential::Error::from(first_db_error()?);
     let billing = afd_billing::Error::from(first_db_error()?);
     let events = afd_events::Error::from(first_db_error()?);
+    // The ledger the lease asks for a restored cursor. Lifted here so the
+    // delegation below — code, sentence and outage class all read off the
+    // source — is proven rather than assumed.
+    let admission = afd_admission::error::one_of_each_kind()
+        .into_iter()
+        .find(|(kind, _error)| *kind == "datastore")
+        .map(|(_kind, error)| error)
+        .ok_or("the admission sample has no outage kind")?;
+    let lifted_admission = Error::from(admission);
+    // Read off the source, not restated here: a second copy of the admission
+    // plane's mapping in this crate is exactly the drift the lift exists to
+    // avoid.
+    assert!(lifted_admission.is_datastore_unavailable());
+    assert!(!lifted_admission.detail().is_empty());
     let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
@@ -286,6 +300,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         Error::from(billing),
         Error::from(events),
         Error::from(entropy),
+        lifted_admission,
     ] {
         assert!(failure.source().is_some());
         assert!(!failure.detail().is_empty());

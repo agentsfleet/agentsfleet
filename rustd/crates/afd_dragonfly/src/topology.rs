@@ -161,3 +161,6 @@ pub(crate) fn text(value: &Value) -> Option<String> {
 fn shown(value: &Value) -> String {
     text(value).unwrap_or_else(|| format!("{value:?}"))
 }
+
+#[cfg(test)]
+mod tests;
