@@ -39,7 +39,7 @@
 //! anyway.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::sync::Notify;
@@ -86,6 +86,18 @@ impl Settled {
 #[derive(Clone, Debug)]
 pub struct Drain {
     accepting: CancellationToken,
+    /// Cancelled by the accept loop once it has actually left the loop.
+    ///
+    /// Distinct from [`Self::accepting`] because cancelling that one only ASKS:
+    /// the loop is parked in `accept()` inside a `select!` and leaves on its
+    /// next poll, so a connection can still be accepted and counted in between.
+    /// This says it has happened.
+    stopped: CancellationToken,
+    /// Whether an accept loop is running at all, so [`Self::settle`] knows
+    /// whether anything will ever cancel `stopped`. A `Drain` with no loop —
+    /// every unit test below, and a daemon that never bound a listener — must
+    /// still settle rather than wait forever.
+    attached: Arc<AtomicBool>,
     live: Arc<AtomicUsize>,
     idle: Arc<Notify>,
 }
@@ -96,6 +108,8 @@ impl Drain {
     pub fn new() -> Self {
         Self {
             accepting: CancellationToken::new(),
+            stopped: CancellationToken::new(),
+            attached: Arc::new(AtomicBool::new(false)),
             live: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
         }
@@ -106,6 +120,21 @@ impl Drain {
     #[must_use]
     pub fn accepting(&self) -> &CancellationToken {
         &self.accepting
+    }
+
+    /// Declares that an accept loop is running against this drain.
+    ///
+    /// Called once, by the loop, before it takes its first connection.
+    pub fn attach(&self) {
+        self.attached.store(true, Ordering::Release);
+    }
+
+    /// Declares that the accept loop has left the loop and dropped its listener.
+    ///
+    /// Called however the loop ends, which is what lets [`Self::settle`] read a
+    /// count no further connection can join.
+    pub fn stopped_accepting(&self) {
+        self.stopped.cancel();
     }
 
     /// Claim a slot for one connection. The returned guard must be held for as
@@ -135,6 +164,15 @@ impl Drain {
     /// answer is always the same one — carry on to the supervisor.
     pub async fn settle(&self, bound: Duration) -> Settled {
         self.accepting.cancel();
+        // Cancelling only ASKS the loop to stop; it is parked in `accept()` and
+        // leaves on its next poll, so a connection can still be accepted and
+        // counted in between. Waiting for the loop to say it has left is what
+        // makes `in_flight_at_close` the count at CLOSE rather than the count
+        // when close was requested. Skipped when no loop ever attached, which
+        // would otherwise wait for a cancellation nobody is going to make.
+        if self.attached.load(Ordering::Acquire) {
+            self.stopped.cancelled().await;
+        }
         let in_flight_at_close = self.in_flight();
         if in_flight_at_close > 0 {
             tracing::info!(
