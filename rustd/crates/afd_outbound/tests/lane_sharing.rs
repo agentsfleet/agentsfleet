@@ -146,6 +146,20 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
     .await
     .expect("the destination takes the answer even though the queue is gone");
 
+    // Waiting for the LANE to retire, not just for the first delivery. The
+    // acknowledgement is attempted after the delivery returns, so asserting at
+    // the first delivery would assert before the failure this test is named
+    // for has happened, and a regression that redelivered afterwards would
+    // still be green. A retired lane is the point at which the job is finished
+    // with — failed ack and all.
+    tokio::time::timeout(PATIENCE, async {
+        while lanes.active() != 0 {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await
+    .expect("the lane retires once the job is done with, however the ack went");
+
     assert_eq!(
         poster.delivered(),
         vec!["unacknowledged-1".to_owned()],
@@ -154,4 +168,11 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
 
     token.cancel();
     lanes.drain().await;
+
+    // And still once after the drain: nothing requeued it on the way out.
+    assert_eq!(
+        poster.delivered(),
+        vec!["unacknowledged-1".to_owned()],
+        "the shutdown redelivered an answer whose acknowledgement had failed"
+    );
 }

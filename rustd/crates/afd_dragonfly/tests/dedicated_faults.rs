@@ -250,9 +250,19 @@ async fn test_a_dedicated_connection_renders_its_role() {
 
     let rendered = format!("{owned:?}");
     assert!(rendered.starts_with("Dedicated"), "{rendered}");
+    // The ROLE is the whole point of the line, so it is what gets asserted.
+    // A `Dedicated { .. }` that had dropped the field would satisfy the type
+    // name and the ellipsis above and tell an operator nothing.
+    assert!(
+        rendered.contains(&format!("{:?}", DragonflyRole::Api)),
+        "the rendering must name the role a deployment would act on: {rendered}"
+    );
+    assert!(
+        !rendered.contains(&format!("{:?}", DragonflyRole::Default)),
+        "the rendering names the OTHER role: {rendered}"
+    );
     assert!(
         rendered.contains(".."),
         "the rendering must stay non-exhaustive: {rendered}"
     );
-    assert_eq!(owned.role(), DragonflyRole::Api);
 }
