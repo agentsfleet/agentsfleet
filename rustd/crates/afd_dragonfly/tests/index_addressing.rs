@@ -13,8 +13,8 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::ready::{READY_INDEX_KEY, ReadyIndex, ReadyPrefix};
 
 /// Long enough to be visibly a real setting in the rendering below, short
@@ -25,8 +25,9 @@ const REQUEST_BUDGET: Duration = Duration::from_millis(250);
 /// how it is addressed, so it never has to. Built inside a runtime because the
 /// driver registers its background dialler on construction.
 fn pending_connection() -> Dragonfly {
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned())
-        .with_request_timeout(REQUEST_BUDGET);
+    let config =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned())
+            .with_request_timeout(REQUEST_BUDGET);
     Dragonfly::unreachable(&config).expect("a well-formed URL builds a pending connection")
 }
 

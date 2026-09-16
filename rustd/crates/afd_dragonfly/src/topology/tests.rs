@@ -57,7 +57,11 @@ fn every_role_but_master_reads_as_a_replica() {
             Value::Int(6380),
         ]);
         let read = node_of(node).expect("a node naming endpoint, port and role reads");
-        assert_eq!(read.role, Role::Replica, "role {spelling} read as a primary");
+        assert_eq!(
+            read.role,
+            Role::Replica,
+            "role {spelling} read as a primary"
+        );
         assert_eq!(read.address.host, "shard-2.internal");
     }
 }
@@ -66,7 +70,12 @@ fn every_role_but_master_reads_as_a_replica() {
 /// missing port, an unreadable one, or no role at all.
 #[test]
 fn a_node_missing_what_addresses_it_is_not_returned() {
-    let no_port = Value::Array(vec![bulk(FIELD_ROLE), bulk(ROLE_MASTER), bulk(FIELD_IP), bulk("10.0.0.7")]);
+    let no_port = Value::Array(vec![
+        bulk(FIELD_ROLE),
+        bulk(ROLE_MASTER),
+        bulk(FIELD_IP),
+        bulk("10.0.0.7"),
+    ]);
     assert_eq!(node_of(no_port), None);
 
     let port_too_large = Value::Array(vec![
@@ -79,7 +88,12 @@ fn a_node_missing_what_addresses_it_is_not_returned() {
     ]);
     assert_eq!(node_of(port_too_large), None);
 
-    let no_role = Value::Array(vec![bulk(FIELD_IP), bulk("10.0.0.7"), bulk(FIELD_PORT), Value::Int(6379)]);
+    let no_role = Value::Array(vec![
+        bulk(FIELD_IP),
+        bulk("10.0.0.7"),
+        bulk(FIELD_PORT),
+        Value::Int(6379),
+    ]);
     assert_eq!(node_of(no_role), None);
 
     // Not a map and not an array: nothing to read pairs out of at all.
@@ -91,7 +105,10 @@ fn a_node_missing_what_addresses_it_is_not_returned() {
 /// would read as a cluster with no primaries.
 #[test]
 fn a_shard_without_a_nodes_field_is_an_unexpected_reply() {
-    let shard = Value::Array(vec![bulk("slots"), Value::Array(vec![Value::Int(0), Value::Int(16383)])]);
+    let shard = Value::Array(vec![
+        bulk("slots"),
+        Value::Array(vec![Value::Int(0), Value::Int(16383)]),
+    ]);
     let refused = nodes_of(shard).expect_err("a shard with no nodes field is refused");
     assert!(
         refused.to_string().contains(CMD_CLUSTER),

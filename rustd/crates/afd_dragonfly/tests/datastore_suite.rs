@@ -89,14 +89,14 @@ mod dedicated_faults;
 mod error_surface;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
+#[path = "index_addressing.rs"]
+mod index_addressing;
 #[path = "integration_capacity.rs"]
 mod integration_capacity;
 #[path = "integration_cluster_prototypes.rs"]
 mod integration_cluster_prototypes;
 #[path = "integration_cluster_readiness.rs"]
 mod integration_cluster_readiness;
-#[path = "index_addressing.rs"]
-mod index_addressing;
 #[path = "integration_cluster_recovery.rs"]
 mod integration_cluster_recovery;
 #[path = "integration_cluster_semantics.rs"]

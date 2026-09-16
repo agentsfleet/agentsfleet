@@ -242,7 +242,9 @@ fn the_exhausted_sample_carries_a_real_disk_full_database_error() {
         .find(|(label, _error)| *label == "exhausted")
         .expect("the sample declares an exhausted kind");
 
-    let cause = exhausted.source().expect("a statement failure keeps its cause");
+    let cause = exhausted
+        .source()
+        .expect("a statement failure keeps its cause");
     let driver = cause
         .downcast_ref::<sqlx::Error>()
         .expect("the cause is the driver's own error, not a stringified copy");
