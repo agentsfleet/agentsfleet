@@ -40,7 +40,22 @@ use self::gated_poster::Gated;
 use self::hanging_queue::HangingQueue;
 
 /// How long a condition is waited for before the test gives up on it.
-const PATIENCE: Duration = Duration::from_secs(10);
+///
+/// Harness patience, NOT a budget any of these tests assert. Nothing here
+/// claims a latency: the claims are the ceiling (`high_water <= ceiling`), the
+/// concurrency (`high_water > 1`) and that every answer is acknowledged. Those
+/// hold or fail regardless of how long the wait is allowed to be, which is why
+/// this number can be generous without softening anything.
+///
+/// Generous because the coverage lane runs the whole workspace at once and
+/// every `multi_thread` test spawns workers per core, so a small runner ends up
+/// heavily oversubscribed. Measured on this machine,
+/// `in_flight_deliveries_never_exceed_the_ceiling` finishes in 0.19 s both
+/// plain and under `cargo llvm-cov` — instrumentation is not the cost,
+/// contention is. Continuous Integration timed out at ten seconds anyway, so
+/// the wait now carries the same thirty-second ceiling `abort_wiring.rs` uses
+/// and still fails loudly on a real stall rather than a slow neighbour.
+const PATIENCE: Duration = Duration::from_secs(30);
 
 /// The gap between two looks at a condition.
 const POLL: Duration = Duration::from_millis(5);
