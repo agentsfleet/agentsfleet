@@ -265,4 +265,8 @@ async fn test_a_dedicated_connection_renders_its_role() {
         rendered.contains(".."),
         "the rendering must stay non-exhaustive: {rendered}"
     );
+    // Kept beside the rendering checks, not replaced by them: the rendering
+    // and the accessor are two different ways to get the role wrong, and this
+    // is the only unignored test that reads the accessor at all.
+    assert_eq!(owned.role(), DragonflyRole::Api);
 }
