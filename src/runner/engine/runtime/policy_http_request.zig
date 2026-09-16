@@ -62,8 +62,13 @@ inner: HttpRequestTool,
 cred_channel: ?credential_request.Channel = null,
 inner_execute: InnerExecute = dispatchInner,
 
+// All three are read by `tools_mod.ToolVTable(@This())` through comptime
+// reflection from inside the nullclaw package, so all three must stay `pub`.
+// No consumer grep and no zlint unused-decls pass can see that use: narrowing
+// `tool_description` here (1bbce85c0) broke the musl runner build and nothing
+// else.
 pub const tool_name = HttpRequestTool.tool_name;
-const tool_description = HttpRequestTool.tool_description;
+pub const tool_description = HttpRequestTool.tool_description;
 pub const tool_params = HttpRequestTool.tool_params;
 
 const vtable = tools_mod.ToolVTable(@This());

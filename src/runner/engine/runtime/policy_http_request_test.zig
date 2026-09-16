@@ -338,3 +338,30 @@ test "tool_name and tool_params match NullClaw http_request" {
     try std.testing.expectEqualStrings(HttpRequestTool.tool_name, PolicyHttpRequestTool.tool_name);
     try std.testing.expectEqualStrings(HttpRequestTool.tool_params, PolicyHttpRequestTool.tool_params);
 }
+
+// The regression this file exists to hold from now on. `ToolVTable(T)` reads
+// all three of these by comptime reflection from inside the nullclaw package,
+// so all three must be `pub` -- and nothing in this repository can see that
+// use. A consumer grep finds no caller, `zlint`'s unused-decls finds no
+// caller, and the sweep at 1bbce85c0 narrowed `tool_description` on exactly
+// that evidence, which took the musl runner build down and with it every
+// deploy lane.
+//
+// Reading the three symbols FROM THIS FILE is the whole test: this is a
+// separate module, so a narrowed declaration fails to compile here. @hasDecl
+// would not do -- it answers true for a private declaration, and would have
+// stayed green while the build was red.
+test "the Tool interface symbols stay public" {
+    try std.testing.expectEqualStrings(HttpRequestTool.tool_description, PolicyHttpRequestTool.tool_description);
+    try std.testing.expect(PolicyHttpRequestTool.tool_description.len > 0);
+
+    // The vtable's own readers, exercised through the interface rather than
+    // the declarations, so a future refactor that keeps the names but breaks
+    // the wiring still fails here.
+    const policy = newPolicy(&.{}, null);
+    var t = newTool(&policy);
+    const handle = t.tool();
+    try std.testing.expectEqualStrings(PolicyHttpRequestTool.tool_name, handle.vtable.name(handle.ptr));
+    try std.testing.expectEqualStrings(PolicyHttpRequestTool.tool_description, handle.vtable.description(handle.ptr));
+    try std.testing.expectEqualStrings(PolicyHttpRequestTool.tool_params, handle.vtable.parameters_json(handle.ptr));
+}
