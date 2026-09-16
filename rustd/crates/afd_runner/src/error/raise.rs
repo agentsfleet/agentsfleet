@@ -98,8 +98,19 @@ pub(crate) fn runner_still_leased() -> Error {
 ///
 /// A sample built here rather than in the suite means adding a kind without a
 /// sample is a change in THIS file, next to the kind.
+///
+/// # Panics
+/// When the admission plane stops declaring the outage kind this lifts. That
+/// is a change in that crate's contract rather than a runtime condition, and
+/// stopping here names it at the sample rather than at whichever assertion
+/// happens to read the wrong value first — the reasoning
+/// `afd_admission::error::one_of_each_kind` states for its own preconditions.
 #[cfg(feature = "test-util")]
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     vec![
         ("query", query("enrol a runner")(sqlx::Error::RowNotFound)),

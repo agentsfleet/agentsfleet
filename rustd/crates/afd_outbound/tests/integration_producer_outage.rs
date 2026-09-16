@@ -12,7 +12,10 @@
 //! never the lane's server, which every binary running in parallel shares.
 #![expect(
     clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::panic,
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly, naming \
+              which row it was"
 )]
 
 use std::time::Duration;

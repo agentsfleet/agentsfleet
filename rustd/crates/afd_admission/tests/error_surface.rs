@@ -16,6 +16,12 @@
 //! fails here instead of reaching an operator as a broken chain.
 
 #![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test target: an unmet precondition should fail the test loudly, naming \
+              which sample it was"
+)]
 
 use std::collections::BTreeSet;
 use std::error::Error as _;
