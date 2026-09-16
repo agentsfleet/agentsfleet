@@ -11,6 +11,8 @@
 mod backtrace;
 #[path = "clock.rs"]
 mod clock;
+#[path = "cross_runtime_timing.rs"]
+mod cross_runtime_timing;
 #[path = "env.rs"]
 mod env;
 #[path = "error_code.rs"]
