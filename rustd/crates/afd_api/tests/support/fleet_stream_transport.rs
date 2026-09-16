@@ -87,8 +87,8 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
         eprintln!(
             "stream_transport_evidence={}",
             json!({
-                "viewers": viewers, "redis_connections_opened": watched.hub.connections_opened(),
-                "redis_subscribers": 1, "readers_after_drop": 0,
+                "viewers": viewers, "dragonfly_connections_opened": watched.hub.connections_opened(),
+                "dragonfly_subscribers": 1, "readers_after_drop": 0,
                 "postgres_pool_size": watched.database().size(),
                 "postgres_available_slots_during_delivery": 0,
                 "database_query_count": null,

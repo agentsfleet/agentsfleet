@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2
 **Branch:** `feat/m196-dragonfly-fly-dev`
 **Baseline revision:** `b1c9ef58f1ac5f87488904e9f3e77cdeb60770d6` (`main`, merge of #689)
-**Test Baseline:** pending — measured at CHORE(open) against the recorded comparison commit.
+**Test Baseline:** 2702 cargo + 8399 bun unit tests passing on this branch (`make test-unit-all`, exit 0). Integration counts are due before the Pull Request.
 **Depends on:** M192_001, merged as #689 (`b1c9ef58f`). That branch made the transport cluster-only; this one gives it a cluster to talk to.
 **Provenance:** Second revision. The first was a two-environment cutover; Indy narrowed it on 2026-09-16 to a dev acceptance with prod wired but ungraded, and struck the data migration that was never going to happen (Discovery). The sequencing constraint below was found by reading `deploy-dev-fly.yml` against `afd_dragonfly`'s boot refusal, not proposed.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`.
@@ -152,7 +152,8 @@ Dependencies: §1. A new `playbooks/operations/datastore_cutover/` carrying the 
 
 Dependencies: §2. `data_flow.md`, `high_level.md`, `scaling.md` and `README.md` all name Upstash as the queue. `datastore_scaling.md` is canonical and already describes Dragonfly, so the four are reconciled TO it rather than rewritten independently.
 
-- **Dimension 5.1**: no architecture page names Upstash, and each carries a current `verified` and `product_version` per DOC-31 → Test `test_architecture_pages_name_the_deployed_datastore`. NOT DONE.
+- **Dimension 5.1**: no architecture page names Upstash **as the datastore**; QStash references survive untouched, because the cron trigger is a different Upstash product and is not being retired → Test `test_architecture_pages_name_the_deployed_datastore`. NOT DONE.
+- **Dimension 5.2**: the ten `redis_*` measurement names and their Rust constants read `dragonfly_*`, and no `redis::` path, `redis://` scheme or `REDIS_*` environment name moves with them → Test `test_measurement_names_match_the_deployed_datastore`. NOT DONE.
 
 ### §6: The rest of the Zig-era prose
 
@@ -194,11 +195,13 @@ No public endpoint, command, flag or wire shape changes. `DRAGONFLY_URL`, `DRAGO
 
 The daemon's own datastore metrics keep the SHAPE M192 gave them. What this spec adds is deployment-time evidence rather than a runtime signal: each cutover step records its probe result into the playbook's coverage file, and the Grafana runner-offline threshold keeps deriving from the pinned lease clock (`afd_core::timing`, pinned to the Zig mirror by `cross_runtime_timing`). No product or operator signal changes shape, and no new event name is minted.
 
-**Ten measurement names still say `redis`, and this spec owns them.** M192 renamed every Rust identifier whose name disagreed with its value and deliberately left the string literals, because a measurement name is read by Grafana queries that live outside this repository and a rename inside the repository alone silently breaks the dashboard that reads it. That is the M181 `LEASE_TTL_MS` failure exactly, and the reason it is a cutover task rather than a rename commit: the dashboard and the emitter have to move together, in a change window, with the old name still serving until the new one is proven.
+**Ten measurement names said `redis`, and this spec renames them.** M192 renamed every Rust identifier whose name disagreed with its value and deliberately left the string literals, because a measurement name is read by Grafana queries outside this repository and a repository-only rename breaks the dashboard silently — the M181 `LEASE_TTL_MS` failure exactly.
 
-The names, verified present as string literals in `rustd/` at the time of writing: `redis_connect_started`, `redis_connect_completed`, `redis_connect_failed`, `redis_connections_opened`, `redis_dedicated_connected`, `redis_subscribers`, `redis_bytes_total`, `redis_bytes_per_fleet`, `redis_calls_per_steer`, and `idle_redis_calls_per_poll`. Their Rust constants keep the same spelling as their values, so name and value agree and M192's own rename rule left them alone correctly.
+**That reasoning assumed a live dashboard, and there is not one.** `flyctl apps list` reports `agentsfleetd-prod` and `otelcol-prod` as never deployed, so no production series exists to orphan. Indy called it on 2026-09-16 (Discovery): rename now, repoint the dashboard by hand, and take the breakage while breakage is free. Waiting for a change window to protect a dashboard nobody is reading is ceremony.
 
-The rename lands with the dashboard migration in one step, in its own change window, and **not in this milestone** — dev acceptance is the graded surface here and a Grafana query migration is neither dev nor acceptance. Until it runs, the names are load-bearing and MUST NOT be changed by a repository-only sweep. §6's prose sweep must leave every one of them alone.
+The names, each renamed with the Rust constant that carries it so name and value still agree: `redis_connect_started`, `redis_connect_completed`, `redis_connect_failed`, `redis_connections_opened`, `redis_dedicated_connected`, `redis_subscribers`, `redis_bytes_total`, `redis_bytes_per_fleet`, `redis_calls_per_steer` and `idle_redis_calls_per_poll` all take a `dragonfly_` prefix (`idle_dragonfly_calls_per_poll` for the last).
+
+What does NOT move is the `redis::` driver paths, the `redis://` URL schemes or the `REDIS_*` environment variable names. Those are another crate's surface and a deployment contract respectively, and §6's prose sweep leaves them alone.
 
 **One more name lived outside this repository entirely, and is already closed.** `docs/VERIFY_TIERS.md` is an `orly`-managed file: its integration row read "Live Postgres and Redis via docker compose", and the text ships from the `@agentsfleet/orly` pack, not from here. M192 corrected the word on its branch and `orly doctor` refused the edit — a managed file changed after orly wrote it — so the word was put back rather than ship a red governance gate, and the correction went to the pack (`agentsfleet/orly#43`) with the release that carries it (`#44`, `0.10.10`). M192 then bumped its pin and ran `orly update`, which restored the right word with `orly doctor` green. Recorded here because it is the same shape as the measurement names above — the repository is not the only reader, so a repository-only edit is not the fix — and because it is the one instance of that shape this milestone does NOT inherit.
 
@@ -217,7 +220,8 @@ The rename lands with the dashboard migration in one step, in its own change win
 | 3.2 | unit | `test_the_vault_deletion_refuses_without_approval` | The deletion step exits non-zero with no approval. |
 | 4.1 | unit | `test_every_cutover_step_carries_a_probe` | Each step has a probe tag; an untagged row fails the runner. |
 | 4.2 | unit | `test_the_binary_swap_playbook_scopes_its_rollback_claim` | The binary-swap playbook names its scope and excludes a store change. |
-| 5.1 | unit | `test_architecture_pages_name_the_deployed_datastore` | No page names Upstash; each carries `verified` and `product_version`. |
+| 5.1 | unit | `test_architecture_pages_name_the_deployed_datastore` | No page names Upstash as the datastore; QStash references survive. |
+| 5.2 | unit | `test_measurement_names_match_the_deployed_datastore` | Ten measurements read `dragonfly_*`; driver paths and env names unchanged. |
 | 6.1 | unit | `test_no_rust_comment_cites_a_deleted_zig_file` | Every cited `.zig` path resolves in the tree. |
 | 7.1 | unit | `test_the_tool_interface_symbols_stay_public` | `tool_name`, `tool_description` and `tool_params` are all `pub`. |
 | 0.1 | integration | `test_an_evicting_primary_refuses_boot` | A primary with eviction enabled refuses boot. |
@@ -259,7 +263,7 @@ The `upstash-dev` and `upstash-prod` vault items, every workflow reference to th
 - Renaming the `DRAGONFLY_*` knobs. M192 shipped them.
 - A rehearsed prod cutover, a prod change window, or any rubric row that grades a prod deploy. Prod is wired here and tested on merge.
 - Deleting the Upstash vault items. Written into the playbook, run by hand later.
-- Renaming the ten `redis_*` measurement names. That moves with the Grafana queries in a change window, and this milestone is not it.
+- Repointing the Grafana dashboard queries at the renamed measurements. The rename lands here; the dashboard is Indy's by hand, and breakage is free until production exists.
 
 ## Product Clarity (authoring record)
 
@@ -271,7 +275,7 @@ The `upstash-dev` and `upstash-prod` vault items, every workflow reference to th
 6. **What we do NOT build** — an import tool, a reverse migration, a Swarm trial, or a second queue service.
 7. **Fit with existing features** — it completes M192, which is otherwise undeployable.
 8. **Surface order** — dev, then prod, then deletion. Nothing user-visible changes order.
-9. **Dashboard restraint** — no NEW dashboard. The runner-offline threshold keeps deriving from the pinned lease clock. The existing panels do change once, when the ten `redis_*` measurement names are renamed with their queries in the same cutover step; that is a migration of what exists, not a new surface.
+9. **Dashboard restraint** — no NEW dashboard. The runner-offline threshold keeps deriving from the pinned lease clock. The existing panels break once, when the ten renamed measurements stop matching their queries, and are repointed by hand; that is a migration of what exists, not a new surface.
 10. **Confused-user next step** — an operator whose deploy refuses boot reads the permanent class and the preflight message, which already names which check failed.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -287,4 +291,7 @@ A patch is the right size. The alternative considered and rejected: repoint prod
 - **Container sizing (Indy, 2026-09-16):** "also use a performant container for dragonfly" and "since its run in the same region, the agentsfleetd-rs in fly.io can connect to it via private, so there will be no or less latency". Hence `performance-2x`/4GB against `otelcol-dev`'s `shared-cpu-1x`/512mb, and a plaintext 6PN seed rather than TLS.
 - **Vault confirmed (Indy, 2026-09-16):** `ZMB_CD_DEV` is the dev vault and `fly-api-token` the Fly credential item. `flyctl auth whoami` returns `nkishore@megam.io`; `flyctl apps list` shows `agentsfleetd-prod` and `otelcol-prod` still `pending`, which is why §2 can wire prod without risking a live service.
 - **One Pull Request (Indy, 2026-09-16):** "I only need 1 PR / not a gazilion PRs". The runner build fix (§7) folds in rather than opening its own.
+- **Measurement rename, reversed (Indy, 2026-09-16):** "we agreed to rename ... redis_* to dragonfly_*. So do it. Indy will deal with grafana dashboard breakage ... the breakage of dashboard is fine since we are not in production yet." The change-window argument protected a dashboard reading a production series that does not exist. Renamed in §5.
+- **QStash stays (Indy, 2026-09-16):** "yes QStash will stay, only Upstash Redis is moved to dragonfly in fly.io for dev". Dimension 5.1's first wording would have swept the cron trigger out of the architecture pages with the datastore; it is scoped to datastore references now.
+- **scaling.md figures (Indy, 2026-09-16):** rewrite the math for self-hosted AND mark what is not re-measured. Both done: the plan cap, the per-request bill and the TLS dial cost are gone and say so; the latency and volume tables carry an explicit unverified note naming what they were measured against.
 - **Consults / Metrics review / Skill-chain outcomes / Deferrals:** recorded per Section.

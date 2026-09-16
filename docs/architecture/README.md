@@ -57,7 +57,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §8.8 |
 | How many Redis connections does a deployment need? | [`scaling.md`](./scaling.md) §Connection budget after the cutover |
 | What must scaling preserve while adding Dragonfly Cloud? | [`datastore_scaling.md`](./datastore_scaling.md) |
-| What drives the idle Upstash bill? | [`scaling.md`](./scaling.md) §Per-request volume |
+| What drives idle request volume? | [`scaling.md`](./scaling.md) §Per-request volume |
 | Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §Tuneup knobs |
 | Where is the next bottleneck? | [`scaling.md`](./scaling.md) §Where the next ceiling actually lives |
 | Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The three signal paths |

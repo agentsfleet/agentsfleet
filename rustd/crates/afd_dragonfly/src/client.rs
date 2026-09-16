@@ -76,7 +76,7 @@ impl Dragonfly {
             role,
             timeout_ms,
             tls,
-            event = "redis_connect_started"
+            event = "dragonfly_connect_started"
         );
 
         let result =
@@ -95,7 +95,7 @@ impl Dragonfly {
                     duration_ms,
                     request_timeout_ms,
                     tls,
-                    event = "redis_connect_completed"
+                    event = "dragonfly_connect_completed"
                 );
                 Ok(redis)
             }
@@ -107,7 +107,7 @@ impl Dragonfly {
                     duration_ms,
                     error_code,
                     reason = %failure,
-                    event = "redis_connect_failed"
+                    event = "dragonfly_connect_failed"
                 );
                 Err(failure)
             }

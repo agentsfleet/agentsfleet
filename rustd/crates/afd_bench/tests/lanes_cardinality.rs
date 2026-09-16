@@ -49,7 +49,7 @@ async fn test_cardinality_bench_reports_memory_per_fleet_across_the_ladder() {
 
     let ladder = series(&report, "ladder_fleets");
     assert!(ladder.len() >= 2, "a ladder has rungs");
-    for bytes in series(&report, "redis_bytes_per_fleet") {
+    for bytes in series(&report, "dragonfly_bytes_per_fleet") {
         assert!(*bytes > 0.0, "every rung costs memory per fleet");
     }
 }
