@@ -29,7 +29,7 @@ Create or confirm:
 - Cloudflare zone for `agentsfleet.net`
 - Vercel projects `agentsfleet-website`, `agentsfleet-app`, and
   `agentsfleet-agents-dev`
-- separate Clerk, PlanetScale, Upstash, PostHog, and Grafana resources for
+- separate Clerk, PlanetScale, Dragonfly, PostHog, and Grafana resources for
   development and production
 - QStash, Tailscale, npm, and gitleaks access
 
