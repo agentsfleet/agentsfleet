@@ -28,7 +28,7 @@
 #      while `KEEP_TEST_STATE=1` keeps the inner loop fast. Same contract the
 #      Zig lane had; CI never sets the escape hatch.
 #   4. The three service knobs are NOT passed on the command line. `test-infra.mk`
-#      exports `TEST_DATABASE_URL`, `TEST_REDIS_URL` and `TEST_REDIS_CA_CERT`,
+#      exports `TEST_DATABASE_URL`, `TEST_DRAGONFLY_URL` and `TEST_DRAGONFLY_CA_CERT`,
 #      and the suites read those names directly. This file used to resolve a URL
 #      through a shell macro and hand it to cargo under a fourth, `AFD_`-prefixed
 #      name; the rename bought nothing and cost a reader two files to answer

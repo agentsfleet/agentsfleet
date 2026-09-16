@@ -66,8 +66,9 @@ fn test_a_blank_variable_reads_as_unset() {
 
 #[test]
 fn test_a_required_variable_that_is_unset_is_refused_by_name() {
-    let refused = required(&env_of(&[]), "BENCH_REDIS_URL").expect_err("no guessing a datastore");
-    assert!(refused.to_string().contains("BENCH_REDIS_URL"));
+    let refused =
+        required(&env_of(&[]), "BENCH_DRAGONFLY_URL").expect_err("no guessing a datastore");
+    assert!(refused.to_string().contains("BENCH_DRAGONFLY_URL"));
 }
 
 #[test]

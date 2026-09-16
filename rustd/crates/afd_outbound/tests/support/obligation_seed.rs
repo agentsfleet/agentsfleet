@@ -21,10 +21,10 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_datastore::{
+use afd_db::Db;
+use afd_dragonfly::{
     Dedicated, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundReader, Redis,
 };
-use afd_db::Db;
 
 /// The instant every fixture row is stamped with.
 ///
@@ -215,13 +215,13 @@ pub(crate) async fn entries_naming(redis: &Redis, event: &str) -> u64 {
 
 /// A reader under a consumer name of the caller's choosing.
 ///
-/// [`afd_datastore::outbound_consumer`] is host-derived and constant for a
+/// [`afd_dragonfly::outbound_consumer`] is host-derived and constant for a
 /// process, which is exactly why a replacement under a DIFFERENT hostname
 /// cannot be staged with it: one test process has one hostname. Naming the
 /// consumer explicitly is how two hosts are staged inside one process, and the
 /// name is the only thing that differs from what production builds.
 pub(crate) async fn reader_named(
-    config: &afd_datastore::config::RedisConfig,
+    config: &afd_dragonfly::config::RedisConfig,
     host: &str,
 ) -> OutboundReader {
     let connection = Dedicated::connect(config, afd_outbound::LONGEST_PARK)

@@ -41,7 +41,7 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_datastore`, `afd_connector` and `afd_cron` already
+/// The seam `afd_db`, `afd_dragonfly`, `afd_connector` and `afd_cron` already
 /// carry, and for their argument: the accessors on an error type — its code,
 /// its sentence, its rendering, whether a retry could help — are what a person
 /// reads at three in the morning and are exactly what the happy path never

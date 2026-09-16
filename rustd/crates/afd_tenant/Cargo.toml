@@ -41,7 +41,7 @@ afd_crypto.workspace = true
 afd_db.workspace = true
 # The device-flow login surface is Redis-backed; nothing here reaches Postgres
 # for it.
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 # Lower-case hex for the fingerprint digest, rather than a hand-written render.
 hex.workspace = true
 # The device-flow fingerprint: a session is bound to the caller that opened it
@@ -60,7 +60,7 @@ test-util = [
   "afd_core/test-util",
   "afd_db/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
-  "afd_datastore/test-util",
+  "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]

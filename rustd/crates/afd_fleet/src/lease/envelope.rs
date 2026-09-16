@@ -18,7 +18,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::{EventId, FleetEvent};
+use afd_dragonfly::{EventId, FleetEvent};
 
 use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
@@ -247,8 +247,8 @@ mod tests {
             request_json: r#"{"message":"hello"}"#,
             created_at: "1788550034853",
         };
-        let event = afd_datastore::FleetEvent {
-            receipt: afd_datastore::EventId::of(ENTRY_ID),
+        let event = afd_dragonfly::FleetEvent {
+            receipt: afd_dragonfly::EventId::of(ENTRY_ID),
             fields: entry
                 .queued_pairs(EVENT_ID)
                 .into_iter()
@@ -294,8 +294,8 @@ mod tests {
                 .filter(|(index, _)| *index != dropped)
                 .map(|(_, (name, value))| ((*name).to_owned(), (*value).to_owned()))
                 .collect();
-            let event = afd_datastore::FleetEvent {
-                receipt: afd_datastore::EventId::of(ENTRY_ID),
+            let event = afd_dragonfly::FleetEvent {
+                receipt: afd_dragonfly::EventId::of(ENTRY_ID),
                 fields,
             };
             let refused = super::from_fresh(&fleet_id(), &claimed(), &event);

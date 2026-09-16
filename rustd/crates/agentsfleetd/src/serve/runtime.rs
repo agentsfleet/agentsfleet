@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_datastore::Redis;
 use afd_db::Db;
+use afd_dragonfly::Redis;
 use afd_observability::Analytics;
 
 use super::optional::{announce_identity, open_live};
@@ -45,7 +45,7 @@ pub(super) struct Runtime {
     /// with.
     pub(super) live: afd_sse::Live,
     pub(super) plane: Shared,
-    pub(super) hub: Option<afd_datastore::SubscriptionHub>,
+    pub(super) hub: Option<afd_dragonfly::SubscriptionHub>,
     /// The same key the plane seals with. The outbound worker opens its own
     /// grant store over it, so boot hands one key to both rather than reading
     /// the knob twice.
@@ -70,7 +70,7 @@ pub(super) async fn open_runtime(
     // that evicts keys would discard accepted work on purpose. A daemon that
     // served on through any of them would look exactly like one whose fleets
     // had simply gone quiet.
-    afd_datastore::preflight::refuse_unsuitable_datastore(&queue).await?;
+    afd_dragonfly::preflight::refuse_unsuitable_datastore(&queue).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
@@ -142,7 +142,7 @@ pub(super) async fn spawn_background(
     database: &Db,
     queue: &Redis,
     kek: &Arc<Kek>,
-    hub: Option<afd_datastore::SubscriptionHub>,
+    hub: Option<afd_dragonfly::SubscriptionHub>,
 ) {
     if let Some(hub) = hub {
         supervisor.spawn(crate::HUB_PUMP, move |token| async move {

@@ -22,8 +22,8 @@
 
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::Redis;
 use afd_db::Db;
+use afd_dragonfly::Redis;
 use afd_runner::sweep::{
     self, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile, repair::Repairs,
     replay::Replay, retention::Retention,

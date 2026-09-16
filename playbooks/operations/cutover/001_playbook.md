@@ -70,7 +70,7 @@ daemon from `docker-compose.yml` for the first time (M181_001 §4.3).
 | Knob | What breaks | Why nobody noticed |
 |---|---|---|
 | `CLERK_API_BASE` | Preflight refuses boot. `rustd/crates/agentsfleetd/src/preflight/read.rs` reads it with `required`, and no Fly configuration sets it — not `deploy/fly/agentsfleetd-dev/fly.toml`, not `deploy/fly/agentsfleetd-prod/fly.toml`, and not the `flyctl secrets set` block in `.github/workflows/deploy-dev-fly.yml`. | the retired daemon's Clerk backend configuration carried the vendor root as a compiled-in `API_BASE` and returned it when the override is absent, so the Zig daemon has never needed the knob. Set it to that same vendor root. |
-| `REDIS_URL_API` | Preflight refuses boot with `Invalid database number` if the URL carries any path segment. The Rust client reads the segment after the host as a database INDEX. | the retired daemon's Redis configuration sliced the URL at the first `/` and never read past it, so a segment selected nothing and the Zig daemon always used db 0. Confirm the vault's Upstash entry has no path before the swap. |
+| `DRAGONFLY_URL` | Preflight refuses boot with `Invalid database number` if the URL carries any path segment. The Rust client reads the segment after the host as a database INDEX. | the retired daemon's Redis configuration sliced the URL at the first `/` and never read past it, so a segment selected nothing and the Zig daemon always used db 0. Confirm the vault's Upstash entry has no path before the swap. |
 
 Verify both against a machine's live configuration rather than against this
 table — a knob added since it was written is exactly the case the table cannot

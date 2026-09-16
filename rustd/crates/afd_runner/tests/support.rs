@@ -7,11 +7,11 @@
 
 use std::time::Duration;
 
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) async fn connect_redis() -> Redis {
     let url = std::env::var(REDIS_URL_KNOB)
@@ -20,7 +20,7 @@ pub(crate) async fn connect_redis() -> Redis {
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5));
-    afd_datastore::test_util::connect_live(&config)
+    afd_dragonfly::test_util::connect_live(&config)
         .await
         .expect("the lane's Redis must be reachable")
 }

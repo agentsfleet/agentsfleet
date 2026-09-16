@@ -165,7 +165,7 @@ pub(crate) enum ErrorKind {
     Queue {
         /// The queue failure underneath.
         #[from]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The pool would not give a connection.

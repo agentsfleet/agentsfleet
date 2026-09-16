@@ -168,7 +168,7 @@ services:
       # the thing that made this ambiguous.
       # The cluster seed. Plaintext on purpose: the socket never leaves this
       # container's loopback, and TLS is proven by the trust suite.
-      REDIS_URL_API: redis://:agentsfleet@127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
+      DRAGONFLY_URL: redis://:agentsfleet@127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
       MIGRATE_ON_START: "1"
     depends_on:
       postgres:

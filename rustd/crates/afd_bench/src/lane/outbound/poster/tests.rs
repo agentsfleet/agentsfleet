@@ -9,7 +9,7 @@
 use core::time::Duration;
 use std::collections::BTreeMap;
 
-use afd_datastore::{EventId, OutboundDelivery};
+use afd_dragonfly::{EventId, OutboundDelivery};
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver as _, Verdict};
 

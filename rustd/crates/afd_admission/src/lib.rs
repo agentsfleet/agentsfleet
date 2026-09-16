@@ -55,8 +55,8 @@ pub mod sql;
 use std::sync::Arc;
 
 use afd_crypto::entropy::Entropy;
-use afd_datastore::Redis;
 use afd_db::Db;
+use afd_dragonfly::Redis;
 use afd_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 

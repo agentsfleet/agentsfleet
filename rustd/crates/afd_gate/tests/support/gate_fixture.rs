@@ -14,11 +14,11 @@ use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Mode;
 use afd_fleet_runtime::provider::StaticRegistry;
@@ -26,8 +26,8 @@ use afd_gate::gate::Check;
 use sqlx::Acquire as _;
 
 pub(crate) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -52,7 +52,7 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
 
 pub(crate) fn redis_config() -> RedisConfig {
     let url = std::env::var(REDIS_URL_KNOB)
-        .expect("TEST_REDIS_URL is set by make test-integration-rustd");
+        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
     RedisConfig::from_url(RedisRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
@@ -60,7 +60,7 @@ pub(crate) fn redis_config() -> RedisConfig {
 }
 
 pub(crate) async fn connect_redis() -> Redis {
-    afd_datastore::test_util::connect_live(&redis_config())
+    afd_dragonfly::test_util::connect_live(&redis_config())
         .await
         .expect("the lane's Redis must be reachable")
 }

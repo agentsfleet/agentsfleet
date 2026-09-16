@@ -44,7 +44,7 @@ fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", DEAD_DATABASE),
-            ("REDIS_URL_API", DEAD_REDIS),
+            ("DRAGONFLY_URL", DEAD_REDIS),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()

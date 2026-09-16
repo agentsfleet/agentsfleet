@@ -42,8 +42,8 @@
 use std::time::Duration;
 
 use afd_core::clock;
-use afd_datastore::{OutboundJob, OutboundQueue};
 use afd_db::Db;
+use afd_dragonfly::{OutboundJob, OutboundQueue};
 use tokio_util::sync::CancellationToken;
 
 use crate::obligation::{self, Owed};

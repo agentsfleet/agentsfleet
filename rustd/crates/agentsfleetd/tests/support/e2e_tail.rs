@@ -16,8 +16,8 @@
 
 use std::time::Duration;
 
-use afd_datastore::Subscription;
-use afd_datastore::hub::Received;
+use afd_dragonfly::Subscription;
+use afd_dragonfly::hub::Received;
 use serde_json::Value;
 
 use crate::e2e::Scenario;

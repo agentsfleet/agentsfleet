@@ -29,19 +29,19 @@ use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_datastore::config::{RedisConfig, RedisRole};
-use afd_datastore::{Redis, fleet_stream_key};
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, PoolConfig};
+use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::{Redis, fleet_stream_key};
 use afd_fleet_lifecycle::Fleets;
 use sqlx::Row as _;
 
 /// The environment knob naming the lane's Redis.
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The environment knob naming its certificate authority, where the lane uses one.
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// A Postgres nobody is listening on.
 ///
@@ -147,7 +147,7 @@ impl Lane {
     pub(crate) async fn create() -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_datastore::test_util::connect_live(&redis_config())
+        let queue = afd_dragonfly::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
         let fleets = Fleets::new(

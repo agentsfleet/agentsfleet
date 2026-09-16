@@ -45,7 +45,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::ReadyIndex;
+use afd_dragonfly::ReadyIndex;
 use afd_runner::Runners;
 use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
@@ -64,10 +64,10 @@ use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
 ///
@@ -141,8 +141,11 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
-            ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
-            ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
+            ("DRAGONFLY_URL", lane(REDIS_LANE_KNOB).as_str()),
+            (
+                "DRAGONFLY_TLS_CA_CERT_FILE",
+                lane(REDIS_CA_LANE_KNOB).as_str(),
+            ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
@@ -166,8 +169,8 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
 /// so the knobs are read again here rather than reached back through the
 /// daemon. Same three values `daemon_environment` passes it, which is what
 /// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn redis_config() -> afd_datastore::RedisConfig {
-    afd_datastore::RedisConfig::from_url(afd_datastore::RedisRole::Default, lane(REDIS_LANE_KNOB))
+pub(crate) fn redis_config() -> afd_dragonfly::RedisConfig {
+    afd_dragonfly::RedisConfig::from_url(afd_dragonfly::RedisRole::Default, lane(REDIS_LANE_KNOB))
         .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
 }
 

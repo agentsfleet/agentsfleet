@@ -17,7 +17,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
-use afd_datastore::SessionStore;
+use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::{Approval, Code, Opening};
 use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 

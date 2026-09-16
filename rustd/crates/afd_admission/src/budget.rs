@@ -27,7 +27,7 @@
 //! the one outage acceptance was designed to ride through into a refusal.
 
 use afd_core::clock::UnixMillis;
-use afd_datastore::FleetStreams;
+use afd_dragonfly::FleetStreams;
 
 use crate::Admissions;
 use crate::error::{ErrorKind, Result};

@@ -75,7 +75,7 @@ pub(crate) enum ErrorKind {
     #[error("the fleet's stream could not be reached")]
     Queue {
         #[source]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The acceptance could not be recorded.

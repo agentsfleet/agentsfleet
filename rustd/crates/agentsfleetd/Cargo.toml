@@ -33,7 +33,7 @@ test-util = [
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
-    "afd_datastore/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 # The document emitter. NOT default, and NOT reachable from the shipped binary:
@@ -125,7 +125,7 @@ clap.workspace = true
 afd_crypto.workspace = true
 # The pool and client settings boot resolves BEFORE it opens either.
 afd_db.workspace = true
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 afd_runner.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.

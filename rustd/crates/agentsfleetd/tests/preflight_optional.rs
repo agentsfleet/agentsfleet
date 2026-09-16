@@ -13,7 +13,7 @@ use agentsfleetd::preflight::{
 };
 
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
-const REDIS_KNOB: &str = "REDIS_URL_API";
+const REDIS_KNOB: &str = "DRAGONFLY_URL";
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
 const GOOD_REDIS: &str = "redis://127.0.0.1:6379";
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

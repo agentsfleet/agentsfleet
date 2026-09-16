@@ -47,7 +47,7 @@ use afd_tenant::preference::Preferences;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
-use afd_datastore::Redis;
+use afd_dragonfly::Redis;
 use afd_observability::Analytics;
 use afd_sse::Live;
 use afd_state::Credentials;
@@ -254,7 +254,7 @@ impl ServingPlane {
             analytics,
             api_url: login.api_url,
             logins: Logins::new(
-                afd_datastore::SessionStore::new(queue.clone()),
+                afd_dragonfly::SessionStore::new(queue.clone()),
                 login.code_pepper,
                 Entropy::new(),
                 &login.app_url,

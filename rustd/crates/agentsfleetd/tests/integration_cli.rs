@@ -38,10 +38,10 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Sixty-four hex characters. Boot validates the key; nothing here decrypts.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -77,8 +77,8 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
     vec![
         ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB)),
         ("DATABASE_URL_MIGRATOR", lane(DATABASE_LANE_KNOB)),
-        ("REDIS_URL_API", lane(REDIS_LANE_KNOB)),
-        ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB)),
+        ("DRAGONFLY_URL", lane(REDIS_LANE_KNOB)),
+        ("DRAGONFLY_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB)),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
@@ -121,8 +121,8 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
     for knob in [
         "DATABASE_URL_API",
         "DATABASE_URL_MIGRATOR",
-        "REDIS_URL_API",
-        "REDIS_TLS_CA_CERT_FILE",
+        "DRAGONFLY_URL",
+        "DRAGONFLY_TLS_CA_CERT_FILE",
         "ENCRYPTION_MASTER_KEY",
         "PORT",
         "DATABASE_POOL_SIZE",

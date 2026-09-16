@@ -19,8 +19,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_datastore::ready::READY_PARTITIONS;
-use afd_datastore::streams::FLEET_CONSUMER_GROUP;
+use afd_dragonfly::ready::READY_PARTITIONS;
+use afd_dragonfly::streams::FLEET_CONSUMER_GROUP;
 use sqlx::Row as _;
 
 use afd_fleet::lease::runner_consumer;
@@ -194,7 +194,7 @@ async fn expire_lease(fixtures: &Fixtures, lease: &str) {
 
 /// Entries the lease group has handed out and not had acknowledged.
 async fn pending_on(fixtures: &Fixtures, fleet: &str) -> usize {
-    let key = afd_datastore::fleet_stream_key(fleet);
+    let key = afd_dragonfly::fleet_stream_key(fleet);
     let mut cmd = redis::cmd("XPENDING");
     cmd.arg(&key).arg(FLEET_CONSUMER_GROUP);
     let reply: redis::streams::StreamPendingReply = fixtures

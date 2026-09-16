@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::ready::READY_PARTITIONS;
+use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_fleet::lease::{Acquired, Leases};
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 

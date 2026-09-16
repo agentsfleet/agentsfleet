@@ -253,7 +253,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         .find(|(kind, _error)| *kind == "datastore unavailable")
         .map(|(_kind, error)| error)
         .ok_or("database test utility has no outage kind")?;
-    let queue = afd_datastore::error::one_of_each_kind()
+    let queue = afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .next()
         .map(|(_kind, error)| error)

@@ -16,8 +16,8 @@ mod fixture;
 use std::time::Duration;
 
 use afd_crypto::entropy::Entropy;
-use afd_datastore::SubscriptionHub;
-use afd_datastore::hub::Received;
+use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 use serde_json::json;
 

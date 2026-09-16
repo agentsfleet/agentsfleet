@@ -12,7 +12,7 @@
 //! is the parity target, so a fake store would prove a handler against SQL
 //! nobody runs. Each store here therefore holds a pool over an address that
 //! answers nothing ([`afd_db::Db::unreachable`]) and, where it needs one, a
-//! queue built the same way ([`afd_datastore::Redis::unreachable`]). That is
+//! queue built the same way ([`afd_dragonfly::Redis::unreachable`]). That is
 //! exactly what a datastore outage looks like from the request path, and it
 //! lets a suite prove the transport-class refusal (RULE ECL) without stopping a
 //! container.
@@ -61,10 +61,10 @@ use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 use afd_events::{History, Steer};
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::memory::Memories;

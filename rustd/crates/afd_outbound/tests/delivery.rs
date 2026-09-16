@@ -24,8 +24,8 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_datastore::OutboundDelivery;
-use afd_datastore::streams::EventId;
+use afd_dragonfly::OutboundDelivery;
+use afd_dragonfly::streams::EventId;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, dispatch};
 

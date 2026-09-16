@@ -112,7 +112,7 @@ functions grouped by the day their file was introduced (`git log --diff-filter=A
 --follow`): 2026-08-24 through 08-26 are 100% prefixed across 378 tests; from
 08-27 onward the practice inverts — 14%, 0%, 31%, 9% across 411. The split is
 the same per crate: every 100% crate (`afd_auth`, `afd_db`, `afd_identity`,
-`afd_datastore`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and
+`afd_dragonfly`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and
 `afd_cron` and `afd_webhook` at 0%.
 
 **What this rule is NOT is a licence to rename.** The prefixed crates are

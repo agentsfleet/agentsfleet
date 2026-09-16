@@ -13,7 +13,7 @@
 //! The durable row is written first and stands whether or not anybody was
 //! listening; the frame is the row's announcement, and a lost announcement is
 //! recovered by the client's reconnect backfill from the events list. That
-//! contract is [`afd_datastore::FleetStreams::publish_frame`]'s, stated once for
+//! contract is [`afd_dragonfly::FleetStreams::publish_frame`]'s, stated once for
 //! every daemon-authored frame.
 //!
 //! # The completion is the row, not a pointer to it

@@ -17,7 +17,7 @@
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::FleetStreams;
+use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::{Billed, Delivery, Leases};
 use afd_wire::event::EventType;
 

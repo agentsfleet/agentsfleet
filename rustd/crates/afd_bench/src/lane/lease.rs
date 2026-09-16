@@ -35,8 +35,8 @@ use std::time::Instant;
 
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::ReadyIndex;
-use afd_datastore::ready::Partition;
+use afd_dragonfly::ReadyIndex;
+use afd_dragonfly::ready::Partition;
 use afd_fleet::lease::Leases;
 
 use self::drive::Shared;
@@ -251,7 +251,7 @@ async fn populate(
 /// filters every one of them out. The only thing they still cost is exactly
 /// what this window measures. Lane binaries run serially, so nothing is
 /// holding a mark this sweep could take from underneath it.
-async fn quiesce(queue: &afd_datastore::Redis, seeded: &[SeededFleet]) -> Result<u64> {
+async fn quiesce(queue: &afd_dragonfly::Redis, seeded: &[SeededFleet]) -> Result<u64> {
     let ready = ReadyIndex::new(queue.clone());
     for fleet in seeded {
         ready.force_clear(&fleet.fleet).await?;

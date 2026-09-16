@@ -34,8 +34,8 @@ use std::net::{Ipv6Addr, SocketAddr};
 
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
-use afd_datastore::Redis;
 use afd_db::Db;
+use afd_dragonfly::Redis;
 use afd_observability::{Analytics, Telemetry};
 use tokio::net::TcpListener;
 

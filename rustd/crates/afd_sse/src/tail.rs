@@ -12,8 +12,8 @@
 //! stream, the client sees the connection close, and it reconnects — which is
 //! what an `EventSource` does by itself.
 
-use afd_datastore::Subscription;
-use afd_datastore::hub::Received;
+use afd_dragonfly::Subscription;
+use afd_dragonfly::hub::Received;
 use futures_util::Stream;
 use futures_util::stream;
 

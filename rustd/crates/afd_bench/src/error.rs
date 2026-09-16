@@ -83,9 +83,9 @@ pub enum Error {
     /// Redis would not answer.
     #[error("the bench queue would not open")]
     QueueUnavailable {
-        /// What `afd_datastore` refused.
+        /// What `afd_dragonfly` refused.
         #[from]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The steer ingress path faulted, which is not a measurement.

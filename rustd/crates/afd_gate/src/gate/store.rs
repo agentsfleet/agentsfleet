@@ -8,8 +8,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{ReadyIndex, Redis};
 use afd_db::Db;
+use afd_dragonfly::{ReadyIndex, Redis};
 use sqlx::Row as _;
 
 use super::sql;

@@ -9,8 +9,8 @@
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
-use afd_datastore::RedisConfig;
 use afd_db::PoolConfig;
+use afd_dragonfly::RedisConfig;
 use afd_identity::ProviderSecret;
 
 use super::knobs::R2_REGION;

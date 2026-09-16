@@ -35,7 +35,7 @@
 )]
 
 use afd_core::clock::UnixMillis;
-use afd_datastore::{OutboundJob, Redis};
+use afd_dragonfly::{OutboundJob, Redis};
 use std::time::Duration;
 
 use afd_outbound::obligation::{self, Delivery};

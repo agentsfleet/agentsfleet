@@ -3,7 +3,7 @@
 use afd_core::clock::{self, UnixMillis};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_datastore::{FleetStreams, ReadyIndex};
+use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
 use afd_wire::event::Entry;

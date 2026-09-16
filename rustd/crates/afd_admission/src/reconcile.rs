@@ -17,7 +17,7 @@
 //! # Why a missing entry proves destruction
 //!
 //! Retention is bounded below by unfinished work
-//! (`afd_datastore::streams::retain`): the trim floor is the least of the
+//! (`afd_dragonfly::streams::retain`): the trim floor is the least of the
 //! group's last delivered id, its oldest pending id, and the id 1,000 entries
 //! from the tail, and a stream with no group at all is not trimmed. An
 //! undelivered entry sits above the last delivered id, so no trim can reach
@@ -56,7 +56,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_datastore::{EventId, FleetStreams};
+use afd_dragonfly::{EventId, FleetStreams};
 use sqlx::Row as _;
 
 use crate::error::{Result, query};

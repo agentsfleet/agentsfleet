@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use afd_datastore::config::{RedisConfig, RedisRole};
-use afd_datastore::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
+use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
 use afd_outbound::{Deliver, LONGEST_PARK, Posters, Verdict, Worker};
 use tokio_util::sync::CancellationToken;
 
@@ -51,7 +51,7 @@ const SPIN_WINDOW: Duration = Duration::from_millis(1_500);
 ///
 /// The fake HANGS UP on every read, which is a connection fault — so the
 /// cluster driver redials and retries the command before the failure ever
-/// reaches the worker. `afd_datastore::transport` configures that ladder at
+/// reaches the worker. `afd_dragonfly::transport` configures that ladder at
 /// eight retries, making `1 + 8` the most one worker turn can put on the wire.
 /// Measured at five here: eleven `HELLO`s and twenty-two `CLIENT SETINFO`s for
 /// those five reads, which is the redial, not the worker.

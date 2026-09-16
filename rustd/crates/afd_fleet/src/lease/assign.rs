@@ -68,7 +68,7 @@ const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 /// than left to the caller because `LOGGING_STANDARD.md` §4 is explicit that a
 /// path which can fail logs its failure — and this one propagates, so without
 /// this line the only record would be whatever the handler chose to say.
-fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_datastore::Error) {
+fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_dragonfly::Error) {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -84,7 +84,7 @@ fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_datastore::Err
 }
 
 /// Reports a queue failure against one fleet's stream.
-pub(super) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_datastore::Error) {
+pub(super) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_dragonfly::Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = error.to_string();
     tracing::warn!(
@@ -282,7 +282,7 @@ impl Leases {
 /// exactly the shape of the cutover defect this branch fixes, and would have
 /// outlived the fix for any stream still holding one.
 ///
-/// `afd_datastore::outbound`'s `drop_undeliverable` is the same answer for the
+/// `afd_dragonfly::outbound`'s `drop_undeliverable` is the same answer for the
 /// other stream, written for the same reason.
 ///
 /// A `warn` rather than an `err`: the daemon recovers by itself, so nothing is
@@ -291,9 +291,9 @@ impl Leases {
 /// acknowledgement is not raised either; the entry stays pending and the next
 /// poll drops it again.
 async fn drop_undecodable(
-    streams: &afd_datastore::FleetStreams,
+    streams: &afd_dragonfly::FleetStreams,
     fleet_id: &str,
-    receipt: &afd_datastore::EventId,
+    receipt: &afd_dragonfly::EventId,
     error: &crate::error::Error,
 ) {
     let id = receipt.as_str();

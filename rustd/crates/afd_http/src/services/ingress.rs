@@ -187,8 +187,8 @@ mod tests {
     use afd_core::env::MapEnv;
     use afd_crypto::entropy::Entropy;
     use afd_crypto::secret::Kek;
-    use afd_datastore::{Redis, RedisConfig, RedisRole};
     use afd_db::{Db, DbRole, PoolConfig};
+    use afd_dragonfly::{Redis, RedisConfig, RedisRole};
     use afd_ingress::{Binding, Delivery, Ingress, Surface};
     use afd_vault::Vault;
 

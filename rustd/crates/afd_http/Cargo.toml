@@ -71,7 +71,7 @@ utoipa = { workspace = true, optional = true }
 # second one shaped like it.
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
-afd_datastore = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_core.workspace = true
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }

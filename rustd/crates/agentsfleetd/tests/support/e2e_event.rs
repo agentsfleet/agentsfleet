@@ -36,7 +36,7 @@ use afd_admission::{Admission, Admissions, Key, Producer, logical_id};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{FleetStreams, ReadyIndex};
+use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_wire::event::{Entry, EventType};
 use agentsfleetd::serve::Booted;
 use sqlx::Row as _;

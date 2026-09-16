@@ -98,8 +98,8 @@ One deliberate exception, and it is security not style: `afd_crypto`'s
 | `map_err` elsewhere | 54 | 54 — all context-adding, correct |
 | Crates whose `source()` returned themselves | 4 | 0 |
 
-`afd_core`, `afd_crypto`, `afd_db`, `afd_datastore`, `afd_auth` gained the alias.
-`afd_core`, `afd_crypto`, `afd_db`, `afd_datastore` had `source()` corrected.
+`afd_core`, `afd_crypto`, `afd_db`, `afd_dragonfly`, `afd_auth` gained the alias.
+`afd_core`, `afd_crypto`, `afd_db`, `afd_dragonfly` had `source()` corrected.
 
 The corrected chain, from a real boot against a stopped Postgres:
 
@@ -167,7 +167,7 @@ sync. One row is open: `agentsfleetd` composes and has no hull yet.
 | Crate | Owns an `Error` | Hull | Notes |
 |---|---|---|---|
 | `afd_core` | ✅ | `error_shell!` + `error_lifts!` | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS. Also DECLARES both macros |
-| `afd_crypto`, `afd_db`, `afd_datastore`, `afd_bench`, `afd_fleet`, `afd_tenant` | ✅ | `error_shell!` | same shape; each composes through hand-written `From`s rather than the lift macro |
+| `afd_crypto`, `afd_db`, `afd_dragonfly`, `afd_bench`, `afd_fleet`, `afd_tenant` | ✅ | `error_shell!` | same shape; each composes through hand-written `From`s rather than the lift macro |
 | `afd_admin`, `afd_admission`, `afd_approval`, `afd_billing`, `afd_connector`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_gate`, `afd_identity`, `afd_ingress`, `afd_library`, `afd_observability`, `afd_outbound`, `afd_runner`, `afd_vault` | ✅ | `error_shell!` + `error_lifts!` | the full shape: private `ErrorKind`, one `answer()` table pairing each kind with its code and sentence, raisers in `error/raise.rs`, and a `one_of_each_kind()` sample behind `test-util` |
 | `afd_auth` | ✅ | none, by design | seven FIELDLESS variants — `Copy`, `const fn code()`, `const fn detail()`, `pub const ALL` — returned per request by `afd_http`'s guard. Nothing to box and no `source()` to skip; see the hull section above |
 | `afd_sse` | ✅ | none, by design | one fieldless variant, same reasoning |

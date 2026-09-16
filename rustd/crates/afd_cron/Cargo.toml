@@ -66,7 +66,7 @@ philiprehberger-cron-parser = "0.3.0"
 # The lane connects a live queue to build the admission ledger every fire
 # writes through; the crate's own code reaches the queue only through
 # `afd_admission`, so this is a test-side dependency and not a second door.
-afd_datastore = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
 # The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
 # string could only ever assert one shape, and every negative case here is a

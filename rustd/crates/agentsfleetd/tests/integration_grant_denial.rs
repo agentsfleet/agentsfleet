@@ -12,7 +12,7 @@ use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, json, post
 use afd_approval::{Decision, Inbox};
 use afd_core::id::Uuid7;
 use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_datastore::FleetStreams;
+use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::{Leases, runner_consumer};
 use afd_vault::{SecretBody, SecretName, Vault};
 use afd_wire::event::EventType;
@@ -103,7 +103,7 @@ where
     Fut: Future<Output = bool>,
 {
     const ROTATIONS: u16 = 8;
-    for _poll in 0..(afd_datastore::ready::READY_PARTITIONS * ROTATIONS) {
+    for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
         // A no-work poll retains its affinity claim until expiry. Move that
         // deadline into the past so this test reaches redelivery without a
         // wall-clock sleep. Redis remains untouched: a missing acknowledgment

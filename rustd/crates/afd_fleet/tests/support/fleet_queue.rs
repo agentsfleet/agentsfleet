@@ -22,14 +22,14 @@
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use afd_datastore::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
+use afd_dragonfly::{FleetStreams, ReadyIndex, Redis, RedisConfig, RedisRole};
 use afd_wire::event::Entry;
 
 /// The lane's Redis URL.
-const URL_KNOB: &str = "TEST_REDIS_URL";
+const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The lane's Redis certificate authority, when it serves TLS.
-const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The configuration the lane hands these suites.
 pub(crate) fn config() -> RedisConfig {
@@ -67,7 +67,7 @@ pub(crate) fn unreachable() -> Redis {
 
 /// Connects to the lane's Redis.
 pub(crate) async fn connect() -> Redis {
-    afd_datastore::test_util::connect_live(&config())
+    afd_dragonfly::test_util::connect_live(&config())
         .await
         .expect("the lane's Redis must be reachable")
 }
@@ -174,7 +174,7 @@ pub(crate) async fn enqueue_cutover_era(
 /// Marks a fleet ready so the readiness peek can surface it.
 /// Every entry on one fleet's stream, as `(receipt, logical event id)`.
 ///
-/// Over `afd_datastore::test_util::fleet_entries`, which is an `XRANGE` and not
+/// Over `afd_dragonfly::test_util::fleet_entries`, which is an `XRANGE` and not
 /// a group read — `XREADGROUP` would move `last-delivered-id` and with it the
 /// retention floor, changing the thing the caller is about to assert on.
 ///
@@ -182,7 +182,7 @@ pub(crate) async fn enqueue_cutover_era(
 /// legitimately sits on two entries: the receipt is the physical copy and the
 /// field is the identity.
 pub(crate) async fn entries_on(queue: &Redis, fleet: &str) -> Vec<(String, String)> {
-    afd_datastore::test_util::fleet_entries(queue, fleet)
+    afd_dragonfly::test_util::fleet_entries(queue, fleet)
         .await
         .expect("the lane's stream answers a range read")
         .iter()
