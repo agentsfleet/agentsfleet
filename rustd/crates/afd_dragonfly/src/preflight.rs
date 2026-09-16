@@ -28,7 +28,7 @@
 
 use redis::Value;
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{ErrorKind, Result};
 
 /// The `INFO` section that reports what the server IS, and the command that
@@ -94,7 +94,7 @@ const CACHE_MODE_ON: &str = "cache";
 /// Returns the first refusal found — see [`refuse_non_cluster`],
 /// [`refuse_missing_sharded_pubsub`] and [`refuse_eviction`] — and whatever
 /// asking the datastore returns.
-pub async fn refuse_unsuitable_datastore(redis: &Redis) -> Result<()> {
+pub async fn refuse_unsuitable_datastore(redis: &Dragonfly) -> Result<()> {
     refuse_non_cluster(redis).await?;
     refuse_missing_sharded_pubsub(redis).await?;
     refuse_eviction(redis).await
@@ -111,7 +111,7 @@ pub async fn refuse_unsuitable_datastore(redis: &Redis) -> Result<()> {
 /// # Errors
 /// Returns a not-a-cluster error naming what was reported, and a command
 /// error when the datastore will not answer.
-pub async fn refuse_non_cluster(redis: &Redis) -> Result<()> {
+pub async fn refuse_non_cluster(redis: &Dragonfly) -> Result<()> {
     let mut cmd = redis::cmd(CMD_INFO);
     cmd.arg(SECTION_CLUSTER);
     let reply: String = redis.ask_one_node(CMD_INFO, SECTION_CLUSTER, &cmd).await?;
@@ -130,7 +130,7 @@ pub async fn refuse_non_cluster(redis: &Redis) -> Result<()> {
 /// # Errors
 /// Returns a missing-capability error, and a command error when the
 /// datastore will not answer.
-pub async fn refuse_missing_sharded_pubsub(redis: &Redis) -> Result<()> {
+pub async fn refuse_missing_sharded_pubsub(redis: &Dragonfly) -> Result<()> {
     let mut cmd = redis::cmd(CMD_COMMAND);
     cmd.arg(ARG_INFO).arg(CMD_SSUBSCRIBE);
     let reply: Value = redis
@@ -182,7 +182,7 @@ fn field_of<'reply>(reply: &'reply str, field: &str) -> Option<&'reply str> {
 /// Returns an unsafe-eviction error naming the first primary found evicting
 /// and the setting that said so, a command error when a primary will not
 /// answer `INFO`, and whatever reading the topology returns.
-pub async fn refuse_eviction(redis: &Redis) -> Result<()> {
+pub async fn refuse_eviction(redis: &Dragonfly) -> Result<()> {
     redis
         .info_per_primary(SECTION_MEMORY)
         .await?

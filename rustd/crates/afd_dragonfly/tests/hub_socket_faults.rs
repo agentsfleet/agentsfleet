@@ -24,7 +24,7 @@
 use std::time::Duration;
 
 use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use backon::ExponentialBuilder;
 
 use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
@@ -78,12 +78,12 @@ async fn until(label: &str, mut check: impl FnMut() -> bool) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_refused_first_connection_refuses_the_hub() {
     install_subscriber();
-    let config = RedisConfig::from_url(RedisRole::Default, closed_port().await);
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, closed_port().await);
 
     let error = tokio::time::timeout(BUDGET, SubscriptionHub::start(config))
         .await
         .expect("a refused connection must fail fast, not hang")
-        .expect_err("a hub that cannot reach Redis must not start");
+        .expect_err("a hub that cannot reach Dragonfly must not start");
 
     assert!(
         error.is_unavailable(),
@@ -105,7 +105,7 @@ async fn test_a_refused_first_connection_refuses_the_hub() {
 async fn test_a_redial_that_keeps_being_refused_never_counts_a_connection() {
     install_subscriber();
     let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
 
     let hub = tokio::time::timeout(
         BUDGET,
@@ -151,7 +151,7 @@ async fn test_a_redial_that_keeps_being_refused_never_counts_a_connection() {
 async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
     install_subscriber();
     let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
 
     let hub = tokio::time::timeout(
         BUDGET,
@@ -206,7 +206,7 @@ async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
 async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
     install_subscriber();
     let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
 
     let hub = tokio::time::timeout(
         BUDGET,
@@ -259,7 +259,7 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
 async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
     install_subscriber();
     let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
 
     let hub = tokio::time::timeout(
         BUDGET,
@@ -311,7 +311,7 @@ async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
 async fn test_dropping_every_handle_stops_the_pump_and_closes_the_socket() {
     install_subscriber();
     let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
 
     let hub = tokio::time::timeout(
         BUDGET,

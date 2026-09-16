@@ -54,28 +54,28 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    #[error("the {role} Redis configuration was refused before any connection was attempted")]
+    #[error("the {role} Dragonfly configuration was refused before any connection was attempted")]
     ConfigRejected {
         role: &'static str,
         #[source]
         source: Box<redis::RedisError>,
     },
 
-    #[error("the {role} Redis is unreachable")]
+    #[error("the {role} Dragonfly is unreachable")]
     Unreachable {
         role: &'static str,
         #[source]
         source: Box<redis::RedisError>,
     },
 
-    #[error("the {role} Redis presented a certificate the configured authority does not trust")]
+    #[error("the {role} Dragonfly presented a certificate the configured authority does not trust")]
     CertificateRejected {
         role: &'static str,
         #[source]
         source: Box<redis::RedisError>,
     },
 
-    #[error("the {role} Redis did not connect within {waited_ms}ms")]
+    #[error("the {role} Dragonfly did not connect within {waited_ms}ms")]
     ConnectTimeout { role: &'static str, waited_ms: u128 },
 
     #[error("{command} did not answer within {waited_ms}ms")]

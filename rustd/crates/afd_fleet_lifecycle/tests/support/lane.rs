@@ -1,11 +1,11 @@
-//! The lane's database, its Redis, and the rows an install needs to exist.
+//! The lane's database, its Dragonfly, and the rows an install needs to exist.
 //!
 //! Built on [`afd_db::test_util::TestDatabase`], which hands back the database
 //! the lane already migrated.
 //!
 //! # One isolation argument, now used on both sides
 //!
-//! Redis never had a database-per-test equivalent, so every key this suite
+//! Dragonfly never had a database-per-test equivalent, so every key this suite
 //! touches is namespaced by a fleet identifier the test minted for itself: two
 //! tests running at once cannot collide because neither can name the other's
 //! fleet. That worked. Postgres is now isolated the same way and for the same
@@ -32,12 +32,12 @@ use afd_crypto::secret::Kek;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, PoolConfig};
-use afd_dragonfly::config::{RedisConfig, RedisRole};
-use afd_dragonfly::{Redis, fleet_stream_key};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dragonfly, fleet_stream_key};
 use afd_fleet_lifecycle::Fleets;
 use sqlx::Row as _;
 
-/// The environment knob naming the lane's Redis.
+/// The environment knob naming the lane's Dragonfly.
 const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The environment knob naming its certificate authority, where the lane uses one.
@@ -130,7 +130,7 @@ mod seed;
 pub(crate) struct Lane {
     database: TestDatabase,
     pub(crate) pool: Db,
-    pub(crate) queue: Redis,
+    pub(crate) queue: Dragonfly,
     pub(crate) fleets: Fleets,
     pub(crate) workspace: Uuid7,
     pub(crate) tenant: Uuid7,
@@ -142,14 +142,14 @@ impl Lane {
     ///
     /// No `CREATE DATABASE` and no migration — the lane brought both. Isolation
     /// is the minted `tenant` and `workspace`, which is the same isolation the
-    /// Redis side has always relied on: keys namespaced by identifiers only
+    /// Dragonfly side has always relied on: keys namespaced by identifiers only
     /// this test can name.
     pub(crate) async fn create() -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
         let queue = afd_dragonfly::test_util::connect_live(&redis_config())
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
         let fleets = Fleets::new(
             pool.clone(),
             queue.clone(),
@@ -181,16 +181,16 @@ impl Lane {
         )
     }
 
-    /// The same store, pointed at a Redis nobody answers on.
+    /// The same store, pointed at a Dragonfly nobody answers on.
     ///
-    /// The transport-failure seam for the install guarantee: `Redis::unreachable`
+    /// The transport-failure seam for the install guarantee: `Dragonfly::unreachable`
     /// builds the manager WITHOUT opening a socket, so every command fails as a
     /// TRANSPORT error rather than a command error — which is the class the
     /// install retries, and the only one it should.
     pub(crate) fn with_dead_queue(&self) -> Fleets {
-        let config = RedisConfig::from_url(RedisRole::Default, NOWHERE.to_owned())
+        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned())
             .with_request_timeout(Duration::from_millis(250));
-        let dead = Redis::unreachable(&config).expect("a lazy manager opens no socket");
+        let dead = Dragonfly::unreachable(&config).expect("a lazy manager opens no socket");
         Fleets::new(
             self.pool.clone(),
             dead,
@@ -213,8 +213,8 @@ impl Lane {
             &PoolConfig::resolve(&environment, DbRole::Api)
                 .expect("the fixture connection string is well formed"),
         );
-        let config = RedisConfig::from_url(RedisRole::Default, NOWHERE.to_owned());
-        let queue = Redis::unreachable(&config).expect("a lazy manager opens no socket");
+        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned());
+        let queue = Dragonfly::unreachable(&config).expect("a lazy manager opens no socket");
         Fleets::new(
             dead,
             queue,
@@ -269,7 +269,7 @@ impl Lane {
             .and_then(|row| row.try_get::<Option<String>, _>(0).ok().flatten())
     }
 
-    /// Whether Redis holds a consumer group for this fleet's event stream.
+    /// Whether Dragonfly holds a consumer group for this fleet's event stream.
     ///
     /// The install's whole guarantee, asserted against the queue rather than
     /// against the response: `XINFO GROUPS` on a stream with none answers an
@@ -286,7 +286,7 @@ impl Lane {
 
     /// Puts a plain string where a fleet's event stream would go.
     ///
-    /// The COMMAND-failure seam, as distinct from the transport one: Redis is up
+    /// The COMMAND-failure seam, as distinct from the transport one: Dragonfly is up
     /// and answers, and `XGROUP CREATE … MKSTREAM` against a key holding a
     /// string is a `WRONGTYPE` error. Retrying it three more times would answer
     /// the same, which is exactly what the install must not spend the budget on.
@@ -305,7 +305,7 @@ impl Lane {
         UnixMillis::from_millis(NOW_MS)
     }
 
-    /// Drops the database. Redis keys are namespaced per fleet and age out.
+    /// Drops the database. Dragonfly keys are namespaced per fleet and age out.
     pub(crate) async fn cleanup(self) {
         self.database.cleanup().await;
     }
@@ -344,12 +344,12 @@ impl Lane {
     }
 }
 
-/// The lane's Redis configuration.
-fn redis_config() -> RedisConfig {
+/// The lane's Dragonfly configuration.
+fn redis_config() -> DragonflyConfig {
     let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
         panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
-    RedisConfig::from_url(RedisRole::Default, url)
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
 }

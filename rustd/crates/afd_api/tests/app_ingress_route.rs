@@ -23,7 +23,7 @@
 //! The route's every decision past the signature is a function of what the
 //! ingress seam answered — which installation maps to which workspace, which
 //! fleets subscribe — so the whole matrix is reachable with the store scripted
-//! and no Postgres or Redis anywhere.
+//! and no Postgres or Dragonfly anywhere.
 
 #![cfg(feature = "test-util")]
 #![expect(

@@ -132,7 +132,7 @@ const LANE_USAGE: &str = "expected one of steer, lease, outbound, cardinality";
 /// What a datastore was asked to do, and how long it spent doing it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCost {
-    /// Commands issued to Redis, or round trips made to Postgres.
+    /// Commands issued to Dragonfly, or round trips made to Postgres.
     pub operations: u64,
     /// Wall time spent waiting on them, where a lane measured it.
     ///
@@ -150,7 +150,7 @@ pub struct DatastoreCost {
 /// every lane renamed one on import.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCosts {
-    /// The Redis half.
+    /// The Dragonfly half.
     pub redis: DatastoreCost,
     /// The Postgres half.
     pub postgres: DatastoreCost,

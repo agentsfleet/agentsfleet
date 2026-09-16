@@ -19,8 +19,8 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::config::{RedisConfig, RedisRole};
-use afd_dragonfly::{Redis, preflight};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dragonfly, preflight};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
@@ -38,14 +38,14 @@ const INFO_RETAINS: &str = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:noe
 /// The same, from one configured to discard keys when it fills.
 const INFO_EVICTS: &str = "# Memory\r\nused_memory:1024\r\nmaxmemory_policy:allkeys-lru\r\n";
 
-fn config_for(server: &FakeRedis) -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, server.url())
+fn config_for(server: &FakeRedis) -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(Duration::from_secs(2))
 }
 
-async fn connect(server: &FakeRedis) -> Redis {
+async fn connect(server: &FakeRedis) -> Dragonfly {
     install_subscriber();
-    tokio::time::timeout(BUDGET, Redis::connect(&config_for(server)))
+    tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted")
@@ -62,7 +62,7 @@ async fn healthy_server() -> FakeRedis {
     .await
 }
 
-async fn refuse(redis: &Redis) -> afd_dragonfly::Error {
+async fn refuse(redis: &Dragonfly) -> afd_dragonfly::Error {
     tokio::time::timeout(BUDGET, preflight::refuse_unsuitable_datastore(redis))
         .await
         .expect("the fake answers every preflight command")
@@ -142,8 +142,8 @@ async fn test_datastore_preflight_refuses_invalid_configuration() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_seed_that_is_not_a_url_is_refused_without_dialling() {
     install_subscriber();
-    let config = RedisConfig::from_url(RedisRole::Default, "not-a-url".to_owned());
-    let refused = tokio::time::timeout(BUDGET, Redis::connect(&config))
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, "not-a-url".to_owned());
+    let refused = tokio::time::timeout(BUDGET, Dragonfly::connect(&config))
         .await
         .expect("a malformed seed is refused without waiting on a socket")
         .expect_err("a seed that is not a URL cannot be connected to");

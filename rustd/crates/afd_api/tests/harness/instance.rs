@@ -34,8 +34,8 @@ use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_runner::Runners;
 use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
@@ -94,7 +94,7 @@ const DEFAULT_STREAM_CEILING: usize = 64;
 
 impl Fleet {
     /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres and Redis are not there.
+    /// whose Postgres and Dragonfly are not there.
     ///
     /// Every store below is the PRODUCTION one. None of them is reachable, so
     /// every verb refuses at its first acquire — with the error its own crate
@@ -104,7 +104,7 @@ impl Fleet {
         let directory = Directory::Mock(mock.clone());
         let capabilities = MockCapabilities::new();
         let database = Db::unreachable(&unreachable_pool());
-        let queue = Redis::unreachable(&unreachable_queue())
+        let queue = Dragonfly::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         Self {
@@ -219,7 +219,7 @@ impl Fleet {
     ///
     /// The seam the admin and operator suites need: everything else in this
     /// file refuses at the first acquire, which proves a refusal matrix and
-    /// nothing about a row. Redis stays unreachable — no suite built on this
+    /// nothing about a row. Dragonfly stays unreachable — no suite built on this
     /// reaches a queue, and opening one would make a datastore lane out of a
     /// router lane.
     pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
@@ -227,7 +227,7 @@ impl Fleet {
         let capabilities = MockCapabilities::new().with(&who, scopes);
         let mock_directory = MockDirectory::new();
         let directory = Directory::Live(Credentials::new(database.clone()));
-        let queue = Redis::unreachable(&unreachable_queue())
+        let queue = Dragonfly::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         Self {

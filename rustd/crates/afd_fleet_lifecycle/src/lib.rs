@@ -12,7 +12,7 @@
 //! exact condition that forced `afd_tenant` out of it, where an edit to a
 //! 400-line module rebuilt everything. `afd_tenant` is the other candidate and
 //! is the wrong shape for a different reason: it would acquire a YAML parser
-//! and a Redis stream client that its api-key, credential and login modules
+//! and a Dragonfly stream client that its api-key, credential and login modules
 //! never call, and every edit to those would then rebuild both.
 //!
 //! What is here has exactly two edges out that its neighbours lack —
@@ -52,7 +52,7 @@ use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
-use afd_dragonfly::{FleetStreams, ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 use afd_vault::Directory;
 
 /// The purge's statements, for the lane that runs them against a live role.
@@ -87,7 +87,7 @@ pub use self::read::{After, FleetDetail, FleetPage, FleetRow, Triggers};
 
 /// The workspace's fleets, as one store.
 ///
-/// Holds Postgres, two views of Redis, and an entropy source, because an
+/// Holds Postgres, two views of Dragonfly, and an entropy source, because an
 /// install needs all of them in ONE operation: the row is written, the stream
 /// and its consumer group are created, and only then is the fleet real. A
 /// caller holding the pieces and sequencing them itself is a caller that can
@@ -108,7 +108,7 @@ pub struct Fleets {
     /// fourth argument: which reads this crate needs is its own business, and a
     /// composition root assembling the pair would be edited every time that
     /// answer changed — the same argument [`Self::new`] makes about the two
-    /// Redis views.
+    /// Dragonfly views.
     secrets: Directory,
     /// The same directory's stored HANDLES, for the install's grant requests.
     ///
@@ -137,12 +137,12 @@ pub struct Fleets {
 impl Fleets {
     /// Binds the store to already-connected handles.
     ///
-    /// Takes the Redis CONNECTION and the Key Encryption Key and builds every
+    /// Takes the Dragonfly CONNECTION and the Key Encryption Key and builds every
     /// view over them, rather than taking the views: which of them this crate
     /// needs is its own business, and a composition root assembling them would
     /// have to be edited every time that answer changed.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, kek: Arc<Kek>, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
             database: database.clone(),
             streams: FleetStreams::new(queue.clone()),

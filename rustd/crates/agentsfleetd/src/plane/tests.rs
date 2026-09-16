@@ -15,7 +15,7 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_crypto::secret::{Kek, SecretBytes, SecretString};
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_observability::Analytics;
 use afd_sse::{Ceiling, Live};
 
@@ -32,11 +32,11 @@ fn plane() -> ServingPlane {
     )
     .expect("the unreachable database URL is valid");
     let database = afd_db::Db::unreachable(&database_config);
-    let queue = afd_dragonfly::Redis::unreachable(&RedisConfig::from_url(
-        RedisRole::Api,
+    let queue = afd_dragonfly::Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Api,
         "redis://127.0.0.1:1".to_owned(),
     ))
-    .expect("a lazy Redis handle opens no socket");
+    .expect("a lazy Dragonfly handle opens no socket");
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
         database,

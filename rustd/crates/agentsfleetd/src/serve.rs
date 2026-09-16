@@ -1,7 +1,7 @@
 //! Boot: what happens between a resolved environment and a served port.
 //!
 //! The order is `cmd/serve.zig`'s, because the order is the part that carries
-//! meaning — pools before Redis before the router, and nothing listening until
+//! meaning — pools before Dragonfly before the router, and nothing listening until
 //! all of them answered. What is NOT ported is the shape: `serve.zig` is one
 //! function holding a defer chain that teardown has to unwind in exactly the
 //! right sequence, and the sequence is only correct because the declarations
@@ -35,7 +35,7 @@ use std::net::{Ipv6Addr, SocketAddr};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
 use afd_db::Db;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_observability::{Analytics, Telemetry};
 use tokio::net::TcpListener;
 
@@ -77,8 +77,8 @@ pub struct Booted {
     pub address: SocketAddr,
     /// The Postgres pool, to be dropped only after shutdown returns.
     pub database: Db,
-    /// The Redis client, likewise.
-    pub queue: Redis,
+    /// The Dragonfly client, likewise.
+    pub queue: Dragonfly,
     /// The accept loop's stop signal and its in-flight count, so the shutdown
     /// path can stop accepting and wait for live requests before the supervisor
     /// cancels anything. Cloned from the one the accept loop holds.

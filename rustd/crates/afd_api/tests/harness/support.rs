@@ -8,8 +8,8 @@ use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
 use afd_core::id::Uuid7;
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -22,21 +22,21 @@ use std::time::Duration;
 const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
-/// The integration lane's one Redis configuration.
-pub(crate) fn redis_config() -> RedisConfig {
+/// The integration lane's one Dragonfly configuration.
+pub(crate) fn redis_config() -> DragonflyConfig {
     let url = std::env::var(REDIS_URL_KNOB)
         .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
-    RedisConfig::from_url(RedisRole::Default, url)
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }
 
 /// A proven live connection using [`redis_config`].
-pub(crate) async fn connect_redis() -> Redis {
+pub(crate) async fn connect_redis() -> Dragonfly {
     afd_dragonfly::test_util::connect_live(&redis_config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 /// The tenant every fixture person acts in.

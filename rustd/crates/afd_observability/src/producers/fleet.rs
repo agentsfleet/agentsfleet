@@ -31,7 +31,7 @@ pub(super) const UNMODELLED_REASON: &str = "unknown";
 
 /// How many fleets the last lease poll found holding work.
 ///
-/// Published by the poll rather than read from Redis in the callback: the
+/// Published by the poll rather than read from Dragonfly in the callback: the
 /// index is a network round trip, and a collection callback runs under the
 /// SDK's pipeline lock where an await is not available and a stall would take
 /// every family silent at once.

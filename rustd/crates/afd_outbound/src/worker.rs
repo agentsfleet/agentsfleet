@@ -53,7 +53,7 @@
 //!
 //! The load-bearing fact behind Dimension 5.2. `tokio::select!` drops the
 //! losing branch, but the `XREADGROUP` has already been WRITTEN to the socket:
-//! Redis may assign an entry to this consumer after this process has stopped
+//! Dragonfly may assign an entry to this consumer after this process has stopped
 //! caring. The entry is not lost — it is pending, under a consumer name the
 //! next process comes back to, and the pending-first read above is what finds
 //! it. This is exactly why [`afd_dragonfly::outbound_consumer`] must not carry a
@@ -99,7 +99,7 @@ const _: () = assert!(LONGEST_PARK.as_millis() == BLOCK_INTERVAL as u128);
 /// microseconds — turns the loop into a hot spin: hundreds of failed reads a
 /// second, each one a log line, on a task sharing its runtime with every
 /// request handler in the process. The pause is the same five seconds the
-/// healthy path parks for, so a failing Redis is asked exactly as often as an
+/// healthy path parks for, so a failing Dragonfly is asked exactly as often as an
 /// idle one; it is raced against the token so a shutdown never waits it out.
 const READ_FAILURE_BACKOFF: Duration = LONGEST_PARK;
 
@@ -147,7 +147,7 @@ impl<S: Deliver + 'static> Worker<S> {
 
     /// Runs until the supervisor cancels `token`.
     ///
-    /// Returns rather than panicking on a queue that will not answer: a Redis
+    /// Returns rather than panicking on a queue that will not answer: a Dragonfly
     /// blip must not take the delivery path down for the life of the process,
     /// and the next turn of the loop re-reads. The one thing that ends this
     /// function is cancellation.

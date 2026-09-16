@@ -1,8 +1,8 @@
 //! A connection one component owns alone, so it may block on it.
 //!
-//! # What "dedicated" buys, and why [`Redis`] cannot be it
+//! # What "dedicated" buys, and why [`Dragonfly`] cannot be it
 //!
-//! [`Redis`] is shared by everything in the process: cloning it shares one
+//! [`Dragonfly`] is shared by everything in the process: cloning it shares one
 //! cluster connection, which holds exactly one socket per node. The driver
 //! executes commands on a socket in order and applies one reply deadline to
 //! every command on a connection, so an `XREADGROUP … BLOCK 5000` parked on
@@ -19,7 +19,7 @@
 //!
 //! # Not cloneable, deliberately
 //!
-//! `Redis` is `Clone` because sharing it is correct. This is not, because
+//! `Dragonfly` is `Clone` because sharing it is correct. This is not, because
 //! sharing it would reintroduce exactly the problem it exists to avoid: a
 //! second holder issuing a command behind a parked read waits for the park.
 //! One owner is the invariant, and taking `&mut self` on every call is how it
@@ -56,7 +56,7 @@ use std::time::Duration;
 use redis::cluster_async::ClusterConnection;
 use redis::{Cmd, FromRedisValue, Value};
 
-use crate::config::{RedisConfig, RedisRole};
+use crate::config::{DragonflyConfig, DragonflyRole};
 use crate::error::{self, Result};
 use crate::transport;
 
@@ -66,7 +66,7 @@ use crate::transport;
 /// parks — and it is the type system, not a comment, that keeps a second
 /// caller off the socket.
 pub struct Dedicated {
-    role: RedisRole,
+    role: DragonflyRole,
     connection: ClusterConnection,
 }
 
@@ -86,7 +86,7 @@ impl Dedicated {
     /// `request_timeout`, so a read the server is still honouring is never
     /// given up on — see the module note.
     ///
-    /// Unlike [`crate::Redis::connect`] there is no ping: the caller is a
+    /// Unlike [`crate::Dragonfly::connect`] there is no ping: the caller is a
     /// background consumer rather than boot, and a consumer that cannot reach
     /// the cluster retries rather than failing a process that is otherwise
     /// healthy. Boot's promise that the cluster SERVES is made once, by the
@@ -96,7 +96,7 @@ impl Dedicated {
     /// Returns an unavailable error when the cluster cannot be reached within
     /// the role's `connect_timeout`, and a config error when a certificate
     /// authority file was named but not readable.
-    pub async fn connect(config: &RedisConfig, longest_park: Duration) -> Result<Self> {
+    pub async fn connect(config: &DragonflyConfig, longest_park: Duration) -> Result<Self> {
         let role = config.role().tag();
         let connection =
             transport::connect(config, longest_park + config.request_timeout()).await?;
@@ -111,7 +111,7 @@ impl Dedicated {
 
     /// The role this connection serves.
     #[must_use]
-    pub const fn role(&self) -> RedisRole {
+    pub const fn role(&self) -> DragonflyRole {
         self.role
     }
 
@@ -137,7 +137,7 @@ impl Dedicated {
             .await
             .and_then(Value::extract_error)
             .map_err(|source| error::classify(name, context, source))?;
-        // A parse failure is not a datastore failure — see [`crate::Redis::command`].
+        // A parse failure is not a datastore failure — see [`crate::Dragonfly::command`].
         T::from_redis_value(value).map_err(|_parse| error::unexpected_reply(name))
     }
 }

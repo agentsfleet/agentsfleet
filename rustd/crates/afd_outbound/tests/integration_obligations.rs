@@ -35,7 +35,7 @@
 )]
 
 use afd_core::clock::UnixMillis;
-use afd_dragonfly::{OutboundJob, Redis};
+use afd_dragonfly::{Dragonfly, OutboundJob};
 use std::time::Duration;
 
 use afd_outbound::obligation::{self, Delivery};
@@ -210,10 +210,10 @@ async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) {
 }
 
 /// A second handle on the lane's datastore, for the faults the queue cannot stage.
-async fn datastore() -> Redis {
-    Redis::connect(&OutboundHarness::config())
+async fn datastore() -> Dragonfly {
+    Dragonfly::connect(&OutboundHarness::config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 /// A result that committed and never reached the queue is still owed.

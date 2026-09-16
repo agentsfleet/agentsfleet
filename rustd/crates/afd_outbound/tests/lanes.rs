@@ -15,9 +15,9 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::EventId;
-use afd_dragonfly::{OutboundDelivery, OutboundQueue, Redis};
+use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
 use afd_outbound::{IN_FLIGHT_DELIVERIES, Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -67,9 +67,9 @@ fn job(workspace: &str, n: u32) -> Box<OutboundDelivery> {
 
 /// Lanes over a fresh fake queue, and the poster they deliver through.
 async fn lanes_against(server: &HangingQueue, token: &CancellationToken) -> (Lanes<Gated>, Gated) {
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Redis::connect(&config)
+    let redis = Dragonfly::connect(&config)
         .await
         .expect("the fake queue answers a ping");
     let poster = Gated::default();

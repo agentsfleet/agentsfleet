@@ -19,7 +19,7 @@ use agentsfleetd::supervisor::Supervisor;
 /// The API role's Postgres knob.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Redis knob.
+/// The API role's Dragonfly knob.
 const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
@@ -31,7 +31,7 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Redis URL that parses and points at nothing listening.
+/// A Dragonfly URL that parses and points at nothing listening.
 const DEAD_REDIS: &str = "redis://127.0.0.1:1";
 
 /// An environment whose knobs all parse but whose datastores are not there.
@@ -154,13 +154,13 @@ fn test_every_boot_failure_renders_a_reason() {
     let (_kind, queue_source) = afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .next()
-        .expect("the Redis error fixture is exhaustive");
+        .expect("the Dragonfly error fixture is exhaustive");
     let queue = BootFailure::from(queue_source);
     assert_eq!(queue.phase(), "queue");
     assert_eq!(queue.code(), afd_core::error_code::STARTUP_REDIS_CONNECT);
     assert!(
         std::error::Error::source(&queue).is_some(),
-        "the queue failure preserves the original Redis error"
+        "the queue failure preserves the original Dragonfly error"
     );
 }
 

@@ -188,7 +188,7 @@ mod tests {
     use afd_crypto::entropy::Entropy;
     use afd_crypto::secret::Kek;
     use afd_db::{Db, DbRole, PoolConfig};
-    use afd_dragonfly::{Redis, RedisConfig, RedisRole};
+    use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
     use afd_ingress::{Binding, Delivery, Ingress, Surface};
     use afd_vault::Vault;
 
@@ -215,8 +215,8 @@ mod tests {
         let pool = PoolConfig::resolve(&environment, DbRole::Api)
             .expect("the fixture connection string is well formed");
         let database = Db::unreachable(&pool);
-        let queue = Redis::unreachable(
-            &RedisConfig::from_url(RedisRole::Default, NOWHERE_QUEUE.to_owned())
+        let queue = Dragonfly::unreachable(
+            &DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
                 .with_request_timeout(std::time::Duration::from_millis(250)),
         )
         .expect("a lazy manager opens no socket, so it cannot fail to open one");

@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyCursor, ReadyIndex, ReadyToken};
 
 use crate::cluster::{CLUSTER_LANE, ClusterHarness};
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// How many fleets the race spreads over the partitions.
 const FLEETS: usize = 96;
@@ -39,7 +39,7 @@ const ROTATIONS: u16 = 6;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the live Dragonfly cluster: make test-integration-rustd"]
 async fn test_ready_races_preserve_work_and_bound_poll_cost() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
     let fleets: Vec<String> = (0..FLEETS)
         .map(|n| harness.name(&format!("f{n}")))
@@ -150,7 +150,7 @@ async fn lost_work(
 async fn test_coordination_recovers_during_partition_movement() {
     let _lane = CLUSTER_LANE.lock().await;
     let cluster = ClusterHarness::from_lane();
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
     let mut raw = cluster.connect().await;
 

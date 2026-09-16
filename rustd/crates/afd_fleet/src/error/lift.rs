@@ -26,7 +26,7 @@ impl From<afd_db::Error> for Error {
 ///
 /// A separate variant from [`ErrorKind::Datastore`] because the two fail
 /// independently and a runner reads them the same way — back off and re-poll —
-/// only when the code says which one went down. Folding Redis into the Postgres
+/// only when the code says which one went down. Folding Dragonfly into the Postgres
 /// variant would page whoever owns the wrong datastore.
 impl From<afd_dragonfly::Error> for Error {
     fn from(source: afd_dragonfly::Error) -> Self {

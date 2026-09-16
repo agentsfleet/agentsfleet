@@ -145,7 +145,7 @@ pub enum BootFailure {
     /// Postgres would not answer.
     #[error("agentsfleetd cannot boot: the API database would not answer")]
     Database(#[from] afd_db::Error),
-    /// Redis would not answer.
+    /// Dragonfly would not answer.
     #[error("agentsfleetd cannot boot: the API queue would not answer")]
     Queue(#[from] afd_dragonfly::Error),
     /// The port could not be bound.

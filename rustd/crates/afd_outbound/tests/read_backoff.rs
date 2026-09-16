@@ -5,10 +5,10 @@
 //! and forever, and the loop re-read with nothing between the turns. One
 //! deployment logged the same warning about two hundred and sixty times a
 //! second, on a task sharing its runtime with every request handler in the
-//! process — a Redis blip became a busy loop that outlived it.
+//! process — a Dragonfly blip became a busy loop that outlived it.
 //!
 //! So a failing read has to cost time, and a shutdown must not have to wait
-//! that time out. Both are asserted here, without a Redis: a server that hangs
+//! that time out. Both are asserted here, without a Dragonfly: a server that hangs
 //! up on the read is all it takes to hold the loop in its failing branch.
 #![expect(
     clippy::expect_used,
@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use afd_dragonfly::config::{RedisConfig, RedisRole};
-use afd_dragonfly::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dedicated, Dragonfly, OutboundDelivery, OutboundQueue, OutboundReader};
 use afd_outbound::{Deliver, LONGEST_PARK, Posters, Verdict, Worker};
 use tokio_util::sync::CancellationToken;
 
@@ -66,7 +66,7 @@ const MAX_READS_IN_WINDOW: usize = 9;
 /// How long a cancelled worker may take to stop.
 ///
 /// Well inside [`LONGEST_PARK`]: a shutdown that had to wait out the backoff
-/// would blow the supervisor's join budget every time Redis was unwell.
+/// would blow the supervisor's join budget every time Dragonfly was unwell.
 const SHUTDOWN_BUDGET: Duration = Duration::from_millis(500);
 
 /// The connection's own allowance for an answer to travel.
@@ -95,9 +95,9 @@ impl Deliver for Unreachable {
 async fn worker_against(
     server: &HangingQueue,
 ) -> (Worker<Unreachable>, CancellationToken, Arc<AtomicUsize>) {
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Redis::connect(&config)
+    let redis = Dragonfly::connect(&config)
         .await
         .expect("the fake queue answers a ping");
     let connection = Dedicated::connect(&config, LONGEST_PARK)

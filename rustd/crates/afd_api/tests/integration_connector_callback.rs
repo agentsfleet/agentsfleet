@@ -4,7 +4,7 @@
 //! leg up to its first vault read, and proves them with no datastore because
 //! none of those refusals may reach one. This file starts where that one stops:
 //! every case here holds a state this daemon really signed, a nonce really
-//! remembered in Redis, and a vendor that really answers.
+//! remembered in Dragonfly, and a vendor that really answers.
 //!
 //! # The whole round trip, not a callback with a hand-made state
 //!

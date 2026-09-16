@@ -30,7 +30,7 @@ use std::time::Duration;
 
 use afd_core::clock::{self, UnixMillis};
 use afd_db::Db;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_dragonfly::streams::FleetStreams;
 use afd_observability::producers;
 use sqlx::Row as _;
@@ -125,7 +125,7 @@ pub struct Reclaim {
 impl Reclaim {
     /// A sweeper claiming into `consumer`.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, consumer: impl Into<Box<str>>) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, consumer: impl Into<Box<str>>) -> Self {
         Self {
             database,
             streams: FleetStreams::new(queue.clone()),
@@ -175,7 +175,7 @@ impl Reclaim {
 
     /// Claims what one fleet has stranded, up to the per-pass bound.
     ///
-    /// A Redis failure collapses to "claimed nothing" rather than failing the
+    /// A Dragonfly failure collapses to "claimed nothing" rather than failing the
     /// pass: every other fleet in the batch is still worth sweeping, and this
     /// one is retried on the next pass.
     async fn claim_strays(&self, fleet_id: &str) -> u64 {
@@ -202,7 +202,7 @@ impl Reclaim {
     ///
     /// `claimed_any` short-circuits the probe: an entry just claimed into this
     /// instance's pending list is deliverable by definition, so there is
-    /// nothing left to ask Redis.
+    /// nothing left to ask Dragonfly.
     async fn remark_if_deliverable(&self, fleet_id: &str, claimed_any: bool) -> bool {
         if !claimed_any {
             match self.streams.has_deliverable(fleet_id).await {

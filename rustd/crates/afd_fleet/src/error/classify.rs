@@ -87,7 +87,7 @@ impl Error {
             // operator their enrolment was malformed while the fault was here.
             // The queue joins these rather than getting a code of its own: the
             // Zig assign path logs `ERR_INTERNAL_OPERATION_FAILED` for every
-            // Redis failure it meets, and a new code would fire the ERROR
+            // Dragonfly failure it meets, and a new code would fire the ERROR
             // REGISTRY gate over a registry this family does not own.
             // Every provider-resolution failure answers the code
             // `service_billing.zig` logs for the whole family

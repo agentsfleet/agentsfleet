@@ -53,7 +53,7 @@ use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};
@@ -76,13 +76,13 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         PoolConfig::resolve(env, DbRole::Api),
     );
 
-    let redis_knob = RedisRole::Api.url_knob();
+    let redis_knob = DragonflyRole::Api.url_knob();
     let redis = classify(
         &mut faults,
         is_set(env, redis_knob),
         redis_knob,
         WHY_REDIS,
-        RedisConfig::resolve(env, RedisRole::Api),
+        DragonflyConfig::resolve(env, DragonflyRole::Api),
     );
 
     let kek = read_kek(env, &mut faults);

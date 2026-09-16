@@ -23,7 +23,7 @@
 
 use afd_db::Db;
 use afd_dragonfly::{
-    Dedicated, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundReader, Redis,
+    Dedicated, Dragonfly, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundReader,
 };
 
 /// The instant every fixture row is stamped with.
@@ -142,7 +142,7 @@ const FIELD_EVENT_ID: &str = "event_id";
 /// The "lost group" half of Dimension 7.6, and the reason it is its own test:
 /// the entries survive and become unreachable, which is a different shape from
 /// losing the stream even though the ledger cannot tell them apart.
-pub(crate) async fn forget_group(redis: &Redis) {
+pub(crate) async fn forget_group(redis: &Dragonfly) {
     let mut cmd = redis::cmd(CMD_XGROUP);
     cmd.arg(CMD_DESTROY)
         .arg(OUTBOUND_STREAM_KEY)
@@ -154,7 +154,7 @@ pub(crate) async fn forget_group(redis: &Redis) {
 }
 
 /// Removes the stream entirely — entries, groups and pending lists together.
-pub(crate) async fn forget_stream(redis: &Redis) {
+pub(crate) async fn forget_stream(redis: &Dragonfly) {
     let mut cmd = redis::cmd(CMD_DEL);
     cmd.arg(OUTBOUND_STREAM_KEY);
     let _removed: i64 = redis
@@ -164,7 +164,7 @@ pub(crate) async fn forget_stream(redis: &Redis) {
 }
 
 /// How many entries the stream holds, whoever is holding them.
-pub(crate) async fn entries_on(redis: &Redis) -> u64 {
+pub(crate) async fn entries_on(redis: &Dragonfly) -> u64 {
     let mut cmd = redis::cmd(CMD_XLEN);
     cmd.arg(OUTBOUND_STREAM_KEY);
     redis
@@ -192,7 +192,7 @@ pub(crate) async fn entries_on(redis: &Redis) -> u64 {
 /// So the question is asked about this test's own answer. Scanned with
 /// `XRANGE` rather than read through the group, because a read would claim the
 /// entries and change the pending list this suite asserts on.
-pub(crate) async fn entries_naming(redis: &Redis, event: &str) -> u64 {
+pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(OUTBOUND_STREAM_KEY).arg(RANGE_START).arg(RANGE_END);
     let entries: Vec<(String, Vec<String>)> = redis
@@ -221,7 +221,7 @@ pub(crate) async fn entries_naming(redis: &Redis, event: &str) -> u64 {
 /// consumer explicitly is how two hosts are staged inside one process, and the
 /// name is the only thing that differs from what production builds.
 pub(crate) async fn reader_named(
-    config: &afd_dragonfly::config::RedisConfig,
+    config: &afd_dragonfly::config::DragonflyConfig,
     host: &str,
 ) -> OutboundReader {
     let connection = Dedicated::connect(config, afd_outbound::LONGEST_PARK)

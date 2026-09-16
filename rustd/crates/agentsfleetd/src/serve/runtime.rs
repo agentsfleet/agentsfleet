@@ -11,7 +11,7 @@ use std::time::Duration;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
 
 use super::optional::{announce_identity, open_live};
@@ -36,7 +36,7 @@ const POOL_WARM_DEADLINE: Duration = Duration::from_secs(15);
 
 pub(super) struct Runtime {
     pub(super) database: Db,
-    pub(super) queue: Redis,
+    pub(super) queue: Dragonfly,
     /// The live-stream surface, kept beside the plane it was moved into.
     ///
     /// A `Live` is two handles, so this is the same ceiling the routes admit
@@ -63,7 +63,7 @@ pub(super) async fn open_runtime(
     // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
     // both. `warm` reports its shortfall through `pool_warm_incomplete`.
     database.warm(POOL_WARM_DEADLINE).await;
-    let queue = Redis::connect(config.redis()).await?;
+    let queue = Dragonfly::connect(config.redis()).await?;
     // Before the first write, and refused in the queue's own class. A seed
     // that is not a cluster cannot place the keys this daemon routes by slot;
     // a server without sharded pub/sub cannot carry the live tail; a primary
@@ -140,7 +140,7 @@ pub(super) async fn spawn_background(
     supervisor: &mut Supervisor,
     config: &BootConfig,
     database: &Db,
-    queue: &Redis,
+    queue: &Dragonfly,
     kek: &Arc<Kek>,
     hub: Option<afd_dragonfly::SubscriptionHub>,
 ) {
@@ -155,7 +155,7 @@ pub(super) async fn spawn_background(
     // nothing is noticing dead runners.
     crate::sweepers::spawn(supervisor, database, queue);
     // The connector answer-delivery worker, beside them and for the same
-    // reason. Its own Redis connection, because it blocks on the stream — see
+    // reason. Its own Dragonfly connection, because it blocks on the stream — see
     // `crate::outbound`. It opens its own grant store over the SAME key the
     // plane seals with, which is why the KEK arrives shared rather than
     // rebuilt here.

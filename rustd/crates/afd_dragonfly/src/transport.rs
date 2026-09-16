@@ -10,7 +10,7 @@
 //!
 //! # Why every connection is built here
 //!
-//! [`crate::Redis`], [`crate::Dedicated`] and the hub's pump each hold their
+//! [`crate::Dragonfly`], [`crate::Dedicated`] and the hub's pump each hold their
 //! own `ClusterConnection`. The driver keeps exactly one socket per node and
 //! applies one reply deadline to every command on a connection, so a parked
 //! read on a shared handle would stall the owning node's only socket and
@@ -20,13 +20,13 @@
 //! # The connect ladder fits the budget
 //!
 //! `connect` runs the driver's whole retry ladder inside
-//! [`RedisConfig::connect_timeout`]. For the outer deadline to be the LAST
+//! [`DragonflyConfig::connect_timeout`]. For the outer deadline to be the LAST
 //! thing that fires rather than the first, the ladder's worst case has to fit:
 //!
 //! ```text
 //! CONNECT_ATTEMPTS * CONNECT_ATTEMPT_TIMEOUT       <- the attempts
 //!   + jittered sum of the backoff delays            <- the sleeps
-//!   < RedisConfig::connect_timeout                  <- the outer budget
+//!   < DragonflyConfig::connect_timeout                  <- the outer budget
 //! ```
 //!
 //! While that holds, the driver's own error always arrives first and keeps its
@@ -50,7 +50,7 @@ use redis::cluster_async::ClusterConnection;
 use redis::{ProtocolVersion, PushInfo, TlsCertificates};
 use tokio::sync::mpsc;
 
-use crate::config::RedisConfig;
+use crate::config::DragonflyConfig;
 use crate::error::{self, Error, ErrorKind, Result};
 
 /// Retries the driver makes on a redirect or a dropped node before it gives
@@ -114,7 +114,7 @@ pub(crate) struct Pushed {
 /// whichever is smaller fires first, and a builder default of half a second
 /// would fail every parked read at 500 ms.
 pub(crate) fn builder(
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<ClusterClientBuilder> {
     let mut builder = ClusterClientBuilder::new([config.url().to_owned()])
@@ -142,7 +142,10 @@ pub(crate) fn builder(
 
 /// Builds the client, which parses the seed and reads the authority but opens
 /// no socket. A seed that is not a URL is refused here, by role.
-pub(crate) fn client(config: &RedisConfig, response_timeout: Duration) -> Result<ClusterClient> {
+pub(crate) fn client(
+    config: &DragonflyConfig,
+    response_timeout: Duration,
+) -> Result<ClusterClient> {
     // No socket is opened here, so nothing that fails here can be an outage.
     // Reporting it as one sent an operator to look at the network for a seed
     // their own configuration had malformed -- and this function's own
@@ -176,7 +179,7 @@ fn connection_config(
 /// unreadable, a connect-timeout error when the budget lapses, and an
 /// unavailable error naming the role otherwise.
 pub(crate) async fn connect(
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<ClusterConnection> {
     let client = client(config, response_timeout)?;
@@ -193,7 +196,7 @@ pub(crate) async fn connect(
 
 /// As [`connect`], with server pushes routed to the returned receiver.
 pub(crate) async fn connect_with_pushes(
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<Pushed> {
     let client = client(config, response_timeout)?;
@@ -215,13 +218,13 @@ pub(crate) async fn connect_with_pushes(
 /// fault suites use to prove the request path against a datastore that is
 /// not there, without taking the lane's datastore away from everyone else.
 ///
-/// Gated with its one caller, [`crate::Redis::unreachable`]: the workspace
+/// Gated with its one caller, [`crate::Dragonfly::unreachable`]: the workspace
 /// lints with `--all-features`, so a function reachable only under
 /// `test-util` reads as dead to anyone building this crate the way a
 /// dependent does.
 #[cfg(feature = "test-util")]
 pub(crate) fn pending(
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<ClusterConnection> {
     Ok(client(config, response_timeout)?
@@ -257,7 +260,10 @@ fn names_a_certificate(source: &redis::RedisError) -> bool {
 /// `None` means the diagnosis did not produce an answer worth preferring —
 /// the dial unexpectedly succeeded, or it timed out in its own right — and
 /// the caller keeps the error it already had.
-async fn diagnose(config: &RedisConfig, response_timeout: Duration) -> Option<redis::RedisError> {
+async fn diagnose(
+    config: &DragonflyConfig,
+    response_timeout: Duration,
+) -> Option<redis::RedisError> {
     let client = builder(config, response_timeout)
         .ok()?
         .max_connection_attempts(ONE_ATTEMPT)
@@ -276,7 +282,7 @@ async fn diagnose(config: &RedisConfig, response_timeout: Duration) -> Option<re
 /// only a TLS dial that failed without naming a certificate is worth a second
 /// question, because only there can the answer have been thrown away.
 async fn dial_failure(
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     response_timeout: Duration,
     source: redis::RedisError,
 ) -> Error {
@@ -297,10 +303,10 @@ mod tests {
     use std::time::Duration;
 
     use super::{CONNECT_ATTEMPT_TIMEOUT, CONNECT_ATTEMPTS, RETRY_MAX_WAIT, builder};
-    use crate::config::{RedisConfig, RedisRole};
+    use crate::config::{DragonflyConfig, DragonflyRole};
 
     fn default_budget() -> Duration {
-        RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:6379".to_owned())
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:6379".to_owned())
             .connect_timeout()
     }
 
@@ -330,8 +336,9 @@ mod tests {
     /// is the assertion — the plaintext branch never reads it.
     #[test]
     fn test_a_configured_authority_does_not_force_tls_on_a_plaintext_url() {
-        let config = RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:6379".to_owned())
-            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+        let config =
+            DragonflyConfig::from_url(DragonflyRole::Api, "redis://127.0.0.1:6379".to_owned())
+                .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
         assert!(
             builder(&config, Duration::from_secs(1)).is_ok(),
             "a redis:// seed opens plaintext whatever authority is configured"
@@ -342,8 +349,9 @@ mod tests {
     /// on the file rather than quietly opening plaintext to a TLS port.
     #[test]
     fn test_a_tls_url_reads_the_authority_it_was_given() {
-        let config = RedisConfig::from_url(RedisRole::Api, "rediss://127.0.0.1:6380".to_owned())
-            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+        let config =
+            DragonflyConfig::from_url(DragonflyRole::Api, "rediss://127.0.0.1:6380".to_owned())
+                .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
         let refusal = builder(&config, Duration::from_secs(1))
             .err()
             .map(|error| error.to_string());

@@ -1,4 +1,4 @@
-//! The device flow end to end, against a live Redis.
+//! The device flow end to end, against a live Dragonfly.
 //!
 //! The unit half of this surface is `auth_sessions.rs`: what each endpoint
 //! refuses before it reaches the queue, which is a question a fake answers. The
@@ -7,7 +7,7 @@
 //! remembers nothing cannot be asked it.
 //!
 //! Split from that file rather than sharing it, because the filename is what
-//! declares the tier: this one needs Redis and is `#[ignore]`d for it, and the
+//! declares the tier: this one needs Dragonfly and is `#[ignore]`d for it, and the
 //! unit lane must be able to run its sibling on a machine with Docker closed.
 #![cfg(feature = "test-util")]
 #![expect(

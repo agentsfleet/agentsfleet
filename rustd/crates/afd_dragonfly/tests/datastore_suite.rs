@@ -9,7 +9,7 @@
 //! audit that precedes it asks what they share. Here:
 //!
 //! - No suite asserts a global count. There is no `FLUSHALL`, `FLUSHDB`, `KEYS`
-//!   or `DBSIZE` anywhere; `RedisHarness` namespaces every key behind a prefix
+//!   or `DBSIZE` anywhere; `DragonflyHarness` namespaces every key behind a prefix
 //!   minted from the process id and a counter, exactly so parallel tests never
 //!   collide. That is the failure `afd_fleet` hit and this crate cannot.
 //! - The two subscriber installers do not fight. `support/subscriber.rs` calls

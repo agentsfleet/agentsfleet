@@ -7,7 +7,7 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use afd_dragonfly::{Partition, ReadyCursor, ReadyIndex, Redis, fleet_stream_key};
+use afd_dragonfly::{Dragonfly, Partition, ReadyCursor, ReadyIndex, fleet_stream_key};
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
 use sqlx::Row as _;
@@ -56,12 +56,12 @@ const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
 /// The datastore named when a Postgres reading will not parse.
 const POSTGRES: &str = "postgres";
 
-/// The datastore named when a Redis sample set is empty.
+/// The datastore named when a Dragonfly sample set is empty.
 const REDIS: &str = "redis";
 
 /// Median readiness-peek latency over [`SAMPLES`] calls, asking for the same
 /// number of candidates the lease path asks for.
-pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
+pub(super) async fn peek_ms(queue: &Dragonfly) -> Result<f64> {
     let index = ReadyIndex::new(queue.clone());
     // Rotated the way the lease path rotates, so the sample covers every
     // partition rather than timing one hash over and over.
@@ -81,7 +81,7 @@ pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
 }
 
 /// Median single-stream read latency over [`SAMPLES`] calls.
-pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
+pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64> {
     let key = fleet_stream_key(fleet);
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -108,7 +108,7 @@ pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
 /// binds, and a single partition of a freshly seeded population may hold
 /// fewer fleets than the poll ceiling; walking the rotation fills the list
 /// the way consecutive polls would.
-async fn ready_across_partitions(queue: &Redis) -> Result<Vec<String>> {
+async fn ready_across_partitions(queue: &Dragonfly) -> Result<Vec<String>> {
     let index = ReadyIndex::new(queue.clone());
     let mut ready = Vec::with_capacity(MAX_READY_CANDIDATES_PER_POLL);
     for partition in Partition::all() {

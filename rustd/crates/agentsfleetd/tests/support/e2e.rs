@@ -63,10 +63,10 @@ use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Redis it brought up.
+/// Where the lane publishes the TLS Dragonfly it brought up.
 const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// Where the lane extracted the Redis certificate authority to.
+/// Where the lane extracted the Dragonfly certificate authority to.
 const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
@@ -130,7 +130,7 @@ fn lane(knob: &str) -> String {
     })
 }
 
-/// An environment pointing the daemon at `database` and the lane's Redis, on an
+/// An environment pointing the daemon at `database` and the lane's Dragonfly, on an
 /// ephemeral port.
 ///
 /// The database is a parameter rather than the lane knob: each scenario boots
@@ -162,16 +162,19 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     )
 }
 
-/// The lane's Redis, as a configuration a second client can be built from.
+/// The lane's Dragonfly, as a configuration a second client can be built from.
 ///
 /// The activity suite needs a SUBSCRIBER alongside the daemon's own connection,
-/// and `Booted` hands out a `Redis` rather than the config it was opened with —
+/// and `Booted` hands out a `Dragonfly` rather than the config it was opened with —
 /// so the knobs are read again here rather than reached back through the
 /// daemon. Same three values `daemon_environment` passes it, which is what
 /// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn redis_config() -> afd_dragonfly::RedisConfig {
-    afd_dragonfly::RedisConfig::from_url(afd_dragonfly::RedisRole::Default, lane(REDIS_LANE_KNOB))
-        .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
+pub(crate) fn redis_config() -> afd_dragonfly::DragonflyConfig {
+    afd_dragonfly::DragonflyConfig::from_url(
+        afd_dragonfly::DragonflyRole::Default,
+        lane(REDIS_LANE_KNOB),
+    )
+    .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
 }
 
 /// A fleet, workspace and tenant no other scenario in this lane will name.
@@ -254,7 +257,7 @@ pub(crate) async fn scenario_with_provider(
         supervisor,
     )
     .await
-    .expect("the lane's Postgres and Redis are up");
+    .expect("the lane's Postgres and Dragonfly are up");
     let base = format!("http://{}", booted.address);
     let now = afd_core::clock::now();
 

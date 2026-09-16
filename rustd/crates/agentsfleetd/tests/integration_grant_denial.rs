@@ -106,7 +106,7 @@ where
     for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
         // A no-work poll retains its affinity claim until expiry. Move that
         // deadline into the past so this test reaches redelivery without a
-        // wall-clock sleep. Redis remains untouched: a missing acknowledgment
+        // wall-clock sleep. Dragonfly remains untouched: a missing acknowledgment
         // must still be visible.
         sqlx::query("UPDATE fleet.runner_affinity SET leased_until = $2 WHERE fleet_id = $1::uuid")
             .bind(&run.fleet)
@@ -215,7 +215,7 @@ async fn refusal_drains(preended: bool) {
     );
     deny(&run).await;
     if preended {
-        // The durable half succeeded before a crash or a failed Redis acknowledgment.
+        // The durable half succeeded before a crash or a failed Dragonfly acknowledgment.
         Leases::new(
             run.booted.database.clone(),
             run.booted.queue.clone(),

@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use tokio::sync::Semaphore;
 
-use crate::Redis;
-use crate::config::RedisConfig;
+use crate::Dragonfly;
+use crate::config::DragonflyConfig;
 use crate::error::{ErrorKind, Result};
 use crate::streams::{EventId, FleetEvent};
 
@@ -40,12 +40,12 @@ const RETRY_BACKOFF: Duration = Duration::from_millis(250);
 /// Opens a live connection without competing with another test's handshake.
 ///
 /// Fault-injection tests with private endpoints should keep using
-/// [`Redis::connect`] or [`Redis::unreachable`] directly: only concurrent
+/// [`Dragonfly::connect`] or [`Dragonfly::unreachable`] directly: only concurrent
 /// connections to the lane's one TLS listener need this admission gate.
 ///
 /// # Errors
 /// Returns the connection attempt's configuration or transport failure.
-pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
+pub async fn connect_live(config: &DragonflyConfig) -> Result<Dragonfly> {
     let mut attempt = 1;
     loop {
         // This private semaphore is never closed. Keeping the acquisition
@@ -55,7 +55,7 @@ pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
         // behind other tests rather than holding the listener for its backoff.
         let outcome = {
             let _permit = CONNECT_SERIAL.acquire().await;
-            Redis::connect(config).await
+            Dragonfly::connect(config).await
         };
         match outcome {
             Ok(redis) => return Ok(redis),
@@ -84,7 +84,9 @@ pub async fn connect_live(config: &RedisConfig) -> Result<Redis> {
 /// # Errors
 /// Returns a config error when the seed is not a URL or a named authority is
 /// unreadable.
-pub fn build_client_for_diagnosis(config: &RedisConfig) -> Result<redis::cluster::ClusterClient> {
+pub fn build_client_for_diagnosis(
+    config: &DragonflyConfig,
+) -> Result<redis::cluster::ClusterClient> {
     crate::transport::client(config, config.request_timeout())
 }
 
@@ -137,7 +139,7 @@ pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
 ///
 /// # Errors
 /// Returns a command error when the stream cannot be read.
-pub async fn fleet_entries(redis: &Redis, fleet_id: &str) -> Result<Vec<FleetEvent>> {
+pub async fn fleet_entries(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<FleetEvent>> {
     let key = crate::streams::fleet_stream_key(fleet_id);
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(&key).arg(RANGE_OLDEST).arg(RANGE_NEWEST);

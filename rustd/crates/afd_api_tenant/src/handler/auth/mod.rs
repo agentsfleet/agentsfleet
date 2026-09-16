@@ -1,6 +1,6 @@
 //! `/v1/auth/sessions*` — the command-line login handshake.
 //!
-//! Six verbs over one Redis blob, and every one of them is thin by
+//! Six verbs over one Dragonfly blob, and every one of them is thin by
 //! construction: parse the body into a type that already carries its bounds,
 //! call one service method, render the answer. There is no validation here, no
 //! status chosen at a call site, and no state machine — the machine is

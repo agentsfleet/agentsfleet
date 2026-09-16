@@ -23,7 +23,7 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is one Lua script on Redis
+//! It does not prove the at-most-once claim. That is one Lua script on Dragonfly
 //! ([`afd_dragonfly::streams::FleetStreams::append_once`]), and a claim
 //! re-implemented here would agree with the suite whatever the script did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
@@ -38,7 +38,7 @@ use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::streams::EventId;
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
-/// The shape Redis renders an entry id in, which a stub id has to share.
+/// The shape Dragonfly renders an entry id in, which a stub id has to share.
 ///
 /// A route reads the id back out and puts it in a response body, so an id of
 /// another shape would let a renderer that mangled it still pass.

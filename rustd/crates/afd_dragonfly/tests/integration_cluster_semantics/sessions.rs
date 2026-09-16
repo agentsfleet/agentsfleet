@@ -10,7 +10,7 @@ use afd_dragonfly::session::{
     SessionState, SessionStatus, SessionStore, VerifyOutcome, session_key,
 };
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 use super::{ClusterHarness, forget_every_script};
 
@@ -76,7 +76,7 @@ fn approved_session(session_id: &str) -> SessionState {
 /// reloaded per-caller without serialising would let two bodies run over one
 /// key, and that is invisible when the script is already loaded.
 pub(super) async fn a_race_through_a_cold_cache_still_redeems_once(
-    harness: &RedisHarness,
+    harness: &DragonflyHarness,
     cluster: &ClusterHarness,
 ) {
     let store = SessionStore::new(harness.redis.clone());
@@ -152,7 +152,7 @@ pub(super) async fn a_race_through_a_cold_cache_still_redeems_once(
 /// device-flow code redeemable after it was supposed to have died, with no
 /// line of our own code at fault. That is the property asserted, against a
 /// clock brought forward rather than waited out.
-pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &RedisHarness) {
+pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &DragonflyHarness) {
     let store = SessionStore::new(harness.redis.clone());
     let expiring = harness.name("expiring");
     store

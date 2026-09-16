@@ -11,13 +11,13 @@
 //! # A bounded walk, and it says so
 //!
 //! Counting streams means scanning every primary for their keys, which is
-//! what [`crate::Redis::scan_keys`] already does for sessions, and describing
+//! what [`crate::Dragonfly::scan_keys`] already does for sessions, and describing
 //! each one is a command per stream. The walk is capped at what the caller
 //! is willing to pay, and the report carries both how many streams exist and
 //! how many were described, so a truncated sample reads as one instead of as
 //! a small deployment.
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::Result;
 use crate::ready::{Partition, ReadyIndex};
 use crate::streams::{FLEET_CONSUMER_GROUP, FLEET_STREAM_GLOB, retain};
@@ -57,7 +57,7 @@ impl Capacity {
     /// read fails, and an unavailable error when the datastore is gone. A
     /// sample that cannot be completed is reported rather than filled in with
     /// zeros, because a zero here reads as an empty deployment.
-    pub async fn sample(redis: &Redis, walk_cap: usize) -> Result<Self> {
+    pub async fn sample(redis: &Dragonfly, walk_cap: usize) -> Result<Self> {
         let keys = redis.scan_keys(FLEET_STREAM_GLOB, SCAN_PAGE).await?;
         let mut sample = Self {
             streams: count(keys.len()),

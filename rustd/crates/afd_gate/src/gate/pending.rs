@@ -2,7 +2,7 @@
 //!
 //! # No thread waits for a human
 //!
-//! Parking an event writes two things: a durable row, and a Redis reference
+//! Parking an event writes two things: a durable row, and a Dragonfly reference
 //! from the event to the action it is waiting on. Every later lease poll reads
 //! that reference and re-evaluates it. There is no blocking wait, no parked
 //! handler, and no timer — the deadline is a NUMBER carried in the reference,
@@ -10,7 +10,7 @@
 //!
 //! # Two stores, and the fallback is the point
 //!
-//! A decision is written durably to Postgres and mirrored to Redis. The read
+//! A decision is written durably to Postgres and mirrored to Dragonfly. The read
 //! prefers the mirror, because it is one round trip and it is the hot path —
 //! but it falls back to the durable row when the mirror key is absent, so a
 //! committed decision is enforced even if the best-effort mirror write failed

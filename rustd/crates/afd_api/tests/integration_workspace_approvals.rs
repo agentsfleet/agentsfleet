@@ -1,4 +1,4 @@
-//! Approval inbox and decision HTTP lifecycle over live Postgres and Redis.
+//! Approval inbox and decision HTTP lifecycle over live Postgres and Dragonfly.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,

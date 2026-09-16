@@ -4,7 +4,7 @@
 //! thirty-four cases across `afd_api`'s message suites decide who may steer,
 //! what bodies are taken, and which fleet states refuse. None of them can prove
 //! the one claim the surface actually makes to a client, because it is a claim
-//! about Redis: the `event_id` returned in the 202 is the stream entry id, and
+//! about Dragonfly: the `event_id` returned in the 202 is the stream entry id, and
 //! it is therefore the id the CLI filters SSE frames by and the id the runner
 //! sees when it leases the work.
 //!

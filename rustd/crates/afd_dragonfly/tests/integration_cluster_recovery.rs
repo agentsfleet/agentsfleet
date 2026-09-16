@@ -2,7 +2,7 @@
 //! surfaces this crate exposes.
 //!
 //! The §0 prototypes proved the primitives hold across a migration, driving
-//! the raw driver. These drive the BOUNDARY: `FleetStreams`, `Redis::scan_keys`
+//! the raw driver. These drive the BOUNDARY: `FleetStreams`, `Dragonfly::scan_keys`
 //! and `SubscriptionHub`, which is what the daemon actually calls, and assert
 //! the properties a caller of those depends on.
 //!
@@ -22,7 +22,7 @@ use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel, fleet_stream_
 use afd_dragonfly::{Dedicated, SubscriptionHub};
 
 use crate::cluster::{CLUSTER_LANE, ClusterHarness};
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// How many events are appended across the migration.
 const APPENDS: u32 = 64;
@@ -62,7 +62,7 @@ const SHARED_REPLY_CEILING: Duration = Duration::from_secs(1);
 async fn test_cluster_resharding_preserves_atomic_append() {
     let _lane = CLUSTER_LANE.lock().await;
     let cluster = ClusterHarness::from_lane();
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("resharded");
 
@@ -141,13 +141,13 @@ async fn test_cluster_resharding_preserves_atomic_append() {
 async fn test_cluster_connections_recover_without_missing_scoped_state() {
     let _lane = CLUSTER_LANE.lock().await;
     let cluster = ClusterHarness::from_lane();
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let mut raw = cluster.connect().await;
 
     // ── the subscription ────────────────────────────────────────────────
     let fleet = harness.name("recovered");
     let channel = fleet_activity_channel(&fleet);
-    let hub = SubscriptionHub::start(RedisHarness::config())
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
         .await
         .expect("the hub opens on the lane's cluster");
     let mut reader = hub.subscribe(&channel);
@@ -250,11 +250,11 @@ async fn test_cluster_connections_recover_without_missing_scoped_state() {
 ///
 /// Graded by what a caller would notice: a command on the shared handle
 /// answers at once while the dedicated one is parked for its whole interval.
-async fn a_parked_read_never_stalls_the_shared_connection(harness: &RedisHarness) {
+async fn a_parked_read_never_stalls_the_shared_connection(harness: &DragonflyHarness) {
     // A parked read holds ITS connection, never the shared one. Graded by
     // what a caller would notice: a command on the shared handle answers at
     // once while the dedicated one is parked for its whole interval.
-    let mut parked = Dedicated::connect(&RedisHarness::config(), PARK)
+    let mut parked = Dedicated::connect(&DragonflyHarness::config(), PARK)
         .await
         .expect("the dedicated reader opens its own connection");
     let blocking = tokio::spawn(async move {

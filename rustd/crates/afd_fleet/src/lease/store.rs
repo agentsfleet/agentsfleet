@@ -16,17 +16,17 @@
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix, Redis};
+use afd_dragonfly::{Dragonfly, FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix};
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
 ///
 /// Both datastores, because a lease is the one verb that cannot be served from
 /// either alone: the claim and the row are Postgres, the readiness index and
-/// the event stream are Redis, and the ordering between them is the whole
+/// the event stream are Dragonfly, and the ordering between them is the whole
 /// design. Splitting them across two stores would let a caller take a claim
 /// without being able to read the event it is claiming FOR.
 ///
-/// Cheap to clone: `Db` is a handle over an `Arc`-backed pool and `Redis` is a
+/// Cheap to clone: `Db` is a handle over an `Arc`-backed pool and `Dragonfly` is a
 /// cloneable connection manager, so every clone shares one connection set
 /// rather than opening a second.
 ///
@@ -42,7 +42,7 @@ use afd_dragonfly::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyP
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     entropy: Entropy,
     cursor: ReadyCursor,
     ready_prefix: ReadyPrefix,
@@ -51,7 +51,7 @@ pub struct Leases {
 impl Leases {
     /// A store reading and writing through `database` and `queue`.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
         Self {
             database,
             queue,

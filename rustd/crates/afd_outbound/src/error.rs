@@ -11,7 +11,7 @@
 //! created, the dedicated connection would not open.
 //!
 //! `worker.zig` reaches the same split by returning `Outcome` from every
-//! delivery path and swallowing its Redis errors into a `catch` that logs. The
+//! delivery path and swallowing its Dragonfly errors into a `catch` that logs. The
 //! difference is that here the two categories have different types, so a raise
 //! site cannot put a delivery failure where a loop failure goes.
 

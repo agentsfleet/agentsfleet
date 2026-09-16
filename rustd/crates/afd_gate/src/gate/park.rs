@@ -27,12 +27,12 @@
 //! async gate replaced, and whose reader went with it.
 //!
 //! So they are not ported, and this is not a judgment about whether
-//! notification should be staged in Redis. It is that porting a write with no
+//! notification should be staged in Dragonfly. It is that porting a write with no
 //! reader would add two round trips to every park, two key shapes for the
 //! sweeper and the resolver to agree on, and a `DEL` on the refusal path, to
 //! reproduce bytes no code has ever read. Registered as a divergence rather
 //! than done quietly, because "row-equivalent" is this milestone's graded
-//! claim and a Redis key is not a row.
+//! claim and a Dragonfly key is not a row.
 
 use std::borrow::Cow;
 
@@ -62,7 +62,7 @@ const EVENT_PARK_PENDING: &str = "gate_pending";
 ///
 /// Named rather than inlined at the two call sites: an operator responds to
 /// both the same way, but knowing WHICH store dropped is the difference between
-/// suspecting Postgres and suspecting Redis.
+/// suspecting Postgres and suspecting Dragonfly.
 const WRITE_ROW: &str = "durable_row";
 /// See [`WRITE_ROW`].
 const WRITE_REFERENCE: &str = "event_reference";

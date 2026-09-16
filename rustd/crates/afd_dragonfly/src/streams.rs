@@ -46,7 +46,7 @@ pub use self::render::rendered_field_samples;
 use self::render::stringify;
 pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, Trimmed};
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 /// The commands this module issues, named once each (RULE UFS).
@@ -201,7 +201,7 @@ impl FleetEvent {
 /// Fleet stream operations against one connection.
 #[derive(Debug, Clone)]
 pub struct FleetStreams {
-    redis: Redis,
+    redis: Dragonfly,
 }
 
 mod consume;
@@ -209,7 +209,7 @@ mod consume;
 impl FleetStreams {
     /// Binds stream operations to a connection.
     #[must_use]
-    pub const fn new(redis: Redis) -> Self {
+    pub const fn new(redis: Dragonfly) -> Self {
         Self { redis }
     }
 

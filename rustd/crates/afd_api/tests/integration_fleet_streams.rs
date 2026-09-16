@@ -1,4 +1,4 @@
-//! Workspace stream opening over live Postgres and Redis.
+//! Workspace stream opening over live Postgres and Dragonfly.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -198,9 +198,9 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut body = open_stream(&router, &fixture).await;
 
     let publisher = FleetStreams::new(
-        afd_dragonfly::Redis::connect(&harness::redis_config())
+        afd_dragonfly::Dragonfly::connect(&harness::redis_config())
             .await
-            .expect("the lane's Redis accepts a publisher"),
+            .expect("the lane's Dragonfly accepts a publisher"),
     );
     let channel = fleet_activity_channel(&fixture.fleet);
     for sequence in 0..GAP_FRAMES {

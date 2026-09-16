@@ -1,6 +1,6 @@
 //! When the dispatcher comes back, which is the one thing it decides alone.
 //!
-//! The claim, the append and the completion are all statements or Redis calls,
+//! The claim, the append and the completion are all statements or Dragonfly calls,
 //! proven in the integration lane. The PACING is a pure function of what a pass
 //! saw, and it is the part most easily got wrong: coming back too soon finds
 //! rows this very pass still holds, and coming back too late leaves a backlog

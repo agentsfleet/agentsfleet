@@ -18,9 +18,9 @@
 use std::error::Error as _;
 use std::time::Duration;
 
+use afd_dragonfly::Dragonfly;
 use afd_dragonfly::OutboundQueue;
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::session::{AbortReason, Approval, SessionStore};
 use afd_dragonfly::streams::FleetStreams;
 
@@ -31,8 +31,8 @@ use crate::recorder::Recorder;
 const BUDGET: Duration = Duration::from_secs(10);
 
 /// Points a configuration at the fake, with a deadline a test can wait out.
-fn config_for(server: &FakeRedis) -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, server.url())
+fn config_for(server: &FakeRedis) -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(Duration::from_secs(2))
 }
 
@@ -75,12 +75,12 @@ async fn test_redis_connect_honours_its_deadline() {
     let recorder = Recorder::install();
     let server = FakeRedis::spawn(&[("PING", Reply::Silent)]).await;
     let budget = Duration::from_millis(100);
-    let config = RedisConfig::from_url(RedisRole::Api, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Api, server.url())
         .with_request_timeout(Duration::from_secs(2))
         .with_connect_timeout(budget);
 
     let started = std::time::Instant::now();
-    let error = Redis::connect(&config)
+    let error = Dragonfly::connect(&config)
         .await
         .expect_err("a silent liveness probe must time out");
 
@@ -118,7 +118,7 @@ async fn test_a_ping_that_is_not_pong_refuses_the_connection() {
     install_subscriber();
     let server = FakeRedis::spawn(&[("PING", Reply::Raw("+WRONG\r\n"))]).await;
 
-    let error = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let error = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("a server that answers must not hang the connect")
         .expect_err("a reply that is not PONG must refuse the connection");
@@ -150,7 +150,7 @@ async fn test_an_empty_xadd_id_is_refused_rather_than_handed_out() {
     ])
     .await;
 
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let redis = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
@@ -191,7 +191,7 @@ async fn test_a_socket_that_dies_mid_command_reports_redis_unreachable() {
     ])
     .await;
 
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let redis = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
@@ -229,7 +229,7 @@ async fn test_an_approve_reply_this_build_cannot_read_is_refused() {
     ])
     .await;
 
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let redis = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
@@ -252,7 +252,7 @@ async fn test_an_approve_reply_this_build_cannot_read_is_refused() {
 
     assert!(
         error.is_command(),
-        "an unreadable reply is Redis being wrong, not Redis being gone: {error}"
+        "an unreadable reply is Dragonfly being wrong, not Dragonfly being gone: {error}"
     );
 }
 
@@ -271,7 +271,7 @@ async fn test_an_abort_reply_this_build_cannot_read_is_refused() {
     ])
     .await;
 
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let redis = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
@@ -286,7 +286,7 @@ async fn test_an_abort_reply_this_build_cannot_read_is_refused() {
 
     assert!(
         error.is_command(),
-        "an unreadable reply is Redis being wrong, not Redis being gone: {error}"
+        "an unreadable reply is Dragonfly being wrong, not Dragonfly being gone: {error}"
     );
 }
 
@@ -316,7 +316,7 @@ async fn test_a_group_create_that_fails_for_another_reason_is_not_swallowed() {
     ])
     .await;
 
-    let redis = tokio::time::timeout(BUDGET, Redis::connect(&config_for(&server)))
+    let redis = tokio::time::timeout(BUDGET, Dragonfly::connect(&config_for(&server)))
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");

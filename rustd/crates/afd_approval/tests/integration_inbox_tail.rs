@@ -33,7 +33,7 @@ const SWEEPER: &str = "system:approval_gate_sweeper";
 /// How long a published frame is given to reach the subscriber.
 const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register the subscription with Redis.
+/// How long the hub's pump is given to register the subscription with Dragonfly.
 const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
 /// A decision is announced on the fleet's live tail, count included.
@@ -51,7 +51,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
 
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -150,7 +150,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -229,7 +229,7 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -267,7 +267,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 
     let hub = SubscriptionHub::start(redis_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -300,7 +300,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 /// A repeated answer to a runless gate still wakes the parked delivery.
 ///
 /// The loser receives `AlreadyResolved`, but from the runner's point of view
-/// the operator pressed the same wake button again. That must refresh Redis too:
+/// the operator pressed the same wake button again. That must refresh Dragonfly too:
 /// the original delivery is still the thing that will re-read the durable row.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -337,7 +337,7 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
 
 /// A lost readiness refresh does not undo the durable answer.
 ///
-/// The wake is best-effort: Redis can be down after Postgres accepts the
+/// The wake is best-effort: Dragonfly can be down after Postgres accepts the
 /// person's decision. The resolve must still answer with the row's outcome so
 /// a retry or sweeper can repair the readiness edge later.
 #[tokio::test(flavor = "multi_thread")]

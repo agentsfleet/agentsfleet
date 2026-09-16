@@ -15,7 +15,7 @@
 //! The driver keeps one socket per node and applies one reply deadline per
 //! connection, so a parked read on a shared handle would hold the owning
 //! node's only socket and impose the park-sized deadline on everyone. So
-//! [`client::Redis`] is the shared handle for request-path commands,
+//! [`client::Dragonfly`] is the shared handle for request-path commands,
 //! [`dedicated::Dedicated`] is the one a blocking consumer owns alone, and
 //! [`hub::SubscriptionHub`] owns the pub/sub one (exactly one per process,
 //! Invariant 2) and multiplexes readers locally.
@@ -77,8 +77,8 @@ pub(crate) mod transport;
 pub use afd_core::env::EnvSource;
 
 pub use crate::capacity::Capacity;
-pub use crate::client::Redis;
-pub use crate::config::{RedisConfig, RedisRole};
+pub use crate::client::Dragonfly;
+pub use crate::config::{DragonflyConfig, DragonflyRole};
 pub use crate::dedicated::Dedicated;
 pub use crate::error::Error;
 pub use crate::hub::{Message, Subscription, SubscriptionHub, production_backoff};

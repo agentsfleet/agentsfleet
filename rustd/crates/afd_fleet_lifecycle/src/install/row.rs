@@ -1,5 +1,5 @@
 //! The library read and the row write — the two statements an install runs
-//! before Redis is reached.
+//! before Dragonfly is reached.
 //!
 //! # Why the name retry lives here
 //!

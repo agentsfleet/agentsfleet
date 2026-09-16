@@ -182,7 +182,7 @@ mod tests {
     use afd_core::clock::UnixMillis;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
 
-    /// A Redis stream entry id: milliseconds and a sequence, as Redis mints it.
+    /// A Dragonfly stream entry id: milliseconds and a sequence, as Dragonfly mints it.
     const ENTRY_ID: &str = "1788550034853-0";
 
     /// The LEDGER's logical id, distinct from the entry's by construction.

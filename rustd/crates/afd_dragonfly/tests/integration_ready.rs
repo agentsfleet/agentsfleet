@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use afd_dragonfly::ready::{Partition, ReadyIndex};
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// The readiness index only clears a mark the caller actually saw.
 ///
@@ -26,7 +26,7 @@ use crate::support::RedisHarness;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_ready_index_clear_respects_the_token() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
     let fleet = harness.name("fleet");
 
@@ -84,7 +84,7 @@ async fn test_ready_index_clear_respects_the_token() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_ready_index_read_surface() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
 
     let fleets: Vec<String> = (0..3).map(|n| harness.name(&format!("fleet{n}"))).collect();
@@ -150,7 +150,7 @@ async fn test_ready_index_read_surface() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_ready_index_token_for_reads_one_fleet_exactly() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
     let fleet = harness.name("fleet-token");
 
@@ -179,8 +179,8 @@ async fn test_ready_index_token_for_reads_one_fleet_exactly() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_client_reports_its_own_configuration() {
-    let harness = RedisHarness::connect().await;
-    assert_eq!(harness.redis.role(), afd_dragonfly::RedisRole::Default);
+    let harness = DragonflyHarness::connect().await;
+    assert_eq!(harness.redis.role(), afd_dragonfly::DragonflyRole::Default);
     assert_eq!(
         harness.redis.request_timeout(),
         std::time::Duration::from_secs(5)
@@ -189,14 +189,14 @@ async fn test_client_reports_its_own_configuration() {
         .redis
         .ping()
         .await
-        .expect("a live Redis answers PING");
+        .expect("a live Dragonfly answers PING");
 
     // TLS, because a trust anchor is what is being graded. On the lane's
     // plaintext endpoint a certificate authority is correctly ignored, so this
     // would connect happily and assert nothing.
     let missing_ca =
-        RedisHarness::tls_config().with_ca_cert_file(Some("/nonexistent/ca.crt".into()));
-    let error = afd_dragonfly::Redis::connect(&missing_ca)
+        DragonflyHarness::tls_config().with_ca_cert_file(Some("/nonexistent/ca.crt".into()));
+    let error = afd_dragonfly::Dragonfly::connect(&missing_ca)
         .await
         .expect_err("a certificate authority that is not there must refuse");
     assert!(
@@ -223,9 +223,10 @@ async fn test_client_reports_its_own_configuration() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_command_past_its_deadline_is_a_timeout() {
-    let harness = RedisHarness::connect().await;
-    let impatient_config = RedisHarness::config().with_request_timeout(Duration::from_millis(50));
-    let impatient = afd_dragonfly::Redis::connect(&impatient_config)
+    let harness = DragonflyHarness::connect().await;
+    let impatient_config =
+        DragonflyHarness::config().with_request_timeout(Duration::from_millis(50));
+    let impatient = afd_dragonfly::Dragonfly::connect(&impatient_config)
         .await
         .expect("connecting is not the part under test");
 
@@ -258,7 +259,7 @@ async fn test_a_command_past_its_deadline_is_a_timeout() {
 
 /// Removes a fleet's field from the shared index, so one test's marks never
 /// appear in another's sample.
-async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
+async fn cleanup_fields(harness: &DragonflyHarness, fleet: &str) {
     let key = Partition::of(fleet).key();
     let mut cmd = redis::cmd("HDEL");
     cmd.arg(&key).arg(fleet);
@@ -275,11 +276,12 @@ async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_connection_failures_name_their_cause() {
-    use afd_dragonfly::config::{RedisConfig, RedisRole};
+    use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
     // Our scheme check passes; the driver's own parser refuses the rest.
-    let malformed = RedisConfig::from_url(RedisRole::Default, "redis://%%%invalid%%%".to_owned());
-    let error = afd_dragonfly::Redis::connect(&malformed)
+    let malformed =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://%%%invalid%%%".to_owned());
+    let error = afd_dragonfly::Dragonfly::connect(&malformed)
         .await
         .expect_err("a URL the driver cannot parse must refuse");
     assert!(!error.is_command(), "nothing was ever sent: {error}");
@@ -288,21 +290,21 @@ async fn test_connection_failures_name_their_cause() {
     let junk = std::env::temp_dir().join(format!("afd-not-a-cert-{}.pem", std::process::id()));
     std::fs::write(&junk, b"this is not a certificate\n").expect("write the junk file");
     // TLS, for the reason the missing-authority case above records.
-    let bad_pem = RedisHarness::tls_config().with_ca_cert_file(Some(junk.clone()));
-    let error = afd_dragonfly::Redis::connect(&bad_pem)
+    let bad_pem = DragonflyHarness::tls_config().with_ca_cert_file(Some(junk.clone()));
+    let error = afd_dragonfly::Dragonfly::connect(&bad_pem)
         .await
         .expect_err("a file that is not a certificate must refuse");
     assert!(!error.is_command(), "got {error}");
     let _ = std::fs::remove_file(&junk);
 
     // Nothing listening.
-    let dead = RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:1".to_owned())
+    let dead = DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned())
         .with_request_timeout(Duration::from_millis(500));
-    let error = afd_dragonfly::Redis::connect(&dead)
+    let error = afd_dragonfly::Dragonfly::connect(&dead)
         .await
         .expect_err("nothing is listening on port 1");
     assert!(
         error.is_unavailable(),
-        "an unreachable Redis is an outage: {error}"
+        "an unreachable Dragonfly is an outage: {error}"
     );
 }

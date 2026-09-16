@@ -36,7 +36,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{FleetStreams, ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 use afd_runner::Runners;
 use afd_wire::event::Entry;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
@@ -138,10 +138,10 @@ pub fn placement_tag(prefix: &RunPrefix) -> String {
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Redis refused.
+/// Whatever Postgres or Dragonfly refused.
 pub async fn empty_fleet(
     database: &Db,
-    queue: &Redis,
+    queue: &Dragonfly,
     prefix: &RunPrefix,
     tag: &str,
     index: u64,
@@ -163,10 +163,10 @@ pub async fn empty_fleet(
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Redis refused, naming which.
+/// Whatever Postgres or Dragonfly refused, naming which.
 pub async fn ready_fleet(
     database: &Db,
-    queue: &Redis,
+    queue: &Dragonfly,
     prefix: &RunPrefix,
     tag: &str,
     index: u64,
@@ -240,7 +240,7 @@ async fn rows(
 ///
 /// Both halves, because either alone is a state the daemon never produces:
 /// ingress appends and marks in one path.
-async fn enqueue(queue: &Redis, seeded: &SeededFleet, now: i64) -> Result<()> {
+async fn enqueue(queue: &Dragonfly, seeded: &SeededFleet, now: i64) -> Result<()> {
     let streams = FleetStreams::new(queue.clone());
     streams.ensure_group(&seeded.fleet).await?;
     let created = now.to_string();

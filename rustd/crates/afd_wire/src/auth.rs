@@ -10,7 +10,7 @@
 //!
 //! A request body is deserialized straight out of the bytes axum already holds,
 //! and every field is relayed rather than transformed — the ciphertext goes to
-//! Redis, the public key comes back on the next poll. Owning them would copy
+//! Dragonfly, the public key comes back on the next poll. Owning them would copy
 //! four kilobytes of base64 per approval to no end.
 //!
 //! # `deny_unknown_fields`, and what it is actually for

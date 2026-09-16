@@ -75,7 +75,7 @@ impl HmacSha256Tag {
     /// slice with no second implementation between them.
     ///
     /// `parts` are fed in order with no separator, matching what the Zig
-    /// daemon signs. Both binaries write the same Redis blob and a Lua script
+    /// daemon signs. Both binaries write the same Dragonfly blob and a Lua script
     /// compares the two hex renderings as text, so this is a DATA FORMAT and
     /// not a choice — a separator added here would invalidate every session the
     /// other binary approved.

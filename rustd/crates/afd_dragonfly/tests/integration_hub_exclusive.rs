@@ -47,7 +47,7 @@ use afd_dragonfly::hub::Received;
 use afd_dragonfly::streams::FleetStreams;
 use backon::ExponentialBuilder;
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// How long a redial, a re-subscribe or a delivery is given.
 const RECOVERY_BUDGET: Duration = Duration::from_secs(10);
@@ -69,7 +69,7 @@ type Node = String;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let publisher = FleetStreams::new(harness.redis.clone());
     let channel = harness.name("exclusive-channel");
 
@@ -83,7 +83,7 @@ async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed()
     let before_hub = clients_across(&nodes).await;
 
     let hub = SubscriptionHub::start_with_backoff(
-        RedisHarness::config(),
+        DragonflyHarness::config(),
         ExponentialBuilder::new()
             .with_min_delay(Duration::from_millis(20))
             .with_max_delay(Duration::from_millis(100)),
@@ -130,7 +130,7 @@ async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed()
 /// Read from `CLUSTER SLOTS` rather than assumed from the seed: the lane's
 /// ports are the compose file's business, and a test that hard-coded them
 /// would pass against the wrong cluster.
-async fn nodes_of(harness: &RedisHarness) -> BTreeSet<Node> {
+async fn nodes_of(harness: &DragonflyHarness) -> BTreeSet<Node> {
     let mut cmd = redis::cmd("CLUSTER");
     cmd.arg("SLOTS");
     let reply: redis::Value = harness
@@ -214,7 +214,7 @@ async fn kill_each(nodes: &BTreeSet<Node>, victims: &BTreeSet<(Node, i64)>) {
 
 /// A plain connection to one node, authenticated the way the lane's seed is.
 async fn node_connection(node: &Node) -> redis::aio::MultiplexedConnection {
-    let config = RedisHarness::config();
+    let config = DragonflyHarness::config();
     let seed = config.url();
     let credentials = seed
         .split_once("//")
@@ -266,7 +266,7 @@ async fn deliver(
 }
 
 /// How many subscribers the server counts on `channel`.
-async fn subscribers_on(harness: &RedisHarness, channel: &str) -> i64 {
+async fn subscribers_on(harness: &DragonflyHarness, channel: &str) -> i64 {
     let mut cmd = redis::cmd("PUBSUB");
     cmd.arg("NUMSUB").arg(channel);
     let reply: Vec<redis::Value> = harness

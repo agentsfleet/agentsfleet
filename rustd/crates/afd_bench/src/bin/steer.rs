@@ -18,7 +18,7 @@ use afd_bench::profile::Parameter;
 
 /// Fleets to spread steers across when the caller does not say.
 ///
-/// Several, because a single fleet would measure one Redis stream's key rather
+/// Several, because a single fleet would measure one Dragonfly stream's key rather
 /// than the ingress path: appends to one key serialise on the server.
 const DEFAULT_FLEETS: u64 = 50;
 

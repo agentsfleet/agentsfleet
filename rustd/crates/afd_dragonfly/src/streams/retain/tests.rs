@@ -30,7 +30,11 @@ fn positions_order_by_their_integers_not_their_text() {
         Position::parse(LATE_NEXT_ID).expect("parses") > late,
         "the sequence breaks ties inside one millisecond"
     );
-    assert_eq!(late.render(), LATE_ID, "the id renders as Redis spelled it");
+    assert_eq!(
+        late.render(),
+        LATE_ID,
+        "the id renders as Dragonfly spelled it"
+    );
 }
 
 /// A reply that is not an id is refused, not ordered somewhere.

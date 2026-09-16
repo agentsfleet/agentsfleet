@@ -19,7 +19,7 @@
 use afd_dragonfly::streams::{FleetStreams, fleet_stream_key};
 use afd_dragonfly::{Capacity, Partition, ReadyIndex};
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// Streams this test seeds, entries per stream, and how many of each stream's
 /// entries are delivered and left pending.
@@ -35,7 +35,7 @@ const WALK_EVERYTHING: usize = 100_000;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_capacity_sample_accounts_for_every_class_of_retained_state_separately() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let consumer = harness.name("consumer");
     let mut fleets = Vec::with_capacity(STREAMS);

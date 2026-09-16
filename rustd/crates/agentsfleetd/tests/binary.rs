@@ -20,7 +20,7 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 /// The API role's Postgres knob.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Redis knob.
+/// The API role's Dragonfly knob.
 const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
@@ -29,7 +29,7 @@ const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
 /// A Postgres URL the resolver accepts.
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
 
-/// A Redis URL the resolver accepts.
+/// A Dragonfly URL the resolver accepts.
 const GOOD_REDIS: &str = "redis://127.0.0.1:6379";
 
 /// Sixty-four hex characters.

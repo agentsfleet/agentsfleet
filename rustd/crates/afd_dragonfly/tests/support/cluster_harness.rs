@@ -1,9 +1,9 @@
 //! The lane's Dragonfly cluster: a seed to dial, a way to move its slots, and
 //! keys nothing else in the suite will touch.
 //!
-//! Distinct from [`crate::support::RedisHarness`] in the one way that matters:
+//! Distinct from [`crate::support::DragonflyHarness`] in the one way that matters:
 //! this hands out the DRIVER's cluster connection rather than the crate's
-//! `Redis`, because the prototypes it serves exist to learn what the driver
+//! `Dragonfly`, because the prototypes it serves exist to learn what the driver
 //! and the server do before the boundary is built over them. Once a boundary
 //! suite exists for a behaviour, the prototype that discovered it retires.
 //!

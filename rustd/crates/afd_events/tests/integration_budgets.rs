@@ -176,9 +176,9 @@ async fn the_ledger_reports_its_unconfirmed_rows_and_the_age_of_the_oldest() {
     let lane = EventsLane::open().await;
     // A queue nothing listens on: every append is deferred, so the row is
     // committed and the receipt stays NULL.
-    let unreachable = afd_dragonfly::Redis::unreachable(
-        &afd_dragonfly::RedisConfig::from_url(
-            afd_dragonfly::RedisRole::Default,
+    let unreachable = afd_dragonfly::Dragonfly::unreachable(
+        &afd_dragonfly::DragonflyConfig::from_url(
+            afd_dragonfly::DragonflyRole::Default,
             "redis://127.0.0.1:1".to_owned(),
         )
         .with_request_timeout(std::time::Duration::from_millis(200)),

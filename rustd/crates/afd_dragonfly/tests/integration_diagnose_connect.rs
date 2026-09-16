@@ -1,4 +1,4 @@
-//! What a real `Redis::connect` costs, measured rather than inferred.
+//! What a real `Dragonfly::connect` costs, measured rather than inferred.
 //!
 //! Not part of the lane. This exists because the `ConnectTimeout` failure was
 //! diagnosed three times from subtraction — TLS minus TCP, then thread
@@ -14,8 +14,8 @@
 
 use std::time::Instant;
 
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The knob the LANE exports, which is not `DRAGONFLY_TLS_CA_CERT_FILE` — that one
 /// is the daemon's. Reading the wrong one hands rustls no trust anchor and the
@@ -29,8 +29,8 @@ fn lane(knob: &str) -> String {
         .unwrap_or_else(|_| panic!("{knob} unset — run through `make test-integration-rustd`"))
 }
 
-fn config() -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, lane("TEST_DRAGONFLY_URL"))
+fn config() -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, lane("TEST_DRAGONFLY_URL"))
         .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
 }
 
@@ -77,11 +77,14 @@ async fn diagnose_where_connect_spends_its_time() {
     let mut whole = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let outcome = Redis::connect(&config).await;
+        let outcome = Dragonfly::connect(&config).await;
         whole.push(started.elapsed().as_micros());
-        assert!(outcome.is_ok(), "the lane's Redis must answer: {outcome:?}");
+        assert!(
+            outcome.is_ok(),
+            "the lane's Dragonfly must answer: {outcome:?}"
+        );
     }
-    report("Redis::connect sequential", whole);
+    report("Dragonfly::connect sequential", whole);
 
     // Phase 3: concurrently and UNGATED — the diagnosis, not an assertion.
     //
@@ -100,7 +103,7 @@ async fn diagnose_where_connect_spends_its_time() {
         let config = config.clone();
         tasks.push(tokio::spawn(async move {
             let started = Instant::now();
-            let outcome = Redis::connect(&config).await;
+            let outcome = Dragonfly::connect(&config).await;
             (started.elapsed().as_micros(), outcome.is_ok())
         }));
     }
@@ -113,7 +116,7 @@ async fn diagnose_where_connect_spends_its_time() {
         }
         concurrent.push(elapsed);
     }
-    report("Redis::connect concurrent", concurrent);
+    report("Dragonfly::connect concurrent", concurrent);
     println!(
         "concurrent wall time = {:?}, raw (ungated) failures = {raw_failures} of {SAMPLES}",
         started_all.elapsed()

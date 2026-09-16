@@ -11,7 +11,7 @@
 //! Postgres is the SHARED lane database — `TestDatabase::shared`, never a
 //! database per test, for the reason `make/test-integration-rustd.mk` states at
 //! length: a database per test meant applying forty-seven schema files per test.
-//! Redis has no database-per-test equivalent at all. What replaces isolation in
+//! Dragonfly has no database-per-test equivalent at all. What replaces isolation in
 //! both is that every fixture mints its OWN workspace and fleet identifiers, so
 //! two suites running in parallel address disjoint rows and disjoint keys.
 
@@ -30,11 +30,11 @@ use std::time::Duration;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::Redis;
-use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use sqlx::Row as _;
 
-/// The knob `make test-integration-rustd` exports the lane's Redis under.
+/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
 const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
@@ -48,7 +48,7 @@ pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 pub(crate) struct EventsLane {
     lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) queue: Redis,
+    pub(crate) queue: Dragonfly,
     pub(crate) tenant: String,
     pub(crate) workspace: String,
     pub(crate) fleet: String,
@@ -61,7 +61,7 @@ impl EventsLane {
         let database = lane.open(DbRole::Api, &[]).await;
         let queue = afd_dragonfly::test_util::connect_live(&redis_config())
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
 
         let seeded = Self {
             lane,
@@ -75,7 +75,7 @@ impl EventsLane {
         seeded
     }
 
-    /// The lane's Redis configuration, for a caller that opens its own handle.
+    /// The lane's Dragonfly configuration, for a caller that opens its own handle.
     /// The admission ledger every producer in this suite writes through.
     ///
     /// Built from the lane's own pool and queue, so a test names what it is
@@ -84,7 +84,7 @@ impl EventsLane {
         afd_admission::Admissions::for_tests(self.database.clone(), self.queue.clone())
     }
 
-    pub(crate) fn redis() -> RedisConfig {
+    pub(crate) fn redis() -> DragonflyConfig {
         redis_config()
     }
 
@@ -200,12 +200,12 @@ impl EventsLane {
 /// timestamps a test chooses for itself.
 const SEED_MS: i64 = 1_700_000_000_000;
 
-/// The lane's Redis configuration.
-fn redis_config() -> RedisConfig {
+/// The lane's Dragonfly configuration.
+fn redis_config() -> DragonflyConfig {
     let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
         panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
-    RedisConfig::from_url(RedisRole::Default, url)
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
         .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
 }

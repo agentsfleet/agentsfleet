@@ -2,7 +2,7 @@
 //!
 //! The continuation row is a NEW event carrying `resumes_event_id`; the
 //! blocked row is never reopened. Both halves are proven here over live
-//! Postgres and Redis: the row that appears, the row that does not change, and
+//! Postgres and Dragonfly: the row that appears, the row that does not change, and
 //! the idempotence that keeps a second answer from continuing the run twice.
 #![expect(
     clippy::expect_used,

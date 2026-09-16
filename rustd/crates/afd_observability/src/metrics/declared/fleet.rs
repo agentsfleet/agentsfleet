@@ -47,7 +47,7 @@ pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
 /// Readiness backlog (not summable across replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
-/// Redis index writes failing.
+/// Dragonfly index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
 

@@ -16,7 +16,7 @@
 
 use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, EventId, FleetStreams, fleet_stream_key};
 
-use crate::support::RedisHarness;
+use crate::support::DragonflyHarness;
 
 /// Entries appended above the history bound, so the trim has something to
 /// remove and something it must not.
@@ -44,7 +44,7 @@ async fn append_many(streams: &FleetStreams, fleet: &str, count: usize) -> Vec<E
 }
 
 /// Whether the stream still holds the entry with `receipt`.
-async fn holds(harness: &RedisHarness, key: &str, receipt: &EventId) -> bool {
+async fn holds(harness: &DragonflyHarness, key: &str, receipt: &EventId) -> bool {
     let mut cmd = redis::cmd("XRANGE");
     cmd.arg(key).arg(receipt.as_str()).arg(receipt.as_str());
     let found: Vec<(String, Vec<String>)> = harness
@@ -59,7 +59,7 @@ async fn holds(harness: &RedisHarness, key: &str, receipt: &EventId) -> bool {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_slow_consumer_keeps_every_owed_entry_while_history_stays_bounded() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("fleet");
     let consumer = harness.name("consumer");
@@ -154,7 +154,7 @@ async fn a_slow_consumer_keeps_every_owed_entry_while_history_stays_bounded() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_stream_no_consumer_has_read_is_never_trimmed() {
-    let harness = RedisHarness::connect().await;
+    let harness = DragonflyHarness::connect().await;
     let streams = FleetStreams::new(harness.redis.clone());
     let fleet = harness.name("unread");
     let key = fleet_stream_key(&fleet);

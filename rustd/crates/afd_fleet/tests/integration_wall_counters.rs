@@ -1,4 +1,4 @@
-//! §1's receive half against live Postgres and Redis: an event that parks is
+//! §1's receive half against live Postgres and Dragonfly: an event that parks is
 //! still counted, and moves no budget.
 //!
 //! The receive is the one frame whose counters cannot ride its own statement:
@@ -49,7 +49,7 @@ const EVENT_RECEIVED: &str = "event_received";
 /// The frame kind a closing would publish, and which a park never does.
 const EVENT_COMPLETE: &str = "event_complete";
 
-/// The probe the test publishes until Redis reports a subscriber.
+/// The probe the test publishes until Dragonfly reports a subscriber.
 const PROBE: &str = r#"{"kind":"probe"}"#;
 
 /// A seeded fleet whose narrative log this test opens and then leaves parked.
@@ -108,7 +108,7 @@ async fn parked() -> Parked {
     }
 }
 
-/// Publishes a probe until Redis reports one subscriber on the channel, so a
+/// Publishes a probe until Dragonfly reports one subscriber on the channel, so a
 /// frame published afterwards cannot be lost to a subscription still in flight.
 async fn await_subscribed(fixtures: &Fixtures, fleet: &str) {
     let publisher = FleetStreams::new(fixtures.queue().clone());
@@ -124,7 +124,7 @@ async fn await_subscribed(fixtures: &Fixtures, fleet: &str) {
         }
     })
     .await
-    .expect("Redis acknowledges the subscription");
+    .expect("Dragonfly acknowledges the subscription");
 }
 
 /// The next non-probe frame on the tail, decoded.

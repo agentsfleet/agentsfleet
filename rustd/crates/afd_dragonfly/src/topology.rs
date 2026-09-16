@@ -8,7 +8,7 @@
 
 use redis::Value;
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 const CMD_CLUSTER: &str = "CLUSTER";
@@ -49,7 +49,7 @@ pub(crate) struct Node {
 /// # Errors
 /// Returns a command error when the cluster refuses the question and an
 /// unexpected-reply error when the answer is not the documented shape.
-pub(crate) async fn nodes(redis: &Redis) -> Result<Vec<Node>> {
+pub(crate) async fn nodes(redis: &Dragonfly) -> Result<Vec<Node>> {
     let mut cmd = redis::cmd(CMD_CLUSTER);
     cmd.arg(ARG_SHARDS);
     let shards: Value = redis.command(CMD_CLUSTER, ARG_SHARDS, &cmd).await?;
@@ -67,7 +67,7 @@ pub(crate) async fn nodes(redis: &Redis) -> Result<Vec<Node>> {
 ///
 /// # Errors
 /// As [`nodes`].
-pub(crate) async fn primaries(redis: &Redis) -> Result<Vec<NodeAddress>> {
+pub(crate) async fn primaries(redis: &Dragonfly) -> Result<Vec<NodeAddress>> {
     Ok(nodes(redis)
         .await?
         .into_iter()

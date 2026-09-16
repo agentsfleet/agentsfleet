@@ -1,6 +1,6 @@
 //! What steer ingress accepts under concurrency, and where a steer costs.
 //!
-//! # A steer is a Postgres row, then two Redis commands
+//! # A steer is a Postgres row, then two Dragonfly commands
 //!
 //! `afd_events::Steer::append` admits the message — an insert-returning and
 //! an update on `core.fleet_admissions` — and then issues an `XADD` onto the
@@ -32,7 +32,7 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_dragonfly::{ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, ReadyIndex};
 use afd_events::Steer;
 use tokio_util::sync::CancellationToken;
 
@@ -61,7 +61,7 @@ const FAILURES: &str = "failures";
 /// Measurement key: the fraction of everything tried that the path refused.
 const ERROR_RATE: &str = "error_rate";
 
-/// Measurement key: Redis commands each accepted steer cost.
+/// Measurement key: Dragonfly commands each accepted steer cost.
 const REDIS_CALLS_PER_STEER: &str = "redis_calls_per_steer";
 
 /// Measurement key: Postgres transactions each accepted steer cost.
@@ -275,7 +275,7 @@ async fn append_until(
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<f64> {
+async fn sample_depth(queue: Dragonfly, stop: CancellationToken) -> Vec<f64> {
     let index = ReadyIndex::new(queue);
     let mut series = Vec::new();
     while !stop.is_cancelled() {

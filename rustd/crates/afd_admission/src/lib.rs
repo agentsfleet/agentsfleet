@@ -11,7 +11,7 @@
 //! [`Admissions::replay`] under the same id. Losing the queue therefore loses
 //! no accepted work while Postgres survives.
 //!
-//! # Duplicates are a unique index, not a Redis claim
+//! # Duplicates are a unique index, not a Dragonfly claim
 //!
 //! `(producer, producer_key)` is unique. A retry is a conflict that answers
 //! the FIRST call's id with `replayed = true`, which is what the two-key
@@ -56,7 +56,7 @@ use std::sync::Arc;
 
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 
@@ -195,7 +195,7 @@ pub struct Admitted {
 #[derive(Debug, Clone)]
 pub struct Admissions {
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     entropy: Entropy,
     budgets: Budgets,
     ceiling: Arc<Ceiling>,
@@ -205,7 +205,7 @@ impl Admissions {
     /// Binds the ledger to an already-connected pool and queue, under the
     /// production budgets.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
@@ -237,7 +237,7 @@ impl Admissions {
     /// [`Admissions::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn for_tests(database: Db, queue: Redis) -> Self {
+    pub fn for_tests(database: Db, queue: Dragonfly) -> Self {
         Self::new(database, queue, Entropy::new())
     }
 }

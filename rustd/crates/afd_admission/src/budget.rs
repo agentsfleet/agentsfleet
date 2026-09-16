@@ -16,7 +16,7 @@
 //! One fleet whose consumer died cannot fill the datastore. The DEPLOYMENT
 //! budget is the ledger's replay backlog: admitted rows the queue never
 //! confirmed. A queue that is refusing appends cannot fill Postgres with rows
-//! the sweeper will never drain. The first is a Redis question and the second
+//! the sweeper will never drain. The first is a Dragonfly question and the second
 //! a Postgres one, which is why they are asked in different places.
 //!
 //! # A budget that cannot be read is not exceeded

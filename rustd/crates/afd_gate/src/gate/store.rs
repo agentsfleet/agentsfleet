@@ -1,4 +1,4 @@
-//! The reads a recorded gate is resolved through: two Redis keys and one row.
+//! The reads a recorded gate is resolved through: two Dragonfly keys and one row.
 //!
 //! Every key shape this module writes or reads is declared in [`key`], once.
 //! The sweeper, the resolver and the webhook handler have to agree on the exact
@@ -9,7 +9,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, ReadyIndex};
 use sqlx::Row as _;
 
 use super::sql;
@@ -28,20 +28,20 @@ const EVENT_DB_FALLBACK: &str = "approval_decision_db_fallback_used";
 /// A re-encountered event has to be able to resolve its gate AFTER the deadline
 /// passes — that is what produces the timeout — so the key cannot expire at the
 /// deadline. The grace covers the sweeper's cadence plus clock slop between
-/// this daemon and Redis.
+/// this daemon and Dragonfly.
 const REF_GRACE_SECONDS: i64 = 600;
 
 /// The floor a reference's lifetime is clamped to, in seconds.
 ///
 /// A gate raised with a deadline already in the past would otherwise compute a
-/// negative expiry and be rejected by Redis. Two hours is the Zig's
+/// negative expiry and be rejected by Dragonfly. Two hours is the Zig's
 /// `GATE_PENDING_TTL_SECONDS`.
 const REF_MINIMUM_SECONDS: i64 = 7_200;
 
 /// Milliseconds in a second, for the deadline-to-expiry conversion.
 const MILLIS_PER_SECOND: i64 = 1_000;
 
-/// Every Redis key the approval gate uses.
+/// Every Dragonfly key the approval gate uses.
 ///
 /// Prefixes rather than formatted keys, because two of the three are also read
 /// by the sweeper and the webhook handler — a shape declared here and rebuilt
@@ -79,12 +79,12 @@ pub mod key {
 ///
 /// Both, because a gate genuinely spans them: the question and its answer are
 /// durable in Postgres, and the hot-path mirror plus the event reference are in
-/// Redis. A store holding one of them would leave the fallback — the whole
+/// Dragonfly. A store holding one of them would leave the fallback — the whole
 /// reason the durable read exists — impossible to express.
 #[derive(Debug, Clone)]
 pub struct Gates {
     pub(super) database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     entropy: Entropy,
 }
 
@@ -97,7 +97,7 @@ impl Gates {
     /// entropy surface rather than a second source with its own failure mode.
     /// [`Leases`](crate::lease::Leases) takes it for the same reason.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub const fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
@@ -107,7 +107,7 @@ impl Gates {
 
     /// The queue these gates are mirrored in, for the sibling module that
     /// counts anomalies through it.
-    pub(super) const fn queue(&self) -> &Redis {
+    pub(super) const fn queue(&self) -> &Dragonfly {
         &self.queue
     }
 
@@ -239,7 +239,7 @@ impl Gates {
 ///
 /// The deadline plus a grace, floored at the minimum — so a gate raised with a
 /// deadline already behind it still gets a key that outlives the poll which
-/// will resolve it, rather than a negative expiry Redis refuses.
+/// will resolve it, rather than a negative expiry Dragonfly refuses.
 fn reference_lifetime(reference: &GateRef, now: UnixMillis) -> i64 {
     let remaining = (reference.deadline().as_millis() - now.as_millis()) / MILLIS_PER_SECOND;
     remaining
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn a_deadline_already_past_still_gets_a_usable_lifetime() {
-        // A negative expiry is one Redis refuses outright, which would leave
+        // A negative expiry is one Dragonfly refuses outright, which would leave
         // the event parked with no reference at all.
         let now = UnixMillis::from_millis(LATE_NOW_MS);
         let stale = reference(NOW_MS);

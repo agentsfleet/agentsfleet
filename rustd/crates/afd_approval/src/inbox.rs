@@ -36,7 +36,7 @@ use afd_admission::Admissions;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_dragonfly::{FleetStreams, ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
 use afd_wire::tail::TailFrame;
@@ -98,7 +98,7 @@ const CONTINUATION_BODY: &str = "{}";
 #[derive(Debug, Clone)]
 pub struct Inbox {
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     /// Where an approved gate's continuation is accepted, before anything is
     /// queued. Distinct from [`Self::queue`], which still publishes the
     /// answer frame a watcher sees.
@@ -109,7 +109,7 @@ impl Inbox {
     /// A queue over `database`, continuing approved runs through
     /// `admissions` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, queue: Dragonfly, admissions: Admissions) -> Self {
         Self {
             database,
             queue,
@@ -301,7 +301,7 @@ impl Inbox {
     /// therefore wake the ready index without appending a continuation event.
     ///
     /// Best-effort for the same reason regular chat ingress is: the database
-    /// answer is already durable, and a Redis mark failure should not turn a
+    /// answer is already durable, and a Dragonfly mark failure should not turn a
     /// completed human decision into a retry that can no longer win the row.
     async fn wake_runless_resolution(&self, resolved: &Resolved) {
         let fleet = resolved.fleet_id.as_str();

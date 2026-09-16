@@ -29,7 +29,7 @@
 //! reconciliation between the ledger and the wallet, and no role here holds
 //! `DELETE` on that table anyway.
 //!
-//! # The Redis stream is best-effort, after the commit
+//! # The Dragonfly stream is best-effort, after the commit
 //!
 //! Postgres is the source of truth. Once the row is gone the stream is
 //! unreachable — the candidate query filters on `status = 'active'` and there is
@@ -121,7 +121,7 @@ impl Fleets {
         Ok(())
     }
 
-    /// Drops the fleet's Redis state, logging rather than failing.
+    /// Drops the fleet's Dragonfly state, logging rather than failing.
     ///
     /// Runs AFTER the commit, deliberately. Doing it first would delete a live
     /// fleet's stream if the transaction then rolled back; doing it inside would
@@ -199,7 +199,7 @@ fn report(fleet: &str, failure: &afd_dragonfly::Error, event: &'static str) {
 
 #[cfg(all(test, feature = "test-util"))]
 mod tests {
-    /// The orphan report renders every Redis failure kind.
+    /// The orphan report renders every Dragonfly failure kind.
     ///
     /// The purge already COMMITTED when this runs — Postgres is done and what
     /// is left behind is an unreachable stream that ages out on its own. So the

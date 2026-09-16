@@ -26,7 +26,7 @@ use backon::BackoffBuilder as _;
 /// change this line too and be seen: how long an outage takes to recover from
 /// is an operational number, not an implementation detail.
 const BACKOFF_CAP: Duration = Duration::from_secs(5);
-use afd_dragonfly::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
+use afd_dragonfly::config::{CA_CERT_FILE_KNOB, DragonflyConfig, DragonflyRole};
 use afd_dragonfly::ready::{Partition, READY_INDEX_KEY, READY_PARTITIONS};
 use afd_dragonfly::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
@@ -97,10 +97,14 @@ fn test_session_key_and_ttl_match_the_zig_store() {
 /// misconfigure it, and the binary that justified them is gone.
 #[test]
 fn test_every_role_reads_the_one_url_knob() {
-    for role in RedisRole::ALL {
+    for role in DragonflyRole::ALL {
         assert_eq!(role.url_knob(), afd_dragonfly::config::URL_KNOB);
     }
-    assert_eq!(RedisRole::ALL.len(), 2, "Dragonfly has no migrator role");
+    assert_eq!(
+        DragonflyRole::ALL.len(),
+        2,
+        "Dragonfly has no migrator role"
+    );
 }
 
 /// One knob serves every role, and its absence refuses every role.
@@ -111,13 +115,13 @@ fn test_every_role_reads_the_one_url_knob() {
 #[test]
 fn test_the_one_knob_serves_and_refuses_every_role() {
     let env = env_with(&[("DRAGONFLY_URL", URL)]);
-    for role in RedisRole::ALL {
-        RedisConfig::resolve(&env, *role).expect("the one knob resolves for every role");
+    for role in DragonflyRole::ALL {
+        DragonflyConfig::resolve(&env, *role).expect("the one knob resolves for every role");
     }
 
     let empty = env_with(&[]);
-    for role in RedisRole::ALL {
-        let error = RedisConfig::resolve(&empty, *role).expect_err("an unset knob refuses");
+    for role in DragonflyRole::ALL {
+        let error = DragonflyConfig::resolve(&empty, *role).expect_err("an unset knob refuses");
         assert!(error.is_config(), "got {error}");
         assert!(error.to_string().contains("DRAGONFLY_URL"));
     }
@@ -148,8 +152,8 @@ fn test_malformed_urls_are_refused() {
         "redis://localhost:not-a-port",
     ] {
         let env = env_with(&[("DRAGONFLY_URL", bad)]);
-        let error =
-            RedisConfig::resolve(&env, RedisRole::Default).expect_err("not a Redis URL: {bad:?}");
+        let error = DragonflyConfig::resolve(&env, DragonflyRole::Default)
+            .expect_err("not a Dragonfly URL: {bad:?}");
         assert!(error.is_config(), "{bad:?} gave {error}");
         assert_eq!(error.code().as_str(), "UZ-STARTUP-004");
     }
@@ -158,15 +162,16 @@ fn test_malformed_urls_are_refused() {
 /// Both schemes are accepted, and only `rediss://` means TLS.
 #[test]
 fn test_tls_is_the_scheme_not_a_guess() {
-    let plain = RedisConfig::resolve(
+    let plain = DragonflyConfig::resolve(
         &env_with(&[("DRAGONFLY_URL", "redis://localhost:6379")]),
-        RedisRole::Default,
+        DragonflyRole::Default,
     )
     .unwrap();
     assert!(!plain.is_tls());
 
     let tls =
-        RedisConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), RedisRole::Default).unwrap();
+        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
+            .unwrap();
     assert!(tls.is_tls(), "rediss:// is the TLS spelling");
 }
 
@@ -175,26 +180,27 @@ fn test_tls_is_the_scheme_not_a_guess() {
 #[test]
 fn test_request_timeout_knob() {
     let default =
-        RedisConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), RedisRole::Default).unwrap();
+        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
+            .unwrap();
     assert_eq!(default.request_timeout(), Duration::from_millis(5_000));
 
-    let tuned = RedisConfig::resolve(
+    let tuned = DragonflyConfig::resolve(
         &env_with(&[
             ("DRAGONFLY_URL", URL),
             ("DRAGONFLY_REQUEST_TIMEOUT_MS", " 250\n"),
         ]),
-        RedisRole::Default,
+        DragonflyRole::Default,
     )
     .unwrap();
     assert_eq!(tuned.request_timeout(), Duration::from_millis(250));
 
     for bad in ["0", "banana", ""] {
-        let config = RedisConfig::resolve(
+        let config = DragonflyConfig::resolve(
             &env_with(&[
                 ("DRAGONFLY_URL", URL),
                 ("DRAGONFLY_REQUEST_TIMEOUT_MS", bad),
             ]),
-            RedisRole::Default,
+            DragonflyRole::Default,
         )
         .unwrap();
         assert_eq!(
@@ -211,15 +217,16 @@ fn test_request_timeout_knob() {
 #[test]
 fn test_connect_timeout_knob() {
     let default =
-        RedisConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), RedisRole::Default).unwrap();
+        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
+            .unwrap();
     assert_eq!(default.connect_timeout(), Duration::from_millis(5_000));
 
-    let tuned = RedisConfig::resolve(
+    let tuned = DragonflyConfig::resolve(
         &env_with(&[
             ("DRAGONFLY_URL", URL),
             ("DRAGONFLY_CONNECT_TIMEOUT_MS", "250"),
         ]),
-        RedisRole::Default,
+        DragonflyRole::Default,
     )
     .unwrap();
     assert_eq!(tuned.connect_timeout(), Duration::from_millis(250));
@@ -230,12 +237,12 @@ fn test_connect_timeout_knob() {
     );
 
     for bad in ["0", "banana", ""] {
-        let config = RedisConfig::resolve(
+        let config = DragonflyConfig::resolve(
             &env_with(&[
                 ("DRAGONFLY_URL", URL),
                 ("DRAGONFLY_CONNECT_TIMEOUT_MS", bad),
             ]),
-            RedisRole::Default,
+            DragonflyRole::Default,
         )
         .unwrap();
         assert_eq!(config.connect_timeout(), Duration::from_millis(5_000));
@@ -247,15 +254,16 @@ fn test_connect_timeout_knob() {
 fn test_ca_cert_file_comes_from_the_documented_knob() {
     assert_eq!(CA_CERT_FILE_KNOB, "DRAGONFLY_TLS_CA_CERT_FILE");
 
-    let with_ca = RedisConfig::resolve(
+    let with_ca = DragonflyConfig::resolve(
         &env_with(&[("DRAGONFLY_URL", URL), (CA_CERT_FILE_KNOB, "/tmp/ca.crt")]),
-        RedisRole::Default,
+        DragonflyRole::Default,
     )
     .unwrap();
     assert_eq!(with_ca.ca_cert_file(), Some(Path::new("/tmp/ca.crt")));
 
     let without =
-        RedisConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), RedisRole::Default).unwrap();
+        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
+            .unwrap();
     assert!(
         without.ca_cert_file().is_none(),
         "no knob means the system trust store, not an empty path"
@@ -320,10 +328,10 @@ fn test_the_reconnect_schedule_is_spread() {
 /// sends whoever is reading the incident at the wrong connection.
 #[test]
 fn test_every_role_tags_itself_distinctly() {
-    assert_eq!(RedisRole::Default.tag(), "default");
-    assert_eq!(RedisRole::Api.tag(), "api");
+    assert_eq!(DragonflyRole::Default.tag(), "default");
+    assert_eq!(DragonflyRole::Api.tag(), "api");
 
-    let tags: Vec<&str> = RedisRole::ALL.iter().map(|role| role.tag()).collect();
+    let tags: Vec<&str> = DragonflyRole::ALL.iter().map(|role| role.tag()).collect();
     let unique: std::collections::BTreeSet<&str> = tags.iter().copied().collect();
     assert_eq!(unique.len(), tags.len(), "two roles share a tag: {tags:?}");
     for tag in &tags {

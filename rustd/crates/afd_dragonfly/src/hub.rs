@@ -37,7 +37,7 @@ use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::config::RedisConfig;
+use crate::config::DragonflyConfig;
 use crate::error::{Error, ErrorKind, Result};
 
 /// How many messages a slow reader may fall behind before it is told it lagged.
@@ -226,7 +226,7 @@ impl SubscriptionHub {
     /// # Errors
     /// Returns an unavailable error when the first connection cannot be made.
     /// Later drops are the pump's problem, not the caller's.
-    pub async fn start(config: RedisConfig) -> Result<Self> {
+    pub async fn start(config: DragonflyConfig) -> Result<Self> {
         Self::start_with_backoff(config, production_backoff()).await
     }
 
@@ -235,7 +235,7 @@ impl SubscriptionHub {
     /// # Errors
     /// As [`SubscriptionHub::start`].
     pub async fn start_with_backoff(
-        config: RedisConfig,
+        config: DragonflyConfig,
         schedule: ExponentialBuilder,
     ) -> Result<Self> {
         let (commands, receiver) = mpsc::unbounded_channel();

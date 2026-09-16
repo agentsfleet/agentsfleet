@@ -3,7 +3,7 @@
 //! # Why a snapshot cell exists at all
 //!
 //! The SDK invokes observable callbacks under its own pipeline lock, with no
-//! `catch_unwind` and no timeout. A callback that touches Redis, reads `/proc`,
+//! `catch_unwind` and no timeout. A callback that touches Dragonfly, reads `/proc`,
 //! or takes a lock some other thread holds does not slow one metric down — it
 //! stalls or poisons the entire metrics pipeline, and the first symptom is
 //! every family going silent at once.

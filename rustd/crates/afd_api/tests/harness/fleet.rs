@@ -16,11 +16,11 @@ use super::*;
 /// Borrowed rather than moved, because one harness builds four producers from
 /// the same pool and queue and each wants its own cheap handle — two pool
 /// clones and an entropy source, as `Admissions` documents.
-pub(crate) fn admissions(database: &Db, queue: &Redis) -> afd_admission::Admissions {
+pub(crate) fn admissions(database: &Db, queue: &Dragonfly) -> afd_admission::Admissions {
     afd_admission::Admissions::for_tests(database.clone(), queue.clone())
 }
 
-fn fleet_store(database: &Db, queue: &Redis, kek: &Arc<Kek>) -> Fleets {
+fn fleet_store(database: &Db, queue: &Dragonfly, kek: &Arc<Kek>) -> Fleets {
     Fleets::new(
         database.clone(),
         queue.clone(),
@@ -41,7 +41,7 @@ impl Fleet {
     }
 
     /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres and Redis are not there.
+    /// whose Postgres and Dragonfly are not there.
     ///
     /// Every store below is the PRODUCTION one. None of them is reachable, so
     /// every verb refuses at its first acquire — with the error its own crate
@@ -51,7 +51,7 @@ impl Fleet {
         let directory = Directory::Mock(mock.clone());
         let capabilities = MockCapabilities::new();
         let database = Db::unreachable(&unreachable_pool());
-        let queue = Redis::unreachable(&unreachable_queue())
+        let queue = Dragonfly::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         // One ledger for the whole harness: four producer seams share it, and
         // `Admissions` is two pool handles and an entropy source, so a clone per
@@ -185,7 +185,7 @@ impl Fleet {
     ///
     /// The seam the admin and operator suites need: everything else in this
     /// file refuses at the first acquire, which proves a refusal matrix and
-    /// nothing about a row. Redis stays unreachable — no suite built on this
+    /// nothing about a row. Dragonfly stays unreachable — no suite built on this
     /// reaches a queue, and opening one would make a datastore lane out of a
     /// router lane.
     pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
@@ -193,7 +193,7 @@ impl Fleet {
         let capabilities = MockCapabilities::new().with(&who, scopes);
         let mock_directory = MockDirectory::new();
         let directory = Directory::Live(Credentials::new(database.clone()));
-        let queue = Redis::unreachable(&unreachable_queue())
+        let queue = Dragonfly::unreachable(&unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         // One ledger for the whole harness: four producer seams share it, and
         // `Admissions` is two pool handles and an entropy source, so a clone per

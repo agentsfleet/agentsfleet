@@ -16,7 +16,7 @@
 
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 
-use crate::client::Redis;
+use crate::client::Dragonfly;
 use crate::error::Result;
 
 /// Read one key.
@@ -75,7 +75,7 @@ return count
 static INCREMENT_IN_WINDOW_SCRIPT: std::sync::LazyLock<redis::Script> =
     std::sync::LazyLock::new(|| redis::Script::new(INCREMENT_IN_WINDOW));
 
-impl Redis {
+impl Dragonfly {
     /// The string at `key`, or `None` when nothing is stored there.
     ///
     /// # Errors

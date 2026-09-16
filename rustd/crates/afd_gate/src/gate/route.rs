@@ -4,7 +4,7 @@
 //! and what the fleet's policy currently says — and the ORDER in which those
 //! two bind is a security property rather than a style choice. This module is
 //! that order, as a pure function over two small enums, so it is pinned by unit
-//! tests instead of by a live Redis and Postgres.
+//! tests instead of by a live Dragonfly and Postgres.
 
 use crate::gate::Decision;
 
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_lookup_waits_rather_than_raising_a_second_card() {
-        // A Redis blip must not re-notify a human who may already hold a card
+        // A Dragonfly blip must not re-notify a human who may already hold a card
         // for this exact event — but it must also not stall a fleet that wants
         // no gate, which is why only the gated row waits.
         assert_eq!(

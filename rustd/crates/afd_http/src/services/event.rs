@@ -129,7 +129,7 @@ impl WorkspaceEvents for History {
 /// What the steer verb acts through.
 ///
 /// Its own trait rather than a method on [`WorkspaceEvents`], because it is
-/// its own store: the reads hold a Postgres pool, and this holds a Redis
+/// its own store: the reads hold a Postgres pool, and this holds a Dragonfly
 /// connection opened by CONNECTING — which is exactly the seam a suite proving
 /// the refusal matrix must not have to construct.
 pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
