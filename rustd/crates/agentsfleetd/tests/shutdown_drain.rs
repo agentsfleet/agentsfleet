@@ -120,15 +120,14 @@ async fn drains_in_flight_requests() {
         async move { drain.settle(GENEROUS_BOUND).await }
     });
 
-    // ── Wait for the drain to have actually asked, before probing. `settle`
-    //    is spawned, so it has not necessarily run yet; a probe that lands
-    //    first is ACCEPTED by a loop that has been told nothing, takes a
-    //    guard, and is then counted in `in_flight_at_close` — which is how
-    //    this read 2 where it should read 1. The cancel is the earliest
-    //    moment the port can be expected to stop answering.
-    while !drain.accepting().is_cancelled() {
-        tokio::task::yield_now().await;
-    }
+    // ── Wait for the accept loop to have LEFT, before probing. Waiting for
+    //    the cancel is not enough: it only asks, and the loop selects on it
+    //    against a ready `accept()`, so a probe landing in that window is
+    //    accepted by a loop already told to stop, takes a guard, and is
+    //    counted in `in_flight_at_close` — which is how this read 2 where it
+    //    should read 1. `stopped` is cancelled after the listener is dropped,
+    //    so past it the refusal is the kernel's and no guard can be taken.
+    drain.stopped().cancelled().await;
 
     // ── A NEW connection is refused, by the kernel, because the accept loop
     //    broke and dropped the listener.

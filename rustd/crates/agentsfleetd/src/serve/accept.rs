@@ -106,9 +106,13 @@ pub(super) async fn accept_loop<A: Acceptor>(
             }
         });
     }
-    // However the loop ended, `listener` is dropped from here, so no further
-    // connection can be accepted or counted. Saying so is what lets a drain
-    // snapshot a settled number.
+    // Dropped HERE, before the signal, not at the end of the function: a
+    // waiter woken by `stopped_accepting` must find a port that has already
+    // stopped answering, and a listener still alive for the two statements
+    // after the signal accepts one more connection into its backlog.
+    drop(listener);
+    // However the loop ended, no further connection can now be accepted or
+    // counted. Saying so is what lets a drain snapshot a settled number.
     drain.stopped_accepting();
 }
 
