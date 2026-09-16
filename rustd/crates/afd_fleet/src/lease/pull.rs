@@ -161,23 +161,9 @@ impl Plane {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
             return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
         };
-        let installed = match self.leases.installed(&acquired.fleet_id).await {
-            Ok(Some(installed)) => installed,
-            Ok(None) => {
-                return Ok(Step::Stop(no_work(
-                    runner_id,
-                    "the fleet stopped between selection and claim",
-                )?));
-            }
-            // One fleet's unreadable document is that fleet's fault and not
-            // this runner's, which is the whole of `refuse_unreadable_config`.
-            Err(unreadable) if unreadable.is_config_permanent() => {
-                return self
-                    .refuse_unreadable_config(&acquired, runner_id, &unreadable, now)
-                    .await
-                    .map(Step::Stop);
-            }
-            Err(outage) => return Err(outage),
+        let installed = match self.resolve_installed(&acquired, runner_id, now).await? {
+            Step::Go(installed) => installed,
+            Step::Stop(answer) => return Ok(Step::Stop(answer)),
         };
 
         let received = self.leases.record_received(&acquired, now).await?;

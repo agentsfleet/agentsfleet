@@ -2,8 +2,9 @@
 //! bytes the runner reads.
 //!
 //! Split from [`super`] by concern (RULE FLL): that module decides WHETHER an
-//! event runs, and this one is what happens once the answer is no. They change
-//! for different reasons — a new gate moves the decision, a new failure_label
+//! event runs, and this one is what happens once the answer is no — including
+//! the claim read that produces one of those noes. They change
+//! for different reasons — a new gate moves the decision, a new `failure_label`
 //! moves the ending — and the file cap forced the cut at a seam the two
 //! already had.
 
@@ -18,11 +19,43 @@ use crate::lease::admit::{Admission, Refusal};
 use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
 use crate::lease::event::Delivery;
+use crate::lease::installed::Installed;
 
 /// A fleet whose unreadable config could not even be recorded as such.
 const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
 
 impl Plane {
+    /// The installed fleet behind a claim, or the answer that ends the pass.
+    ///
+    /// Three of the four arms end it, which is why this is a
+    /// [`Step`](super::step::Step) rather than an `Option`: a paused fleet, an
+    /// unreadable document and a datastore outage are different endings, and
+    /// the caller should not have to tell them apart to know the pass is over.
+    pub(super) async fn resolve_installed(
+        &self,
+        acquired: &Acquired,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Step<Installed>> {
+        match self.leases.installed(&acquired.fleet_id).await {
+            Ok(Some(installed)) => Ok(Step::Go(installed)),
+            // The selection pass filters on status, so reaching here with a
+            // stopped fleet means an operator paused it in the window between
+            // selection and this read. The claim lapses on its own.
+            Ok(None) => Ok(Step::Stop(no_work(
+                runner_id,
+                "the fleet stopped between selection and claim",
+            )?)),
+            // One fleet's unreadable document is that fleet's fault and not
+            // this runner's, which is the whole of `refuse_unreadable_config`.
+            Err(unreadable) if unreadable.is_config_permanent() => self
+                .refuse_unreadable_config(acquired, runner_id, &unreadable, now)
+                .await
+                .map(Step::Stop),
+            Err(outage) => Err(outage),
+        }
+    }
+
     /// Apply a gate's stop, whatever kind it was.
     pub(super) async fn stopped(
         &self,
