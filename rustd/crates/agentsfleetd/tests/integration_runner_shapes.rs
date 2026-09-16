@@ -59,6 +59,7 @@ const LEASE_SHAPE: &[&str] = &[
     "status",
     "created_at",
     "updated_at",
+    "receipt",
 ];
 
 /// The columns the narrative log's rows carry.
@@ -109,7 +110,7 @@ const MEMORY_SHAPE: &[&str] = &[
 /// the narrative row alongside it, the memory entry by the capture, and the
 /// ledger row by the report.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_seeded_row_shapes() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

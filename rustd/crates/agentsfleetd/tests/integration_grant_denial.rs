@@ -8,13 +8,14 @@
 
 use crate::e2e::{GOOD_KEK, Scenario, scenario};
 use crate::reads::event_column;
-use crate::wire::{capable_beat, field, json, post};
+use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, json, post};
 use afd_approval::{Decision, Inbox};
 use afd_core::id::Uuid7;
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_datastore::FleetStreams;
 use afd_fleet::lease::{Leases, runner_consumer};
 use afd_vault::{SecretBody, SecretName, Vault};
+use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 use std::sync::Arc;
@@ -72,22 +73,35 @@ async fn gate_cards(run: &Scenario) -> i64 {
         .expect("the gate count must run")
 }
 
-/// Polls until the gate has actually SEEN this fleet.
+/// Polls a full rotation budget, ending when `reached` says the daemon has
+/// done the thing under test to this fleet.
 ///
 /// # Why one request is not enough
 ///
 /// Readiness is sixteen partitions and a poll reads one of them, so a single
 /// request reaches a given fleet about one time in sixteen. The trap is that
-/// the assertion below still passes when it does not: a poll that never looked
-/// at this fleet answers `lease: null`, which is exactly what a gate-blocked
+/// the assertion still passes when it does not: a poll that never looked at
+/// this fleet answers `lease: null`, which is exactly what a gate-blocked
 /// fleet answers too. The test then went on to assert a card that nothing had
 /// raised, and failed several steps later with `0 != 1`, pointing at the gate
 /// rather than at the poll.
 ///
-/// So the loop's exit condition is the CARD, which only the gate can write.
+/// # Why the condition is a parameter
+///
+/// It was `gate_cards(run) > 0` for every call, and a card is raised ONCE and
+/// then resolved rather than removed — so every poll after the first returned
+/// on its first iteration, having usually sampled some other partition. The
+/// denial was then asserted against an event no poll had revisited. Each call
+/// site now names the row IT is waiting for: the card for the gate, the
+/// event's own label for the refusals that follow it.
+///
 /// Every response on the way is still checked, because "no work" is the answer
 /// under test and a 200 carrying a lease would mean the gate let it through.
-async fn poll(http: &reqwest::Client, run: &Scenario) {
+async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, awaited: &str, mut reached: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
     const ROTATIONS: u16 = 8;
     for _poll in 0..(afd_datastore::ready::READY_PARTITIONS * ROTATIONS) {
         // A no-work poll retains its affinity claim until expiry. Move that
@@ -108,17 +122,50 @@ async fn poll(http: &reqwest::Client, run: &Scenario) {
         let status = response.status().as_u16();
         let body = json(response).await;
         assert_eq!(status, 200, "the poll answers: {body}");
-        assert_eq!(field(&body, "lease"), &json!(null));
+        assert_no_lease_for_fleet_under_test(run, &body);
 
-        if gate_cards(run).await > 0 {
+        if reached().await {
             return;
         }
     }
     panic!(
-        "the gate never saw this fleet in {ROTATIONS} rotations of the readiness index — \
-         the mark is present but `Leases::select` answers None for it, so the block is \
-         between the peek and the claim, not in the index"
-    );
+        "{awaited} never happened in {ROTATIONS} rotations of the readiness index — \
+         every poll answered no-work, so either no poll reached this fleet's partition \
+         or the daemon declined it for a reason only its own log carries \
+         (`AFD_TEST_LOG=1`)."
+    )
+}
+
+/// The fleet's monotonic claim counter.
+///
+/// `CLAIM_AFFINITY_SLOT` bumps it on every won claim, and this suite expires
+/// the deadline before each poll, so a poll that reaches this fleet's partition
+/// always wins the claim and always moves this number. That makes it the one
+/// observable meaning "the daemon looked here" — as opposed to the rows the
+/// callers assert on, which say what it decided once it did.
+async fn fencing_seq(run: &Scenario) -> i64 {
+    sqlx::query_scalar("SELECT fencing_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid")
+        .bind(&run.fleet)
+        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the affinity row exists: `connect_and_declare` claimed it")
+}
+
+/// Polls until the daemon has claimed this fleet once more.
+///
+/// Every call site asserts on what a poll DECIDED, and each of those outcomes
+/// can already be true when the wait begins: a card is raised once and then
+/// resolved rather than removed, and the pre-ended arm writes the terminal row
+/// itself before polling at all. A wait keyed on any of them returns on its
+/// first iteration — which usually sampled some other partition — and the
+/// assertion then reads a row no poll revisited. The claim counter cannot be
+/// true in advance, because the caller reads it first.
+async fn poll_until_reached(http: &reqwest::Client, run: &Scenario, awaited: &str) {
+    let before = fencing_seq(run).await;
+    poll_until(http, run, awaited, || async {
+        fencing_seq(run).await > before
+    })
+    .await;
 }
 
 async fn deny(run: &Scenario) {
@@ -158,8 +205,14 @@ async fn refusal_drains(preended: bool) {
     let http = reqwest::Client::new();
     let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
     assert_eq!(beat.status().as_u16(), 200);
-    poll(&http, &run).await;
-    poll(&http, &run).await;
+    poll_until_reached(&http, &run, "the gate never saw this fleet").await;
+    // Asserted rather than waited on: the wait above proves a poll reached the
+    // fleet, and THIS is what that poll had to do once it did.
+    assert_eq!(
+        gate_cards(&run).await,
+        1,
+        "the poll that reached the fleet raised its approval card"
+    );
     deny(&run).await;
     if preended {
         // The durable half succeeded before a crash or a failed Redis acknowledgment.
@@ -180,14 +233,14 @@ async fn refusal_drains(preended: bool) {
         .await
         .expect("terminal write before retry");
     }
-    poll(&http, &run).await;
+    poll_until_reached(&http, &run, "no poll revisited the denied event").await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
     let pending = FleetStreams::new(run.booted.queue.clone())
         .read_pending(&run.fleet, &runner_consumer())
         .await
         .expect("pending read");
-    let second = run.enqueue_event("chat").await;
-    poll(&http, &run).await;
+    let second = run.enqueue_event(EventType::Chat).await;
+    poll_until_reached(&http, &run, "no poll reached the fleet's next event").await;
     let second_label = event_column(&run, &second, LABEL).await;
     supervisor.shutdown().await;
     run.cleanup().await;

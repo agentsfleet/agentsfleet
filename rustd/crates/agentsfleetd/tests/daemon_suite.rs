@@ -33,6 +33,8 @@
 mod e2e;
 #[path = "support/e2e_db.rs"]
 mod e2e_db;
+#[path = "support/e2e_event.rs"]
+mod e2e_event;
 #[path = "support/e2e_seed.rs"]
 mod e2e_seed;
 #[path = "support/e2e_reads.rs"]
@@ -70,6 +72,8 @@ mod integration_serve;
 mod integration_telemetry;
 #[path = "integration_tenant_registry.rs"]
 mod integration_tenant_registry;
+#[path = "integration_unreadable_config.rs"]
+mod integration_unreadable_config;
 #[path = "migrate.rs"]
 mod migrate;
 #[path = "nameplate.rs"]

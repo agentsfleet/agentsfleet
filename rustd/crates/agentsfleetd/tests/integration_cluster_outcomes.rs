@@ -38,17 +38,22 @@
 )]
 
 use afd_datastore::SubscriptionHub;
+use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, redis_config, scenario};
 use crate::reads::{balance, counter_column, lease_column, ledger_rows};
 use crate::tail::{next_frame, settle};
-use crate::wire::{capable_beat, field, json, poll_for_seeded_lease, post, report_body};
+use crate::wire::{
+    capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
+};
 
-/// The event type the daemon has a gate for, so an extra append is leasable
-/// rather than ended as unsupported.
-const SUPPORTED_EVENT: &str = "fleet_steer";
+/// The event type the daemon has an execution path for, so an extra append is
+/// leasable rather than ended as unsupported. `EventType` is a closed set and
+/// the ledger takes the type itself, so this cannot drift to a spelling the
+/// pull path would end.
+const SUPPORTED_EVENT: EventType = EventType::Chat;
 
 /// The text a forwarded chunk carries.
 const CHUNK_TEXT: &str = "the cluster carried this across a shard";
@@ -262,18 +267,10 @@ async fn the_fleet_is_still_discoverable_for_its_remaining_work(
     run: &Scenario,
     second_event: &str,
 ) {
-    let polled = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(polled.status().as_u16(), 200, "the poll answers");
-    let body = json(polled).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the fleet's second event is still owed, so it is still discoverable");
-    assert_eq!(
-        field(field(lease, "event"), "event_id"),
-        &json!(second_event),
-        "and the entry handed over is the one that had not been reported"
-    );
+    // A rotation rather than one request: the second event is discoverable
+    // only on the poll that samples its partition, and the helper carries the
+    // diagnosis if no poll in the budget is handed it.
+    let (_lease_id, _fence) = poll_for_lease(http, run, second_event).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
