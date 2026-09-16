@@ -17,6 +17,8 @@ mod aad;
 mod entropy_mock;
 #[path = "envelope.rs"]
 mod envelope;
+#[path = "envelope_conformance.rs"]
+mod envelope_conformance;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "known_answer.rs"]
@@ -25,8 +27,6 @@ mod known_answer;
 mod mac;
 #[path = "secret.rs"]
 mod secret;
-#[path = "envelope_conformance.rs"]
-mod envelope_conformance;
 
 #[path = "secret_object.rs"]
 mod secret_object;
