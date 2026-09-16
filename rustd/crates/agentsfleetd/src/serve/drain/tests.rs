@@ -9,7 +9,64 @@
     reason = "a joined test task's panic should surface here, not be swallowed"
 )]
 
+use std::sync::Mutex;
+
+use tracing::field::{Field, Visit};
+use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
+
 use super::*;
+
+/// The `event` field of every diagnostic the drain emitted, in order.
+///
+/// A recording layer rather than a formatting one, because the claim is about
+/// WHICH events an operator gets and what they carry — not that something was
+/// printed. It also settles a question a coverage report cannot: a field
+/// expression only runs when a subscriber is interested in its callsite, so
+/// an assertion that the name arrived is the proof the line executed.
+#[derive(Clone, Default)]
+struct Recorded(Arc<Mutex<Vec<String>>>);
+
+impl Recorded {
+    fn names(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+struct EventName<'a>(&'a mut Option<String>);
+
+impl Visit for EventName<'_> {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "event" {
+            *self.0 = Some(value.to_owned());
+        }
+    }
+
+    fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+}
+
+impl<S: tracing::Subscriber> Layer<S> for Recorded {
+    fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
+        let mut name = None;
+        event.record(&mut EventName(&mut name));
+        if let Some(name) = name {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(name);
+        }
+    }
+}
+
+/// Records for the length of one test, on this thread.
+fn recording() -> (Recorded, tracing::subscriber::DefaultGuard) {
+    let recorded = Recorded::default();
+    let guard =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(recorded.clone()));
+    (recorded, guard)
+}
 
 /// Long enough that a scheduler hiccup cannot fail a test that is meant to
 /// prove a clean drain, short enough that the timeout tests stay quick.
@@ -60,10 +117,22 @@ async fn an_in_flight_request_finishes_before_the_drain_returns() {
 
 #[tokio::test]
 async fn a_request_that_outlasts_the_bound_is_reported_not_waited_for() {
+    let (recorded, _guard) = recording();
     let drain = Drain::new();
     let held = drain.enter();
 
     let settled = drain.settle(IMPATIENT).await;
+    // The two lines an operator reads a stuck deployment by: the drain said it
+    // was waiting, and then said it gave up. A drain that timed out silently
+    // leaves them watching a process that will not terminate.
+    assert_eq!(
+        recorded.names(),
+        vec![
+            EVENT_DRAIN_STARTED.to_owned(),
+            EVENT_DRAIN_TIMED_OUT.to_owned()
+        ],
+        "the drain's diagnostics are what an expired bound is read from"
+    );
     // Not a failure — a finished drain with something left, named so an
     // operator reads a number instead of watching a process that will not die.
     assert_eq!(settled.in_flight_at_close, 1);

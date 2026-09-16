@@ -16,7 +16,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
@@ -33,6 +33,14 @@ const CONNECT_BUDGET: Duration = Duration::from_millis(250);
 /// ignoring its deadline does.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// The most the connect may take and still be honouring its budget.
+///
+/// A multiple, not the budget itself: the wait is a real timer plus whatever a
+/// loaded runner adds to waking from it. It is far below the driver's own
+/// default, which is the regression this bounds — a connect that ignored
+/// `CONNECT_BUDGET` would land seconds out, not milliseconds.
+const BUDGET_CEILING: Duration = Duration::from_secs(3);
+
 /// The question every cluster client asks before it will send anything else.
 const CMD_CLUSTER: &str = "CLUSTER";
 
@@ -48,11 +56,26 @@ async fn test_a_handshake_that_never_completes_expires_the_connect_budget() {
     let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_connect_timeout(CONNECT_BUDGET);
 
+    let started = Instant::now();
     let error = tokio::time::timeout(PATIENCE, SubscriptionHub::start(config))
         .await
         .expect("the connect budget, not this timeout, must be what ends the wait")
         .expect_err("a handshake that never completes must not produce a hub");
+    let waited = started.elapsed();
 
+    // The BUDGET is the claim, so the elapsed time is what gets asserted.
+    // Returning some role-bearing error eventually would satisfy a test that
+    // only checked the message, including one that waited out the driver's own
+    // default instead of the configured deadline.
+    assert!(
+        waited >= CONNECT_BUDGET,
+        "the connect gave up after {waited:?}, inside the {CONNECT_BUDGET:?} it declared"
+    );
+    assert!(
+        waited < BUDGET_CEILING,
+        "the connect took {waited:?} against a {CONNECT_BUDGET:?} budget — the \
+         configured deadline is being ignored for the driver's own"
+    );
     assert!(
         error.to_string().contains(DragonflyRole::Default.tag()),
         "the failure must name the role, since a deployment runs two: {error}"
