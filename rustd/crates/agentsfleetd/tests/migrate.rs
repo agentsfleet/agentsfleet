@@ -69,7 +69,7 @@ async fn test_a_migrate_refusal_keeps_its_cause() {
     );
 }
 
-/// Migrate needs no master key and no Redis.
+/// Migrate needs no master key and no Dragonfly.
 ///
 /// A migration job that demanded them would have to be given credentials it has
 /// no use for, which is how a job container ends up holding the KEK.

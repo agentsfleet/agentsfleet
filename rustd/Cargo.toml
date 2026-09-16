@@ -15,10 +15,10 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.31.3"
+version = "0.48.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -40,6 +40,12 @@ percent-encoding = "2.3.2"
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
+# The admission ledger: the Postgres row that IS a producer's acceptance, and
+# the queue entry that is only its receipt. Its own crate for the reason
+# `afd_events` gives for existing — one owner per table — and because every
+# producer crate (`afd_events`, `afd_ingress`, `afd_cron`, `afd_approval`,
+# `afd_runner`) admits through it while none of them may depend on another.
+afd_admission = { path = "crates/afd_admission" }
 afd_api = { path = "crates/afd_api" }
 afd_api_ingress = { path = "crates/afd_api_ingress" }
 afd_api_operator = { path = "crates/afd_api_operator" }
@@ -98,7 +104,7 @@ afd_ingress = { path = "crates/afd_ingress" }
 afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
 afd_outbound = { path = "crates/afd_outbound" }
-afd_redis = { path = "crates/afd_redis" }
+afd_dragonfly = { path = "crates/afd_dragonfly" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
@@ -419,11 +425,16 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync"
 #
 # `tokio-rustls-comp` for the same no-C posture as everything else here. The
 # local compose Redis serves a self-signed certificate, so the CA arrives by
-# path (`REDIS_TLS_CA_CERT_FILE`) rather than from a trust store.
-redis = { version = "1.6.0", default-features = false, features = [
+# path (`DRAGONFLY_TLS_CA_CERT_FILE`) rather than from a trust store.
+#
+# `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
+# following, per-node connections and sharded pub/sub over RESP3, all the
+# driver's. This workspace never parses a redirect itself.
+redis = { version = "1.7.0", default-features = false, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "connection-manager",
+    "cluster-async",
     "streams",
     "script",
 ] }
@@ -489,7 +500,7 @@ axum = { version = "0.8.9", default-features = false, features = [
     "http2",
     "tokio",
 ] }
-# The retry LOOP, rather than the schedule. `afd_redis::Backoff` computes the
+# The retry LOOP, rather than the schedule. `afd_dragonfly::Backoff` computes the
 # delays and is proven on the subscription hub's reconnect; what was hand-rolled
 # beside it was the counter and the terminal rule — and the loop guard is
 # precisely where the Zig install shipped its bug, leaving the last delay
@@ -562,6 +573,15 @@ object_store = { version = "0.14.1", default-features = false, features = ["aws"
 # manifest a statement about what that crate actually names in its own types,
 # and `afd_fleet::bundle::Snapshot` names this one.
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
+# The checksum the cluster keys slots by, for the readiness partition of a
+# fleet — the driver already compiles it in; naming it here is what lets
+# `afd_dragonfly` compute the same number the cluster would.
+crc16 = { version = "0.4.0", default-features = false }
+# A sharded concurrent map: a lookup or a retire locks one shard, not the
+# whole map, and the entry API holds that shard for exactly the check-then-
+# act a per-key race needs. Where a map is keyed by something many tasks
+# touch at once, this is the shape, not `Mutex<HashMap>`.
+dashmap = { version = "6.1.0", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
@@ -711,7 +731,7 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # NOTE, and it is a measurement note rather than a style one: `tracing`'s `log`
 # feature is NOT requested here, but sqlx-core and sqlx-postgres request it and
 # Cargo unifies features across the workspace, so it is on for every crate —
-# afd_redis included, which never asked for it. With `log` enabled the event
+# afd_dragonfly included, which never asked for it. With `log` enabled the event
 # macros compile each field expression TWICE, once for the event and once for a
 # `log` record that never runs when a subscriber is installed, and llvm-cov maps
 # both copies to the same source line and reports the DEAD one. The consequence

@@ -7,17 +7,17 @@
 //!
 //! # Why this one opens a connection the rest of the process does not share
 //!
-//! Every other Redis caller in this binary goes through the one multiplexed
-//! [`Redis`], because sharing a socket is what makes a pool unnecessary. This
+//! Every other Dragonfly caller in this binary goes through the one multiplexed
+//! [`Dragonfly`], because sharing a socket is what makes a pool unnecessary. This
 //! worker blocks on `XREADGROUP … BLOCK`, and a blocking command on a shared
-//! connection is not a slow command — it is a stopped process, since Redis
+//! connection is not a slow command — it is a stopped process, since Dragonfly
 //! executes a connection's commands in order. So it dials its own, exactly as
-//! the pub/sub hub does, and [`afd_redis::Dedicated`] is not `Clone` so nobody
+//! the pub/sub hub does, and [`afd_dragonfly::Dedicated`] is not `Clone` so nobody
 //! can join it there.
 //!
 //! # A worker that cannot dial does not stop the boot
 //!
-//! Redis is already proven reachable by the time this runs — the shared handle
+//! Dragonfly is already proven reachable by the time this runs — the shared handle
 //! pinged it, and `/readyz` reports on it. A second dial that fails here is a
 //! blip on a connection nothing else needs, and refusing to boot over it would
 //! take down the whole API to protect the return leg of one connector. It is
@@ -26,8 +26,11 @@
 
 use afd_connector::Grants;
 use afd_db::Db;
+use afd_dragonfly::{
+    Dedicated, Dragonfly, DragonflyConfig, OutboundQueue, OutboundReader, outbound_consumer,
+};
+use afd_outbound::producer::Producer;
 use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
-use afd_redis::{Dedicated, OutboundQueue, OutboundReader, Redis, RedisConfig, outbound_consumer};
 
 use crate::supervisor::Supervisor;
 
@@ -39,6 +42,13 @@ use crate::supervisor::Supervisor;
 /// The supervised name of the connector answer-delivery worker.
 pub const OUTBOUND_WORKER: &str = "connector:outbound";
 
+/// The supervised name of the owed-answer producer.
+///
+/// Its own task rather than a turn of the worker's loop: the worker parks on a
+/// blocking read for whole seconds at a time, and a pass that had to wait for
+/// that park would run at the queue's idle cadence instead of its own.
+pub const OUTBOUND_PRODUCER: &str = "connector:outbound-producer";
+
 /// Starts the outbound worker under `supervisor`, if it can open its socket.
 ///
 /// Called after the datastores are open and before the listener binds, for the
@@ -46,9 +56,9 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 /// connected would fail its first pass for a reason unrelated to the rows.
 pub async fn spawn(
     supervisor: &mut Supervisor,
-    config: &RedisConfig,
+    config: &DragonflyConfig,
     database: &Db,
-    queue: &Redis,
+    queue: &Dragonfly,
     grants: Grants,
     vendor_client: reqwest::Client,
 ) {
@@ -66,6 +76,7 @@ pub async fn spawn(
     let worker = Worker::new(
         OutboundReader::new(connection, outbound_consumer()),
         OutboundQueue::new(queue.clone()),
+        database.clone(),
         Posters {
             slack: SlackPoster::new(
                 database.clone(),
@@ -76,4 +87,11 @@ pub async fn spawn(
         },
     );
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
+
+    // The recovery half. The report path appends an answer the moment it
+    // commits, so in a healthy deployment this finds nothing; it exists for the
+    // two cases that path cannot cover — a process that died between the commit
+    // and the append, and a queue that lost the entry afterwards.
+    let producer = Producer::new(OutboundQueue::new(queue.clone()), database.clone());
+    supervisor.spawn(OUTBOUND_PRODUCER, move |token| producer.run(token));
 }

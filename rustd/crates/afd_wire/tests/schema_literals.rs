@@ -37,7 +37,10 @@ use afd_wire::schema::{GATE_PURGE_ENABLED, GATE_PURGE_SETTING};
 /// Named so a file that stops reading it is as loud as one that misspells it:
 /// dropping the guard from a table is a change to what the cascade may delete,
 /// and it should never happen quietly.
-const FILES_READING_THE_SETTING: usize = 7;
+// 912 replaces `repair_verifications_fenced_update` to drop the once-key
+// cleanup arm, and a replacement carries the purge guard forward with it — so
+// the setting is now spelled in the 835 original and the 912 replacement alike.
+const FILES_READING_THE_SETTING: usize = 8;
 
 /// The repository root, four levels up from this crate's manifest
 /// (`rustd/crates/afd_wire` → `rustd/crates` → `rustd` → root).

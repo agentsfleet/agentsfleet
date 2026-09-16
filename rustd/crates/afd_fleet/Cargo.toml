@@ -22,7 +22,15 @@ test-util = [
   "afd_crypto/test-util",
   "afd_db/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
-  "afd_redis/test-util",
+  "afd_dragonfly/test-util",
+  # The labelled billing refusal the fail-open posture suite absorbs. Taken
+  # from that crate's own sample rather than named here, because the kind is
+  # private to it.
+  "afd_billing/test-util",
+  # The admission refusal the lease lifts when it asks the ledger for the
+  # cursor a lost consumer group is restored at. Taken from that crate's own
+  # sample for the reason the billing line gives.
+  "afd_admission/test-util",
 ]
 
 # Each dependency is added by the module that uses it, for the reason
@@ -51,7 +59,13 @@ afd_db.workspace = true
 afd_events.workspace = true
 # The readiness index and the fleet event streams. A lease is the one verb
 # that cannot be served from either datastore alone.
-afd_redis.workspace = true
+afd_dragonfly.workspace = true
+# Owns `core.fleet_obligations`: the report path commits an obligation through
+# it. The edge runs fleet -> outbound and never back.
+afd_outbound.workspace = true
+# The admission ledger, asked one question: where a fleet's lost consumer
+# group resumes. The answer is a join only the ledger's owner may write.
+afd_admission.workspace = true
 # The HOST's plane. The lease is issued TO a runner, so the lease statements
 # bind runner rows through its `Bound`, and finalize writes the one
 # `lease_released` audit row using its vocabulary — the single point the two
@@ -110,6 +124,11 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # Joins the contenders in the affinity race so the datastore, and not the order
 # of a test loop, decides which claim arrives first.
 futures-util = { workspace = true }
+# `XPENDING` in `tests/integration_terminal_redelivery.rs`. The library spells no
+# Redis command itself -- `afd_dragonfly` owns every one it issues -- but
+# Dimension 7.4's claim is that a redelivered terminal entry is ACKNOWLEDGED,
+# and whether an entry is still held is a question only the server answers.
+redis.workspace = true
 # Installs a subscriber so `tracing` event macros evaluate their fields at all;
 # without one a diagnostic line reads as unreachable to llvm-cov.
 tracing-subscriber.workspace = true
@@ -128,7 +147,7 @@ afd_fleet_runtime = { workspace = true, features = ["test-util"] }
 # test binary running in parallel, so an injection that takes the SERVER away
 # fails unrelated suites; a lazy handle one test owns fails only its own
 # commands. Same shape as the `afd_db` line above, for the same reason.
-afd_redis = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
@@ -136,3 +155,9 @@ workspace = true
 [[test]]
 name = "fleet_suite"
 path = "tests/fleet_suite.rs"
+
+# Its own binary so cargo runs it alone: it marks BATCH_LIMIT + 1 fleets ready
+# at once, and the readiness index is process-global. See the file header.
+[[test]]
+name = "fleet_rebuild_suite"
+path = "tests/fleet_rebuild_suite.rs"

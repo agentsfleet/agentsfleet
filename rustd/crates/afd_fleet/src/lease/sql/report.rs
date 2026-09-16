@@ -41,8 +41,35 @@ use afd_runner::sql::runner::Bound;
 /// `$1` lease, `$2` runner.
 pub const SELECT_LEASE_FOR_REPORT: &str = "\
 SELECT fleet_id::text, workspace_id::text, tenant_id::text,
-       event_id, actor, posture, provider, model, fencing_token
+       event_id, actor, posture, provider, model, fencing_token, receipt
 FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
+
+/// What a claim that matched no row MEANT, for the lease it named.
+///
+/// [`CLAIM_AND_SETTLE`] guards on `status = active`, so it answers the same
+/// empty claim to two different situations: a holder the fleet superseded
+/// while it ran, and this same runner re-sending a report it already settled
+/// because the response was lost. The first is owed a refusal. The second is
+/// owed the outcome it already has — a finished run whose answer is retried
+/// into a permanent refusal is an answer thrown away, which is the failure
+/// RULE IDMP names.
+///
+/// Scoped by `runner_id` for the reason [`SELECT_LEASE_FOR_REPORT`] gives: the
+/// statement cannot see another runner's row, so it can leak nothing. Read
+/// INSIDE the settle's transaction, on the snapshot the claim that missed
+/// decided against — read outside it, a reclaim landing between the two would
+/// answer about a lease the claim never saw.
+///
+/// The fence is deliberately absent. A settled report releases the fleet's
+/// slot, and the next event's claim bumps `fencing_seq` past this runner's
+/// token within milliseconds — so a fence comparison here would call a
+/// correctly settled report superseded, which is precisely the answer this
+/// statement exists to stop. The lease's own status is the fact that decides:
+/// `reported` is this runner's row, already terminal.
+///
+/// `$1` lease, `$2` runner.
+pub const SELECT_LEASE_DISPOSITION: &str = "\
+SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
 
 /// Claim the report and settle the final slice, atomically.
 ///

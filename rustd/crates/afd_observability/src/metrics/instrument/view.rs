@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 
 use opentelemetry_sdk::metrics::{Instrument, Stream};
 
-use crate::error::{Error, Result};
+use crate::error::{Result, stream_rejected};
 use crate::metrics::registry::{Family, Policy, Registry};
 
 /// A view applying every declared family's series ceiling.
@@ -43,10 +43,7 @@ pub fn series_ceilings(
             continue;
         };
         if let Err(reason) = build(limit) {
-            return Err(Error::StreamRejected {
-                family: family.name.clone(),
-                reason,
-            });
+            return Err(stream_rejected(&family.name, &reason));
         }
         ceilings.insert(family.name.clone(), limit);
     }
@@ -76,7 +73,7 @@ fn build(limit: usize) -> core::result::Result<Stream, Box<str>> {
     match Stream::builder().with_cardinality_limit(limit).build() {
         Ok(stream) => Ok(stream),
         // The sentence, as DATA, and the one place this crate does that.
-        // `Error::StreamRejected` carries the reasoning: the SDK's refusal is a
+        // `stream_rejected` carries the reasoning: the SDK's refusal is a
         // `Box<dyn Error>` that is not `Send + Sync`, so it cannot be held in
         // an error of ours, and in this version it is always built from a
         // `&'static str` with no cause of its own. There is no `source()` chain

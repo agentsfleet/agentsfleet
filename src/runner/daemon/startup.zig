@@ -47,7 +47,7 @@ pub fn enableResourceControl(io: std.Io, alloc: std.mem.Allocator) void {
 /// declared cgroup set. That extra arm is comptime-dead on a macOS target, so
 /// only a Linux build sees it — narrowing here compiles natively and breaks the
 /// cross-compile.
-pub fn shouldReport(err: anyerror) bool {
+fn shouldReport(err: anyerror) bool {
     return err != error.UnsupportedPlatform;
 }
 

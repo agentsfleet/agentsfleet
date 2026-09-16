@@ -21,7 +21,7 @@
 //! sets and every decode branch in a unit test with no datastore anywhere
 //! near it.
 
-mod error;
+pub mod error;
 
 pub mod admin;
 pub mod bounds;

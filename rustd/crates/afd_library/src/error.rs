@@ -1,4 +1,18 @@
 //! The failure vocabulary for bundle ingestion and external sources.
+//!
+//! One error type under the `afd_core::error_shell!` hull its sibling crates
+//! carry: a struct over a private kind, with the captured backtrace, the
+//! `[CODE]` rendering and the self-skipping `source()` generated rather than
+//! written here again. The boxed kind also keeps `Result` pointer-sized on the
+//! `Ok` path, which matters on a crate whose happy path streams archive bytes.
+//!
+//! # Two kinds carry data rather than a cause
+//!
+//! [`ErrorKind::Invalid`] and [`ErrorKind::Source`] hold an [`InvalidBundle`]
+//! and a [`SourceFailure`], which are VERDICTS this crate reached rather than
+//! failures underneath it — neither implements `Error`, so neither is a
+//! `source()`. They compose by a hand-written `From` in `raise` instead of
+//! through `error_lifts!`, which is the same composition by a different door.
 
 use afd_core::error_code::{
     CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_CREDENTIAL_NAME_INVALID,
@@ -62,9 +76,22 @@ impl core::fmt::Display for InvalidBundle {
     }
 }
 
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+pub(crate) use self::raise::{catalog_id_collision, database, storage_unavailable};
+
+afd_core::error_shell!(
+    /// A Fleet Bundle failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
 /// Every fallible operation owned by this crate.
+///
+/// Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(crate) enum ErrorKind {
     /// Untrusted bundle bytes were refused before any write.
     #[error("invalid Fleet Bundle: {0}")]
     Invalid(InvalidBundle),
@@ -88,10 +115,10 @@ pub enum Error {
     },
     /// Trigger frontmatter has valid YAML but violates the runtime schema.
     #[error("invalid Fleet Bundle: TRIGGER.md runtime configuration is invalid")]
-    TriggerConfig(#[source] afd_fleet_runtime::Error),
+    TriggerConfig { source: afd_fleet_runtime::Error },
     /// Immutable snapshot storage did not accept a write.
     #[error("Fleet Bundle snapshot storage failed")]
-    Storage(#[source] object_store::Error),
+    Storage { source: object_store::Error },
     /// Snapshot storage is not configured for a bundle carrying support files.
     #[error("Fleet Bundle snapshot storage is unavailable")]
     StorageUnavailable,
@@ -103,31 +130,31 @@ pub enum Error {
     },
     /// A pool connection could not be acquired.
     #[error(transparent)]
-    Pool(#[from] afd_db::Error),
+    Pool { source: afd_db::Error },
     /// Persisted catalogue JSON did not match its schema.
     #[error("Fleet Bundle catalogue contains malformed JSON")]
-    CatalogueJson(#[from] serde_json::Error),
+    CatalogueJson { source: serde_json::Error },
     /// Validated files could not be encoded as a canonical tar.
     #[error("Fleet Bundle snapshot encoding failed")]
-    Snapshot(#[source] std::io::Error),
+    Snapshot { source: std::io::Error },
     /// A source returned an ordinary, typed failure class.
     #[error("Fleet Bundle source failed: {0}")]
     Source(SourceFailure),
     /// The GitHub transport failed before returning a classified response.
     #[error("Fleet Bundle GitHub request failed")]
-    Github(#[source] reqwest::Error),
+    Github { source: reqwest::Error },
     /// A downloaded source archive could not be decoded completely.
     #[error("Fleet Bundle archive is corrupt or truncated")]
-    Archive(#[source] std::io::Error),
+    Archive { source: std::io::Error },
     /// The runtime could not complete archive extraction on its blocking pool.
     #[error("Fleet Bundle archive extraction task failed")]
-    ArchiveTask(#[source] tokio::task::JoinError),
+    ArchiveTask { source: tokio::task::JoinError },
     /// A GitHub redirect is not a valid URL.
     #[error("Fleet Bundle source returned an invalid redirect")]
-    Redirect(#[source] url::ParseError),
+    Redirect { source: url::ParseError },
     /// A tar entry path is not UTF-8.
     #[error("Fleet Bundle archive contains a non-UTF-8 path")]
-    ArchivePath(#[source] std::str::Utf8Error),
+    ArchivePath { source: std::str::Utf8Error },
     /// The host could not draw the entropy an onboarded entry is minted from.
     ///
     /// Only the workspace tier mints: the platform catalogue is keyed by the
@@ -159,9 +186,9 @@ pub enum Error {
 impl Error {
     /// The stable product error code exposed at the HTTP boundary.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
-        match self {
-            Self::Invalid(
+    pub fn code(&self) -> ErrorCode {
+        match self.kind() {
+            ErrorKind::Invalid(
                 InvalidBundle::SkillTooLarge
                 | InvalidBundle::TriggerTooLarge
                 | InvalidBundle::TooManySupportFiles
@@ -169,66 +196,73 @@ impl Error {
                 | InvalidBundle::SupportFilesTooLarge
                 | InvalidBundle::RequirementsTooLarge,
             )
-            | Self::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
+            | ErrorKind::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
                 PAYLOAD_TOO_LARGE
             }
             // Ahead of the catch-all below: a name the vault will not store is
             // fixed by renaming it, not by re-packaging the bundle.
-            Self::TriggerConfig(afd_fleet_runtime::Error::InvalidCredentialRef { .. }) => {
+            ErrorKind::TriggerConfig { source: refusal }
+                if matches!(
+                    refusal.class(),
+                    afd_fleet_runtime::Class::InvalidCredentialRef
+                ) =>
+            {
                 FLEET_BUNDLE_CREDENTIAL_NAME_INVALID
             }
-            Self::Invalid(_)
-            | Self::FrontmatterUtf8 { .. }
-            | Self::FrontmatterYaml { .. }
-            | Self::TriggerConfig(_) => FLEET_BUNDLE_INVALID,
-            Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {
-                FLEET_BUNDLE_STORAGE_UNAVAILABLE
-            }
-            Self::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
-            Self::Pool(_) => INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Invalid(_)
+            | ErrorKind::FrontmatterUtf8 { .. }
+            | ErrorKind::FrontmatterYaml { .. }
+            | ErrorKind::TriggerConfig { .. } => FLEET_BUNDLE_INVALID,
+            ErrorKind::Storage { .. }
+            | ErrorKind::StorageUnavailable
+            | ErrorKind::Snapshot { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+            ErrorKind::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
+            ErrorKind::Pool { .. } => INTERNAL_DB_UNAVAILABLE,
             // Neither is the caller's to correct: a host that cannot draw
             // entropy and a mint that produced something `Uuid7` refuses are
             // both this instance's failure, and both answer the same internal
             // code the credential plane gives them.
-            Self::Entropy { .. } | Self::Mint { .. } => INTERNAL_OPERATION_FAILED,
-            Self::CatalogueJson(_) | Self::Database { .. } => INTERNAL_DB_QUERY,
-            Self::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
+            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => INTERNAL_OPERATION_FAILED,
+            ErrorKind::CatalogueJson { .. } | ErrorKind::Database { .. } => INTERNAL_DB_QUERY,
+            ErrorKind::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
                 FLEET_BUNDLE_INVALID
             }
-            Self::Source(_)
-            | Self::Github(_)
-            | Self::Archive(_)
-            | Self::ArchiveTask(_)
-            | Self::Redirect(_)
-            | Self::ArchivePath(_) => FLEET_BUNDLE_FETCH_FAILED,
+            ErrorKind::Source(_)
+            | ErrorKind::Github { .. }
+            | ErrorKind::Archive { .. }
+            | ErrorKind::ArchiveTask { .. }
+            | ErrorKind::Redirect { .. }
+            | ErrorKind::ArchivePath { .. } => FLEET_BUNDLE_FETCH_FAILED,
         }
     }
 
     /// Whether retrying without changing the request is safe.
     #[must_use]
-    pub const fn retryable(&self) -> bool {
+    pub fn retryable(&self) -> bool {
         matches!(
-            self,
-            Self::Storage(_)
-                | Self::StorageUnavailable
-                | Self::Pool(_)
-                | Self::Source(SourceFailure::RateLimited)
-                | Self::Github(_)
-                | Self::Database { .. }
+            self.kind(),
+            ErrorKind::Storage { .. }
+                | ErrorKind::StorageUnavailable
+                | ErrorKind::Pool { .. }
+                | ErrorKind::Source(SourceFailure::RateLimited)
+                | ErrorKind::Github { .. }
+                | ErrorKind::Database { .. }
         )
     }
 
     /// Client-safe detail exposed to the HTTP shell.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
-        match self {
-            Self::Pool(_) => "Database unavailable",
-            Self::CatalogueJson(_) | Self::Database { .. } => "Database error",
+    pub fn detail(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::Pool { .. } => "Database unavailable",
+            ErrorKind::CatalogueJson { .. } | ErrorKind::Database { .. } => "Database error",
             // Nothing a caller can act on, and nothing about the bundle they
             // sent: this instance could not mint an identifier for the row it
             // was about to write.
-            Self::Entropy { .. } | Self::Mint { .. } => "Onboarding could not be completed",
-            Self::Invalid(
+            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
+                "Onboarding could not be completed"
+            }
+            ErrorKind::Invalid(
                 InvalidBundle::SkillTooLarge
                 | InvalidBundle::TriggerTooLarge
                 | InvalidBundle::TooManySupportFiles
@@ -236,80 +270,42 @@ impl Error {
                 | InvalidBundle::SupportFilesTooLarge
                 | InvalidBundle::RequirementsTooLarge,
             )
-            | Self::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
+            | ErrorKind::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
                 "Fleet Bundle exceeds a configured size cap"
             }
-            Self::Invalid(_)
-            | Self::FrontmatterUtf8 { .. }
-            | Self::FrontmatterYaml { .. }
-            | Self::TriggerConfig(_)
-            | Self::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
+            ErrorKind::Invalid(_)
+            | ErrorKind::FrontmatterUtf8 { .. }
+            | ErrorKind::FrontmatterYaml { .. }
+            | ErrorKind::TriggerConfig { .. }
+            | ErrorKind::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
                 "Fleet Bundle is invalid"
             }
-            Self::Source(_)
-            | Self::Github(_)
-            | Self::Archive(_)
-            | Self::ArchiveTask(_)
-            | Self::Redirect(_)
-            | Self::ArchivePath(_) => "Fleet Bundle fetch failed",
-            Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {
-                "Fleet Bundle storage unavailable"
-            }
-            Self::CatalogIdCollision { .. } => "Fleet Bundle catalogue id is already in use",
+            ErrorKind::Source(_)
+            | ErrorKind::Github { .. }
+            | ErrorKind::Archive { .. }
+            | ErrorKind::ArchiveTask { .. }
+            | ErrorKind::Redirect { .. }
+            | ErrorKind::ArchivePath { .. } => "Fleet Bundle fetch failed",
+            ErrorKind::Storage { .. }
+            | ErrorKind::StorageUnavailable
+            | ErrorKind::Snapshot { .. } => "Fleet Bundle storage unavailable",
+            ErrorKind::CatalogIdCollision { .. } => "Fleet Bundle catalogue id is already in use",
         }
     }
 
     /// Whether the backing database could not be reached at all.
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
-        matches!(self, Self::Pool(_))
+    pub fn is_datastore_unavailable(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Pool { .. })
     }
 
     /// Existing source when this error is an id collision.
     #[must_use]
     pub fn collision_incumbent(&self) -> Option<&str> {
-        match self {
-            Self::CatalogIdCollision { incumbent } => Some(incumbent),
+        match self.kind() {
+            ErrorKind::CatalogIdCollision { incumbent } => Some(incumbent),
             _ => None,
         }
-    }
-}
-
-impl From<InvalidBundle> for Error {
-    fn from(value: InvalidBundle) -> Self {
-        Self::Invalid(value)
-    }
-}
-
-impl From<object_store::Error> for Error {
-    fn from(value: object_store::Error) -> Self {
-        Self::Storage(value)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Self::Snapshot(value)
-    }
-}
-
-impl From<SourceFailure> for Error {
-    fn from(value: SourceFailure) -> Self {
-        Self::Source(value)
-    }
-}
-
-impl Error {
-    pub(crate) const fn storage_unavailable() -> Self {
-        Self::StorageUnavailable
-    }
-
-    pub(crate) fn catalog_id_collision(incumbent: String) -> Self {
-        Self::CatalogIdCollision { incumbent }
-    }
-
-    pub(crate) fn database(context: &'static str) -> impl Fn(sqlx::Error) -> Self {
-        move |source| Self::Database { context, source }
     }
 }
 

@@ -1,7 +1,5 @@
 //! `core.fleet_events` — every statement that touches the table, in one place.
 //!
-//! Text is byte-identical to `fleet/sql.zig`.
-//!
 //! # Why the statements are public and the reads are not
 //!
 //! A write here binds a caller's domain type — an [`Acquired`] lease, a gate's
@@ -216,7 +214,7 @@ SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
 
 /// The byte ceiling on a stored failure cause.
 ///
-/// `event_rows.zig`'s `MAX_FAILURE_DETAIL_BYTES`. Applied at the WRITE rather
+/// Applied at the WRITE rather
 /// than at the read, so a runaway child cannot bloat the row — the cap bounds
 /// the row, not the operator's visibility, since the console renders the cause
 /// as one line anyway.

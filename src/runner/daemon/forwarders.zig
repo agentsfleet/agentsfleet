@@ -19,7 +19,7 @@ const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 /// Activity frames batch per POST: flush at this many frames…
 pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
 /// …or this many buffered bytes (caps retained memory for chatty frames)…
-pub const ACTIVITY_BATCH_MAX_BYTES: usize = 64 * 1024;
+const ACTIVITY_BATCH_MAX_BYTES: usize = 64 * 1024;
 /// …or when the oldest buffered frame is this stale (live-tail latency budget).
 pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
 /// Deadline cap for the one-shot eager ships — pinned to the staleness window

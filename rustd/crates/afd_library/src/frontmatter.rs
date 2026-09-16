@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::error::{Error, InvalidBundle, Result};
+use crate::error::{Error, ErrorKind, InvalidBundle, Result};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Skill {
@@ -31,7 +31,8 @@ pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
 
 pub(crate) fn trigger(markdown: &[u8]) -> Result<afd_fleet_runtime::FleetConfig> {
     let parsed: serde_json::Value = parse(markdown, "TRIGGER.md", InvalidBundle::InvalidTrigger)?;
-    afd_fleet_runtime::FleetConfig::authored(&parsed.to_string()).map_err(Error::TriggerConfig)
+    afd_fleet_runtime::FleetConfig::authored(&parsed.to_string())
+        .map_err(|source| Error::from(ErrorKind::TriggerConfig { source }))
 }
 
 /// The YAML between the fences and the body after them, when the document
@@ -55,7 +56,8 @@ fn parse<T: for<'de> Deserialize<'de>>(
     missing: InvalidBundle,
 ) -> Result<T> {
     let text = core::str::from_utf8(markdown)
-        .map_err(|source| Error::FrontmatterUtf8 { document, source })?;
+        .map_err(|source| Error::from(ErrorKind::FrontmatterUtf8 { document, source }))?;
     let (yaml, _body) = split(text).ok_or(missing)?;
-    serde_yaml_ng::from_str(yaml).map_err(|source| Error::FrontmatterYaml { document, source })
+    serde_yaml_ng::from_str(yaml)
+        .map_err(|source| Error::from(ErrorKind::FrontmatterYaml { document, source }))
 }

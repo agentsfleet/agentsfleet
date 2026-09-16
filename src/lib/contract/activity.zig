@@ -51,7 +51,7 @@ pub const ActivityFrame = union(enum) {
 /// Request body for the `activity` verb — a batch of frames. The runner forwards
 /// frames as they stream off the pipe (one per request today; the array shape
 /// lets a later slice coalesce without a wire change). Response is 202, no ack.
-pub const ActivityRequest = struct {
+const ActivityRequest = struct {
     frames: []const ActivityFrame,
 };
 

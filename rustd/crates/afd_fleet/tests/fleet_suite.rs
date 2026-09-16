@@ -11,6 +11,10 @@
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
 mod queue;
+#[path = "support/fleet_recovery_seed.rs"]
+mod recovery_seed;
+#[path = "support/fleet_report_commit.rs"]
+mod report_commit;
 #[path = "support/fleet_report_reads.rs"]
 mod report_reads;
 #[path = "support/fleet_report_seed.rs"]
@@ -26,6 +30,8 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
+#[path = "integration_admission_recovery.rs"]
+mod integration_admission_recovery;
 #[path = "integration_credential_mint.rs"]
 mod integration_credential_mint;
 #[path = "integration_gate_grants.rs"]
@@ -36,6 +42,8 @@ mod integration_lease_affinity;
 mod integration_lease_assign;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
+#[path = "integration_lease_fairness.rs"]
+mod integration_lease_fairness;
 #[path = "integration_lease_installed.rs"]
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
@@ -44,10 +52,18 @@ mod integration_lease_issue;
 mod integration_memory_capture;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
+#[path = "integration_recovery_budget.rs"]
+mod integration_recovery_budget;
+#[path = "integration_recovery_outage.rs"]
+mod integration_recovery_outage;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]
 mod integration_renew_coverage;
+#[path = "integration_report_commit.rs"]
+mod integration_report_commit;
+#[path = "integration_report_fence.rs"]
+mod integration_report_fence;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
 #[path = "integration_runner_admin.rs"]
@@ -64,6 +80,7 @@ mod integration_runner_row;
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
+mod integration_terminal_redelivery;
 #[path = "integration_wall_counters.rs"]
 mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]

@@ -22,8 +22,8 @@ Every row is extracted from the sections below; the owner column names the secti
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Per-request volume |
 | Fleet count in the idle term | absent | fleet count appears only in the readiness *recovery* bound | §The per-poll bound |
 | SSE ceiling | `SSE_MAX_STREAMS` = 64 per replica | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
-| Redis timeout | `REDIS_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
-| Redis connect timeout | `REDIS_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
+| Redis timeout | `DRAGONFLY_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
+| Redis connect timeout | `DRAGONFLY_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
 | Lease TTL | `LEASE_TTL_MS` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
@@ -120,7 +120,7 @@ At normal boot, each `agentsfleetd` replica opens these Redis connections:
 
 | Owner | Connection | Count per replica |
 |---|---|---|
-| `afd_redis::Redis` | shared multiplexed command connection | 1 |
+| `afd_dragonfly::Redis` | shared multiplexed command connection | 1 |
 | `SubscriptionHub` | dedicated pub/sub connection for all viewers | 1 |
 | `connector:outbound` | dedicated command connection for blocking reads | 1 |
 
@@ -133,7 +133,7 @@ A failed optional hub or outbound startup leaves fewer connections and reduced s
 Viewer count adds response buffers and fan-out work, while runners open no Redis connections.
 
 Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
-[`Redis handle`](../../rustd/crates/afd_redis/src/client.rs), and
+[`Redis handle`](../../rustd/crates/afd_dragonfly/src/client.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
 ### Per-request volume (the Upstash bill)
@@ -211,8 +211,8 @@ The Redis figures above are only half the idle bill. The other half is Postgres,
 
 | Knob | Default | What it scales with | Turn it when |
 |---|---|---|---|
-| `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
-| `REDIS_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `REDIS_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
+| `DRAGONFLY_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
+| `DRAGONFLY_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `DRAGONFLY_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
 | `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the most fleets one lease poll will examine, and the width of the randomized readiness slice. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). In `rustd/crates/afd_fleet/src/lease/assign.rs`, on the same axis `NO_WORK_RETRY_AFTER_MS` trades: per-poll cost against discovery latency. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-fleet runtime before reclaim (the renewal gap) | Raise to cover the longest expected fleet runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short fleets. |
@@ -255,7 +255,7 @@ See [Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-su
 
 Source: [`stream ceiling`](../../rustd/crates/afd_sse/src/ceiling.rs),
 [`tail`](../../rustd/crates/afd_sse/src/tail.rs), and
-[`hub`](../../rustd/crates/afd_redis/src/hub.rs).
+[`hub`](../../rustd/crates/afd_dragonfly/src/hub.rs).
 
 ### 3. Upstash plan ceiling (now rarely first)
 
@@ -333,8 +333,8 @@ Step 3: Hot-path throughput (the real wall)
   (PG connection pooler assumed; sizing in the deployment runbook)
 
 Step 4: Emit configuration
-  REDIS_REQUEST_TIMEOUT_MS = 5000    (do not raise)
-  REDIS_CONNECT_TIMEOUT_MS = 5000    (raise only for a measured cross-region handshake)
+  DRAGONFLY_REQUEST_TIMEOUT_MS = 5000    (do not raise)
+  DRAGONFLY_CONNECT_TIMEOUT_MS = 5000    (raise only for a measured cross-region handshake)
   NO_WORK_RETRY_AFTER_MS   = <step 2 result>
   LEASE_TTL_MS             = <≥ max expected fleet runtime until M80_006>
   agentsfleetd_replicas         = <step 3 result>
@@ -346,7 +346,7 @@ Step 4: Emit configuration
 1. **Size Redis connections by fleet or viewer count.** There is no per-fleet and no per-viewer connection. Normal boot opens `3·R` connections: shared commands, hub, and outbound reader.
 2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER_MS` for the idle-cost/latency trade.
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
-4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
+4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
 6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
 7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Redis read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.

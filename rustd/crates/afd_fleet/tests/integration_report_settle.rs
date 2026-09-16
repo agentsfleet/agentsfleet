@@ -38,10 +38,16 @@ async fn test_report_writes_row_parity() {
     let settled_at = held.now.saturating_add_millis(SLICE_MS);
 
     let outcome = held
-        .leases
-        .claim_and_settle(lease, &held.runner, run_fee_meter(), true, settled_at)
-        .await
-        .expect("the settle must reach the datastore");
+        .fixtures
+        .settle_alone(
+            &held.leases,
+            lease,
+            &held.runner,
+            run_fee_meter(),
+            true,
+            settled_at,
+        )
+        .await;
     let Settled::Claimed(charged) = outcome else {
         unreachable!("the only holder of this fleet cannot be fenced out")
     };
@@ -129,12 +135,10 @@ async fn test_report_stale_fence_rejected() {
     let lapsed = held
         .now
         .saturating_add_millis(afd_core::timing::LEASE_TTL_MS + 1);
-    let reclaimed = held
-        .leases
-        .select(&held.spare, lapsed)
-        .await
-        .expect("the reclaim pass must not fault")
-        .expect("a lapsed claim is winnable");
+    let reclaimed =
+        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, lapsed, &held.fleet)
+            .await
+            .expect("a lapsed claim is winnable");
     assert!(
         reclaimed.fence > held.fence,
         "the reclaim must outrank the holder it displaced, or this test proves nothing"
@@ -142,10 +146,16 @@ async fn test_report_stale_fence_rejected() {
 
     let before = held.fixtures.balance(&held.tenant).await;
     let outcome = held
-        .leases
-        .claim_and_settle(lease, &held.runner, run_fee_meter(), true, lapsed)
-        .await
-        .expect("a fenced settle is an answer, not a fault");
+        .fixtures
+        .settle_alone(
+            &held.leases,
+            lease,
+            &held.runner,
+            run_fee_meter(),
+            true,
+            lapsed,
+        )
+        .await;
     assert_eq!(
         outcome,
         Settled::Fenced,
@@ -202,9 +212,12 @@ async fn test_report_stale_fence_rejected() {
 /// and the second charge is approximately nothing because the first advanced
 /// the cursors the deltas are measured from.
 ///
-/// The replay is also FENCED — the lease is no longer `active` after the first
+/// The replay claims nothing — the lease is no longer `active` after the first
 /// claim — so this proves both guards at once: the second report cannot claim,
-/// and cannot charge.
+/// and cannot charge. Which of the two empty claims it is matters as much as
+/// that it is empty: this runner settled the lease, so the statement answers
+/// `AlreadySettled` and the verb above it hands the runner the outcome it
+/// already earned instead of a refusal it can never retry past.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_dedup_idempotent() {
@@ -213,10 +226,16 @@ async fn test_report_dedup_idempotent() {
     let settled_at = held.now.saturating_add_millis(SLICE_MS);
 
     let first = held
-        .leases
-        .claim_and_settle(lease, &held.runner, run_fee_meter(), true, settled_at)
-        .await
-        .expect("the first settle must reach the datastore");
+        .fixtures
+        .settle_alone(
+            &held.leases,
+            lease,
+            &held.runner,
+            run_fee_meter(),
+            true,
+            settled_at,
+        )
+        .await;
     assert!(
         matches!(first, Settled::Claimed(_)),
         "the first report wins the fence"
@@ -229,14 +248,21 @@ async fn test_report_dedup_idempotent() {
     );
 
     let replay = held
-        .leases
-        .claim_and_settle(lease, &held.runner, run_fee_meter(), true, settled_at)
-        .await
-        .expect("the replay must reach the datastore");
+        .fixtures
+        .settle_alone(
+            &held.leases,
+            lease,
+            &held.runner,
+            run_fee_meter(),
+            true,
+            settled_at,
+        )
+        .await;
     assert_eq!(
         replay,
-        Settled::Fenced,
-        "the lease is no longer active, so the replay claims nothing"
+        Settled::AlreadySettled,
+        "the lease is no longer active, so the replay claims nothing — and it is \
+         THIS runner's settled lease, not a fleet taken from it"
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,

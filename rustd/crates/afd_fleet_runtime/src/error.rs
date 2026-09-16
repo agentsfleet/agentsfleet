@@ -33,8 +33,11 @@
 //! `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars."* Nothing here adds a
 //! registry entry, so the ERROR REGISTRY gate does not fire.
 //!
-//! The mapping happens at the HTTP boundary, not in this crate, and the split
-//! is the one `afd_fleet::error::detail` already draws: WHAT WENT WRONG is this
+//! [`Error::code`] REFERENCES that constant — it does not declare one — so the
+//! `afd_core::error_shell!` hull can render `[UZ-AGT-008] <what went wrong>` in a
+//! log line without this crate owning a registry entry. The choice of what a
+//! CALLER is told still happens at the HTTP boundary, and the split is the one
+//! `afd_fleet::error::detail` already draws: WHAT WENT WRONG is this
 //! type, rich and structured, for the daemon's own reasoning and its logs; WHAT
 //! THE CALLER IS TOLD is a code and a sentence chosen by the handler. Keeping
 //! them apart is what lets this crate say `budget.daily_dollars is above the
@@ -67,13 +70,13 @@
 //!    Zig bounds a COUNT OF ACTIONS by `MAX_BUDGET_UNITS` — a constant named
 //!    for dollars — and reports it with the budget's error (RULE UFS).
 //!
-//! # The frontmatter half, and why it adds four variants
+//! # The frontmatter half, and why it adds three kinds
 //!
 //! `config_markdown.zig` funnels every way a `TRIGGER.md` can fail to open
 //! onto `MissingRequiredField` — no fence, an unclosed fence, a YAML syntax
-//! error and a duplicated key all answer "a required key is absent". Three of
-//! those four are not about a key at all, and the sentence sends an author
-//! hunting for something to add when the document is already too long or
+//! error and a duplicated key all answer "a required key is absent". None of
+//! the three kinds here is about a key at all, and the Zig's sentence sends an
+//! author hunting for something to add when the document is already too long or
 //! malformed somewhere with a line number.
 //!
 //! The wire answer is unchanged: every variant here still reaches a caller as
@@ -82,13 +85,33 @@
 //! log, and what a test can assert without matching on a sentence that means
 //! four different things.
 
+use afd_core::error_code::{self, ErrorCode};
+
+mod raise;
+
+pub(crate) use self::raise::missing;
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+
 /// Every fallible surface in this crate answers with this.
+///
+/// Hand-written, as rule 1 asks, rather than generated: an alias that only
+/// appeared after macro expansion is one a reader cannot see.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
+afd_core::error_shell!(
+    /// A stored configuration that could not become a policy, with the
+    /// backtrace of where it was refused.
+    pub struct Error(ErrorKind);
+);
+
 /// Why a stored fleet configuration could not become a policy.
+///
+/// Crate-visible so a raise site can name the variant, and crate-PRIVATE so the
+/// vocabulary can grow without it being a breaking change for the thirteen
+/// call sites outside this crate that only propagate.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorKind {
     /// The document is not JSON, or a value in it is the wrong shape.
     ///
     /// One variant for both because serde makes no distinction a caller could
@@ -97,7 +120,6 @@ pub enum Error {
     #[error("the stored configuration could not be read")]
     InvalidFieldType {
         /// What serde could not read, with its position.
-        #[from]
         source: serde_json::Error,
     },
 
@@ -220,7 +242,6 @@ pub enum Error {
     #[error("the stored configuration is outside its bounds")]
     OutOfBounds {
         /// Every bound the document broke, with the path of each.
-        #[from]
         source: garde::Report,
     },
 
@@ -241,7 +262,6 @@ pub enum Error {
     #[error("the frontmatter is not readable YAML")]
     FrontmatterUnreadable {
         /// Where the parser stopped, and why.
-        #[from]
         source: yaml_serde::Error,
     },
 
@@ -256,13 +276,6 @@ pub enum Error {
         key: Box<str>,
     },
 
-    /// A mapping key is a sequence or a mapping rather than a scalar.
-    ///
-    /// Unrepresentable rather than merely refused: the Zig's frontmatter map
-    /// is keyed by `[]const u8` and has nowhere to put one either.
-    #[error("a frontmatter key must be a scalar")]
-    NonScalarKey,
-
     /// The repository egress binding is half-declared or names nothing.
     ///
     /// A list with no access level does not know how far to reach; an access
@@ -276,8 +289,70 @@ pub enum Error {
 }
 
 impl Error {
-    /// A required key that deserialized to `None`.
-    pub(crate) const fn missing(field: &'static str) -> Self {
-        Self::MissingRequiredField { field }
+    /// The registry code every failure in this crate is read under.
+    ///
+    /// One code for the whole crate, REFERENCED and not declared — see the
+    /// module note. An author fixes a configuration document the same way
+    /// whichever rule they broke, so a caller has no branch to write on a finer
+    /// code, and the structure they need is in the message.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        error_code::AGENTSFLEET_INVALID_CONFIG
     }
+
+    /// Which class of defect this is, for a caller that has to group refusals.
+    ///
+    /// The kinds are crate-private, so this is how the grouping is asked for —
+    /// and it belongs here rather than in the caller that wants it. The
+    /// corpus suite folds a Rust refusal onto the Zig class that answers the
+    /// same document, and deriving that fold from a variant list held OUTSIDE
+    /// this crate would let a new kind silently join the wrong group.
+    #[must_use]
+    pub fn class(&self) -> Class {
+        match self.kind() {
+            ErrorKind::FrontmatterMissing
+            | ErrorKind::FrontmatterUnreadable { .. }
+            | ErrorKind::DuplicateKey { .. }
+            | ErrorKind::MissingRequiredField { .. }
+            | ErrorKind::InvalidFieldType { .. } => Class::Document,
+            ErrorKind::RuntimeKeyOutsideBlock { .. } => Class::RuntimeKeyOutsideBlock,
+            ErrorKind::UnknownRuntimeKey { .. } => Class::UnknownRuntimeKey,
+            ErrorKind::InvalidCredentialRef { .. } => Class::InvalidCredentialRef,
+            _semantic => Class::Semantic,
+        }
+    }
+}
+
+/// The class of defect a refusal belongs to.
+///
+/// Deliberately coarse: it exists so a caller can GROUP refusals without
+/// reaching into the kinds, and every group here is one the Zig daemon also
+/// spells separately. A finer split belongs in the message, which is where the
+/// structure already is.
+///
+/// Deliberately NOT `#[non_exhaustive]`: the corpus suite folds each class onto
+/// the Zig verdict that answers the same document, and a new class must break
+/// that match until somebody decides which verdict it earns. A catch-all arm is
+/// exactly the silence this grading exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// The document could not be opened, tokenised, or read into the schema.
+    ///
+    /// The four kinds the Zig folds onto `MissingRequiredField` plus the two it
+    /// already spelled that way — the milestone's declared divergence, stated
+    /// once here rather than restated by each caller that grades it.
+    Document,
+    /// A runtime key was authored at the top level instead of under
+    /// `x-agentsfleet`.
+    RuntimeKeyOutsideBlock,
+    /// A key under `x-agentsfleet` is not one this daemon knows.
+    UnknownRuntimeKey,
+    /// A credential reference is not a name the vault will store.
+    ///
+    /// Its own class because the bundle plane DISCRIMINATES on it: a name the
+    /// vault refuses is fixed by renaming it, not by re-packaging the bundle,
+    /// and `afd_library` answers a different code for the two.
+    InvalidCredentialRef,
+    /// The document read cleanly and broke a rule about what it MEANS.
+    Semantic,
 }

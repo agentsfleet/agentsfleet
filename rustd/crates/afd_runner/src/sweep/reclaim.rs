@@ -28,10 +28,11 @@
 
 use std::time::Duration;
 
+use afd_core::clock::{self, UnixMillis};
 use afd_db::Db;
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::streams::FleetStreams;
 use afd_observability::producers;
-use afd_redis::Redis;
-use afd_redis::streams::FleetStreams;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
@@ -41,11 +42,17 @@ use crate::sweep::{Sweep, Swept};
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FLEETS: &str = "reclaim active fleets";
 
+/// Statement name, for the context the ledger question's failure carries.
+const CONTEXT_STRANDED: &str = "reclaim stranded leases";
+
 /// The fleet status whose streams are worth sweeping.
 pub(crate) const STATUS_ACTIVE: &str = "active";
 
-/// How many fleets one pass reaches.
-const BATCH_LIMIT: i64 = 100;
+/// How many fleets one pass reaches, on either of its questions.
+///
+/// Public so a proof can size its envelope one past it and exercise the wrap,
+/// rather than at a literal this constant can drift past unnoticed.
+pub const BATCH_LIMIT: i64 = 100;
 
 /// How many entries one pass claims per fleet.
 ///
@@ -99,7 +106,7 @@ pub struct Reclaim {
     /// The streams entries are claimed on.
     streams: FleetStreams,
     /// The readiness index a deliverable fleet is re-marked in.
-    ready: afd_redis::ready::ReadyIndex,
+    ready: afd_dragonfly::ready::ReadyIndex,
     /// This instance's stable consumer name, which claimed entries land in.
     consumer: Box<str>,
     /// Where the last pass stopped.
@@ -108,18 +115,24 @@ pub struct Reclaim {
     /// `sweep` takes `&self` — so the interior mutability is a `Mutex` rather
     /// than a `&mut`, and it is never contended.
     cursor: std::sync::Arc<tokio::sync::Mutex<Cursor>>,
+    /// Where the ledger question's last page ended: a fleet id, or `None`
+    /// for the start. Its own cursor, because the two questions walk two
+    /// populations — every active fleet, and the fleets holding an expired
+    /// lease — that advance and wrap independently.
+    stranded_after: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl Reclaim {
     /// A sweeper claiming into `consumer`.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, consumer: impl Into<Box<str>>) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, consumer: impl Into<Box<str>>) -> Self {
         Self {
             database,
             streams: FleetStreams::new(queue.clone()),
-            ready: afd_redis::ready::ReadyIndex::new(queue),
+            ready: afd_dragonfly::ready::ReadyIndex::new(queue),
             consumer: consumer.into(),
             cursor: std::sync::Arc::new(tokio::sync::Mutex::new(Cursor::default())),
+            stranded_after: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -162,7 +175,7 @@ impl Reclaim {
 
     /// Claims what one fleet has stranded, up to the per-pass bound.
     ///
-    /// A Redis failure collapses to "claimed nothing" rather than failing the
+    /// A Dragonfly failure collapses to "claimed nothing" rather than failing the
     /// pass: every other fleet in the batch is still worth sweeping, and this
     /// one is retried on the next pass.
     async fn claim_strays(&self, fleet_id: &str) -> u64 {
@@ -189,7 +202,7 @@ impl Reclaim {
     ///
     /// `claimed_any` short-circuits the probe: an entry just claimed into this
     /// instance's pending list is deliverable by definition, so there is
-    /// nothing left to ask Redis.
+    /// nothing left to ask Dragonfly.
     async fn remark_if_deliverable(&self, fleet_id: &str, claimed_any: bool) -> bool {
         if !claimed_any {
             match self.streams.has_deliverable(fleet_id).await {
@@ -209,6 +222,15 @@ impl Reclaim {
                 }
             }
         }
+        self.mark_ready(fleet_id).await
+    }
+
+    /// Marks one fleet ready, answering whether the mark was written.
+    ///
+    /// The one path both of this sweeper's writers share — the stream probe
+    /// above and the ledger question below — so a mark that fails is counted
+    /// and logged the same way whichever question raised it.
+    async fn mark_ready(&self, fleet_id: &str) -> bool {
         match self.ready.mark(fleet_id, &self.consumer).await {
             Ok(_token) => true,
             Err(failure) => {
@@ -222,6 +244,40 @@ impl Reclaim {
                 false
             }
         }
+    }
+
+    /// Fleets the ledger says still owe work that nothing in the datastore
+    /// will surface: an `active` lease past its expiry, held by a runner
+    /// nobody can reach, on a stream that may no longer exist.
+    ///
+    /// Read from PostgreSQL in the sweeper and nowhere near the poll path,
+    /// whose zero-PostgreSQL property is deliberate. Bounded by the same
+    /// fleet count as the stream walk, because each fleet marked here is a
+    /// claim the pool will see on the next poll.
+    async fn stranded_fleets(&self, now: UnixMillis) -> Result<Vec<String>> {
+        let mut after = self.stranded_after.lock().await;
+        let mut connection = self.database.acquire().await?;
+        let rows = sqlx::query(sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES)
+            .bind(vec![sql::LEASE_STATUS_ACTIVE])
+            .bind(now.as_millis())
+            .bind(BATCH_LIMIT)
+            .bind(after.as_deref().unwrap_or(CURSOR_START_ID))
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_STRANDED))?;
+        let page = rows
+            .iter()
+            .map(|row| row.try_get(0).map_err(query(CONTEXT_STRANDED)))
+            .collect::<Result<Vec<String>>>()?;
+        // A full page may have more behind it; a short one reached the end,
+        // and the next pass starts over — the same rule the fleet walk uses.
+        *after = match page.last() {
+            Some(last) if page.len() >= usize::try_from(BATCH_LIMIT).unwrap_or(0) => {
+                Some(last.clone())
+            }
+            _exhausted => None,
+        };
+        Ok(page)
     }
 }
 
@@ -245,6 +301,18 @@ impl Sweep for Reclaim {
             swept.changed += claimed;
             if self.remark_if_deliverable(fleet_id, claimed > 0).await {
                 swept.changed += 1;
+            }
+        }
+        // The ledger's answer, after the stream's: a fleet the stream could
+        // not vouch for may still hold a lease a dead runner never finished.
+        for fleet_id in self.stranded_fleets(clock::now()).await? {
+            if self.mark_ready(&fleet_id).await {
+                swept.changed += 1;
+                tracing::info!(
+                    fleet_id,
+                    event = "stranded_lease_surfaced",
+                    "a fleet holding an expired lease was marked ready, so the next claim re-leases its work from the ledger"
+                );
             }
         }
         Ok(swept)

@@ -33,7 +33,7 @@ const common = @import("common");
 /// envelope) plus level/scope/ts_ms so each sink owns its own format
 /// choice — stderr sink renders pretty/logfmt envelope, OTLP sink
 /// forwards body verbatim, BufferedSink appends body to a heap buffer.
-pub const SinkEmit = *const fn (
+const SinkEmit = *const fn (
     ctx: *anyopaque,
     level: std.log.Level,
     scope: []const u8,
@@ -70,10 +70,6 @@ var unregister_mutex: common.Mutex = .{};
 /// Sentinel pointer for stateless sinks (stderr, OTLP). Never read by
 /// the emit fn — just satisfies the `*anyopaque` non-null contract.
 var stateless_marker: u8 = 0;
-pub fn statelessCtx() *anyopaque {
-    return @ptrCast(&stateless_marker);
-}
-
 pub fn registerSink(sink: Sink) void {
     sinks_mutex.lock();
     defer sinks_mutex.unlock();

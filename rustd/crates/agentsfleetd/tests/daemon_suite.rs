@@ -33,6 +33,8 @@
 mod e2e;
 #[path = "support/e2e_db.rs"]
 mod e2e_db;
+#[path = "support/e2e_event.rs"]
+mod e2e_event;
 #[path = "support/e2e_seed.rs"]
 mod e2e_seed;
 #[path = "support/e2e_reads.rs"]
@@ -52,6 +54,8 @@ mod cli;
 mod daemon;
 #[path = "integration_cli.rs"]
 mod integration_cli;
+#[path = "integration_cluster_outcomes.rs"]
+mod integration_cluster_outcomes;
 #[path = "integration_readyz.rs"]
 mod integration_readyz;
 #[path = "integration_runner_activity.rs"]
@@ -68,6 +72,8 @@ mod integration_serve;
 mod integration_telemetry;
 #[path = "integration_tenant_registry.rs"]
 mod integration_tenant_registry;
+#[path = "integration_unreadable_config.rs"]
+mod integration_unreadable_config;
 #[path = "migrate.rs"]
 mod migrate;
 #[path = "nameplate.rs"]
@@ -80,6 +86,7 @@ mod preflight_optional;
 mod presentation;
 #[path = "serve.rs"]
 mod serve;
+mod shutdown_drain;
 #[path = "signal.rs"]
 mod signal;
 #[path = "supervisor.rs"]

@@ -37,7 +37,11 @@ impl Error {
     /// (RULE ECL, and `docs/AUTH.md` §Runner token).
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::Datastore { .. })
+        match self.inner.kind {
+            ErrorKind::Datastore { .. } => true,
+            ErrorKind::Admission { ref source } => source.is_datastore_unavailable(),
+            _ => false,
+        }
     }
 
     /// Whether the caller sent something this plane will not accept.
@@ -55,7 +59,7 @@ impl Error {
     /// same device `afd_auth::Error::code` uses, applied to the pairing the Zig
     /// handlers restate at every `hx.fail` call site.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             // Delegated, not restated: the billing crate already decides which
@@ -63,11 +67,15 @@ impl Error {
             // and a second copy of that mapping here is the drift this crate's
             // own module header warns about.
             ErrorKind::Billing { ref source } => source.code(),
+            ErrorKind::Admission { ref source } => source.code(),
             // Delegated for the reason Billing is: the credential plane already
             // decides which of its failures is an outage and which is a fault.
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
+            // Delegated for the same reason: `afd_outbound` already decides
+            // which of its failures are an outage and which are its own fault.
+            ErrorKind::Outbound { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
@@ -79,7 +87,7 @@ impl Error {
             // operator their enrolment was malformed while the fault was here.
             // The queue joins these rather than getting a code of its own: the
             // Zig assign path logs `ERR_INTERNAL_OPERATION_FAILED` for every
-            // Redis failure it meets, and a new code would fire the ERROR
+            // Dragonfly failure it meets, and a new code would fire the ERROR
             // REGISTRY gate over a registry this family does not own.
             // Every provider-resolution failure answers the code
             // `service_billing.zig` logs for the whole family
@@ -196,7 +204,7 @@ impl Error {
     /// `None` would push the choice of what to say into each handler — which is
     /// how two call sites end up describing one failure differently.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
+    pub fn detail(&self) -> &'static str {
         match self.inner.kind {
             // The two kinds whose sentence the CALL SITE chose, and the only
             // two: a rejection names the field it refused, and four operations
@@ -214,11 +222,18 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
+            // The obligation is a PostgreSQL row, so a ledger fault reads as a
+            // database error and not a queue one. `afd_outbound::Error` can
+            // also carry a QUEUE failure, but not on any path that reaches
+            // here: this crate calls only `obligation::owe` and
+            // `obligation::receipt`, and neither touches the stream.
+            | ErrorKind::Outbound { .. }
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
+            ErrorKind::Admission { ref source } => source.detail(),
             ErrorKind::Envelope { .. } | ErrorKind::EnvelopeMalformed { .. } => {
                 DETAIL_EVENT_MALFORMED
             }

@@ -80,12 +80,12 @@ pub enum Error {
         source: afd_db::Error,
     },
 
-    /// Redis would not answer.
+    /// Dragonfly would not answer.
     #[error("the bench queue would not open")]
     QueueUnavailable {
-        /// What `afd_redis` refused.
+        /// What `afd_dragonfly` refused.
         #[from]
-        source: afd_redis::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The steer ingress path faulted, which is not a measurement.
@@ -102,6 +102,14 @@ pub enum Error {
         /// What `afd_fleet` reported.
         #[from]
         source: afd_fleet::Error,
+    },
+
+    /// The admission ledger would not say how far behind the queue is.
+    #[error("the admission ledger would not answer")]
+    LedgerUnreadable {
+        /// What `afd_admission` reported.
+        #[from]
+        source: afd_admission::Error,
     },
 
     /// A server counter the lane could not read a number out of.

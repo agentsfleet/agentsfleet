@@ -35,6 +35,28 @@ describe("mergeBackfill", () => {
     ]);
   });
 
+  it("keeps the live bodies when a terminal list row reconciles over them", () => {
+    // The regression: a reconnect backfills, the durable row wins on status --
+    // and used to win on TEXT too, on the premise that it "carries the full
+    // final text". It does not. `afd_events` history/statement.rs asserts the
+    // listing select omits `response_text`, and it omits `request_json` with
+    // it, so taking the row wholesale blanked a message already on screen.
+    const live = evt({
+      id: "e1",
+      status: "received",
+      text: "redeploy staging",
+      reply: "done, staging is up",
+    });
+    const [merged] = mergeBackfill([live], [
+      row({ event_id: "e1", status: "processed", response_text: null }),
+    ]);
+
+    expect(merged?.text).toBe("redeploy staging");
+    expect(merged?.reply).toBe("done, staging is up");
+    // The row is still authoritative for what it DOES carry.
+    expect(merged?.status).toBe("processed");
+  });
+
   it("maps a null response_text with request context and a readable failure outcome", () => {
     const [first] = mergeBackfill([], [row({
       response_text: null,

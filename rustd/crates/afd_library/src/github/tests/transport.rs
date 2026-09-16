@@ -4,7 +4,8 @@ use std::thread;
 
 use super::super::{GithubSource, Repository};
 use super::archive;
-use crate::{BundleSource as _, Error, Result, SourceFailure};
+use crate::error::ErrorKind;
+use crate::{BundleSource as _, Result, SourceFailure};
 
 fn redirecting_server(body: Vec<u8>, redirect_again: bool) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("fixture server binds");
@@ -64,8 +65,7 @@ async fn redirect_protocol_accepts_one_validated_hop_only() {
         source
             .download_with(&repository, allow_fixture_redirect)
             .await,
-        Err(Error::Source(SourceFailure::DisallowedRedirect))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::DisallowedRedirect))));
 }
 
 #[tokio::test]
@@ -79,8 +79,7 @@ async fn redirect_protocol_rejects_missing_or_unapproved_locations() {
             .pointed_at(super::serve(status, Vec::new()));
         assert!(matches!(
             source.fetch("agentsfleet/reviewer").await,
-            Err(Error::Source(actual)) if actual == expected
-        ));
+            Err(actual) if matches!(actual.kind(), ErrorKind::Source(class) if *class == expected)));
     }
 }
 
@@ -92,6 +91,5 @@ async fn compressed_downloads_stop_at_the_resource_ceiling() {
         .pointed_at(super::serve("200 OK", body));
     assert!(matches!(
         source.fetch("agentsfleet/reviewer").await,
-        Err(Error::Source(SourceFailure::ArchiveTooLarge))
-    ));
+        Err(refusal) if matches!(refusal.kind(), ErrorKind::Source(SourceFailure::ArchiveTooLarge))));
 }

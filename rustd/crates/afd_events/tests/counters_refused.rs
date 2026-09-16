@@ -57,7 +57,7 @@ async fn a_refused_read_reports_the_datastore() {
         .await
         .expect_err("nothing listens on the fixture port");
     assert!(
-        matches!(error, afd_events::Error::Datastore { .. }),
+        error.is_pool_unavailable(),
         "the pool's refusal is reported as the datastore's, got {error:?}"
     );
 }

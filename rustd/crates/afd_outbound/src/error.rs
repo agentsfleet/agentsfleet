@@ -11,7 +11,7 @@
 //! created, the dedicated connection would not open.
 //!
 //! `worker.zig` reaches the same split by returning `Outcome` from every
-//! delivery path and swallowing its Redis errors into a `catch` that logs. The
+//! delivery path and swallowing its Dragonfly errors into a `catch` that logs. The
 //! difference is that here the two categories have different types, so a raise
 //! site cannot put a delivery failure where a loop failure goes.
 
@@ -39,29 +39,69 @@ pub(crate) enum ErrorKind {
     #[error("the queue holding the outbound answers would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_dragonfly::Error,
     },
+
+    /// The obligation ledger's pool would not hand out a connection.
+    ///
+    /// Distinct from [`Self::Queue`] because the two stores fail for different
+    /// reasons and an operator acts on them differently: a queue outage stops
+    /// the worker's loop, while a ledger that will not answer leaves the
+    /// delivery itself unaffected and only the RECORD of it unwritten.
+    #[error("the ledger holding the delivery obligations would not answer")]
+    Ledger {
+        #[source]
+        source: afd_db::Error,
+    },
+
+    /// A statement reached PostgreSQL and was refused.
+    #[error("statement failed during {context}")]
+    Query {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+}
+
+/// Reports a statement that reached PostgreSQL and was refused.
+///
+/// `map_err` that ADDS the one thing the call site alone knows — which
+/// statement was running — and nothing else. The `sqlx::Error` rides through as
+/// `#[source]` so the chain stays intact (`RUST_ERROR_STANDARD` rule 3).
+pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
+    move |source| Error::from(ErrorKind::Query { context, source })
 }
 
 impl Error {
     /// The registry code this failure answers with.
     ///
-    /// One variant, so one arm — and a `match` rather than a bare expression
-    /// because a second variant must not be able to inherit this one's code by
-    /// forgetting to extend anything.
+    /// A `match` over named variants rather than a bare expression, because a
+    /// new variant must not be able to inherit another's code by forgetting to
+    /// extend anything — the match stops compiling until it is listed.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            // An unreachable queue is the outage an operator retries against;
-            // anything else it answers is this daemon's own fault.
+            // An unreachable store is the outage an operator retries against,
+            // and a pool that will not hand out a connection is the same
+            // outage. Anything either store ANSWERS is this daemon's own fault.
+            //
+            // Sharing one arm rather than repeating the constant, because
+            // clippy reads two arms with one body as a copy-paste. Every
+            // variant is still named, which is what the note above is actually
+            // asking for: a third one cannot inherit a code by being forgotten,
+            // because the match stops compiling until it is listed.
             ErrorKind::Queue { source } if source.is_unavailable() => {
                 error_code::INTERNAL_DB_UNAVAILABLE
             }
-            ErrorKind::Queue { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Ledger { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Queue { .. } | ErrorKind::Query { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
         }
     }
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
-    afd_redis::Error => Queue,
+    afd_dragonfly::Error => Queue,
+    afd_db::Error => Ledger,
 );

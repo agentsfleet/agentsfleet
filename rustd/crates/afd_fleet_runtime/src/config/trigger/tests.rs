@@ -2,6 +2,7 @@
 
 use super::{Cron, Trigger, WebhookSignature, parse_set, raw};
 use crate::Error;
+use crate::error::ErrorKind;
 use crate::provider::StaticRegistry;
 
 #[test]
@@ -29,7 +30,7 @@ fn cron_defaults_and_each_duplicate_class_are_deterministic() -> Result<(), Erro
     ] {
         assert!(matches!(
             parse_set(duplicate, &StaticRegistry),
-            Err(Error::InvalidTriggerSet { .. })
+            Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
         ));
     }
     Ok(())
@@ -50,14 +51,16 @@ fn webhook_signatures_use_provider_defaults_or_explicit_unknown_values() -> Resu
         &StaticRegistry,
     )?;
     let Some(Trigger::Webhook(known)) = known.first() else {
-        return Err(Error::InvalidTriggerSet {
+        return Err(ErrorKind::InvalidTriggerSet {
             reason: "the known webhook fixture changed shape",
-        });
+        }
+        .into());
     };
     let Some(signature) = known.signature.as_ref() else {
-        return Err(Error::InvalidTriggerSet {
+        return Err(ErrorKind::InvalidTriggerSet {
             reason: "the known webhook fixture lost its signature",
-        });
+        }
+        .into());
     };
     assert_signature(
         signature,
@@ -80,14 +83,16 @@ fn webhook_signatures_use_provider_defaults_or_explicit_unknown_values() -> Resu
         &StaticRegistry,
     )?;
     let Some(Trigger::Webhook(explicit)) = explicit.first() else {
-        return Err(Error::InvalidTriggerSet {
+        return Err(ErrorKind::InvalidTriggerSet {
             reason: "the explicit webhook fixture changed shape",
-        });
+        }
+        .into());
     };
     let Some(signature) = explicit.signature.as_ref() else {
-        return Err(Error::InvalidTriggerSet {
+        return Err(ErrorKind::InvalidTriggerSet {
             reason: "the explicit webhook fixture lost its signature",
-        });
+        }
+        .into());
     };
     assert_signature(
         signature,
@@ -103,7 +108,7 @@ fn webhook_signatures_use_provider_defaults_or_explicit_unknown_values() -> Resu
 fn arity_and_required_trigger_fields_fail_closed() {
     assert!(matches!(
         parse_set(Vec::new(), &StaticRegistry),
-        Err(Error::InvalidTriggerSet { .. })
+        Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
     ));
     assert!(matches!(
         parse_set(
@@ -112,7 +117,7 @@ fn arity_and_required_trigger_fields_fail_closed() {
                 .collect(),
             &StaticRegistry
         ),
-        Err(Error::InvalidTriggerSet { .. })
+        Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
     ));
     for trigger in [
         webhook("", None),
@@ -124,7 +129,7 @@ fn arity_and_required_trigger_fields_fail_closed() {
     ] {
         assert!(matches!(
             parse_set(vec![trigger], &StaticRegistry),
-            Err(Error::InvalidTriggerSet { .. })
+            Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
         ));
     }
 
@@ -144,7 +149,7 @@ fn arity_and_required_trigger_fields_fail_closed() {
     ] {
         assert!(matches!(
             parse_set(vec![webhook("custom", Some(signature))], &StaticRegistry),
-            Err(Error::InvalidSignatureConfig { .. })
+            Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidSignatureConfig { .. })
         ));
     }
 }

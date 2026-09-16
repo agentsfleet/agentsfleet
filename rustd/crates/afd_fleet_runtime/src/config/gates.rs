@@ -18,7 +18,7 @@
 
 use crate::config::anomaly::AnomalyRule;
 use crate::config::raw;
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, missing};
 
 /// The key naming a gate rule's tool.
 const TOOL: &str = "tool";
@@ -67,11 +67,8 @@ impl TryFrom<raw::GateRule> for GateRule {
 
     fn try_from(authored: raw::GateRule) -> Result<Self> {
         Ok(Self {
-            tool: authored.tool.ok_or_else(|| Error::missing(TOOL))?.into(),
-            action: authored
-                .action
-                .ok_or_else(|| Error::missing(ACTION))?
-                .into(),
+            tool: authored.tool.ok_or_else(|| missing(TOOL))?.into(),
+            action: authored.action.ok_or_else(|| missing(ACTION))?.into(),
             condition: authored.condition.map(Into::into),
             behavior: authored.behavior,
             gate_kind: authored.gate_kind.into(),
@@ -186,6 +183,7 @@ mod tests {
     use super::{DEFAULT_TIMEOUT_MS, GatePolicy, MAX_TIMEOUT_MS};
     use crate::config::raw;
     use crate::error::Error;
+    use crate::error::ErrorKind;
     use garde::Validate as _;
 
     /// Deserializes, validates, then resolves — the same three stages the real
@@ -234,7 +232,7 @@ mod tests {
         .expect_err("zero would trip on the first action");
 
         assert!(
-            matches!(failure, Error::InvalidThreshold { field, .. } if field == "threshold_count"),
+            matches!(failure.kind(), ErrorKind::InvalidThreshold { field, .. } if *field == "threshold_count"),
             "a count of actions is not money: {failure:?}"
         );
     }
@@ -247,7 +245,7 @@ mod tests {
         .expect_err("a window longer than a day is out of range");
 
         assert!(
-            matches!(failure, Error::InvalidThreshold { field, .. } if field == "threshold_window_s"),
+            matches!(failure.kind(), ErrorKind::InvalidThreshold { field, .. } if *field == "threshold_window_s"),
             "{failure:?}"
         );
     }
@@ -258,7 +256,7 @@ mod tests {
             parse(r#"{"rules": [{"action": "write"}]}"#).expect_err("a rule needs a tool");
 
         assert!(
-            matches!(failure, Error::MissingRequiredField { field } if field == "tool"),
+            matches!(failure.kind(), ErrorKind::MissingRequiredField { field } if *field == "tool"),
             "{failure:?}"
         );
     }

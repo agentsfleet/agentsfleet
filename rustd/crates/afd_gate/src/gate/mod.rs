@@ -17,7 +17,7 @@
 //! # What this module does not do
 //!
 //! It does not park an event, raise a card, count an anomaly, or read a
-//! recorded gate. Every one of those is Redis or Postgres, and every one of
+//! recorded gate. Every one of those is Dragonfly or Postgres, and every one of
 //! them is downstream of a decision made here — [`park`](Gates::park),
 //! [`pause`](Gates::pause) and [`anomaly`](Gates::anomaly) are the sibling
 //! modules that do them. [`route`] is the ordering those I/O outcomes compose

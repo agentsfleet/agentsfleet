@@ -97,6 +97,11 @@ lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine
 	@echo "→ [scripts] orly engine matches the pin in .oracle/orly.json..."
 	@bash scripts/check_orly_pin_test.sh
 	@bash scripts/check_orly_pin.sh
+	@# The local Dragonfly cluster's slot arithmetic and config document, proven
+	@# without a node: a wrong split would otherwise surface as a datastore
+	@# fault in the first slot-migration test of the integration lane.
+	@echo "→ [scripts] dragonfly cluster script self-tests..."
+	@bash scripts/dragonfly_cluster_test.sh
 	@echo "✓ [scripts] Script self-tests passed"
 
 # The cutover probe runner's own tests, plus its three asserts run for real

@@ -37,19 +37,19 @@ use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
+use afd_dragonfly::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
 use afd_outbound::{Posters, Worker};
-use afd_redis::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
 use tokio_util::sync::CancellationToken;
 
 use self::poster::{Behaviour, Scripted};
 use self::record::{Drained, record, window_end};
-use crate::datastores::{Datastores, postgres_transactions, redis_calls};
+use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::knobs::{RETRYABLE_FRACTION_VARIABLE, SLOW_FRACTION_VARIABLE};
 use crate::lane::sweep;
 use crate::profile::{Parameter, Profile};
-use crate::report::{Fixture, Lane, Report};
+use crate::report::{Fixture, Lane, Provenance, Report};
 
 /// A healthy vendor's answer time. One millisecond is well under the ladder's
 /// first rung, so the fast population cannot be confused with a retry.
@@ -115,6 +115,7 @@ impl Parameters {
 /// A cap refusal, a datastore that would not answer, or a lost worker.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -147,7 +148,7 @@ pub async fn run(
     let ids: Vec<String> = queued_at.keys().cloned().collect();
     ledger.swept(sweep::outbound_entries(&stores.queue, &ids).await?);
 
-    let mut report = Report::new(Lane::Outbound, profile);
+    let mut report = Report::new(Lane::Outbound, profile, provenance);
     report.created = true;
     report.parameter(Parameter::Jobs.name(), parameters.jobs);
     report.parameter(
@@ -217,7 +218,7 @@ async fn drain(
         stores.dedicated(afd_outbound::LONGEST_PARK).await?,
         outbound_consumer(),
     );
-    let redis_before = redis_calls(&stores.queue).await?;
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
     let token = CancellationToken::new();
     let started = Instant::now();
@@ -225,6 +226,7 @@ async fn drain(
         Worker::new(
             reader,
             queue,
+            stores.database.clone(),
             Posters {
                 slack: poster.clone(),
             },
@@ -251,9 +253,9 @@ async fn drain(
         started,
         ended,
         settled,
-        redis_calls: redis_calls(&stores.queue)
+        dragonfly_calls: dragonfly_calls(&stores.queue)
             .await?
-            .saturating_sub(redis_before),
+            .saturating_sub(dragonfly_before),
         transactions: postgres_transactions(&stores.database)
             .await?
             .saturating_sub(transactions_before),

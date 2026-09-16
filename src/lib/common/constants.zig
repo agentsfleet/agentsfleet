@@ -11,7 +11,6 @@ pub const clock = @import("clock.zig");
 /// `Options` is reached by coercion from an anonymous literal at every
 /// instantiation, so it stays unexported — a re-export nobody names is dead code
 /// (RULE NDC).
-
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
 /// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.
 const sync = @import("sync.zig");
@@ -50,6 +49,13 @@ pub const rss = @import("rss.zig");
 /// duration); dead-runner detection is a separate later workstream (a lapse
 /// scan over `last_seen_at`), not a function of shrinking this — so it stays
 /// short as the silent-death backstop.
+///
+/// `pub` for a reader no Zig analysis can see: the Grafana alerting playbook
+/// derives the runner-offline threshold from this file with `sed`, matching
+/// `^pub const LEASE_TTL_MS`
+/// (`playbooks/operations/observability/providers/grafana/common.sh`). Dropping
+/// the keyword compiles and fails that playbook's tests with "cannot derive
+/// runner offline threshold", which is how it came back.
 pub const LEASE_TTL_MS: i64 = 30_000;
 
 /// The runner auto-renews a lease once fewer than this many ms remain before
@@ -65,12 +71,6 @@ pub const RENEWAL_WINDOW_MS: i64 = 10_000;
 /// keepalive cadence — a tick on a live child attests liveness even with no
 /// frames, so a legitimate long run renews and is never falsely reclaimed.
 pub const RENEWAL_TICK_MS: i64 = 5_000;
-
-/// Hard ceiling on a single lease's total wall-clock, measured from the lease
-/// row's `created_at`. Renewal clamps to `min(now + LEASE_TTL_MS, created_at +
-/// MAX_RUNTIME_MS)` and is refused once exceeded — a wedged-but-emitting agent
-/// still terminates regardless of progress frames.
-pub const MAX_RUNTIME_MS: i64 = 43_200_000;
 
 /// Liveness lapse threshold: a runner whose `last_seen_at` is older than this is
 /// derived `offline` by the fleet read. Reintroduced here with its first
@@ -100,42 +100,6 @@ comptime {
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 
-/// Hard ceiling on how many fleets one lease poll will examine. Lives beside
-/// `NO_WORK_RETRY_AFTER_MS` because it trades the same axis — per-poll cost
-/// against discovery latency — and an operator tuning either must see both.
-///
-/// This is the bound that makes per-poll cost independent of how many fleets
-/// the platform holds. It stays load-bearing even when the readiness index is
-/// wrong in either direction: a stale or over-marked index costs extra
-/// candidate checks up to this many, never more, so a hint failure degrades
-/// discovery fairness and never per-poll cost.
-///
-/// Sized generously rather than tightly. The readiness peek samples randomly
-/// and the label gate (`required_tags <@ labels`) filters that sample in
-/// Postgres afterwards, so a runner whose labels match only a small share of
-/// ready fleets needs a wide enough slice to draw one of them. A membership
-/// restriction on this many ids is a single index-served query, so the cost of
-/// widening it is far below the cost of a runner repeatedly drawing a slice
-/// that its labels reject.
-pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
-
-/// Consecutive per-candidate Redis failures that end a lease poll early.
-///
-/// The poll acquires one pooled Postgres connection before the candidate loop
-/// and holds it to the end, while every candidate's event read is a Redis
-/// round-trip. A degraded Redis therefore pins a Postgres connection for up to
-/// `MAX_READY_CANDIDATES_PER_POLL` request timeouts without ever touching
-/// Postgres — the connection is hostage to a store it is not talking to.
-/// Bailing after this many caps the exposure at this many timeouts instead.
-///
-/// Consecutive, not cumulative: one candidate timing out is noise, a run of
-/// them means the store is degraded and every remaining candidate will pay the
-/// same timeout. The early return is `null`, which is what the poll would have
-/// answered anyway once the loop ran out of candidates, so nothing is lost —
-/// each candidate's claim was already released on its own error path, and
-/// readiness stays marked for the sweeper.
-pub const MAX_CONSECUTIVE_REDIS_FAILURES_PER_POLL: u32 = 3;
-
 // ── Connectors (Slack-resident channel bot, M106) ───────────────────────────
 // Provider + binding-kind identifiers shared across the OAuth connector
 // (spec.zig aliases `PROVIDER_SLACK`), the inbound events ingress, and the
@@ -146,38 +110,4 @@ pub const MAX_CONSECUTIVE_REDIS_FAILURES_PER_POLL: u32 = 3;
 /// Connector provider id for Slack — the `provider` column value in
 /// `connector_installs`/`connector_channels` and the `<provider>-app` /
 /// `fleet:<provider>` vault-key stem.
-pub const PROVIDER_SLACK = "slack";
-
-/// Connector provider id for GitHub — the registry id, the `{provider}` route
-/// segment, and the `github-app` / `fleet:github` vault-key stem.
-pub const PROVIDER_GITHUB = "github";
-
-/// Connector provider id for Zoho Desk — the registry id, the `{provider}` route
-/// segment, and the `zoho-app` / `fleet:zoho` vault-key stem.
-pub const PROVIDER_ZOHO = "zoho";
-
-/// Connector provider id for Jira — the registry id, the `{provider}` route
-/// segment, and the `jira-app` / `fleet:jira` vault-key stem.
-pub const PROVIDER_JIRA = "jira";
-
-/// Connector provider id for Linear — the registry id, the `{provider}` route
-/// segment, and the `linear-app` / `fleet:linear` vault-key stem.
-pub const PROVIDER_LINEAR = "linear";
-
-/// OAuth 2.0 token endpoints for the refresh-token providers — the ONE spelling
-/// shared by the connect flow (`connectors/<p>/spec.zig`) and the credential
-/// broker's refresh-mint registry (`credentials/integration.zig`), so the code
-/// exchange and the later refresh mint hit the same URL (RULE UFS).
-pub const ZOHO_TOKEN_ENDPOINT: []const u8 = "https://accounts.zoho.com/oauth/v2/token";
-pub const JIRA_TOKEN_ENDPOINT: []const u8 = "https://auth.atlassian.com/oauth/token";
-pub const LINEAR_TOKEN_ENDPOINT: []const u8 = "https://api.linear.app/oauth/token";
-
-/// `connector_channels.kind` for a per-channel resident fleet — the durable
-/// fleet that owns one Slack channel's memory namespace.
-pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";
-
-/// Actor-attribution prefix for an inbound Slack mention event
-/// (`slack:<slack_user_id>`), mirroring the webhook producer's `webhook:<src>`
-/// shape. The signature-only ingress has no OIDC principal, so the actor is
-/// free-form provenance, never an authorization subject.
-pub const SLACK_ACTOR_PREFIX = "slack:";
+const PROVIDER_SLACK = "slack";

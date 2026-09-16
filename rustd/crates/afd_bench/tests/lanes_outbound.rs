@@ -2,7 +2,7 @@
 //!
 //! One binary per lane, so each holds its own serialising lock over one
 //! process and cargo runs the binaries one after another — the readiness
-//! index, the outbound consumer and Redis's memory figure are all global to
+//! index, the outbound consumer and Dragonfly's memory figure are all global to
 //! the server, and two lanes measuring at once would read each other's work.
 //!
 //! Marked `#[ignore]` so `make test-unit-all` compiles and lints these without
@@ -37,9 +37,15 @@ async fn test_outbound_bench_reports_a_rate_and_a_p95() {
         window: Duration::from_secs(20),
     };
 
-    let report = outbound::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
+    let report = outbound::run(
+        Profile::Rig,
+        support::provenance(),
+        parameters,
+        &stores,
+        &prefix,
+    )
+    .await
+    .expect("runs");
     sweep::outbound_stream(&stores.queue, &prefix)
         .await
         .expect("sweeps");
@@ -65,9 +71,15 @@ async fn test_outbound_bench_isolates_the_slow_destination_cost() {
         window: Duration::from_secs(30),
     };
 
-    let report = outbound::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
+    let report = outbound::run(
+        Profile::Rig,
+        support::provenance(),
+        parameters,
+        &stores,
+        &prefix,
+    )
+    .await
+    .expect("runs");
     sweep::outbound_stream(&stores.queue, &prefix)
         .await
         .expect("sweeps");
@@ -92,9 +104,15 @@ async fn test_outbound_bench_reports_retry_occupancy() {
         window: Duration::from_secs(30),
     };
 
-    let report = outbound::run(Profile::Rig, parameters, &stores, &prefix)
-        .await
-        .expect("runs");
+    let report = outbound::run(
+        Profile::Rig,
+        support::provenance(),
+        parameters,
+        &stores,
+        &prefix,
+    )
+    .await
+    .expect("runs");
     sweep::outbound_stream(&stores.queue, &prefix)
         .await
         .expect("sweeps");

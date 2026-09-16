@@ -1,0 +1,69 @@
+[package]
+name = "afd_admission"
+description = "The admission ledger: the Postgres row that is a producer's acceptance, the queue entry that is only its receipt, and the replay that re-appends a receipt the queue lost."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the instant a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The row identifier's entropy. Held by the ledger rather than drawn per call
+# — see `Admissions`.
+afd_crypto.workspace = true
+# The Postgres pool the ledger lives on.
+afd_db.workspace = true
+# The stream an admitted entry is appended to, and the readiness mark that
+# makes it promptly leasable.
+afd_dragonfly.workspace = true
+# The admission and replay counters.
+afd_observability.workspace = true
+# The event type spellings and the stream field names an entry is written
+# under. The ledger appends through the wire's own `Entry`, so the reader on
+# the other side cannot disagree with it about a field name.
+afd_wire.workspace = true
+# The payload digest a producer key is checked against on a retry, and its
+# rendering. `hex::encode` rather than a `{:02x}` loop, for the reason
+# `afd_auth::directory` gives.
+hex.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a
+# router suite reaches this crate's seam with no datastore behind it.
+test-util = [
+    "afd_core/test-util",
+    "afd_crypto/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The lane fixture: the shared test database and the identifier minting the
+# seeded rows are addressed by.
+afd_db = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
+afd_crypto = { workspace = true, features = ["test-util"] }
+# The replay proofs read the stream back by exact entry, which is what a
+# lease does; the crate's own reader samples through a consumer group.
+redis.workspace = true
+# The error surface reaches THROUGH the chain to the driver's own
+# `DatabaseError`, which is the only way to grade what the exhausted-disk
+# sample claims to be. A dev-dependency on a crate this one already depends
+# on, for a type only the suite names.
+sqlx.workspace = true
+# So the event macros in the code under test evaluate their fields.
+tracing-subscriber.workspace = true

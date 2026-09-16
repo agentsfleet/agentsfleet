@@ -7,12 +7,13 @@
 //!
 //! # Why an intent is durable and the dispatch is not
 //!
-//! The two writes cannot be one transaction: appending the event is Redis and
-//! recording that it happened is Postgres. So the intent is written durably
-//! first, and this loop retries it until the database records which event it
-//! produced. What makes the retry safe is that the append is `append_once` —
-//! a second attempt returns the FIRST attempt's event id rather than appending
-//! a second event. A duplicate here is not a tidiness problem: it is the same
+//! The two writes cannot be one transaction: the intent lives in one table
+//! and the admission in another, and the append that follows is a third
+//! store. So the intent is written durably first, and this loop retries it
+//! until the database records which event it produced. What makes the retry
+//! safe is the admission ledger's unique index on the intent id: a second
+//! attempt answers the FIRST attempt's event id rather than admitting a
+//! second event. A duplicate here is not a tidiness problem — it is the same
 //! verification running twice, with real provider spend.
 //!
 //! # A claim that lapses is a claim that is released
@@ -33,18 +34,16 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::metrics::label::fleet::{SyntheticEvent, VerifierRun};
 use afd_observability::producers;
-use afd_redis::Redis;
-use afd_redis::streams::{FleetStreams, OnceScope};
-use afd_wire::event::{Entry, EventType};
+use afd_wire::event::EventType;
 use sqlx::Row as _;
 
-mod cleanup;
 mod rows;
 
 use self::rows::{Dispatched, Due, Incident, Production, Repair, Synthetic};
@@ -58,17 +57,11 @@ const CONTEXT_CLAIM: &str = "repair verification claim";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_COMPLETE: &str = "repair verification completion";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_CLEANUP: &str = "repair verification cleanup";
-
 /// Milliseconds per second, for the one conversion this module performs.
 const MILLIS_PER_SECOND: i64 = 1_000;
 
 /// How many intents one pass claims.
 const DUE_BATCH_LIMIT: i64 = 32;
-
-/// How many append-once keys one pass forgets.
-const CLEANUP_BATCH_LIMIT: i64 = 32;
 
 /// How long a claim holds an intent before another pass may take it.
 const CLAIM_STALE: Duration = Duration::from_secs(30);
@@ -105,8 +98,8 @@ pub const VERIFIER_ACTOR: &str = "system:repair-verifier";
 pub struct Repairs {
     /// Where the intents are.
     database: Db,
-    /// Where the events are appended.
-    streams: FleetStreams,
+    /// Where a verification event is accepted, before anything is queued.
+    admissions: Admissions,
     /// The claim tokens this pass writes.
     entropy: Entropy,
     /// What the last pass concluded about when to come back.
@@ -114,12 +107,12 @@ pub struct Repairs {
 }
 
 impl Repairs {
-    /// A dispatcher over `database` and `queue`.
+    /// A dispatcher over `database` and `admissions`.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+    pub fn new(database: Db, admissions: Admissions, entropy: Entropy) -> Self {
         Self {
             database,
-            streams: FleetStreams::new(queue),
+            admissions,
             entropy,
             pacing: Mutex::new(INTERVAL),
         }
@@ -176,12 +169,13 @@ impl Repairs {
             .collect()
     }
 
-    /// Appends one intent's event and records that it did.
+    /// Admits one intent's event and records that it did.
     ///
-    /// The append is idempotent and the completion is guarded, so every failure
-    /// mode here leaves the intent claimable again rather than half-done: an
-    /// append that succeeded and a completion that did not is retried, and the
-    /// retry returns the same event id rather than a second event.
+    /// The admission is idempotent and the completion is guarded, so every
+    /// failure mode here leaves the intent claimable again rather than
+    /// half-done: an admission that landed and a completion that did not is
+    /// retried, and the retry answers the same event id rather than a second
+    /// event.
     async fn dispatch(&self, intent: &Due, token: &Uuid7, now: UnixMillis) -> Result<bool> {
         let payload = serde_json::to_string(&Synthetic {
             event_type: SYNTHETIC_EVENT,
@@ -191,29 +185,21 @@ impl Repairs {
         })
         .map_err(|_shape| crate::error::vault_data_invalid())?;
 
-        let created_at = now.as_millis().to_string();
-        let appended = self
-            .streams
-            .append_once(
-                OnceScope::FleetIntent,
-                &intent.id,
-                &intent.verifier_fleet_id,
-                // Through the wire's own entry type rather than pairs spelled
-                // here: this producer once wrote its own field names, and the
-                // reader could not decode a single event it appended. The
-                // stream key already names the fleet, so no `fleet_id` field.
-                &Entry {
-                    actor: VERIFIER_ACTOR,
-                    event_type: TRIGGER_EVENT_TYPE.as_str(),
-                    workspace_id: intent.workspace_id.as_str(),
-                    request_json: payload.as_str(),
-                    created_at: created_at.as_str(),
-                }
-                .pairs(),
-            )
+        let admitted = self
+            .admissions
+            .admit(Admission {
+                producer: Producer::RepairVerification,
+                // The intent row, which every retry of this dispatch repeats.
+                key: Key::Repeated(&intent.id),
+                fleet: &intent.verifier_fleet_id,
+                workspace: &intent.workspace_id,
+                actor: VERIFIER_ACTOR,
+                event_type: TRIGGER_EVENT_TYPE,
+                request_json: payload.as_str(),
+            })
             .await?;
 
-        producers::fleet::repair::event(if appended.replayed {
+        producers::fleet::repair::event(if admitted.replayed {
             SyntheticEvent::Replayed
         } else {
             SyntheticEvent::Emitted
@@ -224,7 +210,7 @@ impl Repairs {
         let recorded = sqlx::query(sql::sweep::COMPLETE_REPAIR_VERIFICATION)
             .bind(intent.id.as_str())
             .bind(token.as_str())
-            .bind(appended.id.as_str())
+            .bind(admitted.id.as_str())
             .bind(now.as_millis())
             .execute(&mut *connection)
             .await
@@ -289,7 +275,6 @@ impl Sweep for Repairs {
             }
         }
 
-        dispatched.cleanup_pending = self.clean(now).await;
         if let Ok(mut pacing) = self.pacing.lock() {
             *pacing = dispatched.pacing();
         }

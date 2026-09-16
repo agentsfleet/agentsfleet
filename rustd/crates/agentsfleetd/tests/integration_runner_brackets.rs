@@ -15,13 +15,14 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::SubscriptionHub;
+use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{redis_config, scenario};
+use crate::e2e::{dragonfly_config, scenario};
+use crate::reads::event_column;
 use crate::tail::{lease, next_frame, settle};
-use crate::wire::{capable_beat, field, json, post, report_body};
+use crate::wire::{capable_beat, field, poll_until, post, report_body};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
@@ -32,7 +33,7 @@ use crate::wire::{capable_beat, field, json, post, report_body};
 /// frame that names it, so a watcher reacting to the frame can never find
 /// the row missing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -40,9 +41,9 @@ async fn test_bracket_frames_open_and_close_a_run() {
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
     // poll itself, and pub/sub keeps nothing for a reader that arrives late.
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 
@@ -116,27 +117,32 @@ async fn test_bracket_frames_open_and_close_a_run() {
 /// the tail rather than from a reload — the row was opened by the same poll,
 /// so both brackets arrive from one request.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 
     run.drain_wallet().await;
     let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
     assert_eq!(beat.status().as_u16(), 200);
-    let polled = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(polled.status().as_u16(), 200);
-    assert_eq!(
-        field(&json(polled).await, "lease"),
-        &json!(null),
-        "an exhausted tenant receives no lease"
+    // Every poll in the rotation must answer no-work — an exhausted tenant
+    // receives no lease — and the loop ends on the row the refusal writes,
+    // because a poll that never sampled this fleet's partition answers the
+    // same `null` without having refused anything.
+    let refused = poll_until(&http, &run, || async {
+        event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
+    })
+    .await;
+    assert!(
+        refused,
+        "the exhausted tenant's poll ends the event at the money gate"
     );
 
     let opened = next_frame(&mut tail)

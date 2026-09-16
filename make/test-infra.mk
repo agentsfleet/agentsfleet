@@ -22,16 +22,26 @@
 # `?=` so an explicit override still wins. Computed once per make invocation.
 TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
 AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
-AGENTSFLEET_REDIS_HOST_PORT  ?= $(or $(word 2,$(TEST_INFRA_PORTS)),6379)
+# Word 2 was the Redis service's slot. Redis is retired; the word stays in the
+# allocator so every other port keeps the number its running containers have.
 AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
+# The first of the Dragonfly cluster's four published data ports; the last is
+# derived so compose can publish them as one range. The four admin ports that
+# follow are loopback-only inside the container -- scripts/dragonfly-cluster.sh
+# is the only thing that speaks to them, through `docker compose exec`.
+AGENTSFLEET_DRAGONFLY_BASE_PORT ?= $(or $(word 4,$(TEST_INFRA_PORTS)),7001)
+# Four cluster nodes and the TLS node: BASE..BASE+4 published, admin ports
+# beyond them stay inside the container (scripts/dragonfly-cluster.sh).
+AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 4 )))
+# The daemon's API port rides the dragonfly service (shared namespace), one
+# past the datastore range so parallel lanes never meet on 3000.
+AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 5 )))
 # The plaintext Redis port, derived from the TLS one rather than allocated, so
 # a worktree's two Redis ports move together and the allocator keeps owning one
 # number per service.
-AGENTSFLEET_REDIS_PLAIN_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_REDIS_HOST_PORT) + 1000 )))
 export AGENTSFLEET_PG_HOST_PORT
-export AGENTSFLEET_REDIS_HOST_PORT
-export AGENTSFLEET_REDIS_PLAIN_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
+export AGENTSFLEET_DRAGONFLY_BASE_PORT AGENTSFLEET_DRAGONFLY_LAST_PORT AGENTSFLEET_API_HOST_PORT
 
 # The live ports are still discovered from the running container rather than
 # assumed from the values above, so these stay the single source of truth about
@@ -54,9 +64,12 @@ export AGENTSFLEET_QSTASH_HOST_PORT
 # cannot answer,
 # because the caller provisioned the infra itself and told us where it is.
 COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
-COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
-COMPOSE_REDIS_PLAIN_PORT = $(or $(strip $(shell docker compose port redis 6380 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_PLAIN_HOST_PORT))
 COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
+# No lookup for the cluster: its published numbers ARE its announced numbers,
+# so the declared port is the only correct answer and a discovered one that
+# disagreed would be the bug, not the truth.
+COMPOSE_DRAGONFLY_PORT = $(AGENTSFLEET_DRAGONFLY_BASE_PORT)
+COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_LAST_PORT)
 
 # Optional narrowing, for studying ONE failure without the rest of the lane's
 # cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
@@ -120,21 +133,32 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_P
 # what spends the budget, and a perfectly healthy Redis answers `ConnectTimeout`
 # to whichever test sat deepest in it.
 #
-# Nothing about TLS goes unproven. It moves to `TEST_REDIS_TLS_URL` below and is
+# Nothing about TLS goes unproven. It moves to `TEST_DRAGONFLY_TLS_URL` below and is
 # proven where proving it means something -- and proven harder, because that
-# suite asserts a foreign authority is REFUSED, which an all-TLS lane never did:
+# suite asserts a bad authority is REFUSED, which an all-TLS lane never did:
 # every connect there used the right certificate, so a lane that had silently
 # stopped verifying would have passed exactly the same.
-TEST_REDIS_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_REDIS_PLAIN_PORT)
-# The same server over TLS, for the suite whose subject IS the trust decision.
-TEST_REDIS_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_REDIS_PORT)
-# Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
-# at parse time; Redis may not be running yet when the Makefile is first evaluated.
-TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+# The cluster, as one seed. A cluster client discovers the other nodes from
+# this one, and a suite that needs every address asks the topology for it
+# rather than a second variable. Plaintext: the TLS handshake is paid where
+# it proves something, below. The name is the environment contract the daemon
+# reads (DRAGONFLY_URL); the datastore behind it is Dragonfly.
+TEST_DRAGONFLY_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_PORT)
+# The TLS node, for the suite whose subject IS the trust decision.
+TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_TLS_PORT)
+# Cert path — populated by _ensure-test-infra after the datastore is healthy.
+# Do NOT shell-expand at parse time; the container may not be running yet when
+# the Makefile is first evaluated.
+TEST_DRAGONFLY_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # The authority that signed nothing here, for the refusal half of the trust
 # dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
-TEST_REDIS_FOREIGN_CA ?= $(CURDIR)/.tmp/redis-foreign-ca.crt
-export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_FOREIGN_CA
+TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
+# How a test moves slots or resets the cluster: the script, inside its own
+# container, with the caller's arguments appended. The suites know one command
+# line and nothing about docker; the admin ports it reaches never leave the
+# container (see scripts/dragonfly-cluster.sh).
+TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
+export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -164,10 +188,10 @@ AGENTSFLEET_QSTASH_LIVE_URL ?= $(QSTASH_DEV_URL_LOCAL)
 AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(QSTASH_DEV_TOKEN_LOCAL)
 export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 
-# Bring postgres + redis up via docker compose and wait for healthchecks to pass.
+# Bring postgres + dragonfly + qstash up via docker compose and wait for healthchecks to pass.
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
-# multiple times. Extracts the Redis TLS CA cert after the container is healthy so
-# subsequent targets can rely on $(TEST_REDIS_CA_CERT) being present.
+# multiple times. Extracts the datastore TLS CA cert after the container is healthy so
+# subsequent targets can rely on $(TEST_DRAGONFLY_CA_CERT) being present.
 #
 _ensure-test-infra:
 	@if ! docker info >/dev/null 2>&1; then \
@@ -178,27 +202,27 @@ _ensure-test-infra:
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
-	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) redis=$(AGENTSFLEET_REDIS_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT)"
-	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
-	@docker compose up -d --wait postgres redis qstash
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT)"
+	@echo "→ [infra] Starting postgres + dragonfly + qstash (waiting for healthchecks)..."
+	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash
 	@mkdir -p "$(CURDIR)/.tmp"
-	@echo "→ [infra] Extracting Redis TLS CA cert..."
+	@echo "→ [infra] Extracting the datastore TLS CA cert..."
 	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
 	@# only proved the file was non-empty — which a STALE cert from a destroyed
 	@# container satisfies. Every TLS connection then failed signature
-	@# verification, which reads as dozens of unrelated Redis test failures.
-	@docker compose cp redis:/tls/ca.crt "$(TEST_REDIS_CA_CERT)"
-	@docker compose cp redis:/tls/foreign-ca.crt "$(TEST_REDIS_FOREIGN_CA)"
-	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
+	@# verification, which reads as dozens of unrelated datastore test failures.
+	@docker compose cp dragonfly:/data/tls/ca.crt "$(TEST_DRAGONFLY_CA_CERT)"
+	@docker compose cp dragonfly:/data/tls/bad-ca.crt "$(TEST_DRAGONFLY_BAD_CA)"
+	@test -s "$(TEST_DRAGONFLY_CA_CERT)" || { echo "✗ Failed to extract the datastore TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.
-	@container_sha=$$(docker compose exec -T redis sha256sum /tls/ca.crt | awk '{print $$1}'); \
-	local_sha=$$(shasum -a 256 "$(TEST_REDIS_CA_CERT)" | awk '{print $$1}'); \
+	@container_sha=$$(docker compose exec -T dragonfly sha256sum /data/tls/ca.crt | awk '{print $$1}'); \
+	local_sha=$$(shasum -a 256 "$(TEST_DRAGONFLY_CA_CERT)" | awk '{print $$1}'); \
 	if [ "$$container_sha" != "$$local_sha" ]; then \
-	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
+	  echo "✗ [infra] datastore CA cert is stale (container $$container_sha != local $$local_sha)"; \
 	  exit 1; \
 	fi
-	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_CA_CERT)"
+	@echo "✓ [infra] postgres + dragonfly + qstash ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
@@ -214,9 +238,13 @@ _reset-test-db: _ensure-test-infra
 	@out=$$(docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
-	@echo "→ [infra] Flushing test Redis (prior-run streams/groups/PELs)..."
-	@docker compose exec -T redis redis-cli --tls --cacert /tls/ca.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
-	@echo "✓ [infra] Redis flushed"
+	@# The cluster too, and its slot layout: a migration test that moved slots
+	@# and failed before moving them back would otherwise hand the next run a
+	@# topology it did not ask for. Owned by construction -- the script only
+	@# ever addresses loopback inside its own container.
+	@echo "→ [infra] Flushing test Dragonfly cluster and restoring its slot layout..."
+	@$(TEST_DRAGONFLY_CONTROL) reset >/dev/null
+	@echo "✓ [infra] Dragonfly flushed"
 
 # Every integration target starts by dropping schemas and flushing Redis,
 # because several suites leave fixture rows behind that break the next run. That

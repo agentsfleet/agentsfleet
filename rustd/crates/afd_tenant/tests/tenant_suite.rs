@@ -19,7 +19,7 @@
 //! # Three helpers that were all called `support`
 //!
 //! Each suite declared its own helper under the name `support`, and they were
-//! three DIFFERENT files — `apikey_lane`, `redis_harness`, `preference_lane`.
+//! three DIFFERENT files — `apikey_lane`, `dragonfly_harness`, `preference_lane`.
 //! One binary means one namespace, so each is declared here under the name of
 //! the file it actually is. That is the only edit the suites needed.
 
@@ -35,6 +35,13 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod apikey_lane;
+#[path = "support/dragonfly_harness.rs"]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod dragonfly_harness;
 #[path = "support/preference_lane.rs"]
 #[allow(
     clippy::expect_used,
@@ -42,13 +49,6 @@ mod apikey_lane;
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod preference_lane;
-#[path = "support/redis_harness.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-mod redis_harness;
 
 #[path = "integration_api_key_paging.rs"]
 mod integration_api_key_paging;

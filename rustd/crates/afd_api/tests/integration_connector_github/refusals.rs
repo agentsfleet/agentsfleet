@@ -38,7 +38,7 @@ async fn assert_ownership_refused(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_claim_the_token_does_not_open_is_refused_as_ownership() {
     let fixture = github_fixture().await;
     let installation = fresh_installation();
@@ -65,7 +65,7 @@ async fn a_claim_the_token_does_not_open_is_refused_as_ownership() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_listing_of_none_binds_nothing() {
     // The App is installed nowhere this person reaches, so there is nothing to
     // restore. The Zig daemon sent the browser on to GitHub's install page
@@ -85,7 +85,7 @@ async fn a_listing_of_none_binds_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_listing_of_several_binds_neither_of_them() {
     // Choosing one would be choosing an organisation for the person, which is
     // how one team's pull requests reach another team's workspace. Both listed
@@ -112,7 +112,7 @@ async fn a_listing_of_several_binds_neither_of_them() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_installation_another_workspace_routes_is_refused_and_stays_where_it_is() {
     // The exclusive claim. Slack's routing row follows the latest connect;
     // GitHub's does not, and the difference is asserted from both sides: the
@@ -167,7 +167,7 @@ async fn assert_listing_declined(fixture: &Fixture, response: axum::response::Re
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_listing_the_vendor_declines_is_not_an_ownership_refusal() {
     // The shape the live defect had: the exchange SUCCEEDED, the token is in
     // hand, and `api.github.com` refused the next call — 403 "Request
@@ -188,7 +188,7 @@ async fn a_listing_the_vendor_declines_is_not_an_ownership_refusal() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_claimed_installation_the_vendor_cannot_answer_for_is_not_ownership() {
     // 401, 403 and 404 on this probe mean "this token does not open that
     // installation" — an ownership answer. Every OTHER status is the vendor

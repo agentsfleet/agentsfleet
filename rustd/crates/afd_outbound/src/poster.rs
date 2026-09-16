@@ -18,7 +18,7 @@
 //! compiler holding it instead of a reviewer.
 
 use afd_connector::Provider;
-use afd_redis::OutboundDelivery;
+use afd_dragonfly::OutboundDelivery;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;
 
@@ -97,7 +97,7 @@ pub async fn dispatch<S: Deliver>(posters: &Posters<S>, job: &OutboundDelivery) 
 /// POLICY has nothing to do with the worker's state — it needs the posters, the
 /// job and the token, and none of the reader, the queue or the loop. That is
 /// also what makes it gradeable: Dimension 5.1 asks what a vendor sees after
-/// three 5xx, and a test can answer that without a Redis.
+/// three 5xx, and a test can answer that without a Dragonfly.
 ///
 /// The loop AND the schedule are `backon`'s — see [`crate::retry`] on why this
 /// one has no adapter. `when` is what makes the retry mean something twice
@@ -177,7 +177,7 @@ mod tests {
 
     fn job(provider: &str) -> OutboundDelivery {
         OutboundDelivery {
-            id: afd_redis::streams::EventId::of("1700000000001-0"),
+            id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
             provider: provider.to_owned(),
             workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
             fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),

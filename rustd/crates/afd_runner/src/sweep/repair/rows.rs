@@ -92,19 +92,11 @@ pub(super) struct Dispatched {
     pub(super) completed: usize,
     /// Intents that did not, and will be retried once their claim lapses.
     pub(super) failed: usize,
-    /// Whether the cleanup page was full, meaning more keys are waiting.
-    pub(super) cleanup_pending: bool,
 }
 
 impl Dispatched {
     /// How long to wait before the next pass.
     pub(super) fn pacing(self) -> Duration {
-        // A full cleanup page means more keys are waiting, and forgetting them
-        // costs one round trip each — so the next pass follows immediately
-        // rather than leaving keys in Redis for a minute at a time.
-        if self.cleanup_pending {
-            return Duration::ZERO;
-        }
         let full_batch = self.due >= usize::try_from(DUE_BATCH_LIMIT).unwrap_or(usize::MAX);
         if self.failed > 0 && (!full_batch || self.completed == 0) {
             // Coming back sooner would find the failed rows still claimed by

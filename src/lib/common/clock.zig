@@ -20,7 +20,7 @@ pub fn nowMillis() i64 {
 /// adjustment, so it is the correct source for elapsed-time bounds (a wait
 /// deadline must hold its nominal duration even if the wall clock is set
 /// back). Reads `CLOCK_MONOTONIC` directly, mirroring `nowNanos`.
-pub fn nowMonotonicMillis() i64 {
+fn nowMonotonicMillis() i64 {
     // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
     var ts: std.posix.timespec = undefined;
     return switch (std.posix.errno(std.posix.system.clock_gettime(.MONOTONIC, &ts))) {
@@ -29,12 +29,6 @@ pub fn nowMonotonicMillis() i64 {
         // given the stack timespec + hard-coded clock id.
         else => unreachable,
     };
-}
-
-/// Wall-clock seconds since the Unix epoch. Drop-in replacement for the
-/// `std.time.timestamp()` removed in Zig 0.16.
-pub fn nowSeconds() i64 {
-    return @intCast(@divTrunc(nowNanos(), std.time.ns_per_s));
 }
 
 /// Wall-clock nanoseconds since the Unix epoch. Drop-in replacement for the
@@ -62,7 +56,7 @@ pub fn nowNanos() i128 {
 /// Pre-epoch input is not a reachable state (every caller passes `nowMillis()`),
 /// but the `u47` day cast would trap on a negative day index, so it clamps to
 /// the epoch rather than aborting the daemon.
-pub fn startOfUtcMonthMillis(now_ms: i64) i64 {
+fn startOfUtcMonthMillis(now_ms: i64) i64 {
     if (now_ms <= 0) return 0;
     const day_index = @divFloor(now_ms, std.time.ms_per_day);
     const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(day_index) };

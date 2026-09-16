@@ -5,7 +5,7 @@
 //! number, and a lag notice arrives in band as `catching_up`. Those are
 //! decisions this crate makes about values it is handed.
 //!
-//! What they cannot prove is that Redis hands them over IN THE ORDER THEY WERE
+//! What they cannot prove is that Dragonfly hands them over IN THE ORDER THEY WERE
 //! PUBLISHED, because there is no publisher in a unit test — the ordering is a
 //! property of the transport and of the hub's single pumped connection, and the
 //! only way to observe it is to publish through one. That is this file.
@@ -34,12 +34,14 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::FleetStreams;
+use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::streams::FleetStreams;
 use afd_sse::FanIn;
+use afd_sse::ceiling::Ceiling;
 use afd_sse::channel;
 use afd_sse::frame::Frame;
 use afd_sse::tail::tail;
+use afd_sse::{KIND_HELLO, Live};
 use futures_util::StreamExt as _;
 
 #[path = "support/sse_lane.rs"]
@@ -78,7 +80,7 @@ fn payload(n: u8) -> String {
 /// 3. a second connection to the same channel numbers from zero AGAIN, and
 ///    receives nothing published while nobody held a subscription.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_sse_sequencing_semantics() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
@@ -102,6 +104,68 @@ async fn test_sse_sequencing_semantics() {
     assert_reconnect_starts_over(&publisher, &hub, &activity, &mut primer).await;
 }
 
+/// The per-fleet stream ANNOUNCES itself, before anything is published.
+///
+/// Without this the first byte of an idle fleet's body is the keep-alive
+/// heartbeat, `afd_sse::HEARTBEAT_INTERVAL` away. The browser opens the socket
+/// at once, but the surface reports itself live off the first FRAME -- so a
+/// quiet fleet rendered "Connecting…" for fifteen seconds with nothing whatever
+/// wrong. The wall stream has always opened with `hello`; the per-fleet route
+/// is what lacked one.
+///
+/// The `hello` spends no activity sequence number: it is the server talking
+/// ABOUT the stream, so the first real frame is still `seq` zero. Asserted here
+/// because a control frame that consumed a number would leave a gap in the ids
+/// a client uses to tell a dropped frame from a control one.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_fleet_stream_opens_with_hello_before_any_activity() {
+    let lane = SseLane::connect().await;
+    let publisher = FleetStreams::new(lane.redis.clone());
+    let fleet = lane.fleet("hello");
+    let activity = channel::activity(&fleet);
+
+    let hub = SubscriptionHub::start(SseLane::config())
+        .await
+        .expect("the hub starts");
+    let mut primer = hub.subscribe(&activity);
+    prime(&publisher, &activity, &mut primer).await;
+
+    let live = Live::new(hub, Ceiling::new(1));
+    let mut stream = Box::pin(live.tail_of(&fleet));
+
+    // Nothing is published before this read. The frame must arrive anyway --
+    // that IS the claim, and a test that published first would pass on the
+    // behaviour it exists to refuse.
+    let hello = next_frame(&mut stream).await;
+    assert_eq!(
+        hello.kind, KIND_HELLO,
+        "the per-fleet stream opens with `hello`, so a client watching a quiet \
+         fleet is told the subscription attached instead of waiting out a \
+         heartbeat interval in `Connecting…`"
+    );
+    assert!(
+        hello.data.contains(fleet.as_str()),
+        "the opening frame names the fleet it carries: {}",
+        hello.data
+    );
+    assert_eq!(
+        hello.seq, 0,
+        "a control frame rides the synthetic sequence, never the connection's"
+    );
+
+    publisher
+        .publish(&activity, &payload(0))
+        .await
+        .expect("the publish reaches Dragonfly");
+    let first = next_frame(&mut stream).await;
+    assert_eq!(
+        first.seq, 0,
+        "the hello spent no activity number -- the first real frame is still zero"
+    );
+    assert_eq!(first.data, payload(0));
+}
+
 async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, activity: &str) {
     let mut first = Box::pin(tail(hub.subscribe(activity)));
 
@@ -109,7 +173,7 @@ async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, 
         publisher
             .publish(activity, &payload(n))
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
     }
 
     for n in 0..ORDERED_FRAMES {
@@ -132,13 +196,13 @@ async fn assert_reconnect_starts_over(
     publisher: &FleetStreams,
     hub: &SubscriptionHub,
     activity: &str,
-    primer: &mut afd_redis::Subscription,
+    primer: &mut afd_dragonfly::Subscription,
 ) {
     let missed = r#"{"kind":"run_output","n":"during-the-gap"}"#;
     publisher
         .publish(activity, missed)
         .await
-        .expect("the publish reaches Redis");
+        .expect("the publish reaches Dragonfly");
 
     drain_until(primer, missed).await;
 
@@ -147,7 +211,7 @@ async fn assert_reconnect_starts_over(
     publisher
         .publish(activity, &resumed)
         .await
-        .expect("the publish reaches Redis");
+        .expect("the publish reaches Dragonfly");
 
     let frame = next_frame(&mut second).await;
     assert_eq!(
@@ -165,7 +229,7 @@ async fn assert_reconnect_starts_over(
 /// frames across channels, drops an unrouteable payload without spending a
 /// number, and detaches a fleet on the next authorization refresh.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
@@ -179,7 +243,7 @@ async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
 
     // Prime each server-side subscription before the fan-in joins its local
     // broadcast. Once the channel exists, `subscribe` adds a receiver without
-    // a second Redis round trip, so no fixed sleep is involved.
+    // a second Dragonfly round trip, so no fixed sleep is involved.
     let mut alpha_primer = hub.subscribe(&alpha_channel);
     prime(&publisher, &alpha_channel, &mut alpha_primer).await;
     let mut beta_primer = hub.subscribe(&beta_channel);
@@ -212,7 +276,7 @@ async fn assert_fan_in_delivery(
     publisher
         .publish(&beta_channel, &payload(3))
         .await
-        .expect("a valid fan-in frame reaches Redis");
+        .expect("a valid fan-in frame reaches Dragonfly");
     let first = tokio::time::timeout(DELIVERY_BUDGET, fan_in.next_frame())
         .await
         .expect("the fan-in yields its first frame");
@@ -254,11 +318,13 @@ where
 /// The point is the pump's progress, not the payload: once this returns, every
 /// message published before `payload` has been broadcast, so a receiver created
 /// afterwards is guaranteed not to see any of them.
-async fn drain_until(reader: &mut afd_redis::Subscription, payload: &str) {
+async fn drain_until(reader: &mut afd_dragonfly::Subscription, payload: &str) {
     let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
     loop {
         match tokio::time::timeout(DELIVERY_BUDGET, reader.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == payload => {
+            Ok(Ok(afd_dragonfly::hub::Received::Message(message)))
+                if message.payload == payload =>
+            {
                 return;
             }
             Ok(Ok(_other)) => {}
@@ -279,17 +345,17 @@ async fn drain_until(reader: &mut afd_redis::Subscription, payload: &str) {
 /// Republishing rather than sleeping: the wait is on a registration happening
 /// on a server and in another task, with no handshake to await, and a fixed
 /// sleep is either too short on a loaded runner or wasted on an idle one.
-async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_redis::Subscription) {
+async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_dragonfly::Subscription) {
     let marker = r#"{"kind":"primer"}"#;
     let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
     loop {
         publisher
             .publish(activity, marker)
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == marker => {
+            Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
                 return;
             }
             Ok(Ok(_other)) => {}

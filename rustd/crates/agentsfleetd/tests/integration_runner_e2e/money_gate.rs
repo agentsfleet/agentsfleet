@@ -9,7 +9,7 @@ use super::*;
 /// its capabilities. The event is ended rather than retried forever, while no
 /// lease or charge is written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_lease_money_gate_refusal() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -33,12 +33,16 @@ async fn test_lease_money_gate_refusal() {
         "the runner proves its capabilities before the money refusal"
     );
 
-    let polled = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(polled.status().as_u16(), 200);
-    assert_eq!(
-        field(&json(polled).await, "lease"),
-        &json!(null),
-        "an exhausted tenant receives no lease"
+    // A rotation, ended by the row the refusal writes: a poll that never
+    // sampled this fleet's partition answers the same `null` as the refusal,
+    // and the two assertions below would then pass with nothing refused.
+    let refused = poll_until(&http, &run, || async {
+        event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
+    })
+    .await;
+    assert!(
+        refused,
+        "an exhausted tenant's event is ended at the money gate"
     );
     assert_eq!(
         lease_rows(&run).await,

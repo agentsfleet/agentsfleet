@@ -5,7 +5,7 @@
 //! defect into one column and assert the row is rejected rather than absorbed.
 
 use super::{MAX_ADMITTED_SLOTS, ROW, SDK_STREAM_CARDINALITY_DEFAULT, census, declared, seeded};
-use crate::error::Error;
+use crate::error::ErrorKind;
 use crate::metrics::registry::{Family, Policy, Registry};
 
 /// Dimension 3.6 — a label nothing bounds by construction is bounded by
@@ -63,7 +63,10 @@ fn test_unbounded_labels_are_slot_admitted() {
 #[test]
 fn test_a_cost_family_cannot_declare_a_ceiling() {
     let with_ceiling = ROW.replace("\tfixed:1\t", "\tshared:256\t");
-    assert!(matches!(seeded(&[&with_ceiling]), Error::Census(_)));
+    assert!(matches!(
+        seeded(&[&with_ceiling]).kind(),
+        ErrorKind::Census { .. }
+    ));
 }
 
 /// A short row is refused rather than silently shifting every later field —
@@ -72,7 +75,7 @@ fn test_a_cost_family_cannot_declare_a_ceiling() {
 #[test]
 fn test_short_row_is_refused() {
     let short = ROW.rsplit_once('\t').expect("the base row has columns").0;
-    assert!(matches!(seeded(&[short]), Error::Census(_)));
+    assert!(matches!(seeded(&[short]).kind(), ErrorKind::Census { .. }));
 }
 
 /// A token outside a closed vocabulary is refused, not defaulted. The reader's
@@ -82,7 +85,7 @@ fn test_short_row_is_refused() {
 fn test_unknown_token_is_refused_naming_the_accepted_spellings() {
     let wrong_kind = ROW.replace("\tcounter\t", "\tsummary\t");
     let error = seeded(&[&wrong_kind]);
-    assert!(matches!(error, Error::Census(_)));
+    assert!(matches!(error.kind(), ErrorKind::Census { .. }));
 
     // The reader names the token, the spellings it would have accepted, and
     // the line it read them on. Asserting those three is asserting what an
@@ -101,7 +104,8 @@ fn test_unknown_token_is_refused_naming_the_accepted_spellings() {
 /// bounds and temporality are simply gone.
 #[test]
 fn test_duplicate_family_is_refused_naming_both_lines() {
-    let Error::Duplicate { first, second, .. } = seeded(&[ROW, ROW]) else {
+    let refusal = seeded(&[ROW, ROW]);
+    let ErrorKind::Duplicate { first, second, .. } = refusal.kind() else {
         unreachable!("a family declared twice must not read clean");
     };
     assert!(
@@ -115,22 +119,24 @@ fn test_duplicate_family_is_refused_naming_both_lines() {
 #[test]
 fn test_counter_carrying_bounds_is_refused() {
     let with_bounds = ROW.replace("\tcumulative\t-\t-\t", "\tcumulative\t-\t1,2,4\t");
-    let Error::BoundsMismatch { kind, bounds, .. } = seeded(&[&with_bounds]) else {
+    let refusal = seeded(&[&with_bounds]);
+    let ErrorKind::BoundsMismatch { kind, bounds, .. } = refusal.kind() else {
         unreachable!("a counter carrying bucket bounds must not read clean");
     };
-    assert_eq!(kind, "counter");
-    assert_eq!(bounds, 3);
+    assert_eq!(*kind, "counter");
+    assert_eq!(*bounds, 3);
 }
 
 /// A histogram without bounds is refused by the same check from the other side.
 #[test]
 fn test_histogram_without_bounds_is_refused() {
     let no_bounds = ROW.replace("\tcounter\t", "\thistogram\t");
-    let Error::BoundsMismatch { kind, bounds, .. } = seeded(&[&no_bounds]) else {
+    let refusal = seeded(&[&no_bounds]);
+    let ErrorKind::BoundsMismatch { kind, bounds, .. } = refusal.kind() else {
         unreachable!("a histogram with no bucket bounds must not read clean");
     };
-    assert_eq!(kind, "histogram");
-    assert_eq!(bounds, 0);
+    assert_eq!(*kind, "histogram");
+    assert_eq!(*bounds, 0);
 }
 
 /// A gauge carrying bucket bounds is refused, and the refusal reports the
@@ -141,11 +147,12 @@ fn test_gauge_carrying_bounds_is_refused_in_the_censuss_own_words() {
     let gauge = ROW
         .replace("\tcounter\t", "\tgauge\t")
         .replace("\tcumulative\t-\t-\t", "\t-\t-\t1,2,4\t");
-    let Error::BoundsMismatch { kind, bounds, .. } = seeded(&[&gauge]) else {
+    let refusal = seeded(&[&gauge]);
+    let ErrorKind::BoundsMismatch { kind, bounds, .. } = refusal.kind() else {
         unreachable!("a gauge carrying bucket bounds must not read clean");
     };
-    assert_eq!(kind, "gauge");
-    assert_eq!(bounds, 3);
+    assert_eq!(*kind, "gauge");
+    assert_eq!(*bounds, 3);
 }
 
 /// A `live_read` that is neither `yes` nor `no` is refused. The column decides
@@ -155,7 +162,7 @@ fn test_gauge_carrying_bounds_is_refused_in_the_censuss_own_words() {
 fn test_unknown_live_read_is_refused() {
     let wrong = ROW.replace("\tno\ttraffic\t", "\tmaybe\ttraffic\t");
     let error = seeded(&[&wrong]);
-    assert!(matches!(error, Error::Census(_)));
+    assert!(matches!(error.kind(), ErrorKind::Census { .. }));
     assert!(
         error.to_string().contains("maybe"),
         "the refusal must quote the token: {error}"
@@ -167,7 +174,10 @@ fn test_unknown_live_read_is_refused() {
 #[test]
 fn test_unknown_policy_is_refused() {
     let wrong_policy = ROW.replace("\tfixed:1\t", "\tunbounded\t");
-    assert!(matches!(seeded(&[&wrong_policy]), Error::Census(_)));
+    assert!(matches!(
+        seeded(&[&wrong_policy]).kind(),
+        ErrorKind::Census { .. }
+    ));
 }
 
 /// A policy whose basis is right but whose count is not a number is refused,
@@ -181,7 +191,7 @@ fn test_policy_with_an_unparseable_count_is_refused() {
     for token in ["fixed:many", "runner:many"] {
         let wrong = ROW.replace("\tfixed:1\t", &format!("\t{token}\t"));
         let error = seeded(&[&wrong]);
-        assert!(matches!(error, Error::Census(_)));
+        assert!(matches!(error.kind(), ErrorKind::Census { .. }));
         assert!(
             error.to_string().contains(token),
             "the refusal must quote the policy it rejected: {error}"
@@ -193,12 +203,14 @@ fn test_policy_with_an_unparseable_count_is_refused() {
 /// family that happens to exist.
 #[test]
 fn test_unknown_family_is_reported() {
-    let Err(Error::UnknownFamily { family }) =
-        declared().family("agentsfleet.nothing.declares.this")
-    else {
+    let registry = declared();
+    let Err(refusal) = registry.family("agentsfleet.nothing.declares.this") else {
         unreachable!("an undeclared name has no family");
     };
-    assert_eq!(&*family, "agentsfleet.nothing.declares.this");
+    let ErrorKind::UnknownFamily { family } = refusal.kind() else {
+        unreachable!("an undeclared name is refused by name");
+    };
+    assert_eq!(&**family, "agentsfleet.nothing.declares.this");
 }
 
 /// The absent spellings mean absent, not the literal `-`. Read through the real

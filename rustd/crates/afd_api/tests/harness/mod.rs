@@ -12,7 +12,7 @@
 //! is the parity target, so a fake store would prove a handler against SQL
 //! nobody runs. Each store here therefore holds a pool over an address that
 //! answers nothing ([`afd_db::Db::unreachable`]) and, where it needs one, a
-//! queue built the same way ([`afd_redis::Redis::unreachable`]). That is
+//! queue built the same way ([`afd_dragonfly::Dragonfly::unreachable`]). That is
 //! exactly what a datastore outage looks like from the request path, and it
 //! lets a suite prove the transport-class refusal (RULE ECL) without stopping a
 //! container.
@@ -63,6 +63,8 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_events::{History, Steer};
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::memory::Memories;
@@ -70,8 +72,6 @@ use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 use afd_runner::Runners;
 use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
@@ -127,7 +127,7 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    connect_redis, file_runner, json_body, presented, redis_config, runner_id, send,
+    connect_redis, dragonfly_config, file_runner, json_body, presented, runner_id, send,
     send_with_headers, tenant,
 };
 
@@ -139,7 +139,7 @@ pub(crate) use self::support::{
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
 
-/// A Redis nobody is listening on, for the same reason and on the same port.
+/// A Dragonfly nobody is listening on, for the same reason and on the same port.
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// The pool knob naming how long an acquire may spend before it reports.

@@ -26,7 +26,7 @@
 const std = @import("std");
 const credential_request = @import("../credential_request.zig");
 
-pub const SubstitutionError = error{
+const SubstitutionError = error{
     /// Placeholder syntax is malformed (unterminated, unexpected char).
     MalformedPlaceholder,
     /// `secrets_map[name]` not present.

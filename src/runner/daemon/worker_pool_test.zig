@@ -46,7 +46,7 @@ test "pool spawns worker_count threads and joins them all cleanly" {
     var applied = AppliedPolicy.init(testing.allocator);
     defer applied.deinit();
     const cfg = staticCfg(4);
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), cfg, &env_map, &applied, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), cfg, &env_map, &applied, &stop, &drain, null);
     try testing.expectEqual(@as(usize, 4), pool.threads.len); // one handle per worker
     try pool.join(); // must return .ok — a hang is a stuck worker; an error is a leaked worker
 }
@@ -65,7 +65,7 @@ test "pool drains via the drain flag as well as stop" {
 
     var applied = AppliedPolicy.init(testing.allocator);
     defer applied.deinit();
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(2), &env_map, &applied, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(2), &env_map, &applied, &stop, &drain, null);
     try testing.expectEqual(@as(usize, 2), pool.threads.len);
     try pool.join();
 }
@@ -84,7 +84,7 @@ test "single-worker pool is the degenerate N=1 case" {
 
     var applied = AppliedPolicy.init(testing.allocator);
     defer applied.deinit();
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(1), &env_map, &applied, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(1), &env_map, &applied, &stop, &drain, null);
     try testing.expectEqual(@as(usize, 1), pool.threads.len);
     try pool.join();
 }

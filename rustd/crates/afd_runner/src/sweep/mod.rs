@@ -1,17 +1,19 @@
 //! The background work no request pays for.
 //!
-//! Four sweepers keep the runner plane honest between requests: a runner that
+//! Six sweepers keep the runner plane honest between requests: a runner that
 //! stopped beating has to be noticed, a lease its holder abandoned has to
-//! become leasable again, history has to stop growing, and a repair a human
-//! approved has to be dispatched. None of them belongs on a request path —
-//! every one is unbounded work on someone else's row.
+//! become leasable again, history has to stop growing, a repair a human
+//! approved has to be dispatched, an admission the queue never took has to be
+//! re-appended, and one whose entry the queue LOST has to be found at all.
+//! None of them belongs on a request path — every one is unbounded work on
+//! someone else's row.
 //!
-//! # One loop, four sweepers
+//! # One loop, every sweeper
 //!
 //! Each Zig sweeper carries its own `run`: a `while (!shutdown.load(.acquire))`
 //! around one bounded pass, and a `sleepInterruptible` that wakes every 100ms
-//! to re-read an atomic it usually finds unchanged. Four copies of the same
-//! twenty lines, and every one of them pays up to a tenth of a second of
+//! to re-read an atomic it usually finds unchanged. One copy of the same twenty
+//! lines per sweeper, and every one of them pays up to a tenth of a second of
 //! shutdown latency for the privilege.
 //!
 //! [`run`] is that loop, once, generic over what it drives. Cancellation is a
@@ -28,8 +30,11 @@
 //! a worse outage than the one it reported.
 
 pub mod liveness;
+pub mod rebuild;
 pub mod reclaim;
+pub mod reconcile;
 pub mod repair;
+pub mod replay;
 pub mod retention;
 
 use std::time::Duration;
@@ -52,9 +57,9 @@ const EVENT_STOPPED: &str = "sweeper_stopped";
 
 /// One bounded pass over rows nobody is waiting on.
 ///
-/// A trait rather than four loops, and generic rather than `dyn`: [`run`] is
-/// instantiated once per sweeper at compile time, so nothing here is boxed and
-/// each sweeper's future keeps its own concrete type.
+/// A trait rather than one loop per sweeper, and generic rather than `dyn`:
+/// [`run`] is instantiated once per sweeper at compile time, so nothing here is
+/// boxed and each sweeper's future keeps its own concrete type.
 pub trait Sweep: Send + Sync + 'static {
     /// What this sweeper is called, in the log line that reports it.
     fn name(&self) -> &'static str;

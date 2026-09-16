@@ -6,18 +6,18 @@
 //! so a publish failure answered as an error walks a healthy fleet's hosts to
 //! shutdown one beat at a time — for a frame nobody was necessarily reading.
 //!
-//! # How the outage is injected, and why not by taking Redis away
+//! # How the outage is injected, and why not by taking Dragonfly away
 //!
 //! `Fixtures::plane_with_dead_queue` hands this suite a store over LIVE
-//! Postgres and a Redis that will not answer. That combination is the shape a
+//! Postgres and a Dragonfly that will not answer. That combination is the shape a
 //! partial outage actually takes, and it is the only one that reaches the
 //! publish at all: a fixture with both datastores gone would refuse at the
 //! first row read, never get a target, and prove nothing about the queue.
 //!
 //! The obvious injections — `docker compose pause redis`, killing the server,
 //! dropping the port — were not used, and the reason is not tooling. The lane's
-//! Redis is SHARED by every test binary `cargo test` runs in parallel, so any
-//! of them fails unrelated suites at the same instant. `Redis::unreachable`
+//! Dragonfly is SHARED by every test binary `cargo test` runs in parallel, so any
+//! of them fails unrelated suites at the same instant. `Dragonfly::unreachable`
 //! skips the ping `connect` performs and hands back a lazy handle pointed at a
 //! closed port, so exactly one test's commands fail and nobody else notices.
 //!

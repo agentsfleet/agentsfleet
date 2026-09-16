@@ -25,7 +25,7 @@
 
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::name::{FleetName, Version};
 
 use super::{json, scan};
@@ -127,7 +127,7 @@ struct Raw {
 /// `description` or `version`, a name that is not a kebab slug, and a version
 /// that is not `MAJOR.MINOR.PATCH`.
 pub fn parse_skill(source_markdown: &str) -> Result<SkillMetadata> {
-    let block = scan(source_markdown).ok_or(Error::FrontmatterMissing)?;
+    let block = scan(source_markdown).ok_or(Error::from(ErrorKind::FrontmatterMissing))?;
     let document = json::to_json(block.yaml())?;
     let raw: Raw = serde_json::from_value(document)?;
     resolve(raw)
@@ -160,7 +160,7 @@ fn resolve(raw: Raw) -> Result<SkillMetadata> {
 fn required(value: Option<String>, field: &'static str) -> Result<String> {
     value
         .filter(|found| !found.is_empty())
-        .ok_or(Error::MissingRequiredField { field })
+        .ok_or(Error::from(ErrorKind::MissingRequiredField { field }))
 }
 
 /// An optional string, with the empty one reading as absent.
@@ -178,7 +178,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::parse_skill;
-    use crate::Error;
+    use crate::error::ErrorKind;
 
     /// The three required keys and nothing else — `skill/minimal.md`'s shape.
     const MINIMAL: &str = "---\nname: probe\ndescription: A probe.\nversion: 1.0.0\n---\nProse.\n";
@@ -211,8 +211,8 @@ mod tests {
         let failure = parse_skill(source).expect_err("no name");
 
         assert!(matches!(
-            failure,
-            Error::MissingRequiredField { field: "name" }
+            failure.kind(),
+            ErrorKind::MissingRequiredField { field: "name" }
         ));
     }
 
@@ -222,8 +222,8 @@ mod tests {
         let failure = parse_skill(source).expect_err("empty description");
 
         assert!(matches!(
-            failure,
-            Error::MissingRequiredField {
+            failure.kind(),
+            ErrorKind::MissingRequiredField {
                 field: "description"
             }
         ));
@@ -242,7 +242,7 @@ mod tests {
         let source = "---\nname: Probe\ndescription: A probe.\nversion: 1.0.0\n---\n";
         let failure = parse_skill(source).expect_err("upper case");
 
-        assert!(matches!(failure, Error::InvalidName { .. }));
+        assert!(matches!(failure.kind(), ErrorKind::InvalidName { .. }));
     }
 
     #[test]
@@ -252,7 +252,7 @@ mod tests {
         let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0.0.0\n---\n";
         let failure = parse_skill(source).expect_err("four parts");
 
-        assert!(matches!(failure, Error::InvalidVersion { .. }));
+        assert!(matches!(failure.kind(), ErrorKind::InvalidVersion { .. }));
     }
 
     #[test]
@@ -267,7 +267,7 @@ mod tests {
         let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0\n---\n";
         let failure = parse_skill(source).expect_err("a numeric version");
         assert!(
-            matches!(failure, Error::InvalidFieldType { .. }),
+            matches!(failure.kind(), ErrorKind::InvalidFieldType { .. }),
             "an unquoted 1.0 should refuse as a shape"
         );
     }
@@ -283,7 +283,7 @@ mod tests {
         let source = "---\nname: probe\ndescription: A probe.\nversion: '1.0'\n---\n";
         let failure = parse_skill(source).expect_err("a two-part version");
         assert!(
-            !matches!(failure, Error::InvalidFieldType { .. }),
+            !matches!(failure.kind(), ErrorKind::InvalidFieldType { .. }),
             "a quoted 1.0 is a string and must refuse on its arity, not its shape"
         );
     }
@@ -306,7 +306,7 @@ mod tests {
             "---\nname: probe\ndescription: A probe.\nversion: 1.0.0\ntags: [one, 42]\n---\n";
         let failure = parse_skill(source).expect_err("a numeric tag");
 
-        assert!(matches!(failure, Error::InvalidFieldType { .. }));
+        assert!(matches!(failure.kind(), ErrorKind::InvalidFieldType { .. }));
     }
 
     #[test]
@@ -315,6 +315,6 @@ mod tests {
         let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0.0\ntags: one\n---\n";
         let failure = parse_skill(source).expect_err("a scalar tags");
 
-        assert!(matches!(failure, Error::InvalidFieldType { .. }));
+        assert!(matches!(failure.kind(), ErrorKind::InvalidFieldType { .. }));
     }
 }

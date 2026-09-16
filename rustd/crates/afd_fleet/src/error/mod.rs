@@ -127,7 +127,15 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the runner plane would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_dragonfly::Error,
+    },
+
+    /// The admission ledger could not say where a lost consumer group
+    /// should resume.
+    #[error("the admission ledger could not answer for the runner plane")]
+    Admission {
+        #[source]
+        source: afd_admission::Error,
     },
 
     #[error("the billing store could not answer for the runner plane")]
@@ -155,6 +163,19 @@ pub(crate) enum ErrorKind {
     Events {
         #[source]
         source: afd_events::Error,
+    },
+
+    /// The delivery ledger would not answer.
+    ///
+    /// `afd_outbound` owns `core.fleet_obligations`, and the report path commits
+    /// an obligation through it inside its own transaction — so a failure there
+    /// is a failure of THIS transaction and has to reach the caller as one.
+    /// Distinct from [`Self::Datastore`] because the obligation is a PostgreSQL
+    /// row, not a queue entry, and the two fail for different reasons.
+    #[error("the delivery ledger could not answer for the runner plane")]
+    Outbound {
+        #[source]
+        source: afd_outbound::Error,
     },
 
     #[error("the leased event envelope is missing {field}")]

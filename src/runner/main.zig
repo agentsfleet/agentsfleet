@@ -13,6 +13,7 @@ const logging = @import("log");
 
 const Config = @import("daemon/config.zig");
 const StorageHome = @import("daemon/StorageHome.zig");
+const ReportSpool = @import("daemon/ReportSpool.zig");
 const loop = @import("daemon/loop.zig");
 const startup = @import("daemon/startup.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
@@ -130,8 +131,18 @@ pub fn main(init: std.process.Init) void {
 
     // Option B: the env-supplied `agt_r` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
+    // The durable hold for a finished run's terminal report, inside the home
+    // claimed above — so the home's exclusive lock is what keeps two daemons out
+    // of one spool. No home means no spool: the daemon runs on, reports the
+    // in-memory way it always did, and says so once.
+    var spool: ?ReportSpool = if (storage.home) |home| ReportSpool.open(io, home.dir) else null;
+    defer if (spool) |*s| s.close(io);
+    if (spool == null) log.warn("report_spool_unavailable", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+    // Draining it is the control loop's first tick, before any worker spawns
+    // and so before any new lease — see `loop_spool.drainIfDue`.
+
     loop.installDrainHandlers();
-    const exit_reason = loop.runLoop(io, alloc, sched, cfg, env_map);
+    const exit_reason = loop.runLoop(io, alloc, sched, cfg, env_map, if (spool) |*s| s else null);
     log.info("server_stopped", .{ .reason = @tagName(exit_reason) });
     // A rejected runner token can never self-heal — exit non-zero so systemd's
     // restart + the deploy health check surface it as a loud, named failure

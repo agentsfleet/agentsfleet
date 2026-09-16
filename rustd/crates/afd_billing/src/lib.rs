@@ -31,7 +31,7 @@
 //! function instead of something buried beside a connection. This module takes
 //! that as the rule rather than the exception.
 
-mod error;
+pub mod error;
 
 pub mod budget;
 pub mod charge;

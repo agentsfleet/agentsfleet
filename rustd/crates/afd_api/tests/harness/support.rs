@@ -8,8 +8,8 @@ use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
 use afd_core::id::Uuid7;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -19,24 +19,24 @@ use tower::ServiceExt as _;
 
 use std::time::Duration;
 
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
-/// The integration lane's one Redis configuration.
-pub(crate) fn redis_config() -> RedisConfig {
-    let url = std::env::var(REDIS_URL_KNOB)
-        .expect("TEST_REDIS_URL is set by make test-integration-rustd");
-    RedisConfig::from_url(RedisRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+/// The integration lane's one Dragonfly configuration.
+pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB)
+        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }
 
-/// A proven live connection using [`redis_config`].
-pub(crate) async fn connect_redis() -> Redis {
-    afd_redis::test_util::connect_live(&redis_config())
+/// A proven live connection using [`dragonfly_config`].
+pub(crate) async fn connect_redis() -> Dragonfly {
+    afd_dragonfly::test_util::connect_live(&dragonfly_config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 /// The tenant every fixture person acts in.

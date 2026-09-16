@@ -158,14 +158,19 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
         .acquire()
         .await
         .expect("a pooled connection");
+    // `receipt` takes the event id, which is what `911_runner_leases_receipt.sql`
+    // backfilled existing rows with: before the ledger owned identity, the
+    // entry id WAS the event id.
+    // The column is NOT NULL, and this fixture predates it.
     sqlx::query(
         "INSERT INTO fleet.runner_leases
-           (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-            event_type, event_created_at, posture, provider, model,
+           (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt,
+            actor, event_type, event_created_at, posture, provider, model,
             metered_input_tokens, metered_cached_tokens, metered_output_tokens,
             last_metered_at, fencing_token, lease_expires_at, status,
             created_at, updated_at)
-         SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5, 'fixture:steer',
+         SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5, $5,
+                'fixture:steer',
                 'chat', $6, 'platform', 'anthropic', 'claude-fixture',
                 0, 0, 0, 0, 5, $7, 'active', $6, $6
          FROM core.fleets f WHERE f.id = $3::uuid",

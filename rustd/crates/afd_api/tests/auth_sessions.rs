@@ -3,7 +3,7 @@
 //! Open, poll and verify are intentionally unauthenticated. Approve and cancel
 //! require a verified dashboard session, which the fixture supplies through the
 //! real OIDC authentication path with only the key-set verifier replaced. The
-//! Redis store is production code over an unreachable lazy connection, so 503
+//! Dragonfly store is production code over an unreachable lazy connection, so 503
 //! proves a well-formed request reached the service boundary.
 #![cfg(feature = "test-util")]
 
@@ -61,7 +61,7 @@ async fn open_poll_and_verify_need_no_bearer_but_reach_the_queue() {
         assert_eq!(
             response.status(),
             StatusCode::SERVICE_UNAVAILABLE,
-            "{path}: a valid open request reaches the unavailable Redis store"
+            "{path}: a valid open request reaches the unavailable Dragonfly store"
         );
     }
 }

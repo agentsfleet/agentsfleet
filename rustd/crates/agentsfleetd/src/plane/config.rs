@@ -15,8 +15,8 @@ use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
+use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
-use afd_redis::Redis;
 use afd_sse::Live;
 
 use crate::bundles::Stores;
@@ -34,8 +34,8 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 pub struct PlaneParts {
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
-    /// The API role's Redis, open and proven.
-    pub queue: Redis,
+    /// The API role's Dragonfly, open and proven.
+    pub queue: Dragonfly,
     /// The master key every stored credential is sealed under.
     ///
     /// Already shared: `preflight` resolved and validated it and refuses boot

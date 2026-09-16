@@ -45,6 +45,21 @@ impl Fixtures {
             .expect("the lease write must run");
     }
 
+    /// Removes one lease row, as the retention sweep does once it is old
+    /// enough (`afd_runner`'s `DELETE FROM fleet.runner_leases`).
+    ///
+    /// The race it stands in for is narrow and real: a report loads its lease,
+    /// the sweep removes the row, and the claim then matches nothing for a
+    /// reason that is neither a lost fence nor a settled lease.
+    pub(crate) async fn delete_lease(&self, lease: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("DELETE FROM fleet.runner_leases WHERE id = $1::uuid")
+            .bind(lease)
+            .execute(&mut *connection)
+            .await
+            .expect("the lease delete must run");
+    }
+
     /// Stands a metering cursor up mid-slice, as a dying holder would leave it.
     pub(crate) async fn set_metered_input(&self, fleet: &str, tokens: i64) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
@@ -125,7 +140,13 @@ impl Fixtures {
         .bind(fleet)
         .bind(workspace)
         .bind(tenant)
-        .bind("fixture-fleet")
+        // The fleet's own id as its NAME. `uq_fleets_workspace_id_name` is
+        // unique per workspace, and the `ON CONFLICT (id)` arm cannot see a
+        // name collision — so a constant name let one workspace hold exactly
+        // one fixture fleet. The fairness suite seeds twenty in one workspace
+        // and failed on the second, reporting a constraint no test mentions
+        // (ISO-1: mint every identifier a test writes).
+        .bind(fleet)
         .bind("# fixture")
         .bind("{}")
         .bind("active")
@@ -148,5 +169,72 @@ impl Fixtures {
             .await
             .expect("the affinity read must run")
             .map(|row| row.try_get(0).expect("the column must be readable as text"))
+    }
+}
+
+impl Fixtures {
+    /// One admission row's receipt, or `None` when the queue never confirmed it.
+    ///
+    /// Addressed the way the production stamp addresses it — the fleet plus the
+    /// logical event id's two integers, parsed by the ledger's own
+    /// `logical_parts` — so a suite cannot drift from the key the real
+    /// statement uses.
+    pub(crate) async fn admission_receipt(&self, fleet: &str, event_id: &str) -> Option<String> {
+        self.admission_column(fleet, event_id, "receipt").await
+    }
+
+    /// When a runner was handed this admission, or `None` when none has been.
+    ///
+    /// Read as text and parsed back, so the assertion is about the column
+    /// holding a value at all rather than about what this suite would have
+    /// decoded a bigint into.
+    pub(crate) async fn admission_delivered_at(&self, fleet: &str, event_id: &str) -> Option<i64> {
+        self.admission_column(fleet, event_id, "delivered_at")
+            .await
+            .map(|stamp| stamp.parse().expect("delivered_at is a bigint"))
+    }
+
+    /// How many times the replay sweeper has re-appended this admission.
+    pub(crate) async fn admission_replays(&self, fleet: &str, event_id: &str) -> i64 {
+        self.admission_column(fleet, event_id, "replay_count")
+            .await
+            .expect("replay_count is NOT NULL")
+            .parse()
+            .expect("replay_count is a bigint")
+    }
+
+    /// How many admission rows one fleet holds.
+    ///
+    /// Fleet-scoped on purpose: the ledger is deployment-wide and a total would
+    /// count whatever a sibling suite admitted in parallel (ISO-1).
+    pub(crate) async fn admissions_for(&self, fleet: &str) -> i64 {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("SELECT count(*) FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+            .bind(fleet)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the ledger answers")
+            .try_get(0)
+            .expect("count answers a bigint")
+    }
+
+    /// One nullable column of the admission row `event_id` names.
+    async fn admission_column(&self, fleet: &str, event_id: &str, column: &str) -> Option<String> {
+        let (created_at, seq) =
+            afd_admission::logical_parts(event_id).expect("the ledger minted this id");
+        let statement = AssertSqlSafe(format!(
+            "SELECT {column}::text FROM core.fleet_admissions
+             WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3"
+        ));
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(statement)
+            .bind(fleet)
+            .bind(created_at)
+            .bind(seq)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the admitted row must exist")
+            .try_get(0)
+            .expect("the column must be readable as text")
     }
 }

@@ -19,6 +19,11 @@ workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about sweeps, and the counts below exist only
 # where the work happens.
+# Where a verification event is accepted before anything is queued, and the
+# ledger the replay sweeper walks. Its unique index on the intent row is what
+# makes a retried dispatch answer the first attempt's event rather than
+# starting a second verification with real provider spend.
+afd_admission.workspace = true
 afd_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
 afd_core.workspace = true
@@ -34,7 +39,7 @@ afd_db.workspace = true
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
 # The reclaim and repair sweepers re-deliver through the fleet streams.
-afd_redis.workspace = true
+afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_wire.workspace = true
 serde.workspace = true
@@ -49,7 +54,12 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+test-util = [
+    "afd_admission/test-util",
+    "afd_core/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

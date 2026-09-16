@@ -13,9 +13,9 @@
 //! arm, the compiler names every `match` that has to consider it, and a reviewer
 //! diffing the arm sees exactly which bytes get signed.
 //!
-//! `webhook_verify.zig` takes the other road — `VerifyConfig` with
-//! `includes_timestamp`, `hmac_version` and `prefix` fields — and the cost is
-//! visible there: `verifyHmac` reads five fields to decide what to hash, and
+//! The other road is a `VerifyConfig` carrying `includes_timestamp`,
+//! `hmac_version` and `prefix` fields, and its cost is that the verify step
+//! reads five fields to decide what to hash, and
 //! whether a given config is coherent is not a question the compiler can ask.
 
 use afd_crypto::mac::HmacSha256Tag;
@@ -123,8 +123,7 @@ impl Scheme {
     /// is a case-insensitive concern the HTTP layer normalises downward, and a
     /// capitalised literal here would match nothing and degrade every delivery
     /// to "no signature presented" — a refusal that reads exactly like an
-    /// unsigned request. `trusted_client_ip.zig` carries the same warning about
-    /// the same class of bug.
+    /// unsigned request.
     #[must_use]
     pub const fn signature_header(self) -> &'static str {
         match self {
@@ -206,9 +205,7 @@ impl Scheme {
     ) -> Verdict {
         // Defence in depth, and not redundant with the caller's own check: an
         // empty key makes the tag deterministic and attacker-computable, so a
-        // vault row that came back blank must never reach a comparison. Both
-        // `webhook_sig.zig` and `svix_verify.zig` carry this same guard for the
-        // same reason.
+        // vault row that came back blank must never reach a comparison.
         if secret.is_empty() {
             return Verdict::Refused(Refusal::Unconfigured);
         }

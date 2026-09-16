@@ -4,7 +4,7 @@
 //! thirty-four cases across `afd_api`'s message suites decide who may steer,
 //! what bodies are taken, and which fleet states refuse. None of them can prove
 //! the one claim the surface actually makes to a client, because it is a claim
-//! about Redis: the `event_id` returned in the 202 is the stream entry id, and
+//! about Dragonfly: the `event_id` returned in the 202 is the stream entry id, and
 //! it is therefore the id the CLI filters SSE frames by and the id the runner
 //! sees when it leases the work.
 //!
@@ -40,10 +40,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_dragonfly::ReadyIndex;
+use afd_dragonfly::ready::Partition;
+use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
-use afd_redis::ReadyIndex;
-use afd_redis::ready::READY_INDEX_KEY;
-use afd_redis::streams::FleetStreams;
 use afd_wire::event::{EventType, field};
 
 use crate::support::EventsLane;
@@ -61,11 +61,11 @@ const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
 /// fleet is marked ready so the message is leasable now rather than at the next
 /// poll.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_steer_append_event_id() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());
-    let steer = Steer::new(lane.queue.clone());
+    let steer = Steer::new(lane.admissions());
 
     // The group has to exist before the append, because `read_new` delivers
     // through it. A consumer created afterwards with `$` would see nothing and
@@ -77,7 +77,13 @@ async fn test_steer_append_event_id() {
         .expect("the consumer group is created");
 
     let answered = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the append reaches the queue");
 
@@ -88,11 +94,14 @@ async fn test_steer_append_event_id() {
         .expect("the append left an entry to lease");
 
     assert_eq!(
-        leased.id.as_str(),
-        answered,
-        "the id answered to the client must BE the stream entry id — a client \
-         filters its SSE frames by this value and a runner leases the entry \
-         under it, so two spellings would be two events"
+        leased.field(field::EVENT_ID),
+        Some(answered.as_str()),
+        "the id answered to the client must BE the id the runner sees — a \
+         client filters its SSE frames by this value and the lease path reads \
+         it back off the entry, so two spellings would be two events. It is \
+         the ledger's LOGICAL id, carried as a field: since the admission \
+         ledger took ownership of identity, `receipt` names the physical copy, \
+         and one logical event legitimately sits on two of those after a replay"
     );
 
     // The envelope the runner reads is the one the handler wrote. Asserted
@@ -158,11 +167,11 @@ async fn test_steer_append_event_id() {
 /// entry and both are leasable. Should a dedup ever be introduced, this is the
 /// test that fails and says so.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_steer_repeats_are_two_messages_not_one() {
     let lane = EventsLane::open().await;
     let streams = FleetStreams::new(lane.queue.clone());
-    let steer = Steer::new(lane.queue.clone());
+    let steer = Steer::new(lane.admissions());
 
     streams
         .ensure_group(&lane.fleet)
@@ -170,11 +179,23 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the consumer group is created");
 
     let first = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the first append reaches the queue");
     let second = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON)
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
         .await
         .expect("the second append reaches the queue");
 
@@ -197,8 +218,8 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the read reaches the queue")
         .expect("the second entry is deliverable");
 
-    assert_eq!(leased_first.id.as_str(), first);
-    assert_eq!(leased_second.id.as_str(), second);
+    assert_eq!(leased_first.field(field::EVENT_ID), Some(first.as_str()));
+    assert_eq!(leased_second.field(field::EVENT_ID), Some(second.as_str()));
 
     ReadyIndex::new(lane.queue.clone())
         .force_clear(&lane.fleet)
@@ -213,14 +234,19 @@ async fn test_steer_repeats_are_two_messages_not_one() {
 
 /// The readiness mark held for one fleet, or `None` when it carries none.
 ///
-/// Straight `HGET` against the index key `afd_redis` publishes, because the
-/// crate's own reader samples at random by design and this assertion needs the
-/// one field.
+/// Straight `HGET` against the fleet's own partition, because the crate's own
+/// reader samples at random by design and this assertion needs the one field.
+///
+/// The partition, not `READY_INDEX_KEY` itself: since §4 sharded readiness the
+/// bare key is only the PREFIX every partition hangs off (`fleet:ready`), and
+/// the marks live in `fleet:ready:{n}`. Reading the prefix answered `None` for
+/// a fleet that was correctly marked, which reads as the mark going missing.
 async fn ready_mark(lane: &EventsLane, fleet: &str) -> Option<String> {
+    let key = Partition::of(fleet).key();
     let mut cmd = redis::cmd("HGET");
-    cmd.arg(READY_INDEX_KEY).arg(fleet);
+    cmd.arg(&key).arg(fleet);
     lane.queue
-        .command("HGET", READY_INDEX_KEY, &cmd)
+        .command("HGET", &key, &cmd)
         .await
         .expect("the readiness index answers")
 }

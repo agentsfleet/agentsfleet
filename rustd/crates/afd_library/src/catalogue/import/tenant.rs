@@ -32,7 +32,8 @@ use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
-use crate::{BundleCatalog, Error, ImportBody, PreparedBundle, Result};
+use crate::error::{Error, ErrorKind, database};
+use crate::{BundleCatalog, ImportBody, PreparedBundle, Result};
 
 /// The context a failed tenant onboarding reports under.
 const CONTEXT_ONBOARD: &str = "onboard a workspace Fleet Bundle";
@@ -81,7 +82,7 @@ impl BundleCatalog for TenantCatalog {
             .bind(self.now.as_millis())
             .fetch_one(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_ONBOARD))?;
+            .map_err(database(CONTEXT_ONBOARD))?;
         Ok(id)
     }
 }
@@ -98,8 +99,8 @@ impl TenantCatalog {
         let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy
             .fill(&mut bytes)
-            .map_err(|source| Error::Entropy { source })?;
-        Uuid7::encode(self.now, bytes).map_err(|source| Error::Mint { source })
+            .map_err(|source| Error::from(ErrorKind::Entropy { source }))?;
+        Uuid7::encode(self.now, bytes).map_err(|source| Error::from(ErrorKind::Mint { source }))
     }
 }
 

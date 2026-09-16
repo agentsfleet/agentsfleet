@@ -29,7 +29,7 @@ const PR_GET_SECCOMP: i32 = 21;
 
 /// Everything the kernel answered, before assembly. Separated so `assemble`
 /// stays pure and the report matrix is testable off-linux.
-pub const MechanismInputs = struct {
+const MechanismInputs = struct {
     landlock: bool,
     seccomp: bool,
     cgroup_controllers: []const []const u8,
@@ -38,7 +38,7 @@ pub const MechanismInputs = struct {
 
 /// Pure assembly: the report mirrors each input independently and pins the
 /// egress line to what this build actually contains.
-pub fn assemble(inputs: MechanismInputs) protocol.CapabilityReport {
+fn assemble(inputs: MechanismInputs) protocol.CapabilityReport {
     return .{
         .landlock = inputs.landlock,
         .seccomp = inputs.seccomp,

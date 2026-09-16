@@ -1,4 +1,4 @@
-//! Shared live-Redis setup for the runner sweep executable.
+//! Shared live-Dragonfly setup for the runner sweep executable.
 #![expect(
     clippy::expect_used,
     clippy::panic,
@@ -7,20 +7,21 @@
 
 use std::time::Duration;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
-pub(crate) async fn connect_redis() -> Redis {
-    let url = std::env::var(REDIS_URL_KNOB)
-        .unwrap_or_else(|_| panic!("{REDIS_URL_KNOB} is unset; use the integration make target"));
-    let config = RedisConfig::from_url(RedisRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+pub(crate) async fn connect_redis() -> Dragonfly {
+    let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_| {
+        panic!("{DRAGONFLY_URL_KNOB} is unset; use the integration make target")
+    });
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5));
-    afd_redis::test_util::connect_live(&config)
+    afd_dragonfly::test_util::connect_live(&config)
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }

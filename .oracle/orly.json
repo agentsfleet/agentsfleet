@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "orly_version": "0.10.9",
+  "orly_version": "0.10.10",
   "packs": [
     "language.rust",
+    "persona.indy",
     "product.agentsfleet"
   ],
   "commands": {
@@ -126,7 +127,7 @@
     ".opencode/skills/orly-spec-new/SKILL.md": "sha256:46ad13c03a8d06c679b7a991d36e88513a5dca97cd3ad58a7e7639781b804944",
     ".opencode/skills/orly-write-integration-test/SKILL.md": "sha256:c1a043392eed089ba5f1ef9b2a966115add265887260794bdd0d1323db1154ba",
     ".opencode/skills/orly-write-unit-test/SKILL.md": "sha256:2bea9f79b381cd4256950bc2d43577e27bea18ea6f1ffbf323fc9493401c8db8",
-    "AGENTS.orly.md": "sha256:f3e40e91b13bf5100cb8c6fd6903b3d84ebf6c5e8d7bd2500e89ef1ac36c86be",
+    "AGENTS.orly.md": "sha256:49762cbb885f415f09675a9d165aa8bd6ccff45b86d3d42b8d7fe17e4f04580c",
     "audits/deinit-pairs.sh": "sha256:83274ebdbc714d5668343ac34e6380e70fc9b4d666960d771291146e50650c6c",
     "audits/design-tokens.sh": "sha256:725808d70448eb4fef5f4587ff52540e7638829552e6b7603eb25df20b554b20",
     "audits/doc-read.sh": "sha256:8177610ec3f513c17d09e30b1977a06c1662984ba03af75da93b7ed1098ce8c0",
@@ -172,6 +173,6 @@
     "docs/REST_API_DESIGN_GUIDELINES.md": "sha256:114e8a1c1968bae539812ceec417690abf99c761b4bb83c541bb24cdd9095ee5",
     "docs/SCHEMA_CONVENTIONS.md": "sha256:5a5b5b2a5d4a34c9a727ef663dbc97d0d9a39cc26989406cb0ecd3b0c220e056",
     "docs/TEMPLATE.md": "sha256:3b38d8cff71f31748a08a4ab42177ac55884807ce1dee472ecebe2a229511283",
-    "docs/VERIFY_TIERS.md": "sha256:c837b9b63bbc4392a0cc620c23fa3cf41594d250cda5113f5d045d429cd5ce6d"
+    "docs/VERIFY_TIERS.md": "sha256:299348bc1ddae3e1d889d2d731dfba7dd306ab8e0583ab86ced625ce3cd56459"
   }
 }

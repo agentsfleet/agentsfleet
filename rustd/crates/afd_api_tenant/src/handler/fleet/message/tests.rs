@@ -3,7 +3,7 @@
 //! Both halves of this surface decide something before any datastore is
 //! reached: the read decides how many rows a page carries and which row the
 //! cursor names, and the write decides whether the bytes a client sent are a
-//! message at all. Neither decision needs Postgres or Redis, so both are proven
+//! message at all. Neither decision needs Postgres or Dragonfly, so both are proven
 //! here; `fleet_messages.rs` is left proving the credential, the two rungs and
 //! the ownership layer over HTTP.
 
@@ -18,13 +18,13 @@ use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
 use axum::body::Bytes;
 
 use super::{
-    PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit, read_message,
+    PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit, read_steer,
 };
 
 /// The millisecond the fixture thread's oldest row was stamped.
 const FIRST_MS: i64 = 1_700_000_000_000;
 
-/// A stream entry id, spelled the way Redis mints one.
+/// A stream entry id, spelled the way Dragonfly mints one.
 fn entry_id(ordinal: i64) -> String {
     format!("{}-0", FIRST_MS + ordinal)
 }
@@ -103,7 +103,7 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
 /// A steer with nothing in it is refused before the parser runs.
 #[test]
 fn should_refuse_a_steer_that_carries_no_body() {
-    read_message(&Bytes::new()).unwrap_err();
+    read_steer(&Bytes::new()).unwrap_err();
 }
 
 /// A body this daemon cannot read is refused.
@@ -120,7 +120,7 @@ fn should_refuse_a_body_that_is_not_a_message() {
         r#"{"message":7}"#,
     ] {
         assert!(
-            read_message(&Bytes::from(body.as_bytes().to_vec())).is_err(),
+            read_steer(&Bytes::from(body.as_bytes().to_vec())).is_err(),
             "{body} is not a steer this surface accepts"
         );
     }
@@ -129,7 +129,7 @@ fn should_refuse_a_body_that_is_not_a_message() {
 /// An empty message is refused: a person pressed send on nothing.
 #[test]
 fn should_refuse_an_empty_message() {
-    read_message(&Bytes::from_static(br#"{"message":""}"#)).unwrap_err();
+    read_steer(&Bytes::from_static(br#"{"message":""}"#)).unwrap_err();
 }
 
 /// An escaped message is a message, not a malformed body.
@@ -142,7 +142,7 @@ fn should_refuse_an_empty_message() {
 fn should_read_a_message_that_carries_escapes() {
     let body = Bytes::from_static(br#"{"message":"line one\nline \"two\"\tand \u2728 done"}"#);
     assert_eq!(
-        read_message(&body).unwrap(),
+        read_steer(&body).unwrap().message,
         "line one\nline \"two\"\tand \u{2728} done",
     );
 }
@@ -159,22 +159,22 @@ fn should_bound_the_decoded_bytes_and_not_the_escaped_ones() {
         r"\n".repeat(STEER_MESSAGE_MAX_BYTES)
     );
     let body = Bytes::from(escaped.into_bytes());
-    let read = read_message(&body).expect("a message of newlines is under the bound once decoded");
-    assert_eq!(read.len(), STEER_MESSAGE_MAX_BYTES);
+    let read = read_steer(&body).expect("a message of newlines is under the bound once decoded");
+    assert_eq!(read.message.len(), STEER_MESSAGE_MAX_BYTES);
 }
 
 /// The bound admits its own ceiling and refuses one byte past it.
 #[test]
 fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
     let at_the_ceiling = format!(r#"{{"message":"{}"}}"#, "a".repeat(STEER_MESSAGE_MAX_BYTES));
-    read_message(&Bytes::from(at_the_ceiling.into_bytes()))
+    read_steer(&Bytes::from(at_the_ceiling.into_bytes()))
         .expect("the documented ceiling is a message this surface takes");
 
     let one_past = format!(
         r#"{{"message":"{}"}}"#,
         "a".repeat(STEER_MESSAGE_MAX_BYTES + 1)
     );
-    read_message(&Bytes::from(one_past.into_bytes())).unwrap_err();
+    read_steer(&Bytes::from(one_past.into_bytes())).unwrap_err();
 }
 
 /// A thread with nothing in it includes nothing.

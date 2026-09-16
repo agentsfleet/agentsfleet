@@ -21,6 +21,7 @@ const std = @import("std");
 const logging = @import("log");
 
 const Config = @import("config.zig");
+const ReportSpool = @import("ReportSpool.zig");
 const AppliedPolicy = @import("AppliedPolicy.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
@@ -33,7 +34,7 @@ const log = logging.scoped(.fleet_runner);
 /// Spawn failure: either the threads handle could not be allocated, or the OS
 /// refused a thread. The caller (control loop) logs and exits; workers already
 /// spawned are joined before the error propagates.
-pub const PoolError = std.mem.Allocator.Error || std.Thread.SpawnError;
+const PoolError = std.mem.Allocator.Error || std.Thread.SpawnError;
 
 /// Per-worker context, copied by value into each spawned thread. The pointers
 /// (`stop`/`drain`/`env_map`) and `cfg`'s slices outlive the pool: the control
@@ -53,6 +54,12 @@ const WorkerContext = struct {
     env_map: *const std.process.Environ.Map,
     stop: *std.atomic.Value(bool),
     drain: *std.atomic.Value(bool),
+    /// The process-wide report spool, borrowed for the pool's lifetime (the
+    /// root closes it after the loop joins every worker). Shared across threads
+    /// deliberately and with no mutex: every entry is named by its own lease id,
+    /// so two workers never touch one file, and the directory handle itself is
+    /// immutable after `open` (RULE C4 — the aggregate is the kernel's).
+    spool: ?*ReportSpool,
     /// The worker stores its own `DebugAllocator.deinit()` verdict here at
     /// teardown (`true` == `.leak`); the pool folds every slot at `join`. Points
     /// into `Pool.leak_flags`, which outlives the worker (joined before freed).
@@ -106,6 +113,7 @@ pub fn spawn(
     applied: *AppliedPolicy,
     stop: *std.atomic.Value(bool),
     drain: *std.atomic.Value(bool),
+    spool: ?*ReportSpool,
 ) PoolError!Pool {
     const threads = try alloc.alloc(std.Thread, cfg.worker_count);
     errdefer alloc.free(threads);
@@ -130,6 +138,7 @@ pub fn spawn(
             .env_map = env_map,
             .stop = stop,
             .drain = drain,
+            .spool = spool,
             .leak_slot = &leak_flags[spawned],
         };
         threads[spawned] = try std.Thread.spawn(.{}, workerLoop, .{ctx});
@@ -156,7 +165,7 @@ fn workerLoop(ctx: WorkerContext) void {
     defer cp.deinit();
     log.debug("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
-        loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map, ctx.applied, ctx.index);
+        loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map, ctx.applied, ctx.index, ctx.spool);
     }
     log.debug("worker_stopped", .{ .index = ctx.index });
 }

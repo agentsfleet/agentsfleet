@@ -4,7 +4,7 @@
 //!
 //! A lane names ONE variable per datastore. Everything downstream of that —
 //! pool sizing, acquire timeouts, whether the URL implies TLS and which
-//! certificate authority verifies it — is resolved by `afd_db` and `afd_redis`
+//! certificate authority verifies it — is resolved by `afd_db` and `afd_dragonfly`
 //! from that URL, exactly as `open_runtime` does at boot. Re-deriving any of it
 //! here would mean the lane measured a pool the daemon never opens.
 //!
@@ -18,13 +18,13 @@ use core::time::Duration;
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_redis::{Dedicated, Redis, RedisConfig, RedisRole};
+use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole};
 
 use crate::error::Result;
 
-/// The Redis commands this crate spells itself, in one place.
+/// The Dragonfly commands this crate spells itself, in one place.
 ///
-/// `afd_redis` owns every command the PRODUCT issues. These are the ones a
+/// `afd_dragonfly` owns every command the PRODUCT issues. These are the ones a
 /// lane asks the SERVER about itself with, or uses to remove what it created,
 /// and each module that needs one imports it from here rather than spelling
 /// its own copy.
@@ -50,11 +50,11 @@ pub mod command {
 /// Where a lane reads its Postgres from.
 pub const DATABASE_URL_VARIABLE: &str = "BENCH_DATABASE_URL";
 
-/// Where a lane reads its Redis from.
-pub const REDIS_URL_VARIABLE: &str = "BENCH_REDIS_URL";
+/// Where a lane reads its Dragonfly from.
+pub const DRAGONFLY_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
 
-/// The certificate authority for a Redis serving TLS, when it does.
-pub const REDIS_CA_CERT_VARIABLE: &str = "BENCH_REDIS_CA_CERT";
+/// The certificate authority for a Dragonfly serving TLS, when it does.
+pub const DRAGONFLY_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
 
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";
@@ -62,7 +62,7 @@ const CALLS_FIELD: &str = "calls=";
 /// The line of `INFO memory` carrying resident bytes.
 const USED_MEMORY_FIELD: &str = "used_memory:";
 
-/// The datastore named when a Redis counter will not parse.
+/// The datastore named when a Dragonfly counter will not parse.
 const REDIS: &str = "redis";
 
 /// The datastore named when a Postgres counter will not parse.
@@ -76,7 +76,7 @@ const TRANSACTIONS_FIELD: &str = "xact_commit + xact_rollback";
 /// The counterpart to `INFO commandstats`, and used for the same reason: a
 /// lane that reported "no Postgres cost" without asking Postgres would be
 /// asserting a zero rather than measuring one, which is what RULE ECL forbids.
-/// Server-wide for this database, so it carries the same caveat as the Redis
+/// Server-wide for this database, so it carries the same caveat as the Dragonfly
 /// side — on the rig that is this lane and nothing else.
 const TRANSACTIONS_QUERY: &str = "SELECT xact_commit + xact_rollback \
      FROM pg_stat_database WHERE datname = current_database()";
@@ -106,13 +106,13 @@ pub struct Datastores {
     /// The pool the candidate query runs on.
     pub database: Db,
     /// The readiness index and the fleet streams.
-    pub queue: Redis,
+    pub queue: Dragonfly,
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.
     pub pool_size: u32,
-    /// The Redis configuration the queue was opened from, kept so a lane
+    /// The Dragonfly configuration the queue was opened from, kept so a lane
     /// needing its own parked connection opens one from the same resolution.
-    redis: RedisConfig,
+    redis: DragonflyConfig,
 }
 
 impl Datastores {
@@ -121,18 +121,18 @@ impl Datastores {
     /// # Errors
     ///
     /// [`crate::Error::DatastoreUnavailable`] naming which one refused, so the
-    /// message says whether to start Postgres or Redis rather than "a
+    /// message says whether to start Postgres or Dragonfly rather than "a
     /// datastore".
     pub async fn open(
         database_url: &str,
-        redis_url: &str,
+        dragonfly_url: &str,
         ca_cert: Option<String>,
     ) -> Result<Self> {
         let pool = PoolConfig::resolve(&LaneEnv { database_url }, DbRole::Api)?;
         let database = Db::connect(&pool).await?;
-        let redis = RedisConfig::from_url(RedisRole::Default, redis_url.to_owned())
+        let redis = DragonflyConfig::from_url(DragonflyRole::Default, dragonfly_url.to_owned())
             .with_ca_cert_file(ca_cert.map(Into::into));
-        let queue = Redis::connect(&redis).await?;
+        let queue = Dragonfly::connect(&redis).await?;
         Ok(Self {
             database,
             queue,
@@ -151,7 +151,7 @@ impl Datastores {
     }
 }
 
-/// Redis's own tally of commands served, for the per-datastore attribution.
+/// Dragonfly's own tally of commands served, for the per-datastore attribution.
 ///
 /// `INFO commandstats` is SERVER-WIDE: it counts every client's calls, not just
 /// this lane's. On the rig that is exactly this lane, which is the profile the
@@ -162,16 +162,25 @@ impl Datastores {
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when the server will not answer `INFO`.
-pub async fn redis_calls(queue: &Redis) -> Result<u64> {
-    let mut command = redis::cmd(command::INFO);
-    command.arg(command::COMMANDSTATS);
-    let raw: String = queue
-        .command(command::INFO, command::COMMANDSTATS, &command)
-        .await?;
-    redis_calls_in(&raw).ok_or(crate::Error::CounterUnreadable {
-        datastore: REDIS,
-        field: CALLS_FIELD,
-    })
+pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
+    // Summed across primaries: a command is served by whichever shard owns its
+    // key, so one node's tally is a fraction of the lane's work reported as the
+    // whole of it.
+    let per_node = queue.info_per_primary(command::COMMANDSTATS).await?;
+    let mut total = 0_u64;
+    let mut read_any = false;
+    for raw in &per_node {
+        if let Some(calls) = dragonfly_calls_in(raw) {
+            total = total.saturating_add(calls);
+            read_any = true;
+        }
+    }
+    read_any
+        .then_some(total)
+        .ok_or(crate::Error::CounterUnreadable {
+            datastore: REDIS,
+            field: CALLS_FIELD,
+        })
 }
 
 /// The total of every `calls=` field in an `INFO commandstats` reply.
@@ -180,7 +189,7 @@ pub async fn redis_calls(queue: &Redis) -> Result<u64> {
 /// `INFO` with nothing this parser recognises is not a server that served zero
 /// commands, and reporting it as one is the zero RULE ECL forbids.
 #[must_use]
-pub(crate) fn redis_calls_in(info: &str) -> Option<u64> {
+pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
     let mut seen = false;
     let total = info
         .lines()
@@ -212,23 +221,32 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
     })
 }
 
-/// Redis's `used_memory`, in bytes.
+/// Dragonfly's `used_memory`, in bytes.
 ///
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when `INFO` will not answer, and
 /// [`crate::Error::CounterUnreadable`] when the reply carries no
 /// `used_memory:` line — which is not a server using zero bytes.
-pub async fn redis_used_memory(queue: &Redis) -> Result<u64> {
-    let mut command = redis::cmd(command::INFO);
-    command.arg(command::MEMORY);
-    let raw: String = queue
-        .command(command::INFO, command::MEMORY, &command)
-        .await?;
-    used_memory_in(&raw).ok_or(crate::Error::CounterUnreadable {
-        datastore: REDIS,
-        field: USED_MEMORY_FIELD,
-    })
+pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
+    // Summed for the same reason the call tally is: a fleet's keys are spread
+    // across shards by their own hash, so the memory they occupy is the sum
+    // over primaries and never one node's figure.
+    let per_node = queue.info_per_primary(command::MEMORY).await?;
+    let mut total = 0_u64;
+    let mut read_any = false;
+    for raw in &per_node {
+        if let Some(bytes) = used_memory_in(raw) {
+            total = total.saturating_add(bytes);
+            read_any = true;
+        }
+    }
+    read_any
+        .then_some(total)
+        .ok_or(crate::Error::CounterUnreadable {
+            datastore: REDIS,
+            field: USED_MEMORY_FIELD,
+        })
 }
 
 /// The `used_memory:` value out of an `INFO memory` reply.

@@ -3,7 +3,7 @@
 //! [`Binding::read`] takes three strings and answers, so every rule this file
 //! covers — which trigger wins, which vault key it names, whether an event is
 //! admitted, whether the fleet will take work — is reachable without a
-//! Postgres, a Redis or a vault. That is the property worth keeping: the rules
+//! Postgres, a Dragonfly or a vault. That is the property worth keeping: the rules
 //! a delivery is measured against must not need an environment to test, or
 //! they go untested and drift.
 

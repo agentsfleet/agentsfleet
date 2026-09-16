@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_dragonfly::ready::READY_PARTITIONS;
+use afd_fleet::lease::{Acquired, Leases};
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::{ENROLLED_AT, enrolment_tagged, placement_tag};
@@ -71,7 +73,13 @@ pub(crate) const MODEL: &str = "claude-fixture";
 pub(crate) struct Seeded<const N: usize> {
     /// The enrolled runners, ready to destructure.
     pub(crate) runners: [Uuid7; N],
-    /// The entry id the append produced.
+    /// The LOGICAL event id the fixture admitted under.
+    ///
+    /// Not the entry id: the two are different things now that the admission
+    /// ledger owns identity, and it is this
+    /// one that `Acquired::event_id`, `core.fleet_events` and the usage ledger
+    /// all address. A test comparing against the receipt would be comparing
+    /// against the wrong half.
     pub(crate) event_id: String,
     /// The fleet holding the event.
     pub(crate) fleet: String,
@@ -138,4 +146,72 @@ pub(crate) async fn seeded_parts<const N: usize>(
             .try_into()
             .expect("N enrolments produce exactly N identifiers"),
     )
+}
+
+/// One rotation of assignment polls, answering the first work any of them took.
+///
+/// **A single `select` is not a poll of the deployment, it is a poll of one
+/// PARTITION.** Readiness is spread over [`READY_PARTITIONS`] hashes
+/// and each pass rotates the cursor by one, so a fixture holding one fleet is
+/// visited by one poll in sixteen. Every suite here that called `select` once
+/// and unwrapped it was passing on a one-in-sixteen draw, which is how thirty
+/// four integration tests failed the first time this lane ran after readiness
+/// was partitioned.
+///
+/// One rotation is the bound the partition count was measured against: every marked fleet is discoverable within it. A loop without that
+/// bound would hang on a fixture whose fleet is genuinely not leasable, which
+/// is a thing several suites deliberately assert.
+///
+/// `None` therefore means what the old single call was trying to mean: no
+/// partition holds leasable work for this runner.
+/// [`select_within_one_rotation`], narrowed to ONE fleet's work.
+///
+/// The readiness index is global and the lane resets once per RUN rather than
+/// per test, so a rotation started here can acquire a fleet an earlier test
+/// left marked. Handing that back to a caller asserting on its own admission
+/// is how `test_cluster_restart_and_stale_snapshot_preserve_obligations` came
+/// to compare two unrelated event ids -- green alone, red in a full run, with
+/// no change in between.
+///
+/// Polls until this fleet's slot is the one acquired. A slot belonging to
+/// someone else is passed over, which does lease it; those are fleets from
+/// tests that already finished, and the next run's reset clears them. The
+/// budget is several rotations rather than one because residue can hold many
+/// partitions at once, and `None` still means the fleet was genuinely never
+/// offered rather than that the walk was too short.
+pub(crate) async fn select_fleet_within_rotations(
+    leases: &Leases,
+    runner: &Uuid7,
+    now: UnixMillis,
+    fleet: &str,
+) -> Option<Acquired> {
+    const ROTATIONS: u16 = 8;
+    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+        if let Some(acquired) = leases
+            .select(runner, now)
+            .await
+            .expect("the assignment pass must not fault")
+            && acquired.fleet_id.to_string() == fleet
+        {
+            return Some(acquired);
+        }
+    }
+    None
+}
+
+pub(crate) async fn select_within_one_rotation(
+    leases: &Leases,
+    runner: &Uuid7,
+    now: UnixMillis,
+) -> Option<Acquired> {
+    for _poll in 0..READY_PARTITIONS {
+        if let Some(acquired) = leases
+            .select(runner, now)
+            .await
+            .expect("the assignment pass must not fault")
+        {
+            return Some(acquired);
+        }
+    }
+    None
 }

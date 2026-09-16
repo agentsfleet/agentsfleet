@@ -7,9 +7,9 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use afd_dragonfly::{Dragonfly, Partition, ReadyCursor, ReadyIndex, fleet_stream_key};
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
-use afd_redis::{ReadyIndex, Redis, fleet_stream_key};
 use sqlx::Row as _;
 
 use crate::datastores::Datastores;
@@ -56,17 +56,22 @@ const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
 /// The datastore named when a Postgres reading will not parse.
 const POSTGRES: &str = "postgres";
 
-/// The datastore named when a Redis sample set is empty.
+/// The datastore named when a Dragonfly sample set is empty.
 const REDIS: &str = "redis";
 
 /// Median readiness-peek latency over [`SAMPLES`] calls, asking for the same
 /// number of candidates the lease path asks for.
-pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
+pub(super) async fn peek_ms(queue: &Dragonfly) -> Result<f64> {
     let index = ReadyIndex::new(queue.clone());
+    // Rotated the way the lease path rotates, so the sample covers every
+    // partition rather than timing one hash over and over.
+    let cursor = ReadyCursor::new();
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        index.peek(MAX_READY_CANDIDATES_PER_POLL).await?;
+        index
+            .peek(cursor.advance(), MAX_READY_CANDIDATES_PER_POLL)
+            .await?;
         samples.push(started.elapsed());
     }
     median_ms(samples).ok_or(Error::CounterUnreadable {
@@ -76,7 +81,7 @@ pub(super) async fn peek_ms(queue: &Redis) -> Result<f64> {
 }
 
 /// Median single-stream read latency over [`SAMPLES`] calls.
-pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
+pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64> {
     let key = fleet_stream_key(fleet);
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -97,6 +102,31 @@ pub(super) async fn stream_read_ms(queue: &Redis, fleet: &str) -> Result<f64> {
     })
 }
 
+/// Up to one poll's worth of ready fleets, gathered over a full rotation.
+///
+/// The plan below is explained against the same membership list a poll
+/// binds, and a single partition of a freshly seeded population may hold
+/// fewer fleets than the poll ceiling; walking the rotation fills the list
+/// the way consecutive polls would.
+async fn ready_across_partitions(queue: &Dragonfly) -> Result<Vec<String>> {
+    let index = ReadyIndex::new(queue.clone());
+    let mut ready = Vec::with_capacity(MAX_READY_CANDIDATES_PER_POLL);
+    for partition in Partition::all() {
+        let room = MAX_READY_CANDIDATES_PER_POLL.saturating_sub(ready.len());
+        if room == 0 {
+            break;
+        }
+        ready.extend(
+            index
+                .peek(partition, room)
+                .await?
+                .into_iter()
+                .map(|entry| entry.fleet_id),
+        );
+    }
+    Ok(ready)
+}
+
 /// Table sizes and the candidate query's plan at population.
 pub(super) async fn postgres_at_population(
     stores: &Datastores,
@@ -108,12 +138,7 @@ pub(super) async fn postgres_at_population(
         crate::report::count(table_sizes(&stores.database).await?),
     );
     let mut connection = stores.database.acquire().await?;
-    let ready: Vec<String> = ReadyIndex::new(stores.queue.clone())
-        .peek(MAX_READY_CANDIDATES_PER_POLL)
-        .await?
-        .into_iter()
-        .map(|entry| entry.fleet_id)
-        .collect();
+    let ready = ready_across_partitions(&stores.queue).await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
     let lines: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(

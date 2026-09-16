@@ -1,4 +1,4 @@
-//! Workspace stream opening over live Postgres and Redis.
+//! Workspace stream opening over live Postgres and Dragonfly.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -19,8 +19,8 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::{FleetStreams, fleet_activity_channel};
+use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
@@ -49,11 +49,11 @@ const ONE_CONNECTION: &str = "1";
 const SHORT_ACQUIRE_MS: &str = "1500";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let fleet = Fleet::live(
@@ -109,7 +109,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
 /// out (`fleet_ids` carries the fleet added since the opening) and the map is
 /// empty, so a client leaves what it has standing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -118,7 +118,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     ])
     .await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let fleet = Fleet::live(
@@ -180,11 +180,11 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 /// the second is a `hello` carrying where every fleet stands now — the
 /// dropped frames are exactly the ones that moved the counters.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::redis_config())
+    let hub = SubscriptionHub::start(harness::dragonfly_config())
         .await
         .expect("the lane's subscription connection starts");
     let router = Fleet::live(
@@ -198,9 +198,9 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut body = open_stream(&router, &fixture).await;
 
     let publisher = FleetStreams::new(
-        afd_redis::Redis::connect(&harness::redis_config())
+        afd_dragonfly::Dragonfly::connect(&harness::dragonfly_config())
             .await
-            .expect("the lane's Redis accepts a publisher"),
+            .expect("the lane's Dragonfly accepts a publisher"),
     );
     let channel = fleet_activity_channel(&fixture.fleet);
     for sequence in 0..GAP_FRAMES {

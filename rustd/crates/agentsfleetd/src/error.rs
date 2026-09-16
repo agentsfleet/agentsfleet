@@ -145,9 +145,9 @@ pub enum BootFailure {
     /// Postgres would not answer.
     #[error("agentsfleetd cannot boot: the API database would not answer")]
     Database(#[from] afd_db::Error),
-    /// Redis would not answer.
+    /// Dragonfly would not answer.
     #[error("agentsfleetd cannot boot: the API queue would not answer")]
-    Queue(#[from] afd_redis::Error),
+    Queue(#[from] afd_dragonfly::Error),
     /// The port could not be bound.
     #[error("agentsfleetd cannot listen")]
     Listen(#[from] std::io::Error),
@@ -195,7 +195,7 @@ impl BootFailure {
         match *self {
             Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
-            Self::Queue(_) => afd_core::error_code::STARTUP_REDIS_CONNECT,
+            Self::Queue(_) => afd_core::error_code::STARTUP_DRAGONFLY_CONNECT,
             Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) => {
                 afd_core::error_code::INTERNAL_OPERATION_FAILED
             }

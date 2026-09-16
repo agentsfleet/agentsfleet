@@ -13,7 +13,7 @@
 //!
 //! `docker-compose.yml`'s `qstash` service runs Upstash's own dev server with
 //! deterministic credentials, and `make/test-infra.mk` starts it beside Postgres
-//! and Redis. This suite reads the two knobs that lane exports and SELF-SKIPS
+//! and Dragonfly. This suite reads the two knobs that lane exports and SELF-SKIPS
 //! when they are unset, so `cargo test` outside the lane stays green without
 //! silently pretending to have proved any of this.
 //!

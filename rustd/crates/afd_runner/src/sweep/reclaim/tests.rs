@@ -39,3 +39,42 @@ fn a_rewound_cursor_is_a_fresh_one() {
     assert_eq!(rewound.after_updated_at(), fresh.after_updated_at());
     assert_eq!(rewound.after_id(), fresh.after_id());
 }
+
+/// The ledger question is a read that leads to a datastore write, and the
+/// shape of the statement is the guarantee: it must never hold a row lock
+/// across that write, and it must never touch the lease it found, because
+/// `reclaim_prior_active` needs that lease still `active` to re-lease from
+/// PostgreSQL alone. Asserted on the text, the way `afd_vault::sql` asserts
+/// its own `FOR UPDATE`.
+#[test]
+fn the_ledger_question_marks_and_never_flips() {
+    let statement = crate::sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES;
+    assert!(
+        statement.trim_start().starts_with("SELECT"),
+        "a write here would expire the lease the reclaim path needs: {statement}"
+    );
+    assert!(
+        !statement.contains("UPDATE") && !statement.contains("SET "),
+        "the sweeper marks ready and flips nothing: {statement}"
+    );
+    assert!(
+        !statement.contains("FOR UPDATE"),
+        "a lock here is held across a datastore write: {statement}"
+    );
+    assert!(
+        statement.contains("LIMIT"),
+        "every fleet returned is a claim against the pool, so the set is bounded: {statement}"
+    );
+    assert!(
+        statement.contains("DISTINCT"),
+        "several expired leases on one fleet want one mark: {statement}"
+    );
+    assert!(
+        statement.contains("lease_expires_at <"),
+        "expiry is the ledger's own clock, not a proxy for it: {statement}"
+    );
+    assert!(
+        statement.contains("fleet_id > $4") && statement.contains("ORDER BY fleet_id"),
+        "an unordered LIMIT hands back the same page every pass and starves the fleet behind it: {statement}"
+    );
+}

@@ -1,7 +1,7 @@
 //! The three statements a credential digest is resolved by.
 //!
-//! Kept together and apart from the code that runs them, the way
-//! `state/sql.zig` keeps its own: a statement is a contract with the schema,
+//! Kept together and apart from the code that runs them: a statement is a
+//! contract with the schema,
 //! and reading the three side by side is how the differences between them stay
 //! deliberate rather than accidental.
 //!
@@ -39,8 +39,7 @@ LIMIT 1";
 
 /// `agt_r` — a host runner's machine credential.
 ///
-/// `degraded` rides the same indexed single-row read, which is the point
-/// `serve_runner_lookup.zig` makes in its own comment: the lease gate used to
+/// `degraded` rides the same indexed single-row read: the lease gate used to
 /// re-read this exact row for that one flag, doubling every idle poll's cost.
 pub const SELECT_RUNNER_TOKEN: &str = "\
 SELECT id::text, admin_state, degraded \

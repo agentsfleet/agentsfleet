@@ -5199,7 +5199,7 @@
           "Runners"
         ],
         "summary": "Report the result of one run",
-        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. ",
+        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. The lease id is this endpoint's idempotency key, so it takes no `Idempotency-Key` header. Send the same report again after a lost response and the stored outcome is returned. The repeat charges nothing and counts the run once. ",
         "operationId": "runner_report",
         "requestBody": {
           "content": {
@@ -9122,7 +9122,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `fleet_response_chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `fleet_response_chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -9975,7 +9975,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. ",
+        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint returns the first run's event, never a second run. A lost response then costs nothing. Omit it and every call is a new message, which is what a person sending twice means. ",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -16663,7 +16663,7 @@
       },
       "SteerRequest": {
         "type": "object",
-        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nOne field, and unknown ones are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
+        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nUnknown fields are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
         "required": [
           "message"
         ],
@@ -16671,6 +16671,13 @@
           "message": {
             "type": "string",
             "description": "What to say to the fleet.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The caller's own name for this operation, repeated across its retries.\n\nDimension 7.5. A timeout does not prove an operation failed. A client\nthat never saw a response must be able to ask again, and asking again\nmust not risk a second run.\n\nThis value is what tells the two apart, and only the CALLER can supply\nit. A server cannot tell a retried POST from a person pressing send\ntwice, because the bytes are identical.\n\nPresent, it becomes the admission ledger's `producer_key`. The retry\nconflicts on `UNIQUE (producer, producer_key)` and is answered with the\nfirst admission's event — one run, one charge.\n\nAbsent, the ledger mints a key. Two identical messages stay two\noperations, which is the behaviour a person pressing send twice expects.\n\nOptional on purpose rather than required. A human typing in a terminal\nhas no operation to identify. Forcing one would make every caller\ninvent a value whose only job is to be unique."
           }
         }
       },

@@ -18,7 +18,7 @@ pub(crate) mod signing;
 /// diagnostic is skipped — the failure path runs and the line reporting it does
 /// not. Output goes to a sink; the point is evaluation, not reading.
 ///
-/// The same helper `afd_db` and `afd_redis` carry, for the same reason.
+/// The same helper `afd_db` and `afd_dragonfly` carry, for the same reason.
 pub(crate) fn install_subscriber() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {

@@ -41,7 +41,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the gate plane would not answer")]
     Queue {
         #[source]
-        source: afd_redis::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The caller sent something this plane will not accept.
@@ -83,14 +83,14 @@ pub(crate) enum ErrorKind {
 impl Error {
     /// The registry code this failure answers with.
     #[must_use]
-    pub const fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // The queue joins the internal family for the registry reason the
             // runner plane's does: the Zig logs `ERR_INTERNAL_OPERATION_FAILED`
-            // for every Redis failure it meets, and a new code would fire the
+            // for every Dragonfly failure it meets, and a new code would fire the
             // ERROR REGISTRY gate over a registry this family does not own.
             // A daemon that cannot draw random bytes or name an instant is THIS
             // process failing, not the caller's request being wrong.
@@ -107,7 +107,7 @@ impl Error {
 
     /// The sentence the caller is told.
     #[must_use]
-    pub const fn detail(&self) -> &'static str {
+    pub fn detail(&self) -> &'static str {
         match self.kind() {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Datastore { .. } => DETAIL_UNAVAILABLE,
@@ -122,7 +122,7 @@ impl Error {
 
     /// Whether the datastore or queue behind this crate could not be reached.
     #[must_use]
-    pub const fn is_datastore_unavailable(&self) -> bool {
+    pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Credential { source } => source.is_datastore_unavailable(),
@@ -152,7 +152,7 @@ impl Error {
 }
 
 /// The sentence an unreachable datastore or queue earns.
-const DETAIL_UNAVAILABLE: &str = "Database unavailable";
+use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";
@@ -165,7 +165,7 @@ pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "The approval reference could
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_redis::Error => Queue,
+    afd_dragonfly::Error => Queue,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
     afd_crypto::error::Error => Entropy,

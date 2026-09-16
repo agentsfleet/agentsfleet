@@ -5,6 +5,7 @@
 )]
 
 use super::prepare;
+use crate::error::ErrorKind;
 use crate::{ImportBody, InvalidBundle, SourceKind, SupportFile};
 
 const SKILL: &[u8] = b"---\nname: github-pr-reviewer\ndescription: Reviews pull requests\nversion: 0.1.0\n---\nBody.\n";
@@ -23,26 +24,26 @@ fn body() -> ImportBody {
 
 fn invalid(body: &ImportBody) -> InvalidBundle {
     let error = prepare(body).expect_err("the hostile bundle must be refused");
-    match error {
-        crate::Error::Invalid(reason) => reason,
-        crate::Error::Storage(_)
-        | crate::Error::StorageUnavailable
-        | crate::Error::CatalogIdCollision { .. }
-        | crate::Error::Pool(_)
-        | crate::Error::CatalogueJson(_)
-        | crate::Error::Database { .. }
-        | crate::Error::Snapshot(_)
-        | crate::Error::FrontmatterUtf8 { .. }
-        | crate::Error::FrontmatterYaml { .. }
-        | crate::Error::TriggerConfig(_)
-        | crate::Error::Source(_)
-        | crate::Error::Github(_)
-        | crate::Error::Archive(_)
-        | crate::Error::ArchiveTask(_)
-        | crate::Error::Redirect(_)
-        | crate::Error::ArchivePath(_)
-        | crate::Error::Entropy { .. }
-        | crate::Error::Mint { .. } => {
+    match error.kind() {
+        ErrorKind::Invalid(reason) => *reason,
+        ErrorKind::Storage { .. }
+        | ErrorKind::StorageUnavailable
+        | ErrorKind::CatalogIdCollision { .. }
+        | ErrorKind::Pool { .. }
+        | ErrorKind::CatalogueJson { .. }
+        | ErrorKind::Database { .. }
+        | ErrorKind::Snapshot { .. }
+        | ErrorKind::FrontmatterUtf8 { .. }
+        | ErrorKind::FrontmatterYaml { .. }
+        | ErrorKind::TriggerConfig { .. }
+        | ErrorKind::Source(_)
+        | ErrorKind::Github { .. }
+        | ErrorKind::Archive { .. }
+        | ErrorKind::ArchiveTask { .. }
+        | ErrorKind::Redirect { .. }
+        | ErrorKind::ArchivePath { .. }
+        | ErrorKind::Entropy { .. }
+        | ErrorKind::Mint { .. } => {
             panic!("validation cannot reach an I/O boundary")
         }
     }
@@ -60,7 +61,7 @@ fn trigger_uses_the_full_runtime_schema() {
                 .into_bytes(),
         );
         let error = prepare(&input).expect_err("an incomplete or misspelled runtime is refused");
-        assert!(matches!(&error, crate::Error::TriggerConfig(_)));
+        assert!(matches!(error.kind(), ErrorKind::TriggerConfig { .. }));
         assert_eq!(error.code().as_str(), "UZ-BUNDLE-001");
     }
 }
@@ -82,8 +83,12 @@ fn test_a_misnamed_credential_is_refused_by_the_code_that_says_rename_it() {
 
     assert!(
         matches!(
-            &error,
-            crate::Error::TriggerConfig(afd_fleet_runtime::Error::InvalidCredentialRef { .. })
+            error.kind(),
+            ErrorKind::TriggerConfig { source }
+                if matches!(
+                    source.class(),
+                    afd_fleet_runtime::Class::InvalidCredentialRef
+                )
         ),
         "{error:?}"
     );
@@ -139,8 +144,8 @@ fn test_bundle_import_rejects_hostile() {
     let error = prepare(&oversized).expect_err("the oversized file is refused");
     assert_eq!(error.code().as_str(), "UZ-REQ-002");
     assert!(matches!(
-        error,
-        crate::Error::Invalid(InvalidBundle::SupportFileTooLarge)
+        error.kind(),
+        ErrorKind::Invalid(InvalidBundle::SupportFileTooLarge)
     ));
 
     let mut malformed = body();

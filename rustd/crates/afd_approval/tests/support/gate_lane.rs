@@ -1,4 +1,4 @@
-//! The lane's database, its Redis, and the rows a gate needs to exist.
+//! The lane's database, its Dragonfly, and the rows a gate needs to exist.
 //!
 //! Built on [`afd_db::test_util::TestDatabase`], which hands back the database
 //! the lane already migrated.
@@ -35,7 +35,7 @@
 //! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
 //! everything else still runs concurrently.
 //!
-//! # Redis is here because an approval CONTINUES a run
+//! # Dragonfly is here because an approval CONTINUES a run
 //!
 //! The resolve appends a stream entry for the event it unblocked. That is the
 //! one reason this suite needs a queue, and it is why the fixture connects a
@@ -59,17 +59,17 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 #[path = "gate_lane_read.rs"]
 mod read;
 
-/// The environment knob naming the lane's Redis.
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
+/// The environment knob naming the lane's Dragonfly.
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The environment knob naming its certificate authority.
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Serialises the tests the global sweeper cannot be isolated from.
 ///
@@ -111,7 +111,7 @@ pub(crate) struct Lane {
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
-    pub(crate) queue: Redis,
+    pub(crate) queue: Dragonfly,
     pub(crate) inbox: Inbox,
     /// The fleet every seeded gate belongs to.
     pub(crate) fleet: Uuid7,
@@ -138,12 +138,16 @@ impl Lane {
     async fn open(workspace: String, fleet: String) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_redis::test_util::connect_live(&redis_config())
+        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
 
         let lane = Self {
-            inbox: Inbox::new(pool.clone(), queue.clone()),
+            inbox: Inbox::new(
+                pool.clone(),
+                queue.clone(),
+                afd_admission::Admissions::for_tests(pool.clone(), queue.clone()),
+            ),
             _database: database,
             pool,
             queue,
@@ -244,6 +248,29 @@ impl Lane {
     }
 
     /// One pooled connection, for the fixture's own reads and writes.
+    /// Whether the ledger holds an admission for `action` that never got a
+    /// receipt — the row the replay sweeper owes an entry.
+    ///
+    /// Read through the real table rather than inferred from the call's answer:
+    /// "the queue refused and the work is still safe" is a claim about what is
+    /// in Postgres, and only Postgres can settle it.
+    pub(crate) async fn awaits_replay(&self, action: &str) -> bool {
+        use sqlx::Row as _;
+
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "SELECT receipt IS NULL FROM core.fleet_admissions \
+             WHERE producer = $1 AND producer_key = $2",
+        )
+        .bind(afd_admission::Producer::GateContinuation.as_str())
+        .bind(action)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the ledger reads")
+        .and_then(|row| row.try_get::<bool, _>(0).ok())
+        .unwrap_or(false)
+    }
+
     async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool
             .acquire()
@@ -299,29 +326,29 @@ impl Lane {
     }
 }
 
-/// The lane's Redis configuration.
-pub(crate) fn redis_config() -> RedisConfig {
-    let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
-        panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+/// The lane's Dragonfly configuration.
+pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
-    RedisConfig::from_url(RedisRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_request_timeout(Duration::from_secs(5))
 }
 
 /// A queue that will not answer: a loopback port nobody listens on.
 ///
-/// `Redis::unreachable` opens no socket, and this address makes sure the
-/// first command opens none either. A handle over the LANE's Redis would
+/// `Dragonfly::unreachable` opens no socket, and this address makes sure the
+/// first command opens none either. A handle over the LANE's Dragonfly would
 /// connect lazily and succeed, which is a live queue wearing a dead name; the
-/// lane's Redis is shared by every test binary, so it is never the one taken
+/// lane's Dragonfly is shared by every test binary, so it is never the one taken
 /// down.
 const NOWHERE: &str = "redis://127.0.0.1:1";
 
-/// A handle over a Redis that will not take a single command.
-pub(crate) fn dead_queue() -> Redis {
-    Redis::unreachable(&RedisConfig::from_url(
-        RedisRole::Default,
+/// A handle over a Dragonfly that will not take a single command.
+pub(crate) fn dead_queue() -> Dragonfly {
+    Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail")

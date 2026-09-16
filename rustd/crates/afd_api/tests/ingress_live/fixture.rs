@@ -7,7 +7,7 @@
 //! `afd_ingress`'s app resolution read zero covered lines: nothing runs them.
 //!
 //! This fixture is the other half. The router is the production one over a live
-//! Postgres and a live Redis, so a delivery here resolves its binding out of
+//! Postgres and a live Dragonfly, so a delivery here resolves its binding out of
 //! `core.fleets`, opens its secret out of `vault.secrets`, and lands its claim
 //! in the queue exactly as the daemon does it.
 
@@ -16,7 +16,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -76,7 +76,7 @@ pub(super) enum Secret {
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     subject: String,
     tenant: String,
     workspace: Uuid7,

@@ -19,9 +19,9 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
+use afd_dragonfly::Dragonfly;
 use afd_fleet::lease::Leases;
 use afd_gate::gate::Gates;
-use afd_redis::Redis;
 use afd_runner::Runners;
 use sqlx::{AssertSqlSafe, Row as _};
 
@@ -29,14 +29,14 @@ use sqlx::{AssertSqlSafe, Row as _};
 pub(crate) struct Fixtures {
     lane: TestDatabase,
     pub(crate) database: Db,
-    queue: Option<Redis>,
+    queue: Option<Dragonfly>,
     runners: Runners,
 }
 
 impl Fixtures {
     /// Opens the api-role pool against the database the lane already migrated.
     ///
-    /// No Redis. Most suites here assert on ROWS and never read the queue, and
+    /// No Dragonfly. Most suites here assert on ROWS and never read the queue, and
     /// connecting one anyway is not free: each is a TLS handshake, and a suite
     /// running its tests in parallel opened enough at once to time out against
     /// a healthy server. Use [`Fixtures::create_with_queue`] where the queue is
@@ -67,9 +67,23 @@ impl Fixtures {
         }
     }
 
-    /// The same, plus the lane's Redis.
+    /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.
     ///
-    /// Shared rather than per-test: Redis has no database-per-test equivalent,
+    /// The pairing a deployment-WIDE assertion needs. A budget counted across
+    /// every unconfirmed row in the database cannot be proven to clear on the
+    /// shared lane, where a sibling suite's deferred row keeps the count up;
+    /// a private database makes this test the only writer of the number it
+    /// asserts on. Dragonfly stays shared, which is harmless — its keys are
+    /// namespaced by the fleet ids this test mints.
+    pub(crate) async fn create_isolated_with_queue() -> Self {
+        let mut fixtures = Self::create_isolated().await;
+        fixtures.queue = Some(crate::queue::connect().await);
+        fixtures
+    }
+
+    /// The same, plus the lane's Dragonfly.
+    ///
+    /// Shared rather than per-test: Dragonfly has no database-per-test equivalent,
     /// and the keys these suites touch are namespaced by the fleet ids each
     /// test declares for itself.
     pub(crate) async fn create_with_queue() -> Self {
@@ -162,7 +176,7 @@ impl Fixtures {
 
     /// The same store, over a queue that will not answer.
     ///
-    /// Live Postgres, dead Redis — which is the shape a partial outage actually
+    /// Live Postgres, dead Dragonfly — which is the shape a partial outage actually
     /// takes and the only one that proves the publish path degrades rather than
     /// failing the verb. A fixture that took BOTH away would refuse at the
     /// first row read and never reach the publish at all.
@@ -183,7 +197,7 @@ impl Fixtures {
     }
 
     /// The queue handle, for the suites that seed a stream or a readiness mark.
-    pub(crate) fn queue(&self) -> &Redis {
+    pub(crate) fn queue(&self) -> &Dragonfly {
         self.queue
             .as_ref()
             .expect("this fixture has no queue — build it with Fixtures::create_with_queue")

@@ -33,7 +33,7 @@ test-util = [
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
-    "afd_redis/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 # The document emitter. NOT default, and NOT reachable from the shipped binary:
@@ -43,6 +43,8 @@ openapi = ["afd_api/openapi"]
 
 [dependencies]
 afd_admin.workspace = true
+# The one admission ledger every producer in this process shares.
+afd_admission.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.
@@ -123,7 +125,7 @@ clap.workspace = true
 afd_crypto.workspace = true
 # The pool and client settings boot resolves BEFORE it opens either.
 afd_db.workspace = true
-afd_redis.workspace = true
+afd_dragonfly.workspace = true
 afd_runner.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.

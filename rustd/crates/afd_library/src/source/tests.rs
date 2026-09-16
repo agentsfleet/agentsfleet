@@ -6,9 +6,9 @@ use object_store::ObjectStore;
 use object_store::memory::InMemory;
 
 use super::{BundleSource, SourceFailure, SourceImporter};
+use crate::error::ErrorKind;
 use crate::{
-    BundleCatalog, Error, ImportBody, ImportService, PreparedBundle, Result, SourceKind,
-    SupportFile,
+    BundleCatalog, ImportBody, ImportService, PreparedBundle, Result, SourceKind, SupportFile,
 };
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ impl BundleSource for FixtureSource {
     ) -> impl std::future::Future<Output = Result<ImportBody>> + Send {
         std::future::ready(match self {
             Self::Bundle(body) => Ok(body.clone()),
-            Self::Failure(failure) => Err(Error::Source(*failure)),
+            Self::Failure(failure) => Err((*failure).into()),
         })
     }
 }
@@ -107,7 +107,7 @@ async fn source_failure_never_persists_partial_catalogue_state() {
             .await
             .expect_err("source failure is retained");
 
-        assert!(matches!(error, Error::Source(actual) if actual == failure));
+        assert!(matches!(error.kind(), ErrorKind::Source(actual) if *actual == failure));
         assert!(
             catalog
                 .0

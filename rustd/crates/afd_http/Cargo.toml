@@ -23,6 +23,8 @@ percent-encoding.workspace = true
 afd_admin.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
+# The admission ledger the ingress plane writes an acceptance through.
+afd_admission.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 afd_connector.workspace = true
@@ -64,8 +66,12 @@ utoipa = { workspace = true, optional = true }
 # deployment: every router suite substitutes its own stub for the trait, so the
 # delegating impl in `services::ingress` is reached by nothing else. Grading it
 # needs the three handles it is built from, in their refusing form.
+# The ledger a harness binds to its own pool and queue, for the same reason
+# the two below carry the feature: a suite builds the real thing, never a
+# second one shaped like it.
+afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
-afd_redis = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_core.workspace = true
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }

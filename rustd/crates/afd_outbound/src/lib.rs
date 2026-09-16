@@ -18,7 +18,7 @@
 //!
 //! # Invariant 9 lives at this crate's boundary
 //!
-//! `afd_redis::outbound` carries `provider` as a string and knows nothing about
+//! `afd_dragonfly::outbound` carries `provider` as a string and knows nothing about
 //! what one is, so the report path enqueues an answer without a connector
 //! anywhere in its graph. THIS crate is the only one that turns that string
 //! into a [`afd_connector::Provider`] and picks a poster for it. Adding a
@@ -32,7 +32,7 @@
 //! non-blocking claims, and says why: its pooled connections are borrowed
 //! per-command and cannot be parked on a stream. That is a fact about a
 //! blocking client, not about the queue — so here the worker owns an
-//! [`afd_redis::Dedicated`] connection and `XREADGROUP … BLOCK` holds until an
+//! [`afd_dragonfly::Dedicated`] connection and `XREADGROUP … BLOCK` holds until an
 //! entry lands. An answer is delivered the instant it is queued rather than up
 //! to a quarter-second later, and an idle deployment issues one command per
 //! block interval instead of four per second forever.
@@ -58,12 +58,16 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod error;
+pub mod lanes;
+pub mod obligation;
 pub mod poster;
+pub mod producer;
 pub mod retry;
 pub mod slack;
 pub mod worker;
 
 pub use self::error::{Error, Result};
+pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
 pub use self::poster::{Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
 pub use self::worker::{BLOCK_INTERVAL, LONGEST_PARK, Worker};

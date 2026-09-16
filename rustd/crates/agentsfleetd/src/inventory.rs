@@ -18,7 +18,7 @@
 //! rows as test data and asserts every one has a disposition. Tests are not
 //! shipped, so the check survives and the binary carries nothing.
 
-/// The supervised name for the Redis pub/sub pump.
+/// The supervised name for the Dragonfly pub/sub pump.
 pub const HUB_PUMP: &str = "hub_pump";
 
 /// The supervised name for the span exporter's flush loop.
@@ -35,7 +35,7 @@ pub const ANALYTICS_FLUSH: &str = "analytics_flush";
 /// question arrived on.
 ///
 /// Named for the stream it reads rather than for a verb, because that is what
-/// an operator correlating a supervised task with a Redis key needs it to
+/// an operator correlating a supervised task with a Dragonfly key needs it to
 /// match — see [`crate::outbound`].
 pub const OUTBOUND_WORKER: &str = crate::outbound::OUTBOUND_WORKER;
 

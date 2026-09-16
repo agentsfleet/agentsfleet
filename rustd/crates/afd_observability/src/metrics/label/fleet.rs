@@ -10,6 +10,13 @@ use crate::metrics::label::closed_set;
 /// apart while still meaning the same thing.
 const REPLAYED: &str = "replayed";
 
+/// The entry reached the stream on this pass.
+///
+/// Shared by the two sets that observe it for the same reason [`REPLAYED`] is:
+/// a first admission and a sweeper's re-append are different events with the
+/// same outcome, and a dashboard summing them has to see one spelling.
+const APPENDED: &str = "appended";
+
 closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
@@ -81,6 +88,47 @@ closed_set! {
         Emitted => "emitted",
         /// The append-once key answered with an earlier pass's event.
         Replayed => REPLAYED,
+    }
+}
+
+closed_set! {
+    /// What became of one admission.
+    ///
+    /// Five, and the split is the one an operator needs: `Deferred` is work
+    /// this daemon ACCEPTED and could not queue — the row is safe and the
+    /// replay sweeper owes it an entry — where `Refused` is work it did not
+    /// accept at all, and `OverBudget` is work it refused ON PURPOSE because
+    /// a fleet or the deployment holds as much as it is allowed to. A single
+    /// "failed" would hide the difference between a queue outage nobody loses
+    /// work to, a database outage a producer must retry through, and a
+    /// deployment doing exactly what its budgets say.
+    AdmissionOutcome {
+        /// Committed and appended.
+        Appended => APPENDED,
+        /// Seen before; the first admission's id stands.
+        Replayed => REPLAYED,
+        /// Committed; the queue would not take the entry yet.
+        Deferred => "deferred",
+        /// Not committed, and the producer was told so.
+        Refused => "refused",
+        /// Not committed because a budget is spent; the producer backs off.
+        OverBudget => "over_budget",
+    }
+}
+
+closed_set! {
+    /// What became of one replayed admission.
+    ///
+    /// `Full` is its own member because its cure is the opposite of
+    /// `Failed`'s: a queue that is gone wants the pass to come back, and one
+    /// that is full wants everything to stop until something drains.
+    ReplayOutcome {
+        /// Re-appended, and the receipt recorded.
+        Appended => APPENDED,
+        /// The queue would not take it; the row keeps its NULL receipt.
+        Failed => "failed",
+        /// The queue refused to grow; the row keeps its NULL receipt.
+        Full => "full",
     }
 }
 

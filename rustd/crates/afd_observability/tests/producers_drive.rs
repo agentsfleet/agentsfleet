@@ -33,7 +33,9 @@ use core::time::Duration;
 
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
-use afd_observability::metrics::label::fleet::{SignupFailure, SyntheticEvent, VerifierRun};
+use afd_observability::metrics::label::fleet::{
+    AdmissionOutcome, ReplayOutcome, SignupFailure, SyntheticEvent, VerifierRun,
+};
 use afd_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
 };
@@ -87,6 +89,27 @@ fn test_every_fleet_producer_runs_its_body() {
     producers::fleet::ready_write_failed();
     producers::fleet::retention_swept(9);
     producers::fleet::retention_failed();
+
+    // Both admission counters, over every arm of their closed sets. The label
+    // is the only thing separating a queue outage from a deployment spending
+    // its budget, so a variant added without a spelling here is a counter that
+    // silently stops distinguishing them.
+    for outcome in [
+        AdmissionOutcome::Appended,
+        AdmissionOutcome::Replayed,
+        AdmissionOutcome::Deferred,
+        AdmissionOutcome::Refused,
+        AdmissionOutcome::OverBudget,
+    ] {
+        producers::fleet::admission::admitted(outcome);
+    }
+    for outcome in [
+        ReplayOutcome::Appended,
+        ReplayOutcome::Failed,
+        ReplayOutcome::Full,
+    ] {
+        producers::fleet::admission::replayed(outcome);
+    }
 
     // Every arm, because the label is what distinguishes them and a variant
     // added without a spelling is the failure this catches.

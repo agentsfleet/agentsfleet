@@ -23,10 +23,10 @@ pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
 
 /// `problem_response.zig`'s `internalDbUnavailable` detail.
-pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";
+pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
 /// `problem_response.zig`'s `internalDbError` detail.
-pub const DETAIL_DATABASE_ERROR: &str = "Database error";
+pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
 /// An event on the stream this daemon cannot execute.
 ///
@@ -37,10 +37,10 @@ pub const DETAIL_EVENT_MALFORMED: &str = "leased event malformed";
 
 /// A queue outage, shaped like its database counterpart above.
 ///
-/// Zig has no byte-identical original: its lease path collapses every Redis
+/// Zig has no byte-identical original: its lease path collapses every Dragonfly
 /// failure to a no-work reply rather than surfacing one, so no `hx.fail` in
 /// that family ever writes this sentence. It exists because a detail is not
-/// optional here, and answering "Database unavailable" for a Redis outage
+/// optional here, and answering "Database unavailable" for a Dragonfly outage
 /// would send an operator to the wrong datastore. The CODE stays
 /// `UZ-INTERNAL-003`, which is what the Zig assign path logs — no new registry
 /// entry, so the ERROR REGISTRY gate does not fire.

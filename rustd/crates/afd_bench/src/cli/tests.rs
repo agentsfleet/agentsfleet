@@ -7,10 +7,22 @@
 
 use std::collections::HashMap;
 
-use super::{admitted, finish};
+use super::{Provenance, admitted, finish};
 use crate::error::Error;
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
+use crate::report::provenance::{
+    DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, REVISION_VARIABLE,
+};
 use crate::report::{Lane, Report};
+
+/// The provenance variables every run supplies, which say nothing about the
+/// profile. Spread into a case so a test about profile resolution is not also
+/// a test of whether provenance is required — `provenance::tests` owns that.
+const DESCRIBED: [(&str, &str); 3] = [
+    (REVISION_VARIABLE, "0000000"),
+    (DATASTORE_IMAGE_VARIABLE, "dragonfly:test"),
+    (OWNED_VARIABLE, OWNED_VALUE),
+];
 
 fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
     let map: HashMap<String, String> = pairs
@@ -22,15 +34,30 @@ fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
 
 #[test]
 fn test_an_absent_profile_is_the_rig() {
-    let (profile, target) = admitted(&env_of(&[])).expect("the rig needs no variables");
+    let (profile, target, _provenance) =
+        admitted(&env_of(&DESCRIBED)).expect("the rig needs no profile variable");
     assert_eq!(profile, Profile::Rig);
     assert_eq!(target, Target::Rig);
 }
 
 #[test]
+fn test_a_run_that_cannot_describe_itself_is_refused_before_its_profile_resolves() {
+    // The rig needs no profile variable and still needs provenance: a result
+    // file nobody can date or attribute grades nothing, whatever it ran
+    // against. Refused in the preamble, so no datastore is opened.
+    let refused = admitted(&env_of(&[])).expect_err("an undescribed run refuses");
+    assert!(
+        matches!(refused, Error::VariableUnset { variable } if variable == REVISION_VARIABLE),
+        "got {refused}"
+    );
+}
+
+#[test]
 fn test_a_named_profile_is_admitted_through_its_own_checks() {
-    let refused = admitted(&env_of(&[(PROFILE_VARIABLE, "prod")]))
-        .expect_err("prod without its acknowledgement refuses");
+    let mut environment = DESCRIBED.to_vec();
+    environment.push((PROFILE_VARIABLE, "prod"));
+    let refused =
+        admitted(&env_of(&environment)).expect_err("prod without its acknowledgement refuses");
     assert!(
         matches!(refused, Error::AcknowledgementMissing { .. }),
         "got {refused}"
@@ -53,7 +80,7 @@ fn test_the_lanes_error_is_reported_before_the_sweeps() {
 
 #[test]
 fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
-    let mut report = Report::new(Lane::Lease, Profile::Rig);
+    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
     report.fixture.created = 3;
 
     let refused = finish(
@@ -69,7 +96,7 @@ fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
 
 #[test]
 fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
-    let mut report = Report::new(Lane::Outbound, Profile::Rig);
+    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
     report.fixture.created = 200;
     report.fixture.swept = 200;
     let scratch = std::env::temp_dir().join(format!("afd-bench-finish-{}", std::process::id()));

@@ -14,7 +14,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
     .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
-/// Both queue reporters render every Redis failure kind without panicking.
+/// Both queue reporters render every Dragonfly failure kind without panicking.
 ///
 /// Thin, and deliberately so. These are `tracing::warn!` calls with no
 /// return value, so what there is to prove is that each field expression
@@ -30,7 +30,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
 fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str> {
     let runner = runner_id()?;
 
-    for (label, error) in afd_redis::error::one_of_each_kind() {
+    for (label, error) in afd_dragonfly::error::one_of_each_kind() {
         assert!(
             !error.to_string().is_empty(),
             "{label} renders to something a reader can act on"

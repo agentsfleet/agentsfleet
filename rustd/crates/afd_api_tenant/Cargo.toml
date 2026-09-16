@@ -13,6 +13,11 @@ categories.workspace = true
 
 [features]
 test-util = [
+  # `handler/fleet/message/tests.rs` builds its thread rows with
+  # `EventDetailRow::fixture`, which is `#[cfg(feature = "test-util")]` on
+  # afd_events. Without this forward the lib test does not COMPILE, which the
+  # unit lane reads as a code fault rather than as a missing feature edge.
+  "afd_events/test-util",
   "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
   "afd_library/test-util",

@@ -337,7 +337,7 @@ pub fn pathsOverlap(a: []const u8, b: []const u8) bool {
 }
 
 /// True when `parent` contains `child` as a directory subtree.
-pub fn containsPath(parent: []const u8, child: []const u8) bool {
+fn containsPath(parent: []const u8, child: []const u8) bool {
     if (child.len <= parent.len) return false;
     if (!std.mem.startsWith(u8, child, parent)) return false;
     return child[parent.len] == '/';

@@ -39,7 +39,7 @@ async fn main() -> ExitCode {
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
     let env = cli::process_env();
-    let (profile, _target) = cli::admitted(&env)?;
+    let (profile, _target, provenance) = cli::admitted(&env)?;
     let parameters = outbound::Parameters {
         jobs: number(&env, Parameter::Jobs.name(), DEFAULT_JOBS)?,
         slow_fraction: fraction(&env, SLOW_FRACTION_VARIABLE, DEFAULT_SLOW_FRACTION)?,
@@ -56,7 +56,7 @@ async fn measure() -> Result<String> {
     let prefix = RunPrefix::mint();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = outbound::run(profile, parameters, &stores, &prefix).await;
+    let measured = outbound::run(profile, provenance, parameters, &stores, &prefix).await;
     let swept = sweep::outbound_stream(&stores.queue, &prefix).await;
     cli::finish(Lane::Outbound, profile, measured, swept)
 }

@@ -20,7 +20,16 @@ mod counters_statement;
 #[path = "fleet_event_writers.rs"]
 mod fleet_event_writers;
 
+#[path = "integration_admission_prototype.rs"]
+mod integration_admission_prototype;
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
+#[path = "integration_budgets.rs"]
+mod integration_budgets;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_retry.rs"]
+mod integration_steer_retry;
+
+#[path = "error_surface.rs"]
+mod error_surface;

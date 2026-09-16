@@ -40,10 +40,10 @@
 //!
 //! # Why a map behind a lock, and not a lock-free slot table
 //!
-//! `metrics_runner.zig` is a fixed array of slots with a compare-and-swap
-//! claim, a readiness flag, a bounded spin for a slot another thread is still
-//! initialising, and a truncated `[48]u8` copy of each identifier — because it
-//! has no allocator at runtime and must not block a request path.
+//! A lock-free slot table is what this would be without an allocator: a fixed
+//! array, a compare-and-swap claim, a readiness flag, a bounded spin for a slot
+//! another thread is still initialising, and a truncated fixed-width copy of
+//! each identifier.
 //!
 //! None of that buys anything here. The write path takes a read lock and
 //! touches atomics; only a runner's FIRST record takes the write lock, and a
@@ -51,9 +51,11 @@
 //! spin to bound because there is no half-initialised state to wait on, and no
 //! identifier truncation because the key owns its bytes.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
+
+use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 
 /// The `runner_id` value every runner past the slot table is attributed under.
 ///
@@ -88,8 +90,8 @@ const NEVER_HEARD_FROM: i64 = 0;
 /// The readings one series holds.
 ///
 /// Atomics rather than a lock, so publishing never blocks another publisher —
-/// the map's lock is taken for LOOKUP, and released before anything is
-/// written.
+/// the map is consulted for LOOKUP, and the shard it locked is released
+/// before anything is written.
 ///
 /// # Why there are no counts here
 ///
@@ -122,10 +124,25 @@ struct Counters {
 pub struct RunnerMetrics {
     /// One entry per runner, up to [`MAX_SERIES`].
     ///
-    /// Behind an `Arc` so a publisher can drop the map's lock before it
-    /// writes — which is what keeps a slow publisher from blocking a fast one,
-    /// and what makes the write path lock-free in the common case.
-    series: RwLock<HashMap<Box<str>, Arc<Counters>>>,
+    /// Behind an `Arc` so a publisher can drop the shard it looked up in
+    /// before it writes — which is what keeps a slow publisher from blocking a
+    /// fast one, and what makes the write path lock-free in the common case.
+    ///
+    /// Sharded rather than one map behind one lock: every lease poll, beat and
+    /// release looks a runner up here, so the table is read from every request
+    /// task in the process at once, and admitting a new runner took a lock
+    /// over the WHOLE table to insert one key. Nothing is ever removed, which
+    /// is why [`RunnerMetrics::admitted`] can stand in for its length.
+    series: DashMap<Box<str>, Arc<Counters>>,
+    /// How many series have been handed out.
+    ///
+    /// Kept beside the table rather than read off it: the cap has to hold
+    /// across shards, and a sharded map's length is a walk over all of them
+    /// that is not atomic against an insert into one — two threads at the last
+    /// seat would both find room. A single atomic is what decides that seat.
+    /// Nothing is ever removed from the table, so this number and its length
+    /// are the same number.
+    admitted: AtomicUsize,
     /// How many records the overflow absorbed.
     ///
     /// Surfaced explicitly, because an operator seeing overflow needs to know
@@ -145,7 +162,8 @@ impl RunnerMetrics {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            series: RwLock::new(HashMap::new()),
+            series: DashMap::new(),
+            admitted: AtomicUsize::new(0),
             overflowed: AtomicU64::new(0),
         }
     }
@@ -201,7 +219,7 @@ impl RunnerMetrics {
     /// for and the reason this is public.
     #[must_use]
     pub fn series_count(&self) -> usize {
-        self.series.read().map_or(0, |series| series.len())
+        self.series.len()
     }
 
     /// The `runner_id` label value this runner's measurements are recorded
@@ -226,9 +244,7 @@ impl RunnerMetrics {
 
     /// Whether the table could still admit a runner it has not seen.
     fn has_room(&self) -> bool {
-        self.series
-            .read()
-            .is_ok_and(|series| series.len() < MAX_SERIES)
+        self.admitted.load(Ordering::Relaxed) < MAX_SERIES
     }
 
     /// What every admitted runner was last heard from at, in seconds.
@@ -267,20 +283,25 @@ impl RunnerMetrics {
     }
 
     /// One reading per admitted runner, for those that have one.
+    ///
+    /// The walk locks one shard at a time rather than the whole table, so a
+    /// runner admitted while it runs may land on either side of it. That is
+    /// the right trade for a gauge: a collection samples a moving deployment
+    /// either way, the next one is seconds later, and the alternative is
+    /// holding every publisher still so that one snapshot agrees with itself.
+    /// The closure reads atomics and never touches the table, which is what
+    /// keeps the shard this holds from deadlocking against itself.
     fn readings<F>(&self, read: F) -> Vec<crate::metrics::instrument::Reading>
     where
         F: Fn(&Counters) -> Option<u64>,
     {
-        let Ok(series) = self.series.read() else {
-            return Vec::new();
-        };
-        series
+        self.series
             .iter()
-            .filter_map(|(runner_id, counters)| {
-                read(counters).map(|value| crate::metrics::instrument::Reading {
+            .filter_map(|series| {
+                read(series.value()).map(|value| crate::metrics::instrument::Reading {
                     attributes: vec![opentelemetry::KeyValue::new(
                         crate::semconv::LABEL_RUNNER_ID,
-                        runner_id.to_string(),
+                        series.key().to_string(),
                     )],
                     value,
                 })
@@ -296,27 +317,45 @@ impl RunnerMetrics {
 
     /// This runner's counters, if it already has a series.
     fn existing(&self, runner_id: &str) -> Option<Arc<Counters>> {
-        self.series.read().ok()?.get(runner_id).map(Arc::clone)
+        self.series.get(runner_id).map(|series| Arc::clone(&series))
     }
 
     /// Gives `runner_id` a series, if the table has room.
     ///
-    /// `None` is a full table, which is the overflow path. The capacity is
-    /// checked under the WRITE lock, so two threads racing a new runner cannot
-    /// both find room for the last slot.
+    /// `None` is a full table, which is the overflow path. The entry holds
+    /// this runner's shard across the look and the insert, so two threads
+    /// racing the SAME new runner produce one series; the seat taken below is
+    /// what stops two threads racing DIFFERENT new runners from both taking
+    /// the last one.
     fn admit_new(&self, runner_id: &str) -> Option<Arc<Counters>> {
-        let mut series = self.series.write().ok()?;
-        // Re-checked under the write lock: another thread may have admitted
-        // this very runner between the read above and this line.
-        if let Some(counters) = series.get(runner_id) {
-            return Some(Arc::clone(counters));
+        match self.series.entry(Box::from(runner_id)) {
+            // Another thread admitted this very runner between the lookup in
+            // `admit` and this line.
+            Entry::Occupied(seated) => Some(Arc::clone(seated.get())),
+            Entry::Vacant(seat) => {
+                // Claimed BEFORE the insert: a claim that loses its race is
+                // simply not made, and nothing is left in the table to undo.
+                self.take_a_seat()?;
+                let counters = Arc::new(Counters::default());
+                seat.insert(Arc::clone(&counters));
+                Some(counters)
+            }
         }
-        if series.len() >= MAX_SERIES {
-            return None;
-        }
-        let counters = Arc::new(Counters::default());
-        series.insert(runner_id.into(), Arc::clone(&counters));
-        Some(counters)
+    }
+
+    /// Claims one of the table's [`MAX_SERIES`] seats, or `None` when they are
+    /// all taken.
+    ///
+    /// The compare-and-swap IS the cap. Reading a length and then inserting
+    /// cannot be, on a table whose length is a walk over shards that an insert
+    /// into any one of them can change underneath it.
+    fn take_a_seat(&self) -> Option<()> {
+        self.admitted
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |taken| {
+                (taken < MAX_SERIES).then_some(taken + 1)
+            })
+            .ok()
+            .map(|_previous| ())
     }
 }
 

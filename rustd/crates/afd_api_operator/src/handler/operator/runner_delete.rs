@@ -8,7 +8,7 @@
 //!
 //! Not tenant-scoped, exactly as the patch verb: the trusted fleet's runners
 //! carry no tenant, so a tenant predicate would match nothing, and the scope
-//! rung is the whole authorization. `runner_delete.zig` draws the same lines.
+//! rung is the whole authorization.
 
 use std::sync::Arc;
 

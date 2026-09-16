@@ -1,4 +1,4 @@
-//! Readiness-index recovery over real fleet rows and Redis streams.
+//! Readiness-index recovery over real fleet rows and Dragonfly streams.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"
@@ -7,14 +7,14 @@
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::{FleetStreams, ReadyIndex};
+use afd_dragonfly::{FleetStreams, Partition, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
 use crate::support::connect_redis;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -41,18 +41,26 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
         "at least the fixture's deliverable fleet is re-marked"
     );
 
-    let marked = ReadyIndex::new(queue.clone())
-        .peek(100)
+    // Each fleet is looked for in ITS partition: the marks are spread by
+    // hash, and a sample of one partition says nothing about a fleet in
+    // another.
+    let index = ReadyIndex::new(queue.clone());
+    let deliverable = index
+        .peek(Partition::of(&fixture.deliverable), 100)
         .await
         .expect("the readiness index is readable");
     assert!(
-        marked
+        deliverable
             .iter()
             .any(|ready| ready.fleet_id == fixture.deliverable),
         "a lost readiness hint is reconstructed from the stream"
     );
+    let empty = index
+        .peek(Partition::of(&fixture.empty), 100)
+        .await
+        .expect("the readiness index is readable");
     assert!(
-        marked.iter().all(|ready| ready.fleet_id != fixture.empty),
+        empty.iter().all(|ready| ready.fleet_id != fixture.empty),
         "an empty stream does not create a false readiness hint"
     );
 

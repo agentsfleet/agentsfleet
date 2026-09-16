@@ -45,12 +45,14 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_redis::{FleetStreams, ReadyIndex};
+use afd_dragonfly::ReadyIndex;
 use afd_runner::Runners;
+use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e_db::scenario_database;
+use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_seed::{
     DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_provider_key,
     seed_wallet,
@@ -61,11 +63,11 @@ use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
+/// Where the lane publishes the TLS Dragonfly it brought up.
+const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
-/// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
+/// Where the lane extracted the Dragonfly certificate authority to.
+const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
 ///
@@ -110,13 +112,13 @@ pub(crate) const ACTOR: &str = "fixture:operator";
 
 /// The type every seeded event carries.
 ///
-/// `chat`, not the `steer` the store suites next door use. `EventType::parse`
-/// is a CLOSED set and the pull path ends any delivery it cannot name — those
+/// `Chat`, not the `steer` the store suites next door spell. `EventType` is a
+/// CLOSED set and the pull path ends any delivery it cannot name — those
 /// suites call `Leases::select` directly and never reach that check, so their
 /// spelling has never had to be one the daemon executes. A §7 scenario does
-/// reach it, and an unsupported type is answered as no-work, which is correct
-/// behaviour and a fixture defect here.
-pub(crate) const EVENT_TYPE: &str = "chat";
+/// reach it, and the ledger this seed admits through takes the type itself,
+/// so a scenario cannot spell one the daemon would end.
+pub(crate) const EVENT_TYPE: EventType = EventType::Chat;
 
 /// The body every seeded event carries.
 pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
@@ -128,7 +130,7 @@ fn lane(knob: &str) -> String {
     })
 }
 
-/// An environment pointing the daemon at `database` and the lane's Redis, on an
+/// An environment pointing the daemon at `database` and the lane's Dragonfly, on an
 /// ephemeral port.
 ///
 /// The database is a parameter rather than the lane knob: each scenario boots
@@ -139,8 +141,11 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
-            ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
-            ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
+            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
+            (
+                "DRAGONFLY_TLS_CA_CERT_FILE",
+                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
+            ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
@@ -157,16 +162,19 @@ fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     )
 }
 
-/// The lane's Redis, as a configuration a second client can be built from.
+/// The lane's Dragonfly, as a configuration a second client can be built from.
 ///
 /// The activity suite needs a SUBSCRIBER alongside the daemon's own connection,
-/// and `Booted` hands out a `Redis` rather than the config it was opened with —
+/// and `Booted` hands out a `Dragonfly` rather than the config it was opened with —
 /// so the knobs are read again here rather than reached back through the
 /// daemon. Same three values `daemon_environment` passes it, which is what
 /// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn redis_config() -> afd_redis::RedisConfig {
-    afd_redis::RedisConfig::from_url(afd_redis::RedisRole::Default, lane(REDIS_LANE_KNOB))
-        .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
+pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
+    afd_dragonfly::DragonflyConfig::from_url(
+        afd_dragonfly::DragonflyRole::Default,
+        lane(DRAGONFLY_LANE_KNOB),
+    )
+    .with_ca_cert_file(std::env::var(DRAGONFLY_CA_LANE_KNOB).ok().map(Into::into))
 }
 
 /// A fleet, workspace and tenant no other scenario in this lane will name.
@@ -197,7 +205,9 @@ pub(crate) struct Scenario {
     pub(crate) workspace: String,
     /// Its billing tenant.
     pub(crate) tenant: String,
-    /// The entry id the append produced.
+    /// The ledger's logical id for the seeded event — what the lease, the
+    /// report and every row spell it as. NOT the stream entry id: that is the
+    /// receipt, and one logical event can have had two of them.
     pub(crate) event_id: String,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
@@ -247,7 +257,7 @@ pub(crate) async fn scenario_with_provider(
         supervisor,
     )
     .await
-    .expect("the lane's Postgres and Redis are up");
+    .expect("the lane's Postgres and Dragonfly are up");
     let base = format!("http://{}", booted.address);
     let now = afd_core::clock::now();
 
@@ -266,7 +276,7 @@ pub(crate) async fn scenario_with_provider(
         .await
         .expect("enrolment must succeed");
 
-    let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE, now).await;
+    let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
 
     Scenario {
         base,
@@ -283,9 +293,14 @@ pub(crate) async fn scenario_with_provider(
 }
 
 impl Scenario {
-    /// Appends another event under this scenario's ready fleet.
-    pub(crate) async fn enqueue_event(&self, event_type: &str) -> String {
-        enqueue(
+    /// Admits another event under this scenario's ready fleet.
+    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> String {
+        enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
+    }
+
+    /// Puts an event of a type this daemon cannot name on the fleet's stream.
+    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> String {
+        enqueue_unsupported(
             &self.booted,
             &self.fleet,
             &self.workspace,
@@ -325,45 +340,4 @@ impl Scenario {
         // Nothing to drop: the scenario ran in the lane's own database, and its
         // rows are keyed by identifiers no other scenario can name.
     }
-}
-
-/// Puts one event on the fleet's stream and marks the fleet ready.
-///
-/// Both halves: ingress appends and marks in one path, so a mark with no entry
-/// is a state the daemon never produces and a fixture that made one would be
-/// testing a shape nothing ships.
-async fn enqueue(
-    booted: &Booted,
-    fleet: &str,
-    workspace: &str,
-    event_type: &str,
-    now: UnixMillis,
-) -> String {
-    let streams = FleetStreams::new(booted.queue.clone());
-    streams
-        .ensure_group(fleet)
-        .await
-        .expect("the consumer group must exist before a read");
-    let created = now.as_millis().to_string();
-    let id = streams
-        .append(
-            fleet,
-            &[
-                ("type", event_type),
-                ("actor", ACTOR),
-                ("workspace_id", workspace),
-                ("request", REQUEST_JSON),
-                ("created_at", &created),
-            ],
-        )
-        .await
-        .expect("the event must append");
-    // The mark's token is the fleet id, as every producer in this workspace
-    // spells it: `clear_if_unchanged` compares it, so a scenario that marked
-    // under a different value could not clear its own entry.
-    ReadyIndex::new(booted.queue.clone())
-        .mark(fleet, fleet)
-        .await
-        .expect("the readiness mark must land");
-    id.as_str().to_owned()
 }

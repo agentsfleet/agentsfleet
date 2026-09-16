@@ -15,7 +15,7 @@
 
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::{Appended, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// Everything the signed-ingress routes act through.
 pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
@@ -95,16 +95,16 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         event: &str,
     ) -> impl Future<Output = IngressResult<Fanout>> + Send;
 
-    /// Appends one verified delivery, at most once however often it arrives.
+    /// Admits one verified delivery, at most once however often it arrives.
     ///
     /// # Errors
-    /// Reports a queue that would not take the append.
+    /// Reports a database that would not record the acceptance.
     fn deliver(
         &self,
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> impl Future<Output = IngressResult<Appended>> + Send;
+    ) -> impl Future<Output = IngressResult<Admitted>> + Send;
 }
 
 /// The production ingress answers all three directly.
@@ -162,7 +162,7 @@ impl WebhookIngress for Ingress {
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> impl Future<Output = IngressResult<Appended>> + Send {
+    ) -> impl Future<Output = IngressResult<Admitted>> + Send {
         Self::deliver(self, surface, binding, delivery)
     }
 }
@@ -188,8 +188,8 @@ mod tests {
     use afd_crypto::entropy::Entropy;
     use afd_crypto::secret::Kek;
     use afd_db::{Db, DbRole, PoolConfig};
+    use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
     use afd_ingress::{Binding, Delivery, Ingress, Surface};
-    use afd_redis::{Redis, RedisConfig, RedisRole};
     use afd_vault::Vault;
 
     /// A Postgres nobody is listening on. Port 1 is reserved and unbound, so an
@@ -215,8 +215,8 @@ mod tests {
         let pool = PoolConfig::resolve(&environment, DbRole::Api)
             .expect("the fixture connection string is well formed");
         let database = Db::unreachable(&pool);
-        let queue = Redis::unreachable(
-            &RedisConfig::from_url(RedisRole::Default, NOWHERE_QUEUE.to_owned())
+        let queue = Dragonfly::unreachable(
+            &DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
                 .with_request_timeout(std::time::Duration::from_millis(250)),
         )
         .expect("a lazy manager opens no socket, so it cannot fail to open one");
@@ -225,7 +225,8 @@ mod tests {
             Arc::new(Kek::from_bytes([7u8; 32])),
             Entropy::new(),
         );
-        Ingress::new(database, vault, queue)
+        let admissions = afd_admission::Admissions::for_tests(database.clone(), queue);
+        Ingress::new(database, vault, admissions)
     }
 
     /// Whether a reader refused.

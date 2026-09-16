@@ -37,6 +37,7 @@
 //! That is precisely the property the two flags protected — the half-dead-node
 //! window — with one less piece of shared mutable state to keep consistent.
 
+use crate::serve::drain::{DRAIN_TIMEOUT, Drain, Settled};
 use crate::supervisor::{ShutdownReport, Supervisor};
 
 /// Why the daemon stopped serving.
@@ -61,6 +62,8 @@ pub struct Outcome {
     pub cause: StopCause,
     /// What the teardown of the background fleet did.
     pub shutdown: ShutdownReport,
+    /// What the drain of in-flight requests did, before any of it was cancelled.
+    pub settled: Settled,
 }
 
 impl Outcome {
@@ -70,7 +73,7 @@ impl Outcome {
     /// clean run, and neither is a signalled stop that left a task behind.
     #[must_use]
     pub fn is_clean(&self) -> bool {
-        self.cause == StopCause::Signalled && self.shutdown.is_clean()
+        self.cause == StopCause::Signalled && self.shutdown.is_clean() && self.settled.is_clean()
     }
 }
 
@@ -78,13 +81,33 @@ impl Outcome {
 #[derive(Debug)]
 pub struct Daemon {
     supervisor: Supervisor,
+    /// The accept side's stop signal and in-flight count, when there is a server
+    /// to drain. `None` for a daemon with no accept loop — the background-only
+    /// shapes the tests build — where draining nothing is the correct no-op
+    /// rather than a special case every caller has to remember.
+    drain: Option<Drain>,
 }
 
 impl Daemon {
     /// A daemon supervising `supervisor`'s tasks.
     #[must_use]
     pub const fn new(supervisor: Supervisor) -> Self {
-        Self { supervisor }
+        Self {
+            supervisor,
+            drain: None,
+        }
+    }
+
+    /// Drain `drain`'s in-flight requests before cancelling anything.
+    ///
+    /// Separate from [`Self::new`] because a daemon without an accept loop is a
+    /// real shape — every background-only test builds one — and threading an
+    /// `Option` through the constructor would make the common case read like the
+    /// exception.
+    #[must_use]
+    pub fn draining(mut self, drain: Drain) -> Self {
+        self.drain = Some(drain);
+        self
     }
 
     /// The tasks this daemon supervises, before it runs.
@@ -103,11 +126,19 @@ impl Daemon {
     /// The ordering is the contract, and it is stated once, here:
     ///
     /// 1. Await whichever of server or signal finishes first.
-    /// 2. Cancel every supervised task and JOIN it.
-    /// 3. Only then may the caller drop the pools those tasks borrowed.
+    /// 2. Stop accepting, and wait — bounded — for in-flight requests to finish.
+    /// 3. Cancel every supervised task and JOIN it.
+    /// 4. Only then may the caller drop the pools those tasks borrowed.
     ///
-    /// Step 2 runs whatever step 1 decided, which is the property this function
-    /// exists to hold. Step 3 belongs to the caller and is enforced by
+    /// Step 2 is why a deployment costs a caller nothing. Without it, step 3
+    /// cancels the token every connection selects on, and a request halfway
+    /// through its work has its future dropped mid-await — the caller sees a
+    /// closed socket with no status and cannot tell a request that never ran
+    /// from one whose answer it never got. The bound is what keeps step 2 from
+    /// becoming a deployment that never finishes (`serve::drain`).
+    ///
+    /// Steps 2 and 3 run whatever step 1 decided, which is the property this
+    /// function exists to hold. Step 4 belongs to the caller and is enforced by
     /// [`Supervisor::shutdown`] consuming the supervisor.
     pub async fn run<S, F>(self, server: S, signal: F) -> Outcome
     where
@@ -117,6 +148,13 @@ impl Daemon {
         let cause = Self::serve_until_stopped(server, signal).await;
         tracing::info!(cause = ?cause, event = "serving_ended",
         "serving ended; stopping background tasks");
+
+        // Before the supervisor, never after: its token is what cuts a
+        // connection, so anything still in flight when it fires is lost.
+        let settled = match self.drain.as_ref() {
+            Some(drain) => drain.settle(DRAIN_TIMEOUT).await,
+            None => Settled::EMPTY,
+        };
 
         // Unconditional. Not in a branch, not after a `?`.
         let shutdown = self.supervisor.shutdown().await;
@@ -136,7 +174,11 @@ impl Daemon {
             );
         }
 
-        Outcome { cause, shutdown }
+        Outcome {
+            cause,
+            shutdown,
+            settled,
+        }
     }
 
     /// Awaits whichever of the two finishes first, and names which.

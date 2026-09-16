@@ -37,6 +37,14 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::SignupFailure::ALL.len(),
         ),
         (
+            fleet::ADMISSIONS_TOTAL.wire_name(),
+            fleet_labels::AdmissionOutcome::ALL.len(),
+        ),
+        (
+            fleet::ADMISSION_REPLAYS_TOTAL.wire_name(),
+            fleet_labels::ReplayOutcome::ALL.len(),
+        ),
+        (
             fleet::REPAIR_PROVIDER_RESULTS_TOTAL.wire_name(),
             fleet_labels::ProviderResult::ALL.len(),
         ),
@@ -148,6 +156,8 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::Correlation),
         set!(crate::metrics::label::fleet::SyntheticEvent),
         set!(crate::metrics::label::fleet::VerifierRun),
+        set!(crate::metrics::label::fleet::AdmissionOutcome),
+        set!(crate::metrics::label::fleet::ReplayOutcome),
         set!(crate::metrics::label::http::TraceSuppression),
         set!(crate::metrics::label::http::Signal),
         set!(crate::metrics::label::http::DiscardReason),

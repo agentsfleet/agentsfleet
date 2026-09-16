@@ -43,7 +43,7 @@ pub use self::knobs::{
 
 use self::knobs::{
     API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE,
-    WHY_PLATFORM_ADMIN, WHY_REDIS, WHY_SESSION_PEPPER,
+    WHY_DRAGONFLY, WHY_PLATFORM_ADMIN, WHY_SESSION_PEPPER,
 };
 
 use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
@@ -53,7 +53,7 @@ use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};
@@ -76,13 +76,13 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         PoolConfig::resolve(env, DbRole::Api),
     );
 
-    let redis_knob = RedisRole::Api.url_knob();
+    let dragonfly_knob = DragonflyRole::Api.url_knob();
     let redis = classify(
         &mut faults,
-        is_set(env, redis_knob),
-        redis_knob,
-        WHY_REDIS,
-        RedisConfig::resolve(env, RedisRole::Api),
+        is_set(env, dragonfly_knob),
+        dragonfly_knob,
+        WHY_DRAGONFLY,
+        DragonflyConfig::resolve(env, DragonflyRole::Api),
     );
 
     let kek = read_kek(env, &mut faults);

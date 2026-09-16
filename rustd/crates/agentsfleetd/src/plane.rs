@@ -22,6 +22,7 @@ use std::sync::Arc;
 // things called `Models` in one file is how a reader ends up believing the
 // tenant surface can mutate the catalogue.
 use afd_admin::{Models as AdminModels, PlatformKeys};
+use afd_admission::Admissions;
 use afd_api::Planes;
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::{Inbox, IntegrationGrants};
@@ -46,8 +47,8 @@ use afd_tenant::preference::Preferences;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
+use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
-use afd_redis::Redis;
 use afd_sse::Live;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
@@ -179,6 +180,10 @@ impl ServingPlane {
         // building a second would mean two values that could be pointed at
         // different keys by a later edit.
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
+        // ONE ledger, shared by every producer. A second value would be a
+        // second place a deployment could point at a different pool, and the
+        // whole point of the ledger is that acceptance has one home.
+        let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store, Entropy::new()),
@@ -207,10 +212,10 @@ impl ServingPlane {
             providers: providers.clone(),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
+            approvals: Inbox::new(database.clone(), queue.clone(), admissions.clone()),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
-            steering: afd_events::Steer::new(queue.clone()),
+            steering: afd_events::Steer::new(admissions.clone()),
             // The SAME key every other sealing store takes, so the signing
             // secret a webhook is checked against opens under the key the
             // workspace surface sealed it with. A second `SecretVault` value
@@ -220,7 +225,7 @@ impl ServingPlane {
             ingress: Ingress::new(
                 database.clone(),
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
-                queue.clone(),
+                admissions.clone(),
             ),
             // The destination is derived from the API url this deployment
             // already knows, so a schedule registered upstream calls back to
@@ -241,7 +246,7 @@ impl ServingPlane {
                         schedule.api_base,
                     ),
                 ),
-                Fire::new(queue.clone()),
+                Fire::new(admissions),
                 Entropy::new(),
             ),
             connectors: connect_flow(&database, &kek, &queue, vendor_client),
@@ -249,7 +254,7 @@ impl ServingPlane {
             analytics,
             api_url: login.api_url,
             logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
+                afd_dragonfly::SessionStore::new(queue.clone()),
                 login.code_pepper,
                 Entropy::new(),
                 &login.app_url,
@@ -296,7 +301,7 @@ impl ServingPlane {
 fn connect_flow(
     database: &Db,
     kek: &Arc<Kek>,
-    queue: &Redis,
+    queue: &Dragonfly,
     vendor_client: reqwest::Client,
 ) -> afd_connector::Connectors {
     afd_connector::Connectors::new(

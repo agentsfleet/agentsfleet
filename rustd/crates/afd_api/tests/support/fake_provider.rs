@@ -1,6 +1,6 @@
 //! A FAKE provider token endpoint, on a loopback port.
 //!
-//! Named for what it is, beside `afd_redis/tests/support/fake_redis.rs`: this
+//! Named for what it is, beside `afd_dragonfly/tests/support/fake_redis.rs`: this
 //! serves a fixture's answers, and a reader who took it for a real vendor
 //! client would look here for the daemon's own exchange, which lives in
 //! `afd_connector::Exchange`.
