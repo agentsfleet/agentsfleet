@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::streams::ACKNOWLEDGED_HISTORY;
 use afd_dragonfly::{Dragonfly, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, Delivery};
 use afd_outbound::producer::Producer;
@@ -46,6 +47,12 @@ use support::{OUTBOUND_LANE, OutboundHarness};
 const PROVIDER: &str = "slack";
 const ANSWER: &str = "Aurora is healthy.";
 const EVENT_ID: &str = "1760000000001-0";
+/// The stem the trim proof numbers its answers off, so every entry it appends
+/// is its own logical event rather than one event appended many times.
+const EVENT_ID_STEM: &str = "1760000000002-";
+/// Entries appended ABOVE the retained bound, so the trim reaches its floor
+/// calculation instead of returning early on a short stream.
+const ABOVE_THE_BOUND: usize = 50;
 /// A cutoff every seeded row is older than, so a scan sees all of them.
 const AFTER_EVERYTHING: i64 = SEEDED_AT + 1;
 /// More rows than this test seeds, so a limit never decides an assertion.
@@ -184,44 +191,61 @@ async fn an_empty_answer_owes_nothing() {
     assert!(owed.is_empty(), "an empty answer wrote a row: {owed:?}");
 }
 
-/// Trimming the outbound stream never removes an answer the group still owes.
+/// Trimming the outbound stream never removes an answer the group has not
+/// taken, even with far more history on it than the bound retains.
 ///
-/// The queue's own trim is what keeps the acknowledged history bounded, and it
-/// runs on the delivery path after every acknowledgement — so an entry nobody
-/// has taken yet must survive it. A trim that removed the backlog would drop
-/// answers a destination is still owed and no scan would ever find them again:
-/// the obligation row is repairable, the stream entry is not.
+/// The entry count matters and is the whole test. `trim_history` returns
+/// early while the stream is at or under [`ACKNOWLEDGED_HISTORY`], so a stream
+/// with a handful of entries never reaches the floor calculation at all — it
+/// would answer "removed nothing" for a reason that has nothing to do with
+/// protecting anything. Past the bound, the floor is the MINIMUM of the
+/// group's last-delivered id, its oldest pending entry and the history floor,
+/// and a group that has taken nothing pins that at the very start of the
+/// stream.
+///
+/// What a regression here costs: an answer trimmed before its destination took
+/// it is gone. The obligation row is repairable by the producer's own scan;
+/// the stream entry is not.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
 
-    harness
-        .queue
-        .enqueue(OutboundJob {
-            provider: PROVIDER,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
-            event_id: EVENT_ID,
-            answer: ANSWER,
-        })
-        .await
-        .expect("the lane's queue takes an append");
+    let appended = ACKNOWLEDGED_HISTORY + ABOVE_THE_BOUND;
+    for nth in 0..appended {
+        let event_id = format!("{EVENT_ID_STEM}{nth}");
+        harness
+            .queue
+            .enqueue(OutboundJob {
+                provider: PROVIDER,
+                workspace_id: WORKSPACE,
+                fleet_id: FLEET,
+                event_id: &event_id,
+                answer: ANSWER,
+            })
+            .await
+            .expect("the lane's queue takes an append");
+    }
 
-    let before = harness.pending_count().await;
+    assert!(
+        appended > ACKNOWLEDGED_HISTORY,
+        "the stream must be OVER the bound, or the trim returns before it ever \
+         computes a floor and this proves nothing"
+    );
+
     let trimmed = harness
         .queue
         .trim()
         .await
         .expect("the stream answers a trim");
     assert_eq!(
-        harness.pending_count().await,
-        before,
-        "a trim must not touch the pending list: {trimmed:?}"
+        trimmed.removed, 0,
+        "an answer no consumer has taken was trimmed away: {trimmed:?}"
     );
-    assert!(
-        trimmed.retained >= 1,
-        "the entry nobody has taken must survive the trim: {trimmed:?}"
+    assert_eq!(
+        trimmed.retained,
+        u64::try_from(appended).expect("the appended count fits"),
+        "the trim must leave every untaken answer where it is: {trimmed:?}"
     );
 }
