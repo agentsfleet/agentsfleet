@@ -100,3 +100,58 @@ async fn a_clone_names_the_same_lanes() {
     token.cancel();
     second_holder.drain().await;
 }
+
+/// A delivery whose acknowledgement cannot be recorded is not retried here.
+///
+/// The destination already took the answer. What failed is the RECORD of it,
+/// so the entry stays pending and the next process delivers it a second time —
+/// which is why the whole path is at-least-once and why the destination's own
+/// thread, not this ledger, is what a person reads. Retrying the delivery on
+/// an ack failure would send the answer twice within one process for nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
+    let token = CancellationToken::new();
+    let poster = Gated::default();
+    // A queue handle that opens no socket: the poster still answers, so the
+    // delivery happens and only the acknowledgement can fail.
+    let config =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned());
+    let lanes = Lanes::new(
+        Posters {
+            slack: poster.clone(),
+        },
+        OutboundQueue::new(
+            Dragonfly::unreachable(&config).expect("a well-formed URL builds a handle"),
+        ),
+        no_ledger::no_ledger(),
+        token.clone(),
+    );
+
+    lanes
+        .dispatch(Box::new(OutboundDelivery {
+            id: EventId::of("1700000000002-0"),
+            provider: PROVIDER.to_owned(),
+            workspace_id: WORKSPACE.to_owned(),
+            fleet_id: FLEET_ID.to_owned(),
+            event_id: "unacknowledged-1".to_owned(),
+            answer: "the run finished".to_owned(),
+        }))
+        .await;
+
+    tokio::time::timeout(PATIENCE, async {
+        while poster.delivered().is_empty() {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await
+    .expect("the destination takes the answer even though the queue is gone");
+
+    assert_eq!(
+        poster.delivered(),
+        vec!["unacknowledged-1".to_owned()],
+        "a failed acknowledgement must not make this process deliver twice"
+    );
+
+    token.cancel();
+    lanes.drain().await;
+}
