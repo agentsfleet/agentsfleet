@@ -295,3 +295,25 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
         "only the finished delivery is acknowledged; the rest stay pending"
     );
 }
+
+/// Cloning names the SAME lanes, not a second set. A component that took a
+/// clone and opened its own lane map would deliver past the ceiling and
+/// acknowledge through a tracker nobody drains.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_clone_names_the_same_lanes() {
+    let server = HangingQueue::spawn().await;
+    let token = CancellationToken::new();
+    let (lanes, _poster) = lanes_against(&server, &token).await;
+    let second_holder = lanes.clone();
+
+    lanes.dispatch(job(FAST_WORKSPACE, 1)).await;
+    await_until("the answer dispatched through one holder to be acknowledged", || {
+        server.acks().len() == 1
+    })
+    .await;
+    // Read through the OTHER holder: one lane map, so both see the same work.
+    assert_eq!(second_holder.active(), lanes.active());
+
+    token.cancel();
+    second_holder.drain().await;
+}
