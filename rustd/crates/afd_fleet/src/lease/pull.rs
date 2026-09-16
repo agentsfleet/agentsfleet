@@ -40,8 +40,8 @@ use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
 use crate::error::Result;
-use crate::lease::admit::{Admission, Billed as Admitted, Refusal, Request, money_gates};
-use crate::lease::answer::{EVENT_REFUSED, no_work};
+use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates};
+use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
@@ -53,6 +53,7 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};
 
+mod refuse;
 mod step;
 
 use self::step::{AWAITING_APPROVAL, Step};
@@ -160,11 +161,23 @@ impl Plane {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
             return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
         };
-        let Some(installed) = self.leases.installed(&acquired.fleet_id).await? else {
-            return Ok(Step::Stop(no_work(
-                runner_id,
-                "the fleet stopped between selection and claim",
-            )?));
+        let installed = match self.leases.installed(&acquired.fleet_id).await {
+            Ok(Some(installed)) => installed,
+            Ok(None) => {
+                return Ok(Step::Stop(no_work(
+                    runner_id,
+                    "the fleet stopped between selection and claim",
+                )?));
+            }
+            // One fleet's unreadable document is that fleet's fault and not
+            // this runner's, which is the whole of `refuse_unreadable_config`.
+            Err(unreadable) if unreadable.is_config_permanent() => {
+                return self
+                    .refuse_unreadable_config(&acquired, runner_id, &unreadable, now)
+                    .await
+                    .map(Step::Stop);
+            }
+            Err(outage) => return Err(outage),
         };
 
         let received = self.leases.record_received(&acquired, now).await?;
@@ -322,71 +335,5 @@ impl Plane {
             )
             .await;
         Admission::of_gate(verdict)
-    }
-
-    /// A gate answer that ends the pass.
-    async fn stopped(
-        &self,
-        acquired: &Acquired,
-        stop: Admission,
-        runner_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Step<Admission2>> {
-        let answer = match stop {
-            Admission::Refuse(refusal) => {
-                self.refused(acquired, refusal.label, runner_id, refusal.detail, now)
-                    .await?
-            }
-            Admission::Retry(transient) => no_work(runner_id, transient.at)?,
-            Admission::Await(_waiting) => no_work(runner_id, AWAITING_APPROVAL)?,
-            // `of_gate` answers `None` for a pass, so this arm is the enum
-            // being exhaustive rather than a state that occurs.
-            Admission::Admit(_) => no_work(runner_id, "a passing gate cannot also stop")?,
-        };
-        Ok(Step::Stop(answer))
-    }
-
-    /// End the event, then answer no-work.
-    ///
-    /// The refusal is written before the answer. Whether a row MOVED decides
-    /// only the tail's closing bracket: an already-terminal row is a
-    /// redelivery whose earlier acknowledgement was lost, its watchers already
-    /// hold the ending, and the runner is told the same thing either way.
-    pub(super) async fn refused(
-        &self,
-        acquired: &Acquired,
-        label: &'static str,
-        runner_id: &Uuid7,
-        reason: &str,
-        now: UnixMillis,
-    ) -> Result<String> {
-        let ended = self
-            .leases
-            .block(
-                &acquired.fleet_id,
-                &acquired.event_id,
-                Refusal { label, detail: "" },
-                now,
-            )
-            .await?;
-        if let crate::lease::event::Ended::Now(closed) = ended {
-            self.leases.publish_completion(&closed).await;
-        }
-        self.leases
-            .acknowledge(&acquired.fleet_id, &acquired.receipt)
-            .await?;
-        let runner_id_field = runner_id.as_str();
-        let fleet_id_field = acquired.fleet_id.as_str();
-        let event_id_field = acquired.event_id.as_str();
-        tracing::warn!(
-            event = EVENT_REFUSED,
-            runner_id = runner_id_field,
-            fleet_id = fleet_id_field,
-            agentsfleet_event_id = event_id_field,
-            label,
-            reason,
-            "the event was ended at a gate"
-        );
-        no_work(runner_id, label)
     }
 }

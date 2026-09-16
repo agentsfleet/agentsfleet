@@ -103,6 +103,15 @@ pub mod label {
     /// `tenant_resolve_failed` on this row would go and look at billing.
     pub const EVENT_TYPE_UNSUPPORTED: &str = "event_type_unsupported";
 
+    /// The fleet's stored configuration cannot be read.
+    ///
+    /// A fleet author's mistake, like [`BINDING_UNENFORCEABLE`], and named
+    /// separately because the recovery differs: nothing is wrong with the
+    /// binding or the vault, the document itself will not parse. It is also
+    /// the one refusal an operator may see on a fleet they never edited — a
+    /// row written before a schema the parser has since tightened.
+    pub const CONFIG_UNREADABLE: &str = "config_unreadable";
+
     /// A write binding could not be turned into rules that bound anything.
     ///
     /// Also new, and also a fleet author's mistake rather than an operational
