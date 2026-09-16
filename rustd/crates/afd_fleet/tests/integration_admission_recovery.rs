@@ -80,19 +80,19 @@ use crate::support::Fixtures;
 /// no payload, because what it protects is the datastore's global row set and
 /// not anything held inside it. `tokio`'s rather than `std`'s because the guard
 /// is held across `.await`.
-static RECOVERY_LANE: Mutex<()> = Mutex::const_new(());
+pub(crate) static RECOVERY_LANE: Mutex<()> = Mutex::const_new(());
 
-const EVERY_FLEET: i64 = 4_096;
+pub(crate) const EVERY_FLEET: i64 = 4_096;
 
 /// How many rows a pass repairs or re-appends. Larger than anything admitted
 /// here.
-const EVERY_ROW: i64 = 256;
+pub(crate) const EVERY_ROW: i64 = 256;
 
 /// The grace a replay pass gives an in-flight admission to receipt itself.
 ///
 /// Zero: the rows deferred below were deferred a millisecond ago, and the
 /// production cutoff would skip every one of them.
-const NO_GRACE: Duration = Duration::ZERO;
+pub(crate) const NO_GRACE: Duration = Duration::ZERO;
 
 /// The actor and body every admission here carries.
 const ACTOR: &str = "webhook:recovery";

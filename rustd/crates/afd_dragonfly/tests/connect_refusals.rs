@@ -152,3 +152,38 @@ async fn test_a_dedicated_connection_to_nothing_is_refused_by_role() {
         );
     }
 }
+
+/// A TLS dial that fails WITHOUT naming a certificate is asked a second time,
+/// and still reports the port as unreachable.
+///
+/// The second question is not decoration. The cluster driver keeps only the
+/// last initial-connection error, so a trust failure can be displaced by a
+/// retry's timeout and a certificate the server will never present acceptably
+/// reads as a dead port. The re-dial recovers the discarded cause — and when
+/// there was no certificate fault to recover, as here, the caller must keep
+/// the answer it already had rather than inherit the diagnosis.
+///
+/// No certificate authority file: the client builds against the system roots,
+/// which is what makes the DIAL the thing that fails rather than the build.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_failed_tls_dial_is_diagnosed_and_still_reads_as_unreachable() {
+    let config = DragonflyConfig::from_url(DragonflyRole::Api, "rediss://127.0.0.1:1/".to_owned());
+    assert!(
+        config.is_tls(),
+        "a plain URL never asks the second question, so it would prove nothing here"
+    );
+
+    let error = tokio::time::timeout(REFUSAL_BUDGET, Dragonfly::connect(&config))
+        .await
+        .expect("a refused connection must fail fast, not hang — the re-dial is bounded too")
+        .expect_err("nothing listens there, so no connection can open");
+
+    assert!(
+        error.is_unavailable(),
+        "a dial that named no certificate must stay an outage: {error}"
+    );
+    assert!(
+        error.to_string().contains(DragonflyRole::Api.tag()),
+        "the failure must name the role: {error}"
+    );
+}
