@@ -17,7 +17,7 @@ use crate::support::RedisHarness;
 /// Dimension 3.1 — the round trip, and the identity claim inside it.
 ///
 /// The claim that matters is not that a message survives the trip: it is that
-/// the id Redis minted on append is the id the reader sees and acknowledges.
+/// the id Dragonfly minted on append is the id the reader sees and acknowledges.
 /// A second identifier anywhere in that chain is how an event gets processed
 /// twice under two names.
 #[tokio::test(flavor = "multi_thread")]
@@ -181,7 +181,7 @@ async fn test_a_vanished_group_is_reported_and_restored_where_delivery_stopped()
     cleanup(&harness, &[key]).await;
 }
 
-/// Deletes the keys a test made. The lane resets Redis between runs; this keeps
+/// Deletes the keys a test made. The lane resets Dragonfly between runs; this keeps
 /// one test's leftovers out of another's read inside a run.
 async fn cleanup(harness: &RedisHarness, keys: &[String]) {
     for key in keys {
@@ -203,7 +203,7 @@ async fn cleanup(harness: &RedisHarness, keys: &[String]) {
 /// Runs against a server that cannot answer it. `XGROUP CREATE … MKSTREAM` over
 /// an occupied key aborts Dragonfly v1.40.2 —
 /// `db_slice.cc:1176 Check failed: res.is_new`, through
-/// `CreateGroup -> OpCreate -> DbSlice::AddNew` — where Redis answers
+/// `CreateGroup -> OpCreate -> DbSlice::AddNew` — where Dragonfly answers
 /// `WRONGTYPE`. `FleetStreams::refuse_occupied_key` asks `TYPE` first and raises
 /// that `WRONGTYPE` itself, so the command never reaches the wire and this test
 /// asserts the report the caller actually receives.

@@ -27,7 +27,7 @@ impl FleetStreams {
     /// several fleets per poll and the runner long-polls client-side instead.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
+    /// Returns a command error, or an unavailable error when Dragonfly is gone. A
     /// vanished group is REPORTED, as a group-missing error, for the caller
     /// holding the ledgers to restore through [`FleetStreams::restore_group`]
     /// — see the module note on why this crate cannot pick the position.
@@ -92,7 +92,7 @@ impl FleetStreams {
     /// inclusive, so naming the receipt as both ends asks for exactly it.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
+    /// Returns a command error, or an unavailable error when Dragonfly is gone. A
     /// caller must read that as "unknown" and leave the row alone: re-appending
     /// on a stream that would not answer duplicates work it may still hold.
     pub async fn holds_entry(&self, fleet_id: &str, receipt: &EventId) -> Result<bool> {
@@ -133,7 +133,7 @@ impl FleetStreams {
     /// the ordinary answer for a healthy fleet.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
+    /// Returns a command error, or an unavailable error when Dragonfly is gone.
     pub async fn autoclaim(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XAUTOCLAIM);

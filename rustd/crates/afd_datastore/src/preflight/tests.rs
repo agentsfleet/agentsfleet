@@ -5,7 +5,7 @@ use redis::Value;
 
 use super::{eviction_in, field_of, knows_command};
 
-/// A Redis reply under `noeviction`, and a Dragonfly reply with the cache
+/// A Dragonfly reply under `noeviction`, and a Dragonfly reply with the cache
 /// switch off, both keep every key.
 ///
 /// `cache_mode:store` is the real spelling, measured on Dragonfly v1.40.2:

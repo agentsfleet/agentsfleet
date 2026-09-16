@@ -14,7 +14,7 @@
 //! script, and when the Zig copy is deleted the test goes with it, leaving this
 //! one as the source of truth rather than a fork nobody noticed.
 //!
-//! Redis evaluates a script body to completion against a single-threaded
+//! Dragonfly evaluates a script body to completion against a single-threaded
 //! server, so read-check-write inside `EVAL` has no window. The same sequence
 //! written as `GET` then `SET` from the client has one, and that window is
 //! exactly where two concurrent verifications both see `verification_pending`
@@ -71,7 +71,7 @@ const SESSION_KEY_GLOB: &str = "auth:session:*";
 
 /// How many keys one `SCAN` page asks for.
 ///
-/// A hint rather than a bound — Redis may answer with more, and
+/// A hint rather than a bound — Dragonfly may answer with more, and
 /// [`Redis::scan_keys`] takes whatever comes rather than sizing a buffer for
 /// it, which is the one place the Zig scan can fail on a page it did not
 /// expect.
@@ -163,7 +163,7 @@ impl SessionStatus {
 /// Field names and JSON shape match `auth/session_state.zig` exactly, because
 /// the Lua script reads them by name and both binaries write the same key. The
 /// hex-encoded fields are hex because Lua has neither bit operations nor crypto
-/// across the Redis versions this has to run on, so it compares them as text.
+/// across the Dragonfly versions this has to run on, so it compares them as text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionState {
     /// The session's own identifier.
@@ -260,7 +260,7 @@ pub fn session_key(session_id: &str) -> String {
     format!("{SESSION_KEY_PREFIX}{session_id}")
 }
 
-/// Sessions in Redis.
+/// Sessions in Dragonfly.
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     redis: Redis,

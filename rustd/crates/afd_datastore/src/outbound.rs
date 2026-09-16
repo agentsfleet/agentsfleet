@@ -157,7 +157,7 @@ pub fn outbound_consumer() -> String {
 
 /// One answer waiting to be delivered.
 ///
-/// Borrowed on the way in: the enqueue reads these and Redis owns them after,
+/// Borrowed on the way in: the enqueue reads these and Dragonfly owns them after,
 /// so nothing here needs to allocate a copy the caller already holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutboundJob<'a> {
@@ -245,7 +245,7 @@ impl OutboundQueue {
         }
     }
 
-    /// Queues one answer for delivery, returning the id Redis minted.
+    /// Queues one answer for delivery, returning the id Dragonfly minted.
     ///
     /// No `MAXLEN`, for the reason the fleet streams carry none: an append
     /// cannot know what the worker still owes. [`OutboundQueue::trim`] runs
@@ -253,7 +253,7 @@ impl OutboundQueue {
     ///
     /// # Errors
     /// Returns a command error when the append fails, a full error when the
-    /// datastore refuses to grow, and an unexpected-reply error when Redis
+    /// datastore refuses to grow, and an unexpected-reply error when Dragonfly
     /// answers with something that is not an id.
     pub async fn enqueue(&self, job: OutboundJob<'_>) -> Result<EventId> {
         let mut cmd = redis::cmd(CMD_XADD);

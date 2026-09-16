@@ -66,7 +66,7 @@ const CMD_SSUBSCRIBE: &str = "SSUBSCRIBE";
 /// The `INFO` section that carries both settings.
 const SECTION_MEMORY: &str = "memory";
 
-/// Redis's eviction policy, as `INFO memory` spells it, and the one value
+/// Dragonfly's eviction policy, as `INFO memory` spells it, and the one value
 /// under which nothing is evicted.
 const FIELD_MAXMEMORY_POLICY: &str = "maxmemory_policy";
 const POLICY_NO_EVICTION: &str = "noeviction";
@@ -197,7 +197,7 @@ pub async fn refuse_eviction(redis: &Redis) -> Result<()> {
 /// The eviction setting an `INFO memory` reply admits to, spelled
 /// `field=value` for the refusal, or `None` when the node keeps every key.
 ///
-/// A reply carrying neither field is a node that keeps every key: Redis
+/// A reply carrying neither field is a node that keeps every key: Dragonfly
 /// always reports its policy, and Dragonfly reports its cache switch, so the
 /// absence of both is a build that has no eviction to report rather than one
 /// hiding it.

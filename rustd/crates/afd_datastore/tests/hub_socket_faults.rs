@@ -1,6 +1,6 @@
 //! What the pub/sub pump does when its socket misbehaves.
 //!
-//! `integration_hub.rs` proves the hub recovers when Redis drops it and comes
+//! `integration_hub.rs` proves the hub recovers when Dragonfly drops it and comes
 //! back. These prove what happens on the way there, and on the paths where it
 //! does not come back: a first connection that is refused outright, a redial
 //! that keeps being refused, and a redial that SUCCEEDS onto a server which is
@@ -294,7 +294,7 @@ async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
     drop(first);
 }
 
-/// The last handle going away stops the pump and closes the Redis socket.
+/// The last handle going away stops the pump and closes the Dragonfly socket.
 ///
 /// This is Invariant C2's precondition — §7 cannot join a task that has no way
 /// to finish — and it is a claim about ownership, not about politeness. The

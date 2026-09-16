@@ -2,7 +2,7 @@
 //!
 //! # The entry id is a RECEIPT, not the event id
 //!
-//! `XADD … *` makes Redis mint the id, and that id addresses the ENTRY: it is
+//! `XADD … *` makes Dragonfly mint the id, and that id addresses the ENTRY: it is
 //! what `XACK` and a claim take. The event's identity is the admission
 //! ledger's logical id, which the producer writes into the entry's `event_id`
 //! field — and after a replay one logical event can have had two entries, so
@@ -142,13 +142,13 @@ pub fn fleet_activity_channel(fleet_id: &str) -> String {
     format!("fleet:{fleet_id}:activity")
 }
 
-/// A Redis stream entry id: the receipt an append answers with, and the only
+/// A Dragonfly stream entry id: the receipt an append answers with, and the only
 /// thing `XACK` and a claim accept.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(String);
 
 impl EventId {
-    /// The receipt as Redis spelled it, `{millis}-{sequence}`.
+    /// The receipt as Dragonfly spelled it, `{millis}-{sequence}`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -159,7 +159,7 @@ impl EventId {
     /// The report path needs this: the entry was acknowledged long after the
     /// poll that read it, by a different request, and what survives in between
     /// is the `fleet.runner_leases.receipt` text. Deliberately not a `From`
-    /// impl — a receipt is a thing Redis produced, and a blanket conversion
+    /// impl — a receipt is a thing Dragonfly produced, and a blanket conversion
     /// from `&str` would let any string in the program become one silently.
     #[must_use]
     pub fn of(stored: &str) -> Self {
@@ -183,7 +183,7 @@ pub struct FleetEvent {
     /// two differ. A reader reaching for `.id` and getting the entry would
     /// key billing on a value a replay can change.
     pub receipt: EventId,
-    /// The entry's fields, in the order Redis returned them.
+    /// The entry's fields, in the order Dragonfly returned them.
     pub fields: Vec<(String, String)>,
 }
 
@@ -251,7 +251,7 @@ impl FleetStreams {
     /// create reaches `DbSlice::AddNew`. Over a key already holding another
     /// type, Dragonfly v1.40.2 trips `db_slice.cc:1176 Check failed: res.is_new`
     /// and aborts the node instead of answering `WRONGTYPE`, taking every other
-    /// caller on that node down with it. Redis answers `WRONGTYPE`, so the
+    /// caller on that node down with it. Dragonfly answers `WRONGTYPE`, so the
     /// guard is this datastore's, not the protocol's.
     ///
     /// `none` and `stream` are both fine: the first is what `MKSTREAM` exists
@@ -284,7 +284,7 @@ impl FleetStreams {
         }
     }
 
-    /// Appends an event, returning the id Redis minted for it.
+    /// Appends an event, returning the id Dragonfly minted for it.
     ///
     /// No `MAXLEN`: the append never trims, because an append cannot know
     /// what the consumer still owes. Retention is [`FleetStreams::trim`]'s,
@@ -292,7 +292,7 @@ impl FleetStreams {
     ///
     /// # Errors
     /// Returns a command error when the append fails, a full error when the
-    /// datastore refuses to grow, and an unexpected-reply error when Redis
+    /// datastore refuses to grow, and an unexpected-reply error when Dragonfly
     /// answers with something that is not an id.
     pub async fn append(&self, fleet_id: &str, fields: &[(&str, &str)]) -> Result<EventId> {
         let key = fleet_stream_key(fleet_id);
@@ -322,7 +322,7 @@ impl FleetStreams {
     /// so a retried purge is not an error.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
+    /// Returns a command error, or an unavailable error when Dragonfly is gone.
     /// The purge logs and continues: Postgres has already committed, and the
     /// keys left behind are unreachable rather than harmful.
     pub async fn forget(&self, fleet_id: &str) -> Result<()> {

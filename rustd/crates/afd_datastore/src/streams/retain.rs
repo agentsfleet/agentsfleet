@@ -70,7 +70,7 @@ const RANGE_OLDEST: &str = "-";
 /// what a group restore can re-offer, so it stays small on purpose.
 pub const ACKNOWLEDGED_HISTORY: usize = 1_000;
 
-/// A stream entry's position: the two integers Redis mints an id from.
+/// A stream entry's position: the two integers Dragonfly mints an id from.
 ///
 /// Parsed once, at the boundary, so ordering here is integer ordering and
 /// never the lexical ordering of the text — under which `999-0` sorts after
@@ -109,7 +109,7 @@ pub struct Backlog {
     pub pending: u64,
     /// Entries no consumer has been handed, when the server can count them.
     ///
-    /// `None` when it cannot: Redis reports the lag as nil after entries were
+    /// `None` when it cannot: Dragonfly reports the lag as nil after entries were
     /// deleted from the middle of the stream, and a count it will not vouch
     /// for is not one this type will invent.
     pub undelivered: Option<u64>,
@@ -319,7 +319,7 @@ impl FleetStreams {
     /// of record and the index is a hint, so this asks the record.
     ///
     /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
+    /// Returns a command error, or an unavailable error when Dragonfly is gone. A
     /// probe that cannot answer is REPORTED rather than read as "nothing to
     /// recover" — this is the recovery path's own backstop, and a silent false
     /// would leave it inert while looking exactly like an idle system.

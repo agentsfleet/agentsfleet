@@ -5,7 +5,7 @@
 //! Pub/sub takes a connection over: once `SUBSCRIBE` is issued the server
 //! pushes messages down that socket and no ordinary command may share it. The
 //! naive shape — a connection per reader — makes a browser tab a socket, and a
-//! few hundred open event streams a few hundred Redis connections.
+//! few hundred open event streams a few hundred Dragonfly connections.
 //!
 //! So the hub owns exactly ONE and multiplexes locally: a channel is subscribed
 //! server-side the first time anybody asks for it, every later asker gets a
@@ -19,7 +19,7 @@
 //!
 //! # A dropped connection is expected, not exceptional
 //!
-//! Redis restarts, failovers and idle timeouts all end the socket. The pump
+//! Dragonfly restarts, failovers and idle timeouts all end the socket. The pump
 //! reconnects with jittered backoff and resubscribes everything still
 //! referenced, so readers keep their receivers across the gap and see messages
 //! resume rather than an error. What they lose is what was published while the
@@ -62,7 +62,7 @@ pub struct Message {
 /// A schedule is an operational promise — how long an outage takes to recover
 /// from — so it is named here rather than buried in the pump, and it is
 /// `backon`'s builder rather than a type of ours. Jitter is on: without it
-/// every process that lost the same Redis redials in the same millisecond, and
+/// every process that lost the same Dragonfly redials in the same millisecond, and
 /// the reconnect storm is what keeps it down.
 ///
 /// There is no attempt limit, and that is the pub/sub contract rather than an
@@ -163,7 +163,7 @@ pub struct SubscriptionHub {
 /// The pump task holds an `Arc<HubInner>` for as long as it runs. If the sender
 /// lived here, that `Arc` would keep it alive, `commands.recv()` could never
 /// return `None`, and the pump could never learn that the last handle had gone
-/// — a task that pumps a live Redis socket forever with no way to stop it, and
+/// — a task that pumps a live Dragonfly socket forever with no way to stop it, and
 /// no stop path for §7's supervisor to join. The sender therefore lives with
 /// the handles that represent a caller's interest: [`SubscriptionHub`] and
 /// [`Subscription`]. When the last of those drops, the channel closes and the

@@ -2,9 +2,9 @@
 //!
 //! # Why these live here and not at the call site
 //!
-//! `afd_fleet` names no Redis command, for the same reason it names no axum
+//! `afd_fleet` names no Dragonfly command, for the same reason it names no axum
 //! type: the crate boundary IS the seam, and a `redis::cmd` built in a domain
-//! module is that seam leaking. Every other Redis shape this daemon uses
+//! module is that seam leaking. Every other Dragonfly shape this daemon uses
 //! already arrives through a typed surface — [`crate::ready::ReadyIndex`],
 //! [`crate::streams::FleetStreams`], [`crate::session::SessionStore`] — and
 //! these are the same thing for the gate.
@@ -45,7 +45,7 @@ const ARG_COUNT: &str = "COUNT";
 
 /// The cursor a full `SCAN` pass starts from and returns to.
 ///
-/// Redis signals the end of a pass by handing back the cursor it was given
+/// Dragonfly signals the end of a pass by handing back the cursor it was given
 /// first, so this one value is both the start and the stop condition. Written
 /// once here rather than as a `"0"` at each end of a caller's loop, which is
 /// the shape that lets one of them drift.
@@ -79,7 +79,7 @@ impl Redis {
     /// The string at `key`, or `None` when nothing is stored there.
     ///
     /// # Errors
-    /// Returns a command error when Redis will not answer, and an
+    /// Returns a command error when Dragonfly will not answer, and an
     /// unexpected-reply error when the value is not a string.
     pub async fn get_string(&self, key: &str) -> Result<Option<String>> {
         let mut command = redis::cmd(CMD_GET);
@@ -90,8 +90,8 @@ impl Redis {
     /// Store `value` at `key` for `ttl_seconds`.
     ///
     /// # Errors
-    /// Returns a command error when Redis will not answer, which includes a
-    /// non-positive expiry — Redis rejects those rather than storing forever,
+    /// Returns a command error when Dragonfly will not answer, which includes a
+    /// non-positive expiry — Dragonfly rejects those rather than storing forever,
     /// and the caller is the one holding the arithmetic that produced it.
     pub async fn set_for(&self, key: &str, value: &str, ttl_seconds: i64) -> Result<()> {
         let mut command = redis::cmd(CMD_SET);
@@ -117,7 +117,7 @@ impl Redis {
     /// slot they were spending is gone.
     ///
     /// # Errors
-    /// Returns a command error when Redis will not answer. Deliberately not
+    /// Returns a command error when Dragonfly will not answer. Deliberately not
     /// collapsed into `false` — a store that is down would otherwise read as a
     /// slot somebody else already spent.
     pub async fn spend_key(&self, key: &str) -> Result<bool> {
@@ -134,7 +134,7 @@ impl Redis {
     /// costs when it is interrupted.
     ///
     /// # Errors
-    /// Returns a command error when Redis will not answer.
+    /// Returns a command error when Dragonfly will not answer.
     pub async fn increment_in_window(&self, key: &str, window_seconds: u32) -> Result<i64> {
         let mut invocation = INCREMENT_IN_WINDOW_SCRIPT.prepare_invoke();
         invocation.key(key).arg(window_seconds);
@@ -148,8 +148,8 @@ impl Redis {
     /// A `SCAN` pass is a loop with a sentinel, and a caller that writes it
     /// writes the sentinel twice — once to start and once to test — which is
     /// the shape where one of them drifts. It is also not the caller's
-    /// knowledge: what a cursor is, and that Redis ends a pass by returning the
-    /// one it was handed, belongs to the module that owns Redis commands.
+    /// knowledge: what a cursor is, and that Dragonfly ends a pass by returning the
+    /// one it was handed, belongs to the module that owns Dragonfly commands.
     ///
     /// # Why not `Cmd::cursor_arg` and `iter_async`
     ///

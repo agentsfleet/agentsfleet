@@ -1,6 +1,6 @@
 //! What a dedicated connection does when the socket misbehaves.
 //!
-//! Two proofs, both without a Redis. The first is the deadline: a parked read
+//! Two proofs, both without a Dragonfly. The first is the deadline: a parked read
 //! is given the park it declared, not the driver's own half-second default —
 //! the difference between a `BLOCK 5000` that returns an entry and one that
 //! fails at 500 ms while the server keeps the socket parked. The second is the
