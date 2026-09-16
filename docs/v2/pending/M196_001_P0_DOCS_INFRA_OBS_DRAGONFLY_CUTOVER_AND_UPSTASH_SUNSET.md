@@ -169,6 +169,8 @@ The names, verified present as string literals in `rustd/` at the time of writin
 
 The rename lands with the dashboard migration in one step, is graded by the same probe-and-record discipline as every other cutover step, and is reverted by the same rollback. Until it runs, the names are load-bearing and MUST NOT be changed by a repository-only sweep.
 
+**One more name lives outside this repository entirely.** `docs/VERIFY_TIERS.md` is an `orly`-managed file: its integration row reads "Live Postgres and Redis via docker compose", and the text ships from the `@agentsfleet/orly` pack, not from here. M192 corrected the word on its branch and `orly doctor` refused the edit — a managed file changed after orly wrote it — so the word was put back rather than ship a red governance gate. The correction belongs in the pack, released, and picked up by `orly update`. Same shape as the measurement names above: the repository is not the only reader, so a repository-only edit is not the fix.
+
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts |

@@ -12,7 +12,7 @@ page carries only what is specific to this repository.
 | lint | `make lint-all` | Boundary. Rust rides `lint-rustd` (rustfmt + Clippy, warnings are errors); script self-tests ride `lint-scripts`. |
 | unit | `make test-unit-all` | Boundary. The cargo workspace plus every TypeScript package coverage gate. |
 | version | `make check-version` | Boundary. `VERSION` against `build.zig.zon`, `cli/package.json` and both `rustd/Cargo.toml` sites. |
-| integration | `make test-integration-rustd` | Boundary. Live Postgres and Dragonfly via docker compose, schemas reset per run. `orly gate pr` skips it on a branch carrying no code. |
+| integration | `make test-integration-rustd` | Boundary. Live Postgres and Redis via docker compose, schemas reset per run. `orly gate pr` skips it on a branch carrying no code. |
 
 These are the commands `.oracle/orly.json` declares. The commit hook runs
 conformance; `orly gate pr` runs every verification row.
