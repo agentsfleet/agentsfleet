@@ -50,6 +50,7 @@ use afd_core::id::Uuid7;
 use afd_dragonfly::{EventId, FleetStreams};
 use afd_fleet::lease::{Delivery, Settled};
 use afd_wire::event::{Entry, EventType};
+use tokio::sync::Mutex;
 
 use crate::queue;
 use crate::report_seed::{DEEP_POOL, SLICE_MS, SLICE_NANOS, run_fee_meter};
@@ -61,6 +62,26 @@ use crate::support::Fixtures;
 ///
 /// Generous, because the scan is deployment-wide: a budget of one would spend
 /// itself on whichever fleet a sibling suite minted and never reach this one.
+/// Serialises the two tests here, because BOTH run global recovery sweeps.
+///
+/// `reconcile` and `replay` take batch LIMITS, not a fleet filter — `fleets`
+/// caps how many fleets a pass examines, it does not choose which. So a pass
+/// one test runs reaches the fleet the other test seeded, and the second replay
+/// lands on a row that asserts it was re-appended exactly once. Observed in
+/// Continuous Integration as `admission_replays == 2`; it passes locally
+/// whenever the two happen not to overlap, which is what makes it worth a lock
+/// rather than a retry.
+///
+/// A `static` serialises within ONE process, which is enough only because
+/// `afd_fleet` sets `autotests = false` and every `tests/*.rs` here compiles
+/// into a single binary. Splitting this suite would silently unguard it.
+///
+/// The shape is `afd_dragonfly`'s `HUB_LANE`, for the same reason: a lock with
+/// no payload, because what it protects is the datastore's global row set and
+/// not anything held inside it. `tokio`'s rather than `std`'s because the guard
+/// is held across `.await`.
+static RECOVERY_LANE: Mutex<()> = Mutex::const_new(());
+
 const EVERY_FLEET: i64 = 4_096;
 
 /// How many rows a pass repairs or re-appends. Larger than anything admitted
@@ -129,6 +150,7 @@ fn deferring(fixtures: &Fixtures) -> Admissions {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn acceptance_recovers_at_each_crash_boundary() {
+    let _lane = RECOVERY_LANE.lock().await;
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<1>(&fixtures).await;
     let streams = FleetStreams::new(fixtures.queue().clone());
@@ -255,6 +277,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn queue_loss_replays_without_duplicate_settlement() {
+    let _lane = RECOVERY_LANE.lock().await;
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let streams = FleetStreams::new(fixtures.queue().clone());
