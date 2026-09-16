@@ -1,6 +1,6 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
-use afd_datastore::{RedisConfig, SubscriptionHub};
+use afd_dragonfly::{RedisConfig, SubscriptionHub};
 use afd_observability::Analytics;
 use afd_sse::{Ceiling, Live};
 
@@ -59,7 +59,7 @@ mod tests {
     use std::time::Duration;
 
     use afd_auth::capability::NoCapabilitySource;
-    use afd_datastore::config::RedisRole;
+    use afd_dragonfly::config::RedisRole;
 
     use super::{announce_identity, open_analytics, open_live};
     use crate::identity::Capabilities;
@@ -75,7 +75,7 @@ mod tests {
     async fn a_failed_hub_becomes_a_capacity_bounded_silent_surface() {
         afd_db::test_util::install_subscriber();
         let config =
-            afd_datastore::RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:1".to_owned())
+            afd_dragonfly::RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:1".to_owned())
                 .with_connect_timeout(Duration::from_millis(25));
 
         let live = open_live(&config, 3).await;

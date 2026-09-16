@@ -16,7 +16,7 @@
 //! never call, and every edit to those would then rebuild both.
 //!
 //! What is here has exactly two edges out that its neighbours lack —
-//! [`afd_fleet_runtime`] for the authored documents, and `afd_datastore`'s stream
+//! [`afd_fleet_runtime`] for the authored documents, and `afd_dragonfly`'s stream
 //! client for the install guarantee — and both are load-bearing here and used
 //! nowhere else in the tenant-facing surface.
 //!
@@ -51,8 +51,8 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_db::Db;
+use afd_dragonfly::{FleetStreams, ReadyIndex, Redis};
 use afd_vault::Directory;
 
 /// The purge's statements, for the lane that runs them against a live role.

@@ -26,7 +26,7 @@ pub(crate) fn blank_secret() -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_datastore` and `afd_events` already carry: the
+/// The seam `afd_db`, `afd_dragonfly` and `afd_events` already carry: the
 /// accessors on an error type — its code, its sentence, its rendering, whether
 /// the provider is reachable — are what a person reads at three in the morning
 /// and are exactly what the happy path never touches. A sample built here rather

@@ -468,16 +468,16 @@ agentsfleetd replica
     +-- dedicated command socket --> XREADGROUP BLOCK (up to 5 seconds)
 ```
 
-Cloning `afd_datastore::Redis` shares its socket; it does not open another connection.
-The outbound reader owns `afd_datastore::Dedicated`, so its blocking read cannot delay request-path commands.
+Cloning `afd_dragonfly::Redis` shares its socket; it does not open another connection.
+The outbound reader owns `afd_dragonfly::Dedicated`, so its blocking read cannot delay request-path commands.
 Normal boot opens three Redis connections when both optional background surfaces start.
 
 The hub refcounts subscribers and keeps one wire subscription per watched channel.
 Its pump owns the pub/sub socket and reconnects with backoff after a disconnect.
 Redis pub/sub cannot replay frames lost during that gap, even if the browser's HTTP stream stays open.
 
-Source: [`afd_datastore::Redis`](../../rustd/crates/afd_datastore/src/client.rs),
-[`hub pump`](../../rustd/crates/afd_datastore/src/hub/pump.rs),
+Source: [`afd_dragonfly::Redis`](../../rustd/crates/afd_dragonfly/src/client.rs),
+[`hub pump`](../../rustd/crates/afd_dragonfly/src/hub/pump.rs),
 [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 

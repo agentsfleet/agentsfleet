@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
-use afd_datastore::FleetStreams;
+use afd_dragonfly::FleetStreams;
 use afd_observability::metrics::label::fleet::ReplayOutcome;
 use afd_observability::producers::fleet::admission as metrics;
 use afd_wire::event::Entry;

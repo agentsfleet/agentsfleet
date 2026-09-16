@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_core::clock::UnixMillis;
-use afd_datastore::hub::Received;
-use afd_datastore::{ReadyIndex, Subscription, SubscriptionHub};
+use afd_dragonfly::hub::Received;
+use afd_dragonfly::{ReadyIndex, Subscription, SubscriptionHub};
 use serde_json::{Value, json};
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, redis_config, sweeper_exclusive};

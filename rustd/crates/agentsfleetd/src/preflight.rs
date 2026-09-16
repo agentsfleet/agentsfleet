@@ -52,8 +52,8 @@ use afd_core::env::EnvSource;
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
-use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::config::{DbRole, PoolConfig};
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};

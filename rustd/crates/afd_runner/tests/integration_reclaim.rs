@@ -4,10 +4,10 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_datastore::{FleetStreams, Partition, ReadyIndex};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::{FleetStreams, Partition, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 

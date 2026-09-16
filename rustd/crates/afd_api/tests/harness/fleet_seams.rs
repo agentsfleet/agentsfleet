@@ -46,7 +46,7 @@ impl Fleet {
     /// into a fleet, approval, or event integration test.
     pub(crate) fn with_session_queue(mut self, queue: Redis) -> Self {
         self.logins = Logins::new(
-            afd_datastore::SessionStore::new(queue),
+            afd_dragonfly::SessionStore::new(queue),
             SecretBytes::new(FIXTURE_PEPPER.to_vec()),
             Entropy::new(),
             FIXTURE_APP_URL,
@@ -163,7 +163,7 @@ impl Fleet {
     }
 
     /// Runs stream handlers through a live shared subscription connection.
-    pub(crate) fn with_live_hub(mut self, hub: afd_datastore::SubscriptionHub) -> Self {
+    pub(crate) fn with_live_hub(mut self, hub: afd_dragonfly::SubscriptionHub) -> Self {
         self.live = Live::new(hub, Ceiling::new(DEFAULT_STREAM_CEILING));
         self
     }

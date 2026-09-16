@@ -25,7 +25,7 @@ use afd_approval::{
 };
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::ReadyIndex;
+use afd_dragonfly::ReadyIndex;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 

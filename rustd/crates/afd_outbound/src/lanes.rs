@@ -46,8 +46,8 @@
 
 use std::sync::Arc;
 
-use afd_datastore::{OutboundDelivery, OutboundQueue};
 use afd_db::Db;
+use afd_dragonfly::{OutboundDelivery, OutboundQueue};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 use tokio::sync::Semaphore;

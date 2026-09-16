@@ -35,7 +35,7 @@ afd_db.workspace = true
 afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_wire.workspace = true
@@ -53,7 +53,7 @@ test-util = [
     "afd_admission/test-util",
     "afd_core/test-util",
     "afd_db/test-util",
-    "afd_datastore/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]

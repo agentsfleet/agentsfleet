@@ -20,7 +20,7 @@ use agentsfleetd::supervisor::Supervisor;
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
 /// The API role's Redis knob.
-const REDIS_KNOB: &str = "REDIS_URL_API";
+const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
@@ -151,7 +151,7 @@ fn test_every_boot_failure_renders_a_reason() {
         "an io error lifts to the listen variant on its own"
     );
 
-    let (_kind, queue_source) = afd_datastore::error::one_of_each_kind()
+    let (_kind, queue_source) = afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .next()
         .expect("the Redis error fixture is exhaustive");

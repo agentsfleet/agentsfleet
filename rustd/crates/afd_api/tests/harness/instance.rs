@@ -34,8 +34,8 @@ use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 use afd_runner::Runners;
 use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
@@ -133,7 +133,7 @@ impl Fleet {
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             logins: Logins::new(
-                afd_datastore::SessionStore::new(queue.clone()),
+                afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
                 Entropy::new(),
                 FIXTURE_APP_URL,
@@ -247,7 +247,7 @@ impl Fleet {
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             logins: Logins::new(
-                afd_datastore::SessionStore::new(queue.clone()),
+                afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
                 Entropy::new(),
                 FIXTURE_APP_URL,

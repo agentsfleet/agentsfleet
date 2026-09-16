@@ -3,7 +3,7 @@
 //!
 //! # Why the restore lives here and not in the datastore
 //!
-//! `afd_datastore` reports a vanished group and refuses to guess where to
+//! `afd_dragonfly` reports a vanished group and refuses to guess where to
 //! recreate it, because the two blind positions are both wrong: `0` re-runs
 //! every retained entry — the lease path re-executes a redelivered entry,
 //! merely skipping its receive debit — and `$` loses everything appended
@@ -18,7 +18,7 @@
 //! turn a poll into a spin against a datastore that is already misbehaving.
 
 use afd_core::error_code;
-use afd_datastore::{FleetEvent, FleetStreams};
+use afd_dragonfly::{FleetEvent, FleetStreams};
 
 use crate::error::Result;
 use crate::lease::assign::warn_queue_fleet;
@@ -84,7 +84,7 @@ async fn pending_then_new(
     streams: &FleetStreams,
     fleet: &str,
     consumer: &str,
-) -> afd_datastore::error::Result<Option<FleetEvent>> {
+) -> afd_dragonfly::error::Result<Option<FleetEvent>> {
     let pending = streams
         .read_pending(fleet, consumer)
         .await

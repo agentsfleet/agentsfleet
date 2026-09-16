@@ -40,7 +40,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use afd_datastore::{OutboundDelivery, OutboundJob};
+use afd_dragonfly::{OutboundDelivery, OutboundJob};
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, Worker};
 use tokio_util::sync::CancellationToken;
@@ -354,7 +354,7 @@ async fn test_outbound_shutdown_no_loss() {
     );
     assert_eq!(
         harness.pending_consumers().await,
-        vec![afd_datastore::outbound_consumer()],
+        vec![afd_dragonfly::outbound_consumer()],
         "the entry has to be pending under the name the NEXT process comes \
          back to; under any other it is neither delivered nor lost, just \
          permanently invisible"
@@ -553,9 +553,9 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 ///
 /// # Why the error is provoked and then LIFTED
 ///
-/// `afd_datastore` builds its kinds crate-privately, so the non-outage case cannot
+/// `afd_dragonfly` builds its kinds crate-privately, so the non-outage case cannot
 /// be constructed by hand — only caused, which is what the wrong-typed key
-/// does. But the queue's own methods return `afd_datastore::Result`, so asserting
+/// does. But the queue's own methods return `afd_dragonfly::Result`, so asserting
 /// on what `enqueue` hands back grades THAT crate's mapping and never reaches
 /// this one's. The lift is the step that crosses the boundary, and it is the
 /// same `From` the worker's `?` uses on the same value.

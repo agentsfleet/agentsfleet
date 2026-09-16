@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
-use afd_datastore::{EventId, GroupCursor};
+use afd_dragonfly::{EventId, GroupCursor};
 use sqlx::Row as _;
 
 use crate::error::{Result, query};

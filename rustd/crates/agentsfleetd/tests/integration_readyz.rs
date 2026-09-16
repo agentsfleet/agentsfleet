@@ -2,7 +2,7 @@
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`, which supplies `TEST_DATABASE_URL` and
-//! `TEST_REDIS_URL`.
+//! `TEST_DRAGONFLY_URL`.
 //!
 //! # "Stopped Postgres", without stopping Postgres
 //!
@@ -38,10 +38,10 @@
 
 use afd_api::router::Dependencies as _;
 use afd_core::env::MapEnv;
-use afd_datastore::Redis;
-use afd_datastore::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use agentsfleetd::probes::LiveDependencies;
 
 use crate::support::install_subscriber;
@@ -50,10 +50,10 @@ use crate::support::install_subscriber;
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
@@ -81,7 +81,7 @@ async fn connected() -> (Db, Redis) {
         .expect("the lane publishes a usable Redis URL");
     // Through the admission gate, like every other lane harness: the handshake
     // is the expensive part and it queues behind the rest of the suite.
-    let queue = afd_datastore::test_util::connect_live(&redis_config)
+    let queue = afd_dragonfly::test_util::connect_live(&redis_config)
         .await
         .expect("the lane's Redis is up");
 

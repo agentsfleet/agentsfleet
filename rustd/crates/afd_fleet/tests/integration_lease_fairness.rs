@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use afd_core::clock::UnixMillis;
-use afd_datastore::ready::{Partition, READY_PARTITIONS};
+use afd_dragonfly::ready::{Partition, READY_PARTITIONS};
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 
 use crate::queue;

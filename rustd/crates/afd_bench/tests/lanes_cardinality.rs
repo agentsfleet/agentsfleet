@@ -20,7 +20,7 @@ use afd_bench::RunPrefix;
 use afd_bench::lane::cardinality;
 use afd_bench::lane::cardinality::capacity::MEASUREMENTS;
 use afd_bench::profile::{Profile, Target};
-use afd_datastore::ready::READY_PARTITIONS;
+use afd_dragonfly::ready::READY_PARTITIONS;
 
 use self::support::{LANE, datastores, measurement, series, swept};
 

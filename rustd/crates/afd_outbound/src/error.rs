@@ -39,7 +39,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue holding the outbound answers would not answer")]
     Queue {
         #[source]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The obligation ledger's pool would not hand out a connection.
@@ -102,6 +102,6 @@ impl Error {
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
-    afd_datastore::Error => Queue,
+    afd_dragonfly::Error => Queue,
     afd_db::Error => Ledger,
 );

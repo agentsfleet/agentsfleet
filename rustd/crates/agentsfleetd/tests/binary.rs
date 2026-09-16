@@ -21,7 +21,7 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
 /// The API role's Redis knob.
-const REDIS_KNOB: &str = "REDIS_URL_API";
+const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";

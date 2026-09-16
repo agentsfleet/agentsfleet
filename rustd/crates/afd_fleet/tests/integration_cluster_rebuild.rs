@@ -46,7 +46,7 @@
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::Uuid7;
-use afd_datastore::FleetStreams;
+use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::{Billed, Delivery, Leases, runner_consumer};
 use afd_runner::sweep::rebuild::rebuild;
 use afd_runner::sweep::reclaim::{BATCH_LIMIT, Reclaim};

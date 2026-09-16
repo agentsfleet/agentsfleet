@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use afd_datastore::OutboundDelivery;
+use afd_dragonfly::OutboundDelivery;
 use afd_outbound::{Deliver, Verdict};
 use dashmap::DashMap;
 use tokio::sync::Notify;

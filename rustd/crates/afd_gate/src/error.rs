@@ -41,7 +41,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the gate plane would not answer")]
     Queue {
         #[source]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The caller sent something this plane will not accept.
@@ -165,7 +165,7 @@ pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "The approval reference could
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_datastore::Error => Queue,
+    afd_dragonfly::Error => Queue,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
     afd_crypto::error::Error => Entropy,

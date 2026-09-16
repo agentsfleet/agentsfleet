@@ -27,18 +27,18 @@
 
 use std::time::Duration;
 
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 use sqlx::Row as _;
 
 /// The knob `make test-integration-rustd` exports the lane's Redis under.
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// How long anything crossing a datastore is given before the test fails.
 pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
@@ -59,7 +59,7 @@ impl EventsLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_datastore::test_util::connect_live(&redis_config())
+        let queue = afd_dragonfly::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

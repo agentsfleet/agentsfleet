@@ -24,7 +24,7 @@
 //! which is the route's own output.
 //!
 //! It does not prove the at-most-once claim. That is one Lua script on Redis
-//! ([`afd_datastore::streams::FleetStreams::append_once`]), and a claim
+//! ([`afd_dragonfly::streams::FleetStreams::append_once`]), and a claim
 //! re-implemented here would agree with the suite whatever the script did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.
@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 use afd_api::services::WebhookIngress;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_datastore::streams::EventId;
+use afd_dragonfly::streams::EventId;
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// The shape Redis renders an entry id in, which a stub id has to share.

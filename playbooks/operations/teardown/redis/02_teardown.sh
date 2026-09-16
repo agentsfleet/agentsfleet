@@ -47,7 +47,7 @@ get_connection_string() {
 }
 
 # Confirm + FLUSHALL one cache. The URL is forwarded via env-name-only
-# (`-e REDIS_URL`, no value) so the password never appears in `ps aux`.
+# (`-e DRAGONFLY_URL`, no value) so the password never appears in `ps aux`.
 teardown_redis() {
 	local url="$1"
 	local env_label="$2"
@@ -72,10 +72,10 @@ teardown_redis() {
 	sleep 2
 	echo "Connecting to cache..."
 
-	if REDIS_URL="$url" docker run --rm \
-		-e REDIS_URL \
+	if DRAGONFLY_URL="$url" docker run --rm \
+		-e DRAGONFLY_URL \
 		redis:7-alpine \
-		sh -c 'redis-cli -u "$REDIS_URL" FLUSHALL'; then
+		sh -c 'redis-cli -u "$DRAGONFLY_URL" FLUSHALL'; then
 		echo ""
 		echo "✅ $env_label teardown completed successfully"
 	else

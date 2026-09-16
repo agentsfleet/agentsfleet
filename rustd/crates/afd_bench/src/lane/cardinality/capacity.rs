@@ -10,7 +10,7 @@
 use afd_admission::Admissions;
 use afd_core::clock;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::Capacity;
+use afd_dragonfly::Capacity;
 
 use crate::datastores::Datastores;
 use crate::error::Result;

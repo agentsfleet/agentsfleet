@@ -18,7 +18,7 @@
 use afd_admission::{Admission, Admissions, Budgets, Key, Producer};
 use afd_core::clock;
 use afd_core::error_code;
-use afd_datastore::streams::FleetStreams;
+use afd_dragonfly::streams::FleetStreams;
 use afd_wire::event::EventType;
 use sqlx::Row as _;
 
@@ -176,9 +176,9 @@ async fn the_ledger_reports_its_unconfirmed_rows_and_the_age_of_the_oldest() {
     let lane = EventsLane::open().await;
     // A queue nothing listens on: every append is deferred, so the row is
     // committed and the receipt stays NULL.
-    let unreachable = afd_datastore::Redis::unreachable(
-        &afd_datastore::RedisConfig::from_url(
-            afd_datastore::RedisRole::Default,
+    let unreachable = afd_dragonfly::Redis::unreachable(
+        &afd_dragonfly::RedisConfig::from_url(
+            afd_dragonfly::RedisRole::Default,
             "redis://127.0.0.1:1".to_owned(),
         )
         .with_request_timeout(std::time::Duration::from_millis(200)),

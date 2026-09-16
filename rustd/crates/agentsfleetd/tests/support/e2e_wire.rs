@@ -14,7 +14,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_datastore::ready::READY_PARTITIONS;
+use afd_dragonfly::ready::READY_PARTITIONS;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;

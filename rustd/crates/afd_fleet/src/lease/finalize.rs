@@ -40,7 +40,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_datastore::EventId;
+use afd_dragonfly::EventId;
 use afd_events::Closed;
 
 use sqlx::PgConnection;

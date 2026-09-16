@@ -37,7 +37,7 @@ afd_events.workspace = true
 # A fleet's declared policy, as its config spells it.
 afd_fleet_runtime.workspace = true
 # A parked run's continuation is a stream append.
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 # The approval status vocabulary this plane shares with the operator's.
 afd_wire.workspace = true
 # The gate reference a parked run is resumed by is base64url on the wire.
@@ -58,7 +58,7 @@ test-util = [
     "afd_db/test-util",
     "afd_credential/test-util",
     "afd_fleet_runtime/test-util",
-    "afd_datastore/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]

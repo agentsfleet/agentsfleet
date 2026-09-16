@@ -34,8 +34,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_datastore::ReadyIndex;
-use afd_datastore::streams::FleetStreams;
+use afd_dragonfly::ReadyIndex;
+use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
 use afd_wire::event::field;
 use sqlx::Row as _;

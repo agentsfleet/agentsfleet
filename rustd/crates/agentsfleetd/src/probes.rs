@@ -28,8 +28,8 @@
 use std::time::Duration;
 
 use afd_api::router::{Dependencies, ReadyInputs};
-use afd_datastore::Redis;
 use afd_db::Db;
+use afd_dragonfly::Redis;
 
 /// How long either dependency has to answer before it counts as unreachable.
 ///

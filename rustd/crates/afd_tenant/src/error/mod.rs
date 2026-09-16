@@ -265,8 +265,8 @@ impl From<afd_db::Error> for Error {
     }
 }
 
-impl From<afd_datastore::Error> for Error {
-    fn from(source: afd_datastore::Error) -> Self {
+impl From<afd_dragonfly::Error> for Error {
+    fn from(source: afd_dragonfly::Error) -> Self {
         Self::new(ErrorKind::Queue { source })
     }
 }

@@ -18,7 +18,7 @@
 //! compiler holding it instead of a reviewer.
 
 use afd_connector::Provider;
-use afd_datastore::OutboundDelivery;
+use afd_dragonfly::OutboundDelivery;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;
 
@@ -177,7 +177,7 @@ mod tests {
 
     fn job(provider: &str) -> OutboundDelivery {
         OutboundDelivery {
-            id: afd_datastore::streams::EventId::of("1700000000001-0"),
+            id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
             provider: provider.to_owned(),
             workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
             fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),

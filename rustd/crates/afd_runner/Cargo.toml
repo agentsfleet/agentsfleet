@@ -39,7 +39,7 @@ afd_db.workspace = true
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
 # The reclaim and repair sweepers re-deliver through the fleet streams.
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_wire.workspace = true
 serde.workspace = true
@@ -58,7 +58,7 @@ test-util = [
     "afd_admission/test-util",
     "afd_core/test-util",
     "afd_db/test-util",
-    "afd_datastore/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]

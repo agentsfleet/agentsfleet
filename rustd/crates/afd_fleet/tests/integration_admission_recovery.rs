@@ -47,7 +47,7 @@ use std::time::Duration;
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::Uuid7;
-use afd_datastore::{EventId, FleetStreams};
+use afd_dragonfly::{EventId, FleetStreams};
 use afd_fleet::lease::{Delivery, Settled};
 use afd_wire::event::{Entry, EventType};
 

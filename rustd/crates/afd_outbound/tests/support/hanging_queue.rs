@@ -4,7 +4,7 @@
 //! the worker does when its READ keeps failing, so this server needs to do
 //! exactly three things — let a connection open, satisfy the client's own
 //! setup, and refuse the read while counting how often it was asked. It is not
-//! a Redis: `afd_datastore`'s own suites own the protocol-shaped fake, and a second
+//! a Redis: `afd_dragonfly`'s own suites own the protocol-shaped fake, and a second
 //! general one here would be a second thing to keep true.
 //!
 //! It does parse RESP arrays, because it has to. The client pipelines its
@@ -159,7 +159,7 @@ async fn serve(
             // rather than respelled here — see `cluster_slots_reply`.
             let owned;
             let reply: &[u8] = if request.name == CMD_CLUSTER {
-                owned = afd_datastore::test_util::cluster_slots_reply(port);
+                owned = afd_dragonfly::test_util::cluster_slots_reply(port);
                 &owned
             } else if request.name == "PING" {
                 b"+PONG\r\n"

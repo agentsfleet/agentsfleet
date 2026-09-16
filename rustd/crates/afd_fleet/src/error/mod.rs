@@ -127,7 +127,7 @@ pub(crate) enum ErrorKind {
     #[error("the queue backing the runner plane would not answer")]
     Queue {
         #[source]
-        source: afd_datastore::Error,
+        source: afd_dragonfly::Error,
     },
 
     /// The admission ledger could not say where a lost consumer group

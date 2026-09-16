@@ -20,7 +20,7 @@ use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
 use afd_bench::lane::lease::drive::{Shared, poll_until};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{Redis, RedisConfig, RedisRole};
+use afd_dragonfly::{Redis, RedisConfig, RedisRole};
 use afd_fleet::lease::Leases;
 
 /// Port 1 is reserved and unbound on every platform this builds for, so a

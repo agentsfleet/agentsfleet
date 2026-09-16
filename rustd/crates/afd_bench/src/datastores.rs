@@ -4,7 +4,7 @@
 //!
 //! A lane names ONE variable per datastore. Everything downstream of that —
 //! pool sizing, acquire timeouts, whether the URL implies TLS and which
-//! certificate authority verifies it — is resolved by `afd_db` and `afd_datastore`
+//! certificate authority verifies it — is resolved by `afd_db` and `afd_dragonfly`
 //! from that URL, exactly as `open_runtime` does at boot. Re-deriving any of it
 //! here would mean the lane measured a pool the daemon never opens.
 //!
@@ -16,15 +16,15 @@
 use core::time::Duration;
 
 use afd_core::env::EnvSource;
-use afd_datastore::{Dedicated, Redis, RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_dragonfly::{Dedicated, Redis, RedisConfig, RedisRole};
 
 use crate::error::Result;
 
 /// The Redis commands this crate spells itself, in one place.
 ///
-/// `afd_datastore` owns every command the PRODUCT issues. These are the ones a
+/// `afd_dragonfly` owns every command the PRODUCT issues. These are the ones a
 /// lane asks the SERVER about itself with, or uses to remove what it created,
 /// and each module that needs one imports it from here rather than spelling
 /// its own copy.
@@ -51,10 +51,10 @@ pub mod command {
 pub const DATABASE_URL_VARIABLE: &str = "BENCH_DATABASE_URL";
 
 /// Where a lane reads its Redis from.
-pub const REDIS_URL_VARIABLE: &str = "BENCH_REDIS_URL";
+pub const REDIS_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
 
 /// The certificate authority for a Redis serving TLS, when it does.
-pub const REDIS_CA_CERT_VARIABLE: &str = "BENCH_REDIS_CA_CERT";
+pub const REDIS_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
 
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";

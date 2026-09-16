@@ -7,10 +7,10 @@
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_cron::DesiredStatus;
-use afd_datastore::Redis;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Redis;
 use afd_fleet_lifecycle::FleetStatus;
 
 use crate::harness;

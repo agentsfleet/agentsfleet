@@ -133,7 +133,7 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_P
 # what spends the budget, and a perfectly healthy Redis answers `ConnectTimeout`
 # to whichever test sat deepest in it.
 #
-# Nothing about TLS goes unproven. It moves to `TEST_REDIS_TLS_URL` below and is
+# Nothing about TLS goes unproven. It moves to `TEST_DRAGONFLY_TLS_URL` below and is
 # proven where proving it means something -- and proven harder, because that
 # suite asserts a bad authority is REFUSED, which an all-TLS lane never did:
 # every connect there used the right certificate, so a lane that had silently
@@ -142,23 +142,23 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_P
 # this one, and a suite that needs every address asks the topology for it
 # rather than a second variable. Plaintext: the TLS handshake is paid where
 # it proves something, below. The name is the environment contract the daemon
-# reads (REDIS_URL); the datastore behind it is Dragonfly.
-TEST_REDIS_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_PORT)
+# reads (DRAGONFLY_URL); the datastore behind it is Dragonfly.
+TEST_DRAGONFLY_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_PORT)
 # The TLS node, for the suite whose subject IS the trust decision.
-TEST_REDIS_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_TLS_PORT)
+TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_TLS_PORT)
 # Cert path — populated by _ensure-test-infra after the datastore is healthy.
 # Do NOT shell-expand at parse time; the container may not be running yet when
 # the Makefile is first evaluated.
-TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+TEST_DRAGONFLY_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # The authority that signed nothing here, for the refusal half of the trust
 # dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
-TEST_REDIS_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
+TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
 # How a test moves slots or resets the cluster: the script, inside its own
 # container, with the caller's arguments appended. The suites know one command
 # line and nothing about docker; the admin ports it reaches never leave the
 # container (see scripts/dragonfly-cluster.sh).
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
-export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_BAD_CA TEST_DRAGONFLY_CONTROL
+export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -191,7 +191,7 @@ export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 # Bring postgres + dragonfly + qstash up via docker compose and wait for healthchecks to pass.
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
 # multiple times. Extracts the datastore TLS CA cert after the container is healthy so
-# subsequent targets can rely on $(TEST_REDIS_CA_CERT) being present.
+# subsequent targets can rely on $(TEST_DRAGONFLY_CA_CERT) being present.
 #
 _ensure-test-infra:
 	@if ! docker info >/dev/null 2>&1; then \
@@ -211,18 +211,18 @@ _ensure-test-infra:
 	@# only proved the file was non-empty — which a STALE cert from a destroyed
 	@# container satisfies. Every TLS connection then failed signature
 	@# verification, which reads as dozens of unrelated datastore test failures.
-	@docker compose cp dragonfly:/data/tls/ca.crt "$(TEST_REDIS_CA_CERT)"
-	@docker compose cp dragonfly:/data/tls/bad-ca.crt "$(TEST_REDIS_BAD_CA)"
-	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ Failed to extract the datastore TLS cert"; exit 1; }
+	@docker compose cp dragonfly:/data/tls/ca.crt "$(TEST_DRAGONFLY_CA_CERT)"
+	@docker compose cp dragonfly:/data/tls/bad-ca.crt "$(TEST_DRAGONFLY_BAD_CA)"
+	@test -s "$(TEST_DRAGONFLY_CA_CERT)" || { echo "✗ Failed to extract the datastore TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.
 	@container_sha=$$(docker compose exec -T dragonfly sha256sum /data/tls/ca.crt | awk '{print $$1}'); \
-	local_sha=$$(shasum -a 256 "$(TEST_REDIS_CA_CERT)" | awk '{print $$1}'); \
+	local_sha=$$(shasum -a 256 "$(TEST_DRAGONFLY_CA_CERT)" | awk '{print $$1}'); \
 	if [ "$$container_sha" != "$$local_sha" ]; then \
 	  echo "✗ [infra] datastore CA cert is stale (container $$container_sha != local $$local_sha)"; \
 	  exit 1; \
 	fi
-	@echo "✓ [infra] postgres + dragonfly + qstash ready; datastore CA cert at $(TEST_REDIS_CA_CERT)"
+	@echo "✓ [infra] postgres + dragonfly + qstash ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave

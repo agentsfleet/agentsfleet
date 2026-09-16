@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_datastore::Error => Queue,
+    afd_dragonfly::Error => Queue,
     afd_admission::Error => Admission,
 );
 
@@ -42,7 +42,7 @@ pub(crate) fn cursor_malformed() -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_datastore`, `afd_ingress` and `afd_cron` already
+/// The seam `afd_db`, `afd_dragonfly`, `afd_ingress` and `afd_cron` already
 /// carry: the accessors on an error type — its code, its sentence, its
 /// rendering, whether a retry could help — are what a person reads at three
 /// in the morning and are exactly what the happy path never touches. A sample
@@ -66,7 +66,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .find(|(label, _error)| *label == "datastore")
         .expect("the ledger declares an unavailable kind")
         .1;
-    let queue = afd_datastore::error::one_of_each_kind()
+    let queue = afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .next()
         .expect("the datastore declares at least one kind")

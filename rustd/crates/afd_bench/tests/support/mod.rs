@@ -26,8 +26,8 @@ use afd_bench::report::{Provenance, Report};
 
 /// The knobs `make test-integration-rustd` exports; see `make/test-infra.mk`.
 const DATABASE_KNOB: &str = "TEST_DATABASE_URL";
-const REDIS_KNOB: &str = "TEST_REDIS_URL";
-const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_KNOB: &str = "TEST_DRAGONFLY_URL";
+const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Held for the whole of a lane run.
 ///

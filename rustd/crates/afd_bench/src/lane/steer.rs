@@ -32,7 +32,7 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_datastore::{ReadyIndex, Redis};
+use afd_dragonfly::{ReadyIndex, Redis};
 use afd_events::Steer;
 use tokio_util::sync::CancellationToken;
 

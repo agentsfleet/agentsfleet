@@ -17,7 +17,7 @@
 //! inserted at ingress would be racing its own runner to describe the same
 //! event, and the two descriptions do not agree — at ingress there is no lease,
 //! no runner, and no outcome to record. What makes a redelivery safe is
-//! `afd_datastore::streams::OnceScope`'s claim key, set in the same Lua script as
+//! `afd_dragonfly::streams::OnceScope`'s claim key, set in the same Lua script as
 //! the `XADD`, so the claim and the append cannot come apart. A Postgres write
 //! at ingress sits outside that script and outside its guarantee.
 
@@ -136,7 +136,7 @@ fn the_durable_event_row_has_exactly_two_writers_and_ingress_is_not_one() {
         !crates.contains(&INGRESS_CRATE),
         "{INGRESS_CRATE} executes {QUERY} at {:?}. Ingress writes NOTHING to \
          Postgres: the durable row is the runner's, written when it leases the \
-         event. Append to the stream through `afd_datastore::streams::OnceScope` — \
+         event. Append to the stream through `afd_dragonfly::streams::OnceScope` — \
          the claim key and the XADD share one Lua script, which is what makes a \
          redelivery safe. A row written here is outside that guarantee and \
          races the runner's own description of the same event.",

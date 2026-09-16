@@ -59,7 +59,7 @@ pub(crate) fn charges_cursor_invalid() -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_datastore`, `afd_events` and `afd_cron` already
+/// The seam `afd_db`, `afd_dragonfly`, `afd_events` and `afd_cron` already
 /// carry: the accessors on an error type — its code, its sentence, its
 /// rendering, whether a retry could help — are what a person reads at three in
 /// the morning and are exactly what the happy path never touches. A sample built

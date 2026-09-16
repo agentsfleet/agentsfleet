@@ -15,8 +15,8 @@
 
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
-use afd_datastore::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix, Redis};
 use afd_db::Db;
+use afd_dragonfly::{FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix, Redis};
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
 ///

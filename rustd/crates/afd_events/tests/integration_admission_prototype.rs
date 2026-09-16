@@ -53,8 +53,8 @@ use sqlx::Row as _;
 use crate::support::EventsLane;
 
 /// The knob `make test-integration-rustd` exports the cluster's seed under —
-/// the same name `afd_datastore`'s cluster harness reads.
-const URL_KNOB: &str = "TEST_REDIS_URL";
+/// the same name `afd_dragonfly`'s cluster harness reads.
+const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// How long one reply may take, and how long a dial may.
 const RESPONSE_BUDGET: Duration = Duration::from_secs(5);
@@ -338,7 +338,7 @@ async fn del(queue: &mut ClusterConnection, stream: &str) -> usize {
 }
 
 /// The lane's cluster over its seed: RESP3, bounded dials and replies, and a
-/// redirect allowance — the same builder shape `afd_datastore`'s harness uses.
+/// redirect allowance — the same builder shape `afd_dragonfly`'s harness uses.
 async fn connect_cluster() -> ClusterConnection {
     let seed = std::env::var(URL_KNOB)
         .unwrap_or_else(|_| panic!("{URL_KNOB} must name the lane's Dragonfly cluster"));

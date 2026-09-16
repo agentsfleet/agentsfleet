@@ -33,20 +33,20 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_crypto::entropy::Entropy;
-use afd_datastore::Redis;
-use afd_datastore::config::{RedisConfig, RedisRole};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Redis;
+use afd_dragonfly::config::{RedisConfig, RedisRole};
 
 /// The instant the seeded rows are stamped with.
 const SEED_MS: i64 = 1_760_000_000_000;
 
 /// The knob `make test-integration-rustd` exports the lane's Redis under.
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
+const REDIS_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const REDIS_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// How long anything crossing a datastore is given before the test fails.
 const REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
@@ -185,7 +185,7 @@ impl CronLane {
     }
 
     pub(crate) async fn queue() -> Redis {
-        afd_datastore::test_util::connect_live(&Self::redis())
+        afd_dragonfly::test_util::connect_live(&Self::redis())
             .await
             .expect("the lane's Redis must be reachable")
     }

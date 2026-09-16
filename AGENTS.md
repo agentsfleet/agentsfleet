@@ -17,7 +17,7 @@ facts.
   later move once its control plane is worth its bill (Indy, 2026-09-14, superseding the earlier
   "Swarm is the required target" rule); the local lane is a real four-node cluster. Redis is not a supported
   backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
-  "Redis remains the default" rule. The crate is `afd_datastore`; the `REDIS_*` environment
+  "Redis remains the default" rule. The crate is `afd_dragonfly`; the `REDIS_*` environment
   variable names are unchanged, because they are a deployment contract renamed only by its own change.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.

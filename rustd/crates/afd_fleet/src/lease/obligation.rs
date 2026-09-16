@@ -20,7 +20,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_datastore::OutboundJob;
+use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use sqlx::PgConnection;
 

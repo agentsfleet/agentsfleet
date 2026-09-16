@@ -38,7 +38,7 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_datastore::streams::FleetStreams;
+use afd_dragonfly::streams::FleetStreams;
 use afd_wire::tail::{FleetCounters, TailFrame};
 use sqlx::Row as _;
 

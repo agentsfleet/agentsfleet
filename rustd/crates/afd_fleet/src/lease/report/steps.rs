@@ -26,7 +26,7 @@
 use afd_billing::Nanos;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::EventId;
+use afd_dragonfly::EventId;
 use afd_events::Closed;
 use afd_observability::producers;
 

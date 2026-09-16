@@ -106,7 +106,7 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
 | SSE response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Redis connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
-| SSE hub pump (`hub_pump`) | `afd_datastore`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection + the `channels` map | it owns the socket outright — no lock; the map under its own mutex | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the pump returns when the last command sender drops |
+| SSE hub pump (`hub_pump`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection + the `channels` map | it owns the socket outright — no lock; the map under its own mutex | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the pump returns when the last command sender drops |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Redis, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
@@ -175,7 +175,7 @@ the count of invariant comments.
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| hub channel map | `afd_datastore`'s `HubInner` | the `channel → (broadcast sender, reader count)` map and **nothing else** | leaf, and never held across an await — the only thing done under it is the command enqueue, which cannot block |
+| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count)` map and **nothing else** | leaf, and never held across an await — the only thing done under it is the command enqueue, which cannot block |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | reclaim cursor | `afd_runner`'s reclaim sweeper | the keyset cursor one pass resumes from | leaf — held alone, and only by the single sweeper task |
 | repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |

@@ -24,7 +24,7 @@ afd_crypto.workspace = true
 afd_db.workspace = true
 # The stream an admitted entry is appended to, and the readiness mark that
 # makes it promptly leasable.
-afd_datastore.workspace = true
+afd_dragonfly.workspace = true
 # The admission and replay counters.
 afd_observability.workspace = true
 # The event type spellings and the stream field names an entry is written
@@ -47,7 +47,7 @@ test-util = [
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
-    "afd_datastore/test-util",
+    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
@@ -55,7 +55,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The lane fixture: the shared test database and the identifier minting the
 # seeded rows are addressed by.
 afd_db = { workspace = true, features = ["test-util"] }
-afd_datastore = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_crypto = { workspace = true, features = ["test-util"] }
 # The replay proofs read the stream back by exact entry, which is what a
 # lease does; the crate's own reader samples through a consumer group.

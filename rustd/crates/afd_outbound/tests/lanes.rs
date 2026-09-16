@@ -15,9 +15,9 @@
 
 use std::time::Duration;
 
-use afd_datastore::config::{RedisConfig, RedisRole};
-use afd_datastore::streams::EventId;
-use afd_datastore::{OutboundDelivery, OutboundQueue, Redis};
+use afd_dragonfly::config::{RedisConfig, RedisRole};
+use afd_dragonfly::streams::EventId;
+use afd_dragonfly::{OutboundDelivery, OutboundQueue, Redis};
 use afd_outbound::{IN_FLIGHT_DELIVERIES, Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 

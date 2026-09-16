@@ -28,7 +28,7 @@
 pub mod capacity;
 mod probe;
 
-use afd_datastore::ReadyIndex;
+use afd_dragonfly::ReadyIndex;
 
 use self::probe::{
     FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,

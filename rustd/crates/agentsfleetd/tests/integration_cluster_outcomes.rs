@@ -37,7 +37,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_datastore::SubscriptionHub;
+use afd_dragonfly::SubscriptionHub;
 use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;

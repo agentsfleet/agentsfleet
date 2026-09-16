@@ -19,7 +19,7 @@ use agentsfleetd::preflight::{
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
 /// The API role's Redis knob.
-const REDIS_KNOB: &str = "REDIS_URL_API";
+const REDIS_KNOB: &str = "DRAGONFLY_URL";
 
 /// A Postgres URL the resolver accepts.
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
@@ -223,7 +223,7 @@ fn test_preflight_resolves_a_complete_environment() {
     );
     assert_eq!(
         config.redis().role(),
-        afd_datastore::config::RedisRole::Api,
+        afd_dragonfly::config::RedisRole::Api,
         "preflight resolves the API Redis role"
     );
     // The KEK is redacted by construction, so the assertion is that it EXISTS

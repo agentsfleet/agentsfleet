@@ -49,7 +49,14 @@ pub const rss = @import("rss.zig");
 /// duration); dead-runner detection is a separate later workstream (a lapse
 /// scan over `last_seen_at`), not a function of shrinking this — so it stays
 /// short as the silent-death backstop.
-const LEASE_TTL_MS: i64 = 30_000;
+///
+/// `pub` for a reader no Zig analysis can see: the Grafana alerting playbook
+/// derives the runner-offline threshold from this file with `sed`, matching
+/// `^pub const LEASE_TTL_MS`
+/// (`playbooks/operations/observability/providers/grafana/common.sh`). Dropping
+/// the keyword compiles and fails that playbook's tests with "cannot derive
+/// runner offline threshold", which is how it came back.
+pub const LEASE_TTL_MS: i64 = 30_000;
 
 /// The runner auto-renews a lease once fewer than this many ms remain before
 /// `lease_expires_at`. Must be < `LEASE_TTL_MS` so a renewal leaves slack for a
