@@ -7,6 +7,12 @@
 //! field this crate addresses it by. None of it needs a datastore, and none of
 //! it was reachable through the one live-cluster test that reads a real reply.
 
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "a unit test asserts by panicking; the crate's restriction set is for the daemon"
+)]
+
 use super::*;
 
 fn bulk(text: &str) -> Value {
@@ -109,7 +115,9 @@ fn a_shard_without_a_nodes_field_is_an_unexpected_reply() {
         bulk("slots"),
         Value::Array(vec![Value::Int(0), Value::Int(16383)]),
     ]);
-    let refused = nodes_of(shard).expect_err("a shard with no nodes field is refused");
+    let Err(refused) = nodes_of(shard) else {
+        panic!("a shard with no nodes field must be refused");
+    };
     assert!(
         refused.to_string().contains(CMD_CLUSTER),
         "the refusal should name the command that produced it: {refused}"
@@ -117,7 +125,10 @@ fn a_shard_without_a_nodes_field_is_an_unexpected_reply() {
 
     // Present but not an array — the same refusal, for the same reason.
     let wrong_shape = Value::Array(vec![bulk(FIELD_NODES), bulk("not-a-list")]);
-    assert!(nodes_of(wrong_shape).is_err());
+    assert!(
+        matches!(nodes_of(wrong_shape), Err(_wrong_shape)),
+        "a nodes field that is not a list must be refused too"
+    );
 }
 
 /// The crate's single reading of a value as text. `VerbatimString` is the case
