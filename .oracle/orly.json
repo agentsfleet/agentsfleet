@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.10.9",
+  "orly_version": "0.10.10",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -173,6 +173,6 @@
     "docs/REST_API_DESIGN_GUIDELINES.md": "sha256:114e8a1c1968bae539812ceec417690abf99c761b4bb83c541bb24cdd9095ee5",
     "docs/SCHEMA_CONVENTIONS.md": "sha256:5a5b5b2a5d4a34c9a727ef663dbc97d0d9a39cc26989406cb0ecd3b0c220e056",
     "docs/TEMPLATE.md": "sha256:3b38d8cff71f31748a08a4ab42177ac55884807ce1dee472ecebe2a229511283",
-    "docs/VERIFY_TIERS.md": "sha256:c837b9b63bbc4392a0cc620c23fa3cf41594d250cda5113f5d045d429cd5ce6d"
+    "docs/VERIFY_TIERS.md": "sha256:299348bc1ddae3e1d889d2d731dfba7dd306ab8e0583ab86ced625ce3cd56459"
   }
 }
