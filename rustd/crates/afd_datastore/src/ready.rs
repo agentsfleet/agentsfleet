@@ -57,6 +57,7 @@ static CLEAR_IF_TOKEN_MATCHES_SCRIPT: std::sync::LazyLock<redis::Script> =
 /// spelled twice is a verb that can be spelled two ways.
 const CMD_HSET: &str = "HSET";
 const CMD_HLEN: &str = "HLEN";
+const CMD_HGET: &str = "HGET";
 const CMD_HRANDFIELD: &str = "HRANDFIELD";
 const CMD_EVAL: &str = "EVAL";
 const CMD_HDEL: &str = "HDEL";
@@ -149,6 +150,23 @@ impl ReadyIndex {
         cmd.arg(&key).arg(fleet_id).arg(&value);
         let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
         Ok(ReadyToken(value))
+    }
+
+    /// The token currently stored for `fleet_id`, if any.
+    ///
+    /// Unlike [`ReadyIndex::peek`], this is an exact lookup: it resolves the
+    /// fleet's own partition rather than sampling one, so a caller that already
+    /// knows which fleet it is asking about gets a deterministic answer. Tests
+    /// and repair probes use it where sampling would make the question a race.
+    ///
+    /// # Errors
+    /// Returns a command error when the read fails.
+    pub async fn token_for(&self, fleet_id: &str) -> Result<Option<ReadyToken>> {
+        let key = self.key_for(fleet_id);
+        let mut cmd = redis::cmd(CMD_HGET);
+        cmd.arg(&key).arg(fleet_id);
+        let stored: Option<String> = self.redis.command(CMD_HGET, &key, &cmd).await?;
+        Ok(stored.map(ReadyToken))
     }
 
     /// How many fleets one partition currently holds.

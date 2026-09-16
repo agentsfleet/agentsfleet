@@ -141,6 +141,39 @@ async fn test_ready_index_read_surface() {
     }
 }
 
+/// An exact field read is deterministic even when the shared index is crowded.
+///
+/// Lease polls sample a partition, but tests that prove one fleet was awakened
+/// need a precise lookup: they must read the fleet's OWN partition rather than
+/// whichever one a sample happened to visit, or an unrelated fleet sharing the
+/// index makes the assertion flaky.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_ready_index_token_for_reads_one_fleet_exactly() {
+    let harness = RedisHarness::connect().await;
+    let index = ReadyIndex::new(harness.redis.clone());
+    let fleet = harness.name("fleet-token");
+
+    assert_eq!(
+        index.token_for(&fleet).await.expect("read missing token"),
+        None
+    );
+
+    index.mark(&fleet, "token-exact").await.expect("mark");
+
+    assert_eq!(
+        index
+            .token_for(&fleet)
+            .await
+            .expect("read marked token")
+            .as_ref()
+            .map(afd_datastore::ReadyToken::as_str),
+        Some("token-exact")
+    );
+
+    cleanup_fields(&harness, &fleet).await;
+}
+
 /// The connection answers for itself, and a certificate path that is not there
 /// is a config failure rather than an outage.
 #[tokio::test(flavor = "multi_thread")]

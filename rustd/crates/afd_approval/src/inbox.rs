@@ -35,7 +35,7 @@ use std::borrow::Cow;
 use afd_admission::Admissions;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_datastore::{FleetStreams, Redis};
+use afd_datastore::{FleetStreams, ReadyIndex, Redis};
 use afd_db::Db;
 use afd_wire::approval::status;
 use afd_wire::grant::status as grant_status;
@@ -73,11 +73,11 @@ const CONTEXT_ONE: &str = "gate.inbox.one";
 const CONTEXT_RESOLVE: &str = "gate.inbox.resolve";
 const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
 
+/// The ready mark that wakes a parked runless gate would not write.
+const EVENT_RUNLESS_READY_MARK_FAILED: &str = "gate_runless_ready_mark_failed";
+
 /// The column the pending count sits in, after the resolved row's nine.
 const COLUMN_PENDING_APPROVALS: usize = 9;
-
-/// An approved gate held no run, so there was nothing to continue.
-const EVENT_NOTHING_TO_CONTINUE: &str = "gate_approved_without_run";
 
 /// The actor a continuation event records.
 ///
@@ -233,7 +233,13 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         Ok(match existing {
-            Some(row) => Resolution::AlreadyResolved(read_resolved(&row)?),
+            Some(row) => {
+                let resolved = read_resolved(&row)?;
+                if resolved.event_id.is_none() {
+                    self.wake_runless_resolution(&resolved).await;
+                }
+                Resolution::AlreadyResolved(resolved)
+            }
             None => Resolution::NotFound,
         })
     }
@@ -262,18 +268,11 @@ impl Inbox {
         // a run a person unblocked and nothing restarted.
         let continuation = match (outcome.continues_the_run(), resolved.event_id.as_deref()) {
             (true, Some(event_id)) => self.continue_from(&resolved, event_id, now).await,
-            (true, None) => {
-                let fleet = resolved.fleet_id.as_str();
-                let gate = resolved.gate_id.as_str();
-                tracing::warn!(
-                    event = EVENT_NOTHING_TO_CONTINUE,
-                    fleet_id = fleet,
-                    gate_id = gate,
-                    "the approved gate parked no event; there is no run to continue"
-                );
+            (true | false, None) => {
+                self.wake_runless_resolution(&resolved).await;
                 Ok(None)
             }
-            (false, _) => Ok(None),
+            (false, Some(_event_id)) => Ok(None),
         };
         // After the continuation, so an approval's frame carries the count the
         // continued run's own row moved — on the connection the resolve still
@@ -292,6 +291,33 @@ impl Inbox {
         .await;
         resolved.continuation_event_id = continuation?;
         Ok(resolved)
+    }
+
+    /// Wakes the fleet after a runless gate changes state.
+    ///
+    /// Install-time integration grants deliberately carry no `event_id`: the
+    /// original delivery stays on the fleet stream, and the answer changes what
+    /// that same delivery will read on its next poll. Resolving the card must
+    /// therefore wake the ready index without appending a continuation event.
+    ///
+    /// Best-effort for the same reason regular chat ingress is: the database
+    /// answer is already durable, and a Redis mark failure should not turn a
+    /// completed human decision into a retry that can no longer win the row.
+    async fn wake_runless_resolution(&self, resolved: &Resolved) {
+        let fleet = resolved.fleet_id.as_str();
+        if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
+            let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let gate = resolved.gate_id.as_str();
+            let reason = error.to_string();
+            tracing::warn!(
+                error_code = code,
+                event = EVENT_RUNLESS_READY_MARK_FAILED,
+                fleet_id = fleet,
+                gate_id = gate,
+                reason,
+                "the gate resolved but the fleet readiness mark could not be refreshed"
+            );
+        }
     }
 
     /// Lands the event that resumes the run an approved gate had blocked.

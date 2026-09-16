@@ -25,6 +25,7 @@ use afd_approval::{
 };
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_datastore::ReadyIndex;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 
@@ -113,6 +114,16 @@ async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
         )
     })
     .collect()
+}
+
+/// Whether the resolve woke the fleet for a parked delivery to poll again.
+async fn fleet_is_ready(lane: &Lane) -> bool {
+    ReadyIndex::new(lane.queue.clone())
+        .token_for(lane.fleet.as_str())
+        .await
+        .expect("the ready index is readable")
+        .as_ref()
+        .is_some_and(|token| token.as_str() == lane.fleet.as_str())
 }
 
 /// The action id of the one card this fleet holds.
@@ -230,6 +241,10 @@ async fn approving_the_card_grants_the_integration() {
         .expect("the fleet holds its requested grant");
     assert_eq!(moved.1, status::APPROVED);
     assert_eq!(approved_at(&lane).await, Some(NOW_MS));
+    assert!(
+        fleet_is_ready(&lane).await,
+        "approving an install grant wakes the parked delivery"
+    );
 }
 
 /// Denying the card revokes the grant rather than leaving it pending.
@@ -259,6 +274,10 @@ async fn denying_the_card_revokes_the_grant() {
     let denied = grant_rows(&lane).await;
     let taken_back = denied.first().expect("the fleet holds its requested grant");
     assert_eq!(taken_back.1, status::REVOKED);
+    assert!(
+        fleet_is_ready(&lane).await,
+        "denying an install grant wakes the parked delivery to terminalize"
+    );
     // A denied grant is never re-asked. Talking over a person's no every second
     // is the loop with a card on it rather than the loop without one.
     assert_eq!(request(&lane).await, Requested::Denied);

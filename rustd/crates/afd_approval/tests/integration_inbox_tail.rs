@@ -16,7 +16,7 @@ use std::time::Duration;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_core::clock::UnixMillis;
 use afd_datastore::hub::Received;
-use afd_datastore::{Subscription, SubscriptionHub};
+use afd_datastore::{ReadyIndex, Subscription, SubscriptionHub};
 use serde_json::{Value, json};
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, redis_config, sweeper_exclusive};
@@ -290,6 +290,74 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     assert_eq!(frame.get("status"), Some(&json!("approved")));
     assert_eq!(frame.get("event_id"), Some(&Value::Null));
     assert_eq!(lane.status_of(&runless).await, "approved");
+    assert_eq!(
+        ready_token(&lane).await.as_deref(),
+        Some(lane.fleet.as_str()),
+        "a runless approval wakes the original parked delivery"
+    );
+}
+
+/// A repeated answer to a runless gate still wakes the parked delivery.
+///
+/// The loser receives `AlreadyResolved`, but from the runner's point of view
+/// the operator pressed the same wake button again. That must refresh Redis too:
+/// the original delivery is still the thing that will re-read the durable row.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_already_resolved_runless_gate_refreshes_readiness() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+
+    let first = lane
+        .inbox
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the first answer resolves the gate");
+    assert!(matches!(first, Resolution::Resolved(_)));
+
+    ReadyIndex::new(lane.queue.clone())
+        .force_clear(lane.fleet.as_str())
+        .await
+        .expect("the test can clear the ready mark");
+    assert_eq!(ready_token(&lane).await, None);
+
+    let second = lane
+        .inbox
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the repeated answer reads the standing decision");
+    assert!(matches!(second, Resolution::AlreadyResolved(_)));
+    assert_eq!(
+        ready_token(&lane).await.as_deref(),
+        Some(lane.fleet.as_str()),
+        "the already-resolved runless path wakes the parked delivery"
+    );
+}
+
+/// A lost readiness refresh does not undo the durable answer.
+///
+/// The wake is best-effort: Redis can be down after Postgres accepts the
+/// person's decision. The resolve must still answer with the row's outcome so
+/// a retry or sweeper can repair the readiness edge later.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_runless_gate_with_a_dead_ready_index_still_resolves() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
+    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+
+    let outcome = inbox
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect("a lost ready mark does not reject the answer");
+    assert!(matches!(outcome, Resolution::Resolved(_)));
+    assert_eq!(lane.status_of(&runless).await, "approved");
 }
 
 /// An approval whose continuation the queue refuses is still answered.
@@ -374,4 +442,13 @@ async fn next_frame(tail: &mut Subscription) -> Option<Value> {
         return None;
     };
     serde_json::from_str(&message.payload).ok()
+}
+
+/// The current ready token for the lane's fleet.
+async fn ready_token(lane: &Lane) -> Option<String> {
+    ReadyIndex::new(lane.queue.clone())
+        .token_for(lane.fleet.as_str())
+        .await
+        .expect("the ready index is readable")
+        .map(|token| token.as_str().to_owned())
 }
