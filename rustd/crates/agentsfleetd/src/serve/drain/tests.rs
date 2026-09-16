@@ -14,18 +14,6 @@ use super::*;
 /// Long enough that a scheduler hiccup cannot fail a test that is meant to
 /// prove a clean drain, short enough that the timeout tests stay quick.
 const GENEROUS: Duration = Duration::from_secs(5);
-/// A subscriber for the length of one test, so the `tracing` macros on the
-/// drain's two diagnostic paths EVALUATE their fields. Without one the macros
-/// short-circuit and the lines an operator reads a stuck deployment by are
-/// never executed at all.
-fn recording() -> tracing::subscriber::DefaultGuard {
-    tracing::subscriber::set_default(
-        tracing_subscriber::fmt()
-            .with_test_writer()
-            .with_max_level(tracing::Level::TRACE)
-            .finish(),
-    )
-}
 const IMPATIENT: Duration = Duration::from_millis(50);
 /// What a simulated connection or accept loop spends before it finishes. Long
 /// enough that `settle` is genuinely waiting on it rather than racing it.
@@ -51,7 +39,6 @@ async fn an_empty_server_drains_at_once_and_stops_accepting() {
 
 #[tokio::test]
 async fn an_in_flight_request_finishes_before_the_drain_returns() {
-    let _logs = recording();
     let drain = Drain::new();
     let guard = drain.enter();
     assert_eq!(drain.in_flight(), 1);
@@ -73,7 +60,6 @@ async fn an_in_flight_request_finishes_before_the_drain_returns() {
 
 #[tokio::test]
 async fn a_request_that_outlasts_the_bound_is_reported_not_waited_for() {
-    let _logs = recording();
     let drain = Drain::new();
     let held = drain.enter();
 

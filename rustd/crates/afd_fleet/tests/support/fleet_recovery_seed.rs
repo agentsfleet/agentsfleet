@@ -23,7 +23,7 @@ use afd_wire::event::EventType;
 
 use crate::report_seed::DEEP_POOL;
 use crate::requests::ENROLLED_AT;
-use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_within_one_rotation};
+use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
 const ACTOR: &str = "webhook:recovery";
@@ -74,9 +74,14 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
         .await
         .expect("a live queue admits and receipts");
 
-    let acquired = select_within_one_rotation(leases, &holder, staged_at)
+    // Narrowed to THIS fleet. The readiness partition cursor is process-global
+    // and every suite in this binary turns it, so "one rotation" is one
+    // rotation only when nothing else is polling — and the assertion below
+    // pairs the acquired event with this fleet's admission, which a poll that
+    // answered a sibling's work would fail for the wrong reason.
+    let acquired = select_fleet_within_rotations(leases, &holder, staged_at, &fleet)
         .await
-        .expect("one rotation of polls reaches the fleet holding admitted work");
+        .expect("the fleet holding admitted work is offered within the rotations polled");
     assert_eq!(acquired.event_id, admitted.id);
     assert_eq!(
         leases

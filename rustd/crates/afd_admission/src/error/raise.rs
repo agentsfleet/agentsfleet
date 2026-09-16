@@ -190,3 +190,37 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("queue full", ErrorKind::Queue { source: full }.into()),
     ]
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use super::DiskFull;
+
+    /// The disk-full fixture answers the whole `DatabaseError` contract, not
+    /// only the two accessors a rendered chain happens to read.
+    ///
+    /// `sqlx` reaches for the owning halves — `as_error_mut` and `into_error` —
+    /// whenever a caller takes the cause rather than borrowing it, and a
+    /// fixture that answered those wrongly would fail the suite it was built
+    /// to serve rather than the code under test. Exercised here, inside the
+    /// crate, because both need the box by value and no caller outside can
+    /// construct one.
+    #[test]
+    fn the_disk_full_fixture_answers_every_owning_accessor() {
+        let mut boxed: Box<dyn sqlx::error::DatabaseError> = Box::new(DiskFull);
+
+        assert!(boxed.as_error().to_string().contains("No space left"));
+        assert!(
+            boxed
+                .as_error_mut()
+                .to_string()
+                .contains("No space left on device")
+        );
+        assert!(matches!(boxed.kind(), sqlx::error::ErrorKind::Other));
+
+        let owned = boxed.into_error();
+        assert!(
+            owned.source().is_none(),
+            "a leaf fault has no cause of its own"
+        );
+    }
+}

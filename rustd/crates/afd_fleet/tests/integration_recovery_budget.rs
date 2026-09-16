@@ -70,7 +70,7 @@ use afd_runner::sweep::replay::Replay;
 
 use crate::queue;
 use crate::recovery_seed::{abandoned_mid_flight, admission, ledger};
-use crate::seed::{seeded_parts, select_within_one_rotation};
+use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
 /// The budget the dimension states: a fleet the ledger surfaced is obtained
@@ -130,7 +130,9 @@ async fn recovers_an_abandoned_lease(fixtures: &Fixtures, leases: &Leases) {
             Some(LEASE_ACTIVE),
             "the sweeper marks and never flips: a flipped lease is invisible to reclaim_prior_active"
         );
-        obtained = select_within_one_rotation(leases, &staged.poller, clock::now()).await;
+        obtained =
+            select_fleet_within_rotations(leases, &staged.poller, clock::now(), &staged.fleet)
+                .await;
         if obtained.is_some() {
             break;
         }

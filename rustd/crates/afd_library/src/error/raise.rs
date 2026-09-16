@@ -67,9 +67,26 @@ pub(crate) fn database(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 ///
 /// A sample built here rather than in the suite means adding a kind without a
 /// sample is a change in THIS file, next to the kind.
+///
+/// # Panics
+/// When a sibling crate stops refusing an input this builder relies on being
+/// refused — a mocked entropy source told to fail, and an empty identifier.
+/// That is a change in that crate's contract rather than a runtime condition,
+/// and stopping here names it at the sample rather than at whichever assertion
+/// happens to read the wrong value first.
 #[cfg(feature = "test-util")]
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let (source, control) = afd_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let entropy = source
+        .uuid_randomness()
+        .expect_err("a mocked source told to fail refuses the draw");
+    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
     vec![
         ("invalid", InvalidBundle::MissingSkill.into()),
         ("source", SourceFailure::RateLimited.into()),
@@ -86,5 +103,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "pool",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),
         ),
+        // The two onboarding failures that are this instance's rather than the
+        // caller's. Neither is lifted — both are raised where the mint happens
+        // — so a sample is the only way their shared code and sentence are
+        // ever read.
+        ("entropy", ErrorKind::Entropy { source: entropy }.into()),
+        ("mint", ErrorKind::Mint { source: identifier }.into()),
     ]
 }

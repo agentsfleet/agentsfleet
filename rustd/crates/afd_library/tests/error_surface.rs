@@ -22,11 +22,11 @@ use std::error::Error as _;
 use afd_library::error::one_of_each_kind;
 
 /// How many kinds the sample declares.
-const SAMPLES: usize = 6;
+const SAMPLES: usize = 8;
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 1;
+const WITH_SOURCE: usize = 3;
 /// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 6;
+const DISTINCT_CODES: usize = 7;
 
 #[test]
 fn the_sample_declares_every_kind_under_a_distinct_label() {
@@ -148,7 +148,7 @@ fn every_kind_hands_the_caller_a_sentence() {
     }
 }
 
-/// The caller-facing vocabulary is exactly these 6 sentences.
+/// The caller-facing vocabulary is exactly these 7 sentences.
 ///
 /// Pinned as a SET, not as a function of the code: kinds sharing a code may
 /// still say different things here, and in this crate some do. What must not
@@ -163,7 +163,7 @@ fn the_caller_facing_vocabulary_does_not_drift() {
         .collect();
     assert_eq!(
         sentences.len(),
-        6,
+        7,
         "the sentences handed to callers are now {sentences:?}"
     );
 }

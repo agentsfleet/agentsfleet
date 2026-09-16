@@ -241,9 +241,14 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     // second poll at the same instant could never re-claim the slot however
     // correct the drop was.
     let later = UnixMillis::from_millis(ENROLLED_AT + 1);
-    let second = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, later)
-        .await
-        .expect("the fleet must still be leasable once the undecodable entry is gone");
+    // Narrowed to THIS fleet, unlike the poll above: the assertion that follows
+    // names this fleet's own entry, and the readiness cursor is process-global,
+    // so an unnarrowed poll can answer a sibling suite's work and fail here for
+    // a reason that has nothing to do with the poison.
+    let second =
+        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, later, &fleet)
+            .await
+            .expect("the fleet must still be leasable once the undecodable entry is gone");
     assert_eq!(
         second.event_id, good,
         "the entry behind the poison must be reachable; if this is the poison id \
