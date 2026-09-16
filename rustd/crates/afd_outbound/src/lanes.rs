@@ -214,14 +214,65 @@ impl<S: Deliver + 'static> Inner<S> {
             let Ok(_permit) = permit else { return };
             self.deliver_and_ack(&job).await;
         }
+        self.rescue_stragglers(&mut jobs).await;
+    }
+
+    /// Re-dispatches anything that reached this lane as it was retiring.
+    ///
+    /// [`Self::take_or_retire`] closes the channel inside the map entry, so no
+    /// send can land after that point. A send can still land between the
+    /// `try_recv` that found the lane empty and the close on the next line — the
+    /// sender holds a clone and takes no lock — and that job would otherwise
+    /// go out with this receiver when the task returns. It is instead handed
+    /// to a fresh lane.
+    ///
+    /// Ordinarily this drains nothing: the window is two statements wide. It
+    /// is not optional for that reason. A job dropped here is an answer this
+    /// process never delivers, and while the entry stays pending on the stream
+    /// — so the next process redelivers it and the path is still at-least-once
+    /// — nothing in THIS process ever says so.
+    async fn rescue_stragglers(self: &Arc<Self>, jobs: &mut mpsc::Receiver<Job>) {
+        while let Ok(mut straggler) = jobs.try_recv() {
+            if self.token.is_cancelled() {
+                // Shutting down: leave it unacknowledged, which is the
+                // hand-off to the next process this module already relies on.
+                return;
+            }
+            // `Lanes::dispatch`'s loop, from the inside: this lane's own
+            // channel is closed, so `lane_for` answers a fresh one.
+            loop {
+                let lane = self.lane_for(&Destination::of(&straggler));
+                match lane.send(straggler).await {
+                    Ok(()) => break,
+                    Err(mpsc::error::SendError(returned)) => straggler = returned,
+                }
+            }
+        }
     }
 
     /// The next queued job, or `None` after retiring the lane.
     ///
-    /// The second look happens holding this lane's map entry, which is what
-    /// a dispatch takes to find it: either the dispatch already queued its
-    /// job and this sees it, or this has removed the lane and the dispatch
-    /// will spawn a fresh one. There is no third interleaving.
+    /// The second look happens holding this lane's map entry, which is what a
+    /// dispatch takes to find it: either the dispatch already queued its job
+    /// and this sees it, or this has removed the lane and the dispatch will
+    /// spawn a fresh one.
+    ///
+    /// # The interleaving the close exists for
+    ///
+    /// A third one was reachable, and it lost a job. [`Inner::lane_for`] hands
+    /// out a CLONE of the sender and then releases the entry, so a dispatch can
+    /// be holding a live sender while this runs. Removing the entry does not
+    /// invalidate that clone, and the receiver stays alive until `run_lane`
+    /// returns — so a `send` landing in between SUCCEEDED, into a buffer that
+    /// was about to be dropped with the task. The answer was never delivered
+    /// and nothing said so.
+    ///
+    /// Closing the channel first is what makes that impossible: after it, the
+    /// stale clone's `send` fails, `dispatch` re-enters its loop, finds the
+    /// entry gone, and spawns a fresh lane. The close happens while the entry
+    /// is held, so a dispatch cannot be between `lane_for` and the map at the
+    /// same moment. Anything already buffered is rescued by
+    /// [`Self::rescue_stragglers`].
     fn take_or_retire(
         &self,
         destination: &Destination,
@@ -232,6 +283,7 @@ impl<S: Deliver + 'static> Inner<S> {
             Err(TryRecvError::Disconnected) => None,
             Err(TryRecvError::Empty) => match self.lanes.entry(destination.clone()) {
                 Entry::Occupied(lane) => jobs.try_recv().ok().or_else(|| {
+                    jobs.close();
                     lane.remove();
                     None
                 }),
