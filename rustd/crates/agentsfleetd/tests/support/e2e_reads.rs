@@ -131,6 +131,20 @@ pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> O
 
 /// One column of the scenario fleet's event row, as text.
 pub(crate) async fn event_column(run: &Scenario, event: &str, column: &str) -> Option<String> {
+    event_column_of(run, &run.fleet, event, column).await
+}
+
+/// One column of ANY fleet's event row, read over the scenario's pool.
+///
+/// The fleet is a parameter because a scenario can hold more than its own:
+/// `integration_unreadable_config` seeds a neighbour it expects the daemon to
+/// refuse, and the row proving that refusal is the neighbour's.
+pub(crate) async fn event_column_of(
+    run: &Scenario,
+    fleet: &str,
+    event: &str,
+    column: &str,
+) -> Option<String> {
     let statement = AssertSqlSafe(format!(
         "SELECT {column}::text FROM core.fleet_events \
          WHERE fleet_id = $1::uuid AND event_id = $2"
@@ -142,7 +156,7 @@ pub(crate) async fn event_column(run: &Scenario, event: &str, column: &str) -> O
         .await
         .expect("a pooled connection");
     sqlx::query(statement)
-        .bind(&run.fleet)
+        .bind(fleet)
         .bind(event)
         .fetch_optional(&mut *connection)
         .await

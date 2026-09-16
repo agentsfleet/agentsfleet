@@ -34,6 +34,8 @@
 
 #[path = "integration_runner_e2e/money_gate.rs"]
 mod money_gate;
+#[path = "integration_runner_e2e/refusals.rs"]
+mod refusals;
 
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -41,41 +43,28 @@ use serde_json::{Value, json};
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
-    poll_for_seeded_lease, post, report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
+    assert_no_lease_for_fleet_under_test, capable_beat, field, get, json, poll_for_seeded_lease,
+    poll_until, post, report_body,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_runner_suite_vs_rust_daemon() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    assert_unknown_credential_is_refused(&http, &run).await;
+    refusals::assert_unknown_credential_is_refused(&http, &run).await;
     prove_runner_ready(&http, &run).await;
     let (lease_id, fence) = claim_seeded_lease(&http, &run).await;
     prove_live_lease_satellites(&http, &run, &lease_id).await;
     capture_memory(&http, &run, &lease_id, fence).await;
     settle_report(&http, &run, &lease_id, fence).await;
-    assert_unsupported_event_ends(&http, &run).await;
+    refusals::assert_unsupported_event_ends(&http, &run).await;
 
     supervisor.shutdown().await;
     run.cleanup().await;
-}
-
-async fn assert_unknown_credential_is_refused(http: &reqwest::Client, run: &Scenario) {
-    let unknown = http
-        .get(format!("{}/v1/runners/me", run.base))
-        .bearer_auth(UNKNOWN_TOKEN)
-        .send()
-        .await
-        .expect("the daemon answers an unknown credential");
-    assert_eq!(
-        unknown.status().as_u16(),
-        401,
-        "a well-formed token belonging to no row is refused by the directory"
-    );
 }
 
 async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
@@ -155,24 +144,12 @@ async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, f
     assert_replay_returns_the_stored_outcome(http, run, lease_id, &report).await;
 }
 
-async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
-    let unsupported = run.enqueue_event("future_event_type").await;
-    let refused = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(refused.status().as_u16(), 200);
-    assert_eq!(field(&json(refused).await, "lease"), &Value::Null);
-    assert_eq!(
-        event_column(run, &unsupported, "status").await.as_deref(),
-        Some("gate_blocked"),
-        "the unsupported stream entry is ended instead of being retried forever"
-    );
-}
-
 /// The side-channel verbs operate on the same live lease and identity.
 async fn prove_live_lease_satellites(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
     assert_memory_hydrates(http, run).await;
     assert_lease_renews(http, run, lease_id).await;
     assert_activity_degrades_gracefully(http, run, lease_id).await;
-    assert_credential_and_duplicate_refusals(http, run, lease_id).await;
+    refusals::assert_credential_and_duplicate_refusals(http, run, lease_id).await;
 }
 
 async fn assert_memory_hydrates(http: &reqwest::Client, run: &Scenario) {
@@ -221,34 +198,6 @@ async fn assert_activity_degrades_gracefully(
         activity.status().as_u16(),
         202,
         "an invalid cosmetic frame is dropped without failing the live run"
-    );
-}
-
-async fn assert_credential_and_duplicate_refusals(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-) {
-    let mint = post(
-        http,
-        run,
-        "/v1/runners/me/credentials/mint",
-        &json!({"lease_id": lease_id, "integration": "anthropic", "scope": null}),
-    )
-    .await;
-    assert_eq!(mint.status().as_u16(), 404);
-    assert_eq!(
-        field(&json(mint).await, "error_code"),
-        &json!("UZ-CRED-001"),
-        "a provider credential is not silently treated as a mintable connector"
-    );
-
-    let no_second_lease = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(no_second_lease.status().as_u16(), 200);
-    assert_eq!(
-        field(&json(no_second_lease).await, "lease"),
-        &Value::Null,
-        "a runner already holding the ready event receives no duplicate work"
     );
 }
 

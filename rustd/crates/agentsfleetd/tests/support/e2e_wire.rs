@@ -101,6 +101,15 @@ pub(crate) fn claim(lease: &Value) -> (String, u64) {
 /// rather than on whatever arrives: a fixture that appended twice has two
 /// entries owed, and the oldest is the one these suites are written against.
 pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
+    poll_for_lease(http, run, &run.event_id).await
+}
+
+/// [`poll_for_seeded_lease`], for any event the scenario has put on its fleet.
+pub(crate) async fn poll_for_lease(
+    http: &reqwest::Client,
+    run: &Scenario,
+    event_id: &str,
+) -> (String, u64) {
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
         // Asserted on EVERY turn, not once before the loop: a caller that
@@ -115,37 +124,82 @@ pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario
         let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
             continue;
         };
-        if field(field(lease, "event"), "event_id") == &json!(run.event_id) {
+        if field(field(lease, "event"), "event_id") == &json!(event_id) {
             return claim(lease);
         }
     }
     panic!(
-        "the seeded event {} was never offered in {ROTATIONS} rotations of the \
+        "the event {event_id} was never offered in {ROTATIONS} rotations of the \
          readiness index.\n\
          \n\
-         What is established, against a freshly reset rig:\n\
-         - the fleet row is `active` with empty `required_tags`, and the runner \
-           carries labels and is not degraded, so SELECT_READY_CANDIDATES run by \
-           hand DOES return this fleet;\n\
-         - `Leases::installed` answers for it;\n\
-         - `ReadyIndex::peek(Partition::of(fleet))` finds its mark, and the index \
-           holds depth 1;\n\
-         - and yet every poll logs `runner_lease_no_work` with reason \
-           \"no leasable work\" and issues NO candidate query, which means \
-           `select` returned at the empty-peek arm.\n\
+         Every poll answered 200 with `lease: null`, so the daemon did not fail: \
+         it found nothing it would hand this runner. Read the daemon's own log \
+         before theorising — `AFD_TEST_LOG=1` is the switch; `RUST_LOG` alone \
+         writes to a sink — and find the poll that DID reach the fleet's \
+         partition, one in {READY_PARTITIONS}: the reason it declined is on \
+         that line. The last time this fired, the line was \
+         `assign_entry_undecodable_dropped`: the seed had appended the \
+         pre-ledger field set, the reader refused the entry for want of \
+         `event_id`, dropped it so the fleet stayed leasable, and every later \
+         poll correctly found the stream empty. The seed now admits through the \
+         ledger (`e2e_event.rs`).\n\
          \n\
-         So the poll's own peek disagrees with a peek made from the test over the \
-         same connection and the same partition. That contradiction is the thing \
-         to chase; it is not residue (depth 1) and not the group's start \
-         (`ensure_group` creates at 0).\n\
-         \n\
-         Separately and confirmed: the lane's shared database carries fleets whose \
-         `config_json` is `{{}}` or `{{\"not\": \"a fleet config\"}}`, seeded by the \
-         store suites that call `Leases::select` directly. The pull path resolves \
-         a config and answers UZ-INTERNAL-003 on those, so a poll that lands on \
-         one 500s — see the note at the head of `e2e_seed.rs`, which predicted it.",
-        run.event_id
+         Also worth ruling out: a fleet in the lane database whose `config_json` \
+         will not parse — the pull path resolves one and refuses the runner \
+         with UZ-INTERNAL-003 — and a runner already holding a lease, since a \
+         runner holds one lease and a poll that lands on residue takes the slot."
     )
+}
+
+/// Polls a full rotation budget while `ended` says the work under test is
+/// still open, and answers whether it closed.
+///
+/// For the arms where the RIGHT answer is no work — an unsupported type the
+/// daemon must end, a gate that must block — and where that answer is also
+/// what a poll that never reached the fleet's partition says. The poll's
+/// answer cannot tell the two apart, so the exit condition is the caller's
+/// own row read, and every answer on the way is still checked: a 200 carrying
+/// a lease would mean the daemon handed out the very work it must refuse.
+pub(crate) async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, mut ended: F) -> bool
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+        let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+        assert_eq!(
+            response.status().as_u16(),
+            200,
+            "no-work is a 200 on this verb"
+        );
+        assert_no_lease_for_fleet_under_test(run, &json(response).await);
+        if ended().await {
+            return true;
+        }
+    }
+    false
+}
+
+/// Asserts the answer carries no lease for the fleet under test.
+///
+/// Scoped to that fleet rather than asserting `lease: null`, because a lease
+/// for ANOTHER fleet is the shared lane rather than a defect: this database
+/// carries every earlier scenario's fleets, and the reclaim sweeper re-marks
+/// any whose stream still holds work. Nothing in the daemon stops one runner
+/// holding leases on several fleets — every `fleet.runner_leases` statement is
+/// scoped by lease id AND runner id for OWNERSHIP, and none asks whether the
+/// runner already holds one — so a lease taken here costs the caller nothing
+/// and is left alone. Handing it back would mean reporting an event this suite
+/// does not own, to a fleet another crate's suite may be waiting on.
+pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value) {
+    let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
+        return;
+    };
+    assert_ne!(
+        field(field(lease, "event"), "fleet_id"),
+        &json!(run.fleet),
+        "the daemon must not hand out the work under test"
+    );
 }
 
 /// The report one completed run sends.
