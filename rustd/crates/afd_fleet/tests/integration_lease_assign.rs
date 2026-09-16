@@ -47,9 +47,10 @@ async fn test_select_assigns_a_ready_fleets_event() {
     } = seeded::<1>(&fixtures).await;
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let acquired = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now)
-        .await
-        .expect("a ready fleet holding an event is leasable");
+    let acquired =
+        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
+            .await
+            .expect("a ready fleet holding an event is leasable");
 
     assert_eq!(acquired.kind, Kind::Fresh, "a first pull is not a reclaim");
     assert_eq!(acquired.fleet_id.as_str(), fleet);
@@ -99,7 +100,8 @@ async fn test_an_unmarked_fleet_is_not_discovered() {
     // A full rotation, because one poll proves nothing: since §4 it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
     // partition" as "nothing marked". A rotation visits every partition once.
-    let acquired = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now).await;
+    let acquired =
+        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet).await;
 
     assert!(
         acquired.is_none(),
@@ -141,13 +143,13 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
-    let held = crate::seed::select_within_one_rotation(&leases, &first, now)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await
         .expect("the fleet is leasable");
 
     // A full rotation: one poll could miss the claimed fleet's partition and
     // answer `None` for a reason that has nothing to do with the claim.
-    let refused = crate::seed::select_within_one_rotation(&leases, &second, now).await;
+    let refused = crate::seed::select_fleet_within_rotations(&leases, &second, now, &fleet).await;
     assert!(
         refused.is_none(),
         "one fleet, one holder — the second runner polls on"
