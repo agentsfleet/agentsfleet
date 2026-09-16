@@ -33,7 +33,7 @@
 
 mod closed;
 mod counters;
-mod error;
+pub mod error;
 mod history;
 pub mod sql;
 mod steer;

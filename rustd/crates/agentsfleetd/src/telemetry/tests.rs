@@ -29,7 +29,7 @@ fn required() -> [(&'static str, &'static str); 7] {
             "DATABASE_URL_API",
             "postgres://afd:afd@127.0.0.1:5432/agentsfleet",
         ),
-        ("REDIS_URL_API", "redis://127.0.0.1:6379"),
+        ("DRAGONFLY_URL", "redis://127.0.0.1:6379"),
         (
             "ENCRYPTION_MASTER_KEY",
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

@@ -1,6 +1,8 @@
 import { detailResponse, happyBilling } from "./harness";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import { fetchMock } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail header and summary", () => {
@@ -45,9 +47,17 @@ describe("fleets routes — detail header and summary", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-      }),
+      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
+      // mounts the app's one `TooltipProvider` above every page here, and a turn
+      // rendered with a relative `Time` reads it; rendering the page on its own
+      // steps outside that ancestor. `layout.test.tsx` holds the contract.
+      createElement(
+        TooltipProvider,
+        null,
+        await Page({
+          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        }),
+      ),
     );
     expect(markup).toContain("paused");
     expect(markup).not.toContain("data-live");
@@ -103,9 +113,17 @@ describe("fleets routes — detail header and summary", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-      }),
+      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
+      // mounts the app's one `TooltipProvider` above every page here, and a turn
+      // rendered with a relative `Time` reads it; rendering the page on its own
+      // steps outside that ancestor. `layout.test.tsx` holds the contract.
+      createElement(
+        TooltipProvider,
+        null,
+        await Page({
+          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        }),
+      ),
     );
     expect(markup).toContain("platform-ops");
   });
@@ -147,9 +165,17 @@ describe("fleets routes — detail header and summary", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-      }),
+      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
+      // mounts the app's one `TooltipProvider` above every page here, and a turn
+      // rendered with a relative `Time` reads it; rendering the page on its own
+      // steps outside that ancestor. `layout.test.tsx` holds the contract.
+      createElement(
+        TooltipProvider,
+        null,
+        await Page({
+          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        }),
+      ),
     );
     expect(markup).toContain("1 approval waiting");
     expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');

@@ -1,5 +1,6 @@
 //! The one error type returned by platform administration repositories.
 
+use afd_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
 use afd_core::error_code::{self, ErrorCode};
 
 /// Result returned by every fallible administration operation.
@@ -63,8 +64,8 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
-            ErrorKind::Datastore { .. } => "Database unavailable",
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => "Database error",
+            ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => "Internal operation failed",
         }
     }

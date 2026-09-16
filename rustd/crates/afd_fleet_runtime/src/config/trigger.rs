@@ -12,7 +12,7 @@
 //! total.
 
 use crate::config::raw;
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::provider::ProviderRegistry;
 
 /// Where a cron trigger's schedule is read, when it names no zone.
@@ -98,9 +98,11 @@ impl WebhookSignature {
         source: &str,
         providers: &dyn ProviderRegistry,
     ) -> Result<Self> {
-        let refuse = |reason| Error::InvalidSignatureConfig {
-            provider: source.into(),
-            reason,
+        let refuse = |reason| {
+            Error::from(ErrorKind::InvalidSignatureConfig {
+                provider: source.into(),
+                reason,
+            })
         };
 
         let secret_ref = authored
@@ -186,12 +188,11 @@ impl Trigger {
                 credential_name,
                 signature,
             } => {
-                let source =
-                    source
-                        .filter(|value| !value.is_empty())
-                        .ok_or(Error::InvalidTriggerSet {
-                            reason: REASON_NO_SOURCE,
-                        })?;
+                let source = source.filter(|value| !value.is_empty()).ok_or(Error::from(
+                    ErrorKind::InvalidTriggerSet {
+                        reason: REASON_NO_SOURCE,
+                    },
+                ))?;
 
                 Ok(Self::Webhook(Webhook {
                     // Both lists were bounded by the schema, so what is left
@@ -212,9 +213,9 @@ impl Trigger {
             } => Ok(Self::Cron(Cron {
                 schedule: schedule
                     .filter(|value| !value.is_empty())
-                    .ok_or(Error::InvalidTriggerSet {
+                    .ok_or(Error::from(ErrorKind::InvalidTriggerSet {
                         reason: REASON_NO_SCHEDULE,
-                    })?
+                    }))?
                     .into(),
                 timezone: timezone
                     .unwrap_or_else(|| DEFAULT_CRON_TIMEZONE.to_owned())
@@ -250,7 +251,7 @@ pub(crate) fn parse_set(
     authored: Vec<raw::Trigger>,
     providers: &dyn ProviderRegistry,
 ) -> Result<Box<[Trigger]>> {
-    let refuse = |reason| Error::InvalidTriggerSet { reason };
+    let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
 
     match authored.len() {
         0 => return Err(refuse(REASON_SET_EMPTY)),
@@ -268,7 +269,7 @@ pub(crate) fn parse_set(
 
 /// Proves no two triggers would fire for the same thing.
 fn prove_unique(triggers: &[Trigger]) -> Result<()> {
-    let refuse = |reason| Error::InvalidTriggerSet { reason };
+    let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
 
     triggers
         .iter()

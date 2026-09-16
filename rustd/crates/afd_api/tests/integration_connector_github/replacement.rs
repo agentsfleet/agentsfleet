@@ -12,7 +12,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_reconnect_of_the_same_installation_refreshes_rather_than_refuses() {
     // Exclusive to OTHER workspaces, not to the one that holds it: a person
     // reconnecting after a rotation must land, and the row must not double.
@@ -59,7 +59,7 @@ async fn a_reconnect_of_the_same_installation_refreshes_rather_than_refuses() {
 /// one up is what a person changing which installation they authorize looks
 /// like from the daemon's side anyway.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_second_installation_replaces_the_first_rather_than_joining_it() {
     let fixture = github_fixture().await;
     let first = fresh_installation();

@@ -25,6 +25,7 @@ import {
   METRICS_STATUS_LABEL,
   METRICS_STRIP_LABEL,
   METRICS_TIME_LABEL,
+  METRICS_TIME_UNIT,
   METRICS_TOKENS_LABEL,
   METRICS_UNAVAILABLE,
   METRICS_VALUE_UNKNOWN,
@@ -93,8 +94,13 @@ export default function FleetStatusLine({
         />
         <HiddenLabel>{METRICS_OUTCOME_LABEL}</HiddenLabel>
         <span className="min-w-0 truncate">{outcome.text}</span>
+        {/* `relative`, not `clock`: a second-precision wall time with no date
+            reads as though the run just happened, and at 03:28:58 AM against a
+            9 PM now it is unreadable. Relative also turns the tooltip on by
+            default, so the absolute instant is one hover away rather than
+            gone. */}
         {outcome.at ? (
-          <Time value={outcome.at} format="clock" className="text-muted-foreground" />
+          <Time value={outcome.at} format="relative" className="text-muted-foreground" />
         ) : null}
       </StatusLineItem>
       <Figure
@@ -109,7 +115,12 @@ export default function FleetStatusLine({
         value={formatCost(latest, summaryAvailable)}
         tone="foreground"
       />
-      <Figure Icon={TimerIcon} label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} />
+      <Figure
+        Icon={TimerIcon}
+        label={METRICS_TIME_LABEL}
+        value={formatDuration(latest, summaryAvailable)}
+        unit={METRICS_TIME_UNIT}
+      />
       {pendingApprovals > 0 ? (
         <StatusLineItem tone="warning">
           {/* The vertical padding is cancelled by the matching negative

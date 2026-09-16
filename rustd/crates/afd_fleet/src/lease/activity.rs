@@ -1,6 +1,6 @@
 //! The activity verb: live-tail frames a runner forwards while its child works.
 //!
-//! A runner holds no Redis, so it ships progress frames here and the daemon
+//! A runner holds no Dragonfly, so it ships progress frames here and the daemon
 //! publishes them to `fleet:{id}:activity` for the dashboard's live tail.
 //!
 //! # Best-effort, and what that actually licenses
@@ -81,7 +81,7 @@ impl Leases {
     /// Publish one batch of frames to `target`'s channel.
     ///
     /// Never fails the verb. Each frame is published independently so one
-    /// unencodable frame does not silence the rest of the batch, and a Redis
+    /// unencodable frame does not silence the rest of the batch, and a Dragonfly
     /// outage costs the tail rather than the run.
     pub async fn publish_activity(&self, target: &Target, frames: &[ActivityFrame<'_>]) {
         let fleet = target.fleet_id.as_str();

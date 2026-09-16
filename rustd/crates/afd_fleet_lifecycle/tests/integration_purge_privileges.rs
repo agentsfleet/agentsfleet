@@ -82,7 +82,7 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 /// Fails on the tree as it stood before schema/900 — at the memory delete for
 /// want of the role, and then at both `core` deletes for want of the grant.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_statements_all_run_as_api_runtime() {
     let lane = Lane::create().await;
     let fleet = absent_fleet();
@@ -140,7 +140,7 @@ async fn the_purge_statements_all_run_as_api_runtime() {
 /// `pg_write_all_data`, which is exactly what hid the bug above — would make the
 /// test before this one pass for the wrong reason and take the boundary with it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
     let lane = Lane::create().await;
     let fleet = absent_fleet();
@@ -240,7 +240,7 @@ async fn restricted(lane: &Lane) -> Fleets {
 /// purge that skipped the role — or a schema that withheld either DELETE — fails
 /// here and nowhere else.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_itself_runs_as_api_runtime() {
     let lane = Lane::create().await;
     let fleet = installed(&lane).await;

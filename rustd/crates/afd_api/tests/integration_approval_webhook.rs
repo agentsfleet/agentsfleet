@@ -69,7 +69,7 @@ async fn callback(router: &axum::Router, fleet: &str, body: &str) -> axum::respo
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -109,7 +109,7 @@ async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_redelivered_callback_continues_the_run_exactly_once() {
     // Slack retries any non-2xx and some 2xx besides, so this is the ordinary
     // case rather than an adversarial one. The gate is already resolved on the
@@ -143,7 +143,7 @@ async fn a_redelivered_callback_continues_the_run_exactly_once() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_denial_resolves_the_gate_and_starts_nothing() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -165,7 +165,7 @@ async fn a_denial_resolves_the_gate_and_starts_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_gate_of_another_fleet_is_not_resolvable_through_this_fleets_path() {
     // The fleet in the URL is a FILTER bound into the resolving statement's
     // WHERE, not a lookup. Without it, anyone holding the deployment's signing
@@ -194,7 +194,7 @@ async fn a_gate_of_another_fleet_is_not_resolvable_through_this_fleets_path() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn both_doors_leave_the_same_row() {
     // Slack's callback and the dashboard's bearer route resolve two gates that
     // differ in nothing but their identifiers. Everything the two rows disagree
@@ -254,7 +254,7 @@ async fn both_doors_leave_the_same_row() {
 /// unknown onto a default, and a `_ => Decision::Denied` would read as
 /// conservative while silently letting a typo deny somebody's run.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

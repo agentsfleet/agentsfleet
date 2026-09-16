@@ -23,7 +23,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use sqlx::{PgConnection, Row as _};
 
 use crate::error::{Result, query};
 use crate::lease::sql;
@@ -149,6 +149,32 @@ impl Leases {
     /// Reports a datastore that would not answer.
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
+        self.release_through(&mut connection, fleet_id, fence, now)
+            .await
+    }
+
+    /// The same release, on a connection the caller already holds.
+    ///
+    /// The report path needs it: freeing the slot makes the fleet's next event
+    /// claimable, and doing that before the run's result is durable would let a
+    /// fresh lease race a half-written finalize. Inside the settle's
+    /// transaction there is no half-written state to race — the freed slot
+    /// becomes visible at the same instant the terminal row does — which is
+    /// what lets this be a guarantee rather than the ordering comment it was.
+    ///
+    /// Split from [`Leases::release`] rather than duplicating the statement,
+    /// so the pool-based entry point stays one acquire and this one adds none
+    /// (RULE CNX).
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn release_through(
+        &self,
+        connection: &mut PgConnection,
+        fleet_id: &Uuid7,
+        fence: Fence,
+        now: UnixMillis,
+    ) -> Result<()> {
         sqlx::query(sql::lease::RELEASE_AFFINITY_SLOT)
             .bind(fleet_id.as_str())
             .bind(now.as_millis())

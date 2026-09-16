@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_redis::Error => Queue,
+    afd_admission::Error => Admission,
     afd_crypto::error::Error => Identifier,
     afd_core::error::Error => IdentifierShape,
     reqwest::Error => UpstreamUnreachable,
@@ -80,12 +80,12 @@ pub(crate) fn upstream_refused(status: u16) -> Error {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    // By label, not by position — see `redis_sample`. Taking `.next()` here
-    // tied this sample set to the order `afd_redis` lists its kinds in, and
-    // that order leads with a configuration error, so no sample reached the
-    // arm that answers the outage code for a queue that is gone.
-    let queue = redis_sample("command");
-    let queue_gone = redis_sample("unreachable");
+    // By label, not by position — see `admission_sample`. Taking `.next()`
+    // here would tie this sample set to the order a different crate lists its
+    // kinds in, and the two needed sit on opposite sides of
+    // `is_datastore_unavailable`.
+    let admission = admission_sample("query");
+    let admission_gone = admission_sample("datastore");
     let identifier =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     let shape =
@@ -114,8 +114,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "identifier shape",
             ErrorKind::IdentifierShape { source: shape }.into(),
         ),
-        ("queue", ErrorKind::Queue { source: queue }.into()),
-        ("queue gone", ErrorKind::Queue { source: queue_gone }.into()),
+        (
+            "admission",
+            ErrorKind::Admission { source: admission }.into(),
+        ),
+        (
+            "admission gone",
+            ErrorKind::Admission {
+                source: admission_gone,
+            }
+            .into(),
+        ),
         (
             "upstream unreachable",
             ErrorKind::UpstreamUnreachable {
@@ -132,20 +141,20 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     ]
 }
 
-/// One `afd_redis` sample, by the label that crate gives it.
+/// One `afd_admission` sample, by the label that crate gives it.
 ///
 /// By label because the two this builder needs sit on opposite sides of
-/// `is_unavailable`, and picking either by index makes this sample set depend
-/// on the order a different crate lists its kinds in.
+/// `is_datastore_unavailable`, and picking either by index makes this sample
+/// set depend on the order a different crate lists its kinds in.
 #[cfg(feature = "test-util")]
 #[expect(
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn redis_sample(label: &str) -> afd_redis::Error {
-    afd_redis::error::one_of_each_kind()
+fn admission_sample(label: &str) -> afd_admission::Error {
+    afd_admission::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)
         .map(|(_, error)| error)
-        .expect("afd_redis declares this kind")
+        .expect("afd_admission declares this kind")
 }

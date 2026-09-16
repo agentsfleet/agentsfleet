@@ -22,7 +22,7 @@ use afd_wire::tail::FleetCounters;
 ///
 /// A trait rather than the concrete store for the reason every seam in this
 /// module is one: the router suites prove the refusal matrix in FRONT of the
-/// verbs, and a matrix that needed a live Postgres AND a live Redis to prove
+/// verbs, and a matrix that needed a live Postgres AND a live Dragonfly to prove
 /// would not be proven.
 pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
     /// One page of a workspace's fleets, newest first.

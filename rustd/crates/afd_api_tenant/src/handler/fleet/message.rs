@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
-use afd_wire::event::{SteerAccepted, SteerRequest, ThreadResponse};
+use afd_wire::event::{OPERATION_ID_MAX_BYTES, SteerAccepted, SteerRequest, ThreadResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -68,6 +68,14 @@ const DETAIL_MESSAGE_EMPTY: &str = "message must not be empty";
 
 /// The refusal an over-long message earns.
 const DETAIL_MESSAGE_LONG: &str = "message must not exceed 8192 bytes";
+
+/// The refusal an unusable client operation identity earns.
+///
+/// One sentence for both ends of the bound: a caller that sent an empty string
+/// and one that sent a novel are making the same mistake about the same field,
+/// and the field is optional, so omitting it is always valid.
+const DETAIL_OPERATION_ID_INVALID: &str =
+    "operation_id must be between 1 and 200 bytes when present";
 
 /// The refusal a fleet this workspace does not hold earns.
 const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
@@ -170,6 +178,10 @@ pub(crate) async fn thread<D: Services>(
     description = concat!(
         "Starts a fleet run with a chat event. Returns an event identifier ",
         "for tracking in the activity stream. ",
+        "Send `operation_id` to make a retry safe: repeat the same value and ",
+        "this endpoint returns the first run's event, never a second run. ",
+        "A lost response then costs nothing. Omit it and every call is a new ",
+        "message, which is what a person sending twice means. ",
     ),
     request_body = SteerRequest,
     params(
@@ -196,7 +208,7 @@ pub(crate) async fn steer<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    let message = read_message(&body)?;
+    let steer = read_steer(&body)?;
 
     let status = services
         .fleets()
@@ -212,8 +224,16 @@ pub(crate) async fn steer<D: Services>(
         ));
     }
 
-    let request_json = serde_json::to_string(&SteerRequest { message })
-        .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
+    // The stored payload deliberately carries NO operation id. It is a
+    // transport fact — how the CALLER names its retry — and not something the
+    // fleet reads, so putting it in the body would hand every run a field it
+    // has no use for and change the bytes a replay re-appends. The ledger holds
+    // it where it belongs, as `producer_key`.
+    let request_json = serde_json::to_string(&SteerRequest {
+        message: steer.message,
+        operation_id: None,
+    })
+    .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
 
     let event_id = services
         .steering()
@@ -222,6 +242,7 @@ pub(crate) async fn steer<D: Services>(
             owned.workspace.as_str(),
             &actor_for(&person),
             &request_json,
+            steer.operation_id.as_deref(),
         )
         .await
         .map_err(Refusal::at(EVENT_STEER))?;
@@ -268,7 +289,7 @@ fn actor_for(person: &PersonIdentity) -> String {
 /// this hands back the `Cow` and the caller re-serializes it, which is also
 /// what makes the escaping on the way OUT the same library's problem rather
 /// than a format string's.
-fn read_message(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
+fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     if body.is_empty() {
         return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
     }
@@ -279,13 +300,23 @@ fn read_message(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
     // public contract. The cap lives on the wire type; which end broke it is
     // read back off the report here.
     if request.validate().is_err() {
-        return Err(Refusal::malformed(if request.message.is_empty() {
+        // Three sentences read back off one report, because they are three
+        // different mistakes to whoever has to fix them. The operation id is
+        // tested FIRST: a caller that sent a bad one and was told its message
+        // was empty would go looking at the wrong field.
+        let operation_unusable = request
+            .operation_id
+            .as_deref()
+            .is_some_and(|id| id.is_empty() || id.len() > OPERATION_ID_MAX_BYTES);
+        return Err(Refusal::malformed(if operation_unusable {
+            DETAIL_OPERATION_ID_INVALID
+        } else if request.message.is_empty() {
             DETAIL_MESSAGE_EMPTY
         } else {
             DETAIL_MESSAGE_LONG
         }));
     }
-    Ok(request.message)
+    Ok(request)
 }
 
 /// One page, cut at the row cap or the byte budget, whichever comes first.

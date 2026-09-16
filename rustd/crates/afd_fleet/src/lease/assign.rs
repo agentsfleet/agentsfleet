@@ -52,15 +52,6 @@ pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 /// keeps matching after the cutover.
 const EVENT_READY_PEEK_FAILED: &str = "assign_ready_peek_failed";
 
-/// The consumer's own pending list would not answer.
-const EVENT_PEL_READ_FAILED: &str = "assign_pel_read_failed";
-
-/// The fleet stream would not answer.
-const EVENT_STREAM_READ_FAILED: &str = "assign_xreadgroup_failed";
-
-/// An entry this consumer already held came back.
-const EVENT_PEL_REDELIVERED: &str = "assign_pel_redelivered";
-
 /// An entry no reader can decode was acknowledged and discarded.
 const EVENT_ENTRY_UNDECODABLE_DROPPED: &str = "assign_entry_undecodable_dropped";
 
@@ -77,7 +68,7 @@ const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 /// than left to the caller because `LOGGING_STANDARD.md` §4 is explicit that a
 /// path which can fail logs its failure — and this one propagates, so without
 /// this line the only record would be whatever the handler chose to say.
-fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_redis::Error) {
+fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_dragonfly::Error) {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -93,7 +84,7 @@ fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_redis::Error) 
 }
 
 /// Reports a queue failure against one fleet's stream.
-fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_redis::Error) {
+pub(super) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_dragonfly::Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = error.to_string();
     tracing::warn!(
@@ -127,13 +118,27 @@ impl Leases {
     /// Reports a datastore that would not answer. "Nothing to do" is
     /// `Ok(None)`, not an error — the runner backs off and re-polls.
     pub async fn select(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Option<Acquired>> {
+        self.select_recording(runner_id, now).await.0
+    }
+
+    /// The poll, its outcome, and what it cost.
+    ///
+    /// The one body the public entry point above and the `test-util`
+    /// measurement in `assign/measured.rs` both run, so a suite asserting on
+    /// the cost is asserting on the tally production publishes rather than on
+    /// a second one written beside it.
+    async fn select_recording(
+        &self,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
         let selected = self.select_counted(runner_id, now, &mut cost).await;
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
         producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
-        selected
+        (selected, cost)
     }
 
     /// [`Leases::select`] without the recording, tallying what it cost.
@@ -143,9 +148,13 @@ impl Leases {
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
+        // One partition per poll, the next in the rotation: the read stays one
+        // bounded round trip, and the partitions this poll did not visit are
+        // the next polls' — whichever runner makes them.
+        let partition = self.cursor().advance();
         let ready = self
             .ready()
-            .peek(MAX_READY_CANDIDATES_PER_POLL)
+            .peek(partition, MAX_READY_CANDIDATES_PER_POLL)
             .await
             .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
         cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
@@ -240,34 +249,8 @@ impl Leases {
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
         let streams = self.streams();
-        let consumer = runner_consumer();
         let fleet = fleet_id.as_str();
-        // A failed pending read cannot PROVE the pending list is empty, so it
-        // must not fall through to the fresh read — promoting a new entry over
-        // a possibly-pending re-poll would break own-pending-first ordering
-        // exactly when Redis is degraded. Propagating is what stops it.
-        let pending = streams
-            .read_pending(fleet, &consumer)
-            .await
-            .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
-        let event = match pending {
-            Some(event) => {
-                let id = event.id.as_str();
-                tracing::debug!(
-                    event = EVENT_PEL_REDELIVERED,
-                    fleet_id = fleet,
-                    agentsfleet_event_id = id,
-                    "an entry this consumer already held is being re-delivered"
-                );
-                Some(event)
-            }
-            None => streams
-                .read_new(fleet, &consumer)
-                .await
-                .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error))?,
-        };
-
-        let Some(event) = event else {
+        let Some(event) = self.read_fresh(fleet, &runner_consumer()).await? else {
             // Both reads answered, and both were empty — the only evidence this
             // code ever has that a fleet holds nothing deliverable. Free the
             // claim so the next event is not blocked behind it.
@@ -277,7 +260,7 @@ impl Leases {
         match from_fresh(fleet_id, claimed, &event) {
             Ok(acquired) => Ok(Some(acquired)),
             Err(undecodable) => {
-                drop_undecodable(&streams, fleet, &event.id, &undecodable).await;
+                drop_undecodable(&streams, fleet, &event.receipt, &undecodable).await;
                 // Freed for the reason the empty arm frees it: this fleet holds
                 // nothing this poll can lease. Holding the claim would cost a
                 // full TTL of silence on a fleet whose next event may be fine.
@@ -299,7 +282,7 @@ impl Leases {
 /// exactly the shape of the cutover defect this branch fixes, and would have
 /// outlived the fix for any stream still holding one.
 ///
-/// `afd_redis::outbound`'s `drop_undeliverable` is the same answer for the
+/// `afd_dragonfly::outbound`'s `drop_undeliverable` is the same answer for the
 /// other stream, written for the same reason.
 ///
 /// A `warn` rather than an `err`: the daemon recovers by itself, so nothing is
@@ -308,14 +291,14 @@ impl Leases {
 /// acknowledgement is not raised either; the entry stays pending and the next
 /// poll drops it again.
 async fn drop_undecodable(
-    streams: &afd_redis::FleetStreams,
+    streams: &afd_dragonfly::FleetStreams,
     fleet_id: &str,
-    event_id: &afd_redis::EventId,
+    receipt: &afd_dragonfly::EventId,
     error: &crate::error::Error,
 ) {
-    let id = event_id.as_str();
+    let id = receipt.as_str();
     let reason = error.to_string();
-    let event = if streams.ack(fleet_id, event_id).await.is_ok() {
+    let event = if streams.ack(fleet_id, receipt).await.is_ok() {
         EVENT_ENTRY_UNDECODABLE_DROPPED
     } else {
         EVENT_ENTRY_UNDECODABLE_DROP_FAILED
@@ -324,7 +307,7 @@ async fn drop_undecodable(
         error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
         event,
         fleet_id,
-        agentsfleet_event_id = id,
+        receipt = id,
         reason,
         "a stream entry no reader can decode was discarded so the fleet stays leasable"
     );
@@ -345,6 +328,9 @@ async fn drop_undecodable(
 pub fn runner_consumer() -> String {
     format!("agentsfleetd-{}", std::process::id())
 }
+
+#[cfg(feature = "test-util")]
+pub mod measured;
 
 #[cfg(all(test, feature = "test-util"))]
 mod tests;

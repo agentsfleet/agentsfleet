@@ -7,3 +7,6 @@ mod integration_repair_dispatch;
 #[path = "integration_sweeps.rs"]
 mod integration_sweeps;
 mod support;
+
+#[path = "error_surface.rs"]
+mod error_surface;

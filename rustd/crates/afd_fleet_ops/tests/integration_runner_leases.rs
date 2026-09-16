@@ -46,13 +46,13 @@ INSERT INTO fleet.runner_leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor, event_type,
    event_created_at, posture, provider, model, metered_input_tokens,
    metered_cached_tokens, metered_output_tokens, last_metered_at, fencing_token,
-   lease_expires_at, status, created_at, updated_at)
+   lease_expires_at, status, created_at, updated_at, receipt)
 VALUES
-  ($8::uuid, $6::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 10, 2, 3, 100, 1, 130, 'expired', 100, 100),
-  ($9::uuid, $6::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 20, 4, 6, 200, 2, 230, 'reported', 200, 200),
-  ($10::uuid, $6::uuid, $5::uuid, $3::uuid, $1::uuid, $15, 'user:c', 'chat', 52, 'bring_your_own', 'openai', 'model-c', 30, 6, 9, 300, 1, 330, 'active', 300, 300),
-  ($11::uuid, $6::uuid, $5::uuid, $3::uuid, $1::uuid, $14, 'user:b', 'webhook', 51, 'platform', 'anthropic', 'model-b', 40, 8, 12, 300, 1, 330, 'reported', 300, 300),
-  ($12::uuid, $7::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 1, 0, 1, 400, 3, 430, 'reported', 400, 400)
+  ($8::uuid, $6::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 10, 2, 3, 100, 1, 130, 'expired', 100, 100, $13),
+  ($9::uuid, $6::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 20, 4, 6, 200, 2, 230, 'reported', 200, 200, $13),
+  ($10::uuid, $6::uuid, $5::uuid, $3::uuid, $1::uuid, $15, 'user:c', 'chat', 52, 'bring_your_own', 'openai', 'model-c', 30, 6, 9, 300, 1, 330, 'active', 300, 300, $15),
+  ($11::uuid, $6::uuid, $5::uuid, $3::uuid, $1::uuid, $14, 'user:b', 'webhook', 51, 'platform', 'anthropic', 'model-b', 40, 8, 12, 300, 1, 330, 'reported', 300, 300, $14),
+  ($12::uuid, $7::uuid, $4::uuid, $2::uuid, $1::uuid, $13, 'user:a', 'chat', 50, 'platform', 'anthropic', 'model-a', 1, 0, 1, 400, 3, 430, 'reported', 400, 400, $13)
 ";
 
 #[tokio::test]

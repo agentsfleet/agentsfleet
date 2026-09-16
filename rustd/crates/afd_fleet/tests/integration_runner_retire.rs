@@ -91,17 +91,17 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     let Seeded {
         runners: [runner],
         tenant,
+        fleet,
         ..
     } = seeded::<1>(&fixtures).await;
     let now = UnixMillis::from_millis(ENROLLED_AT + 1);
     // Select finds the work; issue writes the row. The retirement predicate
     // reads the row, so both steps are needed, as `integration_lease_issue`
     // does them.
-    let held = fixtures
-        .leases()
-        .select(&runner, now)
+    // Narrowed to THIS fleet: the readiness cursor is process-global, and the
+    // issue below charges this tenant's wallet for whatever was acquired.
+    let held = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
         .await
-        .expect("the assignment pass must not fault")
         .expect("a ready fleet holding an event is leasable");
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = fixtures

@@ -316,42 +316,62 @@ fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
     assert_eq!(attributed, vec![(first, 1), (second, 3)]);
 }
 
-/// A poisoned series lock reads empty rather than propagating the panic.
+/// A panic in one recorder leaves the table readable for everyone after it.
 ///
 /// These readings are pulled by the metrics callback on the SDK's collection
-/// cadence, on a thread that is not the one that recorded anything. A `RwLock`
-/// poisons for the life of the process once any holder panics, so an `unwrap`
-/// here would turn one unrelated panic into a permanent one — failing every
-/// subsequent collection, on a path whose entire job is reporting.
+/// cadence, on a thread that is not the one that recorded anything. The table
+/// was a `RwLock<HashMap>` and this test asserted the degradation that shape
+/// forced: a poisoned lock had to read EMPTY, because `RwLock` poisons for the
+/// life of the process once any holder panics, and an `unwrap` there would
+/// have turned one unrelated panic into a permanent one — failing every later
+/// collection, on a path whose whole job is reporting.
 ///
-/// Empty is the honest degradation: a gauge with no data point is a gap, which
-/// is what this crate publishes for an unreadable cell everywhere else, rather
-/// than a zero somebody would read as "no active leases".
+/// A sharded map does not poison: a guard dropped during an unwind releases
+/// its shard like any other. So the degradation is gone and the guarantee it
+/// existed to protect is stronger — one panicking recorder costs nothing at
+/// all, rather than costing every later reading. That is what is asserted
+/// here, against the same sequence.
 #[test]
-fn a_poisoned_series_lock_reads_empty_rather_than_panicking() {
+fn a_panicking_recorder_leaves_the_table_readable() {
     let metrics = Arc::new(RunnerMetrics::new());
-    metrics.admit(&runner(0));
-    assert!(
-        !metrics.active_lease_readings().is_empty(),
-        "the series is readable before anything poisons it"
-    );
+    let first = runner(0);
+    metrics.admit(&first);
+    metrics.leased(&first);
 
-    let poisoner = Arc::clone(&metrics);
+    let panicking = Arc::clone(&metrics);
+    let second = runner(1);
+    let recorded = second.clone();
     let panicked = std::thread::spawn(move || {
-        let _held = poisoner.series.write();
-        // Ends by panicking, which is what poisons the lock this thread holds.
-        // Spelled as a failing parse rather than `panic!` because the workspace
-        // denies `clippy::panic` — and as a REAL failure rather than a literal
+        panicking.admit(&recorded);
+        panicking.leased(&recorded);
+        // Ends by panicking, mid-way through recording. Spelled as a failing
+        // parse rather than `panic!` because the workspace denies
+        // `clippy::panic` — and as a REAL failure rather than a literal
         // unwrap, which the lint set reads as a mistake rather than an intent.
         "not-a-number"
             .parse::<u64>()
-            .expect("this thread ends by panicking, poisoning the lock it holds");
+            .expect("this thread ends by panicking part-way through recording");
     })
     .join();
     assert!(panicked.is_err(), "the helper thread panicked as intended");
 
+    let readings = metrics.active_lease_readings();
+    assert_eq!(
+        readings.len(),
+        2,
+        "both series stay readable after a recorder panics: {readings:?}"
+    );
+    assert_eq!(
+        metrics.series_count(),
+        2,
+        "the panicking thread's series was admitted and is still counted"
+    );
+    metrics.leased(&first);
     assert!(
-        metrics.active_lease_readings().is_empty(),
-        "a poisoned lock publishes no data point instead of panicking the collector"
+        metrics
+            .active_lease_readings()
+            .iter()
+            .any(|reading| reading.value == 2),
+        "the table still ACCEPTS records after the panic, not just reads"
     );
 }

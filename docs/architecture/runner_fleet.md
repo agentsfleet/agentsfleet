@@ -36,7 +36,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
 | Debit points | 2, both on the lease path | receive (flat) + run (floor-token estimate) at issue; report reconciles telemetry only | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Readiness index | one global `fleet:ready` hash | field = fleet id, value = a minted UUIDv7 token; a hint, never the record | §Redis topology |
+| Readiness index | sixteen `fleet:ready:{p}` hashes, a fleet's partition being CRC16 of its id modulo sixteen | field = fleet id, value = a minted UUIDv7 token; a hint, never the record; a poll reads one partition per rotation step | §Redis topology, [`datastore_scaling.md`](./datastore_scaling.md) |
 
 ## Traps
 
@@ -385,8 +385,20 @@ agentsfleet-runner parent (child_supervisor.zig): establish the cgroup, fork, ex
       the policy, run the NullClaw turn — language-model calls + tool calls, secrets substituted
       at the tool bridge — emit activity frames + the final result over stdout
    │
-report → agentsfleetd: persist terminal state + telemetry + checkpoint, then XACK
+report → agentsfleetd: one transaction (settle + terminal state + checkpoint
+         + freed slot + the OWED DELIVERY), then — after it commits — the
+         activity frame, the XACK, and the answer onto connector:outbound
 ```
+
+The parenthesis is the guarantee, not a description of the order. Those five writes
+commit together or none of them does, so there is no interval in which the tenant has
+paid for a run whose answer was never stored. The acknowledgement is outside the
+transaction because no transaction spans Postgres and the datastore, and it runs after
+it because a redelivered entry is recoverable where an acknowledged-then-rolled-back one
+is not. A report that fails leaves the lease `active` and the wallet untouched, so the
+runner retries; a report whose RESPONSE is lost retries into a lease already `reported`
+by that same runner and is answered with the stored outcome for no charge. See
+[`data_flow.md`](./data_flow.md) §"C. EXECUTE".
 
 The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 
@@ -501,7 +513,7 @@ Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a 
 
 Every daemon frame also carries the fleet's activity counters as an absolute snapshot, so the wall's tiles assign rather than add. The closing statement reads them beside the row it ends; every other publisher reads them once, by primary key off `core.fleet_activity_counters`, right before its publish (`afd_events::fleet_counters_best_effort`). The opening bracket must read after its insert, because that insert is what fires the counter trigger and a `RETURNING` on it cannot see the trigger's write. The read is best-effort like the publish: a read that does not answer sends the frame with the counters absent — which a client reads as "leave what you have standing" — never with zeros, which it would read as a fleet that has done nothing. A publisher whose own write moved the counters — the receive, the continuation, the park, the resolve — reads on the connection that write held, so the hot path pays one statement and no second acquire; the sweep reads once per distinct fleet. Both counters only grow, so a client keeps the GREATER of what it holds and what a frame carries, which is what makes a frame that crossed a `hello` in flight harmless. A `catching_up` is followed by a fresh `hello`: the dropped frames are exactly the ones that moved the counters, so the backfill recovers the rows and the greeting recovers the figures. The workspace `hello` reads its map by `workspace_id` and `ANY(fleet ids)`, uncached, only when a greeting goes out.
 
-No daemon frame names its fleet or workspace: the tail is one fleet's channel, and the workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`). Every bracket and gate publish goes through `afd_redis::FleetStreams::publish_frame` and is best-effort like the runner's frames: the row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A missed publish alone does not trigger that backfill.
+No daemon frame names its fleet or workspace: the tail is one fleet's channel, and the workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`). Every bracket and gate publish goes through `afd_dragonfly::FleetStreams::publish_frame` and is best-effort like the runner's frames: the row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A missed publish alone does not trigger that backfill.
 
 The dashboard opens streams through authenticated, same-origin Next.js `/live/*` proxies.
 The daemon serves asynchronous response bodies through the shared hub, with a separate stream admission ceiling.
@@ -549,7 +561,7 @@ The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting 
 | reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
 | `fleet:control` (control stream) | the watcher consumed `fleet_created` / `fleet_status_changed` / `fleet_config_changed` / `worker_drain_request` to spawn / cancel / reload per-fleet threads | **removed.** There are no per-fleet threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_agent.ensureFleetConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
 | `fleet:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
-| `fleet:ready` (readiness index, hash) | did not exist — the lease scanned every active fleet in Postgres to discover which held work | **ONE global hash for the whole deployment**, shared by every replica. Field = fleet id, value = the generation token that fleet's last mark minted. Written by `redis_fleet.xaddFleetEvent` (the single producer all five ingress paths funnel through) and by the reclaim sweeper; read by the lease before it opens a Postgres connection. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
+| `fleet:ready:{p}` (readiness index, sixteen hashes) | did not exist — the lease scanned every active fleet in Postgres to discover which held work | **Sixteen hashes for the whole deployment**, shared by every replica, a fleet's partition being CRC16 of its id modulo sixteen (the count and the poll rotation are in [`datastore_scaling.md`](./datastore_scaling.md)). Field = fleet id, value = the generation token that fleet's last mark minted. Written by `redis_fleet.xaddFleetEvent` (the single producer all five ingress paths funnel through) and by the reclaim sweeper; read by the lease before it opens a Postgres connection. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
 
 **The readiness index is a hint, never the system of record.** The streams are. A lost mark costs delivery latency, never the event — the reclaim sweeper re-derives readiness from the streams themselves (below). Every write to it is best-effort and none may fail an accepted ingress call or a lease reply.
 
@@ -735,4 +747,4 @@ The exact, restart-resilient form of the two gauges is a read-only background th
 - NullClaw's fleet loop, its tool inventory, and secret substitution at the tool bridge. It moved into the runner as a linked engine and a sandboxed child, but its behaviour is identical.
 - Event ingress: steer / webhook / cron / continuation still `XADD fleet:{id}:events`.
 - The user read path: `GET /events`, the SSE live tail, `agentsfleet status/events`.
-- The three durable stores and their contracts (see `data_flow.md`), including row-for-row equivalence with the deleted direct path (Invariant 2 of the cutover spec).
+- The five durable stores and their contracts (see `data_flow.md`), including row-for-row equivalence with the deleted direct path (Invariant 2 of the cutover spec).

@@ -16,12 +16,12 @@ mod fixture;
 use std::time::Duration;
 
 use afd_crypto::entropy::Entropy;
+use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
-use afd_redis::SubscriptionHub;
-use afd_redis::hub::Received;
 use serde_json::json;
 
-use self::fixture::{Fixture, NOW, config, connect_redis, redis_config};
+use self::fixture::{Fixture, NOW, config, connect_redis, dragonfly_config};
 
 /// How long the hub's pump is given to register the subscription before the
 /// park publishes; `subscribe` queues the command rather than round-tripping.
@@ -36,7 +36,7 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 /// names; the count rides the frame so the console can show the gate waiting
 /// without a read of its own.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -45,9 +45,9 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         connect_redis().await,
         Entropy::new(),
     );
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 

@@ -71,10 +71,8 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
     } = seeded::<1>(fixtures).await;
     let now = UnixMillis::from_millis(ENROLLED_AT);
     let leases = fixtures.leases();
-    let held = leases
-        .select(&runner, now)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
-        .expect("the selection pass must not fault")
         .expect("the fleet is leasable");
     assert_eq!(
         leases

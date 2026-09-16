@@ -17,7 +17,7 @@ use afd_core::id::Uuid7;
 
 /// The most schedules one fleet may hold.
 ///
-/// `model.zig`'s `MAX_SCHEDULES_PER_FLEET`. A bound on the fan-out of one
+/// A bound on the fan-out of one
 /// fleet's cron traffic, and the reason a create is refused rather than queued:
 /// an author who has hit it has a configuration problem a silent acceptance
 /// would hide until the invoice.

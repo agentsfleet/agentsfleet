@@ -12,8 +12,9 @@ use object_store::ObjectStore;
 use sqlx::Row as _;
 
 use super::VISIBILITY_DRAFT;
+use crate::error::{Error, ErrorKind, catalog_id_collision, database};
 use crate::{
-    BundleCatalog, BundleSource, Error, GithubSource, ImportBody, ImportService, Onboarded,
+    BundleCatalog, BundleSource, GithubSource, ImportBody, ImportService, Onboarded,
     PreparedBundle, Result, SourceImporter, SourceKind,
 };
 
@@ -167,6 +168,11 @@ impl LibraryImports {
 
     fn github_source(&self, revision: &str) -> Result<GithubSource> {
         let source = GithubSource::new(revision)?;
+        // Both the field and `pointed_at` are `test-util`, so the READ is gated
+        // with them. Ungating it does not compile without the feature, and the
+        // `unused_self` a featureless clippy run reports here is the lint
+        // describing that build rather than a defect: the production shape of
+        // this function genuinely has nothing to read.
         #[cfg(feature = "test-util")]
         if let Some(api_base) = &self.github_api_base {
             return Ok(source.pointed_at(api_base.to_string()));
@@ -250,7 +256,7 @@ impl BundleCatalog for PlatformCatalog {
             .bind(self.replace)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_IMPORT))?;
+            .map_err(database(CONTEXT_IMPORT))?;
         // The slug this catalogue is keyed by, echoed from the statement rather
         // than re-derived from the bundle: the two agree here and do not on the
         // tenant tier, and a caller should not have to know which.
@@ -261,15 +267,16 @@ impl BundleCatalog for PlatformCatalog {
             .bind(&bundle.name)
             .fetch_one(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_COLLISION))?
+            .map_err(database(CONTEXT_COLLISION))?
             .try_get(0)
-            .map_err(Error::database(CONTEXT_COLLISION))?;
-        Err(Error::catalog_id_collision(incumbent))
+            .map_err(database(CONTEXT_COLLISION))?;
+        Err(catalog_id_collision(incumbent))
     }
 }
 
 pub(super) fn markdown<'a>(document: &'static str, value: &'a [u8]) -> Result<&'a str> {
-    core::str::from_utf8(value).map_err(|source| Error::FrontmatterUtf8 { document, source })
+    core::str::from_utf8(value)
+        .map_err(|source| Error::from(ErrorKind::FrontmatterUtf8 { document, source }))
 }
 
 const UPSERT: &str = "INSERT INTO core.fleet_library (id,name,description,source_repo,source_path,source_ref,required_credentials,required_credentials_reasons,required_tools,network_hosts,visibility,content_hash,skill_markdown,trigger_markdown,support_files_json,created_at,updated_at) VALUES ($1,$2,$3,$4,'',$5,($6::jsonb->'credentials'),'{}'::jsonb,($6::jsonb->'tools'),($6::jsonb->'network_hosts'),$7,$8,$9,$10,$11::jsonb,$12,$12) ON CONFLICT (id) DO UPDATE SET source_repo=EXCLUDED.source_repo,source_ref=EXCLUDED.source_ref,required_credentials=EXCLUDED.required_credentials,required_credentials_reasons=CASE WHEN jsonb_array_length(EXCLUDED.required_credentials)=0 THEN core.fleet_library.required_credentials_reasons ELSE (SELECT COALESCE(jsonb_object_agg(k,v),'{}'::jsonb) FROM jsonb_each_text(core.fleet_library.required_credentials_reasons) AS r(k,v) WHERE r.k IN (SELECT jsonb_array_elements_text(EXCLUDED.required_credentials))) END,required_tools=EXCLUDED.required_tools,network_hosts=EXCLUDED.network_hosts,visibility=EXCLUDED.visibility,content_hash=EXCLUDED.content_hash,skill_markdown=EXCLUDED.skill_markdown,trigger_markdown=EXCLUDED.trigger_markdown,support_files_json=EXCLUDED.support_files_json,updated_at=EXCLUDED.updated_at WHERE $13::boolean OR core.fleet_library.source_repo=EXCLUDED.source_repo RETURNING id";

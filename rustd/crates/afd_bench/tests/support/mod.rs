@@ -4,7 +4,7 @@
 //! # One lane at a time
 //!
 //! The readiness index is one global hash, the outbound consumer name is
-//! constant per process, and Redis's `used_memory` is one number for the
+//! constant per process, and Dragonfly's `used_memory` is one number for the
 //! server. Two lanes measuring at once would each see the other's work in
 //! its numbers, so every test takes [`LANE`] first — a slower suite, but one
 //! whose assertions are about the lane under test and nothing else.
@@ -22,12 +22,12 @@
 use tokio::sync::Mutex;
 
 use afd_bench::datastores::Datastores;
-use afd_bench::report::Report;
+use afd_bench::report::{Provenance, Report};
 
 /// The knobs `make test-integration-rustd` exports; see `make/test-infra.mk`.
 const DATABASE_KNOB: &str = "TEST_DATABASE_URL";
-const REDIS_KNOB: &str = "TEST_REDIS_URL";
-const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_KNOB: &str = "TEST_DRAGONFLY_URL";
+const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Held for the whole of a lane run.
 ///
@@ -36,14 +36,14 @@ const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 /// clippy refuses for good reason.
 pub(crate) static LANE: Mutex<()> = Mutex::const_new(());
 
-/// The lane's Redis URL, for the outbound lane's dedicated reader.
-pub(crate) fn redis_url() -> String {
-    std::env::var(REDIS_KNOB).unwrap_or_else(|_unset| {
-        panic!("{REDIS_KNOB} is unset — run through make test-integration-rustd")
+/// The lane's Dragonfly URL, for the outbound lane's dedicated reader.
+pub(crate) fn dragonfly_url() -> String {
+    std::env::var(DRAGONFLY_KNOB).unwrap_or_else(|_unset| {
+        panic!("{DRAGONFLY_KNOB} is unset — run through make test-integration-rustd")
     })
 }
 
-/// The lane's Redis certificate authority, when it serves TLS.
+/// The lane's Dragonfly certificate authority, when it serves TLS.
 pub(crate) fn ca_cert() -> Option<String> {
     std::env::var(CA_KNOB).ok()
 }
@@ -53,7 +53,7 @@ pub(crate) async fn datastores() -> Datastores {
     let database = std::env::var(DATABASE_KNOB).unwrap_or_else(|_unset| {
         panic!("{DATABASE_KNOB} is unset — run through make test-integration-rustd")
     });
-    Datastores::open(&database, &redis_url(), ca_cert())
+    Datastores::open(&database, &dragonfly_url(), ca_cert())
         .await
         .expect("the rig's datastores must be reachable")
 }
@@ -90,4 +90,19 @@ pub(crate) fn series<'a>(report: &'a Report, key: &str) -> &'a [f64] {
             report.series.keys()
         )
     })
+}
+
+/// What a lane driven from this suite says about itself.
+///
+/// The rig is owned by construction — compose brings it up for this worktree
+/// alone and the lane resets it — so these runs declare ownership. The revision
+/// and image are the suite's own name rather than a real build: a result
+/// written by a test is not evidence, and the grader reads the archive, not
+/// this.
+pub(crate) fn provenance() -> Provenance {
+    Provenance {
+        revision: "integration-suite".to_owned(),
+        datastore_image: "integration-suite".to_owned(),
+        owned: true,
+    }
 }

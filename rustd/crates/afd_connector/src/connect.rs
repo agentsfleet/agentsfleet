@@ -30,7 +30,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
-use afd_redis::Redis;
+use afd_dragonfly::Dragonfly;
 
 use crate::app::PlatformApp;
 use crate::error::Result;
@@ -115,7 +115,7 @@ pub struct Connectors {
     /// other call through the exchange.
     pub(crate) client: reqwest::Client,
     /// Where a round-trip's single-use slot lives.
-    pub(crate) queue: Redis,
+    pub(crate) queue: Dragonfly,
     /// Where a nonce is drawn from.
     pub(crate) entropy: Entropy,
 }
@@ -128,7 +128,7 @@ impl Connectors {
         grants: Grants,
         exchange: Exchange,
         client: reqwest::Client,
-        queue: Redis,
+        queue: Dragonfly,
         entropy: Entropy,
     ) -> Self {
         Self {

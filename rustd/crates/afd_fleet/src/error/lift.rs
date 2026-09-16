@@ -1,6 +1,6 @@
 //! How a foreign error becomes this crate's.
 //!
-//! Six [`From`] impls, split from [`super`] because they answer one question
+//! Seven [`From`] impls, split from [`super`] because they answer one question
 //! the constructors beside them do not: which failures `?` may lift with no
 //! conversion written at the call site. That is a policy about the crate's
 //! boundary, and `RUST_ERROR_STANDARD` rule 2 is what it implements — compose
@@ -26,11 +26,22 @@ impl From<afd_db::Error> for Error {
 ///
 /// A separate variant from [`ErrorKind::Datastore`] because the two fail
 /// independently and a runner reads them the same way — back off and re-poll —
-/// only when the code says which one went down. Folding Redis into the Postgres
+/// only when the code says which one went down. Folding Dragonfly into the Postgres
 /// variant would page whoever owns the wrong datastore.
-impl From<afd_redis::Error> for Error {
-    fn from(source: afd_redis::Error) -> Self {
+impl From<afd_dragonfly::Error> for Error {
+    fn from(source: afd_dragonfly::Error) -> Self {
         Self::new(ErrorKind::Queue { source })
+    }
+}
+
+/// The admission ledger would not answer.
+///
+/// Asked exactly once on the lease path — for the cursor a lost consumer
+/// group is restored at — and its own plane has already decided the code and
+/// the sentence, so both are read off the source rather than restated here.
+impl From<afd_admission::Error> for Error {
+    fn from(source: afd_admission::Error) -> Self {
+        Self::new(ErrorKind::Admission { source })
     }
 }
 
@@ -75,6 +86,18 @@ impl From<afd_billing::Error> for Error {
 impl From<afd_events::Error> for Error {
     fn from(source: afd_events::Error) -> Self {
         Self::new(ErrorKind::Events { source })
+    }
+}
+
+/// The delivery ledger would not answer.
+///
+/// `afd_outbound` owns `core.fleet_obligations` and the report path commits one
+/// through it, on the transaction's own connection. Lifted so `?` carries that
+/// fault without a conversion at the call site — the same shape the event store
+/// above uses, for the same reason: the lease still speaks this crate's error.
+impl From<afd_outbound::Error> for Error {
+    fn from(source: afd_outbound::Error) -> Self {
+        Self::new(ErrorKind::Outbound { source })
     }
 }
 

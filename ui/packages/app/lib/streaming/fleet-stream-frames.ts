@@ -279,8 +279,13 @@ export function mergeBackfill(
 ): FleetEvent[] {
   const seen = new Set(prev.map((e) => e.id));
   // A terminal backfill row is authoritative over a live row with the same
-  // id — an event that straddled an outage may sit here as a partial chunk
-  // accumulation, and the durable row carries the full final text + status.
+  // id for its STATUS and figures — an event that straddled an outage may sit
+  // here as a partial chunk accumulation, and the durable row is the settled
+  // one. It is NOT authoritative for the bodies: the events LIST carries
+  // none (`afd_events` history/statement.rs asserts the select omits
+  // `response_text`, and it omits `request_json` too), so taking the row
+  // wholesale would blank a message the operator has already read. The live
+  // text is kept for the same reason `tools` is.
   // An in-progress ("received") backfill row never clobbers live chunks:
   // the live accumulation is newer than the list snapshot.
   const authoritative = new Map<string, EventRow>();
@@ -293,7 +298,13 @@ export function mergeBackfill(
     const replacement = authoritative.get(e.id);
     if (!replacement) return e;
     const reconciled = rowToEvent(replacement);
-    return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
+    const withBodies = {
+      ...reconciled,
+      text: reconciled.text.length > 0 ? reconciled.text : e.text,
+      reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
+      custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
+    };
+    return e.tools ? { ...withBodies, tools: e.tools } : withBodies;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
   // The client's clock can trail the server's. Keep locally submitted turns

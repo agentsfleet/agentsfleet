@@ -19,7 +19,7 @@
 //! be priced; a platform provider default must be active; and that default's
 //! workspace must hold a sealed provider key.
 //!
-//! The event itself is NOT here. It is a Redis append and a readiness mark, and
+//! The event itself is NOT here. It is a Dragonfly append and a readiness mark, and
 //! `Scenario::cleanup` is what clears that mark, so both halves of the queue's
 //! lifetime live together in `e2e.rs` instead of one being written here and
 //! undone there.

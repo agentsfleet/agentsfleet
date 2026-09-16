@@ -6,7 +6,7 @@
 //! verification is a production capability — nothing this daemon runs ever signs
 //! a webhook, because it is always the receiver. So the signer is real code with
 //! no production caller, which is precisely what a `test-util` feature is for
-//! (the `afd_redis::test_util` precedent).
+//! (the `afd_dragonfly::test_util` precedent).
 //!
 //! The alternative was letting each test compose the signed bytes itself. For
 //! [`Scheme::BodyHex`] that is harmless — the bytes are the body. For

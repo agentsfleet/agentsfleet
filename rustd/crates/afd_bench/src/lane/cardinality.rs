@@ -3,44 +3,47 @@
 //! # A ladder, not a jump
 //!
 //! The population is created in rungs, and every rung reports the same three
-//! things: Redis memory per fleet, the readiness peek's latency, and one
+//! things: Dragonfly memory per fleet, the readiness peek's latency, and one
 //! stream's read latency. A single number at a million would say what a
 //! million costs; the ladder says whether the cost is LINEAR, which is the
 //! question the per-fleet stream and consumer group design actually hangs on.
 //!
-//! # The top rung reads Postgres
+//! # The top rung reads Postgres, and both stores by class
 //!
 //! Table sizes, and the candidate query's plan and execution time at
 //! population — the real `SELECT_READY_CANDIDATES`, bound as the lease path
 //! binds it, under `EXPLAIN ANALYZE`. It is measured once, at the top, because
 //! the rungs below are subsets of the same rows and the plan does not change.
+//! [`capacity`] then records what each store holds, one figure per class of
+//! state, on the rig and on a deployed target alike.
 //!
 //! # A deployed profile observes and creates nothing
 //!
 //! Creating a million streams in a shared environment is not a measurement
 //! anyone consented to. Against a deployed target the lane reads what is
-//! there — the fleet population from Postgres, the readiness depth from Redis,
+//! there — the fleet population from Postgres, the readiness depth from Dragonfly,
 //! each under its own name — reports it in the same shape, and says
 //! `created: false`.
 
+pub mod capacity;
 mod probe;
 
-use afd_redis::ReadyIndex;
+use afd_dragonfly::ReadyIndex;
 
 use self::probe::{
     FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
 };
-use crate::datastores::{Datastores, redis_used_memory};
+use crate::datastores::{Datastores, dragonfly_used_memory};
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Fixture, Lane, Report, count, ratio};
+use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
 
-/// Series key: Redis bytes per fleet at each rung, over the rung below.
+/// Series key: Dragonfly bytes per fleet at each rung, over the rung below.
 const BYTES_PER_FLEET: &str = "redis_bytes_per_fleet";
 
 /// Series key: readiness peek latency at each rung, milliseconds.
@@ -49,7 +52,7 @@ const PEEK_MS: &str = "peek_ms";
 /// Series key: one stream's read latency at each rung, milliseconds.
 const STREAM_READ_MS: &str = "stream_read_ms";
 
-/// Measurement key: Redis bytes the whole population added.
+/// Measurement key: Dragonfly bytes the whole population added.
 const REDIS_BYTES_TOTAL: &str = "redis_bytes_total";
 
 /// Measurement key: how many fleets the readiness index holds on a deployed
@@ -88,13 +91,14 @@ impl Parameters {
 /// A cap refusal, or a datastore that would not answer.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     target: &Target,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
-    let mut report = Report::new(Lane::Cardinality, profile);
+    let mut report = Report::new(Lane::Cardinality, profile, provenance);
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     let mut ledger = FixtureLedger::new();
 
@@ -138,7 +142,7 @@ async fn climb(
     let tag = seed::placement_tag(prefix);
     let runner = seed::runner(&stores.database, &prefix.name("host"), &tag, SEEDED_AT).await?;
     ledger.created(ROWS_PER_RUNNER);
-    let baseline = redis_used_memory(&stores.queue).await?;
+    let baseline = dragonfly_used_memory(&stores.queue).await?;
 
     let mut seeded_to = 0;
     let mut previous_bytes = baseline;
@@ -160,7 +164,7 @@ async fn climb(
         }
         seeded_to = rung;
 
-        let bytes = redis_used_memory(&stores.queue).await?;
+        let bytes = dragonfly_used_memory(&stores.queue).await?;
         let added = bytes.saturating_sub(previous_bytes);
         let fleets_added = rung.saturating_sub(previous_rung);
         push(report, LADDER, count(rung));
@@ -178,6 +182,7 @@ async fn climb(
         REDIS_BYTES_TOTAL,
         count(previous_bytes.saturating_sub(baseline)),
     );
+    capacity::record(stores, report).await?;
     postgres_at_population(stores, &runner.to_string(), report).await
 }
 
@@ -197,7 +202,7 @@ async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
         FLEETS_TABLE_BYTES,
         count(table_sizes(&stores.database).await?),
     );
-    Ok(())
+    capacity::record(stores, report).await
 }
 
 /// Append one sample to a series.

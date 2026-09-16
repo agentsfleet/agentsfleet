@@ -40,6 +40,9 @@ const CONTEXT_RECEIVED: &str = "fleet event received";
 /// Statement name, for the context a refusal's query failure carries.
 const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
 
+/// Statement name, for the context the delivery stamp's failure carries.
+const CONTEXT_DELIVERED: &str = "admission delivered stamp";
+
 /// Whether this delivery was the first.
 ///
 /// A named type rather than a `bool`, because the answer decides whether the
@@ -50,8 +53,21 @@ const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
 pub enum Delivery {
     /// This event had no row; the caller owes it a receive debit.
     First,
-    /// The row already existed, so an earlier delivery already paid.
+    /// The row already existed and is still OPEN, so an earlier delivery paid
+    /// for it and this one may carry on executing it.
     Repeat,
+    /// The row already existed and has already FINISHED.
+    ///
+    /// Dimension 7.4. A redelivery of an event that already ran must be
+    /// acknowledged and dropped, not executed: the run happened, the tenant
+    /// paid for it, and the answer is already owed or delivered. Running it
+    /// again spends a provider's money a second time and posts a second answer
+    /// into a thread a person is reading.
+    ///
+    /// A third arm rather than a `bool` beside [`Self::Repeat`] for the reason
+    /// the enum exists at all — every `match` on this type now has to say what
+    /// it does with a finished event, and the compiler is what asks.
+    Terminal,
 }
 
 /// What opening the narrative log answered: whether this was the first
@@ -101,11 +117,23 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
 
+        // Stamped on BOTH arms, before the arms diverge. A first delivery that
+        // wrote the narrative row and then failed to stamp has committed the
+        // row already — these are separate statements on an autocommit
+        // connection — and its redelivery takes the conflict arm. Stamping only
+        // on the first arm would leave that row unstamped forever: the entry
+        // protects it while it is pending, but once it is acknowledged and
+        // trimmed out of history the reconcile pass reads it as accepted work
+        // whose entry is gone and re-appends an event that already RAN, with
+        // real provider spend. The statement's own `delivered_at IS NULL` guard
+        // is what makes running it twice free.
+        stamp_admission_delivered(&mut connection, acquired, now).await?;
+
         // Zero rows is the `ON CONFLICT DO NOTHING` arm: the row was already
         // there, so somebody has already paid for this event.
         if landed.rows_affected() == 0 {
             return Ok(Received {
-                delivery: Delivery::Repeat,
+                delivery: self.redelivery_of(&mut connection, acquired).await?,
                 counters: None,
             });
         }
@@ -117,6 +145,79 @@ impl Leases {
             counters,
         })
     }
+
+    /// Which kind of redelivery this is: one that may still run, or one that
+    /// has already finished.
+    ///
+    /// Open means `received` and nothing else, which is not a shortcut — it is
+    /// the same predicate the failure and report updates guard on. Every other
+    /// stored spelling is an ending somebody already wrote: a runner's
+    /// `processed` or `fleet_error`, or a daemon-side refusal like
+    /// `gate_blocked`, which `afd_core::event::status` documents as terminal in
+    /// its own right. Asking "is it still open" rather than listing the endings
+    /// is what keeps this correct when a new refusal spelling is added.
+    ///
+    /// A row that vanished between the insert and this read is treated as still
+    /// open. That is the conservative direction: the alternative is dropping an
+    /// event nobody can prove ran, and a redelivery that runs twice is visible
+    /// while one that is silently discarded is not.
+    async fn redelivery_of(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        acquired: &Acquired,
+    ) -> Result<Delivery> {
+        let stored: Option<String> = sqlx::query_scalar(afd_events::sql::SELECT_FLEET_EVENT_STATUS)
+            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.event_id)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RECEIVED))?;
+        Ok(match stored.as_deref() {
+            Some(afd_core::event::status::RECEIVED) | None => Delivery::Repeat,
+            Some(_) => Delivery::Terminal,
+        })
+    }
+}
+
+/// Stamp this event's admission row as delivered, on the connection that just
+/// opened the narrative log.
+///
+/// The second half of the same fact. `core.fleet_events` records that a runner
+/// was handed this event; `core.fleet_admissions.delivered_at` records it where
+/// the recovery pass can find it under one partial index, instead of behind a
+/// join no index can bound. Attempted on every delivery, first or repeat: see
+/// the call site for the unstamped row that costs.
+///
+/// The logical id is parsed by the ledger's own
+/// [`logical_parts`](afd_admission::logical_parts), and `None` is an ordinary
+/// answer: an id this ledger never minted — an approval's continuation, an
+/// event predating the table — has no row to stamp. A zero row count is
+/// ordinary for the same reason, and so is a row this delivery's predecessor
+/// already stamped, so neither is reported.
+///
+/// # Errors
+/// Reports a database that would not answer. It is raised rather than
+/// swallowed: an unstamped row is one the reconcile pass can later read as
+/// accepted work whose entry is gone, and re-append an event that already ran.
+/// The caller's redelivery runs this again, which is why it is attempted on
+/// every delivery rather than only the first.
+async fn stamp_admission_delivered(
+    connection: &mut sqlx::PgConnection,
+    acquired: &Acquired,
+    now: UnixMillis,
+) -> Result<()> {
+    let Some((created_at, seq)) = afd_admission::logical_parts(&acquired.event_id) else {
+        return Ok(());
+    };
+    sqlx::query(afd_admission::sql::MARK_DELIVERED)
+        .bind(acquired.fleet_id.as_str())
+        .bind(created_at)
+        .bind(seq)
+        .bind(now.as_millis())
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_DELIVERED))?;
+    Ok(())
 }
 
 /// Whether the refusal moved a row, and the row it moved.

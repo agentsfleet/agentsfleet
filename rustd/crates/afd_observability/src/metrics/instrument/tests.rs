@@ -9,7 +9,7 @@ use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 
 use super::{Instruments, series_ceilings};
-use crate::error::Error;
+use crate::error::ErrorKind;
 use crate::metrics::declared::{fleet, http};
 use crate::metrics::family::{CounterKind, Declared, GaugeKind, HistogramKind};
 use crate::metrics::registry::Registry;
@@ -35,7 +35,7 @@ fn an_undeclared_family_cannot_be_claimed() {
         .counter_u64(&invented)
         .expect_err("the census declares no such family");
     assert!(
-        matches!(refusal, Error::UnknownFamily { ref family } if &**family == "agentsfleet_invented_total"),
+        matches!(refusal.kind(), ErrorKind::UnknownFamily { family } if &**family == "agentsfleet_invented_total"),
         "the refusal must name the family: {refusal}"
     );
 }
@@ -55,7 +55,7 @@ fn a_family_claimed_as_the_wrong_kind_is_refused() {
         .counter_u64(&miscast)
         .expect_err("the census declares this a gauge");
     assert!(
-        matches!(refusal, Error::KindMismatch { .. }),
+        matches!(refusal.kind(), ErrorKind::KindMismatch { .. }),
         "a gauge claimed as a counter must be refused: {refusal}"
     );
 }
@@ -74,8 +74,8 @@ fn a_family_claimed_in_the_wrong_number_is_refused() {
         .expect_err("the census declares this counts in u64");
     assert!(
         matches!(
-            refusal,
-            Error::NumberMismatch {
+            refusal.kind(),
+            ErrorKind::NumberMismatch {
                 declared: "u64",
                 claimed: "f64",
                 ..
@@ -125,7 +125,7 @@ fn a_counter_claimed_as_a_gauge_is_refused() {
     let refusal = instruments
         .gauge_u64(&miscast, Vec::new)
         .expect_err("the census declares this a counter");
-    assert!(matches!(refusal, Error::KindMismatch { .. }));
+    assert!(matches!(refusal.kind(), ErrorKind::KindMismatch { .. }));
 }
 
 /// A counter claimed as a histogram is refused.
@@ -138,7 +138,7 @@ fn a_counter_claimed_as_a_histogram_is_refused() {
     let refusal = instruments
         .histogram_f64(&miscast)
         .expect_err("the census declares this a counter");
-    assert!(matches!(refusal, Error::KindMismatch { .. }));
+    assert!(matches!(refusal.kind(), ErrorKind::KindMismatch { .. }));
 }
 
 /// Every declared ceiling builds a stream the SDK accepts.

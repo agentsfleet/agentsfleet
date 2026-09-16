@@ -18,7 +18,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_redis::FleetEvent;
+use afd_dragonfly::{EventId, FleetEvent};
 
 use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
@@ -32,11 +32,12 @@ use crate::lease::reclaim::{Reclaimed, Reused};
 /// still read `type`/`request`/`created_at`, so every appended event was
 /// durable, delivered, and undecodable. Importing the same constants the
 /// producers write is what makes that class of drift a compile-time concern
-/// instead of a silent one. The entry id itself IS the event id — there is no
-/// `event_id` field.
+/// instead of a silent one. `event_id` is among them: the entry id is a
+/// RECEIPT and the field carries the admission ledger's logical id, so an
+/// entry without it was appended by something that did not admit it first.
 use afd_wire::event::field::{
-    ACTOR as FIELD_ACTOR, CREATED_AT as FIELD_CREATED_AT, EVENT_TYPE as FIELD_TYPE,
-    REQUEST_JSON as FIELD_REQUEST, WORKSPACE_ID as FIELD_WORKSPACE,
+    ACTOR as FIELD_ACTOR, CREATED_AT as FIELD_CREATED_AT, EVENT_ID as FIELD_EVENT_ID,
+    EVENT_TYPE as FIELD_TYPE, REQUEST_JSON as FIELD_REQUEST, WORKSPACE_ID as FIELD_WORKSPACE,
 };
 
 /// Whether the work was pulled fresh or taken back from a dead holder.
@@ -71,8 +72,13 @@ pub struct Acquired {
     pub leased_until: UnixMillis,
     /// How the work was obtained.
     pub kind: Kind,
-    /// The event to execute.
+    /// The event to execute — the admission ledger's LOGICAL id, which the
+    /// row, the lease, the ledger and every read address.
     pub event_id: String,
+    /// The stream entry this delivery arrived on, and the only thing `XACK`
+    /// takes. Distinct from [`Self::event_id`] because a replayed admission
+    /// puts one logical event on two entries.
+    pub receipt: EventId,
     /// Who raised it.
     pub actor: String,
     /// Its type.
@@ -112,6 +118,7 @@ pub(crate) fn from_reclaim(
         leased_until: claimed.leased_until,
         kind: Kind::Reclaim,
         event_id: prior.event_id,
+        receipt: EventId::of(&prior.receipt),
         actor: prior.actor,
         event_type: prior.event_type,
         request_json: prior.request_json,
@@ -147,8 +154,11 @@ pub(crate) fn from_fresh(
         fence: claimed.fence,
         leased_until: claimed.leased_until,
         kind: Kind::Fresh,
-        // The entry id IS the event id — there is no separate field.
-        event_id: event.id.as_str().to_owned(),
+        // The LEDGER's id, not the entry's. An entry with no `event_id` was
+        // appended by something that did not admit it, and is refused here
+        // rather than run under an identity nothing else knows.
+        event_id: field(FIELD_EVENT_ID)?,
+        receipt: event.receipt.clone(),
         actor: field(FIELD_ACTOR)?,
         event_type: field(FIELD_TYPE)?,
         request_json: field(FIELD_REQUEST)?,
@@ -172,8 +182,16 @@ mod tests {
     use afd_core::clock::UnixMillis;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
 
-    /// A Redis stream entry id: milliseconds and a sequence, as Redis mints it.
+    /// A Dragonfly stream entry id: milliseconds and a sequence, as Dragonfly mints it.
     const ENTRY_ID: &str = "1788550034853-0";
+
+    /// The LEDGER's logical id, distinct from the entry's by construction.
+    ///
+    /// Deliberately a different string from [`ENTRY_ID`]: a reader that
+    /// confused the receipt for the identity would still pass if the two
+    /// fixtures agreed, which is the whole condition this module exists to
+    /// keep apart.
+    const EVENT_ID: &str = "1788550034853-7";
 
     /// A workspace the reader will parse as a version-7 UUID.
     const WORKSPACE: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0120";
@@ -229,10 +247,10 @@ mod tests {
             request_json: r#"{"message":"hello"}"#,
             created_at: "1788550034853",
         };
-        let event = afd_redis::FleetEvent {
-            id: afd_redis::EventId::of(ENTRY_ID),
+        let event = afd_dragonfly::FleetEvent {
+            receipt: afd_dragonfly::EventId::of(ENTRY_ID),
             fields: entry
-                .pairs()
+                .queued_pairs(EVENT_ID)
                 .into_iter()
                 .map(|(name, value)| ((*name).to_owned(), value.to_owned()))
                 .collect(),
@@ -246,7 +264,8 @@ mod tests {
         assert_eq!(acquired.request_json, r#"{"message":"hello"}"#);
         assert_eq!(acquired.workspace_id.as_str(), WORKSPACE);
         assert_eq!(acquired.event_created_at.as_millis(), 1_788_550_034_853);
-        assert_eq!(acquired.event_id, ENTRY_ID);
+        assert_eq!(acquired.event_id, EVENT_ID);
+        assert_eq!(acquired.receipt.as_str(), ENTRY_ID);
     }
 
     /// An entry missing any single field is refused, naming that field.
@@ -264,7 +283,10 @@ mod tests {
             request_json: r#"{"message":"hello"}"#,
             created_at: "1788550034853",
         };
-        let pairs = entry.pairs();
+        // The QUEUED six, not the producer's five: with only five present the
+        // reader refuses every case for the missing `event_id`, so each drop
+        // would pass without proving anything about the field it dropped.
+        let pairs = entry.queued_pairs(EVENT_ID);
         for dropped in 0..pairs.len() {
             let fields = pairs
                 .iter()
@@ -272,13 +294,19 @@ mod tests {
                 .filter(|(index, _)| *index != dropped)
                 .map(|(_, (name, value))| ((*name).to_owned(), (*value).to_owned()))
                 .collect();
-            let event = afd_redis::FleetEvent {
-                id: afd_redis::EventId::of(ENTRY_ID),
+            let event = afd_dragonfly::FleetEvent {
+                receipt: afd_dragonfly::EventId::of(ENTRY_ID),
                 fields,
             };
             let refused = super::from_fresh(&fleet_id(), &claimed(), &event);
             let name = pairs.get(dropped).map_or("?", |(name, _)| name);
             assert!(refused.is_err(), "dropping {name} must refuse the entry");
+            // And refused FOR that field: a reader naming the wrong one sends
+            // an operator to a value that is present.
+            assert!(
+                refused.is_err_and(|refusal| refusal.to_string().contains(name)),
+                "dropping {name} must refuse naming {name}"
+            );
         }
     }
 }

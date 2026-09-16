@@ -21,7 +21,7 @@ afd_db.workspace = true
 # builds, so it zeroes on drop rather than becoming an ordinary `String`.
 afd_crypto.workspace = true
 # The queue itself: the stream, the dedicated reader, the consumer name.
-afd_redis.workspace = true
+afd_dragonfly.workspace = true
 # THE dependency that makes this crate the boundary it is: `Provider` is
 # resolved here and nowhere else on the delivery path (Invariant 9).
 afd_connector.workspace = true
@@ -29,6 +29,8 @@ afd_connector.workspace = true
 # hand-rolled beside its schedule, and where its install shipped the bug that
 # left the last delay unreachable.
 backon.workspace = true
+# The lane map: one shard locked per dispatch or retire — see `lanes`.
+dashmap.workspace = true
 # The vendor call. The same client the rest of the workspace dials with.
 reqwest.workspace = true
 # The header name a JSON body is sent under, from the crate that owns the
@@ -40,10 +42,12 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 # `select!` over the blocking read and the cancellation token, and the deadline
-# on a vendor post.
-tokio = { workspace = true, features = ["macros", "time"] }
-# The supervisor's token, which is how this worker is stopped.
-tokio-util.workspace = true
+# on a vendor post; `sync` for the lanes' channels and the in-flight ceiling,
+# `rt` because each lane is a spawned task.
+tokio = { workspace = true, features = ["macros", "time", "sync", "rt"] }
+# The supervisor's token, which is how this worker is stopped, and the tracker
+# the lanes are joined through at shutdown.
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
@@ -52,10 +56,14 @@ tracing.workspace = true
 # it needs the two stores it actually holds — the pool the destination is read
 # from, and the vault the bot token is opened out of.
 afd_db = { workspace = true, features = ["test-util"] }
+# The shared `CLUSTER SLOTS` reply the fake queue answers. The transport is
+# cluster-only, so a fake that does not answer the handshake is never pinged —
+# and respelling the RESP here is how the first fake and this one drifted.
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
 afd_core.workspace = true
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
-# spells a Redis command itself — `afd_redis` owns every one it issues — but the
+# spells a Redis command itself — `afd_dragonfly` owns every one it issues — but the
 # integration suite has to ask Redis what the worker LEFT BEHIND, and an
 # unacknowledged entry is a question only the server can answer.
 redis.workspace = true

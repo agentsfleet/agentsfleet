@@ -60,7 +60,7 @@ pub fn toReport(result: ExecutionResult, ctx: ReportContext) protocol.ReportRequ
 /// Rebuild the domain result from a reported body. A `processed` outcome has
 /// nowhere to carry a cause, so a misbehaving runner that pairs one with a
 /// clean verdict loses it here rather than persisting a contradiction.
-pub fn fromReport(body: protocol.ReportRequest) ExecutionResult {
+fn fromReport(body: protocol.ReportRequest) ExecutionResult {
     return .{
         .outcome = switch (body.outcome) {
             .processed => .{ .completed = .{} },

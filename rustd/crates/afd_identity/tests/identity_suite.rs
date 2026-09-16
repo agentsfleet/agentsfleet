@@ -34,3 +34,6 @@ mod key_set_parsing;
 mod provider_claims;
 #[path = "provider_metadata.rs"]
 mod provider_metadata;
+
+#[path = "error_surface.rs"]
+mod error_surface;

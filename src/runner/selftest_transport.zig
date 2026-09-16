@@ -22,7 +22,7 @@ const nullclaw = @import("nullclaw");
 /// it. The engine spawns it by NAME through `PATH`; the probe is handed an
 /// absolute path instead, because `PATH` inside a lease is part of what the
 /// sandbox decides and a check must not depend on the thing it is checking.
-pub const TRANSPORT_PATHS = [_][]const u8{ "/usr/bin/curl", "/bin/curl" };
+const TRANSPORT_PATHS = [_][]const u8{ "/usr/bin/curl", "/bin/curl" };
 
 /// The argument the transport is asked for: benign, offline, immediate.
 const VERSION_ARG: [*:0]const u8 = "--version";

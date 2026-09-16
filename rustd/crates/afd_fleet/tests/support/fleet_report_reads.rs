@@ -166,6 +166,11 @@ impl Fixtures {
     }
 
     /// One column of a `core.fleet_events` row, as text.
+    ///
+    /// `None` for both a missing row and a NULL column. The two are the same
+    /// answer to every caller here — "the row does not say" — and decoding as
+    /// `String` instead would panic on the NULL, which is the ordinary state
+    /// of an optional column like `response_text`.
     pub(crate) async fn event_column(
         &self,
         fleet: &str,
@@ -183,7 +188,50 @@ impl Fixtures {
             .fetch_optional(&mut *connection)
             .await
             .expect("the event read must run")
+            .and_then(|row| {
+                row.try_get::<Option<String>, _>(0)
+                    .expect("the column must be readable as text")
+            })
+    }
+
+    /// One column of a fleet's session row, as text.
+    ///
+    /// `None` when the fleet has no session row at all, which is the state a
+    /// report whose transaction rolled back must leave behind: the checkpoint
+    /// rides the commit, so a report that did not commit wrote no cursor.
+    pub(crate) async fn session_column(&self, fleet: &str, column: &str) -> Option<String> {
+        let statement = AssertSqlSafe(format!(
+            "SELECT {column}::text FROM core.fleet_sessions WHERE fleet_id = $1::uuid"
+        ));
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(statement)
+            .bind(fleet)
+            .fetch_optional(&mut *connection)
+            .await
+            .expect("the session read must run")
             .map(|row| row.try_get(0).expect("the column must be readable as text"))
+    }
+
+    /// Ends an event out of band, as an earlier delivery of the same logical
+    /// event already did.
+    ///
+    /// One logical event can sit on two stream entries — a replayed admission
+    /// puts it there — so a lease can legitimately be `active` over an event
+    /// whose row is already terminal. The terminal write is guarded on
+    /// `received` precisely for that case, and this is how a suite reaches it
+    /// without standing up a second delivery.
+    pub(crate) async fn end_event(&self, fleet: &str, event: &str, status: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(
+            "UPDATE core.fleet_events SET status = $3::text \
+             WHERE fleet_id = $1::uuid AND event_id = $2",
+        )
+        .bind(fleet)
+        .bind(event)
+        .bind(status)
+        .execute(&mut *connection)
+        .await
+        .expect("the event write must run");
     }
 
     /// One column of a runner's lifetime counters, as text.

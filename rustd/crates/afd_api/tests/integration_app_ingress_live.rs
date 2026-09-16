@@ -56,7 +56,7 @@ async fn deliver(router: &axum::Router, body: &str, secret: &[u8]) -> axum::resp
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
     // The whole lookup in one pass. The App secret is opened out of the PLATFORM
     // ADMIN workspace, the installation is resolved to a tenant workspace
@@ -87,7 +87,7 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
     // An App installed on an organisation that never finished connecting. The
     // sender is a correctly configured provider with nothing to fix, so this is
@@ -117,7 +117,7 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
     // The document half of the narrowing, over a real row. The workspace maps,
     // the grant is approved and the event kind is admitted — only the
@@ -155,7 +155,7 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_delivery_signed_with_the_wrong_secret_never_reaches_the_joins() {
     // The wall runs before any routing, and this is what proves the ORDER over
     // real stores: an installation that maps and a fleet that subscribes are

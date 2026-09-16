@@ -35,20 +35,21 @@ use std::time::Instant;
 
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_dragonfly::ReadyIndex;
+use afd_dragonfly::ready::Partition;
 use afd_fleet::lease::Leases;
-use afd_redis::ReadyIndex;
 
 use self::drive::Shared;
 use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
 use crate::abort::Abort;
-use crate::datastores::{Datastores, redis_calls};
+use crate::datastores::{Datastores, dragonfly_calls};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
 use crate::report::{
-    DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, per_second, ratio,
+    DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, per_second, ratio,
 };
 
 /// Measurement key: polls issued per second, lease or miss.
@@ -81,11 +82,17 @@ const IDLE_INDEX_DEPTH: &str = "idle_index_depth";
 /// Measurement key: Postgres round trips one poll costs with nothing ready.
 const IDLE_ROUNDTRIPS_PER_POLL: &str = "idle_roundtrips_per_poll";
 
-/// Measurement key: Redis commands one poll costs with nothing ready.
+/// Measurement key: Dragonfly commands one poll costs with nothing ready.
 const IDLE_REDIS_CALLS_PER_POLL: &str = "idle_redis_calls_per_poll";
 
 /// Measurement key: how many polls the idle window managed.
 const IDLE_POLLS: &str = "idle_polls";
+
+/// How many marks one partition sweep reads at a time.
+const QUIESCE_PEEK: usize = 256;
+
+/// How many sweeps one partition gets before the depth is reported as it is.
+const QUIESCE_ROUNDS: usize = 16;
 
 /// Parameter key: connections the pool may open, so a p95 is attributable.
 const POOL_SIZE: &str = "pool_size";
@@ -129,6 +136,7 @@ impl Parameters {
 /// that would not answer, or a lost task. Never a slow result.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -163,7 +171,7 @@ pub async fn run(
     )
     .await?;
 
-    let mut report = Report::new(Lane::Lease, profile);
+    let mut report = Report::new(Lane::Lease, profile, provenance);
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Runners.name(), parameters.runners);
@@ -225,12 +233,42 @@ async fn populate(
     Ok((seeded, runners))
 }
 
-/// Clear this run's readiness marks, answering how many the index still
-/// holds afterwards — the depth the idle window will actually poll against.
-async fn quiesce(queue: &afd_redis::Redis, seeded: &[SeededFleet]) -> Result<u64> {
+/// Empty the readiness index, answering how many marks it still holds —
+/// the depth the idle window will actually poll against.
+///
+/// # Why this clears marks the run did not make
+///
+/// The index is GLOBAL and `Leases::select` peeks it globally, so "idle" is a
+/// property of the whole index and not of this run's fleets. Clearing only
+/// what the run seeded left every other suite's leftovers behind — a lane run
+/// finished with 26 marks across 13 of the 16 partitions — and an idle poll
+/// landing on one of them issues the candidate query it is supposed to prove
+/// it never issues. The measurement then reported a per-poll Postgres cost
+/// that belonged to another suite's litter.
+///
+/// The marks being swept are dead: their fleets live in per-test databases
+/// that were dropped when those suites finished, so the candidate query
+/// filters every one of them out. The only thing they still cost is exactly
+/// what this window measures. Lane binaries run serially, so nothing is
+/// holding a mark this sweep could take from underneath it.
+async fn quiesce(queue: &afd_dragonfly::Dragonfly, seeded: &[SeededFleet]) -> Result<u64> {
     let ready = ReadyIndex::new(queue.clone());
     for fleet in seeded {
         ready.force_clear(&fleet.fleet).await?;
+    }
+    for partition in Partition::all() {
+        // Bounded rather than `while !empty`: a mark re-appearing every round
+        // would be another writer on the rig, and spinning on it forever would
+        // hang the lane instead of reporting a depth the caller can see.
+        for _round in 0..QUIESCE_ROUNDS {
+            let holding = ready.peek(partition, QUIESCE_PEEK).await?;
+            if holding.is_empty() {
+                break;
+            }
+            for entry in &holding {
+                ready.force_clear(&entry.fleet_id).await?;
+            }
+        }
     }
     Ok(ready.len().await?)
 }
@@ -241,7 +279,7 @@ struct Window {
     length: Duration,
     exhausted: bool,
     counters: PollCounters,
-    redis_calls: u64,
+    dragonfly_calls: u64,
 }
 
 /// Drive every runner concurrently, measuring what it cost.
@@ -255,7 +293,7 @@ async fn measure(
     abort: &Arc<Abort>,
 ) -> Result<Window> {
     let before = instrument.read()?;
-    let redis_before = redis_calls(&stores.queue).await?;
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let started = Instant::now();
     let shared = Arc::new(Shared {
         deadline: started + window,
@@ -293,9 +331,9 @@ async fn measure(
         length: drive::window_length(started, ended, last_lease, exhausted),
         exhausted,
         counters: instrument.read()?.since(before),
-        redis_calls: redis_calls(&stores.queue)
+        dragonfly_calls: dragonfly_calls(&stores.queue)
             .await?
-            .saturating_sub(redis_before),
+            .saturating_sub(dragonfly_before),
     })
 }
 
@@ -322,7 +360,7 @@ impl Window {
         // timer inside the pass rather than around it.
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
-                operations: self.redis_calls,
+                operations: self.dragonfly_calls,
                 time_ms: None,
             },
             postgres: DatastoreCost {
@@ -344,6 +382,9 @@ impl Window {
             IDLE_ROUNDTRIPS_PER_POLL,
             self.counters.roundtrips_per_poll(),
         );
-        report.measurement(IDLE_REDIS_CALLS_PER_POLL, ratio(self.redis_calls, polls));
+        report.measurement(
+            IDLE_REDIS_CALLS_PER_POLL,
+            ratio(self.dragonfly_calls, polls),
+        );
     }
 }

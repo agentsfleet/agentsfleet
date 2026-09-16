@@ -8,14 +8,14 @@
 //! which is why a lane sweeps on every exit path rather than only the happy
 //! one.
 //!
-//! # Redis first, then Postgres, then the parents
+//! # Dragonfly first, then Postgres, then the parents
 //!
-//! The fleet ids come from Postgres, so the Redis half has to happen while the
+//! The fleet ids come from Postgres, so the Dragonfly half has to happen while the
 //! rows still exist. After that the order is forced by the foreign keys:
 //! fleets reference workspaces, workspaces reference tenants.
 
 use afd_db::Db;
-use afd_redis::{FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex, Redis};
+use afd_dragonfly::{Dragonfly, FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex};
 use sqlx::Row as _;
 
 use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
@@ -31,10 +31,10 @@ fn like(prefix: &RunPrefix) -> String {
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Redis refused. A sweep that cannot finish is reported
+/// Whatever Postgres or Dragonfly refused. A sweep that cannot finish is reported
 /// rather than swallowed: the whole point of the count in the result file is
 /// that somebody can see it did not match.
-pub async fn everything(database: &Db, queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
+pub async fn everything(database: &Db, queue: &Dragonfly, prefix: &RunPrefix) -> Result<u64> {
     let pattern = like(prefix);
     let fleets = fleet_ids(database, &pattern).await?;
     forget_streams(queue, &fleets).await?;
@@ -57,11 +57,11 @@ async fn fleet_ids(database: &Db, pattern: &str) -> Result<Vec<String>> {
 
 /// Drop each fleet's stream and its readiness mark.
 ///
-/// Redis has no database-per-run equivalent: the readiness index is one hash at
+/// Dragonfly has no database-per-run equivalent: the readiness index is one hash at
 /// a fixed key and a stream is keyed by fleet, so this is the only isolation
 /// there is. A mark left behind would make the next run's first poll examine a
 /// fleet whose rows are gone.
-async fn forget_streams(queue: &Redis, fleets: &[String]) -> Result<()> {
+async fn forget_streams(queue: &Dragonfly, fleets: &[String]) -> Result<()> {
     let streams = FleetStreams::new(queue.clone());
     let ready = ReadyIndex::new(queue.clone());
     for fleet in fleets {
@@ -101,7 +101,7 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when the stream will not answer.
-pub async fn outbound_entries(queue: &Redis, ids: &[String]) -> Result<u64> {
+pub async fn outbound_entries(queue: &Dragonfly, ids: &[String]) -> Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
@@ -124,7 +124,7 @@ pub async fn outbound_entries(queue: &Redis, ids: &[String]) -> Result<u64> {
 /// # Errors
 ///
 /// [`crate::Error::QueueUnavailable`] when the stream will not answer.
-pub async fn outbound_stream(queue: &Redis, prefix: &RunPrefix) -> Result<u64> {
+pub async fn outbound_stream(queue: &Dragonfly, prefix: &RunPrefix) -> Result<u64> {
     let mut range = redis::cmd(XRANGE);
     range
         .arg(OUTBOUND_STREAM_KEY)

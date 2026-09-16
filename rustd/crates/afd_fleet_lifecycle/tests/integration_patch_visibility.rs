@@ -50,7 +50,7 @@ pub(crate) async fn installed(lane: &Lane) -> afd_fleet_lifecycle::Installed {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_config_patch_is_in_the_row_the_next_lease_reads_and_not_before() {
     // Dimension 3.2. The daemon resolves configuration from Postgres per lease,
     // so "takes effect on next lease" IS "the column changed" — there is no
@@ -101,7 +101,7 @@ async fn a_config_patch_is_in_the_row_the_next_lease_reads_and_not_before() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_status_only_patch_leaves_the_configuration_alone() {
     // The other half of 3.2, and the reason the PATCH `COALESCE`s each column:
     // stopping a fleet must not rewrite what it would run when resumed.
@@ -136,7 +136,7 @@ async fn a_status_only_patch_leaves_the_configuration_alone() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_fleet_in_another_workspace_is_not_found_rather_than_forbidden() {
     // Dimension 3.3's 404 half. The caller OWNS the workspace they named — the
     // ownership layer would admit them — and the fleet is simply not in it.
@@ -188,7 +188,7 @@ async fn a_fleet_in_another_workspace_is_not_found_rather_than_forbidden() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn two_conditional_writes_race_and_exactly_one_of_them_lands() {
     // The compare-and-set, which is the whole reason the PATCH takes no row
     // lock. Both callers read the same version and both send that version's
@@ -250,7 +250,7 @@ async fn two_conditional_writes_race_and_exactly_one_of_them_lands() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_killed_fleet_is_a_tombstone_and_only_then_purges() {
     // The two-step delete, end to end: a live fleet refuses the purge, and the
     // kill is what makes it eligible. Both refusals come from a predicate, so

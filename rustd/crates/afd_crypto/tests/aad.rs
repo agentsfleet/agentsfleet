@@ -7,7 +7,7 @@
 //! row the Zig daemon ever wrote fail to open, with no compile error and no
 //! type change to notice.
 //!
-//! Transcribed from `crypto_store_write.zig`:
+//! The format, written out:
 //!
 //! ```text
 //! const AAD_SEPARATOR: u8 = 0x1f;

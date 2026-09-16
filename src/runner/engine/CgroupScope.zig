@@ -49,7 +49,7 @@ pub const CgroupError = error{
 };
 
 /// Resource metrics captured at cgroup teardown.
-pub const CgroupMetrics = struct {
+const CgroupMetrics = struct {
     memory_peak_bytes: u64,
     memory_limit_bytes: u64,
     cpu_throttled_ms: u64,
@@ -165,20 +165,14 @@ pub fn kill(self: *const CgroupScope) !void {
 }
 
 /// Read peak memory usage from the cgroup.
-pub fn readMemoryPeak(self: *const CgroupScope) u64 {
+fn readMemoryPeak(self: *const CgroupScope) u64 {
     if (builtin.os.tag != .linux) return 0;
     return self.readControlValue("memory.peak") catch 0;
 }
 
-/// Read current memory usage.
-pub fn readMemoryCurrent(self: *const CgroupScope) u64 {
-    if (builtin.os.tag != .linux) return 0;
-    return self.readControlValue("memory.current") catch 0;
-}
-
 /// Read CPU throttled time in microseconds from cpu.stat.
 /// Returns 0 if not on Linux or if the file cannot be read.
-pub fn readCpuThrottledUs(self: *const CgroupScope) u64 {
+fn readCpuThrottledUs(self: *const CgroupScope) u64 {
     if (builtin.os.tag != .linux) return 0;
     const stat_path = std.fmt.allocPrint(self.alloc, "{s}/cpu.stat", .{self.path}) catch return 0;
     defer self.alloc.free(stat_path);

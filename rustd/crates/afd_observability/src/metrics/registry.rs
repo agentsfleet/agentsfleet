@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
+use crate::error::{Result, bounds_mismatch, duplicate, kind_mismatch, unknown_family};
 use crate::metrics::family::{Counter, Gauge, Histogram};
 
 pub use self::column::{Category, Kind, Number, ParsePolicy, Policy, Temporality};
@@ -120,11 +120,7 @@ impl Registry {
             check_bounds_agree_with_kind(&family)?;
 
             if let Some(first) = lines.get(&family.name) {
-                return Err(Error::Duplicate {
-                    family: family.name.clone(),
-                    first: *first,
-                    second: line,
-                });
+                return Err(duplicate(&family.name, *first, line));
             }
             lines.insert(family.name.clone(), line);
             families.insert(family.name.clone(), family);
@@ -139,9 +135,7 @@ impl Registry {
     ///
     /// [`Error::UnknownFamily`] when the contract declares no such name.
     pub fn family(&self, name: &str) -> Result<&Family> {
-        self.families.get(name).ok_or_else(|| Error::UnknownFamily {
-            family: name.into(),
-        })
+        self.families.get(name).ok_or_else(|| unknown_family(name))
     }
 
     /// The census entry for a family whose type claims it is a counter.
@@ -186,11 +180,11 @@ impl Registry {
         if family.kind == claimed {
             return Ok(family);
         }
-        Err(Error::KindMismatch {
-            family: family.name.clone(),
-            declared: family.kind.spelling(),
-            claimed: claimed.spelling(),
-        })
+        Err(kind_mismatch(
+            &family.name,
+            family.kind.spelling(),
+            claimed.spelling(),
+        ))
     }
 
     /// Every declared family, in wire-name order.
@@ -218,9 +212,9 @@ fn check_bounds_agree_with_kind(family: &Family) -> Result<()> {
     if family.kind.takes_bounds() != family.bounds.is_empty() {
         return Ok(());
     }
-    Err(Error::BoundsMismatch {
-        family: family.name.clone(),
-        kind: family.kind.spelling(),
-        bounds: family.bounds.len(),
-    })
+    Err(bounds_mismatch(
+        &family.name,
+        family.kind.spelling(),
+        family.bounds.len(),
+    ))
 }

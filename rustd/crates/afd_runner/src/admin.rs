@@ -7,7 +7,8 @@ use afd_wire::runner::AssignedPolicy;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{
-    Error, Result, admin_state_malformed, query, rejected, runner_not_found, selftest_refused,
+    Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
+    runner_still_leased, selftest_refused,
 };
 use crate::sql;
 use crate::store::Runners;
@@ -137,8 +138,8 @@ impl Runners {
         let leased: bool = row.try_get(COLUMN_LEASED).map_err(query(CONTEXT_DELETE))?;
         match (changed, leased) {
             (true, _) => Ok(()),
-            (false, true) => Err(Error::RunnerStillLeased),
-            (false, false) => Err(Error::RunnerNotRevoked),
+            (false, true) => Err(runner_still_leased()),
+            (false, false) => Err(runner_not_revoked()),
         }
     }
 

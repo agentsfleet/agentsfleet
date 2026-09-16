@@ -1,28 +1,39 @@
 //! An operator's message to a fleet, on the way in.
 //!
-//! The port of `fleets/messages.zig`. One verb: normalize what a person typed
-//! into an event envelope and `XADD` it onto `fleet:{id}:events`.
+//! One verb: normalize what a person typed into an event envelope and admit
+//! it.
 //!
-//! # Nothing is written to Postgres here
+//! # A steer is admitted like every other producer
 //!
-//! A steer is not a row this daemon inserts and then hopes a runner notices.
-//! It is an append to the SINGLE ingress stream every other producer — webhook,
-//! cron, continuation — already writes to, and the row appears when the runner
-//! leases it. That is what makes a steer indistinguishable from every other
-//! way a run starts, and it is why there is no synthetic-event injection
-//! anywhere behind this.
+//! It is not a row this daemon inserts and then hopes a runner notices. It
+//! goes through the admission ledger every other producer — webhook, cron,
+//! continuation — already goes through, and the `core.fleet_events` row
+//! appears when the runner leases it. That is what makes a steer
+//! indistinguishable from every other way a run starts, and it is why there
+//! is no synthetic-event injection anywhere behind this.
 //!
-//! # The readiness mark is separate, and its failure is not the caller's
+//! # A steer's key is the CALLER's, when the caller has one
 //!
-//! `XADD` makes the message durable; the mark is what makes it PROMPTLY
-//! leasable rather than waiting for the next poll. So the order is append,
-//! then mark — and a mark that fails is logged rather than raised, because by
-//! then the message is already in the stream and answering 500 would invite a
-//! retry that appends it twice.
+//! Every other producer repeats a value across its retries: a delivery id, a
+//! scheduler message id, a gate action. A steer has no such value of its own,
+//! and for a long time that meant the key was this call's own row identifier —
+//! correct for a person pressing send twice, wrong for an API client that
+//! never saw its response.
+//!
+//! Those two are indistinguishable from here. The bytes are identical, so only
+//! the caller knows which one it is making, and Dimension 7.5 is the field that
+//! lets it say: `operation_id`, repeated across a retry. Present, it is the
+//! ledger's `producer_key` and the retry conflicts on
+//! `UNIQUE (producer, producer_key)` — answered with the first admission's
+//! event, one run, one charge. Absent, the ledger mints one and two identical
+//! messages stay two operations.
+//!
+//! The absent case is a real answer and not a default nobody thought about: a
+//! timeout does not prove an operation failed, but neither does it prove one
+//! happened, and a human typing in a terminal has no operation to identify.
 
-use afd_core::error_code;
-use afd_redis::{FleetStreams, ReadyIndex, Redis};
-use afd_wire::event::{Entry, EventType};
+use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_wire::event::EventType;
 
 use crate::error::Result;
 
@@ -44,53 +55,59 @@ pub const ACTOR_MACHINE: &str = "steer:api";
 /// The ingress side of the narrative log.
 #[derive(Debug, Clone)]
 pub struct Steer {
-    queue: Redis,
+    admissions: Admissions,
 }
 
 impl Steer {
-    /// Appends through `queue`.
+    /// Admits through `admissions`.
     #[must_use]
-    pub const fn new(queue: Redis) -> Self {
-        Self { queue }
+    pub const fn new(admissions: Admissions) -> Self {
+        Self { admissions }
     }
 
     /// Puts one message on the fleet's stream, answering with its event id.
     ///
     /// `request_json` is the already-serialized payload; this layer does not
-    /// build it, because the shape a producer sends is the producer's contract
-    /// and not the queue's.
+    /// build it, because the shape a producer sends is the producer's
+    /// contract and not the ledger's.
     ///
     /// # Errors
-    /// Reports a queue that would not take the append. A message Postgres
-    /// would have accepted and the queue refused is one a person sent that no
-    /// runner will see, which is why it is raised rather than logged.
+    /// Reports a database that would not record the acceptance. A queue that
+    /// would not take the append is NOT an error — the message is already
+    /// durable and the replay sweeper delivers it, which is exactly the
+    /// failure the ledger exists to absorb.
     pub async fn append(
         &self,
         fleet: &str,
         workspace: &str,
         actor: &str,
         request_json: &str,
+        operation_id: Option<&str>,
     ) -> Result<String> {
-        let created_at = afd_core::clock::now().as_millis().to_string();
-        let appended = FleetStreams::new(self.queue.clone())
-            .append(
+        let admitted = self
+            .admissions
+            .admit(Admission {
+                producer: Producer::Steer,
+                // Mapped explicitly, never by `unwrap_or`-ing into a default:
+                // `Key`'s own note warns that an `Option` lets a caller which
+                // HAS an identity lose deduplication by omission, and this is
+                // the call site that would do it.
+                key: match operation_id {
+                    Some(operation) => Key::Repeated(operation),
+                    None => Key::Unrepeatable,
+                },
                 fleet,
-                &Entry {
-                    actor,
-                    event_type: EventType::Chat.as_str(),
-                    workspace_id: workspace,
-                    request_json,
-                    created_at: &created_at,
-                }
-                .pairs(),
-            )
+                workspace,
+                actor,
+                event_type: EventType::Chat,
+                request_json,
+            })
             .await?;
 
-        let event_id = appended.as_str().to_owned();
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression, and coverage instrumentation
         // scores the dead copy (`docs/LOGGING_STANDARD.md` §8A).
-        let id = event_id.as_str();
+        let id = admitted.id.as_str();
         tracing::debug!(
             fleet_id = fleet,
             workspace_id = workspace,
@@ -98,22 +115,6 @@ impl Steer {
             event_id = id,
             event = "steer_appended",
         );
-
-        // The token is the fleet id, as every producer in this workspace spells
-        // it: the clear compares it, so a mark written under another value is
-        // one nothing can remove.
-        if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
-            afd_observability::producers::fleet::ready_write_failed();
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = unmarked.to_string();
-            tracing::warn!(
-                error_code = code,
-                fleet_id = fleet,
-                event_id = id,
-                reason,
-                event = "steer_ready_mark_failed",
-            );
-        }
-        Ok(event_id)
+        Ok(admitted.id)
     }
 }

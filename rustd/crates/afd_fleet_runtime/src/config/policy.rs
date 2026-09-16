@@ -6,7 +6,7 @@
 //! it.
 
 use crate::config::raw;
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result, missing};
 
 /// The key naming a fleet's daily spend ceiling.
 const DAILY_DOLLARS: &str = "daily_dollars";
@@ -40,7 +40,7 @@ impl Dollars {
     /// # Errors
     /// [`Error::InvalidBudget`] naming `field` and the rule it broke.
     fn parse(field: &'static str, amount: f64, cap: f64) -> Result<Self> {
-        let refuse = |reason| Error::InvalidBudget { field, reason };
+        let refuse = |reason| ErrorKind::InvalidBudget { field, reason }.into();
 
         // `is_finite` first, and it is not redundant: NaN answers FALSE to both
         // `<= 0.0` and `> cap`, so a range check alone admits it. The Zig
@@ -94,7 +94,7 @@ impl TryFrom<raw::Budget> for Budget {
         Ok(Self {
             daily: authored
                 .daily_dollars
-                .ok_or_else(|| Error::missing(DAILY_DOLLARS))
+                .ok_or_else(|| missing(DAILY_DOLLARS))
                 .and_then(|amount| Dollars::parse(DAILY_DOLLARS, amount, MAX_DAILY_DOLLARS))?,
             monthly: authored
                 .monthly_dollars
@@ -183,9 +183,10 @@ impl TryFrom<raw::Context> for ContextBudget {
 
     fn try_from(authored: raw::Context) -> Result<Self> {
         if let Some(unknown) = authored.extra.keys().next() {
-            return Err(Error::UnknownRuntimeKey {
+            return Err(ErrorKind::UnknownRuntimeKey {
                 field: unknown.as_str().into(),
-            });
+            }
+            .into());
         }
 
         Ok(Self {

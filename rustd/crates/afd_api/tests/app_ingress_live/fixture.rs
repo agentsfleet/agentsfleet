@@ -25,7 +25,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -79,7 +79,7 @@ pub(super) enum Mapped {
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     subject: String,
     tenant: String,
     /// Where the App's own signing secret lives.

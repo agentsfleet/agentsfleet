@@ -34,7 +34,7 @@ const SHARED_INSTANT: i64 = 2;
 /// `limit` and `cursor` had every one of them ignored, which reads as a filter
 /// that silently does nothing and a queue that stops at its first page.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
     let fixture = Fixture::create_as(LISTING_SUBJECT).await;
     fixture.seed().await;

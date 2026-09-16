@@ -216,7 +216,7 @@ impl Error {
 }
 
 /// The sentences this plane serves.
-const DETAIL_UNAVAILABLE: &str = "Database unavailable";
+use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 const DETAIL_DATABASE_ERROR: &str = "The operation could not be completed";
 const DETAIL_PROVIDER_UNRESOLVED: &str = "The model provider could not be resolved";
 const DETAIL_VAULT_INVALID: &str = "The stored credential is not a readable shape";

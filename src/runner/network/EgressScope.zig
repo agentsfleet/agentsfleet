@@ -30,10 +30,10 @@ pub const Error = error{
 // nftables object names. TABLE is PER-WORKER (`uz_egress<idx>`) so a worker's
 // `destroy` drops only its own table, never a concurrent worker's; chains are
 // table-scoped so they stay constant. (tests + capture.sh mirror these.)
-pub const TABLE_PREFIX = "uz_egress";
-pub const CHAIN_FWD = "egress_fwd";
-pub const CHAIN_NAT = "egress_nat";
-pub const SET_PREFIX = "allow";
+const TABLE_PREFIX = "uz_egress";
+const CHAIN_FWD = "egress_fwd";
+const CHAIN_NAT = "egress_nat";
+const SET_PREFIX = "allow";
 /// `<prefix><worker_index>` format for the per-worker set + table names.
 const PREFIXED_NAME_FMT = "{s}{d}";
 const PRIO_FILTER: i32 = 0;
@@ -130,14 +130,6 @@ pub fn destroy(self: *EgressScope) void {
         log.debug("nft_teardown_skipped", .{ .err = @errorName(err) });
     deleteVeth(self.plan.host_ifname);
     log.debug("egress_destroyed", .{ .host_if = self.plan.host_ifname });
-}
-
-/// Capability probe: can this host open the netlink sockets at all?
-pub fn isAvailable() bool {
-    if (builtin.os.tag != .linux) return false;
-    var s = Socket.open(.netfilter) catch return false;
-    s.close();
-    return true;
 }
 
 // ── host-side helpers ────────────────────────────────────────────────────────

@@ -30,8 +30,8 @@ use clap::Parser as _;
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Redis URL that parses and points at nothing listening.
-const DEAD_REDIS: &str = "redis://127.0.0.1:1";
+/// A Dragonfly URL that parses and points at nothing listening.
+const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
 
 /// Sixty-four hex characters.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -44,7 +44,7 @@ fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", DEAD_DATABASE),
-            ("REDIS_URL_API", DEAD_REDIS),
+            ("DRAGONFLY_URL", DEAD_DRAGONFLY_URL),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
@@ -244,12 +244,14 @@ fn test_a_stalled_blocking_task_does_not_hold_the_exit() {
 fn test_only_a_clean_stop_is_success() {
     let clean = Outcome {
         cause: StopCause::Signalled,
+        settled: agentsfleetd::serve::Settled::EMPTY,
         shutdown: ShutdownReport::default(),
     };
     assert_eq!(status_for(&clean), SUCCESS);
 
     let stuck = Outcome {
         cause: StopCause::Signalled,
+        settled: agentsfleetd::serve::Settled::EMPTY,
         shutdown: ShutdownReport {
             joined: Vec::new(),
             abandoned: vec!["accept_loop"],
@@ -264,6 +266,7 @@ fn test_only_a_clean_stop_is_success() {
 
     let fell_over = Outcome {
         cause: StopCause::ServerStopped,
+        settled: agentsfleetd::serve::Settled::EMPTY,
         shutdown: ShutdownReport::default(),
     };
     assert_eq!(

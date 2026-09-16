@@ -3,10 +3,8 @@
 //! # Why this is not [`afd_core::paging::Cursor`]
 //!
 //! That type exists, it is keyset, and it carries the same two fields. It also
-//! spells a timestamp boundary `{millis}:{id}` in the CLEAR, because that is
-//! what `keyset_cursor.zig` spells — and the events endpoints do not use
-//! `keyset_cursor.zig`. They use `fleet_events_filter.zig`, which wraps the
-//! whole pair in base64url.
+//! spells a timestamp boundary `{millis}:{id}` in the CLEAR. The events
+//! endpoints do not: they wrap the whole pair in base64url.
 //!
 //! Two cursor formats in one product is not a thing to be pleased about, and it
 //! was inherited rather than chosen. What settles which one this crate emits is
@@ -18,7 +16,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 
-use crate::error::Error;
+use crate::error::{Result, cursor_malformed};
 
 /// The character between the two fields, inside the encoded payload.
 const FIELD_SEPARATOR: char = ':';
@@ -63,24 +61,22 @@ impl Cursor {
 
     /// The cursor a client sent back, or a refusal.
     ///
-    /// Every failure answers the same [`Error::CursorMalformed`] and says
+    /// Every failure answers the same [`cursor_malformed`] and says
     /// nothing more. A parser that distinguished "not base64" from "no
     /// separator" from "identifier too long" would be describing this
     /// daemon's internal format to whoever was probing it.
     ///
     /// # Errors
-    /// [`Error::CursorMalformed`] for anything this daemon did not mint.
-    pub fn decode(raw: &str) -> Result<Self, Error> {
-        let decoded = BASE64
-            .decode(raw)
-            .map_err(|_decode| Error::CursorMalformed)?;
-        let plain = String::from_utf8(decoded).map_err(|_utf8| Error::CursorMalformed)?;
+    /// [`cursor_malformed`] for anything this daemon did not mint.
+    pub fn decode(raw: &str) -> Result<Self> {
+        let decoded = BASE64.decode(raw).map_err(|_decode| cursor_malformed())?;
+        let plain = String::from_utf8(decoded).map_err(|_utf8| cursor_malformed())?;
         let (head, id) = plain
             .split_once(FIELD_SEPARATOR)
-            .ok_or(Error::CursorMalformed)?;
-        let created_at: i64 = head.parse().map_err(|_digits| Error::CursorMalformed)?;
+            .ok_or(cursor_malformed())?;
+        let created_at: i64 = head.parse().map_err(|_digits| cursor_malformed())?;
         if id.is_empty() || id.len() > EVENT_ID_MAX_LEN {
-            return Err(Error::CursorMalformed);
+            return Err(cursor_malformed());
         }
         Ok(Self {
             created_at,
@@ -146,9 +142,12 @@ mod tests {
             &BASE64.encode("1735689600000:"),   // empty identifier
             &BASE64.encode(format!("1:{}", "x".repeat(EVENT_ID_MAX_LEN + 1))),
         ] {
-            assert!(
-                matches!(Cursor::decode(raw), Err(Error::CursorMalformed)),
-                "accepted {raw:?}"
+            let refused = Cursor::decode(raw);
+            assert!(refused.is_err(), "accepted {raw:?}");
+            assert_eq!(
+                refused.err().map(|error| error.code()),
+                Some(afd_core::error_code::INVALID_REQUEST),
+                "{raw:?} was refused as something other than a bad cursor"
             );
         }
     }

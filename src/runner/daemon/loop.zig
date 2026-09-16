@@ -20,6 +20,9 @@ const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
 const worker_pool = @import("worker_pool.zig");
+const ReportSpool = @import("ReportSpool.zig");
+const loop_spool = @import("loop_spool.zig");
+const poll_verdict = @import("loop_poll_verdict.zig");
 const renew_driver = @import("renew_driver.zig");
 const lease_run = @import("lease_run.zig");
 
@@ -61,7 +64,7 @@ pub fn installDrainHandlers() void {
 /// from `drain_requested` (signal / fleet `.drain`) only by origin; each worker
 /// halts on either at its between-lease boundary, so both are graceful drains
 /// (finish in-flight, take no new lease) per the locked design.
-pub var stop_requested = std.atomic.Value(bool).init(false);
+var stop_requested = std.atomic.Value(bool).init(false);
 
 /// Why the control loop exited. The entrypoint maps `token_rejected` to a
 /// non-zero process exit so a stale/revoked runner token surfaces as a loud,
@@ -100,7 +103,7 @@ pub var heartbeat_interval_ms: u64 = @intCast(constants.HEARTBEAT_INTERVAL_MS);
 /// first control-plane contact is always the heartbeat and a boot-time `.stop`
 /// exits before a single lease is taken. Workers each run `pollAndProcess`
 /// concurrently; `cfg.worker_count == 1` is behaviourally today's single daemon.
-pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
+pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, cfg: Config, env_map: *const std.process.Environ.Map, spool: ?*ReportSpool) LoopExit {
     var cp = client_mod.init(alloc, io, sched, cfg.control_plane_url);
     defer cp.deinit();
     // The one holder of the control-plane-assigned policy. Written by this
@@ -135,11 +138,15 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
     var pending = selftest_beat.Pending.init(alloc);
     defer pending.deinit();
     var startup_probed = false;
+    var spool_cadence: loop_spool.Cadence = .{};
     while (true) {
         if (drain_requested.load(.seq_cst)) {
             log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
             return .drained;
         }
+
+        // Single-threaded, so two drains never race one entry (`loop_spool`).
+        loop_spool.drainIfDue(io, alloc, &cp, runner_token, cfg, spool, &spool_cadence);
 
         // Probe every tick — cheap availability asks, no installs — so a
         // capability lost under a live daemon degrades on the next beat.
@@ -233,7 +240,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             if (applied.currentWorkerCount()) |assigned_workers| {
                 var eff = cfg;
                 eff.worker_count = assigned_workers;
-                pool = worker_pool.spawn(io, alloc, sched, eff, env_map, &applied, &stop_requested, &drain_requested) catch |err| {
+                pool = worker_pool.spawn(io, alloc, sched, eff, env_map, &applied, &stop_requested, &drain_requested, spool) catch |err| {
                     log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
                     return .worker_pool_failed;
                 };
@@ -257,22 +264,12 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 /// applied → lease nothing (fail closed). A worker whose index is at or above
 /// the currently assigned count idles — the soft-shrink half of a worker-count
 /// change; nothing in flight is ever touched.
-/// The runner half of Invariant 2 as a pure verdict, so the refuse matrix is
-/// unit-testable without io or a transport: an unmet (degraded) or absent
-/// assignment leases nothing, and a worker above the assigned count idles
-/// (soft-shrink). Precedence is fail-closed: degraded wins over everything.
-pub const PollVerdict = enum { proceed, refuse_degraded, refuse_no_policy, idle_above_count };
+/// Re-exported from `loop_poll_verdict.zig`, where the refuse matrix lives.
+pub const PollVerdict = poll_verdict.PollVerdict;
+pub const pollVerdict = poll_verdict.decide;
+const LOG_EVENT_LEASE_REFUSED_NO_POLICY = poll_verdict.LOG_EVENT_LEASE_REFUSED_NO_POLICY;
 
-const LOG_EVENT_LEASE_REFUSED_NO_POLICY = "lease_refused_no_policy";
-
-pub fn pollVerdict(degraded: bool, assigned_workers: ?u32, worker_index: u32) PollVerdict {
-    if (degraded) return .refuse_degraded;
-    const count = assigned_workers orelse return .refuse_no_policy;
-    if (worker_index >= count) return .idle_above_count;
-    return .proceed;
-}
-
-pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32) void {
+pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32, spool: ?*ReportSpool) void {
     switch (pollVerdict(applied.isDegraded(), applied.currentWorkerCount(), worker_index)) {
         .refuse_degraded => {
             // Invariant 2, runner half: an unmet assignment leases nothing. The
@@ -307,6 +304,9 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
     eff.registry_allowlist = pol.registry_allowlist;
     eff.extra_binds = pol.extra_binds;
 
+    // A full spool stops intake, never a finished result (`loop_spool`).
+    if (loop_spool.refuseWhenFull(io, spool, worker_index, backoff_ms(BACKOFF_CEILING_ATTEMPT))) return;
+
     const lease_parsed = cp.lease(alloc, runner_token, eff.cp_deadlines.default_ms) catch |err| {
         if (err == error.Unauthorized) {
             // A rejected token is permanent — the heartbeat loop owns the
@@ -331,7 +331,7 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
         return;
     }
 
-    lease_run.executeAndReport(io, alloc, cp, runner_token, eff, env_map, lease_resp.lease.?);
+    lease_run.executeAndReport(io, alloc, cp, runner_token, eff, env_map, lease_resp.lease.?, spool);
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's

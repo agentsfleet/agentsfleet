@@ -6,7 +6,8 @@ use sqlx::{Acquire as _, Row as _};
 
 use super::etag::{compute, matches_if_match};
 use super::{DeleteLibrary, LibraryItem, LibraryPatch, LibraryRequirements, PatchLibrary};
-use crate::{Error, Result};
+use crate::Result;
+use crate::error::database;
 
 const CONTEXT_LIST: &str = "list platform library";
 const CONTEXT_PATCH: &str = "patch platform library";
@@ -32,7 +33,7 @@ impl Libraries {
         sqlx::query(LIST)
             .fetch_all(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_LIST))?
+            .map_err(database(CONTEXT_LIST))?
             .iter()
             .map(|row_value| decode(row_value, CONTEXT_LIST))
             .collect()
@@ -53,15 +54,12 @@ impl Libraries {
         now: UnixMillis,
     ) -> Result<PatchLibrary> {
         let mut connection = self.0.acquire().await?;
-        let mut transaction = connection
-            .begin()
-            .await
-            .map_err(Error::database(CONTEXT_PATCH))?;
+        let mut transaction = connection.begin().await.map_err(database(CONTEXT_PATCH))?;
         let Some(current_row) = sqlx::query(SELECT_FOR_UPDATE)
             .bind(id)
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(Error::database(CONTEXT_PATCH))?
+            .map_err(database(CONTEXT_PATCH))?
         else {
             return Ok(PatchLibrary::NotFound);
         };
@@ -98,12 +96,12 @@ impl Libraries {
             .bind(now.as_millis())
             .fetch_one(&mut *transaction)
             .await
-            .map_err(Error::database(CONTEXT_PATCH))?;
+            .map_err(database(CONTEXT_PATCH))?;
         let updated = decode(&row_value, CONTEXT_PATCH)?;
         transaction
             .commit()
             .await
-            .map_err(Error::database(CONTEXT_PATCH))?;
+            .map_err(database(CONTEXT_PATCH))?;
         Ok(PatchLibrary::Updated(Box::new(updated)))
     }
 
@@ -117,7 +115,7 @@ impl Libraries {
             .bind(id)
             .fetch_one(&mut *connection)
             .await
-            .map_err(Error::database(CONTEXT_DELETE))?;
+            .map_err(database(CONTEXT_DELETE))?;
         Ok(match outcome.as_str() {
             "deleted" => DeleteLibrary::Deleted,
             "published" => DeleteLibrary::Published,
@@ -127,19 +125,19 @@ impl Libraries {
 }
 
 fn decode(row: &sqlx::postgres::PgRow, context: &'static str) -> Result<LibraryItem> {
-    let id = row.try_get(0).map_err(Error::database(context))?;
-    let name: String = row.try_get(1).map_err(Error::database(context))?;
-    let description: String = row.try_get(2).map_err(Error::database(context))?;
-    let source_repo: String = row.try_get(3).map_err(Error::database(context))?;
-    let source_ref: String = row.try_get(4).map_err(Error::database(context))?;
-    let visibility: String = row.try_get(5).map_err(Error::database(context))?;
-    let content_hash = row.try_get(6).map_err(Error::database(context))?;
-    let credentials_raw: String = row.try_get(7).map_err(Error::database(context))?;
-    let tools_raw: String = row.try_get(8).map_err(Error::database(context))?;
-    let hosts_raw: String = row.try_get(9).map_err(Error::database(context))?;
-    let reasons_raw: String = row.try_get(10).map_err(Error::database(context))?;
-    let trigger_present = row.try_get(11).map_err(Error::database(context))?;
-    let updated_at = UnixMillis::from_millis(row.try_get(12).map_err(Error::database(context))?);
+    let id = row.try_get(0).map_err(database(context))?;
+    let name: String = row.try_get(1).map_err(database(context))?;
+    let description: String = row.try_get(2).map_err(database(context))?;
+    let source_repo: String = row.try_get(3).map_err(database(context))?;
+    let source_ref: String = row.try_get(4).map_err(database(context))?;
+    let visibility: String = row.try_get(5).map_err(database(context))?;
+    let content_hash = row.try_get(6).map_err(database(context))?;
+    let credentials_raw: String = row.try_get(7).map_err(database(context))?;
+    let tools_raw: String = row.try_get(8).map_err(database(context))?;
+    let hosts_raw: String = row.try_get(9).map_err(database(context))?;
+    let reasons_raw: String = row.try_get(10).map_err(database(context))?;
+    let trigger_present = row.try_get(11).map_err(database(context))?;
+    let updated_at = UnixMillis::from_millis(row.try_get(12).map_err(database(context))?);
     let etag = compute(&[
         Some(&name),
         Some(&description),

@@ -28,6 +28,7 @@ fn reported(posture: &str) -> Result<Reported, &'static str> {
         workspace_id: mint(2)?,
         tenant_id: mint(3)?,
         event_id: "event-fixture".to_owned(),
+        receipt: "1788550034853-0".to_owned(),
         actor: "api".to_owned(),
         posture: posture.to_owned(),
         provider: "anthropic".to_owned(),

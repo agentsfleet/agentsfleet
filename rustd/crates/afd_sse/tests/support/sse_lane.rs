@@ -1,9 +1,9 @@
-//! The lane's Redis, and channel names nothing else in the suite will touch.
+//! The lane's Dragonfly, and channel names nothing else in the suite will touch.
 //!
 //! Keys are namespaced per harness rather than the database being flushed
-//! between tests: the lane's Redis is one server, cargo runs these targets in
+//! between tests: the lane's Dragonfly is one server, cargo runs these targets in
 //! parallel, and a flush would delete another suite's stream mid-read. Same
-//! contract `afd_redis/tests/support/redis_harness.rs` states; this is the
+//! contract `afd_dragonfly/tests/support/dragonfly_harness.rs` states; this is the
 //! copy that lives where `afd_sse`'s own suites can reach it, because a
 //! `#[path]` reaching into a sibling crate's test tree would make one crate's
 //! test layout another crate's build dependency.
@@ -11,16 +11,16 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
-/// The knob `make test-integration-rustd` exports the lane's Redis under.
-const URL_KNOB: &str = "TEST_REDIS_URL";
+/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
+const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
-/// How long a frame may take to travel publisher → Redis → hub → tail.
+/// How long a frame may take to travel publisher → Dragonfly → hub → tail.
 ///
 /// Generous on purpose: this is the budget that decides a FAILURE, and a
 /// tighter one would turn a loaded CI runner into a red suite. Every wait in
@@ -30,9 +30,9 @@ pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 /// Distinguishes names minted by one process.
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
-/// A connection to the lane's Redis, plus a name prefix of this harness's own.
+/// A connection to the lane's Dragonfly, plus a name prefix of this harness's own.
 pub(crate) struct SseLane {
-    pub(crate) redis: Redis,
+    pub(crate) redis: Dragonfly,
     prefix: String,
 }
 
@@ -41,9 +41,9 @@ impl SseLane {
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
         install_subscriber();
-        let redis = afd_redis::test_util::connect_live(&Self::config())
+        let redis = afd_dragonfly::test_util::connect_live(&Self::config())
             .await
-            .expect("the lane's Redis must be reachable");
+            .expect("the lane's Dragonfly must be reachable");
         Self {
             redis,
             prefix: format!(
@@ -55,11 +55,11 @@ impl SseLane {
     }
 
     /// The configuration the lane hands this suite.
-    pub(crate) fn config() -> RedisConfig {
+    pub(crate) fn config() -> DragonflyConfig {
         let url = std::env::var(URL_KNOB).unwrap_or_else(|_unset| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        RedisConfig::from_url(RedisRole::Default, url)
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
             .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
             .with_request_timeout(Duration::from_secs(5))
     }

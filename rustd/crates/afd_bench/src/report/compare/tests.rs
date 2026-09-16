@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use super::{Comparison, Delta, NO_BASELINE, against_baseline};
 use crate::profile::Profile;
+use crate::report::Provenance;
 use crate::report::{Lane, P95_MS, RATE_PER_SECOND, Report};
 
 /// A round baseline rate, so a halved or half-again current reads at a glance.
@@ -20,7 +21,7 @@ const LARGER_POPULATION: u64 = 1_000;
 
 /// A report with one rate and one tail, for comparing against another.
 fn report_of(rate: f64, p95: f64) -> Report {
-    let mut report = Report::new(Lane::Lease, Profile::Rig);
+    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
     report.measurement(RATE_PER_SECOND, rate);
     report.measurement(P95_MS, p95);
     report

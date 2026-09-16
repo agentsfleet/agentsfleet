@@ -58,7 +58,7 @@ const UNKNOWN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ed";
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
-/// An event identifier as a producer writes one — a Redis stream id, which is
+/// An event identifier as a producer writes one — a Dragonfly stream id, which is
 /// exactly why nothing about its shape can be validated.
 const EVENT: &str = "1785699668169-0";
 

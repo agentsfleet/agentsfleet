@@ -304,10 +304,10 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::STARTUP_REDIS_CONNECT,
+        code: error_code::STARTUP_DRAGONFLY_CONNECT,
         status: 500,
         title: "Event service unavailable",
-        hint: "Redis is unreachable. Check that REDIS_URL_API is set and the Redis server accepts connections. Run 'agentsfleetd doctor' to verify.",
+        hint: "Dragonfly is unreachable. Check that DRAGONFLY_URL is set and the Dragonfly server accepts connections. Run 'agentsfleetd doctor' to verify.",
         user_message: None,
     },
 ];

@@ -10,7 +10,7 @@
 //! the first `CREATE TABLE` with a permission error that reads like a bug.
 //!
 //! So this does NOT go through [`crate::preflight`]. Preflight answers "can
-//! this process serve", and a migration needs neither Redis nor a master key.
+//! this process serve", and a migration needs neither Dragonfly nor a master key.
 //! Demanding them would make a migration job carry credentials it has no use
 //! for, which is how a job container ends up holding the KEK.
 

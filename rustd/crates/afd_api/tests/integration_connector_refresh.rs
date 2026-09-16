@@ -81,7 +81,7 @@ async fn connected_grant(provider: Provider, body: &str) -> Value {
 /// The label is what the dashboard shows for the connection, and Linear has no
 /// per-tenant site to name — the provider's own name is the documented label.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_linear_connect_seals_the_refresh_triple_under_the_display_name() {
     let grant = connected_grant(Provider::Linear, &triple_answer("")).await;
 
@@ -120,7 +120,7 @@ async fn a_linear_connect_seals_the_refresh_triple_under_the_display_name() {
 /// callback, it resolves to the documented default centre rather than failing
 /// a connect the vendor considered complete.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_zoho_connect_seals_the_accounts_base_beside_the_triple() {
     let grant = connected_grant(
         Provider::Zoho,

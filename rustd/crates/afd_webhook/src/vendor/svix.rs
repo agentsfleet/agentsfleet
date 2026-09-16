@@ -25,9 +25,8 @@
 //! # LOCAL PATCHES — read these before diffing upstream
 //!
 //! The Zig daemon is the behavioural oracle for this milestone, not svix 2.1.0.
-//! It serves production and is the rollback target, so where upstream and
-//! `auth/crypto/svix_verify.zig` disagree, the Zig wins and the divergence is
-//! listed here rather than silently absorbed.
+//! It serves production, so where this and upstream disagree the divergence
+//! is listed here rather than silently absorbed.
 //!
 //! 1. **`whsec_` is REQUIRED.** Upstream strips it when present and accepts a
 //!    bare secret otherwise (`strip_prefix(PREFIX).unwrap_or(secret)`); the Zig
@@ -106,8 +105,7 @@ impl SvixSecret {
     ///
     /// `None` when the prefix is absent (PATCH 1), the body is not base64
     /// (PATCH 3 accepts padded and unpadded), or the decoded key is empty — an
-    /// empty HMAC key is attacker-computable, which is the same defence
-    /// `verifySvix` and `webhook_sig.zig` both carry.
+    /// empty HMAC key is attacker-computable.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         let encoded = raw.strip_prefix(SECRET_PREFIX)?;

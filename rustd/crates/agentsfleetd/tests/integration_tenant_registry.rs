@@ -91,7 +91,7 @@ async fn provider_listener() -> String {
 /// reviewable — they are steps of ONE scenario, not independent tests, and
 /// each takes the previous one's outcome as its argument.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     let mut supervisor = Supervisor::new();
     let provider_base = provider_listener().await;

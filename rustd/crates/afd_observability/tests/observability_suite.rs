@@ -22,3 +22,6 @@ mod otlp_outage_logs;
 
 #[path = "producers_drive.rs"]
 mod producers_drive;
+
+#[path = "error_surface.rs"]
+mod error_surface;

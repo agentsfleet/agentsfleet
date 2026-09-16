@@ -66,6 +66,10 @@ const DETAIL_MALFORMED: &str = "Malformed report body";
         "has already superseded is refused by the fence and writes nothing. ",
         "A stale writer therefore cannot land a partial finalize on the ",
         "current holder's run. ",
+        "The lease id is this endpoint's idempotency key, so it takes no ",
+        "`Idempotency-Key` header. Send the same report again after a lost ",
+        "response and the stored outcome is returned. The repeat charges ",
+        "nothing and counts the run once. ",
     ),
     request_body = ReportRequest,
     responses(
@@ -105,6 +109,14 @@ pub(crate) async fn handle<D: Services>(
         // on the wire: a runner has no use for it, and the reply the stock
         // runner parses is `{"ok":true}`. It exists so M181 §5 can attach the
         // credit instrument without reopening the money path.
+        // A REPEATED report describes a run that was already described. The
+        // plane answered success so the runner stops retrying and its result
+        // is not thrown away, and everything below says something ABOUT the
+        // run — the completion funnel, the cost meters, the delivery span —
+        // so firing it again would count one run as two. The charge is already
+        // zero on this arm; the counters are not, and they are the reason this
+        // is a branch rather than arithmetic.
+        Ok(settled) if settled.repeated => Json(ReportResponse { ok: true }).into_response(),
         Ok(settled) => {
             // Attributed to the WORKSPACE, as the daemon this ports attributes
             // it: a run has no person behind it — a cron, a webhook and a steer

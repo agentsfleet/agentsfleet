@@ -16,13 +16,18 @@ categories.workspace = true
 # the VALIDATING door rather than a bypass of it, which is the opposite of the
 # `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
 # `Binding::stored` for why a shortcut would have nothing to shorten.
-# Forwarded rather than bare: `error::one_of_each_kind` samples a queue
-# failure through `afd_redis`'s own sample builder, which lives behind that
-# crate's `test-util`. Building the sample by hand instead would let this
-# crate's idea of a Redis outage drift from Redis's.
-test-util = ["afd_redis/test-util"]
+# Forwarded rather than bare: `error::one_of_each_kind` samples an admission
+# failure through `afd_admission`'s own sample builder, which lives behind
+# that crate's `test-util`. Building the sample by hand instead would let this
+# crate's idea of a ledger outage drift from the ledger's.
+test-util = ["afd_admission/test-util"]
 
 [dependencies]
+# Where a verified delivery is accepted before anything is queued. The
+# ledger's unique index is the idempotency boundary the Lua claim key used to
+# be, and unlike that key it does not expire and does not live in the queue it
+# protects.
+afd_admission.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true
 # The plaintext wrapper a signing secret comes back in. This crate computes no
@@ -36,9 +41,6 @@ afd_fleet_runtime.workspace = true
 # `FleetStatus`, so "will this fleet take work" is asked of a type rather than
 # of a string compare this crate would own a second copy of.
 afd_fleet_lifecycle.workspace = true
-# The at-most-once append. `OnceScope::WebhookDelivery` carries both the key
-# prefix and the retention, so this crate names neither.
-afd_redis.workspace = true
 # Opening the one secret a signature is checked against.
 afd_vault.workspace = true
 # `Scheme`, so a binding resolves its provider to the SAME value the wall then

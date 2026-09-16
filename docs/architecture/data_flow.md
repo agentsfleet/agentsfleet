@@ -12,9 +12,9 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | ONE — six producers | steer / webhook / cron / continuation / Slack / repair-verifier all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
+| Event ingress | ONE — six producers | steer / webhook / cron / continuation / Slack / repair-verifier each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
-| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
+| Durable stores | 5 tables, join key `event_id` | `fleet_admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet_events` (one row per delivery) · `fleet_obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet_sessions` (one row per fleet, UPSERT) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
 | Shared Redis handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
@@ -64,7 +64,7 @@ The diagrams live with their flows — each is the section's proof, so none is d
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The three durable stores |
+| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The five durable stores |
 | `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Redis tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
@@ -92,7 +92,7 @@ Headings are stable — specs cite them by text; insert new sections, never rena
 
 | Process | Role |
 |---|---|
-| **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers all `XADD` directly to `fleet:{id}:events` — single ingress. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `fleet:{id}:activity`. Never runs language-model code. |
+| **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers each commit an admission row and then `XADD` to `fleet:{id}:events` — single ingress, and the row is what makes the acceptance durable when the append does not land. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `fleet:{id}:activity`. Never runs language-model code. |
 | **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw fleet; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `agentsfleetd` over the `activity` verb. |
 
 | Target | Producer | Consumer |
@@ -226,6 +226,10 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║      context_json, execution_id=NULL   ║     clears handle,
            ║  11. XACK fleet:{id}:events            ║     advances bookmark
            ║  12. release affinity (token-guard)    ║
+           ║  13. INSERT core.fleet_obligations     ║   ← the answer is OWED
+           ║      receipt=NULL delivered_at=NULL    ║     (in the transaction)
+           ║  14. XADD connector:outbound           ║   ← after the commit
+           ║  15. UPDATE …obligations SET receipt   ║   ← the entry id, recorded
            ╚════════════════════════════════════════╝
                           ↓
    Coding Fleet's `agentsfleet steer <fleet_id>` polls GET /events
@@ -239,12 +243,75 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
 
 The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `rustd/crates/afd_api_runner/src/handler/runner/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
 
-## The three durable stores: who owns what
+**The report's Postgres writes do not commit independently.** The claim-and-settle, write 7, write 10 and write 12 ride ONE transaction: the money, the run's result, the resume cursor and the freed slot commit together or none of them does. That is not tidiness. Split, the window between the settle and write 7 is a window in which a tenant is charged for a run whose answer is nowhere — and nothing recovers it, because the lease is already `reported` and every retry is refused. Inside one transaction a failure at any statement leaves the lease `active` and the wallet untouched, which makes the runner's retry the recovery path instead of a permanent conflict.
 
-The flow writes three Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
+The queue is **not** in that transaction and cannot be: nothing spans Postgres and the datastore. Write 11 (`XACK`) and write 8 (the activity frame) run after the commit. That ordering is the safe direction — an acknowledgement a rollback then un-did takes an entry off the stream with nothing durable to show for it, where an acknowledgement that never lands leaves the entry pending and redelivered against durable terminal state.
+
+**Write 13 is the delivery obligation, and it rides the same transaction for the same reason.** Sending the answer is the last thing a run is for, and until this row existed the queue append was simply the next thing that happened after the commit — a process dying in that gap left a run committed, charged and answered, with the answer existing nowhere: not on the queue, which never got the entry, and not in Postgres, which recorded only that the run finished. The row is that missing record. `receipt` and `delivered_at` start NULL, and the two NULL tests are the whole status vocabulary:
+
+```
+   receipt IS NULL              → committed, never queued
+                                  (a crash between 13 and 14)
+
+   receipt, delivered_at NULL   → queued, nobody received it
+                                  (lost group, lost stream, replaced host)
+
+   delivered_at IS NOT NULL     → a person has it
+```
+
+Writes 14 and 15 are the fast path and are allowed to fail. What they leave behind is a row in the first state, and `afd_outbound`'s producer re-appends exactly that set every 30s — plus the second state after 5 minutes, which is the one a queue failure leaves. So losing the datastore costs an answer latency and never the answer, which is the property `datastore_scaling.md` states and Dimension 7.8 must prove.
+
+This is the inbound admission ledger pointed outbound. There, the row is the acceptance and the stream entry is a receipt recorded after the fact; here the row is the obligation and the queue entry is a receipt recorded after the fact. Both exist because a stream entry is not a durable record of intent.
+
+**`delivered_at` is stamped by the poster, never by the `XACK`.** The two record different facts: `Lanes::deliver_and_ack` acknowledges an EXHAUSTED job too — deliberately, since leaving it pending would park one undeliverable answer at the head of a destination's lane forever — so an ack-time stamp would mark undeliverable answers delivered and drop them out of the recovery set for good.
+
+A retry that arrives **after** the commit — the response was lost, not the work — finds the lease `reported` by the same runner. It is answered with the stored outcome and charges nothing, so the runner stops retrying with its result safely landed. The lease id is the report's idempotency key, which is why `POST /v1/runners/me/reports` takes no `Idempotency-Key` header. A holder the fleet has genuinely superseded is a different empty claim and still gets `409`: the lease there is not `reported`, it is somebody else's.
+
+## The five durable stores: who owns what
+
+The flow writes five Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
+
+Two of the five arrived after that cutover and bracket the others. `core.fleet_admissions` records work this deployment ACCEPTED, committed before a producer is told yes. `core.fleet_obligations` records an answer this deployment OWES, committed with the result that produced it. They are deliberate mirror images, and the property they share is the one the whole datastore design turns on: **PostgreSQL records it before Dragonfly carries it, and the stream entry is a receipt written back afterwards.** A stream entry is not a durable record of intent, so anything whose loss would strand work is a row first and an entry second.
+
+Read the primary keys and the shape falls out:
+
+```
+  fleet_admissions   PK id  + UNIQUE (producer, producer_key)   one row per ACCEPTANCE
+  fleet_events       PK (fleet_id, event_id)                    one row per EVENT
+  fleet_obligations  PK id  + UNIQUE (fleet_id, event_id)       one row per ANSWER
+  fleet_sessions     PK fleet_id                                one row per FLEET
+```
+
+Three of them grow with traffic. `fleet_sessions` does not — it is a cursor, not a log, which is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
+
+One event's life across all four:
+
+```
+  a message arrives
+      │
+      ├─▶ fleet_admissions   INSERT  "accepted"          before the producer hears yes
+      │                                                  dedupes the PRODUCER's retry
+      ├─▶ fleet_events       INSERT  status='received'   the narrative opens
+      │                                                  dedupes REDELIVERY
+      │   ┌── a runner executes ──┐
+      │   │                       │
+      ├─▶ fleet_events       UPDATE  status='processed', response_text
+      ├─▶ fleet_obligations  INSERT  "owed"              ← same transaction as the money
+      ├─▶ fleet_sessions     UPSERT  context_json        cursor moves, execution_id cleared
+      │
+      └─▶ fleet_obligations  UPDATE  delivered_at        a person received it
+```
+
+The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity. A destination has no such key — a chat provider cannot tell us "this is the same message" — so an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
+
+That decides the direction of error, too. An uncertain admission is REFUSED, because a 4xx is what stops a provider retrying. An uncertain obligation is RE-SENT, because the path is at-least-once and a duplicate message in a thread is visible and recoverable by a person, while an answer never sent is neither.
+
+`fleet_events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
+| `core.fleet_admissions` | **One row per acceptance** | INSERT, then UPDATE `receipt` and `delivered_at` | "Did we accept this work, and has a runner taken it?" — committed before the producer is told yes, so a lost queue loses no accepted work. `UNIQUE (producer, producer_key)` is what makes a producer's retry one row rather than two runs. |
+| `core.fleet_obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
 | `core.fleet_sessions` | **One row per Fleet** | UPSERT — mutated on every event boundary | "Where is this Fleet *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
 | `core.fleet_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
 | `billing.usage_ledger` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `event_id`. |
@@ -376,7 +443,7 @@ Two Redis surfaces carry a fleet's work: a durable stream for ingress, and an ep
 
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
-| `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
+| `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here, with no `MAXLEN`. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`, and the `XACK` trims acknowledged history to 1,000 entries without ever crossing the oldest pending or undelivered one. A fleet 10,000 entries behind refuses new admissions (503) instead of losing old ones; a lost group is recreated where the ledgers say delivery stopped. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
 | `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureFleetConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
@@ -401,16 +468,16 @@ agentsfleetd replica
     +-- dedicated command socket --> XREADGROUP BLOCK (up to 5 seconds)
 ```
 
-Cloning `afd_redis::Redis` shares its socket; it does not open another connection.
-The outbound reader owns `afd_redis::Dedicated`, so its blocking read cannot delay request-path commands.
+Cloning `afd_dragonfly::Redis` shares its socket; it does not open another connection.
+The outbound reader owns `afd_dragonfly::Dedicated`, so its blocking read cannot delay request-path commands.
 Normal boot opens three Redis connections when both optional background surfaces start.
 
 The hub refcounts subscribers and keeps one wire subscription per watched channel.
 Its pump owns the pub/sub socket and reconnects with backoff after a disconnect.
 Redis pub/sub cannot replay frames lost during that gap, even if the browser's HTTP stream stays open.
 
-Source: [`afd_redis::Redis`](../../rustd/crates/afd_redis/src/client.rs),
-[`hub pump`](../../rustd/crates/afd_redis/src/hub/pump.rs),
+Source: [`afd_dragonfly::Redis`](../../rustd/crates/afd_dragonfly/src/client.rs),
+[`hub pump`](../../rustd/crates/afd_dragonfly/src/hub/pump.rs),
 [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
@@ -548,8 +615,12 @@ not authority by itself.
 
 ```
    Common envelope (every XADD on fleet:{id}:events carries these
-   five fields; the stream entry id IS the canonical event_id —
-   never carry a separate id in the payload):
+   five fields. The canonical event_id is the ADMISSION ROW's
+   `<created_at>-<seq>`, minted in PostgreSQL before the append and
+   keeping the `<millis>-<n>` shape every reader was written against.
+   The stream entry id is the physical RECEIPT of that append — it is
+   what `acknowledge` takes, and it is not an identity: a replayed
+   admission earns a second receipt for one event_id):
 
        actor         steer:<user> | webhook:<source> | cron:<schedule>
                      | continuation:<original_actor> | slack:<user>

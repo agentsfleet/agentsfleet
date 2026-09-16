@@ -11,8 +11,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    DatastoreCosts, Fixture, Lane, Latency, P95_MS, P99_MS, RATE_PER_SECOND, RESULTS_DIRECTORY,
-    Report,
+    DatastoreCosts, Fixture, Lane, Latency, P95_MS, P99_MS, Provenance, RATE_PER_SECOND,
+    RESULTS_DIRECTORY, Report,
 };
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::profile::Profile;
@@ -58,7 +58,7 @@ const FLEETS: u64 = 1_000;
 
 /// A report carrying one of everything a lane reports.
 fn filled_report() -> Report {
-    let mut report = Report::new(Lane::Lease, Profile::Rig);
+    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
     report.parameter("fleets", FLEETS);
     report.parameter("runners", 64);
     report.measurement(RATE_PER_SECOND, 812.5);
@@ -86,7 +86,7 @@ fn test_each_lane_writes_a_parseable_result() {
     let scratch = Scratch::new("parseable");
 
     for lane in [Lane::Steer, Lane::Lease, Lane::Outbound, Lane::Cardinality] {
-        let mut report = Report::new(lane, Profile::Rig);
+        let mut report = Report::new(lane, Profile::Rig, Provenance::for_test());
         report.measurement(RATE_PER_SECOND, 1.0);
         let path = scratch.join(&format!("{}.json", lane.name()));
 
@@ -181,7 +181,7 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
             .record(Duration::from_millis(10))
             .expect("recordable");
     }
-    let mut report = Report::new(Lane::Outbound, Profile::Rig);
+    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
 
     report.latency(2.0, &latency);
 
@@ -193,7 +193,7 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
 #[test]
 fn test_a_run_with_no_elapsed_time_reports_no_rate() {
     let latency = Latency::new().expect("buildable");
-    let mut report = Report::new(Lane::Steer, Profile::Rig);
+    let mut report = Report::new(Lane::Steer, Profile::Rig, Provenance::for_test());
 
     report.latency(0.0, &latency);
 
@@ -228,7 +228,7 @@ fn test_the_fixture_block_reads_off_the_ledger() {
 #[test]
 fn test_an_empty_distribution_reports_no_tail() {
     let latency = Latency::new().expect("buildable");
-    let mut report = Report::new(Lane::Steer, Profile::Rig);
+    let mut report = Report::new(Lane::Steer, Profile::Rig, Provenance::for_test());
 
     report.latency(2.0, &latency);
 

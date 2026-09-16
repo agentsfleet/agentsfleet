@@ -5,10 +5,10 @@
 //! and forever, and the loop re-read with nothing between the turns. One
 //! deployment logged the same warning about two hundred and sixty times a
 //! second, on a task sharing its runtime with every request handler in the
-//! process — a Redis blip became a busy loop that outlived it.
+//! process — a Dragonfly blip became a busy loop that outlived it.
 //!
 //! So a failing read has to cost time, and a shutdown must not have to wait
-//! that time out. Both are asserted here, without a Redis: a server that hangs
+//! that time out. Both are asserted here, without a Dragonfly: a server that hangs
 //! up on the read is all it takes to hold the loop in its failing branch.
 #![expect(
     clippy::expect_used,
@@ -19,9 +19,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dedicated, Dragonfly, OutboundDelivery, OutboundQueue, OutboundReader};
 use afd_outbound::{Deliver, LONGEST_PARK, Posters, Verdict, Worker};
-use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{Dedicated, OutboundDelivery, OutboundQueue, OutboundReader, Redis};
 use tokio_util::sync::CancellationToken;
 
 #[path = "support/hanging_queue.rs"]
@@ -29,7 +29,13 @@ use tokio_util::sync::CancellationToken;
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
+#[allow(
+    dead_code,
+    reason = "shared support: the read suite grades the reads, the lane suite the acks"
+)]
 mod hanging_queue;
+#[path = "support/no_ledger.rs"]
+mod no_ledger;
 
 use self::hanging_queue::HangingQueue;
 
@@ -40,14 +46,27 @@ use self::hanging_queue::HangingQueue;
 /// that spins has read hundreds of times.
 const SPIN_WINDOW: Duration = Duration::from_millis(1_500);
 
-/// Reads the window may contain: the first, and one more for a turn already in
-/// flight when the window opened.
-const MAX_READS_IN_WINDOW: usize = 2;
+/// Reads the window may contain: one worker turn, plus the driver's own retry
+/// ladder beneath it.
+///
+/// The fake HANGS UP on every read, which is a connection fault — so the
+/// cluster driver redials and retries the command before the failure ever
+/// reaches the worker. `afd_dragonfly::transport` configures that ladder at
+/// eight retries, making `1 + 8` the most one worker turn can put on the wire.
+/// Measured at five here: eleven `HELLO`s and twenty-two `CLIENT SETINFO`s for
+/// those five reads, which is the redial, not the worker.
+///
+/// This bound still proves what the test is named for. A worker that PARKED
+/// takes one turn in this window; a worker that SPUN takes hundreds of turns
+/// and hundreds of ladders with them, so the two are nowhere near each other.
+/// Counting server-side reads as worker reads was only ever right while the
+/// client had no retries of its own.
+const MAX_READS_IN_WINDOW: usize = 9;
 
 /// How long a cancelled worker may take to stop.
 ///
 /// Well inside [`LONGEST_PARK`]: a shutdown that had to wait out the backoff
-/// would blow the supervisor's join budget every time Redis was unwell.
+/// would blow the supervisor's join budget every time Dragonfly was unwell.
 const SHUTDOWN_BUDGET: Duration = Duration::from_millis(500);
 
 /// The connection's own allowance for an answer to travel.
@@ -76,9 +95,9 @@ impl Deliver for Unreachable {
 async fn worker_against(
     server: &HangingQueue,
 ) -> (Worker<Unreachable>, CancellationToken, Arc<AtomicUsize>) {
-    let config = RedisConfig::from_url(RedisRole::Default, server.url())
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
         .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Redis::connect(&config)
+    let redis = Dragonfly::connect(&config)
         .await
         .expect("the fake queue answers a ping");
     let connection = Dedicated::connect(&config, LONGEST_PARK)
@@ -88,6 +107,7 @@ async fn worker_against(
     let worker = Worker::new(
         OutboundReader::new(connection, "read-backoff-probe".to_owned()),
         OutboundQueue::new(redis),
+        no_ledger::no_ledger(),
         Posters {
             slack: Unreachable {
                 calls: Arc::clone(&calls),
@@ -120,8 +140,9 @@ async fn test_a_failing_read_is_not_retried_in_a_spin() {
     );
     assert!(
         reads <= MAX_READS_IN_WINDOW,
-        "the worker read {reads} times in {SPIN_WINDOW:?} — a failing read is being \
-         retried in a spin rather than paused for {LONGEST_PARK:?}"
+        "the worker read {reads} times in {SPIN_WINDOW:?} — more than one turn's \
+         worth, so a failing read is being retried in a spin rather than paused \
+         for {LONGEST_PARK:?}"
     );
 }
 

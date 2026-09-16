@@ -22,7 +22,6 @@ const std = @import("std");
 
 const Fixture = struct { name: []const u8, path: []const u8 };
 
-
 /// agentsfleet-runner (`src/runner/**`) `*_test.zig` @embedFile fixtures.
 const RUNNER: []const Fixture = &.{
     .{ .name = "help.txt", .path = "tests/fixtures/runner/help.txt" },

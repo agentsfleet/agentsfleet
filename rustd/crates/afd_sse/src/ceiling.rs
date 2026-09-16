@@ -20,7 +20,7 @@
 //! [`SubscriptionHub::shutdown`], which closes what every live stream is
 //! waiting on; this type's [`close`] only stops NEW ones from starting.
 //!
-//! [`SubscriptionHub::shutdown`]: afd_redis::SubscriptionHub::shutdown
+//! [`SubscriptionHub::shutdown`]: afd_dragonfly::SubscriptionHub::shutdown
 //! [`close`]: Ceiling::close
 
 use std::sync::Arc;

@@ -4,19 +4,17 @@
 //! Encryption Key (DEK) encrypts the payload; the process Key Encryption Key
 //! (KEK) encrypts that DEK; both operations bind the same associated data, so a
 //! row cannot be replayed under a different workspace or a different name. That
-//! layout is not this crate's invention — it is what
-//! the retired daemon's `secrets/crypto_store.zig` already wrote, and rows written
-//! by the Zig daemon must open here unchanged.
+//! layout is a STORED FORMAT: a row sealed by one release must open in the
+//! next, so the two layers and their associated data are a contract with the
+//! database rather than an implementation detail.
 //!
-//! # Parity is the whole point
+//! # The oracles are external, on purpose
 //!
-//! The Zig daemon is the source of truth and stays that way, but nothing here
-//! compiles or runs Zig to prove it. Three oracles do that instead: published
-//! NIST AES-256-GCM vectors pin the primitive, a byte-exact assertion pins the
-//! associated-data format, and `tests/zig_parity.rs` re-runs every assertion
-//! `crypto_primitives.zig` makes with the same inputs — a mapping
-//! `zig_pure_crypto_suite_is_fully_mirrored` refuses to let go stale. A fixture
-//! this crate generated would prove only that it agrees with itself.
+//! Three of them: published NIST AES-256-GCM vectors pin the primitive, a
+//! byte-exact assertion pins the associated-data format, and
+//! `tests/envelope_conformance.rs` pins the envelope's behaviour case by case.
+//! None is generated here. A fixture this crate produced would prove only that
+//! it agrees with itself, which is the one thing never in doubt.
 //!
 //! # What the types guarantee
 //!

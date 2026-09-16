@@ -65,6 +65,10 @@ agentsfleet_account_teardown_unregister_failures_total	counter	u64	1	cumulative	
 agentsfleet_repair_provider_results_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, or refused production evidence
 agentsfleet_repair_correlations_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	errors	exact, missed, and ambiguous repair correlations
 agentsfleet_repair_verification_intents_created_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable verifier intents created after exact correlation
+agentsfleet_admissions_total	counter	u64	1	cumulative	outcome	-	fixed:5	no	traffic	admitted, replayed, deferred, refused and over-budget acceptances
+agentsfleet_admission_replays_total	counter	u64	1	cumulative	outcome	-	fixed:3	no	errors	re-appended, still-unreceipted and refused-as-full admissions the replay sweeper handled
+agentsfleet_admission_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	admitted rows the queue has not confirmed; a rising line is a queue refusing appends
+agentsfleet_admission_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unconfirmed admission; past the replay floor means the sweeper is not keeping up
 agentsfleet_repair_dispatch_retried_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	failed verifier dispatch attempts awaiting retry
 agentsfleet_repair_synthetic_events_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	emitted and idempotently replayed proof-qualified events
 agentsfleet_repair_verifier_runs_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	queued and completed verifier Fleet runs

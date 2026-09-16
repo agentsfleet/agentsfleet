@@ -39,14 +39,14 @@ impl Fleet {
         self
     }
 
-    /// Runs the device-flow service over a live, test-owned Redis connection.
+    /// Runs the device-flow service over a live, test-owned Dragonfly connection.
     ///
     /// Only the session service is replaced. The remaining queue-backed seams
     /// stay unreachable so a device-flow proof cannot accidentally broaden
     /// into a fleet, approval, or event integration test.
-    pub(crate) fn with_session_queue(mut self, queue: Redis) -> Self {
+    pub(crate) fn with_session_queue(mut self, queue: Dragonfly) -> Self {
         self.logins = Logins::new(
-            afd_redis::SessionStore::new(queue),
+            afd_dragonfly::SessionStore::new(queue),
             SecretBytes::new(FIXTURE_PEPPER.to_vec()),
             Entropy::new(),
             FIXTURE_APP_URL,
@@ -55,8 +55,9 @@ impl Fleet {
     }
 
     /// Runs approval decisions over the live queue paired with `database`.
-    pub(crate) fn with_approval_queue(mut self, database: Db, queue: Redis) -> Self {
-        self.approvals = Inbox::new(database, queue);
+    pub(crate) fn with_approval_queue(mut self, database: Db, queue: Dragonfly) -> Self {
+        let ledger = super::fleet::admissions(&database, &queue);
+        self.approvals = Inbox::new(database, queue, ledger);
         self
     }
 
@@ -72,7 +73,7 @@ impl Fleet {
     pub(crate) fn with_live_connectors(
         mut self,
         database: Db,
-        queue: Redis,
+        queue: Dragonfly,
         vendor: String,
     ) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
@@ -96,7 +97,7 @@ impl Fleet {
     }
 
     /// Runs fleet installation and purge over a live queue and database.
-    pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Redis) -> Self {
+    pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Dragonfly) -> Self {
         // The same fixture key every other store in this harness seals under:
         // the install opens a declared credential's handle to classify it, so a
         // seam holding a different key would classify nothing.
@@ -112,27 +113,29 @@ impl Fleet {
     /// replaces the store entirely. That makes this the only arm on which the
     /// whole resolve → open → append order runs as the daemon runs it: the
     /// binding comes out of `core.fleets`, the secret out of `vault.secrets`,
-    /// and the claim lands in Redis. A suite on `Scripted` proves what the
+    /// and the claim lands in Dragonfly. A suite on `Scripted` proves what the
     /// HANDLER decided; this one proves the store underneath it answers.
-    pub(crate) fn with_live_ingress(mut self, database: Db, queue: Redis) -> Self {
+    pub(crate) fn with_live_ingress(mut self, database: Db, queue: Dragonfly) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
         self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
             database.clone(),
             SecretVault::new(database, kek, Entropy::new()),
-            queue,
+            ledger,
         )));
         self
     }
 
     /// Appends a verified fire to a live queue rather than an unreachable one.
     ///
-    /// `Fleet::live` gives the schedules plane a Redis nothing resolves, which
+    /// `Fleet::live` gives the schedules plane a Dragonfly nothing resolves, which
     /// is the right default: every schedules suite but one proves what the
     /// route REFUSES, and a route that refuses never reaches an append. The
     /// exception is the accepted fire — the only path on which the handler
     /// renders a queued event's own identifier back to the scheduler, and the
     /// only one a suite cannot reach without a queue that takes the write.
-    pub(crate) fn with_live_fire(mut self, database: Db, queue: Redis) -> Self {
+    pub(crate) fn with_live_fire(mut self, database: Db, queue: Dragonfly) -> Self {
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
@@ -143,20 +146,24 @@ impl Fleet {
                     SCHEDULE_API_BASE.to_owned(),
                 ),
             ),
-            Fire::new(queue),
+            Fire::new(ledger),
             Entropy::new(),
         );
         self
     }
 
     /// Runs the fleet message ingress over a live queue.
-    pub(crate) fn with_steering_queue(mut self, queue: Redis) -> Self {
-        self.steering = Steer::new(queue);
+    ///
+    /// Takes the pool as well as the queue, because a steer's acceptance is a
+    /// LEDGER row now and the append that follows is its receipt — a seam
+    /// handed only a queue could no longer build the producer.
+    pub(crate) fn with_steering_queue(mut self, database: Db, queue: Dragonfly) -> Self {
+        self.steering = Steer::new(afd_admission::Admissions::for_tests(database, queue));
         self
     }
 
     /// Runs stream handlers through a live shared subscription connection.
-    pub(crate) fn with_live_hub(mut self, hub: afd_redis::SubscriptionHub) -> Self {
+    pub(crate) fn with_live_hub(mut self, hub: afd_dragonfly::SubscriptionHub) -> Self {
         self.live = Live::new(hub, Ceiling::new(DEFAULT_STREAM_CEILING));
         self
     }

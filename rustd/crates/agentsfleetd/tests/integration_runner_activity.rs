@@ -31,11 +31,11 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_redis::SubscriptionHub;
+use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{redis_config, scenario};
+use crate::e2e::{dragonfly_config, scenario};
 use crate::tail::{lease, next_frame, settle, silence};
 use crate::wire::{field, json, post};
 
@@ -55,7 +55,7 @@ const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 /// them: the frame that should publish, the body that should be refused before
 /// the publish, and the lease this runner does not hold.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_publish() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -66,9 +66,9 @@ async fn test_activity_publish() {
     // Subscribed BEFORE the first forward. Pub/sub keeps nothing for a reader
     // that arrives late, so a subscription opened after the request would prove
     // a drop that never happened.
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 
@@ -167,7 +167,7 @@ async fn test_activity_publish() {
 /// that does not hold JSON cannot become a `RawValue`, so the frame is skipped
 /// and the loop continues. The other branch — the queue refusing the publish —
 /// is a socket failure and lives in `afd_fleet`'s
-/// `integration_activity_publish.rs`, which holds a Redis handle that will not
+/// `integration_activity_publish.rs`, which holds a Dragonfly handle that will not
 /// answer. They are separate branches with the same outcome, and both are
 /// covered rather than one standing in for the other.
 ///
@@ -175,7 +175,7 @@ async fn test_activity_publish() {
 /// change. A telemetry failure that turned into a 500 would make a runner treat
 /// a healthy run as a failed one and terminate its child.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_drops_a_frame_it_cannot_render() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -183,9 +183,9 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
 
     let (lease_id, _fence) = lease(&http, &run).await;
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 

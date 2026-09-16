@@ -6,9 +6,9 @@
 //! were published — the publish is best-effort and happens whether or not
 //! anybody is listening on the channel. A 200 would imply the daemon is
 //! reporting on the outcome of the work, and the runner would have no way to
-//! act on a promise the daemon never made. The body is `{"ok":true}`, which is
-//! what `service_activity.zig` answers: the first port of this verb dropped it
-//! and answered a bare status, and the document gate is what noticed.
+//! act on a promise the daemon never made. The body is `{"ok":true}`: an
+//! earlier revision answered a bare status instead, and the document gate is
+//! what noticed.
 //!
 //! # The only hard check is authorization
 //!

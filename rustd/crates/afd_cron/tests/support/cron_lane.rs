@@ -36,17 +36,17 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The instant the seeded rows are stamped with.
 const SEED_MS: i64 = 1_760_000_000_000;
 
-/// The knob `make test-integration-rustd` exports the lane's Redis under.
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
+/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// How long anything crossing a datastore is given before the test fails.
 const REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
@@ -171,24 +171,34 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// The lane's Redis, opened on demand.
+    /// The lane's Dragonfly, opened on demand.
     ///
     /// Not held on the struct: only the fire suite needs a queue, and opening
     /// one for every store and fence case would make a datastore lane out of a
     /// Postgres lane for no gain.
-    pub(crate) async fn queue() -> Redis {
-        afd_redis::test_util::connect_live(&Self::redis())
-            .await
-            .expect("the lane's Redis must be reachable")
+    /// The admission ledger every fire in this suite writes through.
+    ///
+    /// Built from the lane's own pool and a live queue, so a test names what it
+    /// is exercising rather than restating how a ledger is assembled.
+    pub(crate) async fn admissions(&self) -> afd_admission::Admissions {
+        afd_admission::Admissions::for_tests(self.database.clone(), Self::queue().await)
     }
 
-    /// The lane's Redis configuration.
-    pub(crate) fn redis() -> RedisConfig {
-        let url = std::env::var(REDIS_URL_KNOB).unwrap_or_else(|_unset| {
-            panic!("{REDIS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+    pub(crate) async fn queue() -> Dragonfly {
+        afd_dragonfly::test_util::connect_live(&Self::redis())
+            .await
+            .expect("the lane's Dragonfly must be reachable")
+    }
+
+    /// The lane's Dragonfly configuration.
+    pub(crate) fn redis() -> DragonflyConfig {
+        let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+            panic!(
+                "{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`"
+            )
         });
-        RedisConfig::from_url(RedisRole::Default, url)
-            .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+        DragonflyConfig::from_url(DragonflyRole::Default, url)
+            .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
             .with_request_timeout(REQUEST_BUDGET)
     }
 

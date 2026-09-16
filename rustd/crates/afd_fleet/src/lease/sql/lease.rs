@@ -89,13 +89,13 @@ WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 pub const INSERT_LEASE_WITH_EVENT: &str = "\
 WITH inserted AS (
   INSERT INTO fleet.runner_leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt,
    actor, event_type, event_created_at,
    posture, provider, model,
    metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
    fencing_token, lease_expires_at, status,
    created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
+VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $24,
         $7, $8, $9, $10, $11, $12,
         0, 0, 0, $16,
         $13, $14, $15, $16, $16)
@@ -119,7 +119,7 @@ ON CONFLICT (runner_id) DO UPDATE
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty-three positional parameters, `$16` referenced five times, and the
+/// Twenty-four positional parameters, `$16` referenced five times, and the
 /// `VALUES` list mentioning `$13` after `$16` — the same shape, and the same
 /// hazard, that [`super::runner::RegisterRow`] documents. Five of these are
 /// same-typed text that a transposition would compile straight through, and
@@ -138,9 +138,14 @@ pub struct LeaseRow<'a> {
     pub workspace_id: &'a Uuid7,
     /// The tenant whose wallet was gated and debited.
     pub tenant_id: &'a Uuid7,
-    /// The event being leased. Text, not `uuid`: event ids are producer-shaped
-    /// and the column takes them as written.
+    /// The event being leased — the admission ledger's LOGICAL id. Text, not
+    /// `uuid`: event ids are ledger-shaped and the column takes them as
+    /// written.
     pub event_id: &'a str,
+    /// The stream entry this lease was handed, which is what its
+    /// acknowledgement addresses. Distinct from [`Self::event_id`] because a
+    /// replayed admission puts one logical event on two entries.
+    pub receipt: &'a str,
     /// Who or what raised the event.
     pub actor: &'a str,
     /// The event's own type, carried so a reclaim need not re-read it.
@@ -182,7 +187,7 @@ impl<'a> LeaseRow<'a> {
     /// Binds this row to [`INSERT_LEASE_WITH_EVENT`], in `$n` order.
     ///
     /// The four metadata keys (`$19`–`$22`) are constants rather than caller
-    /// data, so they are supplied here — twenty-three binds, and none a caller
+    /// data, so they are supplied here — twenty-four binds, and none a caller
     /// has to place positionally.
     pub fn bind(&'a self) -> Bound<'a> {
         let millis = self.now.as_millis();
@@ -210,6 +215,7 @@ impl<'a> LeaseRow<'a> {
             .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
             .bind(afd_runner::sql::meta::KIND)
             .bind(self.kind)
+            .bind(self.receipt)
     }
 }
 
@@ -246,8 +252,8 @@ WITH bumped AS (
       ORDER BY fencing_token DESC LIMIT 1
       FOR UPDATE
   )
-  RETURNING l.id, l.runner_id, l.fleet_id, l.event_id, l.actor, l.event_type,
-            l.event_created_at, l.workspace_id, l.tenant_id,
+  RETURNING l.id, l.runner_id, l.fleet_id, l.event_id, l.receipt, l.actor,
+            l.event_type, l.event_created_at, l.workspace_id, l.tenant_id,
             l.posture, l.model
 ), tally AS (
   INSERT INTO fleet.runner_lifetime_counters
@@ -260,7 +266,7 @@ WITH bumped AS (
 )
 SELECT b.id::text, b.event_id, b.actor, b.event_type, e.request_json::text,
        b.event_created_at, b.workspace_id::text, b.tenant_id::text,
-       b.posture, b.model
+       b.posture, b.model, b.receipt
 FROM bumped b
 JOIN core.fleet_events e
   ON e.fleet_id = b.fleet_id AND e.event_id = b.event_id";

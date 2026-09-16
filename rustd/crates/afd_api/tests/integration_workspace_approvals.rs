@@ -1,4 +1,4 @@
-//! Approval inbox and decision HTTP lifecycle over live Postgres and Redis.
+//! Approval inbox and decision HTTP lifecycle over live Postgres and Dragonfly.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -35,7 +35,7 @@ pub(crate) const LISTING_SUBJECT: &str = "user_live_approval_listing";
 const GATE_TIMEOUT_AT: i64 = 10_000;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

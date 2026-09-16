@@ -14,13 +14,14 @@
 //! caller free to read the amount without checking the flag — which is exactly
 //! the bug the flag exists to prevent, one `if` away at every call site.
 //!
-//! Rust can say it once: [`Settled::Claimed`] CARRIES the amount and
-//! [`Settled::Fenced`] has nowhere to put one. Reading a charge without having
-//! established the claim is not a mistake to avoid; it does not compile.
+//! Rust can say it once: [`Settled::Claimed`] CARRIES the amount and neither
+//! [`Settled::Fenced`] nor [`Settled::AlreadySettled`] has anywhere to put
+//! one. Reading a charge without having established the claim is not a mistake
+//! to avoid; it does not compile.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use sqlx::Row as _;
+use sqlx::{PgConnection, Row as _};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::affinity::Fence;
@@ -34,6 +35,9 @@ const CONTEXT_LOAD: &str = "report lease load";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SETTLE: &str = "report claim and settle";
+
+/// Statement name, for the context a query failure carries.
+const CONTEXT_DISPOSITION: &str = "report lease disposition";
 
 /// The table a malformed identifier column is reported against.
 const TABLE_LEASES: &str = "fleet.runner_leases";
@@ -53,8 +57,11 @@ pub struct Reported {
     pub workspace_id: Uuid7,
     /// The tenant whose wallet the settle draws on.
     pub tenant_id: Uuid7,
-    /// The event that was executed.
+    /// The event that was executed — the ledger's logical id.
     pub event_id: String,
+    /// The stream entry it arrived on, which is what the acknowledgement
+    /// addresses.
+    pub receipt: String,
     /// Who or what raised the event.
     pub actor: String,
     /// The billing posture resolved at issue.
@@ -69,15 +76,29 @@ pub struct Reported {
 
 /// What the claim-and-settle statement decided.
 ///
-/// Two variants, and the absent third is the point: there is no "claimed but
-/// unpriced" state, because the guard that admits the claim is the same guard
-/// the charge rides.
+/// Three dispositions, and the absent fourth is the point: there is no
+/// "claimed but unpriced" state, because the guard that admits the claim is
+/// the same guard the charge rides.
+///
+/// # Why an empty claim is two answers, not one
+///
+/// The statement guards on `status = active`, so it writes nothing both for a
+/// holder the fleet superseded and for this same runner re-sending a report it
+/// already settled. Collapsed into one refusal they behave identically and are
+/// opposite facts: the first must be refused, and the second must be told what
+/// it already achieved. A runner that loses the response to a terminal report
+/// and retries into a permanent refusal has thrown a finished run's answer
+/// away — RULE IDMP, and the reason [`Settled::AlreadySettled`] exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Settled {
     /// This holder won the report. The final slice drained this much — which
     /// may legitimately be zero, when the run's last window was short enough
     /// or the wallet was already empty.
     Claimed(Nanos),
+    /// This runner already settled this lease. Nothing was written and nothing
+    /// charged, because the first report wrote and charged it; the outcome the
+    /// caller owes its runner is the one already durable.
+    AlreadySettled,
     /// A newer holder has the fleet. Nothing was written and nothing charged.
     Fenced,
 }
@@ -120,6 +141,7 @@ impl Leases {
             workspace_id: id(1, "workspace_id")?,
             tenant_id: id(2, "tenant_id")?,
             event_id: text(3)?,
+            receipt: text(9)?,
             actor: text(4)?,
             posture: text(5)?,
             provider: text(6)?,
@@ -135,14 +157,22 @@ impl Leases {
     /// holder writes none of them — see [`sql::report::CLAIM_AND_SETTLE`] for
     /// why fusing them is what makes the cap path safe.
     ///
+    /// Runs on a connection the CALLER owns, because the money is one statement
+    /// in a transaction that carries several: the result, the checkpoint and
+    /// the freed slot commit with it or not at all
+    /// ([`Leases::commit_report`](crate::lease::commit)). Acquiring a second
+    /// connection here would put the charge outside that boundary and hold two
+    /// connections of a five-connection pool for one report (RULE CNX).
+    ///
     /// # Errors
     /// Reports an entropy source that could not produce the ledger row's
     /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer. A LOST fence is [`Settled::Fenced`], not an error:
-    /// nothing failed, and the caller owes the runner a refusal rather than a
-    /// retry.
+    /// would not answer. A LOST fence is [`Settled::Fenced`] and an
+    /// already-settled lease is [`Settled::AlreadySettled`], neither an error:
+    /// nothing failed, and what the caller owes the runner differs between them.
     pub async fn claim_and_settle(
         &self,
+        connection: &mut PgConnection,
         lease_id: &str,
         runner_id: &Uuid7,
         meter: Meter,
@@ -161,7 +191,6 @@ impl Leases {
             ledger_id: &ledger_id,
             succeeded,
         };
-        let mut connection = self.pool().acquire().await?;
         let row = settle
             .bind()
             .fetch_one(&mut *connection)
@@ -173,7 +202,7 @@ impl Leases {
         // amount is only read on the arm where it did.
         let claimed: i64 = row.try_get(1).map_err(query(CONTEXT_SETTLE))?;
         if claimed == 0 {
-            return Ok(Settled::Fenced);
+            return disposition(connection, lease_id, runner_id).await;
         }
         let charged: Option<i64> = row.try_get(0).map_err(query(CONTEXT_SETTLE))?;
         // A surviving guard row always prices a charge, so a null here would
@@ -183,18 +212,54 @@ impl Leases {
     }
 }
 
+/// Why the claim matched nothing, decided on the claim's own snapshot.
+///
+/// A free function rather than a method: it needs the connection and the two
+/// identifiers and nothing the store owns, which is the shape
+/// `afd_approval`'s `holds` already uses for the same reason.
+///
+/// A row that is gone answers [`Settled::Fenced`] — the lease was loaded a
+/// moment ago and is not here now, so there is nothing left to report against
+/// and nothing to hand back.
+async fn disposition(
+    connection: &mut PgConnection,
+    lease_id: &str,
+    runner_id: &Uuid7,
+) -> Result<Settled> {
+    let found = sqlx::query(sql::report::SELECT_LEASE_DISPOSITION)
+        .bind(lease_id)
+        .bind(runner_id.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_DISPOSITION))?;
+
+    let Some(row) = found else {
+        return Ok(Settled::Fenced);
+    };
+    let status: String = row.try_get(0).map_err(query(CONTEXT_DISPOSITION))?;
+    Ok(if status == sql::LEASE_STATUS_REPORTED {
+        Settled::AlreadySettled
+    } else {
+        Settled::Fenced
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::Settled;
     use afd_billing::Nanos;
 
-    /// A fenced settle has nowhere to carry a charge.
+    /// Only a won claim carries a charge, and the two empty claims differ.
     ///
     /// The property the enum exists for, asserted as the shape rather than as a
-    /// value: `Settled::Fenced` takes no payload, so no caller can read an
-    /// amount off a report that lost the fence. The Zig's paired
-    /// `{ claimed, charged_nanos }` permits exactly that and relies on every
-    /// call site to check the flag first.
+    /// value: neither `Settled::Fenced` nor `Settled::AlreadySettled` takes a
+    /// payload, so no caller can read an amount off a report that charged
+    /// nothing. The Zig's paired `{ claimed, charged_nanos }` permits exactly
+    /// that and relies on every call site to check the flag first.
+    ///
+    /// The last assertion is the one §7 added: a superseded holder and a
+    /// runner re-sending a settled report both write nothing, and collapsing
+    /// them into one value is how a finished run's answer gets refused forever.
     #[test]
     fn test_only_a_claimed_settle_carries_a_charge() {
         let claimed = Settled::Claimed(Nanos::from_i64(42));
@@ -206,6 +271,11 @@ mod tests {
             Settled::Fenced,
             Settled::Claimed(Nanos::ZERO),
             "a fenced report is not a claim that happened to charge nothing"
+        );
+        assert_ne!(
+            Settled::AlreadySettled,
+            Settled::Fenced,
+            "a report already settled by this runner is not a report it lost"
         );
     }
 }

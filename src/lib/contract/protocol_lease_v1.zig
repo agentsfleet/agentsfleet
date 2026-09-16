@@ -50,7 +50,7 @@ pub const LeaseResponse = struct {
 
 /// Convert without allocating. Every slice remains borrowed from the current
 /// response and is serialized synchronously by the handler.
-pub fn fromCurrent(response: anytype) LeaseResponse {
+fn fromCurrent(response: anytype) LeaseResponse {
     const lease = response.lease orelse return .{ .retry_after_ms = response.retry_after_ms };
     const binding: ?RepositoryBinding = if (lease.policy.repository_binding) |value| .{
         .repositories = value.repositories,

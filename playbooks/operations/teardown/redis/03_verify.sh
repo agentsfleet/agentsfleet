@@ -43,10 +43,10 @@ verify_redis() {
 	echo "============================================================"
 
 	# Forward URL via env-name-only so the password never appears in `ps aux`.
-	dbsize=$(REDIS_URL="$url" docker run --rm \
-		-e REDIS_URL \
+	dbsize=$(DRAGONFLY_URL="$url" docker run --rm \
+		-e DRAGONFLY_URL \
 		redis:7-alpine \
-		sh -c 'redis-cli -u "$REDIS_URL" DBSIZE' | tr -d '[:space:]')
+		sh -c 'redis-cli -u "$DRAGONFLY_URL" DBSIZE' | tr -d '[:space:]')
 
 	echo "  Keys remaining (DBSIZE): ${dbsize:-unknown}"
 

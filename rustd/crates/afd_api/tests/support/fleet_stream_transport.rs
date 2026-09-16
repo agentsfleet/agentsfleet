@@ -12,7 +12,7 @@ use serde_json::json;
 use fixture::{Watched, assert_frame, chunk, completion, next_frame};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
     use super::{Fixture, SUBJECT};
     use crate::harness::{self, Fleet};
@@ -56,7 +56,7 @@ async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn one_hundred_live_responses_share_one_subscription_and_release_every_reader() {
     let watched = Watched::create().await;
     for viewers in [1, 10, 100] {
@@ -101,7 +101,7 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_gaps() {
     const VIEWERS: usize = 100;
     let watched = Watched::create().await;
@@ -137,7 +137,7 @@ async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn reconnect_recovers_a_missed_completion_from_durable_history() {
     let watched = Watched::create().await;
     let mut first = [watched.open().await];
@@ -190,7 +190,7 @@ async fn reconnect_recovers_a_missed_completion_from_durable_history() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn repeated_publications_remain_distinct_transport_frames_without_writing_history() {
     let watched = Watched::create().await;
     let mut bodies = [watched.open().await];
@@ -216,7 +216,7 @@ async fn repeated_publications_remain_distinct_transport_frames_without_writing_
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn hub_shutdown_closes_the_response_instead_of_leaving_an_idle_stream() {
     use futures_util::StreamExt as _;
     let watched = Watched::create().await;

@@ -16,7 +16,7 @@ const LeasePayload = contract.protocol.LeasePayload;
 
 /// Engine-call args resolved from the lease. `deinit` releases the two JSON
 /// containers (caller-owned allocator pattern).
-pub const CallArgs = struct {
+const CallArgs = struct {
     /// NON-OWNING view of `fleet_obj` (the same backing map) — never `deinit`
     /// this; it is freed only via `fleet_obj`. Null when the policy contributed
     /// no fleet-config keys.

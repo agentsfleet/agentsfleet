@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import { type EventDetail, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
@@ -89,15 +90,28 @@ function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>
   };
 }
 
+// The provider stands in for a real ancestor rather than decorating the test:
+// the status line reads its latest outcome as a relative `Time`, and a relative
+// `Time` renders a tooltip. `app/(dashboard)/layout.tsx` mounts the app's one
+// `TooltipProvider` above every page in the segment, and `layout.test.tsx`
+// asserts both halves of that contract — one provider, and a relative `Time`
+// that THROWS without it. Rendering `ChatView` on its own steps outside the
+// layout, so the ancestor has to be supplied here; the alternative, making
+// `Time` provide its own, would give each cell a private delay and break the
+// coordination the single provider exists for.
 function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()]) {
-  return React.createElement(ChatView, {
-    workspaceId: WORKSPACE_ID,
-    fleetId: FLEET_ID,
-    senderLabel: "Agent Finch",
-    initial,
-    initialSummary,
-    approvalsHref: APPROVALS_HREF,
-  });
+  return React.createElement(
+    TooltipProvider,
+    null,
+    React.createElement(ChatView, {
+      workspaceId: WORKSPACE_ID,
+      fleetId: FLEET_ID,
+      senderLabel: "Agent Finch",
+      initial,
+      initialSummary,
+      approvalsHref: APPROVALS_HREF,
+    }),
+  );
 }
 
 function emit(frame: LiveFrame) {

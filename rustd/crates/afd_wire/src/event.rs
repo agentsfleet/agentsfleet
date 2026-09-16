@@ -67,7 +67,7 @@ impl EventType {
     }
 }
 
-/// The field names an event carries as a Redis stream entry.
+/// The field names an event carries as a Dragonfly stream entry.
 ///
 /// Declared here for the reason [`EventType`]'s spellings are: they cross a
 /// boundary. A producer writes them and the runner's pull reads them back, so
@@ -95,9 +95,17 @@ pub mod field {
     ///
     /// Written by the producer rather than derived from the entry id, because
     /// the lease path bills against it: a value the ingress stamped is the one
-    /// a tenant is charged for, and Redis assigning a second opinion at append
+    /// a tenant is charged for, and Dragonfly assigning a second opinion at append
     /// time would make the charge depend on queue latency.
     pub const CREATED_AT: &str = "created_at";
+    /// The logical event id the admission ledger assigned.
+    ///
+    /// The entry id Dragonfly mints is a RECEIPT, not an identity: after a
+    /// replay one logical event can have had two entries, and it is this
+    /// field — not the entry id — that `core.fleet_events`, the usage ledger
+    /// and every read address. Written by the ledger's append alone; a
+    /// producer never spells it.
+    pub const EVENT_ID: &str = "event_id";
 }
 
 /// Every field a fleet-stream entry carries, assembled in one place.
@@ -131,6 +139,9 @@ pub struct Entry<'a> {
 /// a producer writing them cannot disagree.
 pub const ENTRY_FIELD_COUNT: usize = 5;
 
+/// How many fields a QUEUED entry carries: the five, plus the ledger's id.
+pub const QUEUED_FIELD_COUNT: usize = ENTRY_FIELD_COUNT + 1;
+
 impl<'a> Entry<'a> {
     /// The field pairs an append writes, in wire order.
     #[must_use]
@@ -141,6 +152,28 @@ impl<'a> Entry<'a> {
             (field::WORKSPACE_ID, self.workspace_id),
             (field::REQUEST_JSON, self.request_json),
             (field::CREATED_AT, self.created_at),
+        ]
+    }
+
+    /// The field pairs the ledger's append writes: [`Self::pairs`] plus the
+    /// logical id, last.
+    ///
+    /// Only the ledger calls this. A producer holds no id of its own — the id
+    /// is the ledger row's — so an entry appended by anything else would be
+    /// one the reader refuses for want of this field, which is the intended
+    /// outcome: nothing reaches a runner without being admitted first.
+    #[must_use]
+    pub const fn queued_pairs(
+        &self,
+        event_id: &'a str,
+    ) -> [(&'static str, &'a str); QUEUED_FIELD_COUNT] {
+        [
+            (field::ACTOR, self.actor),
+            (field::EVENT_TYPE, self.event_type),
+            (field::WORKSPACE_ID, self.workspace_id),
+            (field::REQUEST_JSON, self.request_json),
+            (field::CREATED_AT, self.created_at),
+            (field::EVENT_ID, event_id),
         ]
     }
 }
@@ -349,7 +382,7 @@ pub struct ThreadResponse<'a> {
 
 /// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
 ///
-/// One field, and unknown ones are ignored rather than refused, which is what
+/// Unknown fields are ignored rather than refused, which is what
 /// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
 /// a field this build does not read is not making a mistake it needs telling
 /// about.
@@ -363,7 +396,39 @@ pub struct SteerRequest<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES))]
     pub message: Cow<'a, str>,
+
+    /// The caller's own name for this operation, repeated across its retries.
+    ///
+    /// Dimension 7.5. A timeout does not prove an operation failed. A client
+    /// that never saw a response must be able to ask again, and asking again
+    /// must not risk a second run.
+    ///
+    /// This value is what tells the two apart, and only the CALLER can supply
+    /// it. A server cannot tell a retried POST from a person pressing send
+    /// twice, because the bytes are identical.
+    ///
+    /// Present, it becomes the admission ledger's `producer_key`. The retry
+    /// conflicts on `UNIQUE (producer, producer_key)` and is answered with the
+    /// first admission's event — one run, one charge.
+    ///
+    /// Absent, the ledger mints a key. Two identical messages stay two
+    /// operations, which is the behaviour a person pressing send twice expects.
+    ///
+    /// Optional on purpose rather than required. A human typing in a terminal
+    /// has no operation to identify. Forcing one would make every caller
+    /// invent a value whose only job is to be unique.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES)))]
+    pub operation_id: Option<Cow<'a, str>>,
 }
+
+/// The longest client operation identity a steer may carry.
+///
+/// Generous enough for a UUID, a ULID, a vendor's delivery id or a short
+/// composite, and bounded because it is stored per admission and indexed: an
+/// unbounded key would let a caller decide how much of the ledger's index one
+/// of its retries occupies.
+pub const OPERATION_ID_MAX_BYTES: usize = 200;
 
 /// The longest thing anyone may say to a fleet in one steer.
 ///
@@ -372,7 +437,7 @@ pub struct SteerRequest<'a> {
 /// payload belongs.
 pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 
-// `event_id` is the stream entry id Redis minted, which IS the canonical
+// `event_id` is the stream entry id Dragonfly minted, which IS the canonical
 // event id.
 /// What a steer returns once agentsfleet accepts the request.
 ///

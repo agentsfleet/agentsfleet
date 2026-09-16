@@ -197,3 +197,38 @@ fn trigger_declaring_gate_kind(kind: &str) -> String {
          action: run\n        gate_kind: {kind}\n---\n"
     )
 }
+
+/// A key this build does not know inside `context:` is REFUSED, not ignored.
+///
+/// The whole block is a budget: a runtime that dropped an unrecognised knob
+/// would run the fleet under limits its author did not write, and the author
+/// would have no way to tell that from the limits taking effect. The refusal
+/// names the field, so the answer is a typo an operator can fix rather than a
+/// run that quietly cost what it liked.
+#[test]
+fn an_unknown_key_inside_the_context_block_is_refused_by_name() {
+    const UNKNOWN_KEY: &str = "context_cap_tokns";
+    let document = format!(
+        "---\n\
+         name: unknown-context-knob\n\
+         \n\
+         x-agentsfleet:\n\
+         \x20 context:\n\
+         \x20   {UNKNOWN_KEY}: 256000\n\
+         \x20 triggers:\n\
+         \x20   - type: webhook\n\
+         \x20     source: github\n\
+         \x20 tools:\n\
+         \x20   - http_request\n\
+         \x20 budget:\n\
+         \x20   daily_dollars: 1.0\n\
+         ---\n"
+    );
+
+    let refused = parse_trigger(&document).expect_err("an unknown context knob is refused");
+    let rendered = refused.to_string();
+    assert!(
+        rendered.contains(UNKNOWN_KEY),
+        "the refusal must name the field an author can fix: {rendered}"
+    );
+}

@@ -44,7 +44,7 @@ use afd_db::Db;
 ///
 /// No queue. Every money decision is Postgres alone — which is worth stating,
 /// because it is what lets the whole gate pass be proven against a database
-/// with no Redis in the picture.
+/// with no Dragonfly in the picture.
 ///
 /// # Not `Ledger`
 ///

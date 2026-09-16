@@ -12,15 +12,15 @@
 
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::{
-    Acceptor, BootFailure, DEFAULT_PORT, dual_stack_listener, serve_accepts,
+    Acceptor, BootFailure, DEFAULT_PORT, Drain, dual_stack_listener, serve_accepts,
 };
 use agentsfleetd::supervisor::Supervisor;
 
 /// The API role's Postgres knob.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Redis knob.
-const REDIS_KNOB: &str = "REDIS_URL_API";
+/// The API role's Dragonfly knob.
+const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
 
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
@@ -31,15 +31,15 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Redis URL that parses and points at nothing listening.
-const DEAD_REDIS: &str = "redis://127.0.0.1:1";
+/// A Dragonfly URL that parses and points at nothing listening.
+const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
 
 /// An environment whose knobs all parse but whose datastores are not there.
 fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             (DATABASE_KNOB, DEAD_DATABASE),
-            (REDIS_KNOB, DEAD_REDIS),
+            (DRAGONFLY_KNOB, DEAD_DRAGONFLY_URL),
             (KEK_KNOB, GOOD_KEK),
         ]
         .into_iter()
@@ -75,7 +75,7 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
     );
 
     let rendered = failure.to_string();
-    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB] {
+    for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB] {
         assert!(
             rendered.contains(knob),
             "the refusal names every missing knob; {knob} is absent from: {rendered}"
@@ -151,16 +151,19 @@ fn test_every_boot_failure_renders_a_reason() {
         "an io error lifts to the listen variant on its own"
     );
 
-    let (_kind, queue_source) = afd_redis::error::one_of_each_kind()
+    let (_kind, queue_source) = afd_dragonfly::error::one_of_each_kind()
         .into_iter()
         .next()
-        .expect("the Redis error fixture is exhaustive");
+        .expect("the Dragonfly error fixture is exhaustive");
     let queue = BootFailure::from(queue_source);
     assert_eq!(queue.phase(), "queue");
-    assert_eq!(queue.code(), afd_core::error_code::STARTUP_REDIS_CONNECT);
+    assert_eq!(
+        queue.code(),
+        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
+    );
     assert!(
         std::error::Error::source(&queue).is_some(),
-        "the queue failure preserves the original Redis error"
+        "the queue failure preserves the original Dragonfly error"
     );
 }
 
@@ -205,9 +208,14 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
     };
     let token = tokio_util::sync::CancellationToken::new();
 
+    // The accept loop stops on the DRAIN's token; the supervisor's only cuts a
+    // connection already in flight, which is the split Dimension 7.7 rests on.
+    let drain = Drain::new();
+    let loop_drain = drain.clone();
     let loop_token = token.clone();
-    let serving =
-        tokio::spawn(async move { serve_accepts(acceptor, axum::Router::new(), loop_token).await });
+    let serving = tokio::spawn(async move {
+        serve_accepts(acceptor, axum::Router::new(), loop_drain, loop_token).await;
+    });
 
     // The loop must survive all three failures and still be waiting.
     while observed.load(Ordering::SeqCst) < 3 {
@@ -218,7 +226,7 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
         "three failed accepts must not end serving"
     );
 
-    token.cancel();
+    drain.accepting().cancel();
     tokio::time::timeout(std::time::Duration::from_secs(1), serving)
         .await
         .expect("the loop stops when cancelled, even after failures")

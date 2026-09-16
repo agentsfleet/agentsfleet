@@ -43,7 +43,7 @@ use std::fmt;
 use serde::de::{DeserializeSeed, Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Where the visitor leaves a typed refusal for [`to_json`] to pick up.
 ///
@@ -60,8 +60,9 @@ type Refusal = RefCell<Option<Error>>;
 /// wanted.
 ///
 /// # Errors
-/// Reports YAML this daemon cannot read, a mapping key that is not a scalar,
-/// and a key repeated within one mapping.
+/// Reports YAML this daemon cannot read, and a key repeated within one mapping.
+/// A mapping key that is not a scalar is serde's own refusal — `next_key`
+/// asks for a `String`, so a sequence or mapping key never reaches this crate.
 pub fn to_json(yaml: &str) -> Result<Value> {
     // Checked before the parser rather than after: `yaml_serde` reads a blank
     // block as the null document, and the arm above says an empty block is an
@@ -98,9 +99,9 @@ impl<'de> Visitor<'de> for UniqueVisitor<'_> {
         while let Some(key) = map.next_key::<String>()? {
             let value = map.next_value_seed(UniqueSeed(self.0))?;
             if entries.insert(key.clone(), value).is_some() {
-                let refusal = Error::DuplicateKey {
+                let refusal = Error::from(ErrorKind::DuplicateKey {
                     key: key.into_boxed_str(),
-                };
+                });
                 let rendered = refusal.to_string();
                 *self.0.borrow_mut() = Some(refusal);
                 return Err(A::Error::custom(rendered));
@@ -174,9 +175,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
+    use crate::error::ErrorKind;
 
     use super::to_json;
-    use crate::Error;
 
     /// The scalars the retired hand-rolled table existed to defend.
     ///
@@ -216,7 +217,7 @@ mod tests {
     fn a_repeated_key_is_refused_by_name() {
         let failure = to_json("name: first\nname: second\n").expect_err("a repeated key");
         assert!(
-            matches!(failure, Error::DuplicateKey { ref key } if &**key == "name"),
+            matches!(failure.kind(), ErrorKind::DuplicateKey { key } if &**key == "name"),
             "expected a named duplicate, got {failure}"
         );
     }
@@ -226,7 +227,7 @@ mod tests {
     #[test]
     fn a_repeated_key_nested_in_a_list_is_still_refused() {
         let failure = to_json("items:\n  - a: 1\n    a: 2\n").expect_err("a nested duplicate");
-        assert!(matches!(failure, Error::DuplicateKey { ref key } if &**key == "a"));
+        assert!(matches!(failure.kind(), ErrorKind::DuplicateKey { key } if &**key == "a"));
     }
 
     /// An empty block says nothing and is well-formed; the schema layer above
@@ -243,7 +244,10 @@ mod tests {
     #[test]
     fn malformed_yaml_reports_where_it_stopped() {
         let failure = to_json("a: [1, 2\nb: broken\n").expect_err("unbalanced flow sequence");
-        assert!(matches!(failure, Error::FrontmatterUnreadable { .. }));
+        assert!(matches!(
+            failure.kind(),
+            ErrorKind::FrontmatterUnreadable { .. }
+        ));
         // The cause survives, which is the whole of RUST_ERROR_STANDARD rule 3.
         assert!(std::error::Error::source(&failure).is_some());
     }

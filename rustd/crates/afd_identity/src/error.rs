@@ -7,17 +7,41 @@
 //! reader looking for "how can this crate fail" reads one file rather than
 //! finding out one signature at a time.
 //!
-//! # Why one of the two survived as its own type and the other did not
+//! The hull is `afd_core::error_shell!`, the same one every sibling crate
+//! carries, so the boxed kind keeps `Result` pointer-sized on the `Ok` path and
+//! the backtrace, the `Display` and the `source()` that skips our own kind are
+//! all generated rather than written here for the ninth time.
+//!
+//! # Why two of the three survived as their own types and one did not
 //!
 //! `BlankSecret` was a unit struct that exactly one function returned and
-//! nothing anywhere matched on. It is a variant of [`Error`] now, because a
+//! nothing anywhere matched on. It is a kind of [`Error`] now, because a
 //! distinct type earns its keep only when a caller DISCRIMINATES on it.
 //!
-//! [`ClaimUnavailable`] does earn it, and so it stays: `UnknownSubject` is
-//! deliberately NOT an outage — the caller matches on it and answers with the
-//! empty capability set — and folding it into a general "something went wrong"
-//! would take that decision away from the only layer able to make it. It
-//! composes into [`Error`] by `From` for callers that only propagate.
+//! [`ClaimUnavailable`] and [`MetadataUnwritten`] do earn it, and so they stay:
+//! `UnknownSubject` is deliberately NOT an outage — the caller matches on it and
+//! answers with the empty capability set — and folding it into a general
+//! "something went wrong" would take that decision away from the only layer able
+//! to make it. Both stay `Copy + PartialEq + Eq`, because the callers that match
+//! on them compare them; only the crate-level [`Error`] takes the hull. They
+//! compose into it through `error_lifts!` for callers that only propagate.
+//!
+//! # The codes
+//!
+//! A blank backend secret is a deployment that cannot serve capabilities at all,
+//! so it answers `STARTUP_ENV_CHECK` — the family every other boot-time
+//! configuration refusal already uses. A claim that did not come back is
+//! `AUTH_UNAVAILABLE`, which is what the gate above already answers for a
+//! directory it could not reach. A metadata writeback is best-effort and behind
+//! an already-committed tenant row, so it is internal rather than either.
+
+use afd_core::error_code::{self, ErrorCode};
+
+mod raise;
+
+pub(crate) use self::raise::blank_secret;
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
 
 /// The result every fallible function in this crate returns.
 ///
@@ -33,32 +57,91 @@
 /// cannot quietly introduce a second error type without saying so.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// Anything this crate can fail with.
+afd_core::error_shell!(
+    /// An identity failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
+/// What actually went wrong. Crate-visible so a raise site can name the variant.
 ///
-/// Composed by `From` per `docs/RUST_ERROR_STANDARD.md` rule 2, so `?` lifts
-/// and the underlying failure survives as a `source()` for the fatal renderer
-/// to walk. `#[error(transparent)]` on both arms because neither adds anything
-/// a caller does not already have — the specific type's own message IS the
-/// explanation, and wrapping it in a second sentence would only make the chain
-/// longer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
+/// Composed by `From` per `docs/RUST_ERROR_STANDARD.md` rule 2, so `?` lifts and
+/// the underlying failure survives as a `source()` for the fatal renderer to
+/// walk. `#[error(transparent)]` on both composed arms because neither adds
+/// anything a caller does not already have — the specific type's own message IS
+/// the explanation, and wrapping it in a second sentence would only make the
+/// chain longer.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
     /// The identity provider's backend secret is blank.
     ///
     /// `clerk_scope_fetch.zig` treats an absent or blank secret as
     /// `MissingSecret` for the same reason: capabilities cannot resolve at all
     /// without it, which is an outage rather than an empty grant, and saying so
     /// at boot beats discovering it on the first authenticated request.
+    ///
+    /// Carries no source: nothing failed underneath, the value was simply blank
+    /// (`RUST_ERROR_STANDARD` rule 4's second half).
     #[error("the identity provider's backend secret must not be blank")]
     BlankSecret,
     /// A capability claim did not come back.
     #[error(transparent)]
-    Claim(#[from] ClaimUnavailable),
+    Claim { source: ClaimUnavailable },
     /// A signup's tenant never reached the identity provider.
     #[error(transparent)]
-    Metadata(#[from] MetadataUnwritten),
+    Metadata { source: MetadataUnwritten },
 }
+
+impl Error {
+    /// The code and the sentence, decided together — see the module note.
+    fn answer(&self) -> (ErrorCode, &'static str) {
+        match self.kind() {
+            ErrorKind::BlankSecret => (error_code::STARTUP_ENV_CHECK, DETAIL_BLANK_SECRET),
+            ErrorKind::Claim { .. } => (error_code::AUTH_UNAVAILABLE, DETAIL_CLAIM),
+            ErrorKind::Metadata { .. } => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                afd_core::error::DETAIL_OPERATION_FAILED,
+            ),
+        }
+    }
+
+    /// The registry code a caller is refused with.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        self.answer().0
+    }
+
+    /// The sentence a caller is told.
+    ///
+    /// Static, and never the `source()` chain: an operator reads the chain in
+    /// the log, and a caller who could read it would learn which provider this
+    /// daemon brokers with and how it failed.
+    #[must_use]
+    pub fn detail(&self) -> &'static str {
+        self.answer().1
+    }
+
+    /// Whether the identity provider behind this crate could not be reached.
+    ///
+    /// An outage answers 503, where a blank secret is a deployment that will
+    /// never answer and a best-effort writeback is neither.
+    #[must_use]
+    pub fn is_provider_unavailable(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::Claim {
+                source: ClaimUnavailable::Unreachable
+            } | ErrorKind::Metadata {
+                source: MetadataUnwritten::Unreachable
+            }
+        )
+    }
+}
+
+/// The sentence a deployment with no backend secret earns.
+const DETAIL_BLANK_SECRET: &str = "Identity provider is not configured";
+
+/// The sentence a claim that did not come back earns.
+const DETAIL_CLAIM: &str = "Identity provider unavailable";
 
 /// Why a signup's tenant did not reach the identity provider.
 ///

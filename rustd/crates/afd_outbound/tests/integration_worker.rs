@@ -1,4 +1,4 @@
-//! Dimensions 5.1 and 5.2 against a live Redis, through `Worker::run`.
+//! Dimensions 5.1 and 5.2 against a live Dragonfly, through `Worker::run`.
 //!
 //! `tests/delivery.rs` grades the retry POLICY without a server, because no
 //! server can make a vendor answer 429 three times on demand. What it cannot
@@ -40,9 +40,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use afd_dragonfly::{OutboundDelivery, OutboundJob};
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, Worker};
-use afd_redis::{OutboundDelivery, OutboundJob};
 use tokio_util::sync::CancellationToken;
 
 #[path = "support/outbound_harness.rs"]
@@ -180,7 +180,7 @@ impl Deliver for Scripted {
 /// Polls `condition` until it holds or [`PROGRESS_BUDGET`] runs out.
 ///
 /// A poll rather than a channel because what is being waited on is the worker's
-/// EFFECT — an acknowledgement in Redis, a counter in a poster — and wiring a
+/// EFFECT — an acknowledgement in Dragonfly, a counter in a poster — and wiring a
 /// signal into the worker to observe it would be testing the signal. `note`
 /// names what was being waited for, so a timeout says which claim failed rather
 /// than that a duration elapsed.
@@ -210,7 +210,7 @@ async fn enqueue(harness: &OutboundHarness, answer: &str) {
             answer,
         })
         .await
-        .expect("the lane's Redis must accept an enqueue");
+        .expect("the lane's Dragonfly must accept an enqueue");
 }
 
 /// Dimension 5.1 — an answer is delivered once, and a failing destination is
@@ -223,7 +223,7 @@ async fn enqueue(harness: &OutboundHarness, answer: &str) {
 /// assertion would time out — which is the failure this arrangement catches and
 /// two separate tests would not.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_outbound_delivery_retry() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -247,7 +247,12 @@ async fn test_outbound_delivery_retry() {
     };
 
     let token = CancellationToken::new();
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     let started = Instant::now();
     let running = tokio::spawn(worker.run(token.clone()));
 
@@ -310,7 +315,7 @@ async fn test_outbound_delivery_retry() {
 /// `>`, which is the path that already works — the whole point is the entry
 /// nothing re-offers, that only a pending read reaches.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_outbound_shutdown_no_loss() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -325,7 +330,12 @@ async fn test_outbound_shutdown_no_loss() {
         slack: interrupted_poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), interrupted);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        interrupted,
+    );
     tokio::time::timeout(PROGRESS_BUDGET, worker.run(token.clone()))
         .await
         .expect("a cancelled worker joins inside the supervisor's budget");
@@ -344,7 +354,7 @@ async fn test_outbound_shutdown_no_loss() {
     );
     assert_eq!(
         harness.pending_consumers().await,
-        vec![afd_redis::outbound_consumer()],
+        vec![afd_dragonfly::outbound_consumer()],
         "the entry has to be pending under the name the NEXT process comes \
          back to; under any other it is neither delivered nor lost, just \
          permanently invisible"
@@ -357,7 +367,12 @@ async fn test_outbound_shutdown_no_loss() {
         slack: resumed_poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), resumed);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        resumed,
+    );
     let running = tokio::spawn(worker.run(resumed_token.clone()));
 
     await_until("the re-queued answer to be acknowledged", async || {
@@ -389,7 +404,7 @@ async fn test_outbound_shutdown_no_loss() {
 /// cancelled token would leave a DELIVERED answer pending, and the next process
 /// would post it to the destination's thread a second time.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -406,7 +421,12 @@ async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
         slack: poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     tokio::time::timeout(PROGRESS_BUDGET, worker.run(token.clone()))
         .await
         .expect("a cancelled worker joins inside the supervisor's budget");
@@ -429,7 +449,7 @@ async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
 /// `NOGROUP` per read for the life of the deployment with every answer queuing
 /// up behind it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_the_worker_creates_the_group_it_reads_under() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset_without_group().await;
@@ -440,7 +460,12 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
         slack: poster.clone(),
     };
 
-    let worker = Worker::new(harness.reader().await, harness.queue.clone(), posters);
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        posters,
+    );
     let running = tokio::spawn(worker.run(token.clone()));
 
     // Queued AFTER the worker started, so the group it reads under can only be
@@ -480,7 +505,7 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
 /// is what assigns the entry to this consumer, and assignment is what makes it
 /// pending; only then is there something for the acknowledgement to drain.
 #[tokio::test]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -522,20 +547,20 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 /// is what an operator acts on: a queue that is GONE is
 /// `INTERNAL_DB_UNAVAILABLE` — retry it, page the infrastructure — while a
 /// queue that answered and said no is `INTERNAL_OPERATION_FAILED`, a defect
-/// here. Collapsing them sends somebody to check a healthy Redis over a bug in
+/// here. Collapsing them sends somebody to check a healthy Dragonfly over a bug in
 /// this crate. `worker.rs` reads that code onto every failure it reports, so
 /// the mapping is what an incident is triaged from.
 ///
 /// # Why the error is provoked and then LIFTED
 ///
-/// `afd_redis` builds its kinds crate-privately, so the non-outage case cannot
+/// `afd_dragonfly` builds its kinds crate-privately, so the non-outage case cannot
 /// be constructed by hand — only caused, which is what the wrong-typed key
-/// does. But the queue's own methods return `afd_redis::Result`, so asserting
+/// does. But the queue's own methods return `afd_dragonfly::Result`, so asserting
 /// on what `enqueue` hands back grades THAT crate's mapping and never reaches
 /// this one's. The lift is the step that crosses the boundary, and it is the
 /// same `From` the worker's `?` uses on the same value.
 #[tokio::test]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;

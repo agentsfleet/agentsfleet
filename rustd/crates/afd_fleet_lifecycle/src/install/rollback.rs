@@ -20,7 +20,7 @@ const HINT_ORPHANED: &str = "row_orphaned_manual_recovery";
 impl Fleets {
     /// Deletes the row an install could not finish, on a FRESH connection.
     ///
-    /// Fresh because the request's was released before Redis was reached, and
+    /// Fresh because the request's was released before Dragonfly was reached, and
     /// because a rollback queued behind the same exhausted pool would fail for
     /// the reason it is running.
     ///

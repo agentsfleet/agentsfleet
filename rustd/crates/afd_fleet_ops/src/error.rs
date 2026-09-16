@@ -1,5 +1,6 @@
 //! The one error type returned by operator read projections.
 
+use afd_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
 use afd_core::error_code::{self, ErrorCode};
 
 /// Result returned by every fallible operator projection.
@@ -55,8 +56,8 @@ impl Error {
     /// Client-safe detail exposed to the API shell.
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
-            ErrorKind::Datastore { .. } => "Database unavailable",
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => "Database error",
+            ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::RunnerNotFound => "Runner not found",
             ErrorKind::CursorInvalid => super::runner_leases::DETAIL_BAD_CURSOR,
         }

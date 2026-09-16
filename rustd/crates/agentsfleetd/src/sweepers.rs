@@ -20,11 +20,13 @@
 //! would strand the entries it just rescued in a consumer that never reads
 //! again, which is the exact failure it exists to repair.
 
+use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_redis::Redis;
+use afd_dragonfly::Dragonfly;
 use afd_runner::sweep::{
-    self, liveness::Liveness, reclaim::Reclaim, repair::Repairs, retention::Retention,
+    self, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile, repair::Repairs,
+    replay::Replay, retention::Retention,
 };
 
 use crate::supervisor::Supervisor;
@@ -46,12 +48,23 @@ pub const RETENTION: &str = "sweeper:retention";
 /// The supervised name of the repair-verification dispatcher.
 pub const REPAIR: &str = "sweeper:repair-verification";
 
+/// The supervised name of the admission-replay dispatcher.
+pub const REPLAY: &str = "sweeper:admission-replay";
+
+/// The supervised name of the lost-receipt reconciler.
+pub const RECONCILE: &str = "sweeper:admission-reconcile";
+
 /// Starts every background sweeper under `supervisor`.
 ///
 /// Called after the datastores are open and before the listener binds: a
 /// sweeper touching a pool that is not yet connected would fail its first pass
 /// for a reason that has nothing to do with the rows it reads.
-pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Redis) {
+pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Dragonfly) {
+    // The same ledger shape the request planes hold — see `crate::plane`. A
+    // sweeper is a producer's other half, so it must read the table the
+    // producers write rather than one built differently.
+    let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
+
     let liveness = Liveness::new(database.clone(), Entropy::new());
     supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
 
@@ -68,6 +81,19 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Redis) {
     let retention = Retention::new(database.clone());
     supervisor.spawn(RETENTION, move |token| sweep::run(retention, token));
 
-    let repairs = Repairs::new(database.clone(), queue.clone(), Entropy::new());
+    let repairs = Repairs::new(database.clone(), admissions.clone(), Entropy::new());
     supervisor.spawn(REPAIR, move |token| sweep::run(repairs, token));
+
+    // Last, and the pair that makes acceptance survivable: every other sweeper
+    // repairs work a runner already holds, and these two deliver work a producer
+    // was told yes about. Replay takes the rows the queue never took; reconcile
+    // finds the rows it took and then LOST, and hands them back to replay by
+    // forgetting their receipts. Reconcile is spawned first so a daemon booting
+    // after a flush has already begun probing by the time replay's first pass
+    // reads the ledger.
+    let reconcile = Reconcile::new(admissions.clone());
+    supervisor.spawn(RECONCILE, move |token| sweep::run(reconcile, token));
+
+    let replay = Replay::new(admissions);
+    supervisor.spawn(REPLAY, move |token| sweep::run(replay, token));
 }

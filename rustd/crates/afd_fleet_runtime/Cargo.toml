@@ -20,6 +20,9 @@ categories.workspace = true
 test-util = []
 
 [dependencies]
+# The shared error hull (`error_shell!`/`error_lifts!`) and the registry code
+# every failure here is read under. Referenced, never re-declared — see `error`.
+afd_core.workspace = true
 semver.workspace = true
 # The signature wall owns the provider scheme strings; this crate resolves a
 # trigger's `source` to one rather than declaring a second copy (RULE UFS).

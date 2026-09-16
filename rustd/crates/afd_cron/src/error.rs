@@ -78,10 +78,17 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
-    #[error("the queue would not take the fire")]
-    Queue {
+    /// The fire's acceptance could not be recorded.
+    ///
+    /// Replaces the queue variant this crate used to carry: a queue that will
+    /// not take the entry no longer fails a fire, because the ledger row is
+    /// already durable and the replay sweeper owes it an entry. What is left
+    /// here is the database refusing the row, which IS a fire this daemon
+    /// did not accept.
+    #[error("the fire could not be admitted")]
+    Admission {
         #[source]
-        source: afd_redis::Error,
+        source: afd_admission::Error,
     },
 
     /// The external scheduler could not be reached at all.
@@ -151,12 +158,10 @@ impl Error {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
-            // A queue that is GONE is the same outage a caller retries against,
-            // so it answers the unavailable code rather than a generic 500.
-            ErrorKind::Queue { source } if source.is_unavailable() => (
-                error_code::INTERNAL_DB_UNAVAILABLE,
-                detail::DATABASE_UNAVAILABLE,
-            ),
+            // The ledger already decided what a caller is told, and answering
+            // a second sentence for one condition is the drift the shared
+            // constants in `afd_core::error` exist to prevent.
+            ErrorKind::Admission { source } => (source.code(), source.detail()),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
@@ -169,9 +174,7 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::UPSTREAM_UNAVAILABLE,
             ),
-            ErrorKind::Queue { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::IdentifierShape { .. } => (
+            ErrorKind::Identifier { .. } | ErrorKind::IdentifierShape { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),

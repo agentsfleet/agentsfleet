@@ -141,6 +141,42 @@ WHERE status = $1 AND (updated_at, id) > ($2::bigint, $3::uuid)
 ORDER BY updated_at ASC, id ASC
 LIMIT $4";
 
+/// Fleets holding an `active` lease whose expiry has passed.
+///
+/// The readiness index's third writer. Its other two — ingress, and this
+/// sweeper's own stream probe — both go quiet for a fleet whose stream was
+/// lost while a runner held its work: nothing marks it, so nobody polls it,
+/// and the lease path's `reclaim_prior_active`, which only runs when a claim
+/// wins the fleet, never gets its turn. This statement finds those fleets
+/// from the ledger and the caller marks them. It flips nothing — that reclaim
+/// re-leases from PostgreSQL alone and needs the lease still `active`, so a
+/// flipped lease would be invisible to the one path that recovers it.
+///
+/// `DISTINCT`, because one fleet can hold several expired leases and wants
+/// one mark. Bounded, because every fleet returned becomes a claim against
+/// the pool once marked. Keyset on `fleet_id` after `$4`, for the reason the
+/// fleet walk above carries a cursor: a marked fleet leaves this set only
+/// once a runner has claimed it and the reclaim has expired its lease, and
+/// until then an unordered `LIMIT` would hand back the same page every pass
+/// and starve the fleet behind it. The caller rewinds on a short page, so
+/// the scan is cyclic.
+///
+/// `status = ANY($1::text[])` for the reason schema/620 gives: a bound
+/// parameter rides the `(status, updated_at)` index's prefix, where a partial
+/// index could not be chosen against it. `lease_expires_at` is then a filter
+/// over that prefix — the active set, bounded by concurrent jobs — rather
+/// than a range an index serves; an index for it waits for traffic to
+/// measure it against.
+///
+/// `$1` the active status, `$2` now, `$3` the batch limit, `$4` the cursor's
+/// fleet id.
+pub const SELECT_FLEETS_HOLDING_EXPIRED_LEASES: &str = "\
+SELECT DISTINCT fleet_id::text
+FROM fleet.runner_leases
+WHERE status = ANY($1::text[]) AND lease_expires_at < $2 AND fleet_id > $4::uuid
+ORDER BY fleet_id
+LIMIT $3";
+
 /// One batch of settled leases past the retention window.
 ///
 /// `updated_at`, not `created_at`, is the retention clock: settle and reclaim
@@ -285,33 +321,3 @@ SET verifier_event_id = $3, dispatch_claim_token = NULL,
     dispatch_claimed_at = NULL, updated_at = $4
 WHERE id = $1::uuid AND dispatch_claim_token = $2::uuid
   AND verifier_event_id IS NULL";
-
-/// The completed intents whose append-once key is still in Redis.
-///
-/// Cleared only after the durable link exists, which is why this reads
-/// `verifier_event_id IS NOT NULL`: forgetting the key any earlier would let a
-/// retry append a second event, which is the duplicate the key exists to
-/// prevent.
-///
-/// `$1` the cutoff, `$2` the batch limit.
-pub const SELECT_REPAIR_VERIFICATION_CLEANUP: &str = "\
-SELECT id::text
-FROM core.repair_verifications
-WHERE verifier_event_id IS NOT NULL
-  AND redis_once_key_cleared_at IS NULL
-  AND updated_at <= $1
-ORDER BY updated_at ASC, id ASC
-LIMIT $2";
-
-/// Marks a batch of append-once keys as forgotten.
-///
-/// One statement for the whole batch, keyed by a JSON array of identifiers, so
-/// a page of cleanups costs one round trip rather than one per row.
-///
-/// `$1` the identifiers, `$2` now.
-pub const COMPLETE_REPAIR_VERIFICATION_CLEANUP: &str = "\
-UPDATE core.repair_verifications
-SET redis_once_key_cleared_at = $2, updated_at = $2
-WHERE id IN (
-  SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb)
-)";

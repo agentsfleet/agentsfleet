@@ -31,6 +31,8 @@ const loop = @import("loop.zig");
 
 const protocol = contract.protocol;
 const report_mapping = contract.report_mapping;
+const ReportSpool = @import("ReportSpool.zig");
+const lease_run_report = @import("lease_run_report.zig");
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
@@ -94,6 +96,9 @@ pub fn executeAndReport(
     cfg: Config,
     env_map: *const std.process.Environ.Map,
     payload: protocol.LeasePayload,
+    /// Where a finished result waits for its acknowledgement. Null only when
+    /// the daemon could not claim a storage home, which is logged at boot.
+    spool: ?*ReportSpool,
 ) void {
     log.debug("lease_acquired", .{
         .lease_id = payload.lease_id,
@@ -167,13 +172,7 @@ pub fn executeAndReport(
         .output_tokens = splits.output_tokens,
         .checkpoint_response = result.content,
     });
-    cp.report(alloc, runner_token, report, cfg.cp_deadlines.report_ms) catch |err| {
-        log.err("report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
-        sleepMs(io, constants.backoff.ms(0)); // back off so a down report endpoint can't hot-spin the pool
-        return;
-    };
-
-    log.debug("report_submitted", .{ .lease_id = payload.lease_id, .outcome = @tagName(report.outcome) });
+    lease_run_report.submit(io, alloc, cp, runner_token, cfg, payload.lease_id, report, spool);
 }
 
 /// Materialize the leased bundle's support files into `workspace_path` before the

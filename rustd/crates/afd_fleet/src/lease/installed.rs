@@ -69,9 +69,12 @@ impl Leases {
     /// # Errors
     /// Reports a datastore that would not answer, a `workspace_id` that will
     /// not parse as a UUID, and a `config_json` this daemon cannot read. The
-    /// last is deliberately fatal to the lease rather than skipped: a fleet
-    /// whose stored config is unreadable must not run under a config this
-    /// daemon guessed at.
+    /// last is deliberately fatal to THIS FLEET's lease rather than skipped: a
+    /// fleet whose stored config is unreadable must not run under a config this
+    /// daemon guessed at. It is fatal to nothing else — the pull path answers
+    /// it with that fleet's terminal row and a documented no-work, because a
+    /// runner polls a rotation and refusing the RUNNER would refuse every
+    /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
     pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query(sql::fleet::SELECT_FLEET_WITH_SESSION)

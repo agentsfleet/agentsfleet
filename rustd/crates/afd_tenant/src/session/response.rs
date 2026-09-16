@@ -1,5 +1,5 @@
 //! Responses from device login session transitions.
-use afd_redis::session::SessionStatus;
+use afd_dragonfly::session::SessionStatus;
 
 /// A login that has just been opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,16 +43,16 @@ pub struct Redeemed {
 
 impl Redeemed {
     /// The first redemption of a session.
-    pub(super) fn first(payload: afd_redis::session::VerifyPayload) -> Self {
+    pub(super) fn first(payload: afd_dragonfly::session::VerifyPayload) -> Self {
         Self::of(payload, false)
     }
 
     /// A repeat inside the replay window.
-    pub(super) fn repeated(payload: afd_redis::session::VerifyPayload) -> Self {
+    pub(super) fn repeated(payload: afd_dragonfly::session::VerifyPayload) -> Self {
         Self::of(payload, true)
     }
 
-    fn of(payload: afd_redis::session::VerifyPayload, repeated: bool) -> Self {
+    fn of(payload: afd_dragonfly::session::VerifyPayload, repeated: bool) -> Self {
         Self {
             dashboard_public_key: payload.dashboard_public_key,
             ciphertext: payload.ciphertext,

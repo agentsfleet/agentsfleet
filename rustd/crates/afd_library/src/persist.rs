@@ -6,7 +6,8 @@ use bytes::Bytes;
 use object_store::path::Path as StorePath;
 use object_store::{ObjectStore, ObjectStoreExt as _};
 
-use crate::{Error, ImportBody, PreparedBundle, Result, canonical_snapshot, prepare};
+use crate::error::storage_unavailable;
+use crate::{ImportBody, PreparedBundle, Result, canonical_snapshot, prepare};
 
 /// One bundle as it now stands in a catalogue.
 ///
@@ -90,7 +91,7 @@ where
     async fn import_validated(&self, body: &ImportBody) -> Result<Onboarded> {
         let prepared = prepare(body)?;
         if !body.support_files.is_empty() {
-            let store = self.store.as_ref().ok_or_else(Error::storage_unavailable)?;
+            let store = self.store.as_ref().ok_or_else(storage_unavailable)?;
             let snapshot = canonical_snapshot(body)?;
             let key = StorePath::from(prepared.snapshot_key.as_str());
             store.put(&key, snapshot.into()).await?;
@@ -110,7 +111,7 @@ where
         Ok(self
             .store
             .as_ref()
-            .ok_or_else(Error::storage_unavailable)?
+            .ok_or_else(storage_unavailable)?
             .get(&StorePath::from(key))
             .await?
             .bytes()

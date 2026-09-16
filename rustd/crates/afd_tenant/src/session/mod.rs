@@ -39,14 +39,14 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
-use afd_redis::session::{
+use afd_dragonfly::session::{
     AbortOutcome, AbortReason, ApproveOutcome, SessionState, SessionStore, VerifyOutcome,
 };
 
 // Re-exported so the HTTP layer can name the state a poll reports without
 // taking a dependency on the queue crate: a status is a fact about the login,
 // and the login is this module's.
-pub use afd_redis::session::SessionStatus;
+pub use afd_dragonfly::session::SessionStatus;
 
 use crate::error;
 use crate::{Error, Result};
@@ -175,7 +175,7 @@ impl Sessions {
         let outcome = self
             .store
             .approve(
-                &afd_redis::session::Approval {
+                &afd_dragonfly::session::Approval {
                     session_id: id.as_str(),
                     dashboard_public_key: approval.dashboard_public_key.as_str(),
                     ciphertext: approval.ciphertext.as_str(),
@@ -324,7 +324,7 @@ impl Sessions {
 /// value and the blob carries the same instant, and two constants would let
 /// them drift by exactly the amount nobody notices.
 fn session_ttl_millis() -> i64 {
-    i64::try_from(afd_redis::session::SESSION_TTL.as_millis()).unwrap_or(i64::MAX)
+    i64::try_from(afd_dragonfly::session::SESSION_TTL.as_millis()).unwrap_or(i64::MAX)
 }
 
 /// Refuses a session id that is not a version 7 identifier.

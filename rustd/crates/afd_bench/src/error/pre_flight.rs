@@ -45,6 +45,7 @@ impl Error {
             | Self::QueueUnavailable { .. }
             | Self::LeasePathFaulted { .. }
             | Self::SteerPathFaulted { .. }
+            | Self::LedgerUnreadable { .. }
             | Self::FixtureUnseedable { .. }
             | Self::RunnerUnenrollable { .. }
             | Self::TaskLost { .. }

@@ -10,8 +10,8 @@ use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::PoolConfig;
+use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
-use afd_redis::RedisConfig;
 
 use super::knobs::R2_REGION;
 
@@ -38,7 +38,7 @@ pub struct IdentityConfig {
 #[derive(Debug)]
 pub struct BootConfig {
     pub(super) api_pool: PoolConfig,
-    pub(super) redis: RedisConfig,
+    pub(super) redis: DragonflyConfig,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
     pub(super) app_url: Box<str>,
@@ -105,9 +105,9 @@ impl BootConfig {
         &self.api_pool
     }
 
-    /// Settings for the API role's Redis client.
+    /// Settings for the API role's Dragonfly client.
     #[must_use]
-    pub const fn redis(&self) -> &RedisConfig {
+    pub const fn redis(&self) -> &DragonflyConfig {
         &self.redis
     }
 

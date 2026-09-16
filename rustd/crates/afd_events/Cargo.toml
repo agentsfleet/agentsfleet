@@ -21,6 +21,9 @@ workspace = true
 # other: telemetry knows nothing about the event log, and a readiness mark this crate
 # could not write is a fact only this crate holds.
 afd_observability.workspace = true
+# Where a steer is accepted before anything is queued. The ledger owns the
+# acceptance and the identity; this crate owns the table a runner then writes.
+afd_admission.workspace = true
 # Identifiers, the clock a row is stamped with, and the registry codes.
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
@@ -28,7 +31,7 @@ afd_db.workspace = true
 # The live tail subscribes through the process's one pub/sub connection, and a
 # steer appends to the fleet's stream. Both are this crate's, because both are
 # the same question the table answers, asked about the present.
-afd_redis.workspace = true
+afd_dragonfly.workspace = true
 # The event type and status spellings the wire carries.
 afd_wire.workspace = true
 # The opaque page cursor. base64url-no-pad, because the value comes back in a
@@ -46,7 +49,12 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+test-util = [
+    "afd_admission/test-util",
+    "afd_core/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
@@ -56,7 +64,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 afd_db = { workspace = true, features = ["test-util"] }
 # The backfill suite delivers its live half through a real tail, because the
 # claim is about the two sets a client actually holds. Acyclic: `afd_sse` knows
-# `afd_redis` and `afd_core`, and nothing about this crate.
+# `afd_dragonfly` and `afd_core`, and nothing about this crate.
 afd_sse.workspace = true
 # The steer suite reads the readiness index by exact field. `ReadyIndex`'s own
 # reader samples at random by design, and the index is shared by every suite in

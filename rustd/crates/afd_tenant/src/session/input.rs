@@ -4,7 +4,7 @@
 //!
 //! The Zig store validates inside the write: `approve` checks four lengths and
 //! a digit run at the top of the function that then issues the `EVAL`, so the
-//! only thing standing between an unbounded caller-supplied blob and a Redis
+//! only thing standing between an unbounded caller-supplied blob and a Dragonfly
 //! key is that those five `if`s were remembered. Add a sixth field later and
 //! nothing fails until somebody parks a megabyte in the queue.
 //!
@@ -29,7 +29,7 @@ use crate::{Error, Result};
 ///
 /// A base64url P-256 `SubjectPublicKeyInfo` is 124 characters; the ceiling is
 /// generous rather than exact because the encoding is the client's business,
-/// and it exists to stop an unauthenticated caller parking a blob in Redis for
+/// and it exists to stop an unauthenticated caller parking a blob in Dragonfly for
 /// the full time-to-live rather than to check a curve.
 const PUBLIC_KEY_MAX: usize = 200;
 

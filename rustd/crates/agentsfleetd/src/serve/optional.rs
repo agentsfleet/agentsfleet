@@ -1,7 +1,7 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
+use afd_dragonfly::{DragonflyConfig, SubscriptionHub};
 use afd_observability::Analytics;
-use afd_redis::{RedisConfig, SubscriptionHub};
 use afd_sse::{Ceiling, Live};
 
 use crate::identity::Capabilities;
@@ -28,12 +28,12 @@ pub(super) fn announce_identity(capabilities: &Capabilities) {
 }
 
 /// The live-stream surface, or its silent form when the hub will not open.
-pub(super) async fn open_live(config: &RedisConfig, max_streams: usize) -> Live {
+pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> Live {
     let ceiling = Ceiling::new(max_streams);
     match SubscriptionHub::start(config.clone()).await {
         Ok(hub) => Live::new(hub, ceiling),
         Err(unopened) => {
-            let code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            let code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             let reason = unopened.to_string();
             tracing::warn!(
                 error_code = code,
@@ -59,7 +59,7 @@ mod tests {
     use std::time::Duration;
 
     use afd_auth::capability::NoCapabilitySource;
-    use afd_redis::config::RedisRole;
+    use afd_dragonfly::config::DragonflyRole;
 
     use super::{announce_identity, open_analytics, open_live};
     use crate::identity::Capabilities;
@@ -74,9 +74,11 @@ mod tests {
     #[tokio::test]
     async fn a_failed_hub_becomes_a_capacity_bounded_silent_surface() {
         afd_db::test_util::install_subscriber();
-        let config =
-            afd_redis::RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:1".to_owned())
-                .with_connect_timeout(Duration::from_millis(25));
+        let config = afd_dragonfly::DragonflyConfig::from_url(
+            DragonflyRole::Api,
+            "redis://127.0.0.1:1".to_owned(),
+        )
+        .with_connect_timeout(Duration::from_millis(25));
 
         let live = open_live(&config, 3).await;
         assert!(live.hub().is_none());

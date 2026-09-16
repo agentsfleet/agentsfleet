@@ -100,13 +100,13 @@ impl Refusal {
     }
 }
 
-/// `webhook_sig.zig`'s `S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED`, verbatim.
+/// The detail for a webhook credential that was never configured.
 const DETAIL_UNCONFIGURED: &str = "Webhook credential not configured";
 
-/// `webhook_sig.zig`'s `S_INVALID_SIGNATURE`, verbatim.
+/// The detail for a signature that did not verify.
 const DETAIL_SIGNATURE: &str = "Invalid signature";
 
-/// `svix_signature.zig`'s `failStale` detail, verbatim.
+/// The detail for a signature whose timestamp is outside the window.
 const DETAIL_STALE: &str = "Signature timestamp too old";
 
 /// Whether a delivery may be read.

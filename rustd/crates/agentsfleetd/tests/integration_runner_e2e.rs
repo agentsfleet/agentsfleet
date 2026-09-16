@@ -34,6 +34,8 @@
 
 #[path = "integration_runner_e2e/money_gate.rs"]
 mod money_gate;
+#[path = "integration_runner_e2e/refusals.rs"]
+mod refusals;
 
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -41,41 +43,28 @@ use serde_json::{Value, json};
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, claim, field, get,
-    json, post, report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
+    assert_no_lease_for_fleet_under_test, capable_beat, field, get, json, poll_for_seeded_lease,
+    poll_until, post, report_body,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_runner_suite_vs_rust_daemon() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    assert_unknown_credential_is_refused(&http, &run).await;
+    refusals::assert_unknown_credential_is_refused(&http, &run).await;
     prove_runner_ready(&http, &run).await;
     let (lease_id, fence) = claim_seeded_lease(&http, &run).await;
     prove_live_lease_satellites(&http, &run, &lease_id).await;
     capture_memory(&http, &run, &lease_id, fence).await;
     settle_report(&http, &run, &lease_id, fence).await;
-    assert_unsupported_event_ends(&http, &run).await;
+    refusals::assert_unsupported_event_ends(&http, &run).await;
 
     supervisor.shutdown().await;
     run.cleanup().await;
-}
-
-async fn assert_unknown_credential_is_refused(http: &reqwest::Client, run: &Scenario) {
-    let unknown = http
-        .get(format!("{}/v1/runners/me", run.base))
-        .bearer_auth(UNKNOWN_TOKEN)
-        .send()
-        .await
-        .expect("the daemon answers an unknown credential");
-    assert_eq!(
-        unknown.status().as_u16(),
-        401,
-        "a well-formed token belonging to no row is refused by the directory"
-    );
 }
 
 async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
@@ -109,17 +98,12 @@ async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, 
         200,
         "work and no-work are the same status on this verb"
     );
-    let body = json(leased).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable, so the poll carries work");
-    assert_eq!(
-        field(field(lease, "event"), "event_id"),
-        &json!(run.event_id),
-        "the daemon handed back the event this scenario put on the stream"
-    );
-    claim(lease)
+    // That first request proved the STATUS. Which event comes back is a
+    // separate question and needs a rotation to answer: see
+    // `poll_for_seeded_lease` on why one poll reaches a given fleet about one
+    // time in sixteen. If the request above already carried this scenario's
+    // event, the helper's first poll finds the lease it issued.
+    poll_for_seeded_lease(http, run).await
 }
 
 async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
@@ -157,19 +141,7 @@ async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, f
     );
 
     assert_settled(run, lease_id, before).await;
-    assert_replay_is_fenced(http, run, lease_id, &report).await;
-}
-
-async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
-    let unsupported = run.enqueue_event("future_event_type").await;
-    let refused = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(refused.status().as_u16(), 200);
-    assert_eq!(field(&json(refused).await, "lease"), &Value::Null);
-    assert_eq!(
-        event_column(run, &unsupported, "status").await.as_deref(),
-        Some("gate_blocked"),
-        "the unsupported stream entry is ended instead of being retried forever"
-    );
+    assert_replay_returns_the_stored_outcome(http, run, lease_id, &report).await;
 }
 
 /// The side-channel verbs operate on the same live lease and identity.
@@ -177,7 +149,7 @@ async fn prove_live_lease_satellites(http: &reqwest::Client, run: &Scenario, lea
     assert_memory_hydrates(http, run).await;
     assert_lease_renews(http, run, lease_id).await;
     assert_activity_degrades_gracefully(http, run, lease_id).await;
-    assert_credential_and_duplicate_refusals(http, run, lease_id).await;
+    refusals::assert_credential_and_duplicate_refusals(http, run, lease_id).await;
 }
 
 async fn assert_memory_hydrates(http: &reqwest::Client, run: &Scenario) {
@@ -229,34 +201,6 @@ async fn assert_activity_degrades_gracefully(
     );
 }
 
-async fn assert_credential_and_duplicate_refusals(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-) {
-    let mint = post(
-        http,
-        run,
-        "/v1/runners/me/credentials/mint",
-        &json!({"lease_id": lease_id, "integration": "anthropic", "scope": null}),
-    )
-    .await;
-    assert_eq!(mint.status().as_u16(), 404);
-    assert_eq!(
-        field(&json(mint).await, "error_code"),
-        &json!("UZ-CRED-001"),
-        "a provider credential is not silently treated as a mintable connector"
-    );
-
-    let no_second_lease = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(no_second_lease.status().as_u16(), 200);
-    assert_eq!(
-        field(&json(no_second_lease).await, "lease"),
-        &Value::Null,
-        "a runner already holding the ready event receives no duplicate work"
-    );
-}
-
 /// Dimension 7.2 — the ported statements fill the columns they are supposed to.
 ///
 /// The differ M175 §6 deleted, replaced by the weaker claim §7 says it is: not
@@ -293,13 +237,23 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
     );
 }
 
-/// A second delivery of the same report claims nothing and changes nothing.
+/// A second delivery of the same report is answered, and changes nothing.
 ///
-/// The guard is the lease's `status = active` predicate, and a report that
-/// claims no row writes none: no ledger row, no wallet draw, no tally. What the
-/// runner gets back is a refusal rather than an acknowledgement, because a
-/// result nobody is waiting for is not something to retry.
-async fn assert_replay_is_fenced(
+/// The guard is still the lease's `status = active` predicate and a report that
+/// claims no row still writes none: no ledger row, no wallet draw, no tally.
+/// What CHANGED is the answer. A replay used to be a 409, on the reading that a
+/// result nobody is waiting for is not worth retrying — and that reading is
+/// wrong in the one case a replay actually happens. A runner replays because it
+/// never received the first response, so the run whose answer the platform is
+/// refusing to acknowledge is a run the platform already charged for and
+/// already stored. Told 409, the runner discards a finished result; told 200,
+/// it stops retrying with its work safely landed.
+///
+/// The route to both is the lease id, which is this endpoint's idempotency key.
+/// A fleet the runner has genuinely been superseded on still answers 409,
+/// because the lease is not `reported` there — that refusal is proven against
+/// live rows in the fleet plane's own suites, not here.
+async fn assert_replay_returns_the_stored_outcome(
     http: &reqwest::Client,
     run: &Scenario,
     lease_id: &str,
@@ -309,10 +263,14 @@ async fn assert_replay_is_fenced(
     let replay = post(http, run, "/v1/runners/me/reports", report).await;
     assert_eq!(
         replay.status().as_u16(),
-        409,
-        "the lease is no longer active, so the second delivery cannot claim it — \
-         a conflict, which is terminal for the run and tells the runner to discard \
-         rather than to back off and retry"
+        200,
+        "the second delivery is acknowledged, so the runner stops retrying a result \
+         the platform has already stored and already charged for"
+    );
+    assert_eq!(
+        json(replay).await,
+        json!({"ok": true}),
+        "and in the same shape the first one answered — a runner parses one reply, not two"
     );
     assert_eq!(
         ledger_rows(run).await,
@@ -322,11 +280,19 @@ async fn assert_replay_is_fenced(
     assert_eq!(
         balance(run).await,
         drawn,
-        "a fenced replay charges nothing at all"
+        "a repeated report charges nothing at all"
     );
     assert_eq!(
         lease_column(run, lease_id, "status").await.as_deref(),
         Some("reported"),
         "and mutates nothing — the lease reads exactly as the first report left it"
+    );
+    assert_eq!(
+        counter_column(run, "succeeded").await.as_deref(),
+        Some("1"),
+        "the lifetime tally counts the run once, because it is gated on the claim \
+         that the repeat did not win. The handler's product funnel and cost meters \
+         are skipped on the same arm and export nowhere a test can read, so this \
+         row is the durable half of that claim and the arm itself is the reviewed half"
     );
 }

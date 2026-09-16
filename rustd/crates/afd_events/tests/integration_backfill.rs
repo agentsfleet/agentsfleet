@@ -45,9 +45,9 @@ use std::collections::BTreeSet;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Filter, History, MAX_LIMIT};
-use afd_redis::SubscriptionHub;
-use afd_redis::streams::FleetStreams;
 use afd_sse::{channel, tail};
 use futures_util::StreamExt as _;
 
@@ -94,7 +94,7 @@ const SECOND_GAP_AFTER_MS: i64 = 1_000;
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 
@@ -202,9 +202,9 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
         publisher
             .publish(&activity, marker)
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
         match tokio::time::timeout(std::time::Duration::from_millis(100), primer.recv()).await {
-            Ok(Ok(afd_redis::hub::Received::Message(message))) if message.payload == marker => {
+            Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
                 break;
             }
             Ok(Ok(_other)) => {}
@@ -222,7 +222,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
         publisher
             .publish(&activity, &activity_payload(id))
             .await
-            .expect("the publish reaches Redis");
+            .expect("the publish reaches Dragonfly");
     }
 
     let mut received = Vec::with_capacity(ids.len());

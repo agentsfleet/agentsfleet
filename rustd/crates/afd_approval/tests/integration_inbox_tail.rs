@@ -15,11 +15,11 @@ use std::time::Duration;
 
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_core::clock::UnixMillis;
-use afd_redis::hub::Received;
-use afd_redis::{ReadyIndex, Subscription, SubscriptionHub};
+use afd_dragonfly::hub::Received;
+use afd_dragonfly::{ReadyIndex, Subscription, SubscriptionHub};
 use serde_json::{Value, json};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, redis_config, sweeper_exclusive};
+use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -33,7 +33,7 @@ const SWEEPER: &str = "system:approval_gate_sweeper";
 /// How long a published frame is given to reach the subscriber.
 const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register the subscription with Redis.
+/// How long the hub's pump is given to register the subscription with Dragonfly.
 const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
 /// A decision is announced on the fleet's live tail, count included.
@@ -49,9 +49,9 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -148,9 +148,9 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -227,9 +227,9 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -265,9 +265,9 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
-    let hub = SubscriptionHub::start(redis_config())
+    let hub = SubscriptionHub::start(dragonfly_config())
         .await
-        .expect("the lane's Redis accepts a subscriber");
+        .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
@@ -300,7 +300,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 /// A repeated answer to a runless gate still wakes the parked delivery.
 ///
 /// The loser receives `AlreadyResolved`, but from the runner's point of view
-/// the operator pressed the same wake button again. That must refresh Redis too:
+/// the operator pressed the same wake button again. That must refresh Dragonfly too:
 /// the original delivery is still the thing that will re-read the durable row.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -337,7 +337,7 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
 
 /// A lost readiness refresh does not undo the durable answer.
 ///
-/// The wake is best-effort: Redis can be down after Postgres accepts the
+/// The wake is best-effort: Dragonfly can be down after Postgres accepts the
 /// person's decision. The resolve must still answer with the row's outcome so
 /// a retry or sweeper can repair the readiness edge later.
 #[tokio::test(flavor = "multi_thread")]
@@ -345,7 +345,11 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
 async fn a_runless_gate_with_a_dead_ready_index_still_resolves() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
     let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox
@@ -358,27 +362,46 @@ async fn a_runless_gate_with_a_dead_ready_index_still_resolves() {
 
 /// An approval whose continuation the queue refuses is still answered.
 ///
-/// The row moved before the continuation was attempted, so the decision is
-/// the operator's whatever the queue does: the answer is announced (into the
-/// same queue, which drops it), the failure to restart the run is reported,
-/// and the row reads `approved` — never a gate saying yes over a run nobody
-/// was told about.
+/// The row moved before the continuation was attempted, so the decision is the
+/// operator's whatever the queue does: the answer is announced (into the same
+/// queue, which drops it) and the row reads `approved`.
+///
+/// The continuation SUCCEEDS, which is the guarantee the admission ledger was
+/// built for. Its row commits to Postgres before the append is attempted, so a
+/// queue that will not take the entry leaves an admitted row with a NULL
+/// receipt and the replay sweeper owes it one. Reporting a failure here would
+/// now be a lie: the run restarts when the queue comes back. Before the ledger
+/// the entry WAS the acceptance, so a refused append lost the continuation and
+/// an error was the only honest answer.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox
         .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await;
-    assert!(
-        outcome.is_err(),
-        "the run could not be restarted, and the caller is told so"
-    );
+        .await
+        .expect("a queue that refuses the entry does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
+    let continuation = match outcome {
+        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
+    };
+    assert!(
+        continuation.is_some(),
+        "the continuation has a logical id even though no entry carries it yet"
+    );
+    assert!(
+        lane.awaits_replay(&action).await,
+        "the continuation is admitted with no receipt, so the sweeper owes it an entry"
+    );
 }
 
 /// A queue that will not take the frame does not fail the decision.
@@ -392,7 +415,11 @@ async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
 async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(lane.pool.clone(), dead_queue());
+    let inbox = Inbox::new(
+        lane.pool.clone(),
+        dead_queue(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+    );
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = inbox

@@ -31,7 +31,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_fleet_runtime::{Error, parse_skill, parse_trigger};
+use afd_fleet_runtime::{Class, Error, parse_skill, parse_trigger};
 
 use crate::support::{MODEL_VALUE, fixture, raw_fixture};
 
@@ -68,19 +68,14 @@ enum Verdict {
 ///
 /// [`None`] for a class no corpus row expects, so the caller can name the
 /// document rather than fold it into a verdict it did not earn.
-const fn zig_class(failure: &Error) -> Option<Verdict> {
-    match failure {
-        Error::FrontmatterMissing
-        | Error::FrontmatterUnreadable { .. }
-        | Error::DuplicateKey { .. }
-        | Error::NonScalarKey
-        | Error::MissingRequiredField { .. }
-        | Error::InvalidFieldType { .. } => Some(Verdict::MissingRequiredField),
-        Error::RuntimeKeyOutsideBlock { .. } => Some(Verdict::RuntimeKeysOutsideBlock),
-        Error::UnknownRuntimeKey { .. } => Some(Verdict::UnknownRuntimeKey),
-        // A class the Zig also spells separately. A corpus row reaching one is
+fn zig_class(failure: &Error) -> Option<Verdict> {
+    match failure.class() {
+        Class::Document => Some(Verdict::MissingRequiredField),
+        Class::RuntimeKeyOutsideBlock => Some(Verdict::RuntimeKeysOutsideBlock),
+        Class::UnknownRuntimeKey => Some(Verdict::UnknownRuntimeKey),
+        // Classes the Zig also spells separately. A corpus row reaching one is
         // a row whose expectation somebody has to write down.
-        _other => None,
+        Class::InvalidCredentialRef | Class::Semantic => None,
     }
 }
 

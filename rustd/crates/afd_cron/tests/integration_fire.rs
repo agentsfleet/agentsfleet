@@ -49,16 +49,16 @@ fn target(lane: &CronLane) -> FireTarget {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn a_verified_fire_reaches_the_stream_once() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let fired = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(
         !fired.replayed,
@@ -72,20 +72,20 @@ async fn a_verified_fire_reaches_the_stream_once() {
 
 /// The retry case, which is the ordinary one rather than the exceptional one.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let first = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let retry = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis answers the second attempt");
+        .expect("the lane's Dragonfly answers the second attempt");
 
     assert!(!first.replayed);
     assert!(retry.replayed, "a repeated message id is the same fire");
@@ -98,22 +98,22 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
 
 /// Two daemons, one retry, at the same moment.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn two_daemons_receiving_one_retry_together_append_once() {
     let lane = CronLane::open().await;
     let target = target(&lane);
     let schedule = CronLane::token();
 
     // Two independent connections, as two processes would have.
-    let left = Fire::new(CronLane::queue().await);
-    let right = Fire::new(CronLane::queue().await);
+    let left = Fire::new(lane.admissions().await);
+    let right = Fire::new(lane.admissions().await);
 
     let (one, two) = tokio::join!(
         left.deliver(&schedule, &target, MESSAGE_ID),
         right.deliver(&schedule, &target, MESSAGE_ID),
     );
-    let one = one.expect("the lane's Redis answers the first daemon");
-    let two = two.expect("the lane's Redis answers the second daemon");
+    let one = one.expect("the lane's Dragonfly answers the first daemon");
+    let two = two.expect("the lane's Dragonfly answers the second daemon");
 
     assert_eq!(
         one.event_id, two.event_id,
@@ -134,10 +134,10 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
 /// second would be reported as a replay and the fleet would never be woken for
 /// it.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let target = target(&lane);
     let nightly = CronLane::token();
     let hourly = CronLane::token();
@@ -145,11 +145,11 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let first = fire
         .deliver(&nightly, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let second = fire
         .deliver(&hourly, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!first.replayed);
     assert!(
@@ -164,21 +164,21 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
 /// The scheduler repeats its id only for a RETRY. A fresh id means the schedule
 /// came round again, and suppressing that would silently skip a run.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let target = target(&lane);
     let schedule = CronLane::token();
 
     let tonight = fire
         .deliver(&schedule, &target, MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let tomorrow = fire
         .deliver(&schedule, &target, "msg_01J8ZQ4X7K2P")
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!tonight.replayed);
     assert!(
@@ -190,21 +190,21 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
 
 /// Two fleets cannot claim over each other, even on one schedule id.
 #[tokio::test]
-#[ignore = "needs the lane's Redis"]
+#[ignore = "needs the lane's Dragonfly"]
 async fn one_fleets_fire_does_not_claim_anothers() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
-    let fire = Fire::new(CronLane::queue().await);
+    let fire = Fire::new(lane.admissions().await);
     let schedule = CronLane::token();
 
     let mine = fire
         .deliver(&schedule, &target(&lane), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
     let theirs = fire
         .deliver(&schedule, &target(&other), MESSAGE_ID)
         .await
-        .expect("the lane's Redis takes the append");
+        .expect("the lane's Dragonfly takes the append");
 
     assert!(!mine.replayed);
     assert!(

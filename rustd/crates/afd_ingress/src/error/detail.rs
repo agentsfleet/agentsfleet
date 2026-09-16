@@ -8,14 +8,14 @@
 //! different prose would read as two different bugs.
 
 /// `problem_response.zig`'s `internalDbUnavailable` detail.
-pub const DATABASE_UNAVAILABLE: &str = "Database unavailable";
+pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// `problem_response.zig`'s `internalDbError` detail.
-pub const DATABASE_ERROR: &str = "Database error";
+pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// `problem_response.zig`'s `internalOperationError` detail.
 ///
 /// One sentence for the vault, the queue and an unreadable stored document
 /// alike — see [`super::Error::answer`] on why naming which of them failed
 /// would tell a sender about this deployment's state.
-pub const OPERATION_FAILED: &str = "Failed to complete the operation";
+pub use afd_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;

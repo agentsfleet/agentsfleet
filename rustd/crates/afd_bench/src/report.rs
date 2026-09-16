@@ -36,8 +36,10 @@ use crate::profile::Profile;
 
 pub mod compare;
 pub mod latency;
+pub mod provenance;
 
 pub use latency::Latency;
+pub use provenance::Provenance;
 
 /// Directory a lane writes its result into.
 pub const RESULTS_DIRECTORY: &str = "bench/results";
@@ -130,7 +132,7 @@ const LANE_USAGE: &str = "expected one of steer, lease, outbound, cardinality";
 /// What a datastore was asked to do, and how long it spent doing it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCost {
-    /// Commands issued to Redis, or round trips made to Postgres.
+    /// Commands issued to Dragonfly, or round trips made to Postgres.
     pub operations: u64,
     /// Wall time spent waiting on them, where a lane measured it.
     ///
@@ -148,7 +150,7 @@ pub struct DatastoreCost {
 /// every lane renamed one on import.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCosts {
-    /// The Redis half.
+    /// The Dragonfly half.
     pub redis: DatastoreCost,
     /// The Postgres half.
     pub postgres: DatastoreCost,
@@ -193,6 +195,9 @@ pub struct Report {
     pub lane: Lane,
     /// Which profile it ran under.
     pub profile: String,
+    /// What this run was, so a later reader knows what it may be compared
+    /// with. Read before the lane measures anything — see [`provenance`].
+    pub provenance: Provenance,
     /// Whether the run created the population it measured, or observed one.
     pub created: bool,
     /// What the caller asked for.
@@ -213,11 +218,16 @@ pub struct Report {
 
 impl Report {
     /// An empty report for a lane and profile, before anything is measured.
+    ///
+    /// `provenance` is a parameter rather than something read here, because a
+    /// run whose environment is incomplete must be refused before it drives a
+    /// datastore, not after — see [`Provenance::read`].
     #[must_use]
-    pub fn new(lane: Lane, profile: Profile) -> Self {
+    pub fn new(lane: Lane, profile: Profile, provenance: Provenance) -> Self {
         Self {
             lane,
             profile: profile.to_string(),
+            provenance,
             created: false,
             parameters: BTreeMap::new(),
             measurements: BTreeMap::new(),

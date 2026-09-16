@@ -1,6 +1,6 @@
 //! The two stored vocabularies a decision arrives in.
 //!
-//! One is the Redis mirror's — two imperative words a human's answer is written
+//! One is the Dragonfly mirror's — two imperative words a human's answer is written
 //! as. The other is the durable row's `status`, which is finer. They are
 //! separate types because they answer different questions, and they live in one
 //! file because the collapse from one to the other is the interesting part.
@@ -17,10 +17,10 @@ use afd_core::spelling::from_spelling;
 use afd_wire::approval::status;
 use serde::Deserialize;
 
-/// The Redis mirror's word for an approval.
+/// The Dragonfly mirror's word for an approval.
 pub const DECISION_APPROVE: &str = "approve";
 
-/// The Redis mirror's word for a refusal.
+/// The Dragonfly mirror's word for a refusal.
 pub const DECISION_DENY: &str = "deny";
 
 /// A decision, once a human has given one.

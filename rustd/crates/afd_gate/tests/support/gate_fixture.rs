@@ -17,17 +17,17 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Mode;
 use afd_fleet_runtime::provider::StaticRegistry;
 use afd_gate::gate::Check;
-use afd_redis::Redis;
-use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Acquire as _;
 
 pub(crate) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
-const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
-const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
+const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
+const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -50,19 +50,19 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
         .expect("the gate policy fixture resolves")
 }
 
-pub(crate) fn redis_config() -> RedisConfig {
-    let url = std::env::var(REDIS_URL_KNOB)
-        .expect("TEST_REDIS_URL is set by make test-integration-rustd");
-    RedisConfig::from_url(RedisRole::Default, url)
-        .with_ca_cert_file(std::env::var(REDIS_CA_KNOB).ok().map(Into::into))
+pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    let url = std::env::var(DRAGONFLY_URL_KNOB)
+        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
+    DragonflyConfig::from_url(DragonflyRole::Default, url)
+        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }
 
-pub(crate) async fn connect_redis() -> Redis {
-    afd_redis::test_util::connect_live(&redis_config())
+pub(crate) async fn connect_redis() -> Dragonfly {
+    afd_dragonfly::test_util::connect_live(&dragonfly_config())
         .await
-        .expect("the lane's Redis must be reachable")
+        .expect("the lane's Dragonfly must be reachable")
 }
 
 pub(crate) struct Fixture {

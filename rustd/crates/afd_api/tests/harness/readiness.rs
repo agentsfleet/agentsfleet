@@ -3,7 +3,7 @@
 //!
 //! Split from the builder beside it: `mod.rs` assembles a `Fleet` out of real
 //! stores, and this is the readiness half — what `/readyz` is told, and the
-//! Postgres and Redis configurations that point at a port nothing listens on.
+//! Postgres and Dragonfly configurations that point at a port nothing listens on.
 //! Those two are the whole reason a router suite needs no datastore: every
 //! store below is the PRODUCTION one, over handles that refuse at the first
 //! acquire with the error its own crate raises.
@@ -11,7 +11,7 @@
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_core::env::MapEnv;
 use afd_db::{DbRole, PoolConfig};
-use afd_redis::{RedisConfig, RedisRole};
+use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::Fleet;
 
@@ -23,7 +23,7 @@ use super::Fleet;
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
 
-/// A Redis nobody is listening on, for the same reason and on the same port.
+/// A Dragonfly nobody is listening on, for the same reason and on the same port.
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// A GitHub nobody is listening on, for the same reason and on the same port.
@@ -81,7 +81,7 @@ pub(super) fn unreachable_pool() -> PoolConfig {
 }
 
 /// The same, for the queue the login surface and the fleet install reach.
-pub(super) fn unreachable_queue() -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, NOWHERE_QUEUE.to_owned())
+pub(super) fn unreachable_queue() -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
         .with_request_timeout(std::time::Duration::from_millis(250))
 }

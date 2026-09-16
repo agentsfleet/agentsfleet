@@ -1,6 +1,6 @@
 //! One workspace holding one fleet and one schedule, over both live stores.
 //!
-//! `Fleet::live` alone would not do: its schedules plane appends to a Redis
+//! `Fleet::live` alone would not do: its schedules plane appends to a Dragonfly
 //! nothing resolves, and the accepted fire is the one path that writes. This
 //! fixture arranges the queue too — see [`harness::Fleet::with_live_fire`].
 
@@ -10,8 +10,8 @@ use afd_cron::DesiredStatus;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Dragonfly;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_redis::Redis;
 
 use crate::harness;
 
@@ -35,7 +35,7 @@ const SOURCE: &str = "qstash";
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Redis,
+    queue: Dragonfly,
     subject: String,
     tenant: String,
     workspace: Uuid7,

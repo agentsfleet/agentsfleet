@@ -23,8 +23,8 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is one Lua script on Redis
-//! ([`afd_redis::streams::FleetStreams::append_once`]), and a claim
+//! It does not prove the at-most-once claim. That is one Lua script on Dragonfly
+//! ([`afd_dragonfly::streams::FleetStreams::append_once`]), and a claim
 //! re-implemented here would agree with the suite whatever the script did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.
@@ -35,10 +35,10 @@ use std::sync::{Arc, Mutex};
 use afd_api::services::WebhookIngress;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::{Appended, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
-use afd_redis::streams::EventId;
+use afd_dragonfly::streams::EventId;
+use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
-/// The shape Redis renders an entry id in, which a stub id has to share.
+/// The shape Dragonfly renders an entry id in, which a stub id has to share.
 ///
 /// A route reads the id back out and puts it in a response body, so an id of
 /// another shape would let a renderer that mangled it still pass.
@@ -263,7 +263,7 @@ impl WebhookIngress for HarnessIngress {
         surface: Surface,
         binding: &Binding,
         delivery: &Delivery<'_>,
-    ) -> IngressResult<Appended> {
+    ) -> IngressResult<Admitted> {
         match self {
             Self::Unreachable(ingress) => ingress.deliver(surface, binding, delivery).await,
             Self::Scripted(scripted) => Ok(scripted.append(surface, binding, delivery)),
@@ -293,7 +293,7 @@ impl Scripted {
     /// inside `deliver` and never crosses a seam. That duplication is the
     /// reason this cannot stand in for the script: the two could drift, and
     /// only the integration lane would notice.
-    fn append(&self, surface: Surface, binding: &Binding, delivery: &Delivery<'_>) -> Appended {
+    fn append(&self, surface: Surface, binding: &Binding, delivery: &Delivery<'_>) -> Admitted {
         let fleet = binding.fleet().as_str().to_owned();
         let key = format!("{fleet}:{}", delivery.event_id);
 
@@ -318,9 +318,8 @@ impl Scripted {
         let replayed = claimed.contains_key(&key);
         let id = claimed.entry(key).or_insert(next).clone();
 
-        Appended {
-            id: EventId::of(&id),
-            replayed,
-        }
+        // The ledger answers a LOGICAL id, so the stub does too: a receipt is
+        // what the append returns and is not what a route renders back.
+        Admitted { id, replayed }
     }
 }

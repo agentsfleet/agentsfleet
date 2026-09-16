@@ -47,7 +47,7 @@ pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
 /// Readiness backlog (not summable across replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
-/// Redis index writes failing.
+/// Dragonfly index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
 
@@ -102,6 +102,25 @@ pub const REPAIR_DISPATCH_DUE_BATCH: Declared<GaugeKind> =
 /// Age of the oldest due verifier intent.
 pub const REPAIR_DISPATCH_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
     Declared::new("agentsfleet_repair_dispatch_oldest_age_seconds");
+
+/// Admitted, replayed, deferred and refused acceptances.
+///
+/// Labels: `outcome`.
+pub const ADMISSIONS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_admissions_total");
+
+/// Re-appended and still-unreceipted admissions the replay sweeper handled.
+///
+/// Labels: `outcome`.
+pub const ADMISSION_REPLAYS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_admission_replays_total");
+
+/// Admitted rows the queue has not confirmed, as the last replay pass counted
+/// them.
+pub const ADMISSION_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_admission_backlog");
+
+/// How long the oldest unconfirmed admission has waited.
+pub const ADMISSION_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
+    Declared::new("agentsfleet_admission_backlog_oldest_age_seconds");
 
 /// Failure rate per reason.
 ///

@@ -21,7 +21,7 @@
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
 #![cfg(feature = "test-util")]
-#![expect(
+#![allow(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
@@ -32,8 +32,8 @@ use serde_json::json;
 use crate::e2e::{MODEL, POSTURE, scenario};
 use crate::reads::{assert_shape, lease_column};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, claim, json, post,
-    report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
+    poll_for_seeded_lease, post, report_body,
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
@@ -59,6 +59,7 @@ const LEASE_SHAPE: &[&str] = &[
     "status",
     "created_at",
     "updated_at",
+    "receipt",
 ];
 
 /// The columns the narrative log's rows carry.
@@ -109,7 +110,7 @@ const MEMORY_SHAPE: &[&str] = &[
 /// the narrative row alongside it, the memory entry by the capture, and the
 /// ledger row by the report.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_seeded_row_shapes() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -122,12 +123,7 @@ async fn test_seeded_row_shapes() {
         "the runner proves its capabilities"
     );
 
-    let body = json(post(&http, &run, "/v1/runners/me/leases", &json!({})).await).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable");
-    let (lease_id, fence) = claim(lease);
+    let (lease_id, fence) = poll_for_seeded_lease(&http, &run).await;
 
     let captured = post(
         &http,

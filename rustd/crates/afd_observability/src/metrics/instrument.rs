@@ -22,7 +22,7 @@
 //! # Why the callbacks read a closure rather than the world
 //!
 //! An observable callback runs under the SDK's pipeline lock, with no
-//! `catch_unwind` and no timeout. A callback that touches Redis or takes a
+//! `catch_unwind` and no timeout. A callback that touches Dragonfly or takes a
 //! lock some other thread holds does not slow one metric down — it stalls the
 //! whole pipeline, and the first symptom is every family going silent at once.
 //! So a gauge is registered with a closure that only LOADS, and what it loads
@@ -34,7 +34,7 @@ use std::sync::{Mutex, PoisonError};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter, ObservableGauge};
 
-use crate::error::{Error, Result};
+use crate::error::{Result, number_mismatch};
 use crate::metrics::family::{
     Counter as CounterFamily, Gauge as GaugeFamily, Histogram as HistogramFamily,
 };
@@ -268,9 +268,9 @@ fn check_number(declared: &Family, claimed: Number) -> Result<()> {
     if declared.number == claimed {
         return Ok(());
     }
-    Err(Error::NumberMismatch {
-        family: declared.name.clone(),
-        declared: declared.number.spelling(),
-        claimed: claimed.spelling(),
-    })
+    Err(number_mismatch(
+        &declared.name,
+        declared.number.spelling(),
+        claimed.spelling(),
+    ))
 }

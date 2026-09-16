@@ -1,16 +1,17 @@
 //! What steer ingress accepts under concurrency, and where a steer costs.
 //!
-//! # A steer is two Redis commands and no Postgres
+//! # A steer is a Postgres row, then two Dragonfly commands
 //!
-//! `afd_events::Steer::append` issues an `XADD` onto the fleet's stream and an
-//! `HSET` marking the fleet ready. That is the whole path — its own module note
-//! says "Nothing is written to Postgres here", and `Steer::new` takes only a
-//! `Redis` handle. A steer becomes a row when a runner LEASES it, and that cost
-//! belongs to the lease lane, which already counts it.
+//! `afd_events::Steer::append` admits the message — an insert-returning and
+//! an update on `core.fleet_admissions` — and then issues an `XADD` onto the
+//! fleet's stream and an `HSET` marking the fleet ready. The narrative row a
+//! reader pages over still appears when a runner LEASES it, and that cost
+//! still belongs to the lease lane.
 //!
-//! So the Postgres number this lane reports is expected to be near zero, and
-//! it is read from `pg_stat_database` rather than assumed: a zero nobody
-//! measured is indistinguishable from a measurement nobody took.
+//! So the Postgres number this lane reports is the ACCEPTANCE cost, which is
+//! the thing M192 traded queue-only acceptance for; it is read from
+//! `pg_stat_database` rather than assumed, because a number nobody measured
+//! is indistinguishable from a measurement nobody took.
 //!
 //! # The readiness index is the interesting part
 //!
@@ -31,12 +32,15 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
+use afd_dragonfly::{Dragonfly, ReadyIndex};
 use afd_events::Steer;
-use afd_redis::{ReadyIndex, Redis};
 use tokio_util::sync::CancellationToken;
 
 use crate::abort::Abort;
-use crate::datastores::{Datastores, postgres_transactions, redis_calls};
+use afd_admission::Admissions;
+use afd_crypto::entropy::Entropy;
+
+use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{
@@ -44,7 +48,9 @@ use crate::lane::lease::seed::{
 };
 use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
-use crate::report::{DatastoreCost, DatastoreCosts, Fixture, Lane, Report, count, ratio};
+use crate::report::{
+    DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, ratio,
+};
 
 /// Measurement key: how many steers the window appended in total.
 const ACCEPTED: &str = "accepted";
@@ -55,7 +61,7 @@ const FAILURES: &str = "failures";
 /// Measurement key: the fraction of everything tried that the path refused.
 const ERROR_RATE: &str = "error_rate";
 
-/// Measurement key: Redis commands each accepted steer cost.
+/// Measurement key: Dragonfly commands each accepted steer cost.
 const REDIS_CALLS_PER_STEER: &str = "redis_calls_per_steer";
 
 /// Measurement key: Postgres transactions each accepted steer cost.
@@ -104,6 +110,7 @@ impl Parameters {
 /// A cap refusal, a datastore that would not answer, or a lost task.
 pub async fn run(
     profile: Profile,
+    provenance: Provenance,
     parameters: Parameters,
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -131,7 +138,7 @@ pub async fn run(
 
     let measured = submit(stores, &fleets, parameters, &abort).await?;
 
-    let mut report = Report::new(Lane::Steer, profile);
+    let mut report = Report::new(Lane::Steer, profile, provenance);
     report.created = true;
     report.parameter(Parameter::Fleets.name(), parameters.fleets);
     report.parameter(Parameter::Concurrency.name(), parameters.concurrency);
@@ -145,7 +152,7 @@ pub async fn run(
 struct Submitted {
     outcomes: Outcomes,
     length: Duration,
-    redis_calls: u64,
+    dragonfly_calls: u64,
     transactions: u64,
     depth: Vec<f64>,
 }
@@ -167,14 +174,18 @@ async fn submit(
     let slices = partition(fleets, parameters.concurrency);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(sample_depth(stores.queue.clone(), stop.clone()));
-    let redis_before = redis_calls(&stores.queue).await?;
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
     let started = Instant::now();
     let deadline = started + parameters.window;
 
     let mut tasks = Vec::with_capacity(slices.len());
     for mine in slices {
-        let steer = Steer::new(stores.queue.clone());
+        let steer = Steer::new(Admissions::new(
+            stores.database.clone(),
+            stores.queue.clone(),
+            Entropy::new(),
+        ));
         let abort = Arc::clone(abort);
         tasks.push(tokio::spawn(async move {
             append_until(&steer, &mine, deadline, &abort).await
@@ -189,9 +200,9 @@ async fn submit(
     }
     // The window is the submitters', measured the instant they are all back.
     let length = started.elapsed();
-    let redis_calls = redis_calls(&stores.queue)
+    let dragonfly_calls = dragonfly_calls(&stores.queue)
         .await?
-        .saturating_sub(redis_before);
+        .saturating_sub(dragonfly_before);
     let transactions = postgres_transactions(&stores.database)
         .await?
         .saturating_sub(transactions_before);
@@ -203,7 +214,7 @@ async fn submit(
     Ok(Submitted {
         outcomes,
         length,
-        redis_calls,
+        dragonfly_calls,
         transactions,
         depth,
     })
@@ -241,7 +252,7 @@ async fn append_until(
         }
         let started = Instant::now();
         match steer
-            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON)
+            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON, None)
             .await
         {
             Ok(_id) => {
@@ -264,7 +275,7 @@ async fn append_until(
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(queue: Redis, stop: CancellationToken) -> Vec<f64> {
+async fn sample_depth(queue: Dragonfly, stop: CancellationToken) -> Vec<f64> {
     let index = ReadyIndex::new(queue);
     let mut series = Vec::new();
     while !stop.is_cancelled() {
@@ -288,7 +299,7 @@ impl Submitted {
         report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
         report.measurement(
             REDIS_CALLS_PER_STEER,
-            ratio(self.redis_calls, self.outcomes.successes),
+            ratio(self.dragonfly_calls, self.outcomes.successes),
         );
         report.measurement(
             POSTGRES_TRANSACTIONS_PER_STEER,
@@ -299,7 +310,7 @@ impl Submitted {
             .insert(READY_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
             redis: DatastoreCost {
-                operations: self.redis_calls,
+                operations: self.dragonfly_calls,
                 time_ms: None,
             },
             postgres: DatastoreCost {

@@ -4,7 +4,7 @@
 //!
 //! When [`Fleets::install`] answers `Ok`, the `core.fleets` row exists AND the
 //! per-fleet event stream and its consumer group exist. An event published a
-//! millisecond later finds the group the lease `XREADGROUP` needs. Redis gets
+//! millisecond later finds the group the lease `XREADGROUP` needs. Dragonfly gets
 //! four attempts across [`stream_backoff`], jittered so concurrent installs do
 //! not retry in step; if it never answers, the Postgres row is
 //! deleted and the caller is told nothing was created — a promise they can act
@@ -48,13 +48,13 @@ use crate::{FleetStatus, Fleets, sql};
 /// What the stream setup waits between attempts, and how many it gets.
 ///
 /// `backon`'s builder rather than a fixed table: the Zig's `[100, 500, 1500]`
-/// means every install racing the same struggling Redis retries in the same
+/// means every install racing the same struggling Dragonfly retries in the same
 /// millisecond — the reconnect storm that keeps it down — and `with_jitter`
 /// spreads them.
 ///
 /// Doubling from 200ms, capped at 1500ms: three sleeps come to 1.4s before
 /// jitter, inside the 2.1s wall the Zig documents. The first retry lands
-/// sooner, so a Redis that blips for 150ms is caught on the second try instead
+/// sooner, so a Dragonfly that blips for 150ms is caught on the second try instead
 /// of after 600ms of waiting.
 ///
 /// `max_times` is RETRIES, one fewer than the attempts, and it is derived from
@@ -215,7 +215,7 @@ impl Fleets {
         let name = self
             .insert_with_retry(&mut connection, workspace, &id, &authored, request, now)
             .await?;
-        // Released before Redis is touched. The stream setup can spend two
+        // Released before Dragonfly is touched. The stream setup can spend two
         // seconds, and holding a pool connection across it is how a slow queue
         // becomes a Postgres outage.
         drop(connection);
@@ -271,15 +271,15 @@ impl Fleets {
     /// promised four tries.
     ///
     /// `when` is what makes the retry mean something. Only a TRANSPORT failure
-    /// is retried; a Redis that answered and refused the command will refuse it
+    /// is retried; a Dragonfly that answered and refused the command will refuse it
     /// three more times, and a misconfigured deployment will still be
     /// misconfigured in 1.75 seconds. Spending the budget on either makes a
     /// person wait out a foregone conclusion.
     async fn ensure_stream(&self, fleet: &str) -> Result<()> {
         (|| async { self.streams.ensure_group(fleet).await })
             .retry(stream_backoff())
-            .when(afd_redis::Error::is_unavailable)
-            .notify(|failure: &afd_redis::Error, delay: Duration| {
+            .when(afd_dragonfly::Error::is_unavailable)
+            .notify(|failure: &afd_dragonfly::Error, delay: Duration| {
                 let sleep_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
                 let reason = failure.to_string();
                 tracing::warn!(

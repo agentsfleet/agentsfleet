@@ -16,12 +16,12 @@
 
 use std::time::Duration;
 
-use afd_redis::Subscription;
-use afd_redis::hub::Received;
-use serde_json::{Value, json};
+use afd_dragonfly::Subscription;
+use afd_dragonfly::hub::Received;
+use serde_json::Value;
 
 use crate::e2e::Scenario;
-use crate::wire::{capable_beat, claim, json, post};
+use crate::wire::{capable_beat, poll_for_seeded_lease, post};
 
 /// How long a published frame is given to reach the subscriber.
 ///
@@ -31,7 +31,7 @@ use crate::wire::{capable_beat, claim, json, post};
 /// here would make the suite fail on a loaded machine and read as a lost frame.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register a subscription with Redis
+/// How long the hub's pump is given to register a subscription with Dragonfly
 /// before the suite publishes; see [`settle`].
 pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
@@ -57,15 +57,10 @@ pub(crate) async fn lease(http: &reqwest::Client, run: &Scenario) -> (String, u6
         "the runner proves its capabilities"
     );
 
-    let body = json(post(http, run, "/v1/runners/me/leases", &json!({})).await).await;
-    let lease = body
-        .get("lease")
-        .filter(|value| !value.is_null())
-        .expect("the seeded fleet is leasable");
-    claim(lease)
+    poll_for_seeded_lease(http, run).await
 }
 
-/// Gives the hub's pump time to register the subscription with Redis.
+/// Gives the hub's pump time to register the subscription with Dragonfly.
 ///
 /// `subscribe` queues a command for the pump rather than round-tripping, so a
 /// publish issued in the same instant can beat the `SUBSCRIBE` to the server
