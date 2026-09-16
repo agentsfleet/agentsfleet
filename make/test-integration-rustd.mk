@@ -1,5 +1,5 @@
 # =============================================================================
-# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + Redis
+# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + Dragonfly
 # =============================================================================
 # M175 §6 deleted `make/test-integration.mk` with the rest of the Zig gating.
 # The datastores did not go away with it: `make/test-infra.mk` survived, because
@@ -133,7 +133,7 @@ endef
 # renamed or deleted module here fails the lane rather than silently passing.
 EXCLUSIVE_FILTER := integration_hub_exclusive
 
-test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
+test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Dragonfly
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))

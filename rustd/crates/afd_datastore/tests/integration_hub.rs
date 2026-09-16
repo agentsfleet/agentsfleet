@@ -35,7 +35,7 @@ const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 /// process". The number that proves it is the hub's own connection count: a
 /// hub that opened one connection per subscriber would report four here.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_hub_refcount_single_connection() {
     let _lane = HUB_LANE.lock().await;
     let harness = RedisHarness::connect().await;
@@ -191,7 +191,7 @@ where
 /// browser tab into the process's memory ceiling. Bounded means a slow reader
 /// eventually misses messages, and the only honest thing to do is say so.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
     let _lane = HUB_LANE.lock().await;
     let harness = RedisHarness::connect().await;

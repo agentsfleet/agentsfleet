@@ -50,7 +50,7 @@ fn request() -> Install<'static> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn an_install_leaves_the_stream_and_its_group_before_it_answers() {
     // The guarantee itself. An event published a millisecond after the 201 has
     // to find the group the lease XREADGROUP reads through, so the group
@@ -78,7 +78,7 @@ async fn an_install_leaves_the_stream_and_its_group_before_it_answers() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_queue_that_never_answers_rolls_the_row_back_and_leaves_no_orphan() {
     // Workflow ordinal 2 (the stream setup), transport class, retries exhausted.
     //
@@ -109,7 +109,7 @@ async fn a_queue_that_never_answers_rolls_the_row_back_and_leaves_no_orphan() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_refused_command_fails_fast_rather_than_spending_the_retry_budget() {
     // Workflow ordinal 2 again, COMMAND class this time, and the point is the
     // classification: Redis is up and answering. `XGROUP CREATE … MKSTREAM`
@@ -150,7 +150,7 @@ async fn a_refused_command_fails_fast_rather_than_spending_the_retry_budget() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_rolled_back_install_can_be_retried_into_a_working_fleet() {
     // The retry-heals column of the matrix, and the reason the rollback is worth
     // its complexity: "nothing was created" is only useful if acting on it

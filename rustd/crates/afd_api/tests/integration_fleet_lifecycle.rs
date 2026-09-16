@@ -24,7 +24,7 @@ mod message;
 const SUBJECT: &str = "user_live_fleet_lifecycle";
 const EVENT: &str = "1760000000000-0";
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn fleet_and_event_http_lifecycles_use_the_live_stores() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

@@ -90,7 +90,7 @@ async fn connected() -> (Db, Redis) {
 
 /// The dimension: a dependency goes away, readiness follows, liveness does not.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_readyz_dependency_probe() {
     let (database, queue) = connected().await;
 
@@ -132,7 +132,7 @@ async fn test_readyz_dependency_probe() {
 /// and it restarts the instance over someone else's outage. The bound is the
 /// difference between reporting a dependency outage and becoming one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_readyz_answers_within_its_deadline() {
     let (database, queue) = connected().await;
     database.close().await;

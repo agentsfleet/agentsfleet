@@ -53,7 +53,7 @@ fn request() -> Install<'static> {
 
 /// A workspace holding none of the declared credentials installs nothing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_workspace_short_the_declared_credential_gets_no_fleet() {
     let lane = Lane::create().await;
     lane.seed_library_entry(LIBRARY_ID_DEMANDING, SKILL_MD, Some(TRIGGER_MD))
@@ -89,7 +89,7 @@ async fn a_workspace_short_the_declared_credential_gets_no_fleet() {
 
 /// A credential the bundle did not ask for does not satisfy one it did.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unrelated_credential_does_not_satisfy_the_declared_one() {
     let lane = Lane::create().await;
     lane.seed_library_entry(LIBRARY_ID_DEMANDING, SKILL_MD, Some(TRIGGER_MD))
@@ -116,7 +116,7 @@ async fn an_unrelated_credential_does_not_satisfy_the_declared_one() {
 /// The pre-flight has to be a gate rather than a wall: a test that only ever
 /// saw the refusal would pass against a check that refused everything.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn the_same_install_succeeds_once_the_credential_is_stored() {
     let lane = Lane::create().await;
     lane.seed_library_entry(LIBRARY_ID_DEMANDING, SKILL_MD, Some(TRIGGER_MD))
@@ -143,7 +143,7 @@ async fn the_same_install_succeeds_once_the_credential_is_stored() {
 /// check would land exactly the fleet the install refuses — by the other door,
 /// and on a fleet the operator can already see.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_edit_naming_a_credential_the_workspace_lacks_is_refused_too() {
     let lane = Lane::create().await;
     lane.seed_library_entry(LIBRARY_ID_DEMANDING, SKILL_MD, Some(TRIGGER_MD))

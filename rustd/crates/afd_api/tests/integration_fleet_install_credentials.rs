@@ -44,7 +44,7 @@ const SKILL_MD: &str =
 
 /// The refusal names the credentials to add, and says so at 424.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_install_short_a_credential_answers_424_naming_it() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

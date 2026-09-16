@@ -100,7 +100,7 @@ async fn get_status(address: std::net::SocketAddr, path: &str) -> u16 {
 /// `agentsfleetd serve`. Same claim, driven in-process so the port is
 /// ephemeral and the teardown is asserted rather than left to a signal.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_boot_to_ready_on_compose() {
     install_subscriber();
 
@@ -214,7 +214,7 @@ async fn test_boot_to_ready_on_compose() {
 /// Cheap, and it catches the failure that a single-boot test cannot see: a
 /// connection, advisory lock or consumer group the first boot did not release.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_a_second_boot_finds_nothing_left_behind() {
     install_subscriber();
 

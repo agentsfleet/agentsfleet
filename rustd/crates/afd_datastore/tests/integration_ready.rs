@@ -24,7 +24,7 @@ use crate::support::RedisHarness;
 /// ingress appends and re-marks. An unconditional delete erases a mark for
 /// genuinely undelivered work, and nothing rediscovers it until a sweep.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_ready_index_clear_respects_the_token() {
     let harness = RedisHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
@@ -82,7 +82,7 @@ async fn test_ready_index_clear_respects_the_token() {
 /// a pairing bug here — a field read as a token, or a truncated last pair —
 /// sends every replica at the wrong fleet.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_ready_index_read_surface() {
     let harness = RedisHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
@@ -144,7 +144,7 @@ async fn test_ready_index_read_surface() {
 /// The connection answers for itself, and a certificate path that is not there
 /// is a config failure rather than an outage.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_client_reports_its_own_configuration() {
     let harness = RedisHarness::connect().await;
     assert_eq!(harness.redis.role(), afd_datastore::RedisRole::Default);
@@ -188,7 +188,7 @@ async fn test_client_reports_its_own_configuration() {
 /// which is why [`crate::streams`] reads never pass `BLOCK` and pub/sub gets a
 /// connection of its own.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_command_past_its_deadline_is_a_timeout() {
     let harness = RedisHarness::connect().await;
     let impatient_config = RedisHarness::config().with_request_timeout(Duration::from_millis(50));
@@ -240,7 +240,7 @@ async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
 /// it. The first two are misconfiguration an operator fixes in seconds once
 /// the message says which; the third is an outage.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_connection_failures_name_their_cause() {
     use afd_datastore::config::{RedisConfig, RedisRole};
 

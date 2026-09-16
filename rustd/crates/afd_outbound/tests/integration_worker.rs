@@ -223,7 +223,7 @@ async fn enqueue(harness: &OutboundHarness, answer: &str) {
 /// assertion would time out — which is the failure this arrangement catches and
 /// two separate tests would not.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_outbound_delivery_retry() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -315,7 +315,7 @@ async fn test_outbound_delivery_retry() {
 /// `>`, which is the path that already works — the whole point is the entry
 /// nothing re-offers, that only a pending read reaches.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_outbound_shutdown_no_loss() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -404,7 +404,7 @@ async fn test_outbound_shutdown_no_loss() {
 /// cancelled token would leave a DELIVERED answer pending, and the next process
 /// would post it to the destination's thread a second time.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -449,7 +449,7 @@ async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
 /// `NOGROUP` per read for the life of the deployment with every answer queuing
 /// up behind it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_the_worker_creates_the_group_it_reads_under() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset_without_group().await;
@@ -505,7 +505,7 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
 /// is what assigns the entry to this consumer, and assignment is what makes it
 /// pending; only then is there something for the acknowledgement to drain.
 #[tokio::test]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
@@ -560,7 +560,7 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 /// this one's. The lift is the step that crosses the boundary, and it is the
 /// same `From` the worker's `?` uses on the same value.
 #[tokio::test]
-#[ignore = "needs live Redis: make test-integration-rustd"]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;

@@ -204,7 +204,7 @@ fn stop_with(signal: &str, mut child: Child) -> i32 {
 /// `cli::run`'s `Serve` arm from boot through `Daemon::run` to the status,
 /// which no spawned process can show as a value.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_serve_stops_clean_and_reports_success() {
     install_subscriber();
 
@@ -229,7 +229,7 @@ fn test_serve_stops_clean_and_reports_success() {
 
 /// `migrate` applies what is missing and reports success.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_migrate_applies_and_reports_success() {
     install_subscriber();
 
@@ -260,7 +260,7 @@ fn test_migrate_applies_and_reports_success() {
 /// that the flag reaches the listener — the whole point of retiring the
 /// hand-rolled parser that dropped it.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_sigterm_stops_a_serving_daemon() {
     let port = a_free_port();
     let mut child = spawn(&["serve", "--port", &port.to_string()], &lane_knobs());
@@ -279,7 +279,7 @@ fn test_sigterm_stops_a_serving_daemon() {
 /// from different places, and a daemon that honours one and not the other
 /// hangs for whichever half of its operators uses the other.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_sigint_stops_a_serving_daemon() {
     let port = a_free_port();
     let mut child = spawn(&["serve", "--port", &port.to_string()], &lane_knobs());
@@ -292,7 +292,7 @@ fn test_sigint_stops_a_serving_daemon() {
 ///
 /// The fallback `clap` documents in `--help`, asserted rather than assumed.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_the_port_environment_variable_is_the_fallback() {
     let port = a_free_port();
     let mut knobs = lane_knobs();
@@ -310,7 +310,7 @@ fn test_the_port_environment_variable_is_the_fallback() {
 /// flag's port answers would pass against a daemon that bound BOTH, so the
 /// environment's port is checked to be dead.
 #[test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 fn test_the_port_flag_beats_the_environment() {
     let flagged = a_free_port();
     let ignored = a_free_port();

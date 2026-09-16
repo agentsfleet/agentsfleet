@@ -62,7 +62,7 @@ async fn seed_gate(lane: &Lane, fleet: &Uuid7, status: &str) -> String {
 /// counting by fleet alone would show the answered one, counting by status
 /// alone would show the neighbour's.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Redis"]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_detail_counts_the_fleets_pending_gates_and_only_those() {
     let lane = Lane::create().await;
     let fleet = installed(&lane).await;

@@ -49,7 +49,7 @@ const ONE_CONNECTION: &str = "1";
 const SHORT_ACQUIRE_MS: &str = "1500";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -109,7 +109,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
 /// out (`fleet_ids` carries the fleet added since the opening) and the map is
 /// empty, so a client leaves what it has standing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -180,7 +180,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 /// the second is a `hello` carrying where every fleet stands now — the
 /// dropped frames are exactly the ones that moved the counters.
 #[tokio::test]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
