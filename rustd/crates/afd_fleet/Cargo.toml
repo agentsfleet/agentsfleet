@@ -27,6 +27,10 @@ test-util = [
   # from that crate's own sample rather than named here, because the kind is
   # private to it.
   "afd_billing/test-util",
+  # The admission refusal the lease lifts when it asks the ledger for the
+  # cursor a lost consumer group is restored at. Taken from that crate's own
+  # sample for the reason the billing line gives.
+  "afd_admission/test-util",
 ]
 
 # Each dependency is added by the module that uses it, for the reason

@@ -23,9 +23,9 @@ use std::error::Error as _;
 use afd_runner::error::one_of_each_kind;
 
 /// How many kinds the sample declares.
-const SAMPLES: usize = 10;
+const SAMPLES: usize = 11;
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 2;
+const WITH_SOURCE: usize = 3;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 8;
 
@@ -183,8 +183,8 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .collect();
     assert_eq!(
         is_datastore_unavailable.len(),
-        1,
-        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 1 kinds"
+        2,
+        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 2 kinds"
     );
 
     let is_rejected: Vec<&str> = one_of_each_kind()
