@@ -50,8 +50,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `rustd/crates/afd_observability/src/producers/fleet.rs` — the fleet producer: the `Handles` struct, the observable-gauge registration in `claim`, and the `*_observed` publish functions the new cells mirror. `producers/fleet/admission.rs` is the labelled-counter shape.
 3. `rustd/crates/afd_runner/src/sweep/mod.rs` and `sweep/retention.rs` — the `Sweep` trait and a sweeper that owns its interval and its statements; `rustd/crates/agentsfleetd/src/sweepers.rs` is the only place a sweeper is spawned, and `tests/integration_serve.rs` asserts that inventory.
 4. `rustd/crates/afd_fleet/src/lease/assign.rs` — `try_candidate` is the single grant point: a reclaim of a lapsed holder returns early, a fresh read follows. Both are runs started; they carry different labels.
-5. `rustd/crates/afd_observability/src/metrics/label/fleet.rs` and `label/tests.rs` — the `closed_set!` macro and `label_products`, which the census ceiling test reads. Every labelled family added here gets a row there.
-6. `docs/metrics.census.tsv` — the single source of truth for the export; the registry test grades it against the declared families in both directions, so a family cannot exist without a row or a row without a family.
+5. `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `label/tests.rs` and `docs/metrics.census.tsv` — the `closed_set!` macro, the `label_products` table the ceiling test reads, and the census the registry test grades against the declared families in both directions.
 
 ## Files Changed (blast radius)
 
@@ -61,18 +60,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_observability/src/metrics/label/fleet.rs` | EDIT | two closed sets: the five lifecycle statuses, and the two run-start kinds. |
 | `rustd/crates/afd_observability/src/metrics/label/tests.rs` | EDIT | `label_products` gains both families so the ceiling test covers them. |
 | `rustd/crates/afd_observability/src/semconv.rs` | EDIT | the `status` and `kind` label keys, named once. |
-| `rustd/crates/afd_observability/src/producers/fleet.rs` | EDIT | five census cells, the observable gauge over them, the runs-started counter handle, and the two publish functions. |
+| `rustd/crates/afd_observability/src/producers/fleet.rs` | EDIT | the census gauge registration, the runs-started counter handle and its recording function. |
+| `rustd/crates/afd_observability/src/producers/fleet/census.rs` | CREATE | five snapshot cells, their publish and withdraw, and the labelled readings the gauge loads; unit rows beside it in `census/tests.rs`. |
+| `rustd/crates/afd_observability/src/test_util.rs` | CREATE | behind `test-util`, exposed from `lib.rs`: a capturing metric reader that installs the producers and reads a counter series back, generalising the bench crate's private one. |
 | `rustd/crates/afd_observability/src/metrics/produced.rs` | EDIT | the trigger family's `UNPRODUCED` entry leaves with the family. |
 | `rustd/crates/afd_fleet_lifecycle/src/lib.rs` | EDIT | a test asserting `FleetStatus` and the label set agree member for member. |
-| `rustd/crates/afd_fleet/src/lease/assign.rs` | EDIT | records the grant, labelled fresh or reclaimed. |
-| `rustd/crates/afd_runner/src/sweep/census.rs` | CREATE | the census sweeper: one grouped count, five cells published, all five withdrawn on a failed read. |
-| `rustd/crates/afd_runner/src/sweep/mod.rs` | EDIT | the module line. |
+| `rustd/crates/afd_fleet/src/lease/assign.rs` | EDIT | records the grant on the one `Some` exit, through a total kind-to-label mapping; the mapping's unit row lands in `assign/tests.rs`. |
+| `rustd/crates/afd_fleet/Cargo.toml` | EDIT | the `test-util` feature reaches the observability seam. |
+| `rustd/crates/afd_fleet/tests/integration_lease_started.rs` | CREATE | the fresh and reclaim grants move their series in the live lane; declared in `fleet_suite.rs`. |
+| `rustd/crates/afd_runner/src/sweep/census.rs` | CREATE | the census sweeper, declared in `sweep/mod.rs`: one grouped count, five cells published, all five withdrawn on a failed read. |
 | `rustd/crates/afd_runner/src/sql/sweep.rs` | EDIT | the schema-qualified grouped count, beside retention's statements. |
-| `rustd/crates/afd_runner/src/sweep/tests.rs` | EDIT | the sweeper's unit rows. |
+| `rustd/crates/afd_runner/src/sweep/census/tests.rs` | CREATE | the tally and the withdrawal, without a table. |
+| `rustd/crates/afd_runner/tests/integration_census.rs` | CREATE | one pass over seeded rows in the live lane; declared in `runner_suite.rs`. |
 | `rustd/crates/agentsfleetd/src/sweepers.rs` | EDIT | spawns the census sweeper under the supervisor, with its named constant. |
 | `rustd/crates/agentsfleetd/tests/integration_serve.rs` | EDIT | the supervisor inventory assertion gains the new name. |
 | `docs/metrics.census.tsv` | EDIT | two rows added, one removed. |
-| `docs/architecture/observability.md` | EDIT | the sentence naming the trigger family as declared-but-unemitted goes; the fleet census sweeper is named where the sweepers are. |
+| `docs/architecture/concurrency.md` | EDIT | the supervised-task table gains the census sweeper's row. |
 | `playbooks/operations/observability/providers/grafana/assets/dashboard.json` | EDIT | a fleet row: fleets by status, runs started by kind, pickup ratio against appended admissions. |
 | `playbooks/operations/observability/observability_test.sh` | EDIT | the new panels get self-test rows. |
 | `docs/v2/active/M197_002_P1_DOCS_OBS_FLEET_CENSUS_AND_RUN_START_FAMILIES.md` | CREATE | this spec. |
@@ -95,17 +98,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | LENGTH GATE | yes — `producers/fleet.rs` is the widest file touched | the census cells and their gauge go in a `producers/fleet/census.rs` submodule if the parent approaches the cap, mirroring `admission.rs`. |
 | MILESTONE-ID GATE | yes — commits carry `m197`; no production identifier does | `m197` on commit subjects only; test names and constants stay milestone-free. |
 | LOGGING GATE | yes — one new `warn` in the sweeper | the event name is a constant; fields are hoisted before the macro per the standard's coverage note. |
-| SCHEMA GUARD | no — `core.fleets` is read, never altered | N/A. |
-| UI GATE / DESIGN TOKEN GATE | no — no `*.ts`/`*.tsx` in the blast radius | N/A. |
-| ZIG GATE / PUB GATE | no — no `*.zig` edited | N/A. |
 | File & Function Length (≤350/≤50/≤70) | yes for `producers/fleet.rs` and `sweepers.rs` | split by concern as above; `sweepers.rs` gains one constant and one spawn. |
 
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `rustd/crates/afd_observability/src/producers/fleet.rs` — the `READY_DEPTH` cell and its gauge registration are the exact shape the census follows, five times over with a label each. Followed exactly; the only divergence is that a census publishes a zero for a status the query did not return, because a successful grouped count that omits a status has measured zero of them.
 - **Reference:** `rustd/crates/afd_runner/src/sweep/retention.rs` — a sweeper that owns its interval and its statements and reports through `Swept`. Followed for structure; diverged from on pacing, because a census has no backlog to drain and never shortens its own gap.
-- **Reference:** `rustd/crates/afd_observability/src/producers/fleet/admission.rs` — the labelled counter recorded through `installed()`. Followed exactly for the runs-started counter.
-- **Reference:** `rustd/crates/afd_observability/src/runner.rs` `last_seen_readings` — labelled readings built from atomics, never from a lock or a datastore. Followed: the census callback loads five cells and allocates five readings.
 
 ## Sections (implementation slices)
 
@@ -113,34 +111,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `agentsfleet_fleets{status}` is an observable gauge whose callback loads five snapshot cells, one per `FleetStatus` member, and publishes a labelled reading for each cell that is valid. A supervised sweeper fills them: one schema-qualified `SELECT status, COUNT(*) FROM core.fleets GROUP BY status`, every status the closed set carries mapped from the result, statuses absent from the result published as zero, and the whole set withdrawn when the statement fails. **Implementation default:** the sweeper lives in `afd_runner::sweep` beside the others because the `Sweep` trait and the supervisor spawn are there, and it depends only on `afd_db` and `afd_observability`, both already dependencies of that crate. The interval is a named constant of thirty seconds: a fleet count changes on install and edit, both operator-paced, and a tighter cadence would spend a Postgres round trip on a number that did not move.
 
-- **Dimension 1.1** — a seeded table with two active, one paused and one stopped fleet publishes readings `2`, `1`, `1`, and `0` for the two statuses the table lacks → Test `test_census_publishes_every_status`
-- **Dimension 1.2** — a failed statement withdraws all five cells and the callback publishes no reading → Test `test_census_withdraws_on_failed_read`
-- **Dimension 1.3** — a status string the closed set does not carry is logged once and produces no label; the four known statuses still publish → Test `test_census_refuses_an_unknown_status`
-- **Dimension 1.4** — the sweeper is spawned under the supervisor with its own name and the inventory assertion names it → Test `test_census_sweeper_is_supervised`
-- **Dimension 1.5** — the gauge's ceiling in the census equals the closed set's length, graded by the label-product test → Test `every_declared_ceiling_admits_its_label_product`
+- **Dimension 1.1** — one pass over a live table seeded two active, one paused and one stopped publishes a reading for every status, each seeded status at or above its seeded count, and a total equal to the rows scanned → Test `test_census_publishes_every_status`
+- **Dimension 1.2** — a failed count withdraws all five cells and the callback publishes no reading; the next good count restores them → Test `a_failed_count_withdraws_the_census_and_a_good_one_restores_it`
+- **Dimension 1.3** — a status string the closed set does not carry is set aside and reported, produces no label, and still counts as scanned; the known statuses publish → Test `an_unknown_spelling_is_set_aside_and_still_scanned`
+- **Dimension 1.4** — the sweeper is spawned under the supervisor with its own name and the whole-inventory assertion names it → Test `test_boot_to_ready_on_compose`
+- **Dimension 1.5** — a status the count did not return publishes zero, in the closed set's order; a status listed twice is summed → Test `every_status_is_published_and_the_absent_ones_read_zero`
 
 ### §2 — Runs started, counted at the one grant point
 
 `agentsfleet_fleet_runs_started_total{kind}` increments in `try_candidate` on each `Some` it returns: `reclaimed` when a lapsed holder's event is re-leased under a higher fence, `fresh` when a new entry is read. A poll that returns `None` records nothing, because nothing started. **Implementation default:** two label values rather than two families, because an operator reads them as one line split by cause — a rising `reclaimed` share is runners dying mid-run, which is the first thing the split has to make visible — and a single family keeps `sum()` honest as the count of runs that began.
 
-- **Dimension 2.1** — a fresh grant increments `kind="fresh"` exactly once → Test `test_fresh_grant_counts_one_run`
-- **Dimension 2.2** — a reclaim over a lapsed holder increments `kind="reclaimed"` exactly once and `fresh` not at all → Test `test_reclaim_counts_as_reclaimed`
-- **Dimension 2.3** — a poll that finds nothing leasable, and one whose claim loses to a live holder, increment neither → Test `test_empty_poll_starts_no_run`
+- **Dimension 2.1** — a fresh grant moves the `kind="fresh"` series, read back through the capturing seam → Test `test_fresh_grant_counts_one_run`
+- **Dimension 2.2** — a reclaim over a lapsed holder moves the `kind="reclaimed"` series → Test `test_reclaim_counts_as_reclaimed`
+- **Dimension 2.3** — the recorder is reachable only through the grant's `Some` exit, and the kind-to-label mapping pairs fresh with fresh and reclaim with reclaimed → Test `a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed`
 
 ### §3 — The trigger family retires
 
 `agentsfleet_fleet_triggered_total` is declared, carried in the census, listed in `UNPRODUCED`, and incremented nowhere. Its `watch_for` line, "trigger volume", is `agentsfleet_admissions_total{outcome="appended"}` under another name: every trigger this daemon accepts is an admission, and the appended outcome is the one that reached the stream. A second family for the same count would be a second line an operator has to reconcile. It leaves from the declared module, the census, the ledger and the architecture doc in this diff. The PostHog `FleetTriggered` product event is a different thing on a different path and is not touched.
 
 - **Dimension 3.1** — the wire name is absent from `rustd/`, `docs/` and `playbooks/` after the diff → Test `test_trigger_family_is_gone`
-- **Dimension 3.2** — the `UNPRODUCED` ledger no longer carries it and the registry still grades both directions clean → Test `test_ledger_and_census_agree_after_retirement`
+- **Dimension 3.2** — the `UNPRODUCED` ledger no longer carries it, and every excuse it still carries names a declared family → Test `every_excused_family_is_still_declared`
 
 ### §4 — The census and the registry move together
 
 Two rows enter `docs/metrics.census.tsv` in census order beside the fleet families, one leaves, and the registry test that grades the file against the declared families passes in both directions. The label-product test covers both new families. `FleetStatus` in `afd_fleet_lifecycle` and the status label set in `afd_observability` cannot share a type, because the lifecycle crate depends on the observability crate and not the other way round, so a test in the lifecycle crate asserts the two agree member for member and fails on a status added to either side alone.
 
-- **Dimension 4.1** — the census carries `agentsfleet_fleets` as a `u64` gauge with `status`, `fixed:5`, `live_read yes`, and `agentsfleet_fleet_runs_started_total` as a cumulative `u64` counter with `kind`, `fixed:2` → Test `test_census_rows_match_declarations`
-- **Dimension 4.2** — adding a sixth `FleetStatus` member without the label fails the agreement test, and the reverse does too → Test `test_status_label_set_mirrors_lifecycle`
-- **Dimension 4.3** — the readiness-depth gauge still publishes from the lease poll and the census never touches its cell → Test `test_ready_depth_gauge_unchanged`
+- **Dimension 4.1** — the census carries `agentsfleet_fleets` as a `u64` gauge with `status`, `live_read yes`, and `agentsfleet_fleet_runs_started_total` as a cumulative `u64` counter with `kind`; a row whose kind disagrees with its declaration fails the claim → Test `every_census_family_has_a_producer`
+- **Dimension 4.2** — adding a sixth `FleetStatus` member without the label fails the agreement test, and the reverse does too → Test `the_census_label_set_mirrors_the_lifecycle`
+- **Dimension 4.3** — the ceilings `fixed:5` and `fixed:2` are at least the closed sets' lengths → Test `every_declared_ceiling_admits_its_label_product`
 
 ### §5 — On the dashboard, where the operator looks first
 
@@ -169,13 +167,20 @@ Label sets (closed, afd_observability::metrics::label::fleet):
   kind:   fresh | reclaimed
 
 Publish surface (afd_observability::producers::fleet):
-  fleet_census_observed(counts: &[(FleetStatusLabel, u64)])   all five, or withdraw
-  fleet_census_withdrawn()
+  census::fleet_census_observed(counts: &[(FleetStatusLabel, u64)])   all five, or withdraw
+  census::fleet_census_withdrawn()
+  census::fleet_census_readings() -> Vec<Reading>                      what the gauge loads
   run_started(kind: RunStart)
 
-Sweeper (afd_runner::sweep::census, supervised as "sweeper:fleet-census"):
+Sweeper (afd_runner::sweep::census::Census, supervised as "sweeper:fleet-census"):
   interval FLEET_CENSUS_INTERVAL = 30s (named constant)
-  statement sql::sweep::FLEET_CENSUS: SELECT status, COUNT(*) FROM core.fleets GROUP BY status
+  statement sql::sweep::COUNT_FLEETS_BY_STATUS:
+    SELECT status, COUNT(*)::bigint FROM core.fleets GROUP BY status
+  tally(rows) -> Tally { counts, unmodelled }   pure; the one decision the pass makes
+
+Test seam (afd_observability::test_util, feature test-util):
+  Capture::install() -> Capture         binds the producers to a capturing reader, once per process
+  Capture::sum(family, &[(key, value)]) -> u64
 
 Dashboard pickup ratio (same complement form as M197_001 §2):
   (1 - ((sum(agentsfleet_admissions_total{outcome="appended"})
@@ -192,7 +197,6 @@ Dashboard pickup ratio (same complement form as M197_001 §2):
 | Sweeper not spawned | a refactor drops the spawn line | the supervisor inventory test in `integration_serve.rs` fails on the missing name. |
 | Grant counted twice | a future refactor records inside both `from_reclaim` and `try_candidate` | Dimensions 2.1 and 2.2 assert exactly one increment per grant. |
 | Census row drifts from declaration | a row's kind, unit or ceiling disagrees with the declared family | the registry test grades both directions at unit time and fails. |
-| Ceiling under the label product | `fixed:5` edited below the closed set's length | `every_declared_ceiling_admits_its_label_product` fails; the SDK overflow bucket never fires in production. |
 | Status sets diverge | a lifecycle status is added without its label, or the reverse | the agreement test in the lifecycle crate fails. |
 | Panel for an unproduced family | the panels land before the producer, or the producer is reverted alone | the M197_001 grader's produced-families check fails the asset; the diff carries both or neither. |
 
@@ -211,7 +215,6 @@ Dashboard pickup ratio (same complement form as M197_001 §2):
 |----------------|-------|------------|--------------------|---------------|------------|
 | `agentsfleet_fleets` | ops | every census pass, one reading per lifecycle status | `status` from the closed set | no workspace, fleet or tenant identifier; counts only | `test_census_publishes_every_status` |
 | `agentsfleet_fleet_runs_started_total` | ops | each lease granted in `try_candidate` | `kind` ∈ {fresh, reclaimed} | no runner, fleet or event identifier on the metric; those stay on the debug log line that already exists | `test_fresh_grant_counts_one_run` |
-| `agentsfleet_fleet_triggered_total` | ops | removed — never fired | — | — | `test_trigger_family_is_gone` |
 
 No product analytics event is added, renamed or removed; the PostHog `FleetTriggered` declaration is untouched.
 
@@ -219,22 +222,23 @@ No product analytics event is added, renamed or removed; the PostHog `FleetTrigg
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_census_publishes_every_status` | a table seeded 2 active, 1 paused, 1 stopped → readings `active=2, paused=1, stopped=1, installing=0, killed=0`. |
-| 1.2 | unit | `test_census_withdraws_on_failed_read` | an injected statement error → every cell `load()` is `None`; the callback returns an empty vector. |
-| 1.3 | unit | `test_census_refuses_an_unknown_status` | a result row `("archived", 3)` → no reading carries `archived`; one `warn` with that spelling; the other statuses publish. |
-| 1.4 | integration | `test_census_sweeper_is_supervised` | the supervisor inventory after boot contains `sweeper:fleet-census`. |
+| 1.1 | integration | `test_census_publishes_every_status` | a shared lane table seeded 2 active, 1 paused, 1 stopped → five readings; `active ≥ 2`, `paused ≥ 1`, `stopped ≥ 1`; the readings sum to `scanned`. |
+| 1.2 | unit | `a_failed_count_withdraws_the_census_and_a_good_one_restores_it` | an injected statement error → the error is returned and every cell reads `None`; a following good count → five readings again. |
+| 1.3 | unit | `an_unknown_spelling_is_set_aside_and_still_scanned` | rows `("active", 3), ("archived", 2)` → counts `[(Active, 3)]`, unmodelled `[archived: 2]`, scanned `5`. |
+| 1.4 | integration | `test_boot_to_ready_on_compose` | the booted daemon's whole supervisor inventory equals the named list, `sweeper:fleet-census` among them. |
+| 1.5 | unit | `every_status_is_published_and_the_absent_ones_read_zero` | cells published `active=2, paused=1, stopped=1` → readings `installing=0, active=2, paused=1, stopped=1, killed=0`, in that order. |
 | 1.5 | unit | `every_declared_ceiling_admits_its_label_product` | `agentsfleet_fleets` ceiling ≥ 5, `agentsfleet_fleet_runs_started_total` ceiling ≥ 2. |
-| 2.1 | integration | `test_fresh_grant_counts_one_run` | one ready fleet with one entry, one poll → `fresh` +1, `reclaimed` +0. |
-| 2.2 | integration | `test_reclaim_counts_as_reclaimed` | a lapsed holder's active lease, one poll → `reclaimed` +1, `fresh` +0. |
-| 2.3 | integration | `test_empty_poll_starts_no_run` | an empty readiness index, and a claim lost to a live holder → both labels +0. |
-| 3.1 | unit | `test_trigger_family_is_gone` | `grep -rn agentsfleet_fleet_triggered_total rustd/ docs/ playbooks/` matches nothing outside this spec and `done/`. |
-| 3.2 | unit | `test_ledger_and_census_agree_after_retirement` | `UNPRODUCED` has eleven entries; the registry grades the census clean in both directions. |
-| 4.1 | unit | `test_census_rows_match_declarations` | the two rows carry the kind, number, unit, labels, policy and `live_read` the Interfaces block pins. |
-| 4.2 | unit | `test_status_label_set_mirrors_lifecycle` | `FleetStatus` members and `FleetStatusLabel::ALL` are equal as sets of spellings; a seeded extra member on either side fails. |
+| 2.1 | integration | `test_fresh_grant_counts_one_run` | one ready fleet with one entry, one poll → `acquired.kind == Fresh` and the `fresh` series reads higher than before the poll (a lower bound: the lane's other suites grant in parallel). |
+| 2.2 | integration | `test_reclaim_counts_as_reclaimed` | an issued lease past its expiry, one poll by a second runner → `acquired.kind == Reclaim` and the `reclaimed` series reads higher than before. |
+| 2.3 | unit | `a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed` | `started(Kind::Fresh) == RunStart::Fresh`, `started(Kind::Reclaim) == RunStart::Reclaimed`; the recorder takes an `Acquired`, so a `None` poll has nothing to record. |
+| 3.1 | manual | `test_trigger_family_is_gone` | rubric R3's grep: `agentsfleet_fleet_triggered_total` matches nothing under `rustd/`, `docs/` or `playbooks/` outside `docs/v2/`. |
+| 3.2 | unit | `every_excused_family_is_still_declared` | eleven `UNPRODUCED` entries, and every one names a family the census still declares. |
+| 4.1 | unit | `every_census_family_has_a_producer` | the gauge claims as a gauge and the counter as a counter against the census rows; every declared family is claimed or excused, none both. |
+| 4.2 | unit | `the_census_label_set_mirrors_the_lifecycle` | `FleetStatus::ALL` and `FleetStatusLabel::ALL` are equal as ordered spellings; an extra, renamed or reordered member on either side fails. |
+| 4.3 | unit | `every_declared_ceiling_admits_its_label_product` | ceilings `≥ 5` for the gauge and `≥ 2` for the counter. |
 | 5.1 | unit | `test_fleet_row_reads_both_families` | the asset grader passes and both wire names appear in panel targets. |
 | 5.2 | unit | `test_pickup_ratio_guards_empty` | the ratio expression carries the `or vector(1)` fallback and the fresh-only numerator. |
 | 5.3 | unit | `test_prior_panels_survive` | every panel identifier and family from the M197_001 asset is present after the diff. |
-| 4.3 | unit | `test_ready_depth_gauge_unchanged` | regression: `agentsfleet_fleet_ready_depth` still publishes from the lease poll; the census does not touch its cell. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -286,7 +290,6 @@ N/A — no files deleted.
 
 - **A per-workspace fleet count.** A `workspace` label is customer-supplied cardinality with no admission bound, which is the one thing the census policy refuses. Per-workspace counts belong to the API's list endpoint, not to a metric.
 - **A trigger-to-first-run latency histogram.** The event row carries `created_at` and the lease carries its grant time, so the pair is measurable, but it is a new histogram with bounds to choose and belongs to a latency workstream once pickup is visible at all.
-- **Enabling any alert on the new families.** Panels only; a rule on fleet counts needs a distribution first, as M197_001 §3 says for its own.
 
 ---
 

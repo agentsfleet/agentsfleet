@@ -29,6 +29,7 @@
 //! would need an operator to restart the daemon to get liveness back, which is
 //! a worse outage than the one it reported.
 
+pub mod census;
 pub mod liveness;
 pub mod rebuild;
 pub mod reclaim;

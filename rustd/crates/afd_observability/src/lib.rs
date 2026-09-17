@@ -34,6 +34,8 @@ pub mod producers;
 pub mod product;
 pub mod runner;
 pub mod semconv;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 
 pub use self::delivery::{Delivery, MAX_RUN};
 pub use self::error::{Error, Result};

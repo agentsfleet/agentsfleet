@@ -40,3 +40,19 @@ fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str>
     }
     Ok(())
 }
+
+/// Every kind a grant can carry has a start label of its own.
+///
+/// The mapping is total by construction — a kind without an arm does not
+/// compile — so what is asserted is the PAIRING, which a swapped arm would
+/// get wrong while still compiling.
+#[test]
+fn a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed() {
+    use afd_observability::metrics::label::fleet::RunStart;
+
+    use super::started;
+    use crate::lease::envelope::Kind;
+
+    assert_eq!(started(Kind::Fresh), RunStart::Fresh);
+    assert_eq!(started(Kind::Reclaim), RunStart::Reclaimed);
+}

@@ -21,6 +21,9 @@ test-util = [
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_db/test-util",
+  # The capturing metric reader the lease suite reads the runs-started
+  # counter back through.
+  "afd_observability/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
   "afd_dragonfly/test-util",
   # The labelled billing refusal the fail-open posture suite absorbs. Taken

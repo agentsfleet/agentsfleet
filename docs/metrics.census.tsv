@@ -46,7 +46,6 @@ agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation
 agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
 agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	pub/sub redials; spikes mean Redis instability
 agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
-agentsfleet_fleet_triggered_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	trigger volume
 agentsfleet_http_trace_suppressed_total	counter	u64	1	cumulative	reason	-	fixed:5	no	health	span budget shedding; storms stay visible
 agentsfleet_otlp_queue_depth	gauge	u64	{entry}	-	signal	-	fixed:3	no	saturation	exporter ring fill per signal
 agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry loss counted at the source
@@ -57,8 +56,10 @@ agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	err
 agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
+agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run
 agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	readiness backlog (not summable across replicas)
 agentsfleet_fleet_ready_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	Redis index writes failing
+agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
 agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
 agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing
 agentsfleet_account_teardown_unregister_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	teardown purges failing to unregister
