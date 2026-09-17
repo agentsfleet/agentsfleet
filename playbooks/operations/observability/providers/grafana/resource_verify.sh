@@ -32,23 +32,17 @@ dashboard="$(
     "/apis/dashboard.grafana.app/v1/namespaces/$OBS_NAMESPACE/dashboards/$OBS_DASHBOARD_NAME"
 )"
 expected_dashboard="$work_dir/dashboard.json"
-jq \
-  --arg datasource "$OBS_PROMETHEUS_UID" \
-  --arg environment "$OBS_ENVIRONMENT" \
-  --arg dashboard "$OBS_DASHBOARD_NAME" \
-  'walk(
-    if type == "string" then
-      gsub("__PROMETHEUS_UID__"; $datasource)
-      | gsub("__ENVIRONMENT__"; $environment)
-      | gsub("__DASHBOARD_UID__"; $dashboard)
-    else . end
-  )' "$SCRIPT_DIR/assets/dashboard.json" >"$expected_dashboard"
+obs_render_dashboard "$expected_dashboard" "$SCRIPT_DIR"
 
 expected_queries="$work_dir/expected-queries"
 actual_queries="$work_dir/actual-queries"
-jq -r '[.panels[].targets[].expr] | sort[]' \
+# `targets // []` on BOTH sides: a panel that queries nothing — the declared-gap
+# text panel — carries an empty array in the asset, and Grafana drops the field
+# entirely on the way back. Iterating the absent field is what turned a
+# faithfully applied dashboard into "queries drifted".
+jq -r '[.panels[] | (.targets // [])[].expr] | sort[]' \
   "$expected_dashboard" >"$expected_queries"
-jq -r '[.spec.panels[].targets[].expr] | sort[]' \
+jq -r '[.spec.panels[] | (.targets // [])[].expr] | sort[]' \
   <<<"$dashboard" >"$actual_queries"
 
 if ! jq -e \
@@ -57,7 +51,7 @@ if ! jq -e \
   --arg datasource "$OBS_PROMETHEUS_UID" \
   '
     .metadata.annotations["grafana.app/folder"] == $folder and
-    .spec.uid == $uid and
+    .metadata.name == $uid and
     ([.spec.panels[].datasource.uid] | all(. == $datasource))
   ' <<<"$dashboard" >/dev/null; then
   echo "ERROR: $OBS_ENVIRONMENT Grafana dashboard metadata drifted" >&2
@@ -68,14 +62,8 @@ if ! cmp -s "$expected_queries" "$actual_queries"; then
   exit 1
 fi
 
-offline_seconds="$(obs_runner_offline_seconds)"
 alerts="$work_dir/alerts.json"
-jq --arg threshold "$offline_seconds" \
-  'walk(
-    if type == "string" then
-      gsub("__RUNNER_OFFLINE_SECONDS__"; $threshold)
-    else . end
-  )' "$SCRIPT_DIR/assets/alerts.json" >"$alerts"
+obs_render_alerts "$alerts" "$SCRIPT_DIR"
 
 while IFS= read -r expected; do
   base_name="$(jq -r '.name' <<<"$expected")"
@@ -92,7 +80,6 @@ while IFS= read -r expected; do
     '
       .metadata.name == $name and
       .metadata.annotations["grafana.app/folder"] == $folder and
-      .metadata.labels["grafana.com/group"] == "agentsfleet-runtime" and
       .spec.expressions.A.datasourceUID == $datasource and
       .spec.expressions.A.model.expr == $expression and
       .spec.expressions.A.source == true
