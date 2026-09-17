@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the `agentsfleet-runtime-dev` dashboard and six alert rules exist in the development Grafana stack, every panel resolves against a family `rustd/crates` actually produces, `runner-silent` fires only when a runner is genuinely overdue, and three Service Level Indicators (SLIs) carry targets derived from measured series rather than invented numbers.
+**Goal (testable):** the `agentsfleet-runtime-dev` dashboard exists in the development Grafana stack carrying the six shipped alert rules plus the burn-rate rules §3 adds, counted by the grader's named constant rather than a literal, every panel resolves against a family `rustd/crates` actually produces, `runner-silent` fires only when a runner is genuinely overdue, and three Service Level Indicators (SLIs) carry targets derived from measured series rather than invented numbers.
 
 **Problem:** an operator has nothing to look at. The repository carries a nine-panel dashboard and six alerts that have never been applied — a live read of the stack returns one folder (`GrafanaCloud`), thirteen stock dashboards, and zero provisioned alert rules. Two of the shipped assets are wrong in ways that would have been discovered on the first page: the runner heartbeat panel renders an epoch timestamp as an age, and the `runner-silent` rule compares that same epoch against ninety seconds, so it alerts continuously for every runner that is working correctly.
 
@@ -49,7 +49,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `rustd/crates/afd_observability/src/metrics/produced.rs` — the `UNPRODUCED` ledger names every declared family this build has no producer for, with a sentence each. It is the authority on which panels are impossible, and it is why a family absent from Mimir is not automatically a gap.
 2. `docs/metrics.census.tsv` — the single source of truth for the export; the `category` and `watch_for` columns already carry the RED/USE taxonomy and one line of operator meaning per family. Panels express the `watch_for` line, never the raw series.
 3. `rustd/crates/afd_observability/src/runner.rs` — `last_seen_readings()` returns `last_seen_ms / MILLIS_PER_SECOND`, a Unix epoch in seconds. This is the source claim the heartbeat repair rests on.
-4. `playbooks/operations/observability/providers/grafana/assets_check.sh` — the asset grader: minimum panel count, unique panel identifiers, every target expression containing `agentsfleet_`, pinned datasource, exactly six alerts, and every `agentsfleet_*` token greppable in `rustd/crates`.
+4. `playbooks/operations/observability/providers/grafana/assets_check.sh` — the asset grader: minimum panel count, unique panel identifiers, every target expression containing `agentsfleet_`, pinned datasource, exactly the alert count its named constant declares, and every `agentsfleet_*` token greppable in `rustd/crates`.
 5. `docs/architecture/observability.md` §Metric family census — canonical for the export path; the SLO definitions land beside the census legend they extend.
 
 ## Files Changed (blast radius)
@@ -132,6 +132,7 @@ Twelve declared families have no producer, and two of them are exactly the self-
 - **Dimension 5.3** — the grader refuses a gap panel naming a family the `UNPRODUCED` ledger does not carry → Test `test_gap_panel_must_cite_the_ledger`
 - **Dimension 5.4** — the nine shipped panels keep their identifiers and their families across the diff → Test `test_existing_nine_panels_survive`
 - **Dimension 5.5** — no census row changes, so the registry grading is untouched → Test `test_census_unchanged_by_m197`
+- **Dimension 5.6** — the grader's alert-count constant equals the number of rules in `alerts.json`, so the set can grow without the grader going stale → Test `test_alert_count_constant_matches_assets`
 
 ### §6 — Applied, then verified as applied
 
@@ -216,6 +217,7 @@ Service Level Indicator expressions (good events / valid events):
 | 6.3 | unit | `test_playbook_acceptance_covers_slo` | the playbook's Acceptance list names the SLO rows and the shared-tenant warning. |
 | 5.4 | unit | `test_existing_nine_panels_survive` | the nine shipped panels keep their identifiers and their families. |
 | 5.5 | unit | `test_census_unchanged_by_m197` | `docs/metrics.census.tsv` is byte-identical across the diff. |
+| 5.6 | unit | `test_alert_count_constant_matches_assets` | the grader's named alert-count constant equals the rule count in `alerts.json`; a rule added without moving the constant fails. |
 | 6.4 | integration | `test_apply_is_idempotent` | a second apply against unchanged assets reports the resources current and mutates nothing. |
 
 ## Acceptance Rubric (single scoring surface)
