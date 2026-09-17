@@ -55,7 +55,6 @@ jobs:
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/approval-signing-secret/credential
-          AUDIT_LOG_PEPPER: op://${{ vars.VAULT_DEV }}/audit-log-pepper/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
@@ -132,7 +131,7 @@ jobs:
         # crash-looping daemon and a red acceptance lane that reads as a
         # product fault.
         run: |
-          bash playbooks/operations/datastore_cutover/probes.sh cluster-ready "$DRAGONFLY_APP"
+          bash scripts/dragonfly_cluster_ready.sh "$DRAGONFLY_APP"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
@@ -146,7 +145,6 @@ jobs:
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
-            AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
