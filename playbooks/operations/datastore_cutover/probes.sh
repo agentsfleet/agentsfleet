@@ -80,13 +80,23 @@ zig_citations() {
   local dead=0 cited
   # Every .zig path any Rust comment names, deduplicated. Paths are repository
   # relative, so they are checked from the repository root.
+  #
+  # SOURCE only. `target/` holds cargo's build output, and a citation compiled
+  # into an .rmeta is the same citation already read from the .rs file it came
+  # from -- so scanning it adds nothing and costs the whole tree's read. Worse,
+  # `-o` on a binary prints `Binary file <path> matches` instead of the match,
+  # and this loop read those status lines as citations: 24 "dead" ones on any
+  # machine that had built the workspace, which is every machine, because
+  # `lint-all` runs clippy on the lane that then runs this probe. `-I` skips
+  # binaries wherever they turn up; --exclude-dir keeps the read off target/.
   while IFS= read -r cited; do
     [ -n "$cited" ] || continue
     if [ ! -f "$cited" ]; then
       printf '  dead citation: %s\n' "$cited" >&2
       dead=$((dead + 1))
     fi
-  done < <(grep -rhoE '\b(src|rustd)/[A-Za-z0-9_/.-]+\.zig\b' rustd/ 2>/dev/null | sort -u)
+  done < <(grep -rhoEI --exclude-dir=target \
+    '\b(src|rustd)/[A-Za-z0-9_/.-]+\.zig\b' rustd/ 2>/dev/null | sort -u)
   [ "$dead" -eq 0 ] || fail "zig-citations: $dead cited .zig file(s) are not in the tree"
   pass "zig-citations: every cited .zig path resolves"
 }
