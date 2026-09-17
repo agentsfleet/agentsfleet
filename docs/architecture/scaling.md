@@ -127,7 +127,7 @@ At normal boot, each `agentsfleetd` replica opens these Dragonfly connections:
 
 | Owner | Connection | Count per replica |
 |---|---|---|
-| `afd_dragonfly::Redis` | shared multiplexed command connection | 1 |
+| `afd_dragonfly::Dragonfly` | shared multiplexed command connection | 1 |
 | `SubscriptionHub` | dedicated pub/sub connection for all viewers | 1 |
 | `connector:outbound` | dedicated command connection for blocking reads | 1 |
 
@@ -140,7 +140,7 @@ A failed optional hub or outbound startup leaves fewer connections and reduced s
 Viewer count adds response buffers and fan-out work, while runners open no Dragonfly connections.
 
 Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
-[`Redis handle`](../../rustd/crates/afd_dragonfly/src/client.rs), and
+[`Dragonfly handle`](../../rustd/crates/afd_dragonfly/src/client.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
 ### Per-request volume (now a machine, not a bill)

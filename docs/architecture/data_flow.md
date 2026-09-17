@@ -468,7 +468,7 @@ agentsfleetd replica
     +-- dedicated command socket --> XREADGROUP BLOCK (up to 5 seconds)
 ```
 
-Cloning `afd_dragonfly::Redis` shares its socket; it does not open another connection.
+Cloning `afd_dragonfly::Dragonfly` shares its socket; it does not open another connection.
 The outbound reader owns `afd_dragonfly::Dedicated`, so its blocking read cannot delay request-path commands.
 Normal boot opens three Dragonfly connections when both optional background surfaces start.
 
@@ -476,7 +476,7 @@ The hub refcounts subscribers and keeps one wire subscription per watched channe
 Its pump owns the pub/sub socket and reconnects with backoff after a disconnect.
 Dragonfly pub/sub cannot replay frames lost during that gap, even if the browser's HTTP stream stays open.
 
-Source: [`afd_dragonfly::Redis`](../../rustd/crates/afd_dragonfly/src/client.rs),
+Source: [`afd_dragonfly::Dragonfly`](../../rustd/crates/afd_dragonfly/src/client.rs),
 [`hub pump`](../../rustd/crates/afd_dragonfly/src/hub/pump.rs),
 [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
@@ -675,8 +675,10 @@ not authority by itself.
                `repositories` and does not use `core.connector_installs`.
 
                The internal Clerk endpoint that bootstraps our own tenants
-               on `user.created` is NOT this surface — it lives in the auth
-               plane at `POST /v1/auth/identity-events/clerk`. The
+               on `user.created` is NOT this surface. Its path is in the
+               auth family — `POST /v1/auth/identity-events/clerk` — but
+               the ingress plane serves it, because the caller is a vendor
+               presenting a signature rather than a bearer token. The
                `/v1/webhooks/` and `/v1/ingress/` namespaces are
                customer-data-plane only.
 
