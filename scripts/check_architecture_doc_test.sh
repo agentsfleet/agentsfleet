@@ -461,6 +461,26 @@ test_arch_doc_carries_no_conflict_marker() {
     'The merge brought both halves in cleanly. >>>>>>> origin/main'
 }
 
+test_arch_doc_published_link_in_a_fence_is_ignored() {
+  # A URL inside a fenced block is example output or an identifier, never
+  # navigation. The CLI's rendered `see:` line and an RFC 7807 `type` member
+  # both spell an unpublished docs URL on purpose; failing them would force an
+  # example to be written wrong to keep the gate green.
+  local name="test_arch_doc_published_link_in_a_fence_is_ignored"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+  local dir
+  dir="$(build_arch_dir "$WORK_DIR/fenced" direction.md \
+    'Rendered output:
+
+```text
+see: https://docs.agentsfleet.net/errors/UZ-EXEC-012
+```')"
+  if run_gate_from_root "$dir" "$spec_root"; then ok "$name"; else
+    bad "$name" "a docs URL inside a fence was treated as a link"
+  fi
+}
+
 test_arch_doc_published_links_resolve() {
   # A pointer to the published set must name a page that exists there. The good
   # body names a real one; the bad body names a plausible page nobody wrote.
@@ -480,6 +500,7 @@ test_arch_doc_multi_anchor_and_sibling_dir_are_checked
 test_arch_doc_same_page_anchor_is_checked
 test_arch_doc_carries_no_conflict_marker
 test_arch_doc_published_links_resolve
+test_arch_doc_published_link_in_a_fence_is_ignored
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

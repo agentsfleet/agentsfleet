@@ -197,6 +197,18 @@ doc_files() {
   done
 }
 
+# Every tracked Markdown file a reader can follow a published link from, which is
+# wider than `doc_files` on purpose — see test_arch_published_links_resolve.
+# Falls back to `doc_files` when the tree is not a checkout, which is how the
+# fixture-driven self-tests run.
+published_link_files() {
+  if [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ] && git rev-parse --git-dir >/dev/null 2>&1; then
+    git ls-files '*.md' | grep -v '^docs/v2/' | sort
+  else
+    doc_files
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # 5. test_arch_cited_paths_resolve
 #    Pages cite files two ways: in full from the repository root, and in a
@@ -354,7 +366,17 @@ fi
 #     Every docs.agentsfleet.net pointer must name a page that exists in the
 #     published set. A pointer to a page nobody wrote sends the reader to a 404,
 #     and the docs repository is a sibling checkout the gate cannot assume, so
-#     the roster below is the contract. Regenerate it with:
+#     the roster below is the contract.
+#
+#     This one check reads EVERY tracked Markdown file, not `doc_files`. The
+#     other checks are scoped to the architecture set because that is the corpus
+#     they grade; a dead published link is a dead link wherever it sits, and the
+#     first review of this gate found one in `SKILL_FRONTMATTER_SCHEMA.md` —
+#     outside `doc_files`, so the check as first written would have passed it.
+#     Specs under `docs/v2/` are excluded: they are records, and DOC-S7 keeps a
+#     record's wording even when the page it cited has moved.
+#
+#     Regenerate the roster with:
 #       find ~/Projects/docs -name '*.mdx' -not -path '*/snippets/*' \
 #         | sed 's|.*/docs/||; s|\.mdx$||' | sort
 #     A page added there and not added here fails closed — the right failure,
@@ -387,11 +409,16 @@ done < <(
   # replacement: a path holding `&` or `|` would otherwise rewrite the match or
   # break the expression, and the failure would name the wrong file.
   while IFS= read -r f; do
-    grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
+    # Fenced blocks are skipped: a URL inside one is example output or an
+    # identifier, not a link a reader clicks. The CLI's rendered `see:` line and
+    # an RFC 7807 `type` member both spell a docs URL and neither is navigation,
+    # so failing on them would force an example to be written wrong to stay green.
+    awk '/^[[:space:]]*```/ { fence = !fence; next } !fence' "$f" 2>/dev/null \
+      | grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' \
       | while IFS= read -r hit; do
           printf '%s::%s\n' "$f" "${hit#docs.agentsfleet.net/}"
         done || true
-  done < <(doc_files) | sort -u
+  done < <(published_link_files) | sort -u
 )
 
 # The same guard `CITATION_FLOOR` gives the citation pattern, for the same
