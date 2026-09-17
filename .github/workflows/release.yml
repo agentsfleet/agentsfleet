@@ -599,7 +599,7 @@ jobs:
         # happily. The daemon's preflight wants more than a listening socket,
         # so the gate is the script's own `healthy` verb.
         run: |
-          bash playbooks/operations/datastore_cutover/probes.sh cluster-ready "$DRAGONFLY_APP"
+          bash scripts/dragonfly_cluster_ready.sh "$DRAGONFLY_APP"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 

@@ -12,9 +12,10 @@ of the merged milestones has none.
 ## What this playbook covers
 
 The Zig-to-Rust BINARY SWAP (`M181_006`), and nothing else. It is not the
-procedure for a change that moves the datastore — that is
-`playbooks/operations/datastore_cutover/001_playbook.md`, and the section
-below is why the two cannot share one.
+procedure for a change that moves the datastore; that one ran in M196/M197
+and its runbook was retired with it — see
+`docs/architecture/datastore_scaling.md` for what was retired and what is
+still owed. The section below is why the two could never share one runbook.
 
 ## Why the rollback is boring
 
