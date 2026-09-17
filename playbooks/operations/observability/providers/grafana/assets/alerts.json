@@ -39,8 +39,8 @@
     "for": "2m",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "expr": "agentsfleet_runner_last_seen_seconds > __RUNNER_OFFLINE_SECONDS__",
-    "summary": "A runner exceeded the source-defined offline threshold.",
+    "expr": "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)) > __RUNNER_OFFLINE_SECONDS__",
+    "summary": "A runner has not been heard from by ANY daemon replica for longer than the source-derived offline threshold. Two repairs live in this expression: the family reports a Unix epoch, so the age is computed here rather than compared raw; and the per-replica table is never evicted, so the freshest observation per runner is taken before the worst runner is. Either omission makes this rule fire for a healthy fleet.",
     "panelId": 6
   },
   {

@@ -66,17 +66,7 @@ esac
 dashboard_spec="$work_dir/dashboard-spec.json"
 dashboard_payload="$work_dir/dashboard.json"
 dashboard_response="$work_dir/dashboard-response.json"
-jq \
-  --arg datasource "$OBS_PROMETHEUS_UID" \
-  --arg environment "$OBS_ENVIRONMENT" \
-  --arg dashboard "$OBS_DASHBOARD_NAME" \
-  'walk(
-    if type == "string" then
-      gsub("__PROMETHEUS_UID__"; $datasource)
-      | gsub("__ENVIRONMENT__"; $environment)
-      | gsub("__DASHBOARD_UID__"; $dashboard)
-    else . end
-  )' "$SCRIPT_DIR/assets/dashboard.json" >"$dashboard_spec"
+obs_render_dashboard "$dashboard_spec" "$SCRIPT_DIR"
 jq -n \
   --arg name "$OBS_DASHBOARD_NAME" \
   --arg folder "$OBS_FOLDER_NAME" \

@@ -209,8 +209,9 @@ test_should_create_alerts_with_source_threshold() {
   elif [ "$(rg -c -- '--request POST' "$calls")" -ne 6 ]; then
     bad "$name" "expected six alert creates"
   elif ! rg --quiet \
-    'agentsfleet_runner_last_seen_seconds > 90' "$captures"; then
-    bad "$name" "runner threshold was not derived from source"
+    'min by \(runner_id\) \(time\(\) - agentsfleet_runner_last_seen_seconds\)\) > 90' \
+    "$captures"; then
+    bad "$name" "runner threshold was not an age derived from source"
   elif rg --quiet 'grafana-secret' "$calls"; then
     bad "$name" "Grafana token appeared in process arguments"
   else
@@ -339,6 +340,226 @@ test_should_reject_invalid_gate_inputs() {
 # prints a line starting "FAIL ", which is the only reliable outcome signal
 # a bash function running to completion under `set -uo pipefail` — never an
 # explicit `exit`/`return` code — actually provides).
+
+# A mutated copy of the assets, so a negative test proves the checker rejects a
+# defect without the risk of leaving the real asset broken on a failed run.
+broken_assets() {
+  local dir
+  dir="$(mktemp -d -p "$work_dir")"
+  cp "$PROVIDER_DIR/assets/dashboard.json" "$PROVIDER_DIR/assets/alerts.json" "$dir/"
+  printf '%s' "$dir"
+}
+
+test_should_repair_the_heartbeat_readings() {
+  local name="test_should_repair_the_heartbeat_readings"
+  local raw
+  raw="$(
+    {
+      jq -r '.panels[].targets[].expr' "$PROVIDER_DIR/assets/dashboard.json"
+      jq -r '.[].expr' "$PROVIDER_DIR/assets/alerts.json"
+    } | grep -F 'agentsfleet_runner_last_seen_seconds' |
+      grep -vF 'time() - agentsfleet_runner_last_seen_seconds' || true
+  )"
+  if [ -n "$raw" ]; then
+    bad "$name" "an expression still reads the epoch raw: $raw"
+  elif ! jq -e '[.panels[] | select(.id == 6 or .id == 23) |
+      .targets[].expr | contains("min by (runner_id)")] | all and length == 2' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "a heartbeat panel does not take the freshest reading per runner"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_reject_an_epoch_read_without_subtraction() {
+  local name="test_should_reject_an_epoch_read_without_subtraction"
+  local dir output status=0
+  dir="$(broken_assets)"
+  jq '(.panels[] | select(.id == 23) | .targets[0].expr) =
+      "max(agentsfleet_runner_last_seen_seconds)"' \
+    "$dir/dashboard.json" >"$dir/patched.json"
+  mv "$dir/patched.json" "$dir/dashboard.json"
+  output="$(
+    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "the checker accepted an epoch compared as an age"
+  elif ! printf '%s' "$output" | grep -q 'without subtracting it from time()'; then
+    bad "$name" "wrong rejection: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_reject_a_literal_alert_threshold() {
+  local name="test_should_reject_a_literal_alert_threshold"
+  local dir output status=0
+  dir="$(broken_assets)"
+  jq '(.[] | select(.name == "runner-silent") | .expr) =
+      "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)) > 90"' \
+    "$dir/alerts.json" >"$dir/patched.json"
+  mv "$dir/patched.json" "$dir/alerts.json"
+  output="$(
+    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "the checker accepted a threshold nobody derived"
+  elif ! printf '%s' "$output" | grep -q 'literal threshold'; then
+    bad "$name" "wrong rejection: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_reject_a_gap_panel_for_a_produced_family() {
+  local name="test_should_reject_a_gap_panel_for_a_produced_family"
+  local dir output status=0
+  dir="$(broken_assets)"
+  jq '(.panels[] | select(.type == "text") | .options.content) +=
+      "\n| `agentsfleet_lease_polls_total` | invented reason |\n"' \
+    "$dir/dashboard.json" >"$dir/patched.json"
+  mv "$dir/patched.json" "$dir/dashboard.json"
+  output="$(
+    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "the checker accepted a gap claim for a produced family"
+  elif ! printf '%s' "$output" | grep -q 'UNPRODUCED ledger does not carry'; then
+    bad "$name" "wrong rejection: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_guard_slo_ratios_against_zero() {
+  local name="test_should_guard_slo_ratios_against_zero"
+  if ! jq -e '[.panels[] | select(.id == 20 or .id == 21) | .targets[].expr |
+      contains("clamp_min") and contains("or vector(0)")] | all and length == 2' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "an availability ratio can divide by an absent denominator"
+  elif ! jq -e '[.panels[] | select(.id == 22) | .targets[].expr |
+      contains("or vector(1)")] | all' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "the pickup-latency indicator reads no-data rather than healthy"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_derive_the_replay_floor_from_source() {
+  local name="test_should_derive_the_replay_floor_from_source"
+  local replay min_age interval expected actual
+  replay="$SCRIPT_DIR/../../../rustd/crates/afd_runner/src/sweep/replay.rs"
+  min_age="$(sed -n 's/^const MIN_AGE: Duration = Duration::from_secs(\([0-9]*\));/\1/p' "$replay")"
+  interval="$(sed -n 's/^const INTERVAL: Duration = Duration::from_secs(\([0-9]*\));/\1/p' "$replay")"
+  expected=$((min_age + interval))
+  actual="$(
+    OBS_ENV=dev bash -c "
+      source '$PROVIDER_DIR/common.sh'
+      OBS_REPO_ROOT='$SCRIPT_DIR/../../..'
+      obs_admission_replay_floor_seconds
+    "
+  )"
+  if [ "$actual" != "$expected" ]; then
+    bad "$name" "derived floor $actual, expected $expected from replay.rs"
+  elif ! jq -e '[.panels[] | select(.id == 22 or .id == 28) | .targets[].expr |
+      contains("__ADMISSION_REPLAY_FLOOR_SECONDS__")] | any' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "the replay floor is not a substituted placeholder in the asset"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_mark_burn_rate_panels_unproven() {
+  local name="test_should_mark_burn_rate_panels_unproven"
+  if ! jq -e '[.panels[] | select(.id == 24 or .id == 25) |
+      (.targets | length) >= 4] | all and length == 2' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "a burn-rate panel is not multiwindow"
+  elif ! jq -e '[.panels[] | select(.id == 24 or .id == 25) |
+      .description | contains("UNPROVEN")] | all and length == 2' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "a burn-rate panel does not say its target is unproven"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_keep_the_shipped_panels() {
+  local name="test_should_keep_the_shipped_panels"
+  local missing=""
+  local id
+  for id in 1 2 3 4 5 6 7 8 10; do
+    jq -e --argjson id "$id" '[.panels[] | select(.id == $id)] | length == 1' \
+      "$PROVIDER_DIR/assets/dashboard.json" >/dev/null || missing="$missing $id"
+  done
+  if [ -n "$missing" ]; then
+    bad "$name" "shipped panel(s) lost:$missing"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_read_telemetry_loss() {
+  local name="test_should_read_telemetry_loss"
+  if ! jq -e '[.panels[].targets[].expr |
+      contains("agentsfleet_otlp_entries_discarded_total")] | any' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "no panel reports telemetry discarded at the source"
+  elif jq -e '[.panels[].targets[].expr |
+      contains("agentsfleet_otlp_queue_depth")] | any' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "a panel still queries a family the UNPRODUCED ledger excuses"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_warn_about_the_shared_tenant() {
+  local name="test_should_warn_about_the_shared_tenant"
+  local content
+  content="$(
+    jq -r '.panels[] | select(.type == "text") | .options.content' \
+      "$PROVIDER_DIR/assets/dashboard.json"
+  )"
+  if ! printf '%s' "$content" | grep -q 'deployment.environment'; then
+    bad "$name" "the gap panel does not name the missing environment attribute"
+  elif ! printf '%s' "$content" | grep -q 'same Grafana stack'; then
+    bad "$name" "the gap panel does not warn that the two environments share a tenant"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_leave_the_census_untouched() {
+  local name="test_should_leave_the_census_untouched"
+  local changed
+  changed="$(
+    git -C "$SCRIPT_DIR/../../.." diff --name-only origin/main...HEAD \
+      -- docs/metrics.census.tsv bench/baselines 2>/dev/null
+  )"
+  if [ -n "$changed" ]; then
+    bad "$name" "this workstream changed files it must not: $changed"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_cover_slo_in_the_playbook() {
+  local name="test_should_cover_slo_in_the_playbook"
+  local playbook="$SCRIPT_DIR/001_playbook.md"
+  if ! grep -q 'Service Level Indicator panels render' "$playbook"; then
+    bad "$name" "Acceptance does not name the Service Level Indicator panels"
+  elif ! grep -q 'unproven marker' "$playbook"; then
+    bad "$name" "Acceptance does not require the burn panels to stay marked"
+  elif ! grep -q 'Read before applying to production' "$playbook"; then
+    bad "$name" "the playbook does not warn about the shared tenant"
+  else
+    ok "$name"
+  fi
+}
+
 TEST_NAMES=(
   test_should_validate_assets
   test_should_verify_prometheus_without_exposing_token
@@ -351,6 +572,18 @@ TEST_NAMES=(
   test_should_require_write_approval
   test_should_reject_unknown_provider
   test_should_reject_invalid_gate_inputs
+  test_should_repair_the_heartbeat_readings
+  test_should_reject_an_epoch_read_without_subtraction
+  test_should_reject_a_literal_alert_threshold
+  test_should_reject_a_gap_panel_for_a_produced_family
+  test_should_guard_slo_ratios_against_zero
+  test_should_derive_the_replay_floor_from_source
+  test_should_mark_burn_rate_panels_unproven
+  test_should_keep_the_shipped_panels
+  test_should_read_telemetry_loss
+  test_should_warn_about_the_shared_tenant
+  test_should_leave_the_census_untouched
+  test_should_cover_slo_in_the_playbook
 )
 
 result_dir="$(mktemp -d)"

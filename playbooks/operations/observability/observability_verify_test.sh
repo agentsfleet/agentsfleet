@@ -54,28 +54,37 @@ case "$url" in
     jq -n --arg title "$title" '{spec:{title:$title}}'
     ;;
   */dashboards/agentsfleet-runtime-dev)
-    spec="$(
-      jq \
-        --arg datasource prometheus-main \
-        --arg environment development \
-        --arg dashboard agentsfleet-runtime-dev \
-        'walk(
-          if type == "string" then
-            gsub("__PROMETHEUS_UID__"; $datasource)
-            | gsub("__ENVIRONMENT__"; $environment)
-            | gsub("__DASHBOARD_UID__"; $dashboard)
-          else . end
-        )' "$PROVIDER_DIR/assets/dashboard.json"
-    )"
+    # The stub renders through the SAME function the apply and the drift check
+    # use. A fourth hand-rolled copy of the substitution list is how a
+    # placeholder added to the asset made this stub serve a dashboard that
+    # matched nothing, and the suite reported drift that did not exist.
+    rendered="$(mktemp)"
+    (
+      # shellcheck source=providers/grafana/common.sh
+      source "$PROVIDER_DIR/common.sh"
+      OBS_PROMETHEUS_UID=prometheus-main
+      OBS_ENVIRONMENT=development
+      OBS_DASHBOARD_NAME=agentsfleet-runtime-dev
+      obs_render_dashboard "$rendered" "$PROVIDER_DIR"
+    )
+    spec="$(cat "$rendered")"
+    rm -f "$rendered"
     if [ "${MOCK_DRIFT:-}" = dashboard_query ]; then
-      spec="$(jq '.panels[0].targets[0].expr = "drift"' <<<"$spec")"
+      spec="$(
+        jq '(first(.panels[] | select((.targets // []) | length > 0)) |
+             .targets[0].expr) = "drift"' <<<"$spec"
+      )"
     fi
     folder=agentsfleet-dev
     [ "${MOCK_DRIFT:-}" != dashboard_metadata ] || folder=wrong
     jq -n \
       --arg folder "$folder" \
+      --arg name agentsfleet-runtime-dev \
       --argjson spec "$spec" \
-      '{metadata:{annotations:{"grafana.app/folder":$folder}},spec:$spec}'
+      '{
+        metadata:{name:$name,annotations:{"grafana.app/folder":$folder}},
+        spec:$spec
+      }'
     ;;
   */alertrules/*-dev)
     name="${url##*/}"
@@ -95,7 +104,6 @@ case "$url" in
         metadata:{
           name:$name,
           annotations:{"grafana.app/folder":"agentsfleet-dev"},
-          labels:{"grafana.com/group":"agentsfleet-runtime"}
         },
         spec:{expressions:{A:{
           datasourceUID:"prometheus-main",

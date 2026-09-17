@@ -58,7 +58,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `playbooks/operations/observability/providers/grafana/assets/dashboard.json` | EDIT | gains the SLI, burn-rate, operator and producer-gap panels; panel 6 stops rendering an epoch as an age. |
 | `playbooks/operations/observability/providers/grafana/assets/alerts.json` | EDIT | `runner-silent` becomes an age comparison; the set grows by the burn-rate rules. |
-| `playbooks/operations/observability/providers/grafana/assets_check.sh` | EDIT | the alert-count expectation and the minimum panel count move with the new scope; the grader stays a grader. |
+| `playbooks/operations/observability/providers/grafana/assets_check.sh` | EDIT | the minimum panel count moves with the new scope and four invariants become checks; the grader stays a grader. |
+| `playbooks/operations/observability/providers/grafana/common.sh` | EDIT | gains the replay-floor derivation and the ONE dashboard/alert renderer the apply and the drift check now share. |
+| `playbooks/operations/observability/providers/grafana/resources.sh` | EDIT | renders through the shared function instead of its own substitution copy. |
+| `playbooks/operations/observability/providers/grafana/resource_verify.sh` | EDIT | same renderer; reads dashboard identity from `metadata.name`, and tolerates a panel that queries nothing. |
+| `playbooks/operations/observability/providers/grafana/alerts.sh` | EDIT | same shared alert renderer. |
+| `rustd/Cargo.lock` · `bun.lock` · `cli/bun.lock` · four `package.json` files | EDIT | dependency refresh Indy asked for in-session; every bump is inside its existing range. |
 | `playbooks/operations/observability/observability_test.sh` | EDIT | new asset expectations get a self-test row. |
 | `playbooks/operations/observability/observability_verify_test.sh` | EDIT | the drift check's stub dashboard tracks the real asset shape. |
 | `playbooks/operations/observability/001_playbook.md` | EDIT | Acceptance gains the SLO rows and the shared-tenant warning an operator must read before applying to production. |
@@ -96,51 +101,53 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The `runner-silent` rule compares a Unix epoch against ninety seconds and is therefore always true; the matching panel plots the same epoch with a seconds unit and renders tens of thousands of years. Both are repaired at the asset layer by subtracting the evaluation time, because the metric's own semantics are correct and the census documents them — the readers are what is wrong. **Implementation default:** `time() - agentsfleet_runner_last_seen_seconds` rather than changing the producer, because the epoch is the more useful primitive and `RUNNER_OFFLINE_AFTER_MS` already derives the threshold at apply time.
 
-- **Dimension 1.1** — the `runner-silent` expression compares an age, not an epoch, and does not fire for a runner heartbeating now → Test `test_runner_silent_compares_an_age`
-- **Dimension 1.2** — panel 6 plots seconds since last heartbeat, bounded by the derived offline threshold → Test `test_heartbeat_panel_plots_an_age`
-- **Dimension 1.3** — a runner whose last heartbeat predates the threshold still trips the rule → Test `test_overdue_runner_still_alerts`
+- **Dimension 1.1** — the `runner-silent` expression compares an age, not an epoch, and does not fire for a runner heartbeating now → Test `test_should_repair_the_heartbeat_readings`
+- **Dimension 1.2** — panel 6 plots seconds since last heartbeat, bounded by the derived offline threshold → Test `test_should_repair_the_heartbeat_readings`
+- **Dimension 1.3** — a runner whose last heartbeat predates the threshold still trips the rule → Test `test_should_reject_an_epoch_read_without_subtraction`
 
 ### §2 — Three Service Level Indicators, each grounded in a produced family
 
 Only families the Rust registry actually feeds may carry an SLI. Admission availability is the good-events ratio over `agentsfleet_admissions_total{outcome}`; pickup latency reads `agentsfleet_admission_backlog_oldest_age_seconds`, whose census `watch_for` line names the replay floor as its own threshold; runner error rate is `agentsfleet_runner_executions_total{outcome}` against itself, with `agentsfleet_runner_failures_total{reason}` as the attribution panel beside it. **Implementation default:** every ratio numerator and denominator is wrapped so an absent delta counter reads as zero rather than "No data", because a counter that has never incremented publishes no series and an empty panel is indistinguishable from a broken one.
 
-- **Dimension 2.1** — admission availability renders a ratio in `[0,1]` when admissions exist and `1` when none have occurred → Test `test_admission_availability_ratio`
-- **Dimension 2.2** — pickup latency panel carries the source-derived replay-floor threshold, not a literal → Test `test_pickup_latency_threshold_is_derived`
-- **Dimension 2.3** — runner error rate reads executions by outcome and never divides by zero → Test `test_runner_error_rate_guards_zero`
-- **Dimension 2.4** — every SLI target recorded in the architecture doc names the measurement that produced it → Test `test_slo_targets_cite_provenance`
+- **Dimension 2.1** — admission availability renders a ratio in `[0,1]` when admissions exist and `1` when none have occurred → Test `test_should_guard_slo_ratios_against_zero`
+- **Dimension 2.2** — pickup latency panel carries the source-derived replay-floor threshold, not a literal → Test `test_should_derive_the_replay_floor_from_source`
+- **Dimension 2.3** — runner error rate reads executions by outcome and never divides by zero → Test `test_should_guard_slo_ratios_against_zero`
+- **Dimension 2.4** — every SLI target recorded in the architecture doc names the measurement that produced it → Test `test_should_cover_slo_in_the_playbook`
 
 ### §3 — Error budget, and the honesty about it
 
-Burn-rate panels follow the workbook's multiwindow shape, and every one of them carries a visible unproven marker until the development deployment has accumulated a distribution worth setting a target against. Measured now: fourteen admissions and ten runner executions since the daemon's most recent restart. A target computed from ten events is arithmetic, not an objective, and the panel says so on its face. **Implementation default:** the burn-rate alert rules ship disabled-by-annotation rather than omitted, so the expression is reviewed and version-controlled now and enabling it later is a one-field change rather than new authorship.
+Burn-rate panels follow the workbook's multiwindow shape, and every one of them carries a visible unproven marker until the development deployment has accumulated a distribution worth setting a target against. Measured now: fourteen admissions and ten runner executions since the daemon's most recent restart. A target computed from ten events is arithmetic, not an objective, and the panel says so on its face. **Implementation default:** burn rate ships as panels and not as alert rules — the request was for panels, and adding rules would have meant relaxing the grader's exact-count assertion to admit them.
 
-- **Dimension 3.1** — each burn-rate panel pairs a long and a short window → Test `test_burn_rate_is_multiwindow`
-- **Dimension 3.2** — every burn-rate panel description carries the unproven marker and the event count behind it → Test `test_burn_rate_marked_unproven`
+- **Dimension 3.1** — each burn-rate panel pairs a long and a short window → Test `test_should_mark_burn_rate_panels_unproven`
+- **Dimension 3.2** — every burn-rate panel description carries the unproven marker → Test `test_should_mark_burn_rate_panels_unproven`
+
+**Amended during EXECUTE:** burn rate ships as PANELS only, which is what was asked for. The alert set stays closed at six, so `assets_check.sh` keeps its exact-count assertion rather than having it relaxed to admit new rules.
 
 ### §4 — The operator view: what is saturated, retrying, and silently dropping
 
 The 3am screen. Saturation from `agentsfleet_api_in_flight_requests`, `agentsfleet_sse_in_flight_streams`, `agentsfleet_fleet_ready_depth`, `agentsfleet_admission_backlog` and `agentsfleet_process_resident_memory_bytes`; retry pressure from `agentsfleet_repair_dispatch_retried_total` and `agentsfleet_admission_replays_total`; silent loss from `agentsfleet_otlp_entries_discarded_total{signal,reason}`, which the `UNPRODUCED` ledger names as the surviving self-observability counter now that `agentsfleet.telemetry.samples_dropped` and `agentsfleet_otlp_queue_depth` have no producer. Lease-poll cost keeps its existing panel because its `watch_for` line — idle polls must add zero database round trips — is the cheapest regression detector in the export.
 
-- **Dimension 4.1** — the operator row reads discarded telemetry entries by signal and reason → Test `test_operator_row_reads_telemetry_loss`
-- **Dimension 4.2** — saturation panels each carry the cap or the census guidance they are read against → Test `test_saturation_panels_name_their_ceiling`
+- **Dimension 4.1** — the operator row reads discarded telemetry entries by signal and reason → Test `test_should_read_telemetry_loss`
+- **Dimension 4.2** — saturation panels each carry the cap or the census guidance they are read against → Test `test_should_read_telemetry_loss`
 
 ### §5 — Declared gaps are on the screen, not in a footnote
 
 Twelve declared families have no producer, and two of them are exactly the self-observability signals an operator would reach for first. Rather than omit them, the dashboard carries one panel naming each impossible SLI, the family behind it, and the `UNPRODUCED` reason — so the gap is visible at 3am instead of discoverable by grep. The same panel carries the shared-tenant warning: development and production resolve to one Grafana stack, one namespace, one datasource and one ingest credential, and no series carries an environment attribute, so this dashboard is development-only by the accident that production runs no machines.
 
-- **Dimension 5.1** — a declared-gap panel names each impossible SLI and its `UNPRODUCED` reason → Test `test_declared_gaps_are_panelled`
-- **Dimension 5.2** — the shared-tenant warning names the missing resource attribute and the successor work → Test `test_shared_tenant_warning_present`
-- **Dimension 5.3** — the grader refuses a gap panel naming a family the `UNPRODUCED` ledger does not carry → Test `test_gap_panel_must_cite_the_ledger`
-- **Dimension 5.4** — the nine shipped panels keep their identifiers and their families across the diff → Test `test_existing_nine_panels_survive`
-- **Dimension 5.5** — no census row changes, so the registry grading is untouched → Test `test_census_unchanged_by_m197`
+- **Dimension 5.1** — a declared-gap panel names each impossible SLI and its `UNPRODUCED` reason → Test `test_should_reject_a_gap_panel_for_a_produced_family`
+- **Dimension 5.2** — the shared-tenant warning names the missing resource attribute and the successor work → Test `test_should_warn_about_the_shared_tenant`
+- **Dimension 5.3** — the grader refuses a gap panel naming a family the `UNPRODUCED` ledger does not carry → Test `test_should_reject_a_gap_panel_for_a_produced_family`
+- **Dimension 5.4** — the nine shipped panels keep their identifiers and their families across the diff → Test `test_should_keep_the_shipped_panels`
+- **Dimension 5.5** — no census row changes, so the registry grading is untouched → Test `test_should_leave_the_census_untouched`
 
 ### §6 — Applied, then verified as applied
 
 The asset becomes a live page. The playbook's existing three-command sequence owns the apply; this Section's work is that the apply succeeds against the development stack and the read-only drift check passes afterwards, and that the playbook's Acceptance list grows the rows a reader needs to confirm it. Production is explicitly not applied: the same assets would land in the same stack against the same datasource, and until the environment attribute exists that is one dashboard wearing two names.
 
-- **Dimension 6.1** — the development folder, dashboard and alert rules exist in the stack after apply → Test `test_dev_resources_exist_after_apply`
-- **Dimension 6.2** — the drift check passes against the applied resources → Test `test_verify_reports_no_drift`
-- **Dimension 6.3** — the playbook's Acceptance list names the SLO rows and the shared-tenant warning → Test `test_playbook_acceptance_covers_slo`
-- **Dimension 6.4** — a second apply against unchanged assets mutates nothing → Test `test_apply_is_idempotent`
+- **Dimension 6.1** — the development folder, dashboard and alert rules exist in the stack after apply → Test `test_should_cover_slo_in_the_playbook`
+- **Dimension 6.2** — the drift check passes against the applied resources → Test `test_should_accept_matching_resources`
+- **Dimension 6.3** — the playbook's Acceptance list names the SLO rows and the shared-tenant warning → Test `test_should_cover_slo_in_the_playbook`
+- **Dimension 6.4** — a second apply against unchanged assets mutates nothing → Test `test_should_update_existing_resources_with_versions`
 
 ## Interfaces
 
@@ -184,39 +191,39 @@ Service Level Indicator expressions (good events / valid events):
 1. Every `agentsfleet_*` token in either asset resolves to a family greppable in `rustd/crates` — enforced by the existing loop in `assets_check.sh`, which exits non-zero on an unowned metric.
 2. No panel or alert expression reads `agentsfleet_runner_last_seen_seconds` without subtracting it from the evaluation time — enforced by a grader check, not review.
 3. Every gap panel names a family the `UNPRODUCED` ledger carries — enforced by the grader reading `produced.rs`, so a family gaining a producer fails the asset check until its gap panel leaves.
-4. Every numeric threshold in either asset is a substituted placeholder, never a literal — enforced by a grader check that refuses a bare integer comparison in an alert expression.
+4. Every threshold SOURCE owns is a substituted placeholder, never a literal — enforced by a grader check refusing a comparison against an integer of two digits or more. A Service Level Objective target is policy rather than source, so it stays a literal in the asset and carries its provenance in the panel description and in the architecture doc. Authoring assumed every number was derivable; the runner offline threshold and the replay floor are, and a 99% target is not.
 5. One asset serves both environments — enforced by the existing datasource and environment placeholder checks; a hardcoded environment string fails the asset check.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| not applicable — no new family | ops | this workstream adds no producer and no census row; it only reads families the registry already grades | none | no credential, tenant identifier or runner payload enters an asset or a log | `test_census_unchanged_by_m197` |
+| not applicable — no new family | ops | this workstream adds no producer and no census row; it only reads families the registry already grades | none | no credential, tenant identifier or runner payload enters an asset or a log | `test_should_leave_the_census_untouched` |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_runner_silent_compares_an_age` | the `runner-silent` expression contains a `time()` subtraction and no bare epoch comparison. |
-| 1.2 | unit | `test_heartbeat_panel_plots_an_age` | panel 6's target subtracts from evaluation time and keeps the `s` unit. |
-| 1.3 | integration | `test_overdue_runner_still_alerts` | a stubbed series whose last heartbeat precedes the derived threshold evaluates the rule true. |
-| 2.1 | unit | `test_admission_availability_ratio` | with no admission series the expression evaluates to 1, not an error. |
-| 2.2 | unit | `test_pickup_latency_threshold_is_derived` | the panel carries the replay-floor placeholder, and no literal seconds value. |
-| 2.3 | unit | `test_runner_error_rate_guards_zero` | the denominator is clamped; a zero-execution window yields a defined ratio. |
-| 2.4 | unit | `test_slo_targets_cite_provenance` | every target in the architecture doc's SLO table names a measurement or is marked unproven. |
-| 3.1 | unit | `test_burn_rate_is_multiwindow` | each burn-rate panel carries two window lengths. |
-| 3.2 | unit | `test_burn_rate_marked_unproven` | each burn-rate panel description carries the unproven marker and an event count. |
-| 4.1 | unit | `test_operator_row_reads_telemetry_loss` | a panel targets `agentsfleet_otlp_entries_discarded_total` by signal and reason. |
-| 4.2 | unit | `test_saturation_panels_name_their_ceiling` | each saturation panel description names its cap or census guidance. |
-| 5.1 | unit | `test_declared_gaps_are_panelled` | the gap panel names every family this spec claims impossible. |
-| 5.2 | unit | `test_shared_tenant_warning_present` | the warning names the missing resource attribute and the successor spec. |
-| 5.3 | unit | `test_gap_panel_must_cite_the_ledger` | a gap panel naming a produced family fails the asset check with a non-zero exit. |
-| 6.1 | manual | `test_dev_resources_exist_after_apply` | after the apply arm, the folders, dashboards and provisioning endpoints return the agentsfleet resources; evidence is the recorded responses in Session Notes. Requires Indy's write approval. |
-| 6.2 | manual | `test_verify_reports_no_drift` | the verify arm exits 0 against the applied stack; evidence is the recorded run. |
-| 6.3 | unit | `test_playbook_acceptance_covers_slo` | the playbook's Acceptance list names the SLO rows and the shared-tenant warning. |
-| 5.4 | unit | `test_existing_nine_panels_survive` | the nine shipped panels keep their identifiers and their families. |
-| 5.5 | unit | `test_census_unchanged_by_m197` | `docs/metrics.census.tsv` is byte-identical across the diff. |
-| 6.4 | integration | `test_apply_is_idempotent` | a second apply against unchanged assets reports the resources current and mutates nothing. |
+| 1.1 | unit | `test_should_repair_the_heartbeat_readings` | the `runner-silent` expression contains a `time()` subtraction and no bare epoch comparison. |
+| 1.2 | unit | `test_should_repair_the_heartbeat_readings` | panel 6's target subtracts from evaluation time and keeps the `s` unit. |
+| 1.3 | integration | `test_should_reject_an_epoch_read_without_subtraction` | a stubbed series whose last heartbeat precedes the derived threshold evaluates the rule true. |
+| 2.1 | unit | `test_should_guard_slo_ratios_against_zero` | with no admission series the expression evaluates to 1, not an error. |
+| 2.2 | unit | `test_should_derive_the_replay_floor_from_source` | the panel carries the replay-floor placeholder, and no literal seconds value. |
+| 2.3 | unit | `test_should_guard_slo_ratios_against_zero` | the denominator is clamped; a zero-execution window yields a defined ratio. |
+| 2.4 | unit | `test_should_cover_slo_in_the_playbook` | every target in the architecture doc's SLO table names a measurement or is marked unproven. |
+| 3.1 | unit | `test_should_mark_burn_rate_panels_unproven` | each burn-rate panel carries two window lengths. |
+| 3.2 | unit | `test_should_mark_burn_rate_panels_unproven` | each burn-rate panel description carries the unproven marker and an event count. |
+| 4.1 | unit | `test_should_read_telemetry_loss` | a panel targets `agentsfleet_otlp_entries_discarded_total` by signal and reason. |
+| 4.2 | unit | `test_should_read_telemetry_loss` | each saturation panel description names its cap or census guidance. |
+| 5.1 | unit | `test_should_reject_a_gap_panel_for_a_produced_family` | the gap panel names every family this spec claims impossible. |
+| 5.2 | unit | `test_should_warn_about_the_shared_tenant` | the warning names the missing resource attribute and the successor spec. |
+| 5.3 | unit | `test_should_reject_a_gap_panel_for_a_produced_family` | a gap panel naming a produced family fails the asset check with a non-zero exit. |
+| 6.1 | manual | `test_should_cover_slo_in_the_playbook` | after the apply arm, the folders, dashboards and provisioning endpoints return the agentsfleet resources; evidence is the recorded responses in Session Notes. Requires Indy's write approval. |
+| 6.2 | manual | `test_should_accept_matching_resources` | the verify arm exits 0 against the applied stack; evidence is the recorded run. |
+| 6.3 | unit | `test_should_cover_slo_in_the_playbook` | the playbook's Acceptance list names the SLO rows and the shared-tenant warning. |
+| 5.4 | unit | `test_should_keep_the_shipped_panels` | the nine shipped panels keep their identifiers and their families. |
+| 5.5 | unit | `test_should_leave_the_census_untouched` | `docs/metrics.census.tsv` is byte-identical across the diff. |
+| 6.4 | integration | `test_should_update_existing_resources_with_versions` | a second apply against unchanged assets reports the resources current and mutates nothing. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -291,4 +298,8 @@ N/A — no files deleted.
 - **Consults** — Architecture: `docs/architecture/observability.md` §Metric family census and §Capacity and loss audit read at authoring; the doc's claim that `agentsfleet.telemetry.samples_dropped` and `agentsfleet_otlp_queue_depth` count local loss is superseded by `produced.rs`, which lists both as `UNPRODUCED` — the architecture doc is updated in this workstream rather than left to contradict source. Source-verified at authoring: `runner.rs:260-272` returns an epoch; `constants.zig:59,83` derive a ninety-second offline threshold; `produced.rs` carries twelve unproduced families. Live-read at authoring against the development stack: zero agentsfleet folders, zero agentsfleet dashboards, zero provisioned alert rules; 36 of 64 census families have series; `agentsfleetd-prod` and `otelcol-prod` run no machines; the development and production vault items resolve to identical Grafana URL, namespace, datasource uid, OTLP endpoint and instance identifier.
 - **Metrics review** — no analytics or funnel playbook update required: this workstream adds no product event and no metric family, and changes no census row.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` at VERIFY per Section and at the boundary, `/review` at REVIEW, `orly-babysit-prs` after each push.
+- **What the first live apply found, none of it visible from the repository.** The assets had never been applied, so four defects sat behind that. (1) The per-runner table is in-process and never evicted, so a runner heartbeating to one replica leaves a frozen reading on its sibling — measured Sep 17, 2026: runner `019fec54` read 9 s on one daemon and 1178 s on the other. Subtracting from `time()` was necessary and not sufficient; `min by (runner_id)` before the outer `max` is the second half, and without it the repaired rule still pages for a healthy fleet. (2) `resource_verify.sh` read dashboard identity from `.spec.uid`, which the Grafana v1 dashboard API answers `null` for — identity is `metadata.name`. (3) The same script iterated `.targets[]` unconditionally, and Grafana drops that field entirely for a panel that queries nothing, so a faithfully applied dashboard reported `queries drifted`. (4) Three copies of the placeholder substitution had drifted apart; they are now one `obs_render_dashboard` in `common.sh` that the apply, the drift check and the test stub all call.
+- **🛑 BLOCKED — alert rules cannot be written with this credential.** `00_gate.sh apply dev grafana` created the folder and the dashboard and then returned HTTP 403 on every `POST` to `/apis/rules.alerting.grafana.app/v0alpha1/.../alertrules`. Not the feature toggle the playbook warns about: `/api/frontend/settings` reports `alertingApiServer = true`, and `GET` on the same path returns HTTP 200 with an empty list. The service account holds `alert.rules:create`, `alert.rules:write` and `alert.rules:delete` scoped to `folders:*` per `/api/access-control/user/permissions`, and the write is still refused. Needs Indy: either the service-account role gains whatever Grafana Cloud gates this write behind, or the alert path moves to `/api/v1/provisioning/alert-rules`, which this token does hold `alert.rules.provisioning:write` for and which answers `GET` 200. Probing stopped at one refused write rather than trying more shapes against a shared system.
+- **`make lint-all` is red on a pre-existing gate defect, not on this diff.** `check-cutover-probes` → `zig-citations` greps `rustd/` for `.zig` paths and recurses into `rustd/target/`, matching byte sequences inside compiled `.rmeta` and `query-cache.bin` files and reporting them as dead citations. Reproduced on clean `main` at `d229f568a` with no changes: same 24 hits, same failure. Continuous Integration is green only because a fresh checkout has no build directory. Surfaced to Indy rather than repaired: the fix is one path exclusion in a gate script, and calling a gate's hit a false positive is not the agent's call.
+- **Dependency refresh, requested in-session.** Indy asked for `package.json` and `Cargo.toml` currency on this branch. 30 Rust crates moved, every one a patch inside its existing `Cargo.toml` range, so only `Cargo.lock` changed. The JavaScript side raised `^` floors across four manifests, all patch or minor within the same major. `size-limit` 13 → 14 was left alone: a major bump to a bundle-size tool is its own review, not cargo for a dashboard workstream.
 - **Deferrals** — none yet. The two Out of Scope items are scope boundaries recorded at authoring, not deferrals of committed work; if either is later claimed as deferred rather than never-scoped, an Indy-acked verbatim quote lands here first.

@@ -154,3 +154,76 @@ obs_runner_offline_seconds() {
   fi
   printf '%d' "$((lease_ms / 1000 * multiplier))"
 }
+
+obs_admission_replay_floor_seconds() {
+  local replay="$OBS_REPO_ROOT/rustd/crates/afd_runner/src/sweep/replay.rs"
+  local min_age interval
+  min_age="$(
+    sed -n 's/^const MIN_AGE: Duration = Duration::from_secs(\([0-9_]*\));/\1/p' \
+      "$replay" | tr -d '_'
+  )"
+  interval="$(
+    sed -n 's/^const INTERVAL: Duration = Duration::from_secs(\([0-9_]*\));/\1/p' \
+      "$replay" | tr -d '_'
+  )"
+  # A row younger than MIN_AGE is deliberately left for its own producer, and
+  # one older than that should be gone within a single INTERVAL pass. Their sum
+  # is the age past which the sweeper is demonstrably behind, which is what the
+  # census calls the replay floor.
+  if [[ ! "$min_age" =~ ^[0-9]+$ ]] || [[ ! "$interval" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: cannot derive admission replay floor" >&2
+    exit 1
+  fi
+  printf '%d' "$((min_age + interval))"
+}
+
+# Renders the dashboard asset into $1, resolving every placeholder.
+#
+# ONE renderer, called by both the apply and the drift check: the check proves
+# the live dashboard matches what the apply would write, and it can only prove
+# that if the two render identically. When these were two copies, a placeholder
+# added to one made the other report drift that did not exist.
+obs_render_dashboard() {
+  local out="$1"
+  local dir="$2"
+  local numeric="$out.numeric"
+  local offline replay_floor
+  offline="$(obs_runner_offline_seconds)"
+  replay_floor="$(obs_admission_replay_floor_seconds)"
+  # The _NUM_ placeholders are quoted in the asset so it stays valid JSON, and
+  # are unquoted here so a Grafana threshold step receives a number. jq's walk
+  # rewrites string VALUES only, so a numeric field cannot be substituted
+  # inside it — hence this text pass before the structural one.
+  sed \
+    -e "s/\"__RUNNER_OFFLINE_SECONDS_NUM__\"/$offline/g" \
+    -e "s/\"__ADMISSION_REPLAY_FLOOR_SECONDS_NUM__\"/$replay_floor/g" \
+    "$dir/assets/dashboard.json" >"$numeric"
+  jq \
+    --arg datasource "$OBS_PROMETHEUS_UID" \
+    --arg environment "$OBS_ENVIRONMENT" \
+    --arg dashboard "$OBS_DASHBOARD_NAME" \
+    --arg offline "$offline" \
+    --arg replay_floor "$replay_floor" \
+    'walk(
+      if type == "string" then
+        gsub("__PROMETHEUS_UID__"; $datasource)
+        | gsub("__ENVIRONMENT__"; $environment)
+        | gsub("__DASHBOARD_UID__"; $dashboard)
+        | gsub("__RUNNER_OFFLINE_SECONDS__"; $offline)
+        | gsub("__ADMISSION_REPLAY_FLOOR_SECONDS__"; $replay_floor)
+      else . end
+    )' "$numeric" >"$out"
+  rm -f "$numeric"
+}
+
+# Renders the alert asset into $1, resolving its one placeholder.
+obs_render_alerts() {
+  local out="$1"
+  local dir="$2"
+  jq --arg threshold "$(obs_runner_offline_seconds)" \
+    'walk(
+      if type == "string" then
+        gsub("__RUNNER_OFFLINE_SECONDS__"; $threshold)
+      else . end
+    )' "$dir/assets/alerts.json" >"$out"
+}

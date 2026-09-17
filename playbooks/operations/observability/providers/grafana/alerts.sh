@@ -18,16 +18,16 @@ cleanup() {
 trap cleanup EXIT
 
 alerts_path="/apis/rules.alerting.grafana.app/v0alpha1/namespaces/$OBS_NAMESPACE/alertrules"
-offline_seconds="$(obs_runner_offline_seconds)"
-alerts="$work_dir/alerts.json"
-jq --arg threshold "$offline_seconds" \
-  'walk(
-    if type == "string" then
-      gsub("__RUNNER_OFFLINE_SECONDS__"; $threshold)
-    else . end
-  )' "$SCRIPT_DIR/assets/alerts.json" >"$alerts"
 
-index=0
+# NO GROUP LABELS. The API refuses them on both paths — "cannot set group when
+# creating a new rule" on POST, "cannot set group when updating un-grouped rule"
+# on PUT — and returns HTTP 403 for what is a validation rule, not a permission.
+# Grouping in this API version is its own resource, `rulesequences`, which the
+# same endpoint lists. Six rules that each carry `trigger.interval` evaluate the
+# same grouped or not, so nothing is added here to buy an ordering nobody reads.
+alerts="$work_dir/alerts.json"
+obs_render_alerts "$alerts" "$SCRIPT_DIR"
+
 while IFS= read -r alert; do
   base_name="$(jq -r '.name' <<<"$alert")"
   name="$base_name-$OBS_ENV"
@@ -38,7 +38,6 @@ while IFS= read -r alert; do
   jq -n \
     --argjson alert "$alert" \
     --arg name "$name" \
-    --arg group_index "$index" \
     --arg folder "$OBS_FOLDER_NAME" \
     --arg environment "$OBS_ENVIRONMENT" \
     --arg datasource "$OBS_PROMETHEUS_UID" \
@@ -52,10 +51,6 @@ while IFS= read -r alert; do
           "grafana.app/folder":$folder,
           "grafana.com/provenance":"api"
         },
-        labels:{
-          "grafana.com/group":"agentsfleet-runtime",
-          "grafana.com/group-index":$group_index
-        }
       },
       spec:{
         title:($alert.title + " — " + $environment),
@@ -131,7 +126,6 @@ while IFS= read -r alert; do
   esac
 
   echo "OK: $name"
-  index=$((index + 1))
 done < <(jq -c '.[]' "$alerts")
 
 echo "PASS: $OBS_ENVIRONMENT Grafana alerts are current"
