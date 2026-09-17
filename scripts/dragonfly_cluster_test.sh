@@ -119,8 +119,69 @@ test_should_place_the_tls_node_after_the_cluster_ports() {
   teardown
 }
 
+# The compose default. Nothing about the Fly deployment may change what a
+# developer's `make up` advertises, because the daemon container there shares
+# this one's network namespace and can reach nothing else.
+test_should_announce_loopback_when_no_address_is_configured() {
+  local name="test_should_announce_loopback_when_no_address_is_configured"
+  unset DRAGONFLY_ANNOUNCE_IP
+  fixture
+  local config
+  config="$(render_config)"
+  if [ "$ANNOUNCE_HOST" = "127.0.0.1" ] && [ "${config#*\"ip\":\"127.0.0.1\"}" != "$config" ]; then
+    ok "$name"
+  else
+    bad "$name" "announce host was '$ANNOUNCE_HOST' and the config read: $config"
+  fi
+  teardown
+}
+
+# The Fly case. A node reached from another app must advertise an address that
+# resolves there; 6PN hands out an IPv6 literal, which is why this asserts on
+# one rather than on a tidy IPv4.
+test_should_announce_the_configured_address_when_one_is_set() {
+  local name="test_should_announce_the_configured_address_when_one_is_set"
+  local addr="fdaa:0:1234:a7b:1c8:0:a:2"
+  DRAGONFLY_ANNOUNCE_IP="$addr"
+  export DRAGONFLY_ANNOUNCE_IP
+  fixture
+  local config
+  config="$(render_config)"
+  if [ "$ANNOUNCE_HOST" != "$addr" ]; then
+    bad "$name" "announce host was '$ANNOUNCE_HOST', wanted '$addr'"
+  elif [ "${config#*\"ip\":\"$addr\"}" = "$config" ]; then
+    bad "$name" "the pushed config did not carry the announce address: $config"
+  elif [ "${config#*\"ip\":\"127.0.0.1\"}" != "$config" ]; then
+    bad "$name" "the pushed config still advertises loopback: $config"
+  else
+    ok "$name"
+  fi
+  unset DRAGONFLY_ANNOUNCE_IP
+  teardown
+}
+
+# The admin port is loopback-only by design (see the script's header). An
+# announce address must not move it: the whole point of binding admin to
+# loopback is that DFLYCLUSTER verbs are unreachable from off the machine.
+test_should_keep_the_admin_bind_on_loopback_when_announcing_elsewhere() {
+  local name="test_should_keep_the_admin_bind_on_loopback_when_announcing_elsewhere"
+  DRAGONFLY_ANNOUNCE_IP="fdaa:0:1234:a7b:1c8:0:a:2"
+  export DRAGONFLY_ANNOUNCE_IP
+  fixture
+  if [ "$HOST" = "127.0.0.1" ]; then
+    ok "$name"
+  else
+    bad "$name" "HOST moved to '$HOST'; admin_bind and the local redis-cli follow it"
+  fi
+  unset DRAGONFLY_ANNOUNCE_IP
+  teardown
+}
+
 test_should_split_a_range_around_the_moved_slots
 test_should_refuse_a_move_the_source_does_not_own
+test_should_announce_loopback_when_no_address_is_configured
+test_should_announce_the_configured_address_when_one_is_set
+test_should_keep_the_admin_bind_on_loopback_when_announcing_elsewhere
 test_should_render_the_config_every_node_is_pushed
 test_should_attach_the_migration_to_the_source_shard_only
 test_should_derive_admin_ports_beside_the_data_ports

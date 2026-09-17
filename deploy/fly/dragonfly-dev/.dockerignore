@@ -1,0 +1,10 @@
+# The build context is the repository root, because the image copies one file
+# from scripts/. Everything else in the repository is dead weight on the
+# builder upload -- rustd/target alone is 12GB on a developer machine, and the
+# root .dockerignore does not exclude it because the daemon image is built in
+# CI, where no target directory exists.
+#
+# Deny-all then allow the one file, so a new directory added to the repository
+# never silently joins this upload.
+*
+!scripts/dragonfly-cluster.sh

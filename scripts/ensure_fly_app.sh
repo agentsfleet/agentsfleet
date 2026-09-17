@@ -3,8 +3,16 @@
 # machines whose health checks are PASSING, and record the image digest
 # actually deployed.
 #
-#     scripts/ensure_fly_app.sh <app> <build-context-dir> <desired-count>
+#     scripts/ensure_fly_app.sh <app> <build-context-dir> <desired-count> [config]
 #     scripts/ensure_fly_app.sh --create-only <app>
+#
+# The optional fourth argument is a path to the app's fly.toml, for an app
+# whose Dockerfile has to reach OUTSIDE its own directory. dragonfly-dev
+# copies scripts/dragonfly-cluster.sh, the same file the integration lane
+# runs, so its build context is the repository root while its configuration
+# stays in deploy/fly/dragonfly-dev/. Without it flyctl looks for fly.toml in
+# the context directory and would find the repository root's, which is not
+# one. Omitted, behaviour is exactly what it was.
 #
 # CREATE-ONLY EXISTS BECAUSE OF AN ORDERING CONSTRAINT, not for symmetry. A
 # fresh app must exist before `flyctl secrets set --app` addresses it, and it
@@ -50,7 +58,7 @@ FLY_ORG="${FLY_ORG:-}"
 readonly FLY_ORG
 
 usage() {
-  printf 'usage: %s <app> <build-context-dir> <desired-count>\n' "${0##*/}" >&2
+  printf 'usage: %s <app> <build-context-dir> <desired-count> [config]\n' "${0##*/}" >&2
   printf '       %s --create-only <app>\n' "${0##*/}" >&2
 }
 
@@ -92,12 +100,12 @@ main() {
     return
   fi
 
-  if [ "$#" -ne 3 ]; then
+  if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
     usage
     return 2
   fi
 
-  local app="$1" context_dir="$2" desired="$3"
+  local app="$1" context_dir="$2" desired="$3" config="${4:-}"
 
   case "$desired" in
     ''|*[!0-9]*)
@@ -121,8 +129,36 @@ main() {
   # directory and a Dockerfile `COPY config.yml` cannot resolve.
   ensure_app_exists "$app"
 
-  printf 'deploying %s from %s\n' "$app" "$context_dir"
-  "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60
+  # An array, not a string: an unquoted empty string would reach flyctl as an
+  # empty argument, and flyctl reads that as a positional it does not want.
+  local config_flag=()
+  if [ -n "$config" ]; then
+    if [ ! -f "$config" ]; then
+      printf 'config %s does not exist — refusing to deploy %s against a file that is not there\n' \
+        "$config" "$app" >&2
+      return 1
+    fi
+    config_flag=(--config "$config")
+    # An app whose context is the repository root needs its own ignore file,
+    # and it lives beside its fly.toml rather than arriving as a fifth
+    # argument: a caller passing both paths separately will eventually pass a
+    # mismatched pair. flyctl otherwise reads the CONTEXT's .dockerignore,
+    # which for the repository root is the daemon image's and does not exclude
+    # rustd/target -- 12GB uploaded to the builder on every deploy.
+    # A config path with no slash leaves ${config%/*} equal to the filename,
+    # which would derive `fly.toml/.dockerignore` and silently skip an ignore
+    # file the caller meant to apply. Resolve the directory properly.
+    local config_dir
+    config_dir="$(dirname "$config")"
+    local ignorefile="$config_dir/.dockerignore"
+    if [ -f "$ignorefile" ]; then
+      config_flag+=(--ignorefile "$ignorefile")
+      printf 'using ignore file %s\n' "$ignorefile"
+    fi
+  fi
+
+  printf 'deploying %s from %s%s\n' "$app" "$context_dir" "${config:+ using $config}"
+  "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60 "${config_flag[@]}"
 
   "$FLYCTL" scale count "$desired" --app "$app" --yes
 

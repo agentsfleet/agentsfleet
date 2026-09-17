@@ -1,0 +1,67 @@
+app = "dragonfly-dev"
+primary_region = "iad"
+
+# Same region as agentsfleetd-dev and otelcol-dev, deliberately. The daemon
+# reaches this app over 6PN, which is in-region and already WireGuard
+# encrypted, so the seed is plaintext and DRAGONFLY_TLS_CA_CERT_FILE stays
+# unset. That is a saving worth naming: a TLS handshake against an RSA-2048
+# leaf costs ~230 ms, a lane opens hundreds of connections, and that cost
+# queued in front of a connect budget is what turns a healthy datastore into
+# ConnectTimeout.
+[build]
+  # Relative to THIS file's directory, not to the build context. The context
+  # is the repository root (the image copies scripts/dragonfly-cluster.sh), and
+  # spelling the full path here made flyctl look for it twice over:
+  # deploy/fly/dragonfly-dev/deploy/fly/dragonfly-dev/Dockerfile.
+  dockerfile = "Dockerfile"
+
+# ONE machine running four Dragonfly processes, not four machines. The script
+# announces each node's address and bootstraps DFLYCLUSTER CONFIG on every
+# start, because Dragonfly forgets its layout on restart. Four machines would
+# each announce a 6PN address Fly reassigns, so every restart would need the
+# layout pushed from outside; one machine keeps the rig the integration lane
+# already proves on every run.
+#
+# performance-2x rather than otelcol-dev's shared-cpu-1x: Dragonfly is
+# thread-per-core, and four nodes at two proactor threads each would thrash a
+# shared vCPU. 4GB against a 2.25GB ceiling (4 x 512mb cluster nodes plus the
+# 256mb TLS node) leaves headroom for the page cache.
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+
+# Dragonfly writes its cluster layout, its slot ownership and its minted
+# certificates under /data. On a machine without this they are lost on every
+# restart, and the bootstrap would push the canonical layout over whatever the
+# previous run left — which is exactly the failure `reset` exists to undo by
+# hand.
+[mounts]
+  source = "dragonfly_data"
+  destination = "/data"
+  # Pinned, because flyctl provisions a 1GB volume when this is absent and
+  # 1GB sits UNDER the 2.25GB of memory the four nodes are configured for.
+  # Dragonfly snapshots to /data, so the default would run out on a dataset
+  # the cluster is sized to hold in RAM. initial_size applies to volumes
+  # flyctl creates from here on; one already provisioned at the default needs
+  # `flyctl vol extend` to catch up.
+  initial_size = "10gb"
+
+[[restart]]
+  policy = "always"
+
+# No [[services]] block: no public address, no Fly proxy. Only agentsfleetd-dev
+# reaches this, at dragonfly-dev.internal:7001 over the private network, the
+# same way it reaches otelcol-dev.internal:4318.
+#
+# A TCP check proves a node is listening and nothing more. Whether the CLUSTER
+# is bootstrapped is a question only `dragonfly-cluster.sh healthy` can answer
+# (every node online in CLUSTER SHARDS, plus the TLS handshake), and the deploy
+# workflow runs exactly that over `flyctl ssh console` before it lets the
+# daemon deploy proceed. Fly's own checks cannot run a command, so the split is
+# forced, not chosen.
+[checks.seed]
+  type = "tcp"
+  port = 7001
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "30s"

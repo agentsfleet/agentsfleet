@@ -15,7 +15,7 @@
     "p99_ms": 0.913,
     "postgres_transactions_per_steer": 0.0007297045158549089,
     "rate_per_second": 14434.696576443455,
-    "redis_calls_per_steer": 2.0003094316617864
+    "dragonfly_calls_per_steer": 2.0003094316617864
   },
   "series": {
     "ready_depth": [
@@ -82,7 +82,7 @@
     ]
   },
   "datastores": {
-    "redis": {
+    "dragonfly": {
       "operations": 433119
     },
     "postgres": {

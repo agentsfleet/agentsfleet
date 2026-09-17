@@ -8,7 +8,6 @@ source "$SCRIPT_DIR/../../lib/common.sh"
 
 env_mode="${ENV:-all}"
 planetscale_api="https://api.planetscale.com/v1"
-upstash_api="https://api.upstash.com/v2"
 max_age_days="${MAX_ALLOWLIST_ATTESTATION_AGE_DAYS:-7}"
 tmp_dir="$(mktemp -d)"
 auth_file="$tmp_dir/authorization"
@@ -88,65 +87,31 @@ verify_planetscale() {
   echo "PASS: $label PlanetScale IP restrictions"
 }
 
-verify_upstash() {
-  local label="$1"
-  local vault="$2"
-  local item="$3"
-  local database email api_key wanted recorded verified_at basic response
-  database="$(read_required "op://$vault/$item/db-id")"
-  email="$(read_required "op://$vault/$item/developer-api-email")"
-  api_key="$(read_required "op://$vault/$item/developer-api-key")"
-  wanted="$(read_required "op://$vault/fly-egress-ips/cidrs")"
-  recorded="$(read_required "op://$vault/$item/allowlist-cidrs")"
-  verified_at="$(read_required "op://$vault/$item/allowlist-verified-at")"
 
-  jq -e --argjson wanted "$wanted" \
-    'type == "array" and ((unique | sort) == ($wanted | unique | sort))' \
-    <<<"$recorded" >/dev/null || {
-    echo "FAIL: $label Upstash allowlist attestation differs from Fly.io egress inventory" >&2
-    return 1
-  }
-  playbooks_is_recent_utc_timestamp "$verified_at" "$max_age_days" || {
-    echo "FAIL: $label Upstash allowlist attestation is stale" >&2
-    return 1
-  }
-
-  basic="$(printf '%s:%s' "$email" "$api_key" | base64 | tr -d '\n')"
-  printf 'Authorization: Basic %s\n' "$basic" >"$auth_file"
-  chmod 600 "$auth_file"
-  response="$(get_json "$upstash_api/redis/database/$database?credentials=hide")"
-  printf '%s' "$response" | jq -e \
-    --arg database "$database" \
-    '.database_id == $database and .securityAddons.ipWhitelisting == true' >/dev/null || {
-    echo "FAIL: $label Upstash IP allowlisting is not enabled" >&2
-    return 1
-  }
-  echo "PASS: $label Upstash IP allowlisting"
-}
-
+# PlanetScale only. The datastore's half of this verification is gone with the
+# store it verified: a self-hosted Dragonfly cluster has no public endpoint, no
+# provider allowlist to attest, and no management API to read one back from. It
+# is reached over 6PN, which admits nothing from outside the private network.
 verify_env() {
   local label="$1"
   local vault="$2"
   local database_item="$3"
-  local redis_item="$4"
   verify_planetscale "$label" "$vault" "$database_item"
-  verify_upstash "$label" "$vault" "$redis_item"
 }
 
 playbooks_require_vault_read_approval
 playbooks_require_op_auth
-playbooks_require_tool base64
 playbooks_require_tool curl
 playbooks_require_tool jq
 playbooks_require_tool python3
 
 case "$env_mode" in
   all)
-    verify_env development "${VAULT_DEV:-ZMB_CD_DEV}" planetscale-dev upstash-dev
-    verify_env production "${VAULT_PROD:-ZMB_CD_PROD}" planetscale-prod upstash-prod
+    verify_env development "${VAULT_DEV:-ZMB_CD_DEV}" planetscale-dev
+    verify_env production "${VAULT_PROD:-ZMB_CD_PROD}" planetscale-prod
     ;;
-  dev) verify_env development "${VAULT_DEV:-ZMB_CD_DEV}" planetscale-dev upstash-dev ;;
-  prod) verify_env production "${VAULT_PROD:-ZMB_CD_PROD}" planetscale-prod upstash-prod ;;
+  dev) verify_env development "${VAULT_DEV:-ZMB_CD_DEV}" planetscale-dev ;;
+  prod) verify_env production "${VAULT_PROD:-ZMB_CD_PROD}" planetscale-prod ;;
   *)
     echo "ERROR: ENV must be all, dev, or prod" >&2
     exit 2

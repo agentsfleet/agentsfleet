@@ -212,8 +212,9 @@ fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {
 /// connection and the edge answers 502 while the machine still reports healthy,
 /// because Fly's readiness probe reaches port 3000 over IPv4. That asymmetry is
 /// why the bug shipped twice: the Zig daemon defaulted its interface to `"::"`
-/// after the same incident (`src/http/server.zig`, since removed) and the port
-/// to Rust dropped the default.
+/// after the same incident, and the port to Rust dropped the default. The file
+/// that carried that default is gone, so its path is not cited here — a path a
+/// reader cannot open is a worse record than the sentence itself.
 ///
 /// # Why one bind serves both stacks
 ///

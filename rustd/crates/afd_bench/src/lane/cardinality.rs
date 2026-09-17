@@ -44,7 +44,7 @@ use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
 const LADDER: &str = "ladder_fleets";
 
 /// Series key: Dragonfly bytes per fleet at each rung, over the rung below.
-const BYTES_PER_FLEET: &str = "redis_bytes_per_fleet";
+const BYTES_PER_FLEET: &str = "dragonfly_bytes_per_fleet";
 
 /// Series key: readiness peek latency at each rung, milliseconds.
 const PEEK_MS: &str = "peek_ms";
@@ -53,7 +53,7 @@ const PEEK_MS: &str = "peek_ms";
 const STREAM_READ_MS: &str = "stream_read_ms";
 
 /// Measurement key: Dragonfly bytes the whole population added.
-const REDIS_BYTES_TOTAL: &str = "redis_bytes_total";
+const DRAGONFLY_BYTES_TOTAL: &str = "dragonfly_bytes_total";
 
 /// Measurement key: how many fleets the readiness index holds on a deployed
 /// target. Its own name, because it is not the population.
@@ -179,7 +179,7 @@ async fn climb(
         previous_rung = rung;
     }
     report.measurement(
-        REDIS_BYTES_TOTAL,
+        DRAGONFLY_BYTES_TOTAL,
         count(previous_bytes.saturating_sub(baseline)),
     );
     capacity::record(stores, report).await?;

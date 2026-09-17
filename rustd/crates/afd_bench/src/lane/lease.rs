@@ -83,7 +83,7 @@ const IDLE_INDEX_DEPTH: &str = "idle_index_depth";
 const IDLE_ROUNDTRIPS_PER_POLL: &str = "idle_roundtrips_per_poll";
 
 /// Measurement key: Dragonfly commands one poll costs with nothing ready.
-const IDLE_REDIS_CALLS_PER_POLL: &str = "idle_redis_calls_per_poll";
+const IDLE_DRAGONFLY_CALLS_PER_POLL: &str = "idle_dragonfly_calls_per_poll";
 
 /// Measurement key: how many polls the idle window managed.
 const IDLE_POLLS: &str = "idle_polls";
@@ -359,7 +359,7 @@ impl Window {
         // the p95, and splitting that between the two datastores would need a
         // timer inside the pass rather than around it.
         report.datastores = DatastoreCosts {
-            redis: DatastoreCost {
+            dragonfly: DatastoreCost {
                 operations: self.dragonfly_calls,
                 time_ms: None,
             },
@@ -383,7 +383,7 @@ impl Window {
             self.counters.roundtrips_per_poll(),
         );
         report.measurement(
-            IDLE_REDIS_CALLS_PER_POLL,
+            IDLE_DRAGONFLY_CALLS_PER_POLL,
             ratio(self.dragonfly_calls, polls),
         );
     }

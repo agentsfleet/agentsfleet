@@ -76,7 +76,7 @@ async fn test_steer_bench_attributes_cost_between_datastores() {
     .await;
 
     assert!(
-        report.datastores.redis.operations > 0,
+        report.datastores.dragonfly.operations > 0,
         "a steer is Dragonfly commands"
     );
     assert!(

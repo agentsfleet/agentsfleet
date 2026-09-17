@@ -180,18 +180,34 @@ impl OutboundHarness {
     }
 
     /// Everything the group has handed out and not had acknowledged.
-    async fn pending(&self) -> redis::streams::StreamPendingReply {
+    async fn pending(&self) -> Option<redis::streams::StreamPendingReply> {
         let mut cmd = redis::cmd(CMD_XPENDING);
         cmd.arg(OUTBOUND_STREAM_KEY).arg(OUTBOUND_CONSUMER_GROUP);
-        self.redis
+        match self
+            .redis
             .command(CMD_XPENDING, OUTBOUND_STREAM_KEY, &cmd)
             .await
-            .expect("XPENDING must answer on a group this harness created")
+        {
+            Ok(reply) => Some(reply),
+            // The one refusal a poll must survive. `reset_without_group` hands
+            // the worker a stream with NO group on purpose, so between the
+            // worker starting and its own XGROUP CREATE landing there is a
+            // window where XPENDING has nothing to answer about. Panicking
+            // there turned a retryable poll into a dead test -- and only
+            // sometimes, because the window is short and the first poll
+            // usually loses the race.
+            Err(error) if error.is_group_missing() => None,
+            Err(error) => panic!("XPENDING must answer on a group that exists: {error}"),
+        }
     }
 
     /// How many entries the group is still waiting to have acknowledged.
+    ///
+    /// A group that does not exist yet is holding nothing, which is what zero
+    /// means here. Callers pair this with a delivery assertion, so answering
+    /// zero early cannot pass a test on its own.
     pub(crate) async fn pending_count(&self) -> usize {
-        self.pending().await.count()
+        self.pending().await.map_or(0, |reply| reply.count())
     }
 
     /// Which consumers hold those entries.
@@ -206,7 +222,12 @@ impl OutboundHarness {
     /// reads as "no consumer holds anything", which fails the caller's
     /// assertion loudly rather than passing it quietly.
     pub(crate) async fn pending_consumers(&self) -> Vec<String> {
-        match self.pending().await {
+        // A group that does not exist holds nothing, same as an empty one, and
+        // the caller's assertion fails loudly on an empty list either way.
+        let Some(reply) = self.pending().await else {
+            return Vec::new();
+        };
+        match reply {
             redis::streams::StreamPendingReply::Data(data) => data
                 .consumers
                 .into_iter()

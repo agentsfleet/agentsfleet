@@ -13,7 +13,7 @@
     "failures": 0.0,
     "idle_index_depth": 0.0,
     "idle_polls": 61562.0,
-    "idle_redis_calls_per_poll": 1.0000162437867515,
+    "idle_dragonfly_calls_per_poll": 1.0000162437867515,
     "idle_roundtrips_per_poll": 0.0,
     "leases": 200.0,
     "max_ms": 243.199,
@@ -25,7 +25,7 @@
     "wasted_claim_rate": 0.06103286384976526
   },
   "datastores": {
-    "redis": {
+    "dragonfly": {
       "operations": 616
     },
     "postgres": {

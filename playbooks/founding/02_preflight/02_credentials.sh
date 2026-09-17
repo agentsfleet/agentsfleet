@@ -210,8 +210,10 @@ check_prod() {
     check_ref "op://$v/cloudflare-r2/bucket"
     check_ref "op://$v/planetscale-prod/api-connection-string"
     check_ref "op://$v/planetscale-prod/migrator-connection-string"
-    check_ref "op://$v/upstash-prod/api-url"
-    check_ref "op://$v/upstash-prod/url"
+    # One reference, not two. The hosted store had a restricted runtime URL
+    # beside a root one; a self-hosted cluster on the private network has a
+    # single seed and no second, more privileged credential to keep apart.
+    check_ref "op://$v/dragonfly-prod/api-url"
     check_ref "op://$v/grafana-prod/otlp-endpoint"
     check_ref "op://$v/grafana-prod/instance-id"
     check_ref "op://$v/grafana-prod/api-key"
@@ -257,8 +259,7 @@ check_dev() {
     check_ref "op://$v/approval-signing-secret/credential"
     check_ref "op://$v/planetscale-dev/api-connection-string"
     check_ref "op://$v/planetscale-dev/migrator-connection-string"
-    check_ref "op://$v/upstash-dev/api-url"
-    check_ref "op://$v/upstash-dev/url"
+    check_ref "op://$v/dragonfly-dev/api-url"
     check_ref "op://$v/grafana-dev/otlp-endpoint"
     check_ref "op://$v/grafana-dev/instance-id"
     check_ref "op://$v/grafana-dev/api-key"

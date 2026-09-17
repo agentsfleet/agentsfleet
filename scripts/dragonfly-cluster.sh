@@ -57,6 +57,26 @@ ADMIN_OFFSET="${DRAGONFLY_ADMIN_OFFSET:-5}"
 PASSWORD="${DRAGONFLY_PASSWORD:-agentsfleet}"
 DATA="${DRAGONFLY_DATA:-/data}"
 HOST=127.0.0.1
+# What the nodes ADVERTISE, which is not always where they listen. Every
+# client that gets a MOVED reply dials this address, so it has to resolve from
+# wherever the client runs.
+#
+# 127.0.0.1 is right for compose, where the daemon shares this container's
+# network namespace (docker-compose.yml, `network_mode: service:dragonfly`).
+# It is wrong on Fly, where agentsfleetd-dev is a DIFFERENT app reaching this
+# one over 6PN: a MOVED naming 127.0.0.1 sends that client to itself. The Fly
+# image sets DRAGONFLY_ANNOUNCE_IP from $FLY_PRIVATE_IP at boot.
+#
+# An IPv6 literal is fine here. redis-rs splits a node address on its LAST
+# colon and strips surrounding brackets (redis-1.7.0
+# src/cluster_handling/mod.rs:123-131), then dials host and port directly.
+ANNOUNCE_HOST="${DRAGONFLY_ANNOUNCE_IP:-$HOST}"
+# The listen address, passed through only when set. Dragonfly binds every
+# interface by default, which is what compose wants; a 6PN deployment says
+# `::` so the nodes accept the private IPv6 the announce address names.
+# Loopback keeps working through it -- Linux dual-stack maps IPv4 onto `::`
+# unless v6only is set, and nothing here sets it.
+BIND_ADDRESS="${DRAGONFLY_BIND:-}"
 NODE_COUNT=4
 # The TLS node's index: one past the cluster, so its ports follow theirs.
 TLS_NODE=4
@@ -93,6 +113,10 @@ replica_of() { echo $(( $1 + 1 )); }
 
 start_nodes() {
   local i
+  # An array, not a string: an empty string would expand to an empty argument
+  # and dragonfly would read it as a flag it does not have.
+  local bind_flag=()
+  [ -n "$BIND_ADDRESS" ] && bind_flag=(--bind="$BIND_ADDRESS")
   for i in $(seq 0 $((NODE_COUNT - 1))); do
     mkdir -p "$DATA/n$i"
     # 256 MiB per proactor thread is a hard floor Dragonfly enforces at boot;
@@ -100,8 +124,8 @@ start_nodes() {
     dragonfly --logtostderr --version_check=false \
       --cluster_mode=yes --cluster_node_id="${NODE_IDS[$i]}" \
       --port="$(data_port "$i")" --admin_port="$(admin_port "$i")" \
-      --admin_bind="$HOST" \
-      --cluster_announce_ip="$HOST" --announce_port="$(data_port "$i")" \
+      --admin_bind="$HOST" "${bind_flag[@]}" \
+      --cluster_announce_ip="$ANNOUNCE_HOST" --announce_port="$(data_port "$i")" \
       --requirepass="$PASSWORD" --masterauth="$PASSWORD" --dir="$DATA/n$i" \
       --maxmemory=512mb --proactor_threads=2 --lock_on_hashtags \
       >/dev/null 2>"$DATA/n$i/dragonfly.log" &
@@ -169,7 +193,10 @@ render_config() {
     first_shard=0
     local r
     r=$(replica_of "$p")
-    out="$out{\"slot_ranges\":[$ranges],\"master\":{\"id\":\"${NODE_IDS[$p]}\",\"ip\":\"$HOST\",\"port\":$(data_port "$p")},\"replicas\":[{\"id\":\"${NODE_IDS[$r]}\",\"ip\":\"$HOST\",\"port\":$(data_port "$r")}]"
+    # The master and replica addresses here are what a client is told to dial,
+    # so they carry the announce address. The migration entry below is dialled
+    # by a PEER inside this container, so it keeps the loopback one.
+    out="$out{\"slot_ranges\":[$ranges],\"master\":{\"id\":\"${NODE_IDS[$p]}\",\"ip\":\"$ANNOUNCE_HOST\",\"port\":$(data_port "$p")},\"replicas\":[{\"id\":\"${NODE_IDS[$r]}\",\"ip\":\"$ANNOUNCE_HOST\",\"port\":$(data_port "$r")}]"
     if [ "$p" = "$mig_from" ]; then
       out="$out,\"migrations\":[{\"node_id\":\"${NODE_IDS[$mig_to]}\",\"ip\":\"$HOST\",\"port\":$(admin_port "$mig_to"),\"slot_ranges\":[{\"start\":$mig_lo,\"end\":$mig_hi}]}]"
     fi
