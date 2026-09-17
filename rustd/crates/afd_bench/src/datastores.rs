@@ -63,7 +63,7 @@ const CALLS_FIELD: &str = "calls=";
 const USED_MEMORY_FIELD: &str = "used_memory:";
 
 /// The datastore named when a Dragonfly counter will not parse.
-const REDIS: &str = "redis";
+const DRAGONFLY: &str = "dragonfly";
 
 /// The datastore named when a Postgres counter will not parse.
 const POSTGRES: &str = "postgres";
@@ -178,7 +178,7 @@ pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
     read_any
         .then_some(total)
         .ok_or(crate::Error::CounterUnreadable {
-            datastore: REDIS,
+            datastore: DRAGONFLY,
             field: CALLS_FIELD,
         })
 }
@@ -244,7 +244,7 @@ pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
     read_any
         .then_some(total)
         .ok_or(crate::Error::CounterUnreadable {
-            datastore: REDIS,
+            datastore: DRAGONFLY,
             field: USED_MEMORY_FIELD,
         })
 }

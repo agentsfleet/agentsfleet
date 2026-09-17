@@ -21,7 +21,7 @@
     "unsettled": 0.0
   },
   "datastores": {
-    "redis": {
+    "dragonfly": {
       "operations": 604
     },
     "postgres": {

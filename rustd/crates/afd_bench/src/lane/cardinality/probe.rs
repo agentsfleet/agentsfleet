@@ -57,7 +57,7 @@ const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
 const POSTGRES: &str = "postgres";
 
 /// The datastore named when a Dragonfly sample set is empty.
-const REDIS: &str = "redis";
+const DRAGONFLY: &str = "dragonfly";
 
 /// Median readiness-peek latency over [`SAMPLES`] calls, asking for the same
 /// number of candidates the lease path asks for.
@@ -75,7 +75,7 @@ pub(super) async fn peek_ms(queue: &Dragonfly) -> Result<f64> {
         samples.push(started.elapsed());
     }
     median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: REDIS,
+        datastore: DRAGONFLY,
         field: "readiness peek samples",
     })
 }
@@ -97,7 +97,7 @@ pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64
         samples.push(started.elapsed());
     }
     median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: REDIS,
+        datastore: DRAGONFLY,
         field: "stream read samples",
     })
 }

@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M196
 **Workstream:** 001
 **Date:** Sep 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0
 **Categories:** DOCS, INFRA, OBS
 **Batch:** B2
 **Branch:** `feat/m196-dragonfly-fly-dev`
 **Baseline revision:** `b1c9ef58f1ac5f87488904e9f3e77cdeb60770d6` (`main`, merge of #689)
-**Test Baseline:** 2702 cargo + 8399 bun unit tests passing on this branch (`make test-unit-all`, exit 0). Integration counts are due before the Pull Request.
+**Test Baseline:** 2702 cargo + 8399 bun unit tests passing (`make test-unit-all`, exit 0) against baseline `b1c9ef58f`. Shell self-test delta: +3 in `dragonfly_cluster_test.sh` (6→9), +8 new in `datastore_cutover/probes_test.sh`, +1 in `credentials_test.sh` (13→14), net −1 in `allowlisting_test.sh` (8→7, one test deleted with the control it covered). Zig: +1 (`the Tool interface symbols stay public`).
 **Depends on:** M192_001, merged as #689 (`b1c9ef58f`). That branch made the transport cluster-only; this one gives it a cluster to talk to.
 **Provenance:** Second revision. The first was a two-environment cutover; Indy narrowed it on 2026-09-16 to a dev acceptance with prod wired but ungraded, and struck the data migration that was never going to happen (Discovery). The sequencing constraint below was found by reading `deploy-dev-fly.yml` against `afd_dragonfly`'s boot refusal, not proposed.
 **Canonical architecture:** `docs/architecture/datastore_scaling.md`.
