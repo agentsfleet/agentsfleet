@@ -90,6 +90,13 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
 2. **GitHub user authorization proves installation access.** The callback exchanges the one-time `code` with the platform `client_id` and `client_secret`. A claimed `installation_id` is probed directly. With no claim, exactly one accessible installation repairs internal state loss. Zero returns 403 `UZ-CONN-008` — install the App, then connect again; the Rust daemon carries no App slug and so no install-page continuation. A claimed `installation_id` on the return is probed with the user token before persistence, without exposing the token to the browser or provider URL. More than one returns 403 `UZ-CONN-008`. The datastore also refuses to move an installation already bound to another workspace.
 3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …) — one app per provider shared across all tenants, catastrophic-if-leaked, never on a per-tenant surface. GitHub's bag carries its App identity, user-authorization client credentials, and App-level webhook secret; an unprovisioned bag fails loud: 503 `UZ-CONN-001`.
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
+5. **A signature proves origin, never the producer.** GitHub permits every
+   push-capable identity to create deployment statuses, so every such identity in
+   a mapped repository sits inside the trusted producer boundary. The daemon
+   verifies the App signature and the installation routing; it does not inspect
+   `deployment_status.creator` or attest which system produced the status. A
+   scenario that depends on this says so and cites this anchor rather than
+   restating it.
 
 The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §OAuth connectors.
 

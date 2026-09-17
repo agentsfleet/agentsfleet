@@ -283,11 +283,20 @@ datastore learns about a tenant when that tenant's first fleet is installed.
 
 ## Flow 1 — CLI device flow (`agentsfleet login`)
 
-The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. The recovered session token is spent immediately on `POST /v1/cli-credentials` and is never written to disk — what `credentials.json` (mode `0o600`) holds is the durable `afc_` credential that mint returns, and that is what the CLI carries on every subsequent request. The credential does not expire, so there is no `401 token_expired` re-login cycle; a 401 means the credential was revoked (`UZ-AUTH-023`) or is unknown. See [§CLI credential — resolved, not granted](#cli-credential--resolved-not-granted) for how it authenticates.
+A browser-mediated device flow: the human approves in a browser, a verification
+code binds that person to the one typing in the terminal, and the minted JWT
+rides ECDH P-256 back to the CLI. What the flow produces is the thing this page
+cares about — a durable `afc_` credential, written to `credentials.json` at mode
+`0o600`, carried on every later request. The session token it was exchanged for
+never reaches disk.
 
-There is no non-interactive login. M160_002 §3 removed the `--token` flag and its piped-stdin fallback. `AGENTSFLEET_API_KEY` already carries an `agt_t…` tenant key on every request and **takes precedence over the stored credential**, so the flag was a second route to the same place — and the only one that could write a value the credential loader later refuses.
+The credential does not expire, so there is no `401 token_expired` re-login
+cycle: a 401 means it was revoked (`UZ-AUTH-023`) or is unknown. How it resolves
+capability is [§CLI credential — resolved, not granted](#cli-credential--resolved-not-granted).
 
-Unattended contexts, meaning Continuous Integration runners and containers, set the environment variable, which persists nothing. A non-TTY `login` fails immediately and says why. One rule, no overlap: interactive is the device flow, unattended is the environment variable.
+**There is no non-interactive login.** Interactive is the device flow; unattended
+is `AGENTSFLEET_API_KEY`, which carries an `agt_t` tenant key and outranks the
+stored credential. A non-TTY `login` fails immediately and names the variable.
 
 The full data lifecycle, sequence, session state machine, threat model, pinned crypto primitives, the non-interactive token-seeding path, deploy rules, and the human-led-only invariant live in **[`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md)**.
 
@@ -303,7 +312,7 @@ only route-aware controls and analytics context in the browser. Loading mobile,
 workspace, account, or route-tool code later does not remount the authentication
 provider or create a second session-refresh lifecycle.
 
-### Shape
+### Shape — browser dashboard
 
 ```
 Browser tab on app.agentsfleet.net                            Rust backend (api.agentsfleet.net)
@@ -402,7 +411,7 @@ Browser never holds an API-audience JWT in this flow. The Bearer token only ever
 
 Static, long-lived, never expires by default. Provisioned in the dashboard, used directly by external services (n8n, Zapier, custom scripts, customer fleets).
 
-### Shape
+### Shape — tenant API key
 
 ```
 Provisioning (one-time, via dashboard)            Usage (every subsequent call)
@@ -847,7 +856,7 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 - **Session cookies.** Webhook URLs are not session-authed; cookies are ignored.
 - **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43 — the matcher no longer recognizes the two-segment form.
 
-### Cross-references
+### Cross-references — manual fleet webhooks
 
 - Implementation: `rustd/crates/afd_http/src/route/webhook.rs` (the signature guard), `afd_fleet_runtime`'s trigger configuration (resolver), `rustd/crates/afd_fleet_runtime/src/provider.rs` (provider registry).
 - Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER", [`architecture/user_flow.md`](./architecture/user_flow.md) §8 (the GH Actions worked example).
@@ -971,7 +980,7 @@ Log reasons in parentheses are the greppable `reason=` values the Slack events i
 | `UZ-SLK-022` (token exchange failed) | `code`→token exchange rejected by the provider | **502** on the callback |
 | `UZ-SLK-030` (answer post failed) | outbound answer POST to Slack failed | logged + retried (background worker; the run never fails) |
 
-### Cross-references
+### Cross-references — OAuth connectors
 
 - Platform shape (registry, archetypes, bounded outbound, add-a-provider recipe, terminology): [`architecture/connectors.md`](./architecture/connectors.md).
 - Implementation: `rustd/crates/afd_credential/src/secrets/connector.rs` (the declared registry) + the generic connect, callback and status routes in `rustd/crates/afd_http/src/route/connector.rs`; platform-app credentials in `rustd/crates/afd_credential/src/credential/platform.rs` (signed state + `<provider>-app` creds), the refresh-token grant in `rustd/crates/afd_credential/src/credential/oauth.rs`, the GitHub App exchange in `rustd/crates/afd_credential/src/credential/github/exchange.rs`, and the mint cache in `rustd/crates/afd_credential/src/credential/broker.rs`; `afd_credential` owns the bounded outbound and Slack's bespoke ingress. Per-install/webhook handles are vaulted under their bare provider/source name — no storage-key prefix (M121).

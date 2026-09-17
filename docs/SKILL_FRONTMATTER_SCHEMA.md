@@ -35,7 +35,7 @@ You are Platform Ops Fleet. You diagnose problems in a small production
 platform...
 ```
 
-### Top-level keys
+### Top-level keys — `SKILL.md`
 
 | Key | Required | Type | Constraint |
 |---|---|---|---|
@@ -89,7 +89,7 @@ x-agentsfleet:
 # budget reasoning, firewall behavior. Not consumed by runtime.
 ```
 
-### Top-level keys
+### Top-level keys — `TRIGGER.md`
 
 | Key | Required | Type | Constraint |
 |---|---|---|---|
