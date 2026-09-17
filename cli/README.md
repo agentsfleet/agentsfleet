@@ -9,15 +9,17 @@ The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.
 
 Authenticate, manage workspaces, install Fleets, tail their events, and operate your agentsfleet deployment from the terminal.
 
-> **Pre-release** — agentsfleet is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
+> **Pre-release** — agentsfleet is in pre-release. The Application Programming
+> Interface (API), the CLI, and behavior may change without notice before
+> General Availability (GA).
 
 ## Install
 
 ```bash
-npm install -g @agentsfleet/cli@next
+npm install -g @agentsfleet/cli
 ```
 
-Requires Node.js ≥ 24 (or Bun ≥ 1.3).
+Requires Node.js ≥ 24 (or Bun ≥ 1.4).
 
 ## Quick start
 
@@ -53,7 +55,7 @@ was the one shipped to npm, where nobody could see the original to compare.
 
 ## Development
 
-Building, testing, and the repository layout: [`docs/DEVELOPMENT.md`](https://github.com/agentsfleet/agentsfleet/blob/main/docs/DEVELOPMENT.md).
+Building, testing, and the repository layout: [`docs/development.md`](https://github.com/agentsfleet/agentsfleet/blob/main/docs/development.md).
 Contribution workflow for this package: [`cli/CONTRIBUTING.md`](https://github.com/agentsfleet/agentsfleet/blob/main/cli/CONTRIBUTING.md).
 
 ## Links
