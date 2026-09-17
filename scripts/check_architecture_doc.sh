@@ -338,6 +338,67 @@ else
   ok "test_arch_no_retired_slot_numbers: no page cites a retired 0xx schema slot"
 fi
 
+# ---------------------------------------------------------------------------
+# 10. test_the_doc_carries_no_conflict_marker
+#     A shipped spec recorded this fault class and named this test by name; the
+#     test was never in the tree, and seven markers were sitting in five pages
+#     when the docs review of 2026-09-17 found them. One reaches the branch by
+#     riding the END of a sentence or a table row, so a line-anchored `^>>>>>>>`
+#     — which is what every pre-commit grep uses — looks straight past it. Match
+#     anywhere in the line. `=======` is excluded on purpose: it is a legal
+#     Markdown setext rule and would fire on real prose.
+# ---------------------------------------------------------------------------
+marker_hits=""
+while IFS= read -r f; do
+  hits="$(grep -nE '(<{7}|>{7}) ' "$f" 2>/dev/null || true)"
+  [ -n "$hits" ] && marker_hits="$marker_hits$f:$hits"$'\n'
+done < <(doc_files)
+if [ -n "${marker_hits// /}" ]; then
+  err "test_the_doc_carries_no_conflict_marker: merge conflict markers survived a merge:"
+  printf "%s" "$marker_hits" >&2
+else
+  ok "test_the_doc_carries_no_conflict_marker: no page carries a merge conflict marker"
+fi
+
+# ---------------------------------------------------------------------------
+# 11. test_arch_published_links_resolve
+#     Every docs.agentsfleet.net pointer must name a page that exists in the
+#     published set. A pointer to a page nobody wrote sends the reader to a 404,
+#     and the docs repository is a sibling checkout the gate cannot assume, so
+#     the roster below is the contract. Regenerate it with:
+#       find ~/Projects/docs -name '*.mdx' -not -path '*/snippets/*' \
+#         | sed 's|.*/docs/||; s|\.mdx$||' | sort
+#     A page added there and not added here fails closed — the right failure,
+#     since a stale roster is invisible and a stale pointer is a dead link.
+# ---------------------------------------------------------------------------
+readonly PUBLISHED_PAGES="
+api-reference/error-codes api-reference/introduction api-reference/scopes
+billing/budgets changelog cli/agentsfleet cli/configuration cli/flags cli/install
+concepts concepts/context-lifecycle fleets/authoring fleets/connectors
+fleets/install fleets/library fleets/model-providers fleets/overview
+fleets/running fleets/secrets fleets/tools fleets/troubleshooting fleets/webhooks
+index memory quickstart runners workspaces/managing workspaces/overview
+"
+# Word-split and rejoin on single spaces: the roster above is newline-wrapped for
+# reading, and a `case` glob testing " $slug " never matches at a line boundary.
+published_flat=" $(printf '%s ' $PUBLISHED_PAGES) "
+bad_published=0
+while IFS= read -r ref; do
+  src="${ref%%::*}"
+  slug="${ref##*::}"
+  case "$published_flat" in
+    *" $slug "*) continue ;;
+  esac
+  err "test_arch_published_links_resolve: $src points at docs.agentsfleet.net/$slug, which is not a published page"
+  bad_published=$((bad_published + 1))
+done < <(
+  while IFS= read -r f; do
+    grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
+      | sed -E "s|docs\.agentsfleet\.net/|$f::|" || true
+  done < <(doc_files) | sort -u
+)
+[ "$bad_published" = 0 ] && ok "test_arch_published_links_resolve: every docs.agentsfleet.net pointer names a published page"
+
 # A pattern that silently matches nothing reports clean forever. Against the real
 # corpus the citation count is in the hundreds; a collapse to zero means the
 # extraction broke, not that the pages stopped citing anything.

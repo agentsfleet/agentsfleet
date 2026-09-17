@@ -1,5 +1,7 @@
 # Roadmap — deferred and forward-looking direction
 
+> Parent: [`README.md`](./README.md) · What actually shipped, in user-facing terms: [docs.agentsfleet.net/changelog](https://docs.agentsfleet.net/changelog).
+
 > Items intentionally out of v2.0 scope, captured so specs don't foreclose them. Current canon for what ships is [`high_level.md`](./high_level.md) + [`direction.md`](./direction.md) + `docs/v2/{pending,active,done}/`. This file is direction, not a commitment.
 
 ## Status index
@@ -29,7 +31,9 @@ One row per item, so an agent can check a status without reading the ledger; eac
 [M192_001](../v2/done/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md) defines the cluster-only Dragonfly datastore; Redis is retired as a backend.
 The [datastore scaling requirements](./datastore_scaling.md) record the required target, recovery behavior, and rollout limits.
 
-Both plans remain pending. Redis remains the deployment default, and no Dragonfly capacity or recovery result is claimed.
+Development runs on the `dragonfly-dev` cluster; production has not moved, and no Dragonfly capacity or
+recovery result is claimed for it. Rollout status is canonical in
+[`datastore_scaling.md`](./datastore_scaling.md) §"Upstash retirement status".
 The parked SSE follow-up is not a prerequisite; streaming tests use the merged runtime's behavior.
 
 ## v2.1 — authorization
@@ -58,7 +62,7 @@ The `github-pr-reviewer` walkthrough remains a target, not a shipped proof, unti
 
 ## Fleet operator plane + proactive reassignment — shipped in M84_001 (read) + M84_002 (mutation/reassignment)
 
-M80_006 shipped per-lease renewal (§3 — a *live* runner keeps its lease). The operator plane (§1: `GET`/`PATCH /v1/fleets/runners`, cordon/revoke) and heartbeat-lapse reassignment (§2: expire a *dead* runner's affinity so its work re-leases to a healthy host) were carved out after a design study. Both shipped: the **read** — `GET /v1/fleets/runners` (paginated, platform-admin-gated, **derived** liveness, no `token_hash`) — landed in **M84_001**; the **mutation + reassignment** — `PATCH /v1/fleets/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` typed enum, `UZ-RUN-009`, the append-only `fleet.runner_events` log, and the liveness sweeper that closes §2 — shipped in **M84_002**. The model: typed `admin_state` (intent) + **derived** liveness (runtime, never stored) + `runner_events` (history); **no JSONB status** (cross-validated). The deeper points the study surfaced still hold:
+M80_006 shipped per-lease renewal (§3 — a *live* runner keeps its lease). The operator plane (§1: `GET`/`PATCH /v1/fleets/runners`, cordon/revoke) and heartbeat-lapse reassignment (§2: expire a *dead* runner's affinity so its work re-leases to a healthy host) were carved out after a design study. Both shipped: the **read** in **M84_001**, the **mutation + reassignment** in **M84_002**. What each surface does is canonical in [`runner_fleet.md`](./runner_fleet.md) §"Operator plane + reassignment"; this page records only that they are no longer deferred. The deeper points the study surfaced still hold:
 
 - **All-runners-down.** If every healthy runner is gone, where does cordoned/lapsed work drain to? There is no eligible target — the work must **hold** (not thrash or fail) until capacity returns.
 - **Eligibility — which runner can take it?** A cordoned/lapsed runner's work can't route anywhere: the target must satisfy every shipped eligibility gate before sticky routing. Today that means the **M85_001 label gate** (`required_tags ⊆ labels`) plus admin-state/liveness checks; M84_002 reassignment composes with that filter. Trust class, tenant/workspace scope, sandbox-tier requirements, and capacity-aware placement remain future work: the runner has a local `worker_count`, but the control plane does not receive it yet, so `available = worker_count - active` is not enforceable server-side.

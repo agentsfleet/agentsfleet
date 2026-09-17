@@ -494,6 +494,23 @@ test_arch_doc_no_retired_slot_numbers() {
     'Indexes live in slot 033.'
 }
 
+test_arch_doc_carries_no_conflict_marker() {
+  # The marker that shipped rode the END of a sentence, which is why the check
+  # cannot be line-anchored. The good body proves prose mentioning a merge is
+  # still fine; the bad body is the exact shape that reached the default branch.
+  assert_citation_shape test_arch_doc_carries_no_conflict_marker marker \
+    'The merge brought both halves in cleanly.' \
+    'The merge brought both halves in cleanly. >>>>>>> origin/main'
+}
+
+test_arch_doc_published_links_resolve() {
+  # A pointer to the published set must name a page that exists there. The good
+  # body names a real one; the bad body names a plausible page nobody wrote.
+  assert_citation_shape test_arch_doc_published_links_resolve published \
+    'User-facing: [the memory page](https://docs.agentsfleet.net/memory).' \
+    'User-facing: [the memory page](https://docs.agentsfleet.net/concepts/memory-internals).'
+}
+
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
 test_arch_doc_cited_make_targets_exist
@@ -503,6 +520,8 @@ test_arch_doc_punctuated_anchor_is_checked
 test_arch_doc_inside_link_anchor_is_checked
 test_arch_doc_multi_anchor_and_sibling_dir_are_checked
 test_arch_doc_same_page_anchor_is_checked
+test_arch_doc_carries_no_conflict_marker
+test_arch_doc_published_links_resolve
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
