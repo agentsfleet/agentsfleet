@@ -9,7 +9,11 @@ primary_region = "iad"
 # queued in front of a connect budget is what turns a healthy datastore into
 # ConnectTimeout.
 [build]
-  dockerfile = "deploy/fly/dragonfly-prod/Dockerfile"
+  # Relative to THIS file's directory, not to the build context. The context
+  # is the repository root (the image copies scripts/dragonfly-cluster.sh), and
+  # spelling the full path here made flyctl look for it twice over:
+  # deploy/fly/dragonfly-prod/deploy/fly/dragonfly-prod/Dockerfile.
+  dockerfile = "Dockerfile"
 
 # ONE machine running four Dragonfly processes, not four machines. The script
 # announces each node's address and bootstraps DFLYCLUSTER CONFIG on every

@@ -2,7 +2,7 @@
 # redis-teardown - Redis Cache Teardown Playbook
 #
 # WARNING: DESTRUCTIVE OPERATION
-# This playbook permanently flushes all keys from the Upstash Redis cache.
+# This playbook permanently flushes all keys from the Dragonfly cluster.
 #
 # Required environment variables:
 #   ALLOW_REDIS_TEARDOWN=1 - Required to confirm destructive operation

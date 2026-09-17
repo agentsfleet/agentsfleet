@@ -21,19 +21,23 @@ check_ref() {
   fi
 }
 
+# PlanetScale only. The datastore used to be here too: a hosted service with
+# a public endpoint needs its egress ranges allowlisted, and the credentials
+# above were how this script reached its management API to read them.
+#
+# Self-hosted Dragonfly has no public endpoint. It runs on one Fly machine
+# reached over 6PN, which is a private network with no ingress from anywhere
+# else, so there is no range to allowlist and no management API to ask. The
+# control is not weakened by removing it; it is answered by the deployment.
 check_env() {
   local label="$1"
   local vault="$2"
   local database_item="$3"
-  local redis_item="$4"
 
   echo "Checking $label provider targets"
   check_ref "op://$vault/$database_item/organization"
   check_ref "op://$vault/$database_item/database"
   check_ref "op://$vault/$database_item/service-token"
-  check_ref "op://$vault/$redis_item/db-id"
-  check_ref "op://$vault/$redis_item/developer-api-email"
-  check_ref "op://$vault/$redis_item/developer-api-key"
 }
 
 check_distinct() {
@@ -54,19 +58,15 @@ playbooks_require_op_auth
 
 case "$env_mode" in
   all)
-    check_env development "$vault_dev" planetscale-dev upstash-dev
-    check_env production "$vault_prod" planetscale-prod upstash-prod
+    check_env development "$vault_dev" planetscale-dev
+    check_env production "$vault_prod" planetscale-prod
     check_distinct \
       "op://$vault_dev/planetscale-dev/database" \
       "op://$vault_prod/planetscale-prod/database" \
       "PlanetScale databases"
-    check_distinct \
-      "op://$vault_dev/upstash-dev/db-id" \
-      "op://$vault_prod/upstash-prod/db-id" \
-      "Upstash database identifiers"
     ;;
-  dev) check_env development "$vault_dev" planetscale-dev upstash-dev ;;
-  prod) check_env production "$vault_prod" planetscale-prod upstash-prod ;;
+  dev) check_env development "$vault_dev" planetscale-dev ;;
+  prod) check_env production "$vault_prod" planetscale-prod ;;
   *)
     echo "ERROR: ENV must be all, dev, or prod" >&2
     exit 2

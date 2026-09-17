@@ -34,8 +34,11 @@ ALLOW_VAULT_READS=1 \
   ./playbooks/operations/observability/00_gate.sh verify dev grafana
 ```
 
-The allowlisting playbook pauses for the Human's Upstash dashboard confirmation
-because Upstash does not publish an API for editing or listing exact ranges.
+The allowlisting playbook no longer pauses for a human dashboard confirmation.
+It did while the datastore was a hosted service whose API would say whether
+allowlisting was on but not which ranges were set; the self-hosted cluster has
+no public endpoint and no ranges to confirm, so PlanetScale is the only
+provider left and its API reports its own restrictions.
 
 Complete every live-acceptance section left open by the six provider
 registration playbooks. Record provider-side identifiers, tenant/fleet

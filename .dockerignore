@@ -2,9 +2,11 @@
 # Runtime needs: dist/agentsfleetd-linux-{amd64,arm64}
 
 .tmp/
-zig-cache/
 .zig-cache/
-zig-out/
+# 12GB on a developer machine and never needed: the runtime image copies a
+# prebuilt binary from dist/, it does not compile. CI never had one, which is
+# why this was not noticed until a local deploy uploaded a 14GB context.
+rustd/target/
 src/
 build.zig
 build.zig.zon
