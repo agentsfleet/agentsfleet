@@ -191,7 +191,6 @@ check_prod() {
   check_ref "op://$v/agentsfleet-admin/credential"
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/auth-session-code-pepper/credential"
-  check_ref "op://$v/audit-log-pepper/credential"
   # Tailscale OAuth clients mint short-lived tagged access keys for CI and
   # persistent runner enrollment.
   check_ref "op://$v/tailscale/oauth-client-id"
@@ -248,7 +247,6 @@ check_dev() {
   check_ref "op://$v/agentsfleet-admin/credential"
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/auth-session-code-pepper/credential"
-  check_ref "op://$v/audit-log-pepper/credential"
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/fly-api-token/credential"
   # Development workflows post CI verdicts through the shared production

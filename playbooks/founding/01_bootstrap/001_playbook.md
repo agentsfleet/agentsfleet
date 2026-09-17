@@ -46,7 +46,6 @@ Generate four independent 32-byte values per environment:
 
 - `encryption-master-key/credential`
 - `auth-session-code-pepper/credential`
-- `audit-log-pepper/credential`
 - `approval-signing-secret/credential`
 
 Use `openssl rand -hex 32`; development and production values must differ.
