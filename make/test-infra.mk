@@ -71,28 +71,6 @@ COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/de
 COMPOSE_DRAGONFLY_PORT = $(AGENTSFLEET_DRAGONFLY_BASE_PORT)
 COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_LAST_PORT)
 
-# Optional narrowing, for studying ONE failure without the rest of the lane's
-# cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
-#
-# Exposes build.zig's existing `-Dtest-filter` on the existing targets rather
-# than adding a parallel one, because everything BUT the test selection has to
-# stay identical: the schema reset, the migrate, the `docker compose port`
-# discovery, and the CA-freshness check are the parts a hand-rolled `zig build
-# test-integration` gets wrong. §Discovery's "why the lane was lying" is what
-# that costs — a suite dialling a dead port, read as behaviour. Skipping the
-# reset is the other half: a second run against un-reset state goes 457/0 →
-# 447/10.
-#
-# NOTE: a filter REPLACES the integration graph's own default filters (the
-# `_integration_test` file filter and the `integration:` name filter), so a
-# narrowed run selects across the whole integration root rather than within
-# those. Check your filter actually matches something — a filter that matches
-# nothing exits 0 and reads as a pass.
-#
-# Empty by default, so the R1-graded invocation is always the full suite.
-TEST_FILTER ?=
-ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)",)
-
 # WHERE THE TEST SUITES GET THEIR SERVICES — three names, and only three.
 #
 # Each is `?=` and EXPORTED, which is the whole mechanism: `?=` means the
