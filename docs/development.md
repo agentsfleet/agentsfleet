@@ -75,6 +75,12 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   package-scoped runner proves that package, never the repository. There is
   deliberately **no umbrella target** re-aliasing a lane under a second name — a
   proposal to add one produced a byte-identical duplicate target and was removed.
+- **`make test-integration-rustd` is the only lane that needs live datastores.**
+  Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
+  Nothing else a developer runs needs either: `make test-unit-all` stays
+  datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
+  only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
+  Integration (CI) never sets it.
 - **Daemon execute-loop without a language model:** build with
   `-Dexecutor-provider-stub` (`build_runner.zig`). The flag is comptime-eliminated
   in production (no env backdoor): `child_exec` emits a canned `result` frame,

@@ -3,89 +3,50 @@
 Mandatory for every crate under `rustd/`. A new crate follows this on its first
 commit; an existing one is not exempt because it predates the rule.
 
-The shape is not invented here. It is what `core_api` has run in production on
-for years (10 crates, each with `pub type Result<T>` and a flat `Error`), what
-bun uses (`thiserror`, `#[from]` composition, `pub type Result<T, E = Error>`),
-and what habitat uses (one payload-carrying `enum Error`, one `Result` alias).
+The rules themselves, their examples, the divergence from
+`M-ERRORS-CANONICAL-STRUCTS`, and the prior art they rest on are all in
+[`dispatch/write_rust.md`](../dispatch/write_rust.md). **This file is the local
+override:** what `rustd/` generates instead of hand-writing, which crates take
+the hull and which do not, and where a crate is deliberately off the rule.
 
-## The four rules
+## The four rules, and how this repository meets them
 
-### 1. One error type per crate, one `Result` alias beside it
+The rules and their worked examples live in
+[`dispatch/write_rust.md`](../dispatch/write_rust.md), which fires on every
+`*.rs` edit. They are not restated here. What IS here is the local shape, because
+the portable rule and the reference guideline both describe something this
+repository does not hand-write.
 
-```rust
-pub type Result<T, E = Error> = core::result::Result<T, E>;
-```
+> [!IMPORTANT]
+> **`afd_core::error_shell!` is the implementation. Do not hand-write the error
+> type.** `M-ERRORS-CANONICAL-STRUCTS` prescribes a situation-specific `struct`
+> carrying a `Backtrace`; `dispatch/write_rust.md` prescribes a `#[from]`-composed
+> flat enum behind one alias. Under `rustd/` a crate writes neither by hand: it
+> declares a private `ErrorKind`, calls `error_shell!` for the boxed `struct
+> Error` with its captured backtrace, its `[CODE] message` `Display` and its
+> self-skipping `source()`, and calls `error_lifts!` for the per-source `From`
+> impls. A hand-rolled `struct Error` in a new crate is a defect even though both
+> upstream texts describe one.
 
-In `src/error.rs`, next to the type it defaults to. Every fallible function in
-the crate returns `Result<T>`. The default parameter is what lets the few
-functions answering with a foreign error keep the same spelling —
-`Result<T, VerifyError>` — instead of reaching for `std::result::Result`.
+| # | Rule | Met here by | Decided by |
+|---|---|---|---|
+| 1 | One error type per crate, one `Result` alias beside it | `error_shell!` for the type; the alias is **hand-written**, always | `audits/rust-error.sh` |
+| 2 | Compose with `From`; `?` does the lifting | `error_lifts!`, or a hand-written `From` where a crate composes only a few sources | reviewer |
+| 3 | `map_err` only to ADD context the call site alone knows | unchanged — no macro involved | `audits/rust-error.sh`, which catches a `map_err` that stringifies its own cause |
+| 4 | `source()` returns what caused you, never yourself | `error_shell!` generates the self-skipping `source()` | reviewer |
 
-A reader must never have to check *which* error a signature returns to know it
-is this crate's.
+**The alias is the one part that stays hand-written**, in every crate, including
+those calling the macro. An alias that only appears after macro expansion is one
+a reader cannot see, which is the thing rule 1 exists to prevent.
 
-### 2. Compose with `From`; `?` does the lifting
+**Not every crate takes the hull**, and the test is a property of the error
+rather than a list of names — see §"The shared hull" below for which crates are
+on each side and why a fieldless refusal vocabulary stays a plain enum.
 
-A conversion that adds nothing is a `#[from]`:
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum BootFailure {
-    #[error(transparent)]
-    Environment(#[from] Refusal),
-    #[error("agentsfleetd cannot boot: the API database would not answer")]
-    Database(#[from] afd_db::Error),
-}
-```
-
-Then the call site is `Db::connect(cfg).await?` — no `map_err`, no lost detail.
-
-### 3. `map_err` only to ADD context the call site alone knows
-
-Keep it when the error gains a fact the source could not carry:
-
-```rust
-// CORRECT — the role and the budget are the caller's knowledge.
-.map_err(|source| classify_acquire(role.tag(), acquire_timeout.as_millis(), source))?
-```
-
-Delete it when it only relabels. And never do this:
-
-```rust
-// WRONG — a lossy conversion wearing a conversion's clothes.
-.map_err(|error| BootFailure::Database(error.to_string()))?
-```
-
-`to_string()` on the way *into* an error type destroys the `source()` chain.
-It compiles, it reads fine, and it silently defeats every chain walker
-downstream — including this daemon's own fatal renderer.
-
-### 4. `source()` returns what caused you, never yourself
-
-An error whose `Display` already renders its kind must not also return that
-kind as its source. A chain walker then prints the same sentence twice before
-reaching anything new.
-
-```rust
-// WRONG — `Display` is "[code] {kind}", so the kind is already printed.
-fn source(&self) -> Option<&(dyn Error + 'static)> { Some(&self.kind) }
-
-// RIGHT — skip ourselves, hand back what the kind wraps.
-fn source(&self) -> Option<&(dyn Error + 'static)> {
-    std::error::Error::source(&self.kind)
-}
-```
-
-**Not every error has a cause, and that is not a defect.** A variant holding
-another error (`Unreachable { source: sqlx::Error }`) has one; a variant holding
-only data (`MissingDatabaseUrl { knob }`) does not — nothing *caused* an unset
-variable. A test asserting `source().is_some()` for every variant is wrong and
-forces authors to invent causes. Assert the real invariant instead: *where there
-is a source, it is not a repeat of our own message.*
-
-One deliberate exception, and it is security not style: `afd_crypto`'s
-`EnvelopeOpen` declines to wrap the AEAD library's reason. Telling a caller
-"bad tag" versus "bad nonce" is the beginning of a padding oracle.
+**One deliberate exception, and it is security not style.** `afd_crypto`'s
+`EnvelopeOpen` declines to wrap the Authenticated Encryption with Associated
+Data (AEAD) library's reason. Telling a caller "bad tag" versus "bad nonce" is
+the beginning of a padding oracle.
 
 ## What changed under this standard (M176)
 
