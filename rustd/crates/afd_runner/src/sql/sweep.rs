@@ -321,3 +321,13 @@ SET verifier_event_id = $3, dispatch_claim_token = NULL,
     dispatch_claimed_at = NULL, updated_at = $4
 WHERE id = $1::uuid AND dispatch_claim_token = $2::uuid
   AND verifier_event_id IS NULL";
+
+/// Every fleet, counted by its stored status.
+///
+/// No `WHERE` and no `LIMIT`: the answer is one row per distinct status, so
+/// the result is bounded by the status vocabulary and never by the table.
+/// `status` is `NOT NULL`, so every fleet lands in exactly one row.
+pub const COUNT_FLEETS_BY_STATUS: &str = "\
+SELECT status, COUNT(*)::bigint
+FROM core.fleets
+GROUP BY status";

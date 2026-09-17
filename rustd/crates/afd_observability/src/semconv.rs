@@ -175,6 +175,13 @@ pub const LABEL_POOL_RESULT: &str = "pool_result";
 /// What the catalogue cache did for a read.
 pub const LABEL_CACHE: &str = "cache";
 
+/// Which lifecycle status a fleet count is about.
+pub const LABEL_STATUS: &str = "status";
+
+/// Which kind of thing a count is split by, where one family counts two
+/// causes of the same event — a run started fresh or by reclaim.
+pub const LABEL_KIND: &str = "kind";
+
 /// Every label key the census's own columns name.
 ///
 /// The vocabulary's completeness claim, and what
@@ -193,4 +200,6 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_STAGE,
     LABEL_POOL_RESULT,
     LABEL_CACHE,
+    LABEL_STATUS,
+    LABEL_KIND,
 ];
