@@ -35,7 +35,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 0
       },
@@ -92,8 +92,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 0
       },
       "id": 21,
@@ -149,8 +149,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 10,
         "y": 0
       },
       "id": 22,
@@ -205,8 +205,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 15,
         "y": 0
       },
       "id": 23,
@@ -239,6 +239,178 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
+      "description": "Service Level Indicator. The one an operator actually wants: a fleet that was asked for was actually started. Good events are fresh lease grants (agentsfleet_fleet_runs_started_total{kind=\"fresh\"}); valid events are admissions the queue accepted. `reclaimed` grants are excluded from the numerator on purpose — a reclaim restarts work that was already admitted and counted once, so counting it again would let a flapping runner push this above 1.\n\nUNPROVEN, and for a different reason than the burn panels: both halves of this ratio come from families newer than the deployed daemon, so there are zero series today. This reads 1 until the next deploy, and the first number worth reading is the one after it.\n\nThis indicator was declared impossible on this dashboard until the run-start counter shipped. The denominator was always there.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "id": 34,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "(1 - (((sum(increase(agentsfleet_admissions_total{outcome=\"appended\"}[$__range])) or vector(0)) - (sum(increase(agentsfleet_fleet_runs_started_total{kind=\"fresh\"}[$__range])) or vector(0))) / clamp_min((sum(increase(agentsfleet_admissions_total{outcome=\"appended\"}[$__range])) or vector(0)), 1))) or vector(1)",
+          "legendFormat": "started / admitted",
+          "refId": "A"
+        }
+      ],
+      "title": "SLO · Admitted fleets that started",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Fleets by lifecycle status, one tile each, from a snapshot the census sweeper refreshes every thirty seconds. The five statuses are a closed set, and an absent status publishes zero rather than nothing — a status missing from this row would mean the sweeper failed, not that no fleet holds it. A failed count withdraws every cell at once, so a row that goes blank is a broken sweeper and a row of zeros is an empty deployment. Reads zero until a daemon carrying the family is deployed.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 14,
+        "x": 0,
+        "y": 4
+      },
+      "id": 35,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "max(agentsfleet_fleets{status=\"installing\"}) or vector(0)",
+          "legendFormat": "installing",
+          "refId": "A"
+        },
+        {
+          "expr": "max(agentsfleet_fleets{status=\"active\"}) or vector(0)",
+          "legendFormat": "active",
+          "refId": "B"
+        },
+        {
+          "expr": "max(agentsfleet_fleets{status=\"paused\"}) or vector(0)",
+          "legendFormat": "paused",
+          "refId": "C"
+        },
+        {
+          "expr": "max(agentsfleet_fleets{status=\"stopped\"}) or vector(0)",
+          "legendFormat": "stopped",
+          "refId": "D"
+        },
+        {
+          "expr": "max(agentsfleet_fleets{status=\"killed\"}) or vector(0)",
+          "legendFormat": "killed",
+          "refId": "E"
+        }
+      ],
+      "title": "Fleets by status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Runs begun per second, split by how they came to start. `fresh` is a first grant; `reclaimed` is a lease taken back from a runner that stopped renewing. One family split by cause rather than two families, so a plain sum stays the count of runs begun. A reclaimed line climbing while fresh stays flat is a fleet whose runners are dying and being replaced, which reads as healthy throughput on any panel that sums the two.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 10,
+        "x": 14,
+        "y": 4
+      },
+      "id": 36,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(agentsfleet_fleet_runs_started_total[$__rate_interval])) or vector(0)",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Runs started by kind",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
       "description": "UNPROVEN — this deployment has served tens of events, not weeks of them. At the time this panel shipped the whole history was 14 admissions and 10 runner executions, so the burn rate below is arithmetic over a sample too small to set an objective from. Read the shape, not the number, until the windows are full. Google Site Reliability Engineering workbook shape: burn rate is the error ratio divided by the error budget (1 - target). Two windows per severity — the long window makes the budget claim and the short window resets it, so a burn that has already stopped does not keep paging. Page when 1h AND 5m both exceed 14.4 (2% of a 30-day budget in an hour); open a ticket when 6h AND 30m both exceed 6.",
       "fieldConfig": {
         "defaults": {
@@ -250,7 +422,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 9
       },
       "id": 24,
       "options": {
@@ -308,7 +480,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 9
       },
       "id": 25,
       "options": {
@@ -365,7 +537,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 11
+        "y": 16
       },
       "id": 1,
       "options": {
@@ -407,7 +579,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 11
+        "y": 16
       },
       "id": 2,
       "options": {
@@ -449,7 +621,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 11
+        "y": 16
       },
       "id": 3,
       "options": {
@@ -491,7 +663,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 11
+        "y": 16
       },
       "id": 4,
       "options": {
@@ -533,7 +705,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 15
+        "y": 20
       },
       "id": 5,
       "options": {
@@ -580,7 +752,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 15
+        "y": 20
       },
       "id": 6,
       "options": {
@@ -623,7 +795,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 23
+        "y": 28
       },
       "id": 7,
       "options": {
@@ -670,7 +842,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 23
+        "y": 28
       },
       "id": 8,
       "options": {
@@ -719,7 +891,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 31
+        "y": 36
       },
       "id": 26,
       "options": {
@@ -771,7 +943,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 36
       },
       "id": 10,
       "options": {
@@ -814,7 +986,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 44
       },
       "id": 27,
       "options": {
@@ -872,7 +1044,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 44
       },
       "id": 28,
       "options": {
@@ -938,7 +1110,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 52
       },
       "id": 30,
       "options": {
@@ -1069,7 +1241,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 60
       },
       "id": 31,
       "options": {
@@ -1170,7 +1342,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 60
       },
       "id": 32,
       "options": {
@@ -1210,7 +1382,7 @@
         },
         {
           "expr": "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)) or vector(0)",
-          "legendFormat": "runner_last_seen (age)",
+          "legendFormat": "runner_last_seen_seconds",
           "refId": "E"
         },
         {
@@ -1256,7 +1428,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 67
       },
       "id": 33,
       "options": {
@@ -1285,89 +1457,99 @@
           "refId": "B"
         },
         {
+          "expr": "sum(increase(agentsfleet_fleet_runs_started_total[$__range])) or vector(0)",
+          "legendFormat": "fleet_runs_started",
+          "refId": "C"
+        },
+        {
+          "expr": "max(agentsfleet_fleets) or vector(0)",
+          "legendFormat": "fleets",
+          "refId": "D"
+        },
+        {
           "expr": "sum(increase(agentsfleet_invoke_agent_cache_read_token_usage_count[$__range])) or vector(0)",
           "legendFormat": "invoke_agent_cache_read_token_usage",
-          "refId": "C"
+          "refId": "E"
         },
         {
           "expr": "sum(increase(agentsfleet_invoke_agent_token_usage_count[$__range])) or vector(0)",
           "legendFormat": "invoke_agent_token_usage",
-          "refId": "D"
+          "refId": "F"
         },
         {
           "expr": "sum(increase(agentsfleet_lease_poll_candidates_scanned_total[$__range])) or vector(0)",
           "legendFormat": "lease_poll_candidates_scanned",
-          "refId": "E"
+          "refId": "G"
         },
         {
           "expr": "sum(increase(agentsfleet_lease_poll_db_roundtrips_total[$__range])) or vector(0)",
           "legendFormat": "lease_poll_db_roundtrips",
-          "refId": "F"
+          "refId": "H"
         },
         {
           "expr": "sum(increase(agentsfleet_lease_polls_total[$__range])) or vector(0)",
           "legendFormat": "lease_polls",
-          "refId": "G"
+          "refId": "I"
         },
         {
           "expr": "sum(increase(agentsfleet_library_payload_bytes_total[$__range])) or vector(0)",
           "legendFormat": "library_payload_bytes",
-          "refId": "H"
+          "refId": "J"
         },
         {
           "expr": "sum(increase(agentsfleet_library_results_total[$__range])) or vector(0)",
           "legendFormat": "library_results",
-          "refId": "I"
+          "refId": "K"
         },
         {
           "expr": "sum(increase(agentsfleet_library_stage_duration_seconds_total[$__range])) or vector(0)",
           "legendFormat": "library_stage_duration_seconds",
-          "refId": "J"
+          "refId": "L"
         },
         {
           "expr": "sum(increase(agentsfleet_library_stage_observations_total[$__range])) or vector(0)",
           "legendFormat": "library_stage_observations",
-          "refId": "K"
+          "refId": "M"
         },
         {
           "expr": "sum(increase(agentsfleet_memory_entries_captured_total[$__range])) or vector(0)",
           "legendFormat": "memory_entries_captured",
-          "refId": "L"
+          "refId": "N"
         },
         {
           "expr": "sum(increase(agentsfleet_repair_synthetic_events_total[$__range])) or vector(0)",
           "legendFormat": "repair_synthetic_events",
-          "refId": "M"
+          "refId": "O"
         },
         {
           "expr": "sum(increase(agentsfleet_repair_verifier_runs_total[$__range])) or vector(0)",
           "legendFormat": "repair_verifier_runs",
-          "refId": "N"
+          "refId": "P"
         },
         {
           "expr": "sum(increase(agentsfleet_runner_executions_total[$__range])) or vector(0)",
           "legendFormat": "runner_executions",
-          "refId": "O"
+          "refId": "Q"
         },
         {
           "expr": "sum(increase(agentsfleet_runner_retention_swept_total[$__range])) or vector(0)",
           "legendFormat": "runner_retention_swept",
-          "refId": "P"
+          "refId": "R"
         },
         {
           "expr": "sum(increase(agentsfleet_signup_bootstrapped_total[$__range])) or vector(0)",
           "legendFormat": "signup_bootstrapped",
-          "refId": "Q"
+          "refId": "S"
         },
         {
           "expr": "sum(increase(agentsfleet_signup_replayed_total[$__range])) or vector(0)",
           "legendFormat": "signup_replayed",
-          "refId": "R"
+          "refId": "T"
         },
         {
           "expr": "sum(increase(gen_ai_invoke_agent_duration_count[$__range])) or vector(0)",
           "legendFormat": "gen_ai.invoke_agent_duration",
-          "refId": "S"
+          "refId": "U"
         }
       ],
       "title": "Traffic and latency volume",
@@ -1387,7 +1569,7 @@
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 75
       },
       "id": 29,
       "options": {
@@ -1396,7 +1578,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "### What this dashboard cannot show you, and why\n\nTwelve families are declared in `docs/metrics.census.tsv` and have **no producer** in this build.\nThe ledger is `rustd/crates/afd_observability/src/metrics/produced.rs`; each line below quotes its\nreason. A gap is on this screen rather than in a document because the families an operator reaches\nfor first at 3am are two of the ones that are missing.\n\n| Family | Why nothing feeds it |\n|---|---|\n| `agentsfleet_fleet_triggered_total` | the daemon this ports declares the family and increments it nowhere |\n| `agentsfleet.telemetry.samples_dropped` | the ring it counted belongs to the daemon being replaced |\n| `agentsfleet_otlp_queue_depth` | the software development kit owns the export queue and exposes no depth |\n| `agentsfleet_repair_production_to_queue_seconds` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_queue_to_completion_seconds` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_provider_results_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_correlations_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_verification_intents_created_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_account_teardown_unregister_failures_total` | account teardown is declared unported |\n| `agentsfleet_http_trace_suppressed_total` | every matched request is traced, so nothing is suppressed to count |\n| `agentsfleet_library_cache_outcome_total` | the revision-keyed response cache is a declared non-port |\n| `agentsfleet_library_pool_result_total` | the acquire happens inside the store, where the read path cannot see how it ended |\n\n**Two Service Level Indicators are therefore impossible, not merely empty.** End-to-end fleet\navailability — was a fleet that was asked for actually started — has no denominator\n(`agentsfleet_fleet_triggered_total` is never incremented) and no numerator (no family counts a\nstart). Repair latency has no histogram. Neither is a threshold waiting to be tuned; both need a\nfamily that does not exist, and a new family is a new census row and its own milestone.\n\nThere is also **no HTTP request-duration histogram anywhere in the census**, so the most standard\nService Level Indicator of all — API latency — cannot be drawn here at any target.\n\n### This dashboard is development-only by accident, not by design\n\nDevelopment and production resolve to the **same Grafana stack, the same namespace, the same\nPrometheus datasource and the same ingest credential**, and no series carries a\n`deployment.environment` attribute — the daemon's resource is service name, namespace, version and\nan optional instance identifier, and nothing else. Today every series here is development because\nthe production Fly application runs zero machines. **The day production deploys, every panel above\nsilently sums both environments and no query can separate them.** Emitting\n`deployment.environment` is the named blocker on that deploy.\n",
+        "content": "### What this dashboard cannot show you, and why\n\nEleven families are declared in `docs/metrics.census.tsv` and have **no producer** in this build.\nThe ledger is `rustd/crates/afd_observability/src/metrics/produced.rs`; each line below quotes its\nreason. A gap is on this screen rather than in a document because the families an operator reaches\nfor first at 3am are two of the ones that are missing.\n\n| Family | Why nothing feeds it |\n|---|---|\n| `agentsfleet.telemetry.samples_dropped` | the ring it counted belongs to the daemon being replaced |\n| `agentsfleet_otlp_queue_depth` | the software development kit owns the export queue and exposes no depth |\n| `agentsfleet_repair_production_to_queue_seconds` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_queue_to_completion_seconds` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_provider_results_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_correlations_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_repair_verification_intents_created_total` | the repair-result ingress has no Rust home yet |\n| `agentsfleet_account_teardown_unregister_failures_total` | account teardown is declared unported |\n| `agentsfleet_http_trace_suppressed_total` | every matched request is traced, so nothing is suppressed to count |\n| `agentsfleet_library_cache_outcome_total` | the revision-keyed response cache is a declared non-port |\n| `agentsfleet_library_pool_result_total` | the acquire happens inside the store, where the read path cannot see how it ended |\n\n**End-to-end fleet availability is no longer impossible — it is panel 34.** The run-start counter\nnow supplies the numerator this dashboard used to say did not exist: `agentsfleet_fleet_runs_started_total{kind}`,\nincremented at the one lease grant point. The denominator was always here as\n`agentsfleet_admissions_total{outcome=\"appended\"}`. It reads 1 until a daemon carrying those\nfamilies is deployed. The trigger counter this dashboard used to cite as the missing denominator\nwas retired alongside it: declared and incremented nowhere, it left the census rather than gaining\na producer.\n\n**Repair latency is still impossible.** Both repair histograms sit in the ledger above behind an\ningress with no Rust home, so there is no threshold waiting to be tuned: the family has no\nproducer at all.\n\nThere is also **no HTTP request-duration histogram anywhere in the census**, so the most standard\nService Level Indicator of all — API latency — cannot be drawn here at any target.\n\n### This dashboard is development-only by accident, not by design\n\nDevelopment and production resolve to the **same Grafana stack, the same namespace, the same\nPrometheus datasource and the same ingest credential**, and no series carries a\n`deployment.environment` attribute — the daemon's resource is service name, namespace, version and\nan optional instance identifier, and nothing else. Today every series here is development because\nthe production Fly application runs zero machines. **The day production deploys, every panel above\nsilently sums both environments and no query can separate them.** Emitting\n`deployment.environment` is the named blocker on that deploy.\n",
         "mode": "markdown"
       },
       "targets": [],

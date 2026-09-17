@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M197
 **Workstream:** 002
 **Date:** Sep 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing; the dashboard M197_001 ships cannot say how many fleets exist or how many runs started, because no family carries either.
 **Categories:** DOCS, OBS
 **Batch:** B2 — after M197_001, whose dashboard asset and grader this workstream extends.
 **Branch:** `feat/m197-fleet-census`
 **Baseline revision:** `93b17ad445b686bf0809d9accbd19dc7049151ab`
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit 2702 passed / 0 failed / 510 ignored · integration 493 passed / 0 failed. Measured on the merged branch, which carries this workstream and M197_001 together.
+**Baseline evidence:** recorded in the M197_001 Pull Request Session Notes; both lanes run on the merged tree with live Postgres and Dragonfly via `make test-integration-rustd`.
 **Depends on:** M197_001 — its grader requires every produced family to reach a panel, and its dashboard is the asset the two new panels land in.
 **Provenance:** LLM-drafted (claude-fable-5-1, Sep 17, 2026), grounded in source reads of `rustd/crates/afd_observability`, `afd_fleet`, `afd_runner` and `afd_fleet_lifecycle`
 **Canonical architecture:** `docs/architecture/observability.md` §Metric family census
@@ -111,42 +111,42 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `agentsfleet_fleets{status}` is an observable gauge whose callback loads five snapshot cells, one per `FleetStatus` member, and publishes a labelled reading for each cell that is valid. A supervised sweeper fills them: one schema-qualified `SELECT status, COUNT(*) FROM core.fleets GROUP BY status`, every status the closed set carries mapped from the result, statuses absent from the result published as zero, and the whole set withdrawn when the statement fails. **Implementation default:** the sweeper lives in `afd_runner::sweep` beside the others because the `Sweep` trait and the supervisor spawn are there, and it depends only on `afd_db` and `afd_observability`, both already dependencies of that crate. The interval is a named constant of thirty seconds: a fleet count changes on install and edit, both operator-paced, and a tighter cadence would spend a Postgres round trip on a number that did not move.
 
-- **Dimension 1.1** — one pass over a live table seeded two active, one paused and one stopped publishes a reading for every status, each seeded status at or above its seeded count, and a total equal to the rows scanned → Test `test_census_publishes_every_status`
-- **Dimension 1.2** — a failed count withdraws all five cells and the callback publishes no reading; the next good count restores them → Test `a_failed_count_withdraws_the_census_and_a_good_one_restores_it`
-- **Dimension 1.3** — a status string the closed set does not carry is set aside and reported, produces no label, and still counts as scanned; the known statuses publish → Test `an_unknown_spelling_is_set_aside_and_still_scanned`
-- **Dimension 1.4** — the sweeper is spawned under the supervisor with its own name and the whole-inventory assertion names it → Test `test_boot_to_ready_on_compose`
-- **Dimension 1.5** — a status the count did not return publishes zero, in the closed set's order; a status listed twice is summed → Test `every_status_is_published_and_the_absent_ones_read_zero`
+- **Dimension 1.1** — DONE —one pass over a live table seeded two active, one paused and one stopped publishes a reading for every status, each seeded status at or above its seeded count, and a total equal to the rows scanned → Test `test_census_publishes_every_status`
+- **Dimension 1.2** — DONE —a failed count withdraws all five cells and the callback publishes no reading; the next good count restores them → Test `a_failed_count_withdraws_the_census_and_a_good_one_restores_it`
+- **Dimension 1.3** — DONE —a status string the closed set does not carry is set aside and reported, produces no label, and still counts as scanned; the known statuses publish → Test `an_unknown_spelling_is_set_aside_and_still_scanned`
+- **Dimension 1.4** — DONE —the sweeper is spawned under the supervisor with its own name and the whole-inventory assertion names it → Test `test_boot_to_ready_on_compose`
+- **Dimension 1.5** — DONE —a status the count did not return publishes zero, in the closed set's order; a status listed twice is summed → Test `every_status_is_published_and_the_absent_ones_read_zero`
 
 ### §2 — Runs started, counted at the one grant point
 
 `agentsfleet_fleet_runs_started_total{kind}` increments in `try_candidate` on each `Some` it returns: `reclaimed` when a lapsed holder's event is re-leased under a higher fence, `fresh` when a new entry is read. A poll that returns `None` records nothing, because nothing started. **Implementation default:** two label values rather than two families, because an operator reads them as one line split by cause — a rising `reclaimed` share is runners dying mid-run, which is the first thing the split has to make visible — and a single family keeps `sum()` honest as the count of runs that began.
 
-- **Dimension 2.1** — a fresh grant moves the `kind="fresh"` series, read back through the capturing seam → Test `test_fresh_grant_counts_one_run`
-- **Dimension 2.2** — a reclaim over a lapsed holder moves the `kind="reclaimed"` series → Test `test_reclaim_counts_as_reclaimed`
-- **Dimension 2.3** — the recorder is reachable only through the grant's `Some` exit, and the kind-to-label mapping pairs fresh with fresh and reclaim with reclaimed → Test `a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed`
+- **Dimension 2.1** — DONE —a fresh grant moves the `kind="fresh"` series, read back through the capturing seam → Test `test_fresh_grant_counts_one_run`
+- **Dimension 2.2** — DONE —a reclaim over a lapsed holder moves the `kind="reclaimed"` series → Test `test_reclaim_counts_as_reclaimed`
+- **Dimension 2.3** — DONE —the recorder is reachable only through the grant's `Some` exit, and the kind-to-label mapping pairs fresh with fresh and reclaim with reclaimed → Test `a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed`
 
 ### §3 — The trigger family retires
 
 `agentsfleet_fleet_triggered_total` is declared, carried in the census, listed in `UNPRODUCED`, and incremented nowhere. Its `watch_for` line, "trigger volume", is `agentsfleet_admissions_total{outcome="appended"}` under another name: every trigger this daemon accepts is an admission, and the appended outcome is the one that reached the stream. A second family for the same count would be a second line an operator has to reconcile. It leaves from the declared module, the census, the ledger and the architecture doc in this diff. The PostHog `FleetTriggered` product event is a different thing on a different path and is not touched.
 
-- **Dimension 3.1** — the wire name is absent from `rustd/`, `docs/` and `playbooks/` after the diff → Test `test_trigger_family_is_gone`
-- **Dimension 3.2** — the `UNPRODUCED` ledger no longer carries it, and every excuse it still carries names a declared family → Test `every_excused_family_is_still_declared`
+- **Dimension 3.1** — DONE —the wire name is absent from `rustd/`, `docs/` and `playbooks/` after the diff → Test `test_trigger_family_is_gone`
+- **Dimension 3.2** — DONE —the `UNPRODUCED` ledger no longer carries it, and every excuse it still carries names a declared family → Test `every_excused_family_is_still_declared`
 
 ### §4 — The census and the registry move together
 
 Two rows enter `docs/metrics.census.tsv` in census order beside the fleet families, one leaves, and the registry test that grades the file against the declared families passes in both directions. The label-product test covers both new families. `FleetStatus` in `afd_fleet_lifecycle` and the status label set in `afd_observability` cannot share a type, because the lifecycle crate depends on the observability crate and not the other way round, so a test in the lifecycle crate asserts the two agree member for member and fails on a status added to either side alone.
 
-- **Dimension 4.1** — the census carries `agentsfleet_fleets` as a `u64` gauge with `status`, `live_read yes`, and `agentsfleet_fleet_runs_started_total` as a cumulative `u64` counter with `kind`; a row whose kind disagrees with its declaration fails the claim → Test `every_census_family_has_a_producer`
-- **Dimension 4.2** — adding a sixth `FleetStatus` member without the label fails the agreement test, and the reverse does too → Test `the_census_label_set_mirrors_the_lifecycle`
-- **Dimension 4.3** — the ceilings `fixed:5` and `fixed:2` are at least the closed sets' lengths → Test `every_declared_ceiling_admits_its_label_product`
+- **Dimension 4.1** — DONE —the census carries `agentsfleet_fleets` as a `u64` gauge with `status`, `live_read yes`, and `agentsfleet_fleet_runs_started_total` as a cumulative `u64` counter with `kind`; a row whose kind disagrees with its declaration fails the claim → Test `every_census_family_has_a_producer`
+- **Dimension 4.2** — DONE —adding a sixth `FleetStatus` member without the label fails the agreement test, and the reverse does too → Test `the_census_label_set_mirrors_the_lifecycle`
+- **Dimension 4.3** — DONE —the ceilings `fixed:5` and `fixed:2` are at least the closed sets' lengths → Test `every_declared_ceiling_admits_its_label_product`
 
 ### §5 — On the dashboard, where the operator looks first
 
 On the M197_001 asset, a fleet row at the top: fleets by status as a stat per status, runs started per minute by kind, and the pickup ratio `fresh runs ÷ appended admissions` in the complement form M197_001 fixed for its ratios, so an idle deployment reads `1` and never "No data". The grader M197_001 ships requires every produced family to reach a panel; these two reach theirs here, in the same diff that produces them, so the grader never sees a produced family without a panel. **Implementation default:** the pickup ratio's numerator is `kind="fresh"` only, because a reclaim is a run that already started once and counting it again would let a dying runner inflate the ratio.
 
-- **Dimension 5.1** — a panel targets `agentsfleet_fleets` by status and one targets `agentsfleet_fleet_runs_started_total` by kind; the asset grader passes → Test `test_fleet_row_reads_both_families`
-- **Dimension 5.2** — the pickup ratio reads `1` with no series on either side and a ratio in `[0,1]` otherwise → Test `test_pickup_ratio_guards_empty`
-- **Dimension 5.3** — every panel the M197_001 asset carried keeps its identifier and family → Test `test_prior_panels_survive`
+- **Dimension 5.1** — DONE —a panel targets `agentsfleet_fleets` by status and one targets `agentsfleet_fleet_runs_started_total` by kind; the asset grader passes → Test `test_fleet_row_reads_both_families`
+- **Dimension 5.2** — DONE —the pickup ratio reads `1` with no series on either side and a ratio in `[0,1]` otherwise → Test `test_pickup_ratio_guards_empty`
+- **Dimension 5.3** — DONE —every panel the M197_001 asset carried keeps its identifier and family → Test `test_prior_panels_survive`
 
 ## Interfaces
 
@@ -244,19 +244,18 @@ No product analytics event is added, renamed or removed; the PostHog `FleetTrigg
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Both families are declared and the census grades clean both ways (§1, §2, §4) | `cargo test -p afd_observability -- registry label` | exit 0 | P0 | |
-| R2 | The census sweeper is supervised and publishes (§1) | `cargo test -p agentsfleetd --test integration_serve -- sweepers` | exit 0, `sweeper:fleet-census` in the inventory | P0 | |
-| R3 | The trigger family exists nowhere (§3) | `grep -rn 'agentsfleet_fleet_triggered_total' rustd/ docs/ playbooks/ \| grep -v 'docs/v2/'` | no output | P0 | |
-| R4 | The asset grader passes with the fleet row (§5) | `OBS_ENV=dev bash playbooks/operations/observability/providers/grafana/assets_check.sh` | exit 0 | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| grep -v '\.json$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-
+| R1 | Both families are declared and the census grades clean both ways (§1, §2, §4) | `cargo test -p afd_observability -- registry label` | exit 0 | P0 | ✅ `test result: ok. 28 passed; 0 failed` — registry and label suites both graded |
+| R2 | The census sweeper is supervised and publishes (§1) | `make test-integration-rustd 2>&1 \| grep test_boot_to_ready_on_compose` | exit 0, `sweeper:fleet-census` in the inventory | P0 | ✅ `test integration_serve::test_boot_to_ready_on_compose ... ok` — asserts FLEET_CENSUS in the supervisor inventory, in position |
+| R3 | The trigger family exists nowhere (§3) | `grep -rn 'agentsfleet_fleet_triggered_total' rustd/ docs/ playbooks/ \| grep -v 'docs/v2/'` | no output | P0 | ✅ 0 matches outside `docs/v2/` across `rustd/`, `docs/`, `playbooks/` |
+| R4 | The asset grader passes with the fleet row (§5) | `OBS_ENV=dev bash playbooks/operations/observability/providers/grafana/assets_check.sh` | exit 0 | P0 | ✅ `PASS: Grafana assets are valid and reference source-owned metrics` |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ every path in the diff is named in Files Changed |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN ── ready for VERIFY` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed` — 2702 passed, 0 failed |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S4 | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ✅ `✓ [rustd] integration suite (exclusive)` — 493 passed, 0 failed |
+| S5 | Version sync | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.48.0` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` — 193.22 MB scanned |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| grep -v '\.json$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ green after `assign.rs` was split; the run-start counter had pushed it 336 → 369, over the 350 cap. Diagnostics moved to `lease/assign/diagnostics.rs`: 279 + 105. |
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. Missing configuration must be completed before authoring. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
 **Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ + one decisive output line. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes, so recording those results does not require another code commit and suite run. **Ship gate:** every required check must pass before the Pull Request is ready; missing evidence or any ❌ returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 may also be **MOVED** — see below.

@@ -132,7 +132,12 @@ check_gap_panel_cites_the_ledger() {
     printf '%s\n' "$excused" | grep -Fxq -- "$family" ||
       fail "declared-gap panel names $family, which the UNPRODUCED ledger does not carry"
   done < <(
+    # The TABLE ROWS only. A gap is CLAIMED by a row in the table; prose that
+    # names a family in passing — "the retired X left the census with it" — is
+    # history, and failing it would push the panel into naming things it cannot
+    # spell. A bogus table row, the failure this exists to catch, still fails.
     printf '%s\n' "$content" |
+      grep -E '^\| `(agentsfleet|gen_ai)[._a-z0-9]+`' |
       grep -oE '`(agentsfleet|gen_ai)[._a-z0-9]+`' |
       tr -d '`' | sort -u
   )
