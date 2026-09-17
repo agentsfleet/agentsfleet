@@ -23,11 +23,12 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
+use afd_observability::metrics::label::fleet::RunStart;
 use afd_observability::producers;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
-use crate::lease::envelope::{Acquired, from_fresh, from_reclaim};
+use crate::lease::envelope::{Acquired, Kind, from_fresh, from_reclaim};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -209,6 +210,26 @@ impl Leases {
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
+        // Recorded on the ONE exit that hands work out. A `None` — a lost
+        // claim, an empty stream, a dropped entry — reaches nothing here,
+        // because nothing started.
+        self.try_candidate_unrecorded(fleet_id, runner_id, now)
+            .await
+            .inspect(|found| {
+                if let Some(acquired) = found {
+                    producers::fleet::run_started(started(acquired.kind));
+                }
+            })
+    }
+
+    /// [`Self::try_candidate`] without the recording, so the outcome exists
+    /// before anything is said about it.
+    async fn try_candidate_unrecorded(
+        &self,
+        fleet_id: &Uuid7,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Option<Acquired>> {
         let Some(claimed) = self.claim(fleet_id, runner_id, now, LEASE_TTL_MS).await? else {
             // Taken by a live holder. No event was read, so nothing is orphaned.
             return Ok(None);
@@ -268,6 +289,18 @@ impl Leases {
                 Ok(None)
             }
         }
+    }
+}
+
+/// The label a granted lease's kind is counted under.
+///
+/// A total mapping: every kind a grant can carry has a start label, so a
+/// grant cannot go uncounted — and a kind added without a label is a
+/// compile error here rather than a series that never appears.
+pub(crate) const fn started(kind: Kind) -> RunStart {
+    match kind {
+        Kind::Fresh => RunStart::Fresh,
+        Kind::Reclaim => RunStart::Reclaimed,
     }
 }
 

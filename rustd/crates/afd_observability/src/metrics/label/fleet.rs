@@ -141,3 +141,52 @@ closed_set! {
         Completed => "completed",
     }
 }
+
+closed_set! {
+    /// Where a fleet stands in its life, as the census counts it.
+    ///
+    /// The spellings are `core.fleets.status`'s, byte for byte, and the set
+    /// mirrors the lifecycle crate's own status enum — that crate depends on
+    /// this one, so the two cannot share a type, and a test over there holds
+    /// them equal member for member instead.
+    FleetStatusLabel {
+        /// The row exists; its stream may not yet.
+        Installing => "installing",
+        /// Leasable. The only status the runner's candidate query admits.
+        Active => "active",
+        /// Held by the platform's anomaly gate.
+        Paused => "paused",
+        /// Stopped by an operator, and resumable.
+        Stopped => "stopped",
+        /// Terminal.
+        Killed => "killed",
+    }
+}
+
+impl FleetStatusLabel {
+    /// The member a stored spelling names, if this build models it.
+    ///
+    /// `None` rather than a default: a row holding a status this build does
+    /// not know is dropped from the census and reported, never counted under
+    /// a member it is not.
+    #[must_use]
+    pub fn from_spelling(raw: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|status| status.as_str() == raw)
+    }
+}
+
+closed_set! {
+    /// How a run came to start.
+    ///
+    /// Two rather than two families: an operator reads them as one line split
+    /// by cause, and `sum()` over one family stays the count of runs begun.
+    RunStart {
+        /// A new entry read off the stream.
+        Fresh => "fresh",
+        /// A lapsed holder's event, re-leased under a higher fence.
+        Reclaimed => "reclaimed",
+    }
+}

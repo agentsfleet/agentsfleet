@@ -58,11 +58,6 @@ const NO_REPAIR_INGRESS: &str = "the repair-result ingress has no Rust home yet,
 /// In census order, so a reader can hold it beside the contract.
 pub const UNPRODUCED: &[Unproduced] = &[
     Unproduced {
-        family: fleet::FLEET_TRIGGERED_TOTAL.wire_name(),
-        why: "the daemon this ports declares the family and increments it nowhere, \
-              so there is no producer to carry over",
-    },
-    Unproduced {
         family: fleet::ACCOUNT_TEARDOWN_UNREGISTER_FAILURES_TOTAL.wire_name(),
         why: "account teardown is declared unported — the identity route answers \
               `user.deleted` as an event this daemon serves no rule for",
