@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Sibling: [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) (the posture this activates). · User-facing: [docs.agentsfleet.net/fleets/model-providers](https://docs.agentsfleet.net/fleets/model-providers).
 
-> Parent: [`README.md`](./README.md) · Concept reference for the surface today:
+> Concept reference for the surface today:
 > [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1, §8
 
 What `PUT /v1/tenants/me/provider` costs today, why, and the three schema
