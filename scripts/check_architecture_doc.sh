@@ -409,35 +409,21 @@ done < <(
   # replacement: a path holding `&` or `|` would otherwise rewrite the match or
   # break the expression, and the failure would name the wrong file.
   while IFS= read -r f; do
-    # Fenced blocks are skipped: a URL inside one is example output or an
-    # identifier, not a link a reader clicks. The CLI's rendered `see:` line and
-    # an RFC 7807 `type` member both spell a docs URL and neither is navigation,
-    # so failing on them would force an example to be written wrong to stay green.
+    # Only a Markdown link target counts, which is what a reader can click.
+    # Measured across the scanned corpus: all 26 pointers are written
+    # `](https://docs.agentsfleet.net/...)` and not one is a bare URL, so this
+    # reads every link and adds no parser.
     #
-    # The fence is tracked by CHARACTER and LENGTH, per CommonMark: a fence opens
-    # on three or more backticks or tildes and closes only on the same character,
-    # at least as long, with nothing after it. Toggling on any ``` would mis-read
-    # two shapes this repository already contains — a `~~~` block, whose content
-    # would be scanned as prose, and the four-backtick block in
-    # `dispatch/write_pr_description.md`, whose nested ``` would close the outer
-    # fence early and leave the rest of the example being read as navigation.
-    awk '
-      match($0, /^[[:space:]]*(`{3,}|~{3,})/) {
-        run = $0
-        sub(/^[[:space:]]*/, "", run)
-        char = substr(run, 1, 1)
-        len = 0
-        while (substr(run, len + 1, 1) == char) len++
-        rest = substr(run, len + 1)
-        if (!fence) { fence = 1; fchar = char; flen = len; next }
-        if (char == fchar && len >= flen && rest ~ /^[[:space:]]*$/) { fence = 0 }
-        next
-      }
-      !fence
-    ' "$f" 2>/dev/null \
-      | grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' \
+    # It also settles what a fenced URL is, without deciding it. The CLI's
+    # rendered `see:` line and an RFC 7807 `type` member both spell a docs URL
+    # inside a fence, and neither is a link — they are not in link syntax, so
+    # they are not extracted. Earlier revisions of this check tracked fences in
+    # `awk` to reach the same answer; that needed interval expressions the
+    # platform `awk` may not have and a CommonMark indentation rule, to classify
+    # text this pattern never looks at.
+    grep -oE '\]\(https://docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
       | while IFS= read -r hit; do
-          printf '%s::%s\n' "$f" "${hit#docs.agentsfleet.net/}"
+          printf '%s::%s\n' "$f" "${hit##*docs.agentsfleet.net/}"
         done || true
   done < <(published_link_files) | sort -u
 )
