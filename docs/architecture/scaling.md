@@ -172,7 +172,7 @@ probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
 carries no separate index slot: the M154 rebuild retired the shared
 `033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
 that measurable — AUTH.md records the replacement design (a short-lived signed
-credential verified locally) and the condition it must meet.>>>>>>> origin/main
+credential verified locally) and the condition it must meet.
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
