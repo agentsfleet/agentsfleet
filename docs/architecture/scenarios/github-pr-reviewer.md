@@ -104,10 +104,10 @@ The gate + billing path is identical to every other event — see [`../billing_a
 | Install bundle from GitHub → R2 + Postgres | ✅ |
 | Manual webhook signature verify · queue · lease · run | ✅ |
 | GitHub App callback stores installation handle + routing row | ✅ real-datastore callback and reconnect coverage passes |
-| App ingress filters installation + repository + event + grant | ✅ real Postgres and Redis coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention. The grant is CHECKED here and, since M194_001, WRITTEN as well: install creates a pending `core.integration_grants` row and its approval card for every mintable credential the bundle declares; a delivery that still finds no grant raises the card instead of parking silently; a denial ends the parked event. M193_001's walk found the missing write — its Discovery carries the daemon log — and M194_001's walk on `3fbf3d9c3` observed the card, the approval, and the run that followed |
+| App ingress filters installation + repository + event + grant | ✅ real Postgres and Dragonfly coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention. The grant is CHECKED here and, since M194_001, WRITTEN as well: install creates a pending `core.integration_grants` row and its approval card for every mintable credential the bundle declares; a delivery that still finds no grant raises the card instead of parking silently; a denial ends the parked event. M193_001's walk found the missing write — its Discovery carries the daemon log — and M194_001's walk on `3fbf3d9c3` observed the card, the approval, and the run that followed |
 | `SKILL.md` delivered as `instructions` per lease | ✅ |
 | Read the diff + post comments via `http_request` | ✅ |
-| Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Redis |
+| Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Dragonfly |
 | External `github-pr-reviewer` repository test | 🔨 — external proof remains open; do not call the scenario fixed until it passes |
 | Compounding memory across PRs | 🔨 (parked design) |
 
@@ -126,7 +126,7 @@ The gate + billing path is identical to every other event — see [`../billing_a
 
 ## 9. Remaining proof punch list
 
-1. ✅ Run the local database-and-Redis App-ingress suite without a skipped test.
+1. ✅ Run the local database-and-Dragonfly App-ingress suite without a skipped test.
 2. ✅ Connect a workspace to the GitHub App. The Rust callback lists the installations the authorized person reaches and binds exactly one (`rustd/crates/afd_connector/src/github.rs`); a claimed `installation_id` is probed first. Proven against a fake vendor in `afd_api/tests/integration_connector_github.rs`. Binding a real repository to `github-pr-reviewer` is the live half and stays open.
 3. ⏳ (event half) One signed delivery wakes a fleet exactly once: `fleet-webhook-delivery.spec.ts` posts a captured `workflow_run` delivery and reads one durable event. Proven at the fixture tier; its FIRST run against the development environment (`deploy-dev` run 34147331454, Sep 08, 2026) was red, and the journey could not say why — its lease wait read an absent row as a lease, so a delivery nobody took passed the wait and failed a length assertion instead. Fixed in M187_001; the claim is open until a dev run is green. A Pull Request in a real repository is the live half and stays open.
 4. Let the fleet read the diff and post its review through a short-lived installation token.

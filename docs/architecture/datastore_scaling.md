@@ -24,7 +24,7 @@ The [datastore scaling roadmap](./roadmap.md#datastore-scaling) links the implem
 
 ## Why it exists
 
-Redis carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.
+The datastore carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.
 
 Four self-hosted Dragonfly processes in one region are the near-term destination; Dragonfly Cloud Swarm is where this moves when operational risk justifies its control plane. There is no Dragonfly single-shard migration stage. Changing that destination requires an explicit user decision — this one was made on 2026-09-14 and is recorded below.
 
@@ -234,7 +234,7 @@ The cutover to the cluster is a fresh start: PostgreSQL is rebuilt and Dragonfly
 
 One million stored fleets, active fleets, concurrent runs, and runner processes are separate workload dimensions. Reports must state all four, together with offered load, completion rate, queue age, memory, and database cost. Small deployment probes prove behavior at their tested load; they do not prove the million-fleet target.
 
-Fault injection and saturation testing use isolated datastores and synthetic destinations. Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records. No shared Redis flush, database reset, failover exercise, or provider switch follows from spec approval alone.
+Fault injection and saturation testing use isolated datastores and synthetic destinations. Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records. No shared Dragonfly flush, database reset, failover exercise, or provider switch follows from spec approval alone.
 
 The historical Redis baseline (closed PR #681) is a reference for the local rig only. Cloud evidence is required before the Dragonfly acceptance rows are complete; missing Cloud evidence leaves them incomplete.
 
