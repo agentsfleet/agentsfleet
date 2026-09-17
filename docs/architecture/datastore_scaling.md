@@ -20,8 +20,6 @@ executable: false
 
 This page records the approved requirements for datastore scaling and the target design the implementation builds toward. It does not claim that Dragonfly support or million-fleet capacity has shipped; the sections below marked *target* describe what the active spec builds, and the runtime pages (`data_flow.md`, `runner_fleet.md`) describe what runs today until a Section lands and updates them in the same commit.
 
-The [datastore scaling roadmap](./roadmap.md#datastore-scaling) links the implementation spec.
-
 ## Why it exists
 
 The datastore carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.

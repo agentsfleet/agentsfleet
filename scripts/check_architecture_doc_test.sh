@@ -16,13 +16,11 @@ readonly GATE="$SCRIPT_DIR/check_architecture_doc.sh"
 readonly MAKE_DIR="$REPO_ROOT/make"
 readonly QUALITY_MK="$MAKE_DIR/quality.mk"
 
-# Fixture milestones: one shipped, one in flight, one planned, one that exists
-# nowhere. Workstream-suffixed names are composed rather than written out, since
+# Fixture milestones: one shipped, one in flight, one that exists nowhere. Workstream-suffixed names are composed rather than written out, since
 # a literal `M<n>_<nnn>` in source is a milestone identifier the MS-ID gate bans
 # (RULE TST-NAM) — tests are code, and the suffix is data here, not a reference.
 readonly DONE_ID="M100"
 readonly ACTIVE_ID="M200"
-readonly PENDING_ONLY_ID="M777"
 readonly PHANTOM_ID="M999"
 readonly WORKSTREAM="_001"
 
@@ -37,13 +35,12 @@ readonly WORK_DIR
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
-# Builds a spec tree: DONE_ID shipped, ACTIVE_ID in flight, PENDING_ONLY_ID planned.
+# Builds a spec tree: DONE_ID shipped, ACTIVE_ID in flight.
 build_spec_root() {
   local root="$1"
   mkdir -p "$root/done" "$root/active" "$root/pending"
   : >"$root/done/${DONE_ID}${WORKSTREAM}_P1_DONE_THING.md"
   : >"$root/active/${ACTIVE_ID}${WORKSTREAM}_P1_ACTIVE_THING.md"
-  : >"$root/pending/${PENDING_ONLY_ID}${WORKSTREAM}_P1_PLANNED_THING.md"
 }
 
 # `body` lands in `filename` inside a fresh architecture dir. No relative links
@@ -91,44 +88,6 @@ test_arch_doc_validates_all_m_ids() {
   ok "$name"
 }
 
-# ── Dimension 4.3 — pending/ resolves in roadmap.md and nowhere else ─────────
-
-test_arch_doc_roadmap_resolves_pending() {
-  local name="test_arch_doc_roadmap_resolves_pending"
-  local spec_root="$WORK_DIR/specs"
-  build_spec_root "$spec_root"
-
-  local roadmap elsewhere phantom_roadmap
-  roadmap="$(build_arch_dir "$WORK_DIR/b1" roadmap.md "Depends on ${PENDING_ONLY_ID} (planned).")"
-  if ! run_gate "$roadmap" "$spec_root"; then
-    bad "$name" "roadmap.md must resolve a pending/-only milestone"
-    return
-  fi
-
-  elsewhere="$(build_arch_dir "$WORK_DIR/b2" direction.md "Depends on ${PENDING_ONLY_ID} (planned).")"
-  if run_gate "$elsewhere" "$spec_root"; then
-    bad "$name" "a non-roadmap doc resolved a pending/-only milestone — the carve-out leaked"
-    return
-  fi
-
-  # The carve-out widens where a spec may live, never whether one must exist.
-  phantom_roadmap="$(build_arch_dir "$WORK_DIR/b3" roadmap.md "Depends on $PHANTOM_ID.")"
-  if run_gate "$phantom_roadmap" "$spec_root"; then
-    bad "$name" "roadmap.md laundered $PHANTOM_ID, which has no spec in any directory"
-    return
-  fi
-
-  # The exemption is the top-level roadmap.md alone. A nested roadmap.md must not
-  # inherit it — else any doc could launder unshipped ids by living at that name.
-  local nested="$WORK_DIR/b4"
-  mkdir -p "$nested/scenarios"
-  printf '# nested\n\nDepends on %s (planned).\n' "$PENDING_ONLY_ID" >"$nested/scenarios/roadmap.md"
-  if run_gate "$nested" "$spec_root"; then
-    bad "$name" "a nested scenarios/roadmap.md resolved a pending-only milestone — basename carve-out leaked"
-    return
-  fi
-  ok "$name"
-}
 
 # The unresolved-reference path builds its own diagnostic; a dangling variable
 # there (it once expanded a renamed constant under `set -u`) would crash with an
@@ -480,7 +439,6 @@ test_arch_doc_same_page_anchor_is_checked() {
 }
 
 test_arch_doc_validates_all_m_ids
-test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all

@@ -16,7 +16,7 @@ inside it. Do not read the whole directory to answer one question.
 
 ## Question → anchor index
 
-Start here: find the question, jump to the one §-section that answers it. The larger topic files front-load a Facts table, so the answer is usually in the first screen; the short files (roadmap, direction, testing, web_app, product_analytics) are one screen already.
+Start here: find the question, jump to the one §-section that answers it. The larger topic files front-load a Facts table, so the answer is usually in the first screen; the short files (direction, testing, product_analytics) are one screen already.
 
 | Question | Where |
 |---|---|
@@ -71,7 +71,6 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
 | When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §Review rubric |
 | What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §Client event rules |
-| Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
 | Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
 | Where is the user-facing version of this page? | the `User-facing:` pointer in each file's header block |
 
@@ -94,7 +93,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises a Fleet. Includes Fleet Bundle entrypoints, the CLI + template-catalogue install walkthrough, deployment posture, and the model-cap origin story (§8.7). |
 | 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the five durable stores, the Dragonfly streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
 | 📦 [`fleet_bundles.md`](./fleet_bundles.md) | The bundle/fleet split: how a GitHub source is fetched, re-packed into agentsfleet's own canonical tar, and stored across R2 + Postgres; what is immutable vs `PATCH`-editable; the runtime read path; and the current support-file storage redundancy. |
-| 🏃 [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the M80 roadmap. Sibling of `data_flow.md` (the same runtime, traced per event). |
+| 🏃 [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the operator plane's open policy questions. Sibling of `data_flow.md` (the same runtime, traced per event). |
 | 🧰 [`capabilities.md`](./capabilities.md) | What the fleet has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
 | 🧠 [`memory.md`](./memory.md) | Fleet memory — the canonical scope/isolation/durability facts: keyed by `fleet_id` (never workspace), `memory_runtime` role isolation, erased with the fleet by cascade, and why ephemeral-fleet-per-event loses continuity. Hydrate/capture transport lives in [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"; in-run tools + categories in `capabilities.md` §4. |
 | 📈 [`observability.md`](./observability.md) | Where a signal goes and who owns it: `agentsfleetd` is the observability plane (Prometheus pull `/metrics`, live OTLP logs+traces direct to Grafana Cloud with no collector, PostHog, Postgres execution telemetry); the runner is deliberately bare (logfmt + liveness/result reports only). The M61 `OTEL_EXPORT_REMOVAL` naming trap and the shared `src/lib/logging/` module. |
@@ -105,7 +104,6 @@ After that, dip into whichever of these matches the change you're making:
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, free usage as a draining balance rather than a window, the self-managed secret shape, the api_key visibility boundary, NullClaw's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |
 | 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
 | 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
-| 🗺️ [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
 | 🔐 [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
@@ -155,4 +153,4 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Run** | One `runner.execute` call inside the runner's sandboxed child — one language-model context window's worth of reasoning. Long incidents span multiple runs via continuation events. [(more)](./capabilities.md#4-context-lifecycle-keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
 | **Tool bridge** | The substitution layer inside the runner's sandboxed child that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. [(more)](./capabilities.md#3-platform-level-guarantees-the-substrate-that-wraps-every-tool-call) |
 | **Self-managed provider keys** | The posture where the user stores their own large language model provider secret in the vault and activates it via `agentsfleet tenant provider create --secret <name>`. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
-| **Bastion** | The post-launch framing where the same fleet owns both internal triage and customer-facing status communication. [(more)](./roadmap.md#bastion--post-mvp-shape) |
+| **Bastion** | The post-launch framing where the same fleet owns both internal triage and customer-facing status communication. [(more)](./high_level.md#61-bastion--one-surface-for-internal-triage-and-customer-comms) |

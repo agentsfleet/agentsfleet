@@ -31,15 +31,7 @@ ARCH_DIR="${ARCH_DIR:-docs/architecture}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
 ACTIVE_DIR="$SPEC_ROOT/active"
-PENDING_DIR="$SPEC_ROOT/pending"
 
-# The single architecture doc whose subject is unshipped work. Everywhere else a
-# milestone reference asserts a fact about the system, so it must name a spec
-# that shipped (done/) or is in flight (active/); the roadmap names what is
-# merely planned, and a pending/ spec is the only evidence such work exists.
-# The carve-out matches this exact path, not the basename — a nested
-# `scenarios/roadmap.md` must not inherit the exemption and launder unshipped ids.
-readonly ROADMAP_REL_PATH="roadmap.md"
 
 FAIL=0
 
@@ -58,8 +50,8 @@ fi
 # 1. test_arch_M_references_resolve
 #    Every milestone identifier in architecture/ must resolve to a spec in done/
 #    (shipped) or active/ (in flight, e.g. the spec doing the cross-ref itself).
-#    pending/ resolves in roadmap.md alone — see ROADMAP_REL_PATH above. An
-#    identifier with no spec anywhere fails in every file, roadmap included.
+#    An identifier with no spec anywhere fails. A `pending/` spec is not evidence
+#    that work exists: the page that traded on that exemption is gone.
 # ---------------------------------------------------------------------------
 
 # True when some `<base>_*.md` spec lives in `dir`.
@@ -75,9 +67,6 @@ resolve_ref() {
 
   if spec_exists "$DONE_DIR" "$base"; then return 0; fi
   if spec_exists "$ACTIVE_DIR" "$base"; then return 0; fi
-  if [ "${src_file#"$ARCH_DIR"/}" = "$ROADMAP_REL_PATH" ] && spec_exists "$PENDING_DIR" "$base"; then
-    return 0
-  fi
   return 1
 }
 
@@ -98,7 +87,7 @@ else
     if resolve_ref "$src" "$ref"; then
       m_count=$((m_count + 1))
     else
-      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/ (pending/ resolves only in $ROADMAP_REL_PATH)"
+      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/"
     fi
   done <<EOF
 $m_refs
@@ -189,8 +178,8 @@ readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery"
 # Tables a page may name because it is recording that they are gone. Naming one
 # is a deliberate retirement note, not a claim that it is live storage. Adding an
 # entry here is a decision; leaving one behind after the note goes is drift.
-#   fleet.metering_periods — dropped in the schema rebuild; the billing page and
-#   the roadmap both explain what replaced it.
+#   fleet.metering_periods — dropped in the schema rebuild; the billing page
+#   explains what replaced it.
 #   core.fleet_bundles — the per-workspace bundle table; the fleet-bundles page
 #   records that install resolves from a library tier instead.
 readonly RETIRED_TABLES="fleet.metering_periods core.fleet_bundles"

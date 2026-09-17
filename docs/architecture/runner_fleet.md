@@ -330,6 +330,15 @@ The purge answers by identity, not by cardinality. It counts the fleets it erase
 
 **Every list pages by cursor, or does not page at all.** `parsePageParams` and the `page`/`page_size` shape are gone from the daemon. The three former page-number reads — `/v1/fleets/runners`, `…/runners/{id}/events`, `/v1/api-keys` — answer `{items, total, next_cursor}` behind `starting_after`/`limit`; `afd_core`'s paging cursor carries either an integer or a text sort value beside the row id, which is what lets the API-keys `key_name` sort page without loss. Fleets renamed its request parameter and response field to the guideline spelling, and memory gained keyset paging over `(created_at, key)` with its own supporting index (`idx_memory_entries_fleet_id_created_at_key`). A retired parameter answers 400 rather than being silently ignored, and a cursor whose id half is not a UUID is refused at parse rather than reaching a `::uuid` bind. The already-keyset families that still spell the request parameter `cursor` — fleet events, workspace events, billing, approvals — are a named follow-up, not an oversight.
 
+### The open policy questions
+
+The surface shipped; what it should *do* in these four cases did not.
+
+- **All-runners-down.** If every healthy runner is gone, where does cordoned/lapsed work drain to? There is no eligible target — the work must **hold** (not thrash or fail) until capacity returns.
+- **Eligibility — which runner can take it?** A cordoned/lapsed runner's work can't route anywhere: the target must satisfy every shipped eligibility gate before sticky routing. Today that means the **M85_001 label gate** (`required_tags ⊆ labels`) plus admin-state/liveness checks; M84_002 reassignment composes with that filter. Trust class, tenant/workspace scope, sandbox-tier requirements, and capacity-aware placement remain future work: the runner has a local `worker_count`, but the control plane does not receive it yet, so `available = worker_count - active` is not enforceable server-side.
+- **Cordon rules.** When to cordon; partial vs full drain; the drain deadline; what happens if drain never completes (escalate cordon → revoke?).
+- **Drain rules.** How long to wait for in-flight work before reclaiming; how the heartbeat `drain` reply composes with renewal.
+
 ## Datastore role model — why there is no `runner_runtime`
 
 Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fleet.runner_affinity`) is governed at **two independent layers**. Conflating them is the recurring design error — the temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
