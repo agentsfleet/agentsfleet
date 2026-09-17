@@ -63,6 +63,11 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 
 ## Test lanes — what the names mean
 
+The lane definitions, the toolchain reason both cargo lanes `cd` into `rustd/`,
+and the coverage bar are canonical in
+[`architecture/testing.md`](./architecture/testing.md) §"Public lanes". What
+follows is the repo-workflow half that page does not carry.
+
 - **"Live e2e" / acceptance = the Playwright ladder**, not backend integration:
   `ui/packages/app` → `bun run test:e2e:acceptance` (signup, login, lifecycle,
   kill, billing, multi-workspace). Local twins of the CI jobs:
@@ -70,17 +75,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   Clerk DEV creds in the worktree-root `.env`) and `make cli-acceptance`
   (agentsfleet). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
-- **`make test-unit-all` is the repository's unit claim**: the Rust workspace
-  (`cargo test --workspace`) plus each TypeScript package's coverage gate. A
-  package-scoped runner proves that package, never the repository. There is
-  deliberately **no umbrella target** re-aliasing a lane under a second name — a
-  proposal to add one produced a byte-identical duplicate target and was removed.
-- **`make test-integration-rustd` is the only lane that needs live datastores.**
-  Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
-  Nothing else a developer runs needs either: `make test-unit-all` stays
-  datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
-  only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
-  Integration (CI) never sets it.
+
 - **Daemon execute-loop without a language model:** build with
   `-Dexecutor-provider-stub` (`build_runner.zig`). The flag is comptime-eliminated
   in production (no env backdoor): `child_exec` emits a canned `result` frame,
@@ -93,15 +88,6 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   a Linux ELF) — use `zig build test-bin -Dtarget=...` for a build-only EXIT=0
   proof.
 
-## Linting
-
-- `make lint-all` is the lint claim. `lint-rustd` runs `cargo fmt --check` plus
-  `cargo clippy --workspace --all-targets -- -D warnings`; `lint-scripts` runs
-  every `scripts/*_test.py`; the TypeScript, shell and OpenAPI checks follow.
-- Both cargo steps `cd` into `rustd/` rather than passing `--manifest-path`:
-  `rust-toolchain.toml` resolves from the working directory, so running cargo
-  from the repository root compiles with whatever toolchain the shell has active
-  instead of the pinned one.
 
 ## Dead-code auditing (`src/`)
 
