@@ -481,6 +481,58 @@ see: https://docs.agentsfleet.net/errors/UZ-EXEC-012
   fi
 }
 
+test_arch_doc_fence_forms_are_tracked_by_char_and_length() {
+  # CommonMark opens a fence on three or more backticks OR tildes and closes it
+  # only on the same character, at least as long. A filter toggling on any ```
+  # mis-reads both forms: a tilde block's content would be scanned as prose, and
+  # a four-backtick block's nested ``` would close the outer fence early — the
+  # shape `dispatch/write_pr_description.md` already uses.
+  local name="test_arch_doc_fence_forms_are_tracked_by_char_and_length"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+  local tilde nested after
+
+  tilde="$(build_arch_dir "$WORK_DIR/fence_tilde" direction.md \
+    'Rendered:
+
+~~~text
+see: https://docs.agentsfleet.net/errors/UZ-EXEC-012
+~~~')"
+  if ! run_gate_from_root "$tilde" "$spec_root"; then
+    bad "$name" "a tilde-fenced docs URL was read as a link"
+    return
+  fi
+
+  nested="$(build_arch_dir "$WORK_DIR/fence_nested" direction.md \
+    'Template:
+
+````markdown
+```text
+see: https://docs.agentsfleet.net/errors/UZ-EXEC-012
+```
+````')"
+  if ! run_gate_from_root "$nested" "$spec_root"; then
+    bad "$name" "a nested three-backtick line closed the outer four-backtick fence"
+    return
+  fi
+
+  after="$(build_arch_dir "$WORK_DIR/fence_after" direction.md \
+    'Template:
+
+````markdown
+```text
+inner
+```
+````
+
+See [the page](https://docs.agentsfleet.net/errors/UZ-EXEC-012).')"
+  if run_gate_from_root "$after" "$spec_root"; then
+    bad "$name" "prose after a closed long fence was treated as fenced"
+    return
+  fi
+  ok "$name"
+}
+
 test_arch_doc_published_links_resolve() {
   # A pointer to the published set must name a page that exists there. The good
   # body names a real one; the bad body names a plausible page nobody wrote.
@@ -501,6 +553,7 @@ test_arch_doc_same_page_anchor_is_checked
 test_arch_doc_carries_no_conflict_marker
 test_arch_doc_published_links_resolve
 test_arch_doc_published_link_in_a_fence_is_ignored
+test_arch_doc_fence_forms_are_tracked_by_char_and_length
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

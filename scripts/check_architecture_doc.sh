@@ -413,7 +413,28 @@ done < <(
     # identifier, not a link a reader clicks. The CLI's rendered `see:` line and
     # an RFC 7807 `type` member both spell a docs URL and neither is navigation,
     # so failing on them would force an example to be written wrong to stay green.
-    awk '/^[[:space:]]*```/ { fence = !fence; next } !fence' "$f" 2>/dev/null \
+    #
+    # The fence is tracked by CHARACTER and LENGTH, per CommonMark: a fence opens
+    # on three or more backticks or tildes and closes only on the same character,
+    # at least as long, with nothing after it. Toggling on any ``` would mis-read
+    # two shapes this repository already contains — a `~~~` block, whose content
+    # would be scanned as prose, and the four-backtick block in
+    # `dispatch/write_pr_description.md`, whose nested ``` would close the outer
+    # fence early and leave the rest of the example being read as navigation.
+    awk '
+      match($0, /^[[:space:]]*(`{3,}|~{3,})/) {
+        run = $0
+        sub(/^[[:space:]]*/, "", run)
+        char = substr(run, 1, 1)
+        len = 0
+        while (substr(run, len + 1, 1) == char) len++
+        rest = substr(run, len + 1)
+        if (!fence) { fence = 1; fchar = char; flen = len; next }
+        if (char == fchar && len >= flen && rest ~ /^[[:space:]]*$/) { fence = 0 }
+        next
+      }
+      !fence
+    ' "$f" 2>/dev/null \
       | grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' \
       | while IFS= read -r hit; do
           printf '%s::%s\n' "$f" "${hit#docs.agentsfleet.net/}"
