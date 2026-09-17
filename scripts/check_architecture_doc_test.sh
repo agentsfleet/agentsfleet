@@ -461,6 +461,33 @@ test_arch_doc_carries_no_conflict_marker() {
     'The merge brought both halves in cleanly. >>>>>>> origin/main'
 }
 
+test_arch_doc_every_clickable_link_form_is_checked() {
+  # Markdown offers five clickable destinations and the corpus uses one. The
+  # other four are checked so a link written tomorrow in a form nobody used
+  # before is read rather than skipped — the hole a single inline pattern left.
+  local name="test_arch_doc_every_clickable_link_form_is_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+  local n=0 body dir
+  for body in \
+    'See [x](https://docs.agentsfleet.net/errors/UZ-EXEC-012).' \
+    'See [x](<https://docs.agentsfleet.net/errors/UZ-EXEC-012>).' \
+    'See [x][t].
+
+[t]: https://docs.agentsfleet.net/errors/UZ-EXEC-012' \
+    'See <https://docs.agentsfleet.net/errors/UZ-EXEC-012>.' \
+    'See <a href="https://docs.agentsfleet.net/errors/UZ-EXEC-012">x</a>.'
+  do
+    n=$((n + 1))
+    dir="$(build_arch_dir "$WORK_DIR/form_$n" direction.md "$body")"
+    if run_gate_from_root "$dir" "$spec_root"; then
+      bad "$name" "clickable form $n reached an unpublished page and passed"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_arch_doc_only_link_targets_are_checked() {
   # A docs URL is checked when a reader can click it, which in Markdown means it
   # is a link target. Bare text spelling the same URL is example output — the
@@ -520,6 +547,7 @@ test_arch_doc_same_page_anchor_is_checked
 test_arch_doc_carries_no_conflict_marker
 test_arch_doc_published_links_resolve
 test_arch_doc_only_link_targets_are_checked
+test_arch_doc_every_clickable_link_form_is_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
