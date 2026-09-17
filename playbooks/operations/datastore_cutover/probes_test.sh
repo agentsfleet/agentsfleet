@@ -121,6 +121,35 @@ test_should_refuse_an_unknown_verb() {
 # The rubric row. Every numbered step in the playbook's Steps table names a
 # probe, and every probe it names is a verb probes.sh actually has -- a tag
 # pointing at a verb that does not exist grades nothing.
+# Build output is not source, and this probe reads source.
+#
+# What went wrong in the field: `grep -o` on a binary prints
+# `Binary file <path> matches` in place of the match, and the loop read those
+# status lines back as cited paths -- two dozen "dead" citations that were
+# really .rmeta files, on any machine that had built the workspace. `lint-all`
+# runs clippy on the same lane that runs this probe, so the lane populated
+# target/ and then failed on it.
+#
+# The fixture asserts the property that fixes it rather than replaying that
+# symptom: whether a binary prints the status line or exits quietly differs
+# between grep builds, so a binary fixture proves nothing portable. A PLAIN
+# TEXT file under target/ naming a .zig that does not exist fails the probe on
+# any grep if target/ is scanned, and passes on any grep if it is not.
+test_should_not_read_build_output_as_citations() {
+  local name="test_should_not_read_build_output_as_citations"
+  local dir; dir="$(mktemp -d "${TMPDIR:-/tmp}/probes-zig.XXXXXX")"
+  mkdir -p "$dir/rustd/src" "$dir/rustd/target/debug" "$dir/src/lib"
+  printf '// the emitter lives in src/lib/live.zig\n' >"$dir/rustd/src/a.rs"
+  printf 'zig source\n' >"$dir/src/lib/live.zig"
+  printf 'src/lib/vanished.zig\n' >"$dir/rustd/target/debug/metadata.rmeta"
+  if ( cd "$dir" && bash "$PROBES" zig-citations ) >/dev/null 2>&1; then
+    ok "$name"
+  else
+    bad "$name" "a .zig path under target/ was counted as a dead citation"
+  fi
+  rm -rf "$dir"
+}
+
 test_should_find_a_probe_on_every_playbook_step() {
   local name="test_should_find_a_probe_on_every_playbook_step"
   local untagged=0 unknown=0 row tag verb
@@ -152,6 +181,7 @@ test_should_allow_prose_that_names_the_retired_store
 test_should_refuse_a_vault_deletion_with_no_approver
 test_should_permit_a_vault_deletion_with_a_named_approver
 test_should_refuse_an_unknown_verb
+test_should_not_read_build_output_as_citations
 test_should_find_a_probe_on_every_playbook_step
 
 if [ "$FAILURES" -ne 0 ]; then
