@@ -145,7 +145,12 @@ main() {
     # mismatched pair. flyctl otherwise reads the CONTEXT's .dockerignore,
     # which for the repository root is the daemon image's and does not exclude
     # rustd/target -- 12GB uploaded to the builder on every deploy.
-    local ignorefile="${config%/*}/.dockerignore"
+    # A config path with no slash leaves ${config%/*} equal to the filename,
+    # which would derive `fly.toml/.dockerignore` and silently skip an ignore
+    # file the caller meant to apply. Resolve the directory properly.
+    local config_dir
+    config_dir="$(dirname "$config")"
+    local ignorefile="$config_dir/.dockerignore"
     if [ -f "$ignorefile" ]; then
       config_flag+=(--ignorefile "$ignorefile")
       printf 'using ignore file %s\n' "$ignorefile"
