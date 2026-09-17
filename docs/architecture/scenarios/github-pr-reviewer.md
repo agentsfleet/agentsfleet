@@ -97,39 +97,24 @@ The gate + billing path is identical to every other event — see [`../billing_a
 - The pull request carries the fleet's review comments.
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
 
-## 6. Built vs to-build
+## 6. Proof status
 
-| Step | Status |
-|---|---|
-| Install bundle from GitHub → R2 + Postgres | ✅ |
-| Manual webhook signature verify · queue · lease · run | ✅ |
-| GitHub App callback stores installation handle + routing row | ✅ real-datastore callback and reconnect coverage passes |
-| App ingress filters installation + repository + event + grant | ✅ real Postgres and Dragonfly coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention. The grant is CHECKED here and, since M194_001, WRITTEN as well: install creates a pending `core.integration_grants` row and its approval card for every mintable credential the bundle declares; a delivery that still finds no grant raises the card instead of parking silently; a denial ends the parked event. M193_001's walk found the missing write — its Discovery carries the daemon log — and M194_001's walk on `3fbf3d9c3` observed the card, the approval, and the run that followed |
-| `SKILL.md` delivered as `instructions` per lease | ✅ |
-| Read the diff + post comments via `http_request` | ✅ |
-| Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Dragonfly |
-| External `github-pr-reviewer` repository test | 🔨 — external proof remains open; do not call the scenario fixed until it passes |
-| Compounding memory across PRs | 🔨 (parked design) |
+Everything but the external proof is green: bundle install, App callback and
+reconnect, ingress filtering by installation / repository / event / grant,
+`SKILL.md` delivery per lease, diff read and comment post, and the local
+repository-bound `pull_request` suite against real Postgres and Dragonfly.
+
+Two remain open, and the scenario is not fixed until the first passes:
+
+- **External `github-pr-reviewer` repository test.** Needs the App installed on
+  a dedicated development repository and a real Pull Request. Fixture coverage
+  is not evidence that the live path works.
+- **Compounding memory across Pull Requests** — parked design.
+
+Milestone status belongs to the spec, not to this page. When the external proof
+lands, the spec records it and this section says so in one line.
 
 ## 7. What is NOT in this scenario
 
 - **Provider posture, billing math, the credit gate.** These had their own scenarios; the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md). The lease/execute/bill loop is unchanged from what that doc describes.
 - **Compounding memory** across PRs — a separate, parked design.
-
-## 8. What this scenario proves
-
-- **One reasoning loop.** A webhook event and a manual steer enter the same lease/execute path with the same envelope; the runtime never branches on actor type.
-- **GitHub is a one-time source, never a runtime dependency.** The fleet runs from the internal snapshot even if the source repo is later made private or deleted.
-- **The integration is the bundle**, not native per-system code: `SKILL.md` + `http_request` + injected `${secrets.*}` do the GitHub work.
-- **No broad fan-out.** App installation identifies the workspace; explicit repository and event membership identifies each fleet.
-- **Receipt is not credential access.** A later tool call mints a short-lived installation token only after the lease-derived fleet grant is rechecked.
-
-## 9. Remaining proof punch list
-
-1. ✅ Run the local database-and-Dragonfly App-ingress suite without a skipped test.
-2. ✅ Connect a workspace to the GitHub App. The Rust callback lists the installations the authorized person reaches and binds exactly one (`rustd/crates/afd_connector/src/github.rs`); a claimed `installation_id` is probed first. Proven against a fake vendor in `afd_api/tests/integration_connector_github.rs`. Binding a real repository to `github-pr-reviewer` is the live half and stays open.
-3. ⏳ (event half) One signed delivery wakes a fleet exactly once: `fleet-webhook-delivery.spec.ts` posts a captured `workflow_run` delivery and reads one durable event. Proven at the fixture tier; its FIRST run against the development environment (`deploy-dev` run 34147331454, Sep 08, 2026) was red, and the journey could not say why — its lease wait read an absent row as a lease, so a delivery nobody took passed the wait and failed a length assertion instead. Fixed in M187_001; the claim is open until a dev run is green. A Pull Request in a real repository is the live half and stays open.
-4. Let the fleet read the diff and post its review through a short-lived installation token.
-5. ⏳ (event half) The exact replay is reported as one and creates no second event — proven at the fixture tier by `afd_api/tests/integration_ingress_live.rs`; the acceptance half rides the same journey as 3 and carries the same open claim. No second review is the live half and stays open.
-
-The live halves of 2, 3 and 5, and all of 4, need the GitHub App installed on a dedicated repository in the development environment and a person opening a Pull Request there. Until they pass, `github-pr-reviewer` is proven plumbing with an outstanding repository-level proof, not a completed end-to-end scenario.

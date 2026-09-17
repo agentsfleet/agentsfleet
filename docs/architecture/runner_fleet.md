@@ -560,23 +560,21 @@ The credit-pool billing model debits twice per event, and both debits live on `a
 
 Receive credits are not refunded if the run later exhausts. Both debits sit on `agentsfleetd`'s lease/report path, and nowhere else. **Metering never stops, and the gate bites whenever a wallet is empty** — `UZ-RUN-012` is reachable for any exhausted tenant. Free usage is a balance rather than a window; that is canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window).
 
-## Datastore topology — what changed
+## Datastore topology
 
-The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting their producer/consumer to `agentsfleetd`) and retires one. Surface semantics — cardinality, purpose, volume — are canonical in [`data_flow.md` §"Two streams + one pub/sub channel"](./data_flow.md); this table records only the cutover delta, plus `fleet:ready`, which this file owns.
+Surface semantics — cardinality, purpose, volume — are canonical in [`data_flow.md` §"Two streams + one pub/sub channel"](./data_flow.md). What this page owns is who drives each surface under the split, and `fleet:ready`.
 
-| Surface | Before | Now |
-|---|---|---|
-| `fleet:{id}:events` (work stream, group `fleet_lease`) | the per-fleet worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Dragonfly consumer. |
-| reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Dragonfly consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
-| `fleet:control` (control stream) | the watcher consumed `fleet_created` / `fleet_status_changed` / `fleet_config_changed` / `worker_drain_request` to spawn / cancel / reload per-fleet threads | **removed.** There are no per-fleet threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_agent.ensureFleetConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
-| `fleet:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
-| `fleet:ready:{p}` (readiness index, sixteen hashes) | did not exist — the lease scanned every active fleet in Postgres to discover which held work | **Sixteen hashes for the whole deployment**, shared by every replica, a fleet's partition being CRC16 of its id modulo sixteen (the count and the poll rotation are in [`datastore_scaling.md`](./datastore_scaling.md)). Field = fleet id, value = the generation token that fleet's last mark minted. Written by `redis_fleet.xaddFleetEvent` (the single producer all five ingress paths funnel through) and by the reclaim sweeper; read by the lease before it opens a Postgres connection. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
+| Surface | Who drives it |
+|---|---|
+| `fleet:{id}:events` (work stream, group `fleet_lease`) | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Dragonfly consumer. |
+| reclaim of a dead processor | **lease expiry + `fencing_token`.** A dead runner is not a dead datastore consumer — `agentsfleetd` is — so consumer-idle cannot see it. The lease layer is the reclaim mechanism. |
+| `fleet:{id}:activity` (pub/sub) | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
+| `fleet:ready:{p}` (readiness index, sixteen hashes) | **Sixteen hashes for the whole deployment**, shared by every replica, a fleet's partition being CRC16 of its id modulo sixteen (the count and the poll rotation are in [`datastore_scaling.md`](./datastore_scaling.md)). Field = fleet id, value = the generation token that fleet's last mark minted. Written by `redis_fleet.xaddFleetEvent` (the single producer all five ingress paths funnel through) and by the reclaim sweeper; read by the lease before it opens a Postgres connection. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
 
 **The readiness index is a hint, never the system of record.** The streams are. A lost mark costs delivery latency, never the event — the reclaim sweeper re-derives readiness from the streams themselves (below). Every write to it is best-effort and none may fail an accepted ingress call or a lease reply.
 
 Fields carry a token because the lease clears them. A poll that establishes a fleet holds nothing deliverable removes it from the index, but ingress takes no per-fleet claim and can append and mark at any instant — including between that poll's last read and its clear. `clear` therefore deletes a field only when its stored token still equals the one the caller observed, evaluated atomically inside Dragonfly. Nothing ever compares two tokens for order, only for equality, which is why the token is a minted UUIDv7 rather than a counter: a counter whose key is evicted restarts and re-issues a token a live poll still holds.
 
-The reclaim shift is the load-bearing one: moving the processor off-platform means Dragonfly can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
 
 ## Sandbox tiers
 

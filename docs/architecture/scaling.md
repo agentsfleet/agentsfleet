@@ -61,23 +61,14 @@ No standalone diagram; the sizing procedure block in §"Sizing procedure" is the
 
 Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
 
-## TL;DR — what the cutover changed
+## What binds this deployment
 
-**The old wall is gone.** Before the cutover, every fleet held one dedicated `XREADGROUP … BLOCK 5000` datastore connection, so the fleet was capped by the hosted provider's max-concurrent-connections ceiling at roughly one connection per fleet. **That tier no longer exists.** `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` inside the asynchronous `lease` handler over a shared command connection. Runners hold **zero** Dragonfly connections.
+The per-fleet dedicated datastore connection is gone; `lease` reads
+non-blocking on a shared socket. The binding constraint is now `agentsfleetd`
+API replicas plus Postgres write throughput on the lease/report hot path, both
+horizontally scalable, and idle request volume follows **runner poll cadence**
+rather than fleet population. Every current number is in the Facts table at the top of this page.
 
-**The new binding constraint** is `agentsfleetd` API replicas + Postgres write throughput on the lease/report hot path — both horizontally scalable. Dragonfly sees shared short-lived commands plus dedicated pub/sub and outbound-reader connections. The outbound worker blocks on its own socket for up to five seconds. Runners scale out with no Dragonfly coordination at all.
-
-**Idle request volume** is no longer driven by N blocking `XREADGROUP` loops. It is driven by **runner lease-poll cadence**: each idle runner polls `lease` every `NO_WORK_RETRY_AFTER_MS` (1 s) and each empty poll checks the readiness index without scanning fleet streams. The knob is the poll backoff, not `XREADGROUP BLOCK`.
-
-| What | Before (deleted) | Now |
-|---|---|---|
-| Per-fleet datastore connections | 1 dedicated blocking conn per fleet | 0 — `lease` uses a shared non-blocking read |
-| Binding constraint | provider max-connections cap (~1/fleet) | `agentsfleetd` API replicas + Postgres write throughput |
-| Idle request driver | `(fleets + workers) × (3600 / BLOCK_s)` | `runners × (3600 / poll_s)` |
-| Idle-cost knob | `XREADGROUP BLOCK` | `NO_WORK_RETRY_AFTER_MS` (runner poll backoff) |
-| Datastore dedicated connections | per-fleet XREADGROUP + watcher + SSE | one SubscriptionHub connection and one outbound-reader connection per replica; neither scales with fleet or viewer count |
-
----
 
 ## The infra reality first
 
