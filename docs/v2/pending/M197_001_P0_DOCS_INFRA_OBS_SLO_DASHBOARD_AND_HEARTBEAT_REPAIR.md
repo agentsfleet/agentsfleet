@@ -104,9 +104,9 @@ The `runner-silent` rule compares a Unix epoch against ninety seconds and is the
 
 Only families the Rust registry actually feeds may carry an SLI. Admission availability is the good-events ratio over `agentsfleet_admissions_total{outcome}`; pickup latency reads `agentsfleet_admission_backlog_oldest_age_seconds`, whose census `watch_for` line names the replay floor as its own threshold; runner error rate is `agentsfleet_runner_executions_total{outcome}` against itself, with `agentsfleet_runner_failures_total{reason}` as the attribution panel beside it. **Implementation default:** every ratio numerator and denominator is wrapped so an absent delta counter reads as zero rather than "No data", because a counter that has never incremented publishes no series and an empty panel is indistinguishable from a broken one.
 
-- **Dimension 2.1** — admission availability renders a ratio in `[0,1]` when admissions exist and `1` when none have occurred → Test `test_admission_availability_ratio`
+- **Dimension 2.1** — admission availability renders a ratio in `[0,1]` when admissions exist and `1` in BOTH empty states — family absent, and family registered at zero — never "No data" → Test `test_admission_availability_ratio`
 - **Dimension 2.2** — pickup latency panel carries the source-derived replay-floor threshold, not a literal → Test `test_pickup_latency_threshold_is_derived`
-- **Dimension 2.3** — runner error rate reads executions by outcome and never divides by zero → Test `test_runner_error_rate_guards_zero`
+- **Dimension 2.3** — runner success reads executions by outcome, never divides by zero, and reaches `1` in both empty states; its error-rate panel is the complement and reaches `0` in the same two → Test `test_runner_error_rate_guards_zero`
 - **Dimension 2.4** — every SLI target recorded in the architecture doc names the measurement that produced it → Test `test_slo_targets_cite_provenance`
 
 ### §3 — Error budget, and the honesty about it
@@ -157,16 +157,30 @@ Asset placeholders the apply step substitutes (unchanged shape, one added):
   __RUNNER_OFFLINE_SECONDS__ derived from LEASE_TTL_MS * RUNNER_OFFLINE_AFTER_MS
   __ADMISSION_REPLAY_FLOOR_SECONDS__  derived from the admission replay floor in source
 
+No-data convention: a ratio SLI with nothing to measure is 1, an error rate
+with nothing to measure is 0, and both mean nothing has failed. Neither may
+render "No data" -- an absent family and a family registered at zero are
+ordinary states of a deployment this young. Clamping the denominator does not
+buy that: `sum()` over an absent selector is EMPTY, not 0, `clamp_min(empty,1)`
+is still empty, and empty / empty is empty. Hence the complement form, each SLI
+carrying its fallback explicitly.
+
 Service Level Indicator expressions (good events / valid events):
   admission availability
-    sum(agentsfleet_admissions_total{outcome="appended"})
-      / clamp_min(sum(agentsfleet_admissions_total), 1)
+    (1 - ((sum(agentsfleet_admissions_total)
+           - (sum(agentsfleet_admissions_total{outcome="appended"}) or vector(0)))
+          / clamp_min(sum(agentsfleet_admissions_total), 1))) or vector(1)
   runner success
-    sum(agentsfleet_runner_executions_total{outcome="processed"})
-      / clamp_min(sum(agentsfleet_runner_executions_total), 1)
+    (1 - ((sum(agentsfleet_runner_executions_total)
+           - (sum(agentsfleet_runner_executions_total{outcome="processed"}) or vector(0)))
+          / clamp_min(sum(agentsfleet_runner_executions_total), 1))) or vector(1)
   pickup latency (threshold SLI, not a ratio)
     max(agentsfleet_admission_backlog_oldest_age_seconds)
       < __ADMISSION_REPLAY_FLOOR_SECONDS__
+
+  Four states each ratio answers, which is what its test asserts:
+    family absent -> empty -> `or vector(1)` -> 1 . family at 0 -> 1
+    all good -> 1 . some bad -> 1 - (bad / total)
 ```
 
 ## Failure Modes
@@ -201,9 +215,9 @@ Service Level Indicator expressions (good events / valid events):
 | 1.1 | unit | `test_runner_silent_compares_an_age` | the `runner-silent` expression contains a `time()` subtraction and no bare epoch comparison. |
 | 1.2 | unit | `test_heartbeat_panel_plots_an_age` | panel 6's target subtracts from evaluation time and keeps the `s` unit. |
 | 1.3 | integration | `test_overdue_runner_still_alerts` | a stubbed series whose last heartbeat precedes the derived threshold evaluates the rule true. |
-| 2.1 | unit | `test_admission_availability_ratio` | with no admission series the expression evaluates to 1, not an error. |
+| 2.1 | unit | `test_admission_availability_ratio` | the expression evaluates to 1 with no admission series AND with the family registered at zero; neither renders "No data". |
 | 2.2 | unit | `test_pickup_latency_threshold_is_derived` | the panel carries the replay-floor placeholder, and no literal seconds value. |
-| 2.3 | unit | `test_runner_error_rate_guards_zero` | the denominator is clamped; a zero-execution window yields a defined ratio. |
+| 2.3 | unit | `test_runner_error_rate_guards_zero` | a zero-execution window yields a defined ratio: the denominator is clamped AND the numerator carries an absent-series fallback, since clamping alone leaves an empty vector empty. |
 | 2.4 | unit | `test_slo_targets_cite_provenance` | every target in the architecture doc's SLO table names a measurement or is marked unproven. |
 | 3.1 | unit | `test_burn_rate_is_multiwindow` | each burn-rate panel carries two window lengths. |
 | 3.2 | unit | `test_burn_rate_marked_unproven` | each burn-rate panel description carries the unproven marker and an event count. |
