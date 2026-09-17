@@ -43,6 +43,13 @@ runs each TypeScript package's own coverage gate. A package-scoped runner —
 `cargo test -p afd_wire`, `bun run test` inside a package — proves that package
 and nothing more; it never satisfies the repository claim.
 
+`make test-integration-rustd` is the only lane that needs live datastores.
+Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
+Nothing else a developer runs needs either: `make test-unit-all` stays
+datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
+only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
+Integration (CI) never sets it.
+
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
 `cargo clippy --workspace --all-targets -- -D warnings`), `lint-scripts` (every
 `scripts/*_test.py`), the TypeScript lints, the shell and OpenAPI checks, and the
@@ -64,7 +71,7 @@ Three shapes, and the tier is readable without opening the file.
 
 | Shape | Needs a live datastore | Lane | `#[ignore]` |
 |---|---|---|---|
-| `integration_<subject>.rs` | yes — Postgres, Redis, or a booted daemon | `make test-integration-rustd` | on every test in the file |
+| `integration_<subject>.rs` | yes — Postgres, Dragonfly, or a booted daemon | `make test-integration-rustd` | on every test in the file |
 | `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
 | `<crate>_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
 
@@ -135,7 +142,7 @@ rename fourteen tests into a convention the repository had already left.
 
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
-One lane, one Postgres, one Redis, and tests that run concurrently inside every
+One lane, one Postgres, one Dragonfly, and tests that run concurrently inside every
 test binary. Cargo serialises BINARIES and libtest parallelises the tests within
 one, so splitting files apart changes nothing about two tests in the same file —
 file layout is not an isolation mechanism, and no rule below is satisfied by it.
@@ -158,7 +165,7 @@ statements; it removes the whole row-collision class.
 **ISO-2 — ISO-1 does not reach a key the product spells globally.** `fleet:ready` is
 one hash for the whole deployment and `HRANDFIELD` hands a poller somebody's
 fleet at random — competing consumers, which is the design. Minted row ids do
-not touch it. Isolation here means a keyspace of the test's own (a Redis logical
+not touch it. Isolation here means a keyspace of the test's own (a Dragonfly logical
 database in the connection URL, or a key prefix), and until one exists, ISO-3.
 
 **ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
@@ -230,7 +237,7 @@ only the lines a diff touched, so on a small diff one unhit line reds the build 
 intentionally. The answer is a test, never absorbed slack.
 
 The Rust target measures the unit tier and the ignored live-datastore tier in
-one `cargo llvm-cov` invocation. Postgres, Redis, HTTP and runtime code are part
+one `cargo llvm-cov` invocation. Postgres, Dragonfly, HTTP and runtime code are part
 of the denominator, so `make test-coverage-rustd` resets the lane, applies the
 schema through the instrumented daemon, then runs both tiers once with
 `--include-ignored`. The target writes `rustd/lcov.info` and enforces the same

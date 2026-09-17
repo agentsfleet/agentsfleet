@@ -159,3 +159,33 @@ Migration happens route by route inside normal milestone work — statement
 compliance is checked for touched files at review, not by a big-bang
 refactor. The PLAN quality-ceiling line (operating model) is where a
 larger cut gets proposed when a route's patch fights these statements.
+
+## Where this is headed — a Backend-for-Frontend
+
+Deferred; build it with the v3 capability tokens.
+
+The dashboard rides one Clerk session token today, and the browser still holds it
+in memory to send as a Bearer. The end shape routes every dashboard read through
+`/api/*` route handlers on the Next.js server, so the browser carries only the
+`__session` cookie and never a token. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one
+token" describes what ships now.
+
+It is deferred, for three reasons.
+
+1. **Its value is not needed yet.** What a Backend-for-Frontend buys is one
+   audited boundary and a home for rate limiting. Neither is pressing.
+2. **A dashboard-only boundary is the wrong home for an authorization audit.**
+   `agentsfleetd` sees the command-line, dashboard and tenant-key flows; an
+   `/api` layer sees one of the three.
+3. **It would be rebuilt immediately.** The v3 direction stops `agentsfleetd`
+   trusting Clerk's key set directly and has `agentsfleet` mint scoped,
+   revocable capability tokens of its own. Building the boundary now means
+   building it around a token shape that work replaces.
+
+Build it with the v3 capability-token migration, so the boundary is built once
+around the final token shape.
+
+It also does not close token secrecy. Even behind a Backend-for-Frontend, a
+compromised page can call `getToken()` and get a token. Closing that is a
+Content-Security-Policy and Subresource-Integrity concern, and its own piece of
+work.

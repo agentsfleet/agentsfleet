@@ -1,6 +1,6 @@
 # User Flow — how a user uses the system
 
-> Parent: [`README.md`](./README.md)
+> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) walks the same path in five minutes; [docs.agentsfleet.net/fleets/overview](https://docs.agentsfleet.net/fleets/overview) is its reference.
 
 Read this when you want to know how a real human gets from "I want a Fleet" to "the Fleet is running on my repo." The §-numbered subsections are stable anchors that other specs reference; do not rename them without sweeping cross-references.
 
@@ -117,7 +117,7 @@ The user iterates those files from Claude in natural language:
 - "tighten the deploy-failure diagnosis prompt"
 - "add a periodic health check every 15 minutes"
 - "require approval before teardown"
-- "include Fly logs and Redis health in the first pass"
+- "include Fly logs and Dragonfly health in the first pass"
 
 This keeps the operational logic editable by changing instructions, not by rewriting a typed workflow engine for every variation.
 
@@ -311,7 +311,7 @@ Single source of truth for caps: the `core.model_library` table (tenant read: be
 A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; the install is a `fleet:slack` vault handle plus a generic `core.connector_installs` row mapping `team_id → workspace`), `@agentsfleet` lives in any channel it's invited to:
 
 1. A user `@mentions` it; the signed events ingress (`POST /v1/connectors/slack/events`) resolves `(team_id, channel_id)` and lands a `slack:<user>` event via the webhook-producer XADD shape (signature-authed, no principal).
-2. The first mention in a channel materializes a **durable per-channel resident fleet** by calling the existing fleet-create path with a default channel-bot skill.md (a `core.fleets` row with a code-set reactive config — read-only, no triggers, no cron), bound in the generic `core.connector_channels`.
+2. The first mention in a channel materializes a **durable per-channel resident fleet**, so every later mention in any thread of that channel routes to the same fleet. The mechanics — which insert path, the code-set reactive config, the binding row — are in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) §2.
 3. The run hydrates and captures that channel's memory via the existing `/v1/runners/me/memory/{fleet_id}` loop ([`runner_fleet.md`](./runner_fleet.md) §Memory continuity) — so the bot **learns the channel**, and memory persists thread→thread because the resident fleet (not the thread) is the namespace. The answer posts back in-thread.
 
 The bot is **reactive** by design — it answers on mention, never acts unattended. Converting a recurring need into a durable teammate that wakes on a real source and acts with approval is **Rung 1** (the follow-on; out of scope of M106). Canonical spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`.

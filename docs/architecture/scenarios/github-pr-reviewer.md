@@ -1,6 +1,8 @@
 # Scenario — GitHub PR reviewer (the golden path)
 
-> Parent: [`README.md`](./README.md) · References: [`../fleet_bundles.md`](../fleet_bundles.md) (bundle storage), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
+> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) and [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
+
+> References: [`../fleet_bundles.md`](../fleet_bundles.md) (bundle storage), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
 >
 > This is the single end-to-end walkthrough. It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet through the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching a Pull Request (PR) get reviewed. Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
@@ -74,7 +76,7 @@ The runner executes the **fleet's** SKILL.md (which reflects any PATCH), not the
 
 ## 3. Connect the App, bind the repository, then receive the PR
 
-1. **Platform setup, once per environment.** The platform administrator creates the shared GitHub App with dashboard callback `/api/connectors/github/callback`, event ingress `/v1/ingress/github`, user authorization requested during installation, Pull Request, workflow-run, and deployment-status subscriptions, plus Deployments read-only permission and the existing minimum repository permissions. GitHub permits every push-capable identity to create deployment statuses, so every such identity in a mapped repository is inside this first spine's trusted producer boundary. The handler does not attest the status producer. The `github-app` admin-vault bag carries `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`. The Rust daemon reads only `client_id` and `client_secret` from it (`afd_connector/src/app.rs`); `app_slug` is stored and unread, which is why zero reachable installations refuses with `UZ-CONN-008` instead of continuing to GitHub's install page as the Zig daemon did.
+1. **Platform setup, once per environment.** The platform administrator creates the shared GitHub App with dashboard callback `/api/connectors/github/callback`, event ingress `/v1/ingress/github`, user authorization requested during installation, Pull Request, workflow-run, and deployment-status subscriptions, plus Deployments read-only permission and the existing minimum repository permissions. The trusted producer boundary this opens is [`../connectors.md`](../connectors.md) §"Trust anchors" item 5; the handler does not attest the status producer. The `github-app` admin-vault bag carries `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`. The Rust daemon reads only `client_id` and `client_secret` from it (`afd_connector/src/app.rs`); `app_slug` is stored and unread, which is why zero reachable installations refuses with `UZ-CONN-008` instead of continuing to GitHub's install page as the Zig daemon did.
 2. **Workspace connection, once per GitHub installation.** John signs up, creates or selects his `agentsfleet` workspace, and starts `connector connect github`; the API creates signed single-use state bound to John and that workspace, then sends him to GitHub's USER-AUTHORIZATION URL — not an install URL. The App must already be installed on `acme/payments`; the Rust daemon reads no `app_slug` and so cannot continue to GitHub's install page, and an authorization reaching zero installations refuses with `UZ-CONN-008` rather than offering to install. The dashboard relays the same signed-in identity to the authenticated callbacks endpoint. It verifies that identity, then exchanges the one-time code, verifies John can access that installation, consumes state, and conditionally stores the workspace installation handle plus `installation_id → workspace_id` routing row. An installation already owned by another workspace returns 403 without changing either workspace.
 3. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the maximum repository set; this fleet list is the smaller event subscription. Omission receives no App traffic.
 4. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, claims an authenticated-body-digest/fleet replay slot, and appends the normalized event.
@@ -95,39 +97,24 @@ The gate + billing path is identical to every other event — see [`../billing_a
 - The pull request carries the fleet's review comments.
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
 
-## 6. Built vs to-build
+## 6. Proof status
 
-| Step | Status |
-|---|---|
-| Install bundle from GitHub → R2 + Postgres | ✅ |
-| Manual webhook signature verify · queue · lease · run | ✅ |
-| GitHub App callback stores installation handle + routing row | ✅ real-datastore callback and reconnect coverage passes |
-| App ingress filters installation + repository + event + grant | ✅ real Postgres and Redis coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention. The grant is CHECKED here and, since M194_001, WRITTEN as well: install creates a pending `core.integration_grants` row and its approval card for every mintable credential the bundle declares; a delivery that still finds no grant raises the card instead of parking silently; a denial ends the parked event. M193_001's walk found the missing write — its Discovery carries the daemon log — and M194_001's walk on `3fbf3d9c3` observed the card, the approval, and the run that followed |
-| `SKILL.md` delivered as `instructions` per lease | ✅ |
-| Read the diff + post comments via `http_request` | ✅ |
-| Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Redis |
-| External `github-pr-reviewer` repository test | 🔨 — external proof remains open; do not call the scenario fixed until it passes |
-| Compounding memory across PRs | 🔨 (parked design) |
+Everything but the external proof is green: bundle install, App callback and
+reconnect, ingress filtering by installation / repository / event / grant,
+`SKILL.md` delivery per lease, diff read and comment post, and the local
+repository-bound `pull_request` suite against real Postgres and Dragonfly.
+
+Two remain open, and the scenario is not fixed until the first passes:
+
+- **External `github-pr-reviewer` repository test.** Needs the App installed on
+  a dedicated development repository and a real Pull Request. Fixture coverage
+  is not evidence that the live path works.
+- **Compounding memory across Pull Requests** — parked design.
+
+Milestone status belongs to the spec, not to this page. When the external proof
+lands, the spec records it and this section says so in one line.
 
 ## 7. What is NOT in this scenario
 
 - **Provider posture, billing math, the credit gate.** These had their own scenarios; the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md). The lease/execute/bill loop is unchanged from what that doc describes.
 - **Compounding memory** across PRs — a separate, parked design.
-
-## 8. What this scenario proves
-
-- **One reasoning loop.** A webhook event and a manual steer enter the same lease/execute path with the same envelope; the runtime never branches on actor type.
-- **GitHub is a one-time source, never a runtime dependency.** The fleet runs from the internal snapshot even if the source repo is later made private or deleted.
-- **The integration is the bundle**, not native per-system code: `SKILL.md` + `http_request` + injected `${secrets.*}` do the GitHub work.
-- **No broad fan-out.** App installation identifies the workspace; explicit repository and event membership identifies each fleet.
-- **Receipt is not credential access.** A later tool call mints a short-lived installation token only after the lease-derived fleet grant is rechecked.
-
-## 9. Remaining proof punch list
-
-1. ✅ Run the local database-and-Redis App-ingress suite without a skipped test.
-2. ✅ Connect a workspace to the GitHub App. The Rust callback lists the installations the authorized person reaches and binds exactly one (`rustd/crates/afd_connector/src/github.rs`); a claimed `installation_id` is probed first. Proven against a fake vendor in `afd_api/tests/integration_connector_github.rs`. Binding a real repository to `github-pr-reviewer` is the live half and stays open.
-3. ⏳ (event half) One signed delivery wakes a fleet exactly once: `fleet-webhook-delivery.spec.ts` posts a captured `workflow_run` delivery and reads one durable event. Proven at the fixture tier; its FIRST run against the development environment (`deploy-dev` run 34147331454, Sep 08, 2026) was red, and the journey could not say why — its lease wait read an absent row as a lease, so a delivery nobody took passed the wait and failed a length assertion instead. Fixed in M187_001; the claim is open until a dev run is green. A Pull Request in a real repository is the live half and stays open.
-4. Let the fleet read the diff and post its review through a short-lived installation token.
-5. ⏳ (event half) The exact replay is reported as one and creates no second event — proven at the fixture tier by `afd_api/tests/integration_ingress_live.rs`; the acceptance half rides the same journey as 3 and carries the same open claim. No second review is the live half and stays open.
-
-The live halves of 2, 3 and 5, and all of 4, need the GitHub App installed on a dedicated repository in the development environment and a person opening a Pull Request there. Until they pass, `github-pr-reviewer` is proven plumbing with an outstanding repository-level proof, not a completed end-to-end scenario.

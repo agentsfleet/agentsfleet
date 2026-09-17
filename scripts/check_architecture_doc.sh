@@ -31,15 +31,7 @@ ARCH_DIR="${ARCH_DIR:-docs/architecture}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
 ACTIVE_DIR="$SPEC_ROOT/active"
-PENDING_DIR="$SPEC_ROOT/pending"
 
-# The single architecture doc whose subject is unshipped work. Everywhere else a
-# milestone reference asserts a fact about the system, so it must name a spec
-# that shipped (done/) or is in flight (active/); the roadmap names what is
-# merely planned, and a pending/ spec is the only evidence such work exists.
-# The carve-out matches this exact path, not the basename — a nested
-# `scenarios/roadmap.md` must not inherit the exemption and launder unshipped ids.
-readonly ROADMAP_REL_PATH="roadmap.md"
 
 FAIL=0
 
@@ -58,8 +50,8 @@ fi
 # 1. test_arch_M_references_resolve
 #    Every milestone identifier in architecture/ must resolve to a spec in done/
 #    (shipped) or active/ (in flight, e.g. the spec doing the cross-ref itself).
-#    pending/ resolves in roadmap.md alone — see ROADMAP_REL_PATH above. An
-#    identifier with no spec anywhere fails in every file, roadmap included.
+#    An identifier with no spec anywhere fails. A `pending/` spec is not evidence
+#    that work exists: the page that traded on that exemption is gone.
 # ---------------------------------------------------------------------------
 
 # True when some `<base>_*.md` spec lives in `dir`.
@@ -75,9 +67,6 @@ resolve_ref() {
 
   if spec_exists "$DONE_DIR" "$base"; then return 0; fi
   if spec_exists "$ACTIVE_DIR" "$base"; then return 0; fi
-  if [ "${src_file#"$ARCH_DIR"/}" = "$ROADMAP_REL_PATH" ] && spec_exists "$PENDING_DIR" "$base"; then
-    return 0
-  fi
   return 1
 }
 
@@ -98,7 +87,7 @@ else
     if resolve_ref "$src" "$ref"; then
       m_count=$((m_count + 1))
     else
-      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/ (pending/ resolves only in $ROADMAP_REL_PATH)"
+      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/"
     fi
   done <<EOF
 $m_refs
@@ -189,8 +178,8 @@ readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery"
 # Tables a page may name because it is recording that they are gone. Naming one
 # is a deliberate retirement note, not a claim that it is live storage. Adding an
 # entry here is a decision; leaving one behind after the note goes is drift.
-#   fleet.metering_periods — dropped in the schema rebuild; the billing page and
-#   the roadmap both explain what replaced it.
+#   fleet.metering_periods — dropped in the schema rebuild; the billing page
+#   explains what replaced it.
 #   core.fleet_bundles — the per-workspace bundle table; the fleet-bundles page
 #   records that install resolves from a library tier instead.
 readonly RETIRED_TABLES="fleet.metering_periods core.fleet_bundles"
@@ -206,6 +195,18 @@ doc_files() {
   for extra in $DOC_SET_EXTRA; do
     [ -f "$extra" ] && printf '%s\n' "$extra"
   done
+}
+
+# Every tracked Markdown file a reader can follow a published link from, which is
+# wider than `doc_files` on purpose — see test_arch_published_links_resolve.
+# Falls back to `doc_files` when the tree is not a checkout, which is how the
+# fixture-driven self-tests run.
+published_link_files() {
+  if [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ] && git rev-parse --git-dir >/dev/null 2>&1; then
+    git ls-files '*.md' | grep -v '^docs/v2/' | sort
+  else
+    doc_files
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -336,6 +337,111 @@ if [ -n "${retired_slot_hits// /}" ]; then
   printf "%s" "$retired_slot_hits" >&2
 else
   ok "test_arch_no_retired_slot_numbers: no page cites a retired 0xx schema slot"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. test_the_doc_carries_no_conflict_marker
+#     A shipped spec recorded this fault class and named this test by name; the
+#     test was never in the tree, and seven markers were sitting in five pages
+#     when the docs review of 2026-09-17 found them. One reaches the branch by
+#     riding the END of a sentence or a table row, so a line-anchored `^>>>>>>>`
+#     — which is what every pre-commit grep uses — looks straight past it. Match
+#     anywhere in the line. `=======` is excluded on purpose: it is a legal
+#     Markdown setext rule and would fire on real prose.
+# ---------------------------------------------------------------------------
+marker_hits=""
+while IFS= read -r f; do
+  hits="$(grep -nE '(<{7}|>{7}) ' "$f" 2>/dev/null || true)"
+  [ -n "$hits" ] && marker_hits="$marker_hits$f:$hits"$'\n'
+done < <(doc_files)
+if [ -n "${marker_hits// /}" ]; then
+  err "test_the_doc_carries_no_conflict_marker: merge conflict markers survived a merge:"
+  printf "%s" "$marker_hits" >&2
+else
+  ok "test_the_doc_carries_no_conflict_marker: no page carries a merge conflict marker"
+fi
+
+# ---------------------------------------------------------------------------
+# 11. test_arch_published_links_resolve
+#     Every docs.agentsfleet.net pointer must name a page that exists in the
+#     published set. A pointer to a page nobody wrote sends the reader to a 404,
+#     and the docs repository is a sibling checkout the gate cannot assume, so
+#     the roster below is the contract.
+#
+#     This one check reads EVERY tracked Markdown file, not `doc_files`. The
+#     other checks are scoped to the architecture set because that is the corpus
+#     they grade; a dead published link is a dead link wherever it sits, and the
+#     first review of this gate found one in `SKILL_FRONTMATTER_SCHEMA.md` —
+#     outside `doc_files`, so the check as first written would have passed it.
+#     Specs under `docs/v2/` are excluded: they are records, and DOC-S7 keeps a
+#     record's wording even when the page it cited has moved.
+#
+#     Regenerate the roster with:
+#       find ~/Projects/docs -name '*.mdx' -not -path '*/snippets/*' \
+#         | sed 's|.*/docs/||; s|\.mdx$||' | sort
+#     A page added there and not added here fails closed — the right failure,
+#     since a stale roster is invisible and a stale pointer is a dead link.
+# ---------------------------------------------------------------------------
+readonly PUBLISHED_PAGES="
+api-reference/error-codes api-reference/introduction api-reference/scopes
+billing/budgets changelog cli/agentsfleet cli/configuration cli/flags cli/install
+concepts concepts/context-lifecycle fleets/authoring fleets/connectors
+fleets/install fleets/library fleets/model-providers fleets/overview
+fleets/running fleets/secrets fleets/tools fleets/troubleshooting fleets/webhooks
+index memory quickstart runners workspaces/managing workspaces/overview
+"
+# Word-split and rejoin on single spaces: the roster above is newline-wrapped for
+# reading, and a `case` glob testing " $slug " never matches at a line boundary.
+published_flat=" $(printf '%s ' $PUBLISHED_PAGES) "
+bad_published=0
+seen_published=0
+while IFS= read -r ref; do
+  src="${ref%%::*}"
+  slug="${ref##*::}"
+  seen_published=$((seen_published + 1))
+  case "$published_flat" in
+    *" $slug "*) continue ;;
+  esac
+  err "test_arch_published_links_resolve: $src points at docs.agentsfleet.net/$slug, which is not a published page"
+  bad_published=$((bad_published + 1))
+done < <(
+  # The filename is carried by the shell, never interpolated into a `sed`
+  # replacement: a path holding `&` or `|` would otherwise rewrite the match or
+  # break the expression, and the failure would name the wrong file.
+  while IFS= read -r f; do
+    # Only a Markdown link target counts, which is what a reader can click.
+    # Measured across the scanned corpus: all 26 pointers are written
+    # `](https://docs.agentsfleet.net/...)` and not one is a bare URL, so this
+    # reads every link and adds no parser.
+    #
+    # It also settles what a fenced URL is, without deciding it. The CLI's
+    # rendered `see:` line and an RFC 7807 `type` member both spell a docs URL
+    # inside a fence, and neither is a link — they are not in link syntax, so
+    # they are not extracted. Earlier revisions of this check tracked fences in
+    # `awk` to reach the same answer; that needed interval expressions the
+    # platform `awk` may not have and a CommonMark indentation rule, to classify
+    # text this pattern never looks at.
+    # Every clickable destination Markdown offers, as one alternation rather than
+    # a parser: inline `](url`, an angle-bracket destination `](<url`, a
+    # reference definition `[tag]: url`, a bare autolink `<url>`, and an HTML
+    # `href=`. Only the inline form appears today, and the others are here so a
+    # link written tomorrow in a form nobody used before is read, not skipped.
+    grep -oE '(\]\(<?|\][[:space:]]*:[[:space:]]*|\]:[[:space:]]*|<|href=["'"'"'])https://docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
+      | while IFS= read -r hit; do
+          printf '%s::%s\n' "$f" "${hit##*docs.agentsfleet.net/}"
+        done || true
+  done < <(published_link_files) | sort -u
+)
+
+# The same guard `CITATION_FLOOR` gives the citation pattern, for the same
+# reason: a check that extracts nothing reports green forever, so a broken
+# regex would read as "every pointer resolves" rather than "no pointer was
+# read". The real corpus carried 17 when this landed.
+readonly PUBLISHED_REF_FLOOR=10
+if [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ] && [ "$seen_published" -lt "$PUBLISHED_REF_FLOOR" ]; then
+  err "test_arch_published_links_resolve: extraction found only $seen_published pointers in the real corpus — the pattern is broken, not the docs"
+elif [ "$bad_published" = 0 ]; then
+  ok "test_arch_published_links_resolve: all $seen_published docs.agentsfleet.net pointers name a published page"
 fi
 
 # A pattern that silently matches nothing reports clean forever. Against the real
