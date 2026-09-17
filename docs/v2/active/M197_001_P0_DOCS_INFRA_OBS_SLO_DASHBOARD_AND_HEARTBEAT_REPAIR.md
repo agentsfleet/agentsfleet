@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M197
 **Workstream:** 001
 **Date:** Sep 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the shipped `runner-silent` alert fires permanently by construction, and no agentsfleet dashboard has ever been applied to any Grafana stack.
 **Categories:** DOCS, INFRA, OBS
 **Batch:** B1 — no concurrent workstream; the observability assets are edited by nothing else.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m197-slo-dashboard`
+**Baseline revision:** `d229f568abb48724ac77425c6f45c119d16243ea`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 17, 2026), grounded in live reads of the development Grafana stack and `rustd/crates/afd_observability` source
