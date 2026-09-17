@@ -17,8 +17,8 @@
 # deploy, so it outlived the one-off it shipped with and now sits with the
 # other scripts the workflows run.
 #
-# `flyctl` resolves through $FLYCTL so the self-test can inject a fake. No
-# other caller sets it.
+# `flyctl` resolves through $FLYCTL so a caller can point at a different
+# binary. No caller sets it today.
 set -euo pipefail
 
 FLYCTL="${FLYCTL:-flyctl}"
