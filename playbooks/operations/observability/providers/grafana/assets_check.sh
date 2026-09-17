@@ -16,7 +16,7 @@ LEDGER="$REPO_ROOT/rustd/crates/afd_observability/src/metrics/produced.rs"
 # The asset carries every panel this dashboard is expected to render. Stated
 # rather than implied: a panel silently dropped by a bad edit leaves a valid
 # JSON file, and only a count notices.
-MINIMUM_PANELS=15
+MINIMUM_PANELS=20
 
 # A target may draw a constant reference line instead of querying — the replay
 # floor beside the backlog age is one. It names no metric, so the ownership rule
@@ -50,7 +50,7 @@ check_dashboard_shape() {
       (.panels | length) >= $minimum and
       ([.panels[].id] | length == (unique | length)) and
       ([.panels[] | has("targets")] | all) and
-      ([.panels[].targets[].expr] | all(contains("agentsfleet_") or test("^vector\\([0-9_A-Z]+\\)$"))) and
+      ([.panels[].targets[].expr] | all(contains("agentsfleet_") or contains("gen_ai_") or test("^vector\\([0-9_A-Z]+\\)$"))) and
       ([.panels[].datasource.uid] | all(. == "__PROMETHEUS_UID__"))
     ' "$DASHBOARD" >/dev/null ||
     fail "dashboard panels drifted: count, ids, targets, or datasource"
@@ -138,23 +138,60 @@ check_gap_panel_cites_the_ledger() {
   )
 }
 
-# Every metric an asset names must be one this repository's source owns.
+# Every family the census declares AND this build produces must appear on the
+# dashboard somewhere.
+#
+# The direction matters. Checking that every panel names a real family catches
+# a typo; checking that every produced family reaches a panel catches the thing
+# that actually happens — a family ships, nobody adds a panel, and it is
+# invisible for a year. The roll-up panels are generated from the census's own
+# `category` column precisely so this check stays satisfiable without anyone
+# maintaining a list by hand.
+check_every_produced_family_is_panelled() {
+  local panelled excused family missing=0
+  panelled="$(
+    jq -r '.panels[] | (.targets // [])[].expr' "$DASHBOARD" |
+      grep -oE '(agentsfleet|gen_ai)_[a-z0-9_]+' |
+      sed 's/_count$//' | sort -u
+  )"
+  excused="$(unproduced_wire_names | tr '.' '_')"
+  while IFS= read -r family; do
+    [ -n "$family" ] || continue
+    printf '%s\n' "$excused" | grep -Fxq -- "$family" && continue
+    printf '%s\n' "$panelled" | grep -Fxq -- "$family" && continue
+    echo "  unpanelled produced family: $family" >&2
+    missing=$((missing + 1))
+  done < <(
+    awk -F'\t' '!/^#/ && NF > 1 && $1 != "name" {print $1}' \
+      "$REPO_ROOT/docs/metrics.census.tsv" | tr '.' '_' | sort -u
+  )
+  [ "$missing" -eq 0 ] ||
+    fail "$missing produced census family(ies) reach no panel"
+}
+
+# Every metric an asset names must be one this repository owns.
+#
+# Checked against the census rather than by grepping the crates, because an
+# OTLP family is spelled with dots at the source and with underscores on the
+# wire: `agentsfleet.billing.credit.consumed` is declared that way in Rust and
+# arrives in the store as `agentsfleet_billing_credit_consumed`. Grepping for
+# the wire spelling could never find the declaration. The census is the right
+# authority anyway — a Rust registry test grades it against the registry in
+# BOTH directions, so a name in the census is a name the daemon produces or
+# the build does not compile.
 check_metrics_are_source_owned() {
-  local metric
+  local census metric
+  census="$(
+    awk -F'\t' '!/^#/ && NF > 1 && $1 != "name" {print $1}' \
+      "$REPO_ROOT/docs/metrics.census.tsv" | tr '.' '_' | sort -u
+  )"
   while IFS= read -r metric; do
     [ -n "$metric" ] || continue
-    grep -RFq -- "$metric" "$REPO_ROOT/rustd/crates" ||
-      fail "Grafana asset references an unowned metric: $metric"
+    printf '%s\n' "$census" | grep -Fxq -- "${metric%_count}" ||
+      fail "Grafana asset references a metric no census row declares: $metric"
   done < <(
     jq -r '.. | strings' "$DASHBOARD" "$ALERTS" |
-      awk '{
-        text = $0
-        while (match(text, /agentsfleet_[a-z0-9_]+/)) {
-          print substr(text, RSTART, RLENGTH)
-          text = substr(text, RSTART + RLENGTH)
-        }
-      }' |
-      sort -u
+      grep -oE '(agentsfleet|gen_ai)_[a-z0-9_]+' | sort -u
   )
 }
 
@@ -164,6 +201,7 @@ check_alert_shape
 check_epoch_readers_subtract
 check_thresholds_are_derived
 check_gap_panel_cites_the_ledger
+check_every_produced_family_is_panelled
 check_metrics_are_source_owned
 
 echo "PASS: Grafana assets are valid and reference source-owned metrics"

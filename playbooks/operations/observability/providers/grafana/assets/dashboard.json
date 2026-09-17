@@ -914,6 +914,470 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
+      "description": "Generated from the `category` column of docs/metrics.census.tsv, not hand-listed, so a family added to the census appears here without anyone remembering to add it. Every tile carries `or vector(0)`: a counter that has never incremented publishes NO series, and a family absent from this panel would be indistinguishable from one that was never wired up. Green zero means it has genuinely never happened. Eighteen error families, one tile each, red above zero. This is the panel that answers 'is anything failing' without knowing in advance what could fail.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(agentsfleet_admission_replays_total[$__range])) or vector(0)",
+          "legendFormat": "admission_replays",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_api_backpressure_rejections_total[$__range])) or vector(0)",
+          "legendFormat": "api_backpressure_rejections",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_fleet_ready_write_failures_total[$__range])) or vector(0)",
+          "legendFormat": "fleet_ready_write_failures",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_library_read_outcome_total[$__range])) or vector(0)",
+          "legendFormat": "library_read_outcome",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_capture_skipped_total[$__range])) or vector(0)",
+          "legendFormat": "memory_capture_skipped",
+          "refId": "E"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_capture_truncated_total[$__range])) or vector(0)",
+          "legendFormat": "memory_capture_truncated",
+          "refId": "F"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_hydration_dropped_bytes_total[$__range])) or vector(0)",
+          "legendFormat": "memory_hydration_dropped_bytes",
+          "refId": "G"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_hydration_dropped_entries_total[$__range])) or vector(0)",
+          "legendFormat": "memory_hydration_dropped_entries",
+          "refId": "H"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_push_failures_total[$__range])) or vector(0)",
+          "legendFormat": "memory_push_failures",
+          "refId": "I"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_otlp_entries_discarded_total[$__range])) or vector(0)",
+          "legendFormat": "otlp_entries_discarded",
+          "refId": "J"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_repair_dispatch_retried_total[$__range])) or vector(0)",
+          "legendFormat": "repair_dispatch_retried",
+          "refId": "K"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_runner_failures_total[$__range])) or vector(0)",
+          "legendFormat": "runner_failures",
+          "refId": "L"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_runner_retention_sweep_failures_total[$__range])) or vector(0)",
+          "legendFormat": "runner_retention_sweep_failures",
+          "refId": "M"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_signup_failed_total[$__range])) or vector(0)",
+          "legendFormat": "signup_failed",
+          "refId": "N"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_sse_backpressure_rejections_total[$__range])) or vector(0)",
+          "legendFormat": "sse_backpressure_rejections",
+          "refId": "O"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_sse_dropped_frames_total[$__range])) or vector(0)",
+          "legendFormat": "sse_dropped_frames",
+          "refId": "P"
+        }
+      ],
+      "title": "Every error family — including the silent ones",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Generated from the `category` column of docs/metrics.census.tsv, not hand-listed, so a family added to the census appears here without anyone remembering to add it. Every tile carries `or vector(0)`: a counter that has never incremented publishes NO series, and a family absent from this panel would be indistinguishable from one that was never wired up. Green zero means it has genuinely never happened. Twelve saturation families read as their current value. Depth without age is half a story; panel 28 carries the ages.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 55
+      },
+      "id": 31,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "max(agentsfleet_admission_backlog) or vector(0)",
+          "legendFormat": "admission_backlog",
+          "refId": "A"
+        },
+        {
+          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds) or vector(0)",
+          "legendFormat": "admission_backlog_oldest_age_seconds",
+          "refId": "B"
+        },
+        {
+          "expr": "max(agentsfleet_api_in_flight_requests) or vector(0)",
+          "legendFormat": "api_in_flight_requests",
+          "refId": "C"
+        },
+        {
+          "expr": "max(agentsfleet_fleet_ready_depth) or vector(0)",
+          "legendFormat": "fleet_ready_depth",
+          "refId": "D"
+        },
+        {
+          "expr": "max(agentsfleet_memory_hydration_window_entries) or vector(0)",
+          "legendFormat": "memory_hydration_window_entries",
+          "refId": "E"
+        },
+        {
+          "expr": "max(agentsfleet_process_resident_memory_bytes) or vector(0)",
+          "legendFormat": "process_resident_memory_bytes",
+          "refId": "F"
+        },
+        {
+          "expr": "max(agentsfleet_repair_dispatch_due_batch) or vector(0)",
+          "legendFormat": "repair_dispatch_due_batch",
+          "refId": "G"
+        },
+        {
+          "expr": "max(agentsfleet_repair_dispatch_oldest_age_seconds) or vector(0)",
+          "legendFormat": "repair_dispatch_oldest_age_seconds",
+          "refId": "H"
+        },
+        {
+          "expr": "max(agentsfleet_runner_active_leases) or vector(0)",
+          "legendFormat": "runner_active_leases",
+          "refId": "I"
+        },
+        {
+          "expr": "max(agentsfleet_sse_in_flight_streams) or vector(0)",
+          "legendFormat": "sse_in_flight_streams",
+          "refId": "J"
+        }
+      ],
+      "title": "Every saturation family — how full, everywhere",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Generated from the `category` column of docs/metrics.census.tsv, not hand-listed, so a family added to the census appears here without anyone remembering to add it. Every tile carries `or vector(0)`: a counter that has never incremented publishes NO series, and a family absent from this panel would be indistinguishable from one that was never wired up. Green zero means it has genuinely never happened. Nine health families. These are not about the workload: they are about whether the machinery reporting on the workload is itself intact.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 55
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(agentsfleet_memory_cap_evictions_total[$__range])) or vector(0)",
+          "legendFormat": "memory_cap_evictions",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_search_zero_hits_total[$__range])) or vector(0)",
+          "legendFormat": "memory_search_zero_hits",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_otel_attribute_omitted_total[$__range])) or vector(0)",
+          "legendFormat": "otel_attribute_omitted",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_runner_failures_overflow_total[$__range])) or vector(0)",
+          "legendFormat": "runner_failures_overflow",
+          "refId": "D"
+        },
+        {
+          "expr": "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)) or vector(0)",
+          "legendFormat": "runner_last_seen (age)",
+          "refId": "E"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_sse_hub_reconnects_total[$__range])) or vector(0)",
+          "legendFormat": "sse_hub_reconnects",
+          "refId": "F"
+        },
+        {
+          "expr": "max(agentsfleet_worker_running) or vector(0)",
+          "legendFormat": "worker_running",
+          "refId": "G"
+        }
+      ],
+      "title": "Every health family — is the plumbing working",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Generated from the `category` column of docs/metrics.census.tsv, not hand-listed, so a family added to the census appears here without anyone remembering to add it. Every tile carries `or vector(0)`: a counter that has never incremented publishes NO series, and a family absent from this panel would be indistinguishable from one that was never wired up. Green zero means it has genuinely never happened. Traffic and latency families as counts over the window — the denominator that makes an error count mean something. A spike in errors beside a spike in traffic is a different incident from a spike in errors alone.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "id": 33,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(agentsfleet_admissions_total[$__range])) or vector(0)",
+          "legendFormat": "admissions",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_billing_credit_consumed[$__range])) or vector(0)",
+          "legendFormat": "billing_credit_consumed",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_invoke_agent_cache_read_token_usage_count[$__range])) or vector(0)",
+          "legendFormat": "invoke_agent_cache_read_token_usage",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_invoke_agent_token_usage_count[$__range])) or vector(0)",
+          "legendFormat": "invoke_agent_token_usage",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_lease_poll_candidates_scanned_total[$__range])) or vector(0)",
+          "legendFormat": "lease_poll_candidates_scanned",
+          "refId": "E"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_lease_poll_db_roundtrips_total[$__range])) or vector(0)",
+          "legendFormat": "lease_poll_db_roundtrips",
+          "refId": "F"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_lease_polls_total[$__range])) or vector(0)",
+          "legendFormat": "lease_polls",
+          "refId": "G"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_library_payload_bytes_total[$__range])) or vector(0)",
+          "legendFormat": "library_payload_bytes",
+          "refId": "H"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_library_results_total[$__range])) or vector(0)",
+          "legendFormat": "library_results",
+          "refId": "I"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_library_stage_duration_seconds_total[$__range])) or vector(0)",
+          "legendFormat": "library_stage_duration_seconds",
+          "refId": "J"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_library_stage_observations_total[$__range])) or vector(0)",
+          "legendFormat": "library_stage_observations",
+          "refId": "K"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_memory_entries_captured_total[$__range])) or vector(0)",
+          "legendFormat": "memory_entries_captured",
+          "refId": "L"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_repair_synthetic_events_total[$__range])) or vector(0)",
+          "legendFormat": "repair_synthetic_events",
+          "refId": "M"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_repair_verifier_runs_total[$__range])) or vector(0)",
+          "legendFormat": "repair_verifier_runs",
+          "refId": "N"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_runner_executions_total[$__range])) or vector(0)",
+          "legendFormat": "runner_executions",
+          "refId": "O"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_runner_retention_swept_total[$__range])) or vector(0)",
+          "legendFormat": "runner_retention_swept",
+          "refId": "P"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_signup_bootstrapped_total[$__range])) or vector(0)",
+          "legendFormat": "signup_bootstrapped",
+          "refId": "Q"
+        },
+        {
+          "expr": "sum(increase(agentsfleet_signup_replayed_total[$__range])) or vector(0)",
+          "legendFormat": "signup_replayed",
+          "refId": "R"
+        },
+        {
+          "expr": "sum(increase(gen_ai_invoke_agent_duration_count[$__range])) or vector(0)",
+          "legendFormat": "gen_ai.invoke_agent_duration",
+          "refId": "S"
+        }
+      ],
+      "title": "Traffic and latency volume",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
       "description": "Declared metric gaps and the shared-tenant warning.",
       "fieldConfig": {
         "defaults": {},
@@ -923,7 +1387,7 @@
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 70
       },
       "id": 29,
       "options": {
