@@ -304,7 +304,7 @@ The full data lifecycle, sequence, session state machine, threat model, pinned c
 
 ## Flow 2 — UI (browser dashboard)
 
-> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token value of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the Server-Sent Events (SSE) route handler mints server-side. `AuthSessionKeeper` calls Clerk's `user.reload()` while a signed-in dashboard is active and when the browser resumes; this refreshes the `__session` cookie without returning token bytes to application code. For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
+> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token value of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the Server-Sent Events (SSE) route handler mints server-side. `AuthSessionKeeper` calls Clerk's `user.reload()` while a signed-in dashboard is active and when the browser resumes; this refreshes the `__session` cookie without returning token bytes to application code. For where this is headed, see [`architecture/web_app.md`](./architecture/web_app.md).
 
 The authenticated layout keeps `ClerkProvider` and `AuthSessionKeeper` at the
 root. `ShellFrame` owns persistent markup on the server. `ShellControls` owns
@@ -791,7 +791,7 @@ involved.
 
 **The Backend-for-Frontend is deferred.** Routing dashboard reads through
 `/api/*` handlers so the browser holds no token at all is the eventual shape, not
-scheduled work. [`architecture/roadmap.md`](./architecture/roadmap.md) carries the
+scheduled work. [`architecture/web_app.md`](./architecture/web_app.md) carries the
 reasoning and the condition for building it.
 
 ## What's not in this doc (yet)
