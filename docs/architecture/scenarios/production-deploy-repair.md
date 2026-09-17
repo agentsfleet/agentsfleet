@@ -163,22 +163,21 @@ The platform GitHub App subscribes to deployment-status events and holds Deploym
 
 Slot 834 retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, claim fence, and Dragonfly cleanup marker. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
-## 9. What exists and what changes
+## 9. Proof status
 
-| Part | Status | Evidence or owning workstream |
-|---|---|---|
-| Incident responder Fleet | ✅ | `library/incident-responder/`; scheduled Grafana and Elasticsearch diagnosis. |
-| Incident repairer Fleet | ✅ | `library/incident-repairer/`; approval-gated draft PR. |
-| Write-kind approval park and fenced mint | ✅ | M157_002 integration coverage. |
-| Incident-to-PR linkage | 🟡 | Slot 830 exists; M157_003 moves it onto shared ingress and adds provenance. |
-| Append-only workflow history | 🟡 | M157_003, slot 831. |
-| Exact merged-commit correlation | 🟡 | M157_003, slot 832. |
-| Bounded approval mint spends | 🟡 | M157_003, slot 833. |
-| Incident verifier Fleet | 🟡 | M157_003; independently installed and read-only. |
-| GitHub production-result normalization | 🟡 | M157_003; includes Vercel deployments surfaced through GitHub. |
-| GitHub App deployment subscription and permission | 🔨 | M157_003 operator playbook plus development live-delivery proof. |
-| Durable production-result ledger and order-independent reconciler | 🟡 | M157_003, slots 834–835. |
-| Proof-qualified `repair_production_result` event | 🟡 | M157_003; emitted only after exact repair correlation. |
+The three Fleets ship in `library/` — `incident-responder`, `incident-repairer`,
+`incident-verifier` — and the correlated-repair path they run on landed in
+`M157_003`: shared ingress and provenance on the incident-to-PR link, the
+append-only workflow history, exact merged-commit correlation, bounded approval
+mint spends, production-result normalization, the durable ledger with its
+order-independent reconciler, and the proof-qualified `repair_production_result`
+event.
+
+One item is not a repository fact and stays open here: the platform GitHub App
+must carry the deployment-status subscription and Deployments read permission in
+each environment, proven by a live delivery. Fixture coverage is not evidence
+that the subscription exists.
+
 
 ## 10. Invariants
 
