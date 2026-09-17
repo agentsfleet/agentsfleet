@@ -36,7 +36,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
 | Debit points | 2, both on the lease path | receive (flat) + run (floor-token estimate) at issue; report reconciles telemetry only | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Readiness index | sixteen `fleet:ready:{p}` hashes, a fleet's partition being CRC16 of its id modulo sixteen | field = fleet id, value = a minted UUIDv7 token; a hint, never the record; a poll reads one partition per rotation step | §Redis topology, [`datastore_scaling.md`](./datastore_scaling.md) |
+| Readiness index | sixteen `fleet:ready:{p}` hashes, a fleet's partition being CRC16 of its id modulo sixteen | field = fleet id, value = a minted UUIDv7 token; a hint, never the record; a poll reads one partition per rotation step | §Datastore topology, [`datastore_scaling.md`](./datastore_scaling.md) |
 
 ## Traps
 
@@ -49,7 +49,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Quote operators the readiness-recovery formula, not the single-batch case (§Failure recovery model).
 - Sandbox tiers are not egress policy — no tier substitutes for the egress model (§Sandbox tiers).
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
-- The readiness index is a hint, never the system of record — a lost mark costs latency, never the event (§Redis topology).
+- The readiness index is a hint, never the system of record — a lost mark costs latency, never the event (§Datastore topology).
 - Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§Scope).
 - A dashboard must not sum `agentsfleet_fleet_ready_depth`; every replica samples the same shared hash (§The four per-runner families).
 - Memory isolation does not rest on `fleet_id` scoping alone; a feature breaking single-live-holder must scope by `lease_id` first (§Memory continuity).
@@ -65,12 +65,12 @@ Each trap is enforced in its owner section; this list is the index.
  │ control     │◀────▶│  parent loop: heartbeat,        │
  │ plane:      │ HTTPS│  lease, report, activity        │
  │ owns PG +   │ pull │  (boots from pre-minted agt_r)  │
- │ Redis +     │agt_r │                                 │
+ │ Dragonfly + │agt_r │                                 │
  │ Vault API + │      │    fork + sandbox per event     │
  │ assignment  │      │             ▼                   │
  └──────┬──────┘      │  sandboxed child: NullClaw      │
         │             └─────────────────────────────────┘
-  PG · Redis · Vault
+  PG · Dragonfly · Vault
   (never leave the platform)
 ```
 
@@ -80,11 +80,11 @@ Deeper diagrams stay with their sections: the renewal timeline (§Per-lease rene
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| The runner holds zero datastore credentials | a compromised host cannot reach Postgres, Redis, or the Vault | §Why split; M80_002 |
+| The runner holds zero datastore credentials | a compromised host cannot reach Postgres, Dragonfly, or the Vault | §Why split; M80_002 |
 | Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
 | Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
-| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Redis consumer-idle | §Redis topology; M80_001 |
-| `fleet:ready` token is a UUIDv7, not a counter | an evicted counter restarts and re-issues a token a live poll still holds | §Redis topology |
+| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Dragonfly consumer-idle | §Datastore topology; M80_001 |
+| `fleet:ready` token is a UUIDv7, not a counter | an evicted counter restarts and re-issues a token a live poll still holds | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
 | Engine folded in, child still forked | Landlock is one-way; the parent needs un-sandboxed network | §The split |
 | Renewal is a coverage check, not a re-bill | the run charge at issue covers the run; M80_010 later moves to per-slice Δ-debit | §Money gates |
@@ -107,7 +107,7 @@ The runner fleet is an **execution plane**: stateless runners lease work, run it
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is used only at the tool bridge inside the sandboxed child, and is never persisted runner-side. |
 | **Execution is always sandboxed** | No leased event ever runs un-isolated. | Each lease forks a child under Landlock + cgroups + a network namespace; a sandbox-setup failure fails **closed** — the child does not start, the runner reports `UZ-RUN-007`, and the lease is redeliverable. |
-| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Redis, or the Vault. | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
+| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
 
@@ -125,7 +125,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 | Sandbox setup fails | immediate | child never starts; runner reports `fleet_error` (`UZ-RUN-007`); lease redeliverable | a host with a broken sandbox burns one lease attempt before the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
 | Control plane unreachable | bounded by runner backoff | runner retries with backoff; the un-acked lease redelivers | a runner that can't reach `agentsfleetd` does no work until the link returns | unchanged — the runner is the reconnect handler |
 | Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `tryCandidate` releases the won `runner_affinity` slot before the error propagates — on the reclaim probe and on the fresh-envelope build alike — and logs `post_claim_error_released{stage}`. A release that itself fails degrades to the slot's own `leased_until` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL_MS` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
-| Readiness mark lost (Redis unavailable at ingress, eviction, flush, lossy failover) | `fleet_xautoclaim_min_idle_ms` + `ceil(active_fleets / sweep batch)` × `fleet_reclaim_interval_ms` — **scales with fleet count** | the reclaim sweeper re-marks any fleet still holding deliverable work. Its probe compares the consumer group's `last-delivered-id` against the stream's `last-generated-id`, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
+| Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `fleet_xautoclaim_min_idle_ms` + `ceil(active_fleets / sweep batch)` × `fleet_reclaim_interval_ms` — **scales with fleet count** | the reclaim sweeper re-marks any fleet still holding deliverable work. Its probe compares the consumer group's `last-delivered-id` against the stream's `last-generated-id`, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
 
 > **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass reaches at most `SWEEP_BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)`. So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`: about 6 minutes at 100 active fleets, about 15 at 1 000, about 55 at 5 000. Quote operators the formula, not the single-batch case.
 >
@@ -187,7 +187,7 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
 
 ## The split — two binaries, no sidecar
 
-- **`agentsfleetd`** — the control plane. Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment / fencing / reclaim. It gained the `/v1/runners` endpoints and does the `XREADGROUP` / `XACK` the worker used to do.
+- **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment / fencing / reclaim. It gained the `/v1/runners` endpoints and does the `XREADGROUP` / `XACK` the worker used to do.
 - **`agentsfleet-runner`** — the host-resident execution plane. It is the parent control loop **plus the NullClaw execution engine linked in directly** (the old standalone sandbox sidecar is gone). It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
 The BEFORE/NOW split diagram is front-loaded in §Topology.
@@ -210,7 +210,7 @@ The layout makes the "runner holds zero datastore credentials" guarantee **struc
 
 ## The control protocol — `/v1/runners`
 
-Five verbs. `agentsfleetd` translates them into the Postgres writes and Redis stream operations the worker did directly, so the runner never sees a datastore.
+Five verbs. `agentsfleetd` translates them into the Postgres writes and Dragonfly stream operations the worker did directly, so the runner never sees a datastore.
 
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
@@ -248,7 +248,7 @@ A runner needs a `agt_r` token before it can pull work. The **platform admin pre
    │      eligibility: assigned tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`. The write swaps `token_hash` and appends an actor-attributed event atomically, returns the replacement token once, and makes the old token fail the next auth read. Revoking instead sets `admin_state='revoked'` (M84_002) so every later call gets a 401. The runner's COMPLETE env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ the optional host-local `RUNNER_STORAGE_HOME`) — there is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
+`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`. The write swaps `token_hash` and appends an actor-attributed event atomically, returns the replacement token once, and makes the old token fail the next auth read. Revoking instead sets `admin_state='revoked'` (M84_002) so every later call gets a 401. The runner's COMPLETE env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ the optional host-local `RUNNER_STORAGE_HOME`) — there is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
 
 ## Assigned policy and reconciliation (M148)
 
@@ -499,7 +499,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 
 ## Live activity (the SSE tail)
 
-NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `afd_fleet`'s activity path translates it to the `PUBLISH` on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Redis subscription connection across downstream Server-Sent Events (SSE) viewers.
+NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Dragonfly, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `afd_fleet`'s activity path translates it to the `PUBLISH` on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Dragonfly subscription connection across downstream Server-Sent Events (SSE) viewers.
 
 ```
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
@@ -551,23 +551,23 @@ The credit-pool billing model debits twice per event, and both debits live on `a
 
 Receive credits are not refunded if the run later exhausts. Both debits sit on `agentsfleetd`'s lease/report path, and nowhere else. **Metering never stops, and the gate bites whenever a wallet is empty** — `UZ-RUN-012` is reachable for any exhausted tenant. Free usage is a balance rather than a window; that is canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window).
 
-## Redis topology — what changed
+## Datastore topology — what changed
 
 The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting their producer/consumer to `agentsfleetd`) and retires one. Surface semantics — cardinality, purpose, volume — are canonical in [`data_flow.md` §"Two streams + one pub/sub channel"](./data_flow.md); this table records only the cutover delta, plus `fleet:ready`, which this file owns.
 
 | Surface | Before | Now |
 |---|---|---|
-| `fleet:{id}:events` (work stream, group `fleet_lease`) | the per-fleet worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
-| reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
+| `fleet:{id}:events` (work stream, group `fleet_lease`) | the per-fleet worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Dragonfly consumer. |
+| reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Dragonfly consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
 | `fleet:control` (control stream) | the watcher consumed `fleet_created` / `fleet_status_changed` / `fleet_config_changed` / `worker_drain_request` to spawn / cancel / reload per-fleet threads | **removed.** There are no per-fleet threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_agent.ensureFleetConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
 | `fleet:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
 | `fleet:ready:{p}` (readiness index, sixteen hashes) | did not exist — the lease scanned every active fleet in Postgres to discover which held work | **Sixteen hashes for the whole deployment**, shared by every replica, a fleet's partition being CRC16 of its id modulo sixteen (the count and the poll rotation are in [`datastore_scaling.md`](./datastore_scaling.md)). Field = fleet id, value = the generation token that fleet's last mark minted. Written by `redis_fleet.xaddFleetEvent` (the single producer all five ingress paths funnel through) and by the reclaim sweeper; read by the lease before it opens a Postgres connection. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
 
 **The readiness index is a hint, never the system of record.** The streams are. A lost mark costs delivery latency, never the event — the reclaim sweeper re-derives readiness from the streams themselves (below). Every write to it is best-effort and none may fail an accepted ingress call or a lease reply.
 
-Fields carry a token because the lease clears them. A poll that establishes a fleet holds nothing deliverable removes it from the index, but ingress takes no per-fleet claim and can append and mark at any instant — including between that poll's last read and its clear. `clear` therefore deletes a field only when its stored token still equals the one the caller observed, evaluated atomically inside Redis. Nothing ever compares two tokens for order, only for equality, which is why the token is a minted UUIDv7 rather than a counter: a counter whose key is evicted restarts and re-issues a token a live poll still holds.
+Fields carry a token because the lease clears them. A poll that establishes a fleet holds nothing deliverable removes it from the index, but ingress takes no per-fleet claim and can append and mark at any instant — including between that poll's last read and its clear. `clear` therefore deletes a field only when its stored token still equals the one the caller observed, evaluated atomically inside Dragonfly. Nothing ever compares two tokens for order, only for equality, which is why the token is a minted UUIDv7 rather than a counter: a counter whose key is evicted restarts and re-issues a token a live poll still holds.
 
-The reclaim shift is the load-bearing one: moving the processor off-platform means Redis can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
+The reclaim shift is the load-bearing one: moving the processor off-platform means Dragonfly can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
 
 ## Sandbox tiers
 

@@ -137,7 +137,7 @@ one-time code → GitHub user token
 
 **Disconnect** and every authenticated provider callback completion write in one transaction per provider and workspace: the vault handle and the reverse-routing rows are deleted or written together, or neither is. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
 
-The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page — the divergence from Zig recorded in M187_001's Discovery, where the token was held in Redis under a second single-use state. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
+The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page — the divergence from Zig recorded in M187_001's Discovery, where the token was held in Dragonfly under a second single-use state. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
 ```
 workspace vault                          core.connector_installs

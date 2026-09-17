@@ -111,19 +111,19 @@ Every normalized production result is stored before correlation. The same reconc
 
 A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
 
-Each selected verifier Fleet gets one slot 835 dispatch intent before Redis is called. The row starts with `verifier_event_id = NULL` and sets `verify_after` to fifteen minutes after production completion. Its row identifier is the stable dispatch key. A bounded background dispatcher selects due rows. One failed row is logged and retried on the next sweep without blocking later due rows. Redis atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once. A later cleanup sweep deletes the transient Redis once-key and records that cleanup in slot 835. Cleanup retries are safe because the durable event link already prevents another dispatch. The dispatcher releases its database connection before every Redis call.
+Each selected verifier Fleet gets one slot 835 dispatch intent before Dragonfly is called. The row starts with `verifier_event_id = NULL` and sets `verify_after` to fifteen minutes after production completion. Its row identifier is the stable dispatch key. A bounded background dispatcher selects due rows. One failed row is logged and retried on the next sweep without blocking later due rows. Dragonfly atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once. A later cleanup sweep deletes the transient Dragonfly once-key and records that cleanup in slot 835. Cleanup retries are safe because the durable event link already prevents another dispatch. The dispatcher releases its database connection before every Dragonfly call.
 
 ```text
-slot 835 intent          Redis enqueue-once          slot 835 complete       cleanup
+slot 835 intent          Dragonfly enqueue-once      slot 835 complete       cleanup
 event id = NULL    ---> new or existing event id ---> event id = <id>  ---> delete once-key
 verify_after = +15m          only when due                                      |
           ^                         |                                            |
           |                         |                                            v
           `------ bounded retry ----+                              record cleanup in slot 835
 
-crash before Redis  -> pending intent is retried
-crash after Redis   -> retry returns the same event id
-crash during cleanup -> deletion and cleanup record are retried safely
+crash before Dragonfly  -> pending intent is retried
+crash after Dragonfly   -> retry returns the same event id
+crash during cleanup    -> deletion and cleanup record are retried safely
 ```
 
 The `verifier_event_id` is therefore the standard Fleet event identifier for Fleet 3's verification run. It is not another incident identifier and users do not copy it between Fleets. It lets event history, logs, and support trace the exact verification run back to the repair and production result.
@@ -161,7 +161,7 @@ The platform GitHub App subscribes to deployment-status events and holds Deploym
 
 `agentsfleet` accepts any signed terminal production status from a mapped GitHub installation. That proves GitHub origin and repository routing; it does not attest that Vercel produced the status. GitHub permits every push-capable identity to create deployment statuses, so each such identity in a mapped repository is inside this first spine's trusted producer boundary. The daemon does not inspect `deployment_status.creator` or App identity. The live proof records the expected deployment integration, received creator identity, repository, commit, deployment identifier, deployment-status identifier, and delivery identifier in Pull Request (PR) Session Notes for audit; it does not add a daemon rejection rule.
 
-Slot 834 retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, claim fence, and Redis cleanup marker. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
+Slot 834 retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, claim fence, and Dragonfly cleanup marker. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
 
@@ -192,9 +192,9 @@ Slot 834 retains every normalized production result idempotently by provider sta
 - Preview evidence is append-only and never closes the loop.
 - Only exact workspace + repository + merged commit hash correlation can wake verification.
 - Production-first, merge-first, simultaneous arrival, and replayed delivery converge on one durable verification attempt.
-- A PostgreSQL-to-Redis crash leaves a retryable intent or returns the original Fleet event identifier; it never creates a second verifier event.
-- No database connection or row lock remains held during Redis input/output.
-- The transient Redis once-key is deleted only after durable event completion; interrupted cleanup is retried and cannot create another event.
+- A PostgreSQL-to-Dragonfly crash leaves a retryable intent or returns the original Fleet event identifier; it never creates a second verifier event.
+- No database connection or row lock remains held during Dragonfly input/output.
+- The transient Dragonfly once-key is deleted only after durable event completion; interrupted cleanup is retried and cannot create another event.
 - A verifier event is not queued before its fixed fifteen-minute production window is complete.
 - Raw `deployment_status` never wakes the verifier; exact correlation schedules `repair_production_result`, and the due dispatcher emits it.
 - Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.

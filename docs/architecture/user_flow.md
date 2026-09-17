@@ -117,7 +117,7 @@ The user iterates those files from Claude in natural language:
 - "tighten the deploy-failure diagnosis prompt"
 - "add a periodic health check every 15 minutes"
 - "require approval before teardown"
-- "include Fly logs and Redis health in the first pass"
+- "include Fly logs and Dragonfly health in the first pass"
 
 This keeps the operational logic editable by changing instructions, not by rewriting a typed workflow engine for every variation.
 
