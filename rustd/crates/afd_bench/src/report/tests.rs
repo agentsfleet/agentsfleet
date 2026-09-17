@@ -64,7 +64,7 @@ fn filled_report() -> Report {
     report.measurement(RATE_PER_SECOND, 812.5);
     report.measurement(P95_MS, 14.25);
     report.datastores = DatastoreCosts {
-        redis: super::DatastoreCost {
+        dragonfly: super::DatastoreCost {
             operations: 4_000,
             time_ms: Some(120.0),
         },

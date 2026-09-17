@@ -359,7 +359,7 @@ impl Window {
         // the p95, and splitting that between the two datastores would need a
         // timer inside the pass rather than around it.
         report.datastores = DatastoreCosts {
-            redis: DatastoreCost {
+            dragonfly: DatastoreCost {
                 operations: self.dragonfly_calls,
                 time_ms: None,
             },
