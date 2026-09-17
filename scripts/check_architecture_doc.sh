@@ -383,21 +383,38 @@ index memory quickstart runners workspaces/managing workspaces/overview
 # reading, and a `case` glob testing " $slug " never matches at a line boundary.
 published_flat=" $(printf '%s ' $PUBLISHED_PAGES) "
 bad_published=0
+seen_published=0
 while IFS= read -r ref; do
   src="${ref%%::*}"
   slug="${ref##*::}"
+  seen_published=$((seen_published + 1))
   case "$published_flat" in
     *" $slug "*) continue ;;
   esac
   err "test_arch_published_links_resolve: $src points at docs.agentsfleet.net/$slug, which is not a published page"
   bad_published=$((bad_published + 1))
 done < <(
+  # The filename is carried by the shell, never interpolated into a `sed`
+  # replacement: a path holding `&` or `|` would otherwise rewrite the match or
+  # break the expression, and the failure would name the wrong file.
   while IFS= read -r f; do
     grep -oE 'docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
-      | sed -E "s|docs\.agentsfleet\.net/|$f::|" || true
+      | while IFS= read -r hit; do
+          printf '%s::%s\n' "$f" "${hit#docs.agentsfleet.net/}"
+        done || true
   done < <(doc_files) | sort -u
 )
-[ "$bad_published" = 0 ] && ok "test_arch_published_links_resolve: every docs.agentsfleet.net pointer names a published page"
+
+# The same guard `CITATION_FLOOR` gives the citation pattern, for the same
+# reason: a check that extracts nothing reports green forever, so a broken
+# regex would read as "every pointer resolves" rather than "no pointer was
+# read". The real corpus carried 17 when this landed.
+readonly PUBLISHED_REF_FLOOR=10
+if [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ] && [ "$seen_published" -lt "$PUBLISHED_REF_FLOOR" ]; then
+  err "test_arch_published_links_resolve: extraction found only $seen_published pointers in the real corpus — the pattern is broken, not the docs"
+elif [ "$bad_published" = 0 ]; then
+  ok "test_arch_published_links_resolve: all $seen_published docs.agentsfleet.net pointers name a published page"
+fi
 
 # A pattern that silently matches nothing reports clean forever. Against the real
 # corpus the citation count is in the hundreds; a collapse to zero means the
